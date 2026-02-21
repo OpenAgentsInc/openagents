@@ -3,6 +3,7 @@ defmodule Mix.Tasks.Runtime.Contract.Check do
 
   use Mix.Task
 
+  alias OpenAgentsRuntime.Contracts.ControlPlaneAuthProtoContract
   alias OpenAgentsRuntime.Contracts.InternalAPIContract
   alias OpenAgentsRuntime.Contracts.Layer0ProtoContract
   alias OpenAgentsRuntime.Contracts.RuntimeOrchestrationProtoContract
@@ -12,7 +13,8 @@ defmodule Mix.Tasks.Runtime.Contract.Check do
     checks = [
       {"internal API contract", &InternalAPIContract.check/0},
       {"layer-0 proto contract", &Layer0ProtoContract.check/0},
-      {"runtime orchestration proto contract", &RuntimeOrchestrationProtoContract.check/0}
+      {"runtime orchestration proto contract", &RuntimeOrchestrationProtoContract.check/0},
+      {"control-plane auth proto contract", &ControlPlaneAuthProtoContract.check/0}
     ]
 
     errors =

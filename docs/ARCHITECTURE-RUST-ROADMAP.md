@@ -84,6 +84,7 @@ Contract artifacts: `proto/openagents/runtime/v1/orchestration.proto`, `docs/pro
 
 ### OA-RUST-010 — [Proto] Finalize control-plane auth/session/scope contracts
 Description: Define control-plane messages for auth/session, org membership, WorkOS identity mapping, and sync token scope derivation used by web, desktop, and iOS.
+Contract artifacts: `proto/openagents/control/v1/auth.proto`, `docs/protocol/fixtures/control-auth-session-v1.json`, `docs/protocol/control-auth-session-v1.md`
 
 ### OA-RUST-011 — [Proto] Finalize Codex worker/event contracts for all surfaces
 Description: Lock Codex worker event envelopes, turn status updates, and replay metadata contracts so web/desktop/iOS consume the same wire protocol.

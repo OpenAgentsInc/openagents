@@ -1,0 +1,228 @@
+syntax = "proto3";
+
+package openagents.control.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum AuthProvider {
+  AUTH_PROVIDER_UNSPECIFIED = 0;
+  AUTH_PROVIDER_WORKOS_EMAIL_CODE = 1;
+}
+
+enum AuthChallengeStatus {
+  AUTH_CHALLENGE_STATUS_UNSPECIFIED = 0;
+  AUTH_CHALLENGE_STATUS_CODE_SENT = 1;
+  AUTH_CHALLENGE_STATUS_VERIFIED = 2;
+  AUTH_CHALLENGE_STATUS_EXPIRED = 3;
+  AUTH_CHALLENGE_STATUS_THROTTLED = 4;
+  AUTH_CHALLENGE_STATUS_FAILED = 5;
+}
+
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_ACTIVE = 1;
+  SESSION_STATUS_REAUTH_REQUIRED = 2;
+  SESSION_STATUS_EXPIRED = 3;
+  SESSION_STATUS_REVOKED = 4;
+}
+
+enum OrgRole {
+  ORG_ROLE_UNSPECIFIED = 0;
+  ORG_ROLE_OWNER = 1;
+  ORG_ROLE_ADMIN = 2;
+  ORG_ROLE_MEMBER = 3;
+  ORG_ROLE_VIEWER = 4;
+}
+
+enum SessionRevocationReason {
+  SESSION_REVOCATION_REASON_UNSPECIFIED = 0;
+  SESSION_REVOCATION_REASON_USER_REQUESTED = 1;
+  SESSION_REVOCATION_REASON_ADMIN_REVOKED = 2;
+  SESSION_REVOCATION_REASON_TOKEN_REPLAY = 3;
+  SESSION_REVOCATION_REASON_DEVICE_REPLACED = 4;
+  SESSION_REVOCATION_REASON_SECURITY_POLICY = 5;
+}
+
+enum ControlErrorCode {
+  CONTROL_ERROR_CODE_UNSPECIFIED = 0;
+  CONTROL_ERROR_CODE_UNAUTHORIZED = 1;
+  CONTROL_ERROR_CODE_FORBIDDEN = 2;
+  CONTROL_ERROR_CODE_INVALID_REQUEST = 3;
+  CONTROL_ERROR_CODE_INVALID_SCOPE = 4;
+  CONTROL_ERROR_CODE_RATE_LIMITED = 5;
+  CONTROL_ERROR_CODE_REAUTH_REQUIRED = 6;
+  CONTROL_ERROR_CODE_SESSION_EXPIRED = 7;
+  CONTROL_ERROR_CODE_SESSION_REVOKED = 8;
+  CONTROL_ERROR_CODE_NOT_FOUND = 9;
+  CONTROL_ERROR_CODE_CONFLICT = 10;
+  CONTROL_ERROR_CODE_SERVICE_UNAVAILABLE = 11;
+  CONTROL_ERROR_CODE_INTERNAL_ERROR = 12;
+}
+
+message DeviceContext {
+  string device_id = 1;
+  string client_id = 2;
+  string platform = 3;
+  string app_version = 4;
+  string install_ref = 5;
+}
+
+message AuthChallengeRequest {
+  string email = 1;
+  AuthProvider provider = 2;
+  DeviceContext device = 3;
+  string locale = 4;
+  string request_id = 5;
+}
+
+message AuthChallengeResponse {
+  string challenge_id = 1;
+  AuthProvider provider = 2;
+  AuthChallengeStatus status = 3;
+  string delivery_channel = 4;
+  string email_hint = 5;
+  bool resend_allowed = 6;
+  google.protobuf.Timestamp resend_available_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  string pending_workos_user_id = 9;
+  string request_id = 10;
+}
+
+message AuthVerifyRequest {
+  string challenge_id = 1;
+  string code = 2;
+  DeviceContext device = 3;
+  string request_id = 4;
+}
+
+message WorkOSIdentity {
+  string workos_user_id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string profile_picture_url = 5;
+  google.protobuf.Timestamp email_verified_at = 6;
+  google.protobuf.Struct raw_claims = 7;
+}
+
+message OrgMembership {
+  string org_id = 1;
+  string org_slug = 2;
+  OrgRole role = 3;
+  repeated string role_scopes = 4;
+  bool default_org = 5;
+}
+
+message AuthSession {
+  string session_id = 1;
+  string user_id = 2;
+  string device_id = 3;
+  SessionStatus status = 4;
+  string access_token = 5;
+  string refresh_token = 6;
+  string refresh_token_id = 7;
+  google.protobuf.Timestamp issued_at = 8;
+  google.protobuf.Timestamp access_expires_at = 9;
+  google.protobuf.Timestamp refresh_expires_at = 10;
+  string active_org_id = 11;
+  repeated OrgMembership memberships = 12;
+  WorkOSIdentity identity = 13;
+  bool reauth_required = 14;
+}
+
+message AuthVerifyResponse {
+  AuthSession session = 1;
+  bool new_user = 2;
+  string token_type = 3;
+  string request_id = 4;
+}
+
+message SessionRefreshRequest {
+  string refresh_token = 1;
+  string device_id = 2;
+  bool rotate_refresh_token = 3;
+  string request_id = 4;
+}
+
+message SessionRefreshResponse {
+  AuthSession session = 1;
+  string replaced_refresh_token_id = 2;
+  string request_id = 3;
+}
+
+message SessionRevocationRequest {
+  oneof target {
+    string session_id = 1;
+    string device_id = 2;
+    bool revoke_all_sessions = 3;
+  }
+
+  SessionRevocationReason reason = 4;
+  bool include_current = 5;
+  string request_id = 6;
+}
+
+message SessionRevocationResponse {
+  repeated string revoked_session_ids = 1;
+  repeated string revoked_refresh_token_ids = 2;
+  SessionRevocationReason reason = 3;
+  google.protobuf.Timestamp revoked_at = 4;
+  string request_id = 5;
+}
+
+message SyncTokenTopicGrant {
+  string topic = 1;
+  string required_scope = 2;
+}
+
+message SyncTokenRequest {
+  string session_id = 1;
+  string device_id = 2;
+  repeated string requested_scopes = 3;
+  repeated SyncTokenTopicGrant requested_topics = 4;
+  uint32 requested_ttl_seconds = 5;
+  string request_id = 6;
+}
+
+message SyncTokenResponse {
+  string token = 1;
+  string token_type = 2;
+  uint32 expires_in_seconds = 3;
+  google.protobuf.Timestamp issued_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string issuer = 6;
+  string audience = 7;
+  string subject = 8;
+  string org_id = 9;
+  string claims_version = 10;
+  string key_id = 11;
+  string token_id = 12;
+  repeated string granted_scopes = 13;
+  repeated SyncTokenTopicGrant granted_topics = 14;
+  string session_id = 15;
+  string device_id = 16;
+  string request_id = 17;
+}
+
+message ControlError {
+  ControlErrorCode code = 1;
+  string message = 2;
+  repeated string details = 3;
+  uint32 retry_after_ms = 4;
+  bool reauth_required = 5;
+  string request_id = 6;
+}
+
+message AuthOperationResult {
+  string request_id = 1;
+
+  oneof payload {
+    AuthChallengeResponse challenge = 10;
+    AuthVerifyResponse verify = 11;
+    SessionRefreshResponse refresh = 12;
+    SessionRevocationResponse revoke = 13;
+    SyncTokenResponse sync_token = 14;
+    ControlError error = 15;
+  }
+}
