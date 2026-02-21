@@ -1,0 +1,62 @@
+{
+  "timestamp": "20260221T125658Z",
+  "build_id": "20260221T125346Z",
+  "base_url": "http://127.0.0.1:8787",
+  "samples": {
+    "latency": 60,
+    "auth_churn": 40,
+    "soak_seconds": 180
+  },
+  "budgets": {
+    "root_p95_ms": 120,
+    "manifest_p95_ms": 100,
+    "wasm_p95_ms": 250,
+    "auth_verify_p95_ms": 250,
+    "sync_token_p95_ms": 250,
+    "soak_errors": 0,
+    "rss_growth_kb": 51200
+  },
+  "metrics": {
+    "boot": {
+      "root": {
+        "p95_ms": 0.47,
+        "avg_ms": 0.35,
+        "max_ms": 0.52
+      },
+      "manifest": {
+        "p95_ms": 0.58,
+        "avg_ms": 0.42
+      },
+      "wasm_asset": {
+        "p95_ms": 1.82,
+        "avg_ms": 1.66
+      }
+    },
+    "interaction": {
+      "auth_verify": {
+        "p95_ms": 0.62,
+        "avg_ms": 0.49
+      },
+      "sync_token": {
+        "p95_ms": 0.44,
+        "avg_ms": 0.40
+      },
+      "auth_errors": 0
+    },
+    "soak": {
+      "manifest_poll": {
+        "p95_ms": 0.71,
+        "avg_ms": 0.56
+      },
+      "errors": 0,
+      "rss_kb": {
+        "min": 8464,
+        "max": 13632,
+        "avg": 9586,
+        "growth": 5168
+      }
+    }
+  },
+  "pass": true,
+  "budget_failures": []
+}

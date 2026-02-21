@@ -54,6 +54,19 @@ This writes:
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell_bg.wasm`
 - `apps/openagents.com/web-shell/dist/assets/host-shim.js`
 
+## Performance + Soak Signoff
+
+OA-RUST-065 harness:
+
+```bash
+apps/openagents.com/web-shell/scripts/perf-soak-signoff.sh
+```
+
+Artifacts:
+
+- `apps/openagents.com/web-shell/perf/latest.json`
+- `apps/openagents.com/web-shell/perf/signoff-<timestamp>.json`
+
 ## JS Host Boundary
 
 Boundary policy:
