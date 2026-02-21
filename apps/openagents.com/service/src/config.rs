@@ -23,9 +23,9 @@ const DEFAULT_SYNC_TOKEN_MAX_TTL_SECONDS: u32 = 900;
 const DEFAULT_SYNC_ALLOWED_SCOPES: &str =
     "runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries";
 const DEFAULT_SYNC_DEFAULT_SCOPES: &str = "runtime.codex_worker_events";
-const DEFAULT_ROUTE_SPLIT_MODE: &str = "legacy";
-const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str = "/chat,/workspace,/login,/register,/authenticate,/onboarding,/account,/settings,/l402,/billing,/admin";
-const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 0;
+const DEFAULT_ROUTE_SPLIT_MODE: &str = "rust";
+const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str = "/";
+const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 100;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 
 #[derive(Debug, Clone)]
@@ -198,7 +198,7 @@ impl Config {
         let route_split_enabled = env::var("OA_ROUTE_SPLIT_ENABLED")
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
-            .unwrap_or(false);
+            .unwrap_or(true);
 
         let route_split_mode = env::var("OA_ROUTE_SPLIT_MODE")
             .ok()

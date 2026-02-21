@@ -376,4 +376,22 @@ mod tests {
             );
         }
     }
+
+    #[tokio::test]
+    async fn rust_mode_with_root_prefix_routes_all_paths_to_rust_shell() {
+        let mut config = test_config();
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let service = RouteSplitService::from_config(&config);
+
+        for path in ["/", "/login", "/settings/profile", "/unknown/path"] {
+            let decision = service.evaluate(path, "user:1").await;
+            assert_eq!(
+                decision.target,
+                RouteTarget::RustShell,
+                "path should route to rust shell: {path}"
+            );
+            assert_eq!(decision.reason, "mode_rust");
+        }
+    }
 }

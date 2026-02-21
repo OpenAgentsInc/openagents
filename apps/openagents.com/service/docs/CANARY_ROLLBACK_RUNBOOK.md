@@ -3,11 +3,12 @@
 Status: active
 Owner: `owner:openagents.com`
 Scope: `apps/openagents.com/service` (`openagents-control-service`)
-Related issues: OA-RUST-020, OA-RUST-021, OA-RUST-022
+Related issues: OA-RUST-020, OA-RUST-021, OA-RUST-022, OA-RUST-062
 
 ## Purpose
 
 Provide deterministic canary rollout and rollback steps for the Rust control service before major traffic shifts.
+This runbook remains required after default-router switch (`OA_ROUTE_SPLIT_MODE=rust`) so route-level rollback stays fast and tested.
 
 ## Preconditions
 
