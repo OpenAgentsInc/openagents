@@ -1,0 +1,139 @@
+{
+  "auth_challenge_success": {
+    "request_id": "req-auth-001",
+    "challenge_id": "chal_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+    "provider": "AUTH_PROVIDER_WORKOS_EMAIL_CODE",
+    "status": "AUTH_CHALLENGE_STATUS_CODE_SENT",
+    "delivery_channel": "email",
+    "email_hint": "ch***@openagents.com",
+    "resend_allowed": false,
+    "pending_workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4"
+  },
+  "auth_verify_success": {
+    "request_id": "req-auth-002",
+    "new_user": false,
+    "token_type": "Bearer",
+    "session": {
+      "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+      "user_id": "1",
+      "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+      "status": "SESSION_STATUS_ACTIVE",
+      "access_token": "pat_local_abc",
+      "refresh_token": "rt_local_abc",
+      "refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+      "active_org_id": "user:1",
+      "memberships": [
+        {
+          "org_id": "user:1",
+          "org_slug": "personal",
+          "role": "ORG_ROLE_OWNER",
+          "role_scopes": [
+            "runtime.codex_worker_events"
+          ],
+          "default_org": true
+        }
+      ],
+      "identity": {
+        "workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+        "email": "chris@openagents.com"
+      },
+      "reauth_required": false
+    }
+  },
+  "session_refresh_success": {
+    "request_id": "req-auth-003",
+    "replaced_refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+    "session": {
+      "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+      "user_id": "1",
+      "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+      "status": "SESSION_STATUS_ACTIVE",
+      "access_token": "pat_local_def",
+      "refresh_token": "rt_local_def",
+      "refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P5",
+      "active_org_id": "user:1",
+      "memberships": [
+        {
+          "org_id": "user:1",
+          "org_slug": "personal",
+          "role": "ORG_ROLE_OWNER",
+          "role_scopes": [
+            "runtime.codex_worker_events"
+          ],
+          "default_org": true
+        }
+      ],
+      "identity": {
+        "workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+        "email": "chris@openagents.com"
+      },
+      "reauth_required": false
+    }
+  },
+  "sync_token_success": {
+    "request_id": "req-auth-004",
+    "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+    "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.payload.sig",
+    "token_type": "Bearer",
+    "expires_in_seconds": 300,
+    "issuer": "https://openagents.com",
+    "audience": "openagents-sync",
+    "subject": "user:1",
+    "org_id": "user:1",
+    "claims_version": "oa_sync_claims_v1",
+    "key_id": "sync-auth-v1",
+    "token_id": "jti_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+    "granted_scopes": [
+      "runtime.codex_worker_events",
+      "runtime.codex_worker_summaries"
+    ],
+    "granted_topics": [
+      {
+        "topic": "org:user:1:workers",
+        "required_scope": "runtime.codex_worker_summaries"
+      },
+      {
+        "topic": "org:user:1:worker_events",
+        "required_scope": "runtime.codex_worker_events"
+      }
+    ]
+  },
+  "sync_token_invalid_scope_error": {
+    "request_id": "req-auth-005",
+    "code": "CONTROL_ERROR_CODE_INVALID_SCOPE",
+    "message": "requested sync scopes are not allowed",
+    "reauth_required": false
+  },
+  "reauth_required_error": {
+    "request_id": "req-auth-006",
+    "code": "CONTROL_ERROR_CODE_REAUTH_REQUIRED",
+    "message": "session requires reauthentication",
+    "reauth_required": true
+  },
+  "session_revoked_error": {
+    "request_id": "req-auth-007",
+    "code": "CONTROL_ERROR_CODE_SESSION_REVOKED",
+    "message": "session was revoked",
+    "reauth_required": true
+  },
+  "operation_envelope_examples": [
+    {
+      "request_id": "req-auth-008",
+      "payload": "challenge"
+    },
+    {
+      "request_id": "req-auth-009",
+      "payload": "verify"
+    },
+    {
+      "request_id": "req-auth-010",
+      "payload": "sync_token"
+    },
+    {
+      "request_id": "req-auth-011",
+      "payload": "error",
+      "error_code": "CONTROL_ERROR_CODE_INVALID_SCOPE"
+    }
+  ]
+}

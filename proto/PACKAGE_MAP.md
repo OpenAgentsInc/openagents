@@ -38,6 +38,7 @@ Scope: cross-process and client/server contracts only
 
 | Current file | Current package | Canonical package home | Owner lane | Follow-on issue |
 | --- | --- | --- | --- | --- |
+| `proto/openagents/control/v1/auth.proto` | `openagents.control.v1` | `openagents.control.v1` | `owner:openagents.com` | OA-RUST-010 |
 | `proto/openagents/runtime/v1/orchestration.proto` | `openagents.runtime.v1` | `openagents.runtime.v1` | `owner:runtime` | OA-RUST-009 |
 | `proto/openagents/protocol/v1/codex_auth.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
 | `proto/openagents/protocol/v1/codex_events.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
@@ -45,7 +46,7 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/protocol/v1/codex_sandbox.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
 | `proto/openagents/protocol/v1/events.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` | `owner:runtime` | transitional legacy; retire after runtime.v1 consumer cutover |
 | `proto/openagents/protocol/v1/receipts.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` | `owner:runtime` | transitional legacy; retire after runtime.v1 consumer cutover |
-| `proto/openagents/protocol/v1/comms.proto` | `openagents.protocol.v1` | `openagents.control.v1` | `owner:openagents.com` | OA-RUST-010 |
+| `proto/openagents/protocol/v1/comms.proto` | `openagents.protocol.v1` | `openagents.control.v1` | `owner:openagents.com` | transitional legacy; retire after control.v1 cutover |
 | `proto/openagents/protocol/v1/reasons.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` (runtime reason set), referenced by control/codex as needed until split complete | `owner:contracts-docs` | OA-RUST-009 / OA-RUST-010 / OA-RUST-011 |
 | `proto/openagents/sync/v1/topics.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
 | `proto/openagents/sync/v1/errors.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
