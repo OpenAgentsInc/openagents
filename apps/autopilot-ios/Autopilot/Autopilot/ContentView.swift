@@ -343,6 +343,35 @@ private struct CodexDebugView: View {
                     .disabled(!model.isAuthenticated || model.selectedWorkerID == nil)
                 }
 
+                Section("Reconnect Telemetry") {
+                    LabeledContent("Connect attempts", value: "\(model.streamLifecycle.connectAttempts)")
+                    LabeledContent("Reconnect attempts", value: "\(model.streamLifecycle.reconnectAttempts)")
+                    LabeledContent("Successful sessions", value: "\(model.streamLifecycle.successfulSessions)")
+                    LabeledContent("Recovered sessions", value: "\(model.streamLifecycle.recoveredSessions)")
+                    LabeledContent("Last backoff", value: "\(model.streamLifecycle.lastBackoffMs)ms")
+                    LabeledContent(
+                        "Last recovery latency",
+                        value: "\(model.streamLifecycle.lastRecoveryLatencyMs)ms"
+                    )
+                    LabeledContent(
+                        "Last disconnect",
+                        value: model.streamLifecycle.lastDisconnectReason?.rawValue ?? "n/a"
+                    )
+                }
+
+                Section("Reconnect Events") {
+                    if model.streamLifecycleEvents.isEmpty {
+                        Text("No lifecycle events yet")
+                            .foregroundStyle(OATheme.mutedForeground)
+                    } else {
+                        ForEach(Array(model.streamLifecycleEvents.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.caption2)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+
                 Section("Recent Events") {
                     if model.recentEvents.isEmpty {
                         Text("No events yet")

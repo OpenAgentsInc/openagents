@@ -423,6 +423,87 @@ enum StreamState: Equatable {
     case reconnecting
 }
 
+enum KhalaLifecycleDisconnectReason: String, Equatable {
+    case streamClosed = "stream_closed"
+    case gatewayRestart = "gateway_restart"
+    case staleCursor = "stale_cursor"
+    case unauthorized = "unauthorized"
+    case forbidden = "forbidden"
+    case network = "network"
+    case unknown = "unknown"
+}
+
+struct KhalaLifecycleSnapshot: Equatable {
+    var connectAttempts: Int = 0
+    var reconnectAttempts: Int = 0
+    var successfulSessions: Int = 0
+    var recoveredSessions: Int = 0
+    var lastBackoffMs: Int = 0
+    var lastRecoveryLatencyMs: Int = 0
+    var lastDisconnectReason: KhalaLifecycleDisconnectReason?
+}
+
+struct KhalaReconnectPolicy: Equatable {
+    let baseDelayMs: Int
+    let maxDelayMs: Int
+    let jitterRatio: Double
+
+    static let `default` = KhalaReconnectPolicy(
+        baseDelayMs: 250,
+        maxDelayMs: 8_000,
+        jitterRatio: 0.5
+    )
+
+    func delayMs(attempt: Int, jitterUnit: Double) -> Int {
+        guard attempt > 0 else {
+            return 0
+        }
+
+        // Cap exponent growth so reconnect cadence stays bounded under long outages.
+        let exponent = min(attempt - 1, 10)
+        let scaled = min(baseDelayMs * (1 << exponent), maxDelayMs)
+        let clampedUnit = max(0.0, min(1.0, jitterUnit))
+        let jitterMax = Int(Double(scaled) * jitterRatio)
+        let jitter = Int(Double(jitterMax) * clampedUnit)
+        return scaled + jitter
+    }
+}
+
+enum KhalaReconnectClassifier {
+    static func classify(_ error: Error) -> KhalaLifecycleDisconnectReason {
+        if let runtimeError = error as? RuntimeCodexApiError {
+            switch runtimeError.code {
+            case .auth:
+                return .unauthorized
+            case .forbidden:
+                return .forbidden
+            case .conflict:
+                return .staleCursor
+            case .network:
+                if runtimeError.message.localizedCaseInsensitiveContains("stream_closed")
+                    || runtimeError.message.localizedCaseInsensitiveContains("reply_cancelled") {
+                    return .streamClosed
+                }
+                return .network
+            case .invalid, .unknown:
+                return .unknown
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut, NSURLErrorCannotConnectToHost:
+                return .gatewayRestart
+            default:
+                return .network
+            }
+        }
+
+        return .unknown
+    }
+}
+
 enum CodexChatRole: String, Equatable {
     case user
     case assistant
