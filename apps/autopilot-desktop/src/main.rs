@@ -3812,23 +3812,27 @@ fn spawn_event_bridge(
                                     return;
                                 }
                                 log("Fetching feed and profile…".to_string());
-                                let mut feed_source = "openagents_proxy";
+                                let _feed_source: &str;
                                 let posts_result = if let Some(client) = proxy_client.as_ref() {
                                     match client.posts_feed(PostSort::New, Some(25), None).await {
-                                        Ok(posts) => Ok(posts),
+                                        Ok(posts) => {
+                                            _feed_source = "openagents_proxy";
+                                            Ok(posts)
+                                        }
                                         Err(e) => {
                                             log(format!("Proxy feed error: {e}"));
                                             if let Some(live) = live_client.as_ref() {
-                                                feed_source = "moltbook_live";
+                                                _feed_source = "moltbook_live";
                                                 log("Falling back to live Moltbook API for feed…".to_string());
                                                 live.posts_feed(PostSort::New, Some(25), None).await
                                             } else {
+                                                _feed_source = "openagents_proxy";
                                                 Err(e)
                                             }
                                         }
                                     }
                                 } else if let Some(live) = live_client.as_ref() {
-                                    feed_source = "moltbook_live";
+                                    _feed_source = "moltbook_live";
                                     live.posts_feed(PostSort::New, Some(25), None).await
                                 } else {
                                     unreachable!("moltbook clients checked above");
