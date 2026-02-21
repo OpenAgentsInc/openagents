@@ -31,10 +31,16 @@ Request payload for `POST /pay-bolt11`:
 - `OA_LIGHTNING_WALLET_EXECUTOR_MODE=spark`
 - `OA_LIGHTNING_SPARK_API_KEY=<key>`
 - `OA_LIGHTNING_WALLET_ALLOWED_HOSTS=sats4ai.com,l402.openagents.com`
-- optional hardening: `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN=<bearer-token>`
+- `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN=<bearer-token>`
+- optional: `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN_VERSION=<positive-int>` (default `1`)
 - mnemonic source:
   - env: `OA_LIGHTNING_WALLET_MNEMONIC_PROVIDER=env` and `OA_LIGHTNING_WALLET_MNEMONIC=<seed phrase>`
   - gcp: `OA_LIGHTNING_WALLET_MNEMONIC_PROVIDER=gcp` and `OA_LIGHTNING_WALLET_MNEMONIC_SECRET_VERSION=projects/.../secrets/.../versions/latest`
+
+## Auth, Custody, and Rotation Docs
+
+- `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`
+- `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`
 
 ## Commands
 

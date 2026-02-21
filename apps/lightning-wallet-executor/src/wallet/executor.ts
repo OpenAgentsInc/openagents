@@ -1,8 +1,14 @@
 import { Clock, Context, Effect, Layer, Ref } from "effect"
 import crypto from "node:crypto"
 
-import type { InvoicePaymentRequest, InvoicePaymentResult, WalletStatus } from "../contracts.js"
+import type {
+  InvoicePaymentRequest,
+  InvoicePaymentResult,
+  WalletExecutionReceipt,
+  WalletStatus,
+} from "../contracts.js"
 import { PolicyDeniedError, SparkGatewayError } from "../errors.js"
+import { buildWalletExecutionReceipt } from "../receipt/canonical.js"
 import { WalletExecutorConfigService } from "../runtime/config.js"
 import { SparkGatewayService } from "../spark/gateway.js"
 
@@ -10,6 +16,7 @@ export type PayBolt11Result = Readonly<{
   payment: InvoicePaymentResult
   quotedAmountMsats: number
   windowSpendMsatsAfterPayment: number
+  receipt: WalletExecutionReceipt
 }>
 
 export type WalletExecutorApi = Readonly<{
@@ -118,6 +125,9 @@ export const WalletExecutorLive = Layer.effect(
         return {
           walletId: config.walletId,
           mode: config.mode,
+          authMode: config.authToken ? "bearer_static" : "disabled",
+          authEnforced: Boolean(config.authToken),
+          authTokenVersion: config.authTokenVersion,
           lifecycle: current.lifecycle,
           network: config.network,
           identityPubkey: current.identityPubkey,
@@ -314,6 +324,17 @@ export const WalletExecutorLive = Layer.effect(
 
         const history = yield* Ref.get(historyRef)
         const windowSpendAfter = sumMsats(history)
+        const receipt = buildWalletExecutionReceipt({
+          requestId,
+          walletId: config.walletId,
+          host,
+          paymentId: sent.paymentId,
+          invoiceHash,
+          quotedAmountMsats: prepared.amountMsats,
+          settledAmountMsats: paidAmountMsats,
+          preimageHex: sent.preimageHex,
+          paidAtMs: sent.paidAtMs,
+        })
 
         yield* refreshFromSpark().pipe(Effect.catchTag("SparkGatewayError", () => Effect.void))
 
@@ -338,6 +359,8 @@ export const WalletExecutorLive = Layer.effect(
           quotedAmountMsats: prepared.amountMsats,
           windowSpendMsats: currentWindowSpend,
           windowSpendMsatsAfterPayment: windowSpendAfter,
+          receiptId: receipt.receiptId,
+          receiptHash: receipt.canonicalJsonSha256,
           outcome: "paid",
         })
 
@@ -350,6 +373,7 @@ export const WalletExecutorLive = Layer.effect(
           },
           quotedAmountMsats: prepared.amountMsats,
           windowSpendMsatsAfterPayment: windowSpendAfter,
+          receipt,
         } satisfies PayBolt11Result
       }).pipe(
         Effect.tapError((error) =>

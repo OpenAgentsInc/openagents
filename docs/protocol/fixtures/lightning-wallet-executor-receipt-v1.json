@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.lightning.wallet_executor_fixture.v1",
+  "auth_assertion": {
+    "wallet_id": "openagents-ep212",
+    "auth_mode": "WALLET_EXECUTOR_AUTH_MODE_BEARER_STATIC",
+    "auth_enforced": true,
+    "auth_token_version": 3,
+    "token_fingerprint": "sha256:2cc8e0f9f09db75f9bd5cf4f4b0f12a3fbcf13b73f5a743218f8da6da7f6523b",
+    "asserted_at_ms": 1771618000123
+  },
+  "receipt": {
+    "receipt_version": "openagents.lightning.wallet_receipt.v1",
+    "receipt_id": "lwr_7f50f1588710f9ac2d33ac14",
+    "request_id": "req-95-fixture",
+    "wallet_id": "openagents-ep212",
+    "host": "sats4ai.com",
+    "payment_id": "pay-fixture-001",
+    "invoice_hash": "9f2f4e9f4f91d7e6dd2e6b2cd59db7a7116f590ecf3f2dcd3f8d86b004f9a123",
+    "quoted_amount_msats": 45000,
+    "settled_amount_msats": 45000,
+    "preimage_sha256": "f7a0f9fd8d5b512d705f4f3ab97f5b0fb0a7f85754f0d1ec1f3d8d5c4a59f421",
+    "paid_at_ms": 1771618000456,
+    "rail": "lightning",
+    "asset_id": "BTC_LN",
+    "canonical_json_sha256": "7f50f1588710f9ac2d33ac14fd064e9f2e12f592eac7342b41b1de57a01234aa"
+  }
+}
+

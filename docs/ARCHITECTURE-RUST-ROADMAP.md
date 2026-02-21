@@ -430,6 +430,7 @@ Dependencies: OA-RUST-023, OA-RUST-065.
 
 ### OA-RUST-095 — [Payments] Define wallet-executor auth, key custody, and receipt canonicalization
 Description: Formalize wallet-executor identity/auth channel, secret and key custody/rotation policies, and canonical payment receipt hashing contract.
+Enforcement artifacts: `apps/lightning-wallet-executor/src/runtime/config.ts`, `apps/lightning-wallet-executor/src/http/server.ts`, `apps/lightning-wallet-executor/src/wallet/executor.ts`, `apps/lightning-wallet-executor/src/receipt/canonical.ts`, `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`, `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`, `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`, `proto/openagents/lightning/v1/wallet_executor.proto`
 Acceptance criteria: Executor auth path is documented and enforced; key rotation runbook exists; receipt proto/hash compatibility tests pass.
 Dependencies: OA-RUST-060, OA-RUST-075.
 

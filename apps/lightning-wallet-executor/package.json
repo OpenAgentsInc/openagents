@@ -15,7 +15,6 @@
   "dependencies": {
     "@breeztech/breez-sdk-spark": "^0.8.0-dev1",
     "@google-cloud/secret-manager": "^6.1.1",
-    "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
     "@scure/bip39": "^1.5.4",
     "better-sqlite3": "^9.6.0",
     "effect": "^3.19.16",

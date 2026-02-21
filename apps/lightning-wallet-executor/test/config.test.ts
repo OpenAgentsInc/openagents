@@ -29,6 +29,7 @@ describe("wallet-executor config", () => {
         loadWalletExecutorConfig({
           OA_LIGHTNING_WALLET_EXECUTOR_MODE: "spark",
           OA_LIGHTNING_SPARK_API_KEY: "spark_api_key_test",
+          OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN: "executor-auth-token",
         }),
       )
 
@@ -42,11 +43,32 @@ describe("wallet-executor config", () => {
     }),
   )
 
+  it.effect("fails closed when spark mode is missing executor auth token", () =>
+    Effect.gen(function* () {
+      const attempted = yield* Effect.either(
+        loadWalletExecutorConfig({
+          OA_LIGHTNING_WALLET_EXECUTOR_MODE: "spark",
+          OA_LIGHTNING_SPARK_API_KEY: "spark_api_key_test",
+          OA_LIGHTNING_WALLET_ALLOWED_HOSTS: "sats4ai.com",
+        }),
+      )
+
+      expect(attempted._tag).toBe("Left")
+      if (attempted._tag === "Left") {
+        expect(attempted.left._tag).toBe("WalletExecutorConfigError")
+        if (attempted.left._tag === "WalletExecutorConfigError") {
+          expect(attempted.left.field).toBe("OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN")
+        }
+      }
+    }),
+  )
+
   it.effect("accepts valid spark mode config", () =>
     Effect.gen(function* () {
       const config = yield* loadWalletExecutorConfig({
         OA_LIGHTNING_WALLET_EXECUTOR_MODE: "spark",
         OA_LIGHTNING_SPARK_API_KEY: "spark_api_key_test",
+        OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN: "executor-auth-token",
         OA_LIGHTNING_WALLET_ALLOWED_HOSTS: "sats4ai.com,l402.openagents.com",
         OA_LIGHTNING_WALLET_MNEMONIC_PROVIDER: "gcp",
         OA_LIGHTNING_WALLET_MNEMONIC_SECRET_VERSION: "projects/p/secrets/s/versions/latest",
@@ -59,7 +81,8 @@ describe("wallet-executor config", () => {
       expect(config.allowedHosts.has("l402.openagents.com")).toBe(true)
       expect(config.sparkApiKey).toBe("spark_api_key_test")
       expect(config.mnemonicProvider).toBe("gcp")
+      expect(config.authToken).toBe("executor-auth-token")
+      expect(config.authTokenVersion).toBe(1)
     }),
   )
 })
-

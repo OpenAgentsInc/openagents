@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0006**
+Next available ADR: **ADR-0007**
 
 ## Lifecycle Statuses
 
@@ -47,6 +47,11 @@ Next available ADR: **ADR-0006**
    - Date: 2026-02-21  
    - File: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`  
    - Source issue: `OA-RUST-083` (`#1918`)
+6. `ADR-0006` — Wallet executor auth, key custody, and receipt canonicalization  
+   - Status: `Accepted`  
+   - Date: 2026-02-21  
+   - File: `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`  
+   - Source issue: `OA-RUST-095` (`#1930`)
 
 ## Legacy Archive
 
