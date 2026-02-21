@@ -1,9 +1,6 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 
 /**
@@ -25,37 +22,14 @@ function dashboardInertiaPayload(TestResponse $response): array
     return $payload;
 }
 
-test('guests can access chat route without guest-id redirect', function () {
-    $response = $this->get('/chat');
-
-    $response->assertOk();
-    $response->assertDontSee('/chat/guest-');
-
-    $payload = dashboardInertiaPayload($response);
-    expect((string) ($payload['component'] ?? ''))->toBe('index');
-
-    $guestConversationId = session('chat.guest.conversation_id');
-    expect($guestConversationId)->toBeString()->and($guestConversationId)->toMatch('/^g-[a-f0-9]{32}$/');
+test('legacy chat route is decommissioned for guests', function () {
+    $this->get('/chat')->assertNotFound();
 });
 
-test('authenticated users visiting chat root are redirected to homepage', function () {
+test('legacy chat route is decommissioned for authenticated users', function () {
     $this->actingAs(User::factory()->create());
 
-    $this->get('/chat')->assertRedirect('/');
-});
-
-test('chat root route still works when threads table lacks autopilot_id', function () {
-    $user = User::factory()->create();
-
-    DB::statement('DROP INDEX IF EXISTS threads_autopilot_id_index');
-
-    Schema::table('threads', function (Blueprint $table) {
-        $table->dropColumn('autopilot_id');
-    });
-
-    $this->actingAs($user)
-        ->get('/chat')
-        ->assertRedirect('/');
+    $this->get('/chat')->assertNotFound();
 });
 
 test('home rehydrates authenticated user from chat auth session key', function () {

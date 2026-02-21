@@ -13,7 +13,9 @@ WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 
 is_truthy() {
   local value="${1:-}"
-  case "${value,,}" in
+  local lowered
+  lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$lowered" in
     1|true|yes|on)
       return 0
       ;;

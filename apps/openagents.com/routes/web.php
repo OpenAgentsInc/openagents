@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\ChatApiController;
-use App\Http\Controllers\ChatPageController;
 use App\Http\Controllers\FeedPageController;
 use App\Http\Controllers\GuestChatSessionController;
 use App\Http\Controllers\L402PageController;
@@ -18,10 +17,6 @@ Route::get('api/chat/guest-session', GuestChatSessionController::class)->name('a
 Route::post('api/chat', [ChatApiController::class, 'stream'])
     ->middleware(ValidateWorkOSSession::class)
     ->name('api.chat');
-
-Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
-    ->middleware(ValidateWorkOSSession::class)
-    ->name('chat');
 
 Route::get('openapi.json', [OpenApiSpecController::class, 'show'])->name('openapi.default.specification');
 

@@ -307,7 +307,16 @@ async fn web_shell_entry(
 
     let request_id = request_id(&headers);
     let cohort_key = resolve_route_cohort_key(&headers);
-    let decision = state.route_split.evaluate(path, &cohort_key).await;
+    let mut decision = state.route_split.evaluate(path, &cohort_key).await;
+    if is_pilot_chat_route(path) {
+        decision = RouteSplitDecision {
+            path: path.to_string(),
+            target: RouteTarget::RustShell,
+            reason: "pilot_route_rust_only".to_string(),
+            cohort_bucket: decision.cohort_bucket,
+            cohort_key: decision.cohort_key.clone(),
+        };
+    }
 
     emit_route_split_decision_audit(
         &state,
@@ -1235,6 +1244,11 @@ fn resolve_route_cohort_key(headers: &HeaderMap) -> String {
         .unwrap_or_else(|| "anonymous".to_string())
 }
 
+fn is_pilot_chat_route(path: &str) -> bool {
+    let normalized = path.trim();
+    normalized == "/chat" || normalized.starts_with("/chat/")
+}
+
 fn emit_route_split_decision_audit(
     state: &AppState,
     request_id: &str,
@@ -2075,7 +2089,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_split_override_supports_fast_rollback_to_legacy() -> Result<()> {
+    async fn route_split_override_keeps_chat_pilot_on_rust_shell() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
             static_dir.path().join("index.html"),
@@ -2118,14 +2132,24 @@ mod tests {
             .uri("/chat/thread-1")
             .header("x-oa-route-key", "user:route")
             .body(Body::empty())?;
-        let route_response = app.oneshot(route_request).await?;
-        assert_eq!(route_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let route_response = app.clone().oneshot(route_request).await?;
+        assert_eq!(route_response.status(), StatusCode::OK);
+        let route_body = route_response.into_body().collect().await?.to_bytes();
+        let route_html = String::from_utf8_lossy(&route_body);
+        assert!(route_html.contains("rust shell"));
+
+        let workspace_request = Request::builder()
+            .uri("/workspace/session-1")
+            .header("x-oa-route-key", "user:route")
+            .body(Body::empty())?;
+        let workspace_response = app.oneshot(workspace_request).await?;
+        assert_eq!(workspace_response.status(), StatusCode::TEMPORARY_REDIRECT);
         assert_eq!(
-            route_response
+            workspace_response
                 .headers()
                 .get("location")
                 .and_then(|value| value.to_str().ok()),
-            Some("https://legacy.openagents.test/chat/thread-1")
+            Some("https://legacy.openagents.test/workspace/session-1")
         );
 
         Ok(())
