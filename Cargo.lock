@@ -7083,6 +7083,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "wgpui",
 ]
 
 [[package]]

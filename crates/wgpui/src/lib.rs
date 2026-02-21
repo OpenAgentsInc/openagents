@@ -162,3 +162,6 @@ pub use window::{DispatchTree, InvalidationFlags, Invalidator, Window, WindowHan
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
+
+#[cfg(feature = "ios")]
+pub use platform::ios::IosBackgroundState;
