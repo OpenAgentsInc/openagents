@@ -1,6 +1,17 @@
-# OpenAgents Architecture
+# OpenAgents Architecture (Historical Snapshot)
 
-This document defines the current architecture with **Khala** as the runtime-owned sync and replay plane.
+> [!WARNING]
+> Historical reference only.
+> This document captures a transitional pre-Rust-only architecture snapshot and is not canonical for active planning.
+>
+> Canonical architecture docs:
+> - `docs/ARCHITECTURE-RUST.md` (source of truth)
+> - `docs/ARCHITECTURE-RUST-ROADMAP.md` (implementation sequencing/issues)
+
+Status: historical (superseded by Rust-only architecture)
+Snapshot era: Laravel + Elixir runtime transition period
+
+This document preserves historical context for the hybrid stack with **Khala** as the runtime-owned sync and replay plane.
 
 ## Scope
 
@@ -193,8 +204,11 @@ Auth invariant for runtime stream-capable clients:
 
 ## Change Control
 
+This document is historical and should only receive archival corrections.
+
 Architecture-affecting changes must update:
 
-1. `docs/ARCHITECTURE.md`,
-2. relevant ADRs in `docs/adr/`,
-3. sync docs under `docs/sync/` when Khala behavior/surfaces change.
+1. `docs/ARCHITECTURE-RUST.md`,
+2. `docs/ARCHITECTURE-RUST-ROADMAP.md`,
+3. relevant ADRs under `docs/adr/`,
+4. sync docs under `docs/sync/` when Khala behavior/surfaces change.

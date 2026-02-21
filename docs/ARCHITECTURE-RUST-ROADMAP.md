@@ -306,6 +306,7 @@ Runbook artifacts: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md
 
 ### OA-RUST-072 — [Docs] Mark `docs/ARCHITECTURE.md` historical or replace with Rust architecture
 Description: Complete architecture documentation transition so legacy architecture docs cannot be mistaken for current target.
+Canonical routing artifacts: `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE-RUST.md`, `docs/ARCHITECTURE-RUST-ROADMAP.md`, `README.md`, `docs/README.md`, `docs/AGENT_MAP.md`, `AGENTS.md`
 
 ### OA-RUST-073 — [Release Gate] Endstate readiness review and go/no-go decision
 Description: Validate all mandatory endstate outcomes, reliability gates, and parity requirements before declaring migration complete.

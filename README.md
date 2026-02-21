@@ -113,7 +113,9 @@ Deployment topology:
 
 ## Primary References
 
-- `docs/ARCHITECTURE.md`
+- `docs/ARCHITECTURE-RUST.md` (canonical architecture source of truth)
+- `docs/ARCHITECTURE-RUST-ROADMAP.md` (canonical migration sequencing)
+- `docs/ARCHITECTURE.md` (historical hybrid snapshot)
 - `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`
