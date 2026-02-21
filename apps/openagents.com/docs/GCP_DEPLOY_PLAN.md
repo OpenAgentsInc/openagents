@@ -6,7 +6,9 @@ The active production web deploy path is Rust-only:
 
 - Service: `openagents-control-service`
 - Deploy helper: `apps/openagents.com/service/deploy/deploy-production.sh`
+- Staging deploy helper: `apps/openagents.com/service/deploy/deploy-staging.sh`
 - Canary/rollback runbook: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- Staging runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Cloud Build config: `apps/openagents.com/service/deploy/cloudbuild.yaml`
 - Runtime image recipe: `apps/openagents.com/Dockerfile` (Rust-only)
 
@@ -17,6 +19,16 @@ gcloud builds submit \
   --config apps/openagents.com/service/deploy/cloudbuild.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" \
   .
+```
+
+Deploy to staging:
+
+```bash
+PROJECT=openagentsgemini \
+REGION=us-central1 \
+SERVICE=openagents-control-service-staging \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> \
+apps/openagents.com/service/deploy/deploy-staging.sh
 ```
 
 Legacy Laravel Cloud Build / PHP-FPM deployment guidance has been archived to:

@@ -197,10 +197,21 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ## Canary Runbook
 
 - Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- Staging rollout SOP: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Deploy smoke check: `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
 - Control/API/static-host smoke suite:
   - `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-control.sh`
   - Optional authenticated checks: set `OPENAGENTS_CONTROL_ACCESS_TOKEN=<token>` for session/token endpoint coverage.
+
+Staging deploy wrapper:
+
+```bash
+PROJECT=openagentsgemini \
+REGION=us-central1 \
+SERVICE=openagents-control-service-staging \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> \
+apps/openagents.com/service/deploy/deploy-staging.sh
+```
 
 ## Schema Evolution Policy
 

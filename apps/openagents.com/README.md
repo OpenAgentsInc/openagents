@@ -33,6 +33,7 @@ apps/openagents.com/web-shell/build-dist.sh
 2. Deploy/control rollout via Rust service runbooks:
 
 - `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - `apps/openagents.com/docs/20260221-route-cutover-default-rust.md`
 
 Optional helper (no Laravel/Node runtime steps):
@@ -41,6 +42,14 @@ Optional helper (no Laravel/Node runtime steps):
 PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service \
 IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
 apps/openagents.com/service/deploy/deploy-production.sh
+```
+
+Staging helper:
+
+```bash
+PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service-staging \
+IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
+apps/openagents.com/service/deploy/deploy-staging.sh
 ```
 
 Image build (Cloud Build, Rust-only):

@@ -12,6 +12,11 @@ Use Rust control-service deployment/configuration flow:
    - `apps/openagents.com/service/deploy/smoke-health.sh`
    - `apps/openagents.com/service/deploy/smoke-control.sh`
 
+For staging-specific deploy/env flow, use:
+
+- `apps/openagents.com/service/deploy/deploy-staging.sh`
+- `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
+
 Legacy Laravel-specific secret wiring and `openagents-web` service guidance has been archived to:
 
 - `apps/openagents.com/docs/archived/legacy-laravel-deploy/PRODUCTION_ENV_AND_SECRETS.md`
