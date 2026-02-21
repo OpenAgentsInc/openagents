@@ -8,6 +8,7 @@ defmodule OpenAgentsRuntimeWeb.Router do
   pipeline :internal_api do
     plug :accepts, ["json"]
     plug OpenAgentsRuntimeWeb.Plugs.InternalAuth
+    plug OpenAgentsRuntimeWeb.Plugs.LegacyWriteFreeze
   end
 
   # SSE endpoints should not be blocked by JSON-only content negotiation.

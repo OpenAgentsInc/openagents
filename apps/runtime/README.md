@@ -18,6 +18,8 @@ Environment:
 - `RUNTIME_BUILD_SHA` (default `dev`)
 - `RUNTIME_EVENT_LOG_PATH` (default `.runtime-data/runtime-events.jsonl`)
 - `RUNTIME_CHECKPOINT_PATH` (default `.runtime-data/projection-state.json`)
+- `RUNTIME_AUTHORITY_WRITE_MODE` (`rust_active|shadow_only|read_only`, default `rust_active`)
+- `LEGACY_RUNTIME_WRITE_FREEZE` (`true|false`) for legacy Elixir write-path freeze
 
 Baseline endpoints:
 
@@ -69,6 +71,12 @@ Shadow parity harness:
 - Run: `cargo run -p openagents-runtime-service --bin runtime-shadow-harness -- --legacy-manifest <path> --rust-manifest <path> --output <path>`
 - Runbook: `apps/runtime/docs/SHADOW_MODE_PARITY.md`
 - Harness exits non-zero when gate policy blocks cutover.
+
+Authority cutover controls:
+
+- Rust authority writes are enabled only when `RUNTIME_AUTHORITY_WRITE_MODE=rust_active`.
+- `shadow_only` or `read_only` modes return `503 write_path_frozen` on Rust write endpoints.
+- Legacy Elixir runtime can be frozen with `LEGACY_RUNTIME_WRITE_FREEZE=true` (returns `410 write_path_frozen` on mutation routes).
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 
@@ -155,3 +163,5 @@ Internal API docs:
 - Deploy runbook (Cloud Run): `docs/DEPLOY_CLOUD_RUN.md`
 - Runtime operations runbook: `docs/OPERATIONS.md`
 - Reprojection and drift-repair runbook: `docs/REPROJECTION.md`
+- Shadow parity harness runbook: `docs/SHADOW_MODE_PARITY.md`
+- Rust authority cutover runbook: `docs/RUST_AUTHORITY_CUTOVER.md`
