@@ -51,6 +51,7 @@ Description: Create a dedicated migration board with per-surface ownership (`ope
 
 ### OA-RUST-002 — [Rust Endstate] Baseline inventory of legacy apps, packages, and runtime dependencies
 Description: Produce a complete inventory of legacy Laravel/React, `apps/mobile`, `apps/desktop`, and `apps/inbox-autopilot` dependencies to prevent hidden blockers during deletion/cutover.
+Inventory artifact: `docs/plans/active/rust-migration-legacy-dependency-inventory.md`
 
 ### OA-RUST-003 — [Rust Endstate] Lock migration invariants from architecture doc
 Description: Convert architecture invariants (proto-first, dual authority planes, Khala projection-only, WS-only sync) into explicit checklists and required gates for every implementation PR.
