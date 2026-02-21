@@ -130,6 +130,7 @@ Description: Implement routing controls to gradually shift traffic route-by-rout
 
 ### OA-RUST-022 — [Web Service] Canary deploy and rollback runbook for Rust control service
 Description: Add canary rollout strategy, rollback procedure, and verification checklist for production cutovers.
+Runbook artifacts: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`, `apps/openagents.com/service/deploy/canary-rollout.sh`
 
 ## Phase 3: In-Process Rust/WGPUI Web App (`apps/openagents.com/web-shell`)
 

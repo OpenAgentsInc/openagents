@@ -17,6 +17,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 
 ## Control-Plane and Runtime Docs
 
+- Rust control service canary/rollback runbook: `../apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Runtime architecture plan: `plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
 - Runtime internal API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime operations runbook: `../apps/runtime/docs/OPERATIONS.md`
