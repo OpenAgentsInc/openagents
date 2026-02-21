@@ -73,6 +73,11 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_RUNTIME_SYNC_REVOKE_PATH` (default: `/internal/v1/sync/sessions/revoke`)
 - `OA_RUNTIME_SIGNATURE_SECRET` (optional shared runtime internal-signature secret; when unset revocation propagation is skipped)
 - `OA_RUNTIME_SIGNATURE_TTL_SECONDS` (default: `60`)
+- `OA_MAINTENANCE_MODE_ENABLED` (`true|false`, default: `false`)
+- `OA_MAINTENANCE_BYPASS_TOKEN` (optional; required to enable operator bypass flow)
+- `OA_MAINTENANCE_BYPASS_COOKIE_NAME` (default: `oa_maintenance_bypass`)
+- `OA_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS` (default: `900`, min: `60`)
+- `OA_MAINTENANCE_ALLOWED_PATHS` (CSV, default: `/healthz,/readyz`; supports `*` suffix for prefix patterns)
 - `OA_COMPAT_CONTROL_ENFORCED` (`true|false`, default: `false`)
 - `OA_COMPAT_CONTROL_PROTOCOL_VERSION` (default: `openagents.control.v1`)
 - `OA_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID` (default: `00000000T000000Z`)
@@ -198,10 +203,12 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 - Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Staging rollout SOP: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
+- Maintenance-mode cutover SOP: `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
 - Deploy smoke check: `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
 - Control/API/static-host smoke suite:
   - `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-control.sh`
   - Optional authenticated checks: set `OPENAGENTS_CONTROL_ACCESS_TOKEN=<token>` for session/token endpoint coverage.
+  - Optional maintenance bypass checks: set `OPENAGENTS_MAINTENANCE_BYPASS_TOKEN=<token>` to run smoke checks during maintenance windows.
 
 Staging deploy wrapper:
 

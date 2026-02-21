@@ -8,7 +8,8 @@ Use Rust control-service deployment/configuration flow:
 2. Manage staged rollout with `apps/openagents.com/service/deploy/canary-rollout.sh`.
 3. Build and push image with `apps/openagents.com/service/deploy/cloudbuild.yaml`.
 4. Follow operational checks in `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`.
-5. Run deploy smoke checks:
+5. Use maintenance cutover flow in `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`.
+6. Run deploy smoke checks:
    - `apps/openagents.com/service/deploy/smoke-health.sh`
    - `apps/openagents.com/service/deploy/smoke-control.sh`
 

@@ -48,6 +48,8 @@ const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
 const HEADER_OA_CLIENT_BUILD_ID: &str = "x-oa-client-build-id";
 const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
 const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
+const MAINTENANCE_BYPASS_QUERY_PARAM: &str = "maintenance_bypass";
+const MAINTENANCE_CACHE_CONTROL: &str = "no-store, no-cache, must-revalidate";
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -232,6 +234,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         started_at: SystemTime::now(),
     };
     let compatibility_state = state.clone();
+    let maintenance_state = state.clone();
 
     Router::new()
         .route("/", get(root))
@@ -275,6 +278,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/assets/*path", get(static_asset))
         .route("/*path", get(web_shell_entry))
         .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            maintenance_state,
+            maintenance_mode_gate,
+        ))
         .layer(middleware::from_fn_with_state(
             compatibility_state,
             control_compatibility_gate,
@@ -408,6 +415,58 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             static_dir,
         }),
     )
+}
+
+async fn maintenance_mode_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !state.config.maintenance_mode_enabled {
+        return next.run(request).await;
+    }
+
+    let path = request.uri().path().to_string();
+    if maintenance_path_is_allowed(&path, &state.config.maintenance_allowed_paths) {
+        return next.run(request).await;
+    }
+
+    if let Some(bypass_token) = state.config.maintenance_bypass_token.as_ref() {
+        if let Some(candidate) =
+            query_param_value(request.uri().query(), MAINTENANCE_BYPASS_QUERY_PARAM)
+        {
+            if candidate == *bypass_token {
+                let now = Utc::now().timestamp().max(0) as u64;
+                let expires_at = now + state.config.maintenance_bypass_cookie_ttl_seconds;
+                if let Some(cookie_payload) =
+                    maintenance_bypass_cookie_payload(bypass_token, expires_at)
+                {
+                    let mut response =
+                        Redirect::temporary(&maintenance_redirect_location(request.uri()))
+                            .into_response();
+                    if let Ok(value) = HeaderValue::from_str(&maintenance_bypass_cookie(
+                        &state.config.maintenance_bypass_cookie_name,
+                        &cookie_payload,
+                        state.config.maintenance_bypass_cookie_ttl_seconds,
+                    )) {
+                        response.headers_mut().insert(SET_COOKIE, value);
+                    }
+                    return response;
+                }
+            }
+        }
+
+        if let Some(cookie) = extract_cookie_value(
+            request.headers(),
+            &state.config.maintenance_bypass_cookie_name,
+        ) {
+            if maintenance_cookie_is_valid(&cookie, bypass_token) {
+                return next.run(request).await;
+            }
+        }
+    }
+
+    maintenance_response()
 }
 
 async fn control_compatibility_gate(
@@ -1658,6 +1717,211 @@ fn session_payload(bundle: SessionBundle) -> serde_json::Value {
     })
 }
 
+fn maintenance_response() -> Response {
+    let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>We'll be right back | OpenAgents</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      width: 100%;
+      background: #0a0a0a;
+      color: #f5f5f5;
+      font-family: 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    }
+    body { position: relative; overflow: hidden; }
+    .bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(120% 85% at 50% 0%, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 55%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.88) 100%);
+    }
+    .grid {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+    .container {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+    }
+    .panel {
+      width: min(640px, 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(10, 10, 10, 0.75);
+      backdrop-filter: blur(2px);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 2.2vw, 2.25rem);
+      letter-spacing: 0.01em;
+      line-height: 1.15;
+    }
+    p {
+      margin: 0.9rem 0 0;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.5;
+      font-size: 0.98rem;
+    }
+    .status {
+      margin-top: 1.4rem;
+      display: inline-block;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 0.45rem 0.65rem;
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.88);
+    }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+  <div class="grid" aria-hidden="true"></div>
+  <main class="container">
+    <section class="panel" role="status" aria-live="polite">
+      <h1>We'll be right back.</h1>
+      <p>OpenAgents is temporarily unavailable while we complete an infrastructure switch. Please check back shortly.</p>
+      <span class="status">Maintenance in progress</span>
+    </section>
+  </main>
+</body>
+</html>
+"#;
+
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [
+            (CONTENT_TYPE, "text/html; charset=utf-8"),
+            (CACHE_CONTROL, MAINTENANCE_CACHE_CONTROL),
+        ],
+        html,
+    )
+        .into_response()
+}
+
+fn maintenance_path_is_allowed(path: &str, allowed_paths: &[String]) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+
+    allowed_paths.iter().any(|allowed| {
+        let candidate = allowed.trim();
+        if candidate.is_empty() {
+            return false;
+        }
+
+        if candidate.ends_with('*') {
+            let prefix = candidate.trim_end_matches('*');
+            return !prefix.is_empty() && path.starts_with(prefix);
+        }
+
+        path == candidate
+    })
+}
+
+fn query_param_value(query: Option<&str>, key: &str) -> Option<String> {
+    let query = query?;
+    for pair in query.split('&') {
+        let mut pieces = pair.splitn(2, '=');
+        let candidate = pieces.next()?.trim();
+        let value = pieces.next().unwrap_or_default().trim();
+        if candidate == key && !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn maintenance_redirect_location(uri: &axum::http::Uri) -> String {
+    let path = uri.path();
+    let query = uri.query().unwrap_or_default();
+    let filtered = query
+        .split('&')
+        .filter(|segment| !segment.trim().is_empty())
+        .filter(|segment| {
+            let mut pieces = segment.splitn(2, '=');
+            pieces.next().unwrap_or_default().trim() != MAINTENANCE_BYPASS_QUERY_PARAM
+        })
+        .collect::<Vec<_>>();
+
+    if filtered.is_empty() {
+        if path.is_empty() {
+            "/".to_string()
+        } else {
+            path.to_string()
+        }
+    } else {
+        format!("{path}?{}", filtered.join("&"))
+    }
+}
+
+fn maintenance_bypass_cookie_payload(token: &str, expires_at: u64) -> Option<String> {
+    let payload = expires_at.to_string();
+    let mut mac = HmacSha256::new_from_slice(token.as_bytes()).ok()?;
+    mac.update(payload.as_bytes());
+    let signature = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    Some(format!("{payload}.{signature}"))
+}
+
+fn maintenance_cookie_is_valid(cookie_value: &str, token: &str) -> bool {
+    let mut parts = cookie_value.splitn(2, '.');
+    let expires_at_raw = parts.next().unwrap_or_default();
+    let signature_segment = parts.next().unwrap_or_default();
+    if expires_at_raw.is_empty() || signature_segment.is_empty() {
+        return false;
+    }
+
+    let expires_at = match expires_at_raw.parse::<u64>() {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let now = Utc::now().timestamp().max(0) as u64;
+    if expires_at <= now {
+        return false;
+    }
+
+    let signature = match URL_SAFE_NO_PAD.decode(signature_segment) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+
+    let mut mac = match HmacSha256::new_from_slice(token.as_bytes()) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    mac.update(expires_at_raw.as_bytes());
+    mac.verify_slice(&signature).is_ok()
+}
+
+fn maintenance_bypass_cookie(
+    cookie_name: &str,
+    cookie_payload: &str,
+    max_age_seconds: u64,
+) -> String {
+    format!(
+        "{cookie_name}={cookie_payload}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_seconds}"
+    )
+}
+
 fn challenge_cookie(challenge_id: &str, max_age_seconds: u64) -> String {
     format!(
         "{CHALLENGE_COOKIE_NAME}={challenge_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
@@ -1849,7 +2113,7 @@ mod tests {
     use crate::build_router_with_observability;
     use crate::config::Config;
     use crate::observability::{Observability, RecordingAuditSink};
-    use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST};
+    use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, MAINTENANCE_CACHE_CONTROL};
 
     fn test_config(static_dir: PathBuf) -> Config {
         let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
@@ -1903,6 +2167,11 @@ mod tests {
             runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
             runtime_signature_secret: None,
             runtime_signature_ttl_seconds: 60,
+            maintenance_mode_enabled: false,
+            maintenance_bypass_token: None,
+            maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),
+            maintenance_bypass_cookie_ttl_seconds: 900,
+            maintenance_allowed_paths: vec!["/healthz".to_string(), "/readyz".to_string()],
             compat_control_enforced: false,
             compat_control_protocol_version: "openagents.control.v1".to_string(),
             compat_control_min_client_build_id: "00000000T000000Z".to_string(),
@@ -1928,6 +2197,16 @@ mod tests {
         config.compat_control_max_client_build_id = Some("20260221T180000Z".to_string());
         config.compat_control_min_schema_version = 1;
         config.compat_control_max_schema_version = 1;
+        config
+    }
+
+    fn maintenance_enabled_config(static_dir: PathBuf) -> Config {
+        let mut config = test_config(static_dir);
+        config.maintenance_mode_enabled = true;
+        config.maintenance_bypass_token = Some("maintenance-token".to_string());
+        config.maintenance_bypass_cookie_name = "oa_maintenance_bypass".to_string();
+        config.maintenance_bypass_cookie_ttl_seconds = 300;
+        config.maintenance_allowed_paths = vec!["/healthz".to_string(), "/readyz".to_string()];
         config
     }
 
@@ -2022,6 +2301,142 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = read_json(response).await?;
         assert_eq!(body["status"], "ready");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_mode_blocks_non_allowed_routes_with_503() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(maintenance_enabled_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder().uri("/").body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(MAINTENANCE_CACHE_CONTROL)
+        );
+
+        let body = response.into_body().collect().await?.to_bytes();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("Maintenance in progress"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_mode_allows_health_and_readiness_routes() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(maintenance_enabled_config(static_dir.path().to_path_buf()));
+
+        let health = Request::builder().uri("/healthz").body(Body::empty())?;
+        let health_response = app.clone().oneshot(health).await?;
+        assert_eq!(health_response.status(), StatusCode::OK);
+
+        let ready = Request::builder().uri("/readyz").body(Body::empty())?;
+        let ready_response = app.oneshot(ready).await?;
+        assert_eq!(ready_response.status(), StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_mode_valid_bypass_sets_cookie_and_redirects() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(maintenance_enabled_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/workspace?maintenance_bypass=maintenance-token")
+            .body(Body::empty())?;
+        let response = app.clone().oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/workspace")
+        );
+
+        let set_cookie = response
+            .headers()
+            .get(SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(set_cookie.contains("oa_maintenance_bypass="));
+        assert!(set_cookie.contains("Secure"));
+        assert!(set_cookie.contains("HttpOnly"));
+        assert!(set_cookie.contains("Max-Age=300"));
+
+        let cookie = set_cookie.split(';').next().unwrap_or_default().to_string();
+        assert!(!cookie.contains("maintenance-token"));
+
+        let follow_request = Request::builder()
+            .uri("/workspace")
+            .header("cookie", cookie)
+            .body(Body::empty())?;
+        let follow_response = app.oneshot(follow_request).await?;
+        assert_eq!(follow_response.status(), StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_mode_invalid_bypass_token_does_not_grant_access() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(maintenance_enabled_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/?maintenance_bypass=bad-token")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(response.headers().get(SET_COOKIE).is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_cookie_validation_enforces_signature_and_ttl() -> Result<()> {
+        let token = "maintenance-token";
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
+
+        let valid = super::maintenance_bypass_cookie_payload(token, now + 300).unwrap_or_default();
+        assert!(super::maintenance_cookie_is_valid(&valid, token));
+
+        let expired = super::maintenance_bypass_cookie_payload(token, now.saturating_sub(1))
+            .unwrap_or_default();
+        assert!(!super::maintenance_cookie_is_valid(&expired, token));
+        assert!(!super::maintenance_cookie_is_valid("invalid", token));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn maintenance_allowed_paths_can_include_control_endpoints() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = maintenance_enabled_config(static_dir.path().to_path_buf());
+        config
+            .maintenance_allowed_paths
+            .push("/api/v1/control/status".to_string());
+        let app = build_router(config);
+
+        let request = Request::builder()
+            .uri("/api/v1/control/status")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
 

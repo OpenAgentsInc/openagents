@@ -64,6 +64,8 @@ Optional auth tokens for authenticated control-smoke routes:
 - `STAGING_CONTROL_ACCESS_TOKEN`
 - `PROD_CONTROL_ACCESS_TOKEN`
 
+If `staging.openagents.com` domain mapping is still cert-pending or not mapped to Rust staging service, set `STAGING_CONTROL_BASE_URL` to the staging service URL (for example `https://openagents-control-service-staging-<hash>-uc.a.run.app`) and record domain-mapping status in the validation evidence.
+
 ## Current infrastructure compatibility mode
 
 The script supports explicit service/base-url overrides so validation can run during transition periods where Cloud Run services still use legacy names.
@@ -89,6 +91,7 @@ scripts/release/validate-rust-cutover.sh
 2. Required checks cannot be skipped in release gating mode.
 3. Any required failure forces no-go until fixed and rerun.
 4. Each run must produce a committed report reference in `docs/reports/`.
+5. Legacy deletion phases require fresh Laravel DB backup artifacts (`scripts/release/backup-laravel-db.sh`) in addition to this validation matrix.
 
 ## Rollback references
 

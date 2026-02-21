@@ -9,6 +9,7 @@ Cross-environment release validation gate:
 
 - `docs/RUST_STAGING_PROD_VALIDATION.md`
 - Legacy teardown policy: `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
+- Pre-delete Laravel DB backup gate: `scripts/release/backup-laravel-db.sh`
 
 ## Canonical deploy entrypoints
 
@@ -19,6 +20,8 @@ Cross-environment release validation gate:
      - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/service/deploy/deploy-production.sh`
    - Rollout/rollback:
      - `apps/openagents.com/service/deploy/canary-rollout.sh`
+   - Maintenance cutover helper:
+     - `apps/openagents.com/service/deploy/maintenance-mode.sh`
 2. `openagents-control-service-staging`
    - Deploy:
      - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service-staging IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/service/deploy/deploy-staging.sh`
@@ -46,3 +49,4 @@ Cross-environment release validation gate:
    - `apps/openagents.com/deploy/archived-laravel/`
    - `apps/openagents.com/docs/archived/legacy-laravel-deploy/`
 4. Legacy Laravel archived deploy scripts are freeze-gated (OA-RUST-111 Phase B) and require explicit unfreeze variables + approved ticket metadata before execution.
+5. Legacy infra deletion is blocked unless fresh Laravel DB backup artifacts are captured and referenced in release evidence.
