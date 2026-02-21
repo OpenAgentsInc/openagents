@@ -24,7 +24,8 @@ const DEFAULT_SYNC_ALLOWED_SCOPES: &str =
     "runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries";
 const DEFAULT_SYNC_DEFAULT_SCOPES: &str = "runtime.codex_worker_events";
 const DEFAULT_ROUTE_SPLIT_MODE: &str = "legacy";
-const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str = "/chat,/workspace,/account,/settings,/admin";
+const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str =
+    "/chat,/workspace,/account,/settings,/l402,/billing,/admin";
 const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 0;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 

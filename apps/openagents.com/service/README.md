@@ -59,7 +59,7 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_SYNC_TOKEN_DEFAULT_SCOPES` (default: `runtime.codex_worker_events`)
 - `OA_ROUTE_SPLIT_ENABLED` (`true|false`, default: `false`)
 - `OA_ROUTE_SPLIT_MODE` (`legacy|rust|cohort`, default: `legacy`)
-- `OA_ROUTE_SPLIT_RUST_ROUTES` (CSV route prefixes, default: `/chat,/workspace,/account,/settings,/admin`)
+- `OA_ROUTE_SPLIT_RUST_ROUTES` (CSV route prefixes, default: `/chat,/workspace,/account,/settings,/l402,/billing,/admin`)
 - `OA_ROUTE_SPLIT_COHORT_PERCENTAGE` (`0..100`, default: `0`)
 - `OA_ROUTE_SPLIT_SALT` (stable cohort hash salt, default: `openagents-route-split-v1`)
 - `OA_ROUTE_SPLIT_FORCE_LEGACY` (`true|false`, default: `false`)
@@ -131,12 +131,16 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `/account/*`
   - `/settings/*`
   - `/admin/*`
+- Billing/lightning operator routes are expected Rust-shell prefixes during OA-RUST-060 rollout:
+  - `/l402/*`
+  - `/billing/*` (alias)
 - Fast rollback is supported with authenticated override:
   - `POST /api/v1/control/route-split/override` with body `{"target":"legacy"}` forces legacy immediately.
   - `POST /api/v1/control/route-split/override` with body `{"target":"clear"}` returns to configured mode.
 - Route split decisions emit auditable events as `route.split.decision`.
 - Codex pilot route checklist/run notes: `apps/openagents.com/docs/20260221-codex-thread-rust-pilot.md`
 - Account/settings/admin rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-account-settings-admin.md`
+- Billing/lightning rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-billing-lightning.md`
 
 ## Canary Runbook
 

@@ -303,6 +303,8 @@ mod tests {
                 "/chat".to_string(),
                 "/account".to_string(),
                 "/settings".to_string(),
+                "/l402".to_string(),
+                "/billing".to_string(),
                 "/admin".to_string(),
             ],
             route_split_cohort_percentage: 100,
@@ -336,7 +338,13 @@ mod tests {
     async fn management_prefixes_match_rust_routes() {
         let service = RouteSplitService::from_config(&test_config());
 
-        for path in ["/account/session", "/settings/profile", "/admin/tools"] {
+        for path in [
+            "/account/session",
+            "/settings/profile",
+            "/l402/paywalls",
+            "/billing/deployments",
+            "/admin/tools",
+        ] {
             let decision = service.evaluate(path, "user:1").await;
             assert_eq!(
                 decision.target,

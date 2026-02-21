@@ -84,6 +84,7 @@ mod wasm {
         memberships: Vec<MembershipRecord>,
         active_org_id: Option<String>,
         route_split_status: Option<RouteSplitStatus>,
+        billing_policy: Option<PolicyDecision>,
         last_error: Option<String>,
     }
 
@@ -136,6 +137,25 @@ mod wasm {
         #[serde(rename = "override_target")]
         #[serde(alias = "overrideTarget")]
         override_target: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct PolicyDecisionResponse {
+        data: PolicyDecision,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct PolicyDecision {
+        allowed: bool,
+        #[serde(rename = "resolved_org_id")]
+        #[serde(alias = "resolvedOrgId")]
+        resolved_org_id: String,
+        #[serde(rename = "granted_scopes")]
+        #[serde(alias = "grantedScopes")]
+        granted_scopes: Vec<String>,
+        #[serde(rename = "denied_reasons")]
+        #[serde(alias = "deniedReasons")]
+        denied_reasons: Vec<String>,
     }
 
     #[derive(Debug, Clone, Serialize)]
@@ -1353,6 +1373,7 @@ mod wasm {
             | AppRoute::Workers
             | AppRoute::Account { .. }
             | AppRoute::Settings { .. }
+            | AppRoute::Billing { .. }
             | AppRoute::Admin { .. }
             | AppRoute::Debug => None,
         }
@@ -1361,7 +1382,10 @@ mod wasm {
     fn route_is_management_surface(route: &AppRoute) -> bool {
         matches!(
             route,
-            AppRoute::Account { .. } | AppRoute::Settings { .. } | AppRoute::Admin { .. }
+            AppRoute::Account { .. }
+                | AppRoute::Settings { .. }
+                | AppRoute::Billing { .. }
+                | AppRoute::Admin { .. }
         )
     }
 
@@ -1421,7 +1445,7 @@ mod wasm {
         }
 
         spawn_local(async move {
-            let result = fetch_management_surface_state(&access_token, &session_id).await;
+            let result = fetch_management_surface_state(&access_token, &session_id, &route).await;
             MANAGEMENT_SURFACE_LOADING.with(|loading| loading.set(false));
             MANAGEMENT_SURFACE_STATE.with(|state| {
                 let mut state = state.borrow_mut();
@@ -1442,6 +1466,7 @@ mod wasm {
     async fn fetch_management_surface_state(
         access_token: &str,
         session_id: &str,
+        route: &AppRoute,
     ) -> Result<ManagementSurfaceState, ControlApiError> {
         let memberships_request = HttpCommandRequest {
             method: HttpMethod::Get,
@@ -1469,13 +1494,56 @@ mod wasm {
         let route_split: RouteSplitStatusResponse =
             send_json_request(&route_split_request, &AppState::default()).await?;
 
+        let billing_policy = fetch_billing_policy(access_token, &memberships.data.active_org_id, route)
+            .await?;
+
         Ok(ManagementSurfaceState {
             loaded_session_id: Some(session_id.to_string()),
             memberships: memberships.data.memberships,
             active_org_id: Some(memberships.data.active_org_id),
             route_split_status: Some(route_split.data),
+            billing_policy,
             last_error: None,
         })
+    }
+
+    async fn fetch_billing_policy(
+        access_token: &str,
+        active_org_id: &str,
+        route: &AppRoute,
+    ) -> Result<Option<PolicyDecision>, ControlApiError> {
+        let AppRoute::Billing { section } = route else {
+            return Ok(None);
+        };
+
+        let required_scopes = billing_required_scopes(section.as_deref());
+        let authorize_request = HttpCommandRequest {
+            method: HttpMethod::Post,
+            path: "/api/policy/authorize".to_string(),
+            body: Some(serde_json::json!({
+                "orgId": active_org_id,
+                "requiredScopes": required_scopes,
+                "requestedTopics": [],
+            })),
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+
+        let response: PolicyDecisionResponse =
+            send_json_request(&authorize_request, &AppState::default()).await?;
+        Ok(Some(response.data))
+    }
+
+    fn billing_required_scopes(section: Option<&str>) -> Vec<String> {
+        let mut scopes = vec!["runtime.read".to_string(), "policy.evaluate".to_string()];
+        if matches!(section, Some("paywalls")) {
+            scopes.push("runtime.write".to_string());
+            scopes.push("org.membership.write".to_string());
+        }
+        scopes
     }
 
     fn ingest_codex_thread_payload(payload: &serde_json::Value) {
@@ -2591,7 +2659,7 @@ mod wasm {
         }
 
         if let AppRoute::Admin { .. } = route {
-            if has_admin_access(route, auth_state, management_state) {
+            if has_admin_access(auth_state, management_state) {
                 if let Some(route_split_status) = management_state.route_split_status.as_ref() {
                     cards.push(ManagementCard {
                         title: "Route Split".to_string(),
@@ -2624,18 +2692,65 @@ mod wasm {
             }
         }
 
+        if let AppRoute::Billing { section } = route {
+            let section_label = section
+                .clone()
+                .unwrap_or_else(|| "wallet".to_string());
+            cards.push(ManagementCard {
+                title: "Billing Surface".to_string(),
+                body: format!("section: {section_label}\noperator route ownership: rust shell"),
+                tone: ManagementCardTone::Info,
+            });
+
+            if let Some(policy) = management_state.billing_policy.as_ref() {
+                let tone = if policy.allowed {
+                    ManagementCardTone::Success
+                } else {
+                    ManagementCardTone::Error
+                };
+                let denied = if policy.denied_reasons.is_empty() {
+                    "none".to_string()
+                } else {
+                    policy.denied_reasons.join("|")
+                };
+                cards.push(ManagementCard {
+                    title: "Policy Decision".to_string(),
+                    body: format!(
+                        "allowed: {}\nresolved_org_id: {}\ngranted_scopes: {}\ndenied_reasons: {}",
+                        policy.allowed,
+                        policy.resolved_org_id,
+                        policy.granted_scopes.join(","),
+                        denied
+                    ),
+                    tone,
+                });
+            } else {
+                cards.push(ManagementCard {
+                    title: "Policy Decision".to_string(),
+                    body: "Policy decision is unavailable for this billing route.".to_string(),
+                    tone: ManagementCardTone::Warning,
+                });
+            }
+
+            if matches!(section.as_deref(), Some("paywalls"))
+                && !has_admin_access(auth_state, management_state)
+            {
+                cards.push(ManagementCard {
+                    title: "Operator Guard".to_string(),
+                    body: "Paywall operator section requires owner/admin membership on active org."
+                        .to_string(),
+                    tone: ManagementCardTone::Error,
+                });
+            }
+        }
+
         cards
     }
 
     fn has_admin_access(
-        route: &AppRoute,
         auth_state: &openagents_app_state::AuthState,
         management_state: &ManagementSurfaceState,
     ) -> bool {
-        if !matches!(route, AppRoute::Admin { .. }) {
-            return true;
-        }
-
         let Some(active_org_id) = auth_state
             .session
             .as_ref()
@@ -2664,6 +2779,10 @@ mod wasm {
             AppRoute::Settings { section } => match section {
                 Some(section) => format!("Settings / {section}"),
                 None => "Settings".to_string(),
+            },
+            AppRoute::Billing { section } => match section {
+                Some(section) => format!("Billing / {section}"),
+                None => "Billing".to_string(),
             },
             AppRoute::Admin { section } => match section {
                 Some(section) => format!("Admin / {section}"),

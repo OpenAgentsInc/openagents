@@ -16,6 +16,10 @@ pub enum AppRoute {
         #[serde(default)]
         section: Option<String>,
     },
+    Billing {
+        #[serde(default)]
+        section: Option<String>,
+    },
     Admin {
         #[serde(default)]
         section: Option<String>,
@@ -44,6 +48,11 @@ impl AppRoute {
         if let Some(section) = section_from_prefix(&path, "/settings") {
             return Self::Settings { section };
         }
+        if let Some(section) = section_from_prefix(&path, "/l402")
+            .or_else(|| section_from_prefix(&path, "/billing"))
+        {
+            return Self::Billing { section };
+        }
         if let Some(section) = section_from_prefix(&path, "/admin") {
             return Self::Admin { section };
         }
@@ -67,6 +76,7 @@ impl AppRoute {
             Self::Workers => "/workers".to_string(),
             Self::Account { section } => section_to_path("/account", section),
             Self::Settings { section } => section_to_path("/settings", section),
+            Self::Billing { section } => section_to_path("/l402", section),
             Self::Admin { section } => section_to_path("/admin", section),
             Self::Debug => "/debug".to_string(),
             Self::Chat { thread_id: None } => "/chat".to_string(),
@@ -140,6 +150,18 @@ mod tests {
             }
         );
         assert_eq!(
+            AppRoute::from_path("/l402/transactions"),
+            AppRoute::Billing {
+                section: Some("transactions".to_string())
+            }
+        );
+        assert_eq!(
+            AppRoute::from_path("/billing/paywalls"),
+            AppRoute::Billing {
+                section: Some("paywalls".to_string())
+            }
+        );
+        assert_eq!(
             AppRoute::from_path("/admin"),
             AppRoute::Admin { section: None }
         );
@@ -159,6 +181,9 @@ mod tests {
             },
             AppRoute::Settings {
                 section: Some("integrations".to_string()),
+            },
+            AppRoute::Billing {
+                section: Some("settlements".to_string()),
             },
             AppRoute::Admin {
                 section: Some("operators".to_string()),
