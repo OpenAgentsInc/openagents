@@ -1,6 +1,8 @@
 #![allow(clippy::needless_pass_by_value)]
 
 #[cfg(any(target_arch = "wasm32", test))]
+mod codex_thread;
+#[cfg(any(target_arch = "wasm32", test))]
 mod khala_protocol;
 #[cfg(any(target_arch = "wasm32", test))]
 mod sync_persistence;
@@ -16,7 +18,7 @@ mod wasm {
     use gloo_net::websocket::{Message as WsMessage, futures::WebSocket};
     use gloo_timers::future::sleep;
     use openagents_app_state::{
-        AppAction, AppState, AuthRequirement, AuthUser, CommandError, CommandErrorKind,
+        AppAction, AppRoute, AppState, AuthRequirement, AuthUser, CommandError, CommandErrorKind,
         CommandIntent, HttpCommandRequest, HttpMethod, SessionLifecycleStatus, SessionSnapshot,
         StreamStatus, apply_action, classify_http_error, command_latency_metric,
         map_intent_to_http,
@@ -26,9 +28,10 @@ mod wasm {
     use wasm_bindgen::JsCast;
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_futures::spawn_local;
-    use web_sys::{HtmlCanvasElement, HtmlElement};
+    use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement};
     use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
+    use crate::codex_thread::CodexThreadState;
     use crate::khala_protocol::{
         KhalaEventPayload, SyncErrorPayload, TopicWatermark, WatermarkDecision, apply_watermark,
         build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
@@ -48,6 +51,9 @@ mod wasm {
         static KHALA_REF_COUNTER: Cell<u64> = const { Cell::new(1) };
         static SYNC_RUNTIME_STATE: RefCell<SyncRuntimeState> = RefCell::new(SyncRuntimeState::default());
         static SYNC_LAST_PERSIST_AT_MS: Cell<u64> = const { Cell::new(0) };
+        static CODEX_THREAD_STATE: RefCell<CodexThreadState> = RefCell::new(CodexThreadState::default());
+        static CODEX_SEND_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static CODEX_INPUT_KEYDOWN_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::KeyboardEvent)>>> = const { RefCell::new(None) };
     }
 
     const AUTH_STORAGE_KEY: &str = "openagents.web.auth.v1";
@@ -60,6 +66,11 @@ mod wasm {
     const KHALA_RECONNECT_BASE_DELAY_MS: u64 = 750;
     const KHALA_RECONNECT_MAX_DELAY_MS: u64 = 8_000;
     const SYNC_PERSIST_MIN_INTERVAL_MS: u64 = 800;
+    const CODEX_CHAT_ROOT_ID: &str = "openagents-web-shell-chat";
+    const CODEX_CHAT_HEADER_ID: &str = "openagents-web-shell-chat-header";
+    const CODEX_CHAT_MESSAGES_ID: &str = "openagents-web-shell-chat-messages";
+    const CODEX_CHAT_INPUT_ID: &str = "openagents-web-shell-chat-input";
+    const CODEX_CHAT_SEND_ID: &str = "openagents-web-shell-chat-send";
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
@@ -332,6 +343,13 @@ mod wasm {
     }
 
     #[wasm_bindgen]
+    pub fn codex_thread_state_json() -> String {
+        CODEX_THREAD_STATE.with(|state| {
+            serde_json::to_string(&*state.borrow()).unwrap_or_else(|_| "{}".to_string())
+        })
+    }
+
+    #[wasm_bindgen]
     pub fn auth_send_code(email: String) {
         queue_intent(CommandIntent::StartAuthChallenge { email });
     }
@@ -366,12 +384,31 @@ mod wasm {
         queue_intent(CommandIntent::DisconnectStream);
     }
 
+    #[wasm_bindgen]
+    pub fn codex_send_message(text: String) {
+        let Some(thread_id) = active_thread_id() else {
+            CODEX_THREAD_STATE.with(|state| {
+                state
+                    .borrow_mut()
+                    .append_local_system_message("No active thread route.");
+            });
+            render_codex_chat_dom();
+            return;
+        };
+        CODEX_THREAD_STATE.with(|state| {
+            state.borrow_mut().append_local_user_message(&text);
+        });
+        render_codex_chat_dom();
+        queue_intent(CommandIntent::SendThreadMessage { thread_id, text });
+    }
+
     async fn boot() -> Result<(), String> {
         if should_force_boot_failure() {
             return Err("forced startup failure because query contains oa_boot_fail=1".to_string());
         }
 
         let canvas = ensure_shell_dom()?;
+        ensure_codex_chat_dom()?;
 
         let current_path = current_pathname();
         let persisted_sync_state = restore_persisted_sync_state();
@@ -386,6 +423,7 @@ mod wasm {
             if let Some(persisted_sync_state) = persisted_sync_state.as_ref() {
                 hydrate_stream_state(&mut state, persisted_sync_state);
             }
+            sync_thread_route_from_state(&state);
             let _ = apply_action(
                 &mut state,
                 AppAction::QueueIntent {
@@ -402,6 +440,7 @@ mod wasm {
             let pending_intents = state.intent_queue.len();
             update_diagnostics_from_state(route_path, pending_intents);
         });
+        render_codex_chat_dom();
 
         set_boot_phase("booting", "initializing GPU platform");
         let platform = WebPlatform::init_on_canvas(canvas).await?;
@@ -584,12 +623,15 @@ mod wasm {
                 stop_khala_stream();
                 Ok(())
             }
-            CommandIntent::SendThreadMessage { .. } => Ok(()),
+            CommandIntent::SendThreadMessage { thread_id, text } => {
+                send_thread_message_flow(thread_id, text).await
+            }
             CommandIntent::Navigate { route } => {
                 APP_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     let _ = apply_action(&mut state, AppAction::Navigate { route });
                     update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
+                    sync_thread_route_from_state(&state);
                 });
                 Ok(())
             }
@@ -750,6 +792,38 @@ mod wasm {
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
         Ok(())
+    }
+
+    async fn send_thread_message_flow(
+        thread_id: String,
+        text: String,
+    ) -> Result<(), ControlApiError> {
+        let normalized = text.trim().to_string();
+        if normalized.is_empty() {
+            return Err(ControlApiError {
+                status_code: 422,
+                code: Some("validation_error".to_string()),
+                message: "Message text is required.".to_string(),
+                kind: CommandErrorKind::Validation,
+                retryable: false,
+            });
+        }
+
+        let state = snapshot_state();
+        let intent = CommandIntent::SendThreadMessage {
+            thread_id,
+            text: normalized,
+        };
+        let request = plan_http_request(&intent, &state)?;
+        let response = send_json_request::<serde_json::Value>(&request, &state).await;
+        if let Err(error) = &response {
+            CODEX_THREAD_STATE.with(|chat| {
+                chat.borrow_mut()
+                    .append_local_system_message(&format!("Send failed: {}", error.message));
+            });
+            render_codex_chat_dom();
+        }
+        response.map(|_| ())
     }
 
     fn apply_auth_action(action: AppAction) {
@@ -1104,6 +1178,9 @@ mod wasm {
         match payload {
             KhalaEventPayload::UpdateBatch(batch) => {
                 for update in batch.updates {
+                    if let Some(payload) = update.payload.as_ref() {
+                        ingest_codex_thread_payload(payload);
+                    }
                     let current = current_watermark(&update.topic);
                     match apply_watermark(current, update.watermark) {
                         WatermarkDecision::Advanced { next } => {
@@ -1191,6 +1268,33 @@ mod wasm {
                 .map(|(topic, watermark)| (topic, serde_json::Value::Number(watermark.into())))
                 .collect()
         })
+    }
+
+    fn active_thread_id() -> Option<String> {
+        APP_STATE.with(|state| thread_id_from_route(&state.borrow().route))
+    }
+
+    fn sync_thread_route_from_state(state: &AppState) {
+        CODEX_THREAD_STATE.with(|chat| {
+            chat.borrow_mut()
+                .set_thread_id(thread_id_from_route(&state.route));
+        });
+        render_codex_chat_dom();
+    }
+
+    fn thread_id_from_route(route: &AppRoute) -> Option<String> {
+        match route {
+            AppRoute::Chat { thread_id } => thread_id.clone(),
+            AppRoute::Home | AppRoute::Workers | AppRoute::Settings | AppRoute::Debug => None,
+        }
+    }
+
+    fn ingest_codex_thread_payload(payload: &serde_json::Value) {
+        let changed =
+            CODEX_THREAD_STATE.with(|chat| chat.borrow_mut().ingest_khala_payload(payload));
+        if changed {
+            render_codex_chat_dom();
+        }
     }
 
     fn desired_sync_topics() -> Vec<String> {
@@ -1770,6 +1874,353 @@ mod wasm {
             return;
         };
         let _ = storage.remove_item(AUTH_STORAGE_KEY);
+    }
+
+    fn ensure_codex_chat_dom() -> Result<(), String> {
+        let window = web_sys::window().ok_or_else(|| "window is unavailable".to_string())?;
+        let document = window
+            .document()
+            .ok_or_else(|| "document is unavailable".to_string())?;
+        let body = document
+            .body()
+            .ok_or_else(|| "document body is unavailable".to_string())?;
+
+        if document.get_element_by_id(CODEX_CHAT_ROOT_ID).is_none() {
+            let root = document
+                .create_element("section")
+                .map_err(|_| "failed to create codex chat root".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex chat root is not HtmlElement".to_string())?;
+            root.set_id(CODEX_CHAT_ROOT_ID);
+            root.style()
+                .set_property("position", "fixed")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("inset", "0")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("display", "none")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("flex-direction", "column")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("justify-content", "space-between")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("padding", "72px 16px 108px")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("box-sizing", "border-box")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("z-index", "20")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+            root.style()
+                .set_property("pointer-events", "none")
+                .map_err(|_| "failed to style codex chat root".to_string())?;
+
+            let header = document
+                .create_element("div")
+                .map_err(|_| "failed to create codex chat header".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex chat header is not HtmlElement".to_string())?;
+            header.set_id(CODEX_CHAT_HEADER_ID);
+            header
+                .style()
+                .set_property("color", "#cbd5e1")
+                .map_err(|_| "failed to style codex chat header".to_string())?;
+            header
+                .style()
+                .set_property("font-size", "12px")
+                .map_err(|_| "failed to style codex chat header".to_string())?;
+            header
+                .style()
+                .set_property(
+                    "font-family",
+                    "ui-monospace, SFMono-Regular, Menlo, monospace",
+                )
+                .map_err(|_| "failed to style codex chat header".to_string())?;
+            header
+                .style()
+                .set_property("pointer-events", "none")
+                .map_err(|_| "failed to style codex chat header".to_string())?;
+            let _ = root.append_child(&header);
+
+            let messages = document
+                .create_element("div")
+                .map_err(|_| "failed to create codex chat messages".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex chat messages is not HtmlElement".to_string())?;
+            messages.set_id(CODEX_CHAT_MESSAGES_ID);
+            messages
+                .style()
+                .set_property("display", "flex")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("flex-direction", "column")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("gap", "10px")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("max-width", "760px")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("width", "100%")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("margin", "0 auto")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("overflow-y", "auto")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("padding-right", "4px")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            messages
+                .style()
+                .set_property("pointer-events", "auto")
+                .map_err(|_| "failed to style codex chat messages".to_string())?;
+            let _ = root.append_child(&messages);
+
+            let composer = document
+                .create_element("div")
+                .map_err(|_| "failed to create codex composer".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex composer is not HtmlElement".to_string())?;
+            composer
+                .style()
+                .set_property("display", "flex")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+            composer
+                .style()
+                .set_property("gap", "8px")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+            composer
+                .style()
+                .set_property("max-width", "760px")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+            composer
+                .style()
+                .set_property("margin", "0 auto")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+            composer
+                .style()
+                .set_property("width", "100%")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+            composer
+                .style()
+                .set_property("pointer-events", "auto")
+                .map_err(|_| "failed to style codex composer".to_string())?;
+
+            let input = document
+                .create_element("input")
+                .map_err(|_| "failed to create codex input".to_string())?
+                .dyn_into::<HtmlInputElement>()
+                .map_err(|_| "codex input is not HtmlInputElement".to_string())?;
+            input.set_id(CODEX_CHAT_INPUT_ID);
+            input.set_placeholder("Message Codex");
+            let _ = input.style().set_property("flex", "1");
+            let _ = input.style().set_property("height", "40px");
+            let _ = input.style().set_property("padding", "0 12px");
+            let _ = input.style().set_property("border-radius", "10px");
+            let _ = input.style().set_property("border", "1px solid #1f2937");
+            let _ = input.style().set_property("background", "#0f172a");
+            let _ = input.style().set_property("color", "#e2e8f0");
+            let _ = input.style().set_property("font-size", "15px");
+            let _ = input
+                .style()
+                .set_property("font-family", "Inter, sans-serif");
+            let _ = composer.append_child(&input);
+
+            let send_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create codex send button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex send button is not HtmlElement".to_string())?;
+            send_button.set_id(CODEX_CHAT_SEND_ID);
+            send_button.set_inner_text("Send");
+            let _ = send_button.style().set_property("height", "40px");
+            let _ = send_button.style().set_property("padding", "0 16px");
+            let _ = send_button.style().set_property("border-radius", "10px");
+            let _ = send_button
+                .style()
+                .set_property("border", "1px solid #2563eb");
+            let _ = send_button.style().set_property("background", "#2563eb");
+            let _ = send_button.style().set_property("color", "#ffffff");
+            let _ = send_button.style().set_property("font-weight", "600");
+            let _ = composer.append_child(&send_button);
+
+            let _ = root.append_child(&composer);
+            body.append_child(&root)
+                .map_err(|_| "failed to append codex chat root".to_string())?;
+        }
+
+        let send_button = document
+            .get_element_by_id(CODEX_CHAT_SEND_ID)
+            .ok_or_else(|| "missing codex send button".to_string())?;
+        let input = document
+            .get_element_by_id(CODEX_CHAT_INPUT_ID)
+            .ok_or_else(|| "missing codex input".to_string())?;
+
+        CODEX_SEND_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_codex_message_from_input();
+            }));
+            let _ = send_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        CODEX_INPUT_KEYDOWN_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::wrap(Box::new(
+                move |event: web_sys::KeyboardEvent| {
+                    if event.key() == "Enter" && !event.shift_key() {
+                        event.prevent_default();
+                        submit_codex_message_from_input();
+                    }
+                },
+            ));
+            let _ = input
+                .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        Ok(())
+    }
+
+    fn submit_codex_message_from_input() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(input) = document.get_element_by_id(CODEX_CHAT_INPUT_ID) else {
+            return;
+        };
+        let Ok(input) = input.dyn_into::<HtmlInputElement>() else {
+            return;
+        };
+        let text = input.value();
+        if text.trim().is_empty() {
+            return;
+        }
+        input.set_value("");
+        codex_send_message(text);
+    }
+
+    fn render_codex_chat_dom() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(root) = document.get_element_by_id(CODEX_CHAT_ROOT_ID) else {
+            return;
+        };
+        let Ok(root) = root.dyn_into::<HtmlElement>() else {
+            return;
+        };
+
+        let thread_id = active_thread_id();
+        if thread_id.is_none() {
+            let _ = root.style().set_property("display", "none");
+            return;
+        }
+        let _ = root.style().set_property("display", "flex");
+
+        if let Some(header) = document.get_element_by_id(CODEX_CHAT_HEADER_ID) {
+            if let Ok(header) = header.dyn_into::<HtmlElement>() {
+                header.set_inner_text(&format!(
+                    "Codex Thread {}",
+                    thread_id.unwrap_or_else(|| "chat".to_string())
+                ));
+            }
+        }
+
+        let Some(messages_container) = document.get_element_by_id(CODEX_CHAT_MESSAGES_ID) else {
+            return;
+        };
+        let Ok(messages_container) = messages_container.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        messages_container.set_inner_html("");
+
+        CODEX_THREAD_STATE.with(|state| {
+            for message in &state.borrow().messages {
+                let Ok(row) = document.create_element("div") else {
+                    continue;
+                };
+                let Ok(row) = row.dyn_into::<HtmlElement>() else {
+                    continue;
+                };
+                let _ = row.style().set_property("display", "flex");
+                let _ = row.style().set_property("width", "100%");
+                let align = match message.role {
+                    crate::codex_thread::CodexMessageRole::User => "flex-end",
+                    crate::codex_thread::CodexMessageRole::Assistant
+                    | crate::codex_thread::CodexMessageRole::Reasoning
+                    | crate::codex_thread::CodexMessageRole::System => "flex-start",
+                };
+                let _ = row.style().set_property("justify-content", align);
+
+                let Ok(bubble) = document.create_element("div") else {
+                    continue;
+                };
+                let Ok(bubble) = bubble.dyn_into::<HtmlElement>() else {
+                    continue;
+                };
+                let _ = bubble.style().set_property("max-width", "78%");
+                let _ = bubble.style().set_property("padding", "10px 12px");
+                let _ = bubble.style().set_property("border-radius", "12px");
+                let _ = bubble.style().set_property("white-space", "pre-wrap");
+                let _ = bubble.style().set_property("line-height", "1.4");
+                let _ = bubble.style().set_property("font-size", "15px");
+                match message.role {
+                    crate::codex_thread::CodexMessageRole::User => {
+                        let _ = bubble.style().set_property("background", "#2563eb");
+                        let _ = bubble.style().set_property("color", "#ffffff");
+                    }
+                    crate::codex_thread::CodexMessageRole::Assistant => {
+                        let _ = bubble.style().set_property("background", "#111827");
+                        let _ = bubble.style().set_property("color", "#e5e7eb");
+                    }
+                    crate::codex_thread::CodexMessageRole::Reasoning => {
+                        let _ = bubble.style().set_property("background", "#1f2937");
+                        let _ = bubble.style().set_property("color", "#d1d5db");
+                    }
+                    crate::codex_thread::CodexMessageRole::System => {
+                        let _ = bubble.style().set_property("background", "#0f172a");
+                        let _ = bubble.style().set_property("color", "#94a3b8");
+                    }
+                }
+                bubble.set_inner_text(&if message.streaming {
+                    format!("{}\nstreaming", message.text)
+                } else {
+                    message.text.clone()
+                });
+                let _ = row.append_child(&bubble);
+                let _ = messages_container.append_child(&row);
+            }
+        });
+
+        messages_container.set_scroll_top(messages_container.scroll_height());
     }
 
     fn ensure_shell_dom() -> Result<HtmlCanvasElement, String> {

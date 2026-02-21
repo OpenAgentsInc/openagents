@@ -139,6 +139,11 @@ struct RouteSplitEvaluateRequest {
     cohort_key: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SendThreadMessageRequest {
+    text: String,
+}
+
 pub fn build_router(config: Config) -> Router {
     build_router_with_observability(config, Observability::default())
 }
@@ -170,6 +175,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/api/orgs/active", post(set_active_org))
         .route("/api/policy/authorize", post(policy_authorize))
         .route("/api/sync/token", post(sync_token))
+        .route(
+            "/api/runtime/threads/:thread_id/messages",
+            post(send_thread_message),
+        )
         .route("/api/v1/auth/session", get(current_session))
         .route("/api/v1/control/status", get(control_status))
         .route(
@@ -866,6 +875,70 @@ async fn sync_token(
         .increment_counter("sync.token.issued", &request_id);
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "data": issued }))))
+}
+
+async fn send_thread_message(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<SendThreadMessageRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_thread_id = thread_id.trim().to_string();
+    if normalized_thread_id.is_empty() {
+        return Err(validation_error("thread_id", "Thread id is required."));
+    }
+
+    let normalized_text = payload.text.trim().to_string();
+    if normalized_text.is_empty() {
+        return Err(validation_error("text", "Message text is required."));
+    }
+
+    if normalized_text.chars().count() > 20_000 {
+        return Err(validation_error(
+            "text",
+            "Message text exceeds 20000 characters.",
+        ));
+    }
+
+    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let accepted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+
+    state.observability.audit(
+        AuditEvent::new("runtime.thread.message.accepted", request_id.clone())
+            .with_user_id(session.user.id.clone())
+            .with_session_id(session.session.session_id.clone())
+            .with_org_id(session.session.active_org_id.clone())
+            .with_device_id(session.session.device_id.clone())
+            .with_attribute("thread_id", normalized_thread_id.clone())
+            .with_attribute("message_id", message_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("runtime.thread.message.accepted", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "accepted": true,
+                "message": {
+                    "id": message_id,
+                    "thread_id": normalized_thread_id,
+                    "text": normalized_text,
+                    "accepted_at": accepted_at,
+                }
+            }
+        })),
+    ))
 }
 
 async fn refresh_session(
@@ -1821,6 +1894,69 @@ mod tests {
             .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
         let sync_response = app.oneshot(sync_request).await?;
         assert_eq!(sync_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn thread_message_command_requires_authentication() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/threads/thread-1/messages")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"text":"hello"}"#))?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn thread_message_command_accepts_authenticated_message() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"thread-command@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let command_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/threads/thread-42/messages")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("{\"text\":\"Who are you?\"}"))?;
+        let command_response = app.oneshot(command_request).await?;
+        assert_eq!(command_response.status(), StatusCode::OK);
+        let command_body = read_json(command_response).await?;
+        assert_eq!(command_body["data"]["accepted"], true);
+        assert_eq!(command_body["data"]["message"]["thread_id"], "thread-42");
+        assert_eq!(command_body["data"]["message"]["text"], "Who are you?");
+        assert!(
+            command_body["data"]["message"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("msg_")
+        );
 
         Ok(())
     }
