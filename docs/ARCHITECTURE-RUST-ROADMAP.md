@@ -148,6 +148,7 @@ Shared artifacts: `crates/openagents-ui-core/`, `apps/openagents.com/web-shell/s
 
 ### OA-RUST-026 — [WGPUI Web] Implement shared app state crate (routes, reducers, command intent)
 Description: Implement route graph, reducer/state machine, and command intents in Rust for deterministic behavior across surfaces.
+State artifacts: `crates/openagents-app-state/`, `crates/openagents-app-state/tests/fixtures/reducer-replay-v1.json`, `apps/openagents.com/web-shell/src/lib.rs`
 
 ### OA-RUST-027 — [WGPUI Web] Implement auth/session UX in Rust shell
 Description: Build signin/session/reauth user flows in WGPUI using control-plane APIs from Rust clients.

@@ -1,0 +1,18 @@
+[
+  { "type": "bootstrap_from_path", "path": "/chat/thread-42" },
+  { "type": "auth_status_changed", "status": "signed_in" },
+  { "type": "queue_intent", "intent": { "type": "bootstrap" } },
+  {
+    "type": "queue_intent",
+    "intent": {
+      "type": "request_sync_token",
+      "scopes": ["runtime.codex_worker_events"]
+    }
+  },
+  {
+    "type": "queue_intent",
+    "intent": { "type": "connect_stream", "worker_id": "desktop:shared" }
+  },
+  { "type": "stream_status_changed", "status": { "type": "connecting" } },
+  { "type": "stream_status_changed", "status": { "type": "live" } }
+]
