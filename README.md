@@ -35,7 +35,7 @@ These are removed from active architecture and treated as historical only:
 ## Local Verification
 
 - Changed-files gate: `./scripts/local-ci.sh changed`
-- Rust pre-push gate: `./scripts/local-ci.sh all-rust`
+- Rust push gate (manual): `./scripts/local-ci.sh all-rust`
 - Workspace baseline: `cargo check --workspace --all-targets`
 - Proto gate: `./scripts/local-ci.sh proto`
 

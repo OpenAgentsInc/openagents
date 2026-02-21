@@ -107,7 +107,7 @@ Historical lanes (legacy-only, non-canonical for new work): Laravel/PHP app file
   ```bash
   ./scripts/local-ci.sh changed
   ```
-- **Default local CI pre-push Rust gate (pre-push hook):**
+- **Manual Rust push gate (recommended before push):**
   ```bash
   ./scripts/local-ci.sh all-rust
   ```

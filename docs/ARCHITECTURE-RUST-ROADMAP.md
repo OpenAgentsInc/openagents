@@ -486,7 +486,7 @@ Dependencies: OA-RUST-053, OA-RUST-058, OA-RUST-063, OA-RUST-101, OA-RUST-102.
 
 ### OA-RUST-104 — [CI] Replace legacy local CI lanes with Rust-first gates
 Description: Rewrite local CI entrypoints to remove mandatory Laravel/Elixir lanes and establish Rust-first verification commands for services/clients/proto contracts.
-Enforcement artifacts: `scripts/local-ci.sh`, `.githooks/pre-commit`, `.githooks/pre-push`, `scripts/comms-security-replay-matrix.sh`, `docs/LOCAL_CI.md`, `AGENTS.md`, `docs/README.md`
+Enforcement artifacts: `scripts/local-ci.sh`, `.githooks/pre-commit`, `scripts/comms-security-replay-matrix.sh`, `docs/LOCAL_CI.md`, `AGENTS.md`, `docs/README.md`
 Acceptance criteria: `scripts/local-ci.sh` and hooks run Rust-native checks for migrated surfaces; legacy checks are isolated to archival compatibility lanes only; CI docs are updated.
 Dependencies: OA-RUST-097, OA-RUST-098, OA-RUST-099, OA-RUST-100.
 
