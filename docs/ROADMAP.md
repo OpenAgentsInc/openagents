@@ -1,54 +1,45 @@
-# OpenAgents Roadmap (Current Stack)
+# OpenAgents Roadmap (Rust-Only Program)
 
-This roadmap tracks active priorities across web, runtime, and desktop surfaces.
+This document is the high-level roadmap summary.
 
-**Web:** The core web app is **Laravel 12 + Inertia + React** at `apps/openagents.com/`. See `docs/plans/active/laravel-rebuild.md` for the plan.
+Detailed execution backlog and OA-RUST issue ordering live in:
+- `docs/ARCHITECTURE-RUST-ROADMAP.md`
 
-## Roadmap Navigation
+## Program Objective
 
-- Active execution plans: `docs/plans/active/`
-- Completed plans/history: `docs/plans/completed/`
-- Plan conventions/template: `docs/plans/README.md`, `docs/plans/TEMPLATE.md`
-- Repo map and ownership: `docs/PROJECT_OVERVIEW.md`
-- Codex architecture plan: `docs/codex/unified-runtime-desktop-plan.md`
-- Architecture constraints: `docs/adr/INDEX.md`
-- Canonical terms: `docs/GLOSSARY.md`
-- Agent contract (non-negotiables): `AGENTS.md`
+Complete migration to a Rust-only production architecture with:
+- Rust control service + Rust/WGPUI web shell
+- Rust runtime authority service
+- WS-only Khala replay/delivery for live subscriptions
+- Shared Rust client/UI/state crates across web/desktop/iOS
+- Proto-first contract governance
 
-## Phase 1: Chat Reliability and Observability
+## Current Priority Phases
 
-- Stabilize chat streaming behavior across all panes.
-- Ensure every message has complete metadata (model, source, inference timing).
-- Keep trace retrieval deterministic and thread-addressable.
-- Expand telemetry coverage for message send/receive, errors, retries, and tool events.
+1. Rust service and surface convergence
+- Keep `apps/runtime/` and `apps/openagents.com/service/` as the only authority services.
+- Continue eliminating legacy non-Rust runtime behavior from production paths.
 
-## Phase 2: Pane UX and State Consistency
+2. Contract and sync correctness
+- Maintain proto-first wire contracts under `proto/`.
+- Keep Khala delivery semantics deterministic (resume, replay, stale cursor, idempotent apply).
 
-- Persist pane layout, size, and last known placement.
-- Reduce pane re-open latency with durable local cache hydration.
-- Standardize pane controls and icon behavior across chat, metadata, and trace views.
-- Ensure all pane actions (open/close/toggle/debug) are tracked through telemetry.
+3. Cross-surface parity
+- Align web-shell, desktop, and iOS behavior through shared Rust crates.
+- Keep contract harness and replay fixtures green across surfaces.
 
-## Phase 3: Automation and Admin Controls
+4. Operations and reliability
+- Enforce deploy+migration coupling for runtime.
+- Keep local CI Rust-first and compatibility lanes opt-in only.
+- Maintain runbooks for WS/auth/reconnect/stale-cursor incidents.
 
-- Harden admin-trigger flows for deterministic test users.
-- Improve end-to-end traceability from admin trigger -> model execution -> stored receipts.
-- Keep production-safe testing hooks documented and auditable.
+5. Documentation integrity
+- Keep canonical docs aligned to active Rust-era surfaces.
+- Move legacy material to archived/historical locations.
 
-## Phase 4: Cross-Surface Consistency
+## Canonical References
 
-- Align web and mobile data contracts for chat and trace payloads.
-- Consolidate shared services used by web, runtime, desktop, and test harnesses.
-- Remove legacy assumptions left from deprecated runtime surfaces.
-
-## Phase 5: Codex Runtime + Desktop Unification
-
-- Ship desktop-first Codex execution with runtime as durable worker/event authority.
-- Ensure web admin surfaces and mobile follow-up read/admin flows consume the same runtime-backed Codex worker contract.
-- Keep a single canonical plan and contract path (`docs/codex/unified-runtime-desktop-plan.md` + runtime OpenAPI/contract docs).
-
-## Phase 6: Documentation Quality Gates
-
-- Keep docs aligned with active code paths only.
-- Archive deprecated docs to backroom with explicit archive indexes.
-- Require updates to `docs/README.md` and `docs/PROJECT_OVERVIEW.md` when major architecture changes ship.
+- `docs/ARCHITECTURE-RUST.md`
+- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/PROJECT_OVERVIEW.md`
+- `docs/README.md`

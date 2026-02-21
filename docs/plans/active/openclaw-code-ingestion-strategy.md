@@ -123,9 +123,9 @@ Prioritized mapping from OpenClaw to OpenAgents:
 | Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `Kernel` | `apps/runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
 | Loop detection and no-progress circuit breaker | `src/agents/tool-loop-detection.ts`, `src/agents/pi-tools.before-tool-call.ts` | `Kernel` | Runtime execution guardrails in run executor/tool task state machine | Port now (high value for autonomous stability) |
 | Web/network safety guard (SSRF, DNS pinning, redirect controls) | `src/infra/net/fetch-guard.ts`, `src/infra/net/ssrf.ts`, `src/agents/tools/web-fetch.ts` | `Kernel` | Runtime tool adapters for any outbound HTTP tooling | Port early before expanding external integrations |
-| Plugin manifest + schema validation | `docs/plugins/manifest.md`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | `Protocol + Kernel + Control plane` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
-| Memory provider slot model (`memory-core` vs `memory-lancedb`) | `extensions/memory-core/index.ts`, `extensions/memory-lancedb/index.ts`, `docs/concepts/memory.md` | `Kernel` | Runtime memory provider abstraction (`timeline`, compaction, recall adapters) | Adapt architecture; do not copy storage model 1:1 |
-| Structured workflow tool (`llm-task`/Lobster pattern) | `extensions/llm-task/src/llm-task-tool.ts`, `docs/tools/llm-task.md`, `docs/tools/lobster.md` | `Kernel + Protocol` | DS-Elixir strategy/tool orchestration boundary | Adapt as DS signature strategy, not a direct shell-style runtime dependency |
+| Plugin manifest + schema validation | `docs/protocol/extensions/extension-manifest.schema.v1.json`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | `Protocol + Kernel + Control plane` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
+| Memory provider slot model (`memory-core` vs `memory-lancedb`) | `extensions/memory-core/index.ts`, `extensions/memory-lancedb/index.ts`, upstream memory concept docs | `Kernel` | Runtime memory provider abstraction (`timeline`, compaction, recall adapters) | Adapt architecture; do not copy storage model 1:1 |
+| Structured workflow tool (`llm-task`/Lobster pattern) | `extensions/llm-task/src/llm-task-tool.ts`, upstream llm-task and lobster tool docs | `Kernel + Protocol` | DS-Elixir strategy/tool orchestration boundary | Adapt as DS signature strategy, not a direct shell-style runtime dependency |
 | OTel diagnostics service plugin | `extensions/diagnostics-otel/src/service.ts` | `Kernel + Control plane` | Runtime telemetry emitters + ops dashboards | Reuse metric taxonomy ideas; implement natively in Elixir telemetry |
 
 Deprioritized for now:
@@ -244,7 +244,7 @@ Each imported capability must include:
 
 Recommended artifact format:
 
-- `docs/plans/active/openclaw-intake/<capability-id>.md`
+- `docs/plans/active/openclaw-intake/TEMPLATE.md` (copy per capability)
 
 This keeps future syncs and audits tractable.
 

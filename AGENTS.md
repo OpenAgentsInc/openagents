@@ -90,12 +90,15 @@ Legacy TypeScript Effect package lanes under `packages/` are archived; do not ad
 
 ## Where To Change Things
 
-- **Core web app:** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript). See `docs/plans/active/laravel-rebuild.md`.
+- **Core web control service:** `apps/openagents.com/service/` (Rust)
+- **Core web UI shell:** `apps/openagents.com/web-shell/` (Rust/WGPUI WASM)
 - iOS surface: `apps/autopilot-ios/`
 - Desktop surface: `apps/autopilot-desktop/`
 - Onyx surface: `apps/onyx/`
 - Shared Rust crates: `crates/*`
 - Canonical docs/contracts: `docs/` (start with `docs/README.md`)
+
+Historical lanes (legacy-only, non-canonical for new work): Laravel/PHP app files under `apps/openagents.com/app`, `apps/openagents.com/resources`, and related legacy web runtime assets.
 
 ## Verification Entry Points
 
@@ -115,8 +118,8 @@ Legacy TypeScript Effect package lanes under `packages/` are archived; do not ad
   ```bash
   ./scripts/local-ci.sh workspace-compile
   ```
-- **Laravel web (core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
-- **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
+- **Rust web control service:** `apps/openagents.com/service/README.md`
+- **Rust web shell:** `apps/openagents.com/web-shell/README.md`
 - **Runtime Cloud Run deploy/runbook:** `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
   - Canonical deploy command (deploy + mandatory migration validation):
     ```bash

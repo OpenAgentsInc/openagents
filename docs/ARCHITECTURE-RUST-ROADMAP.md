@@ -492,6 +492,7 @@ Dependencies: OA-RUST-097, OA-RUST-098, OA-RUST-099, OA-RUST-100.
 
 ### OA-RUST-105 — [Docs] Remove stale legacy surface references from canonical docs
 Description: Update root documentation (`README`, `AGENTS`, `docs/README`, `docs/PROJECT_OVERVIEW`, `docs/AGENT_MAP`, `docs/ROADMAP`) to reflect current migration state and Rust endstate sequencing without stale active-surface claims.
+Enforcement artifacts: `README.md`, `AGENTS.md`, `docs/README.md`, `docs/PROJECT_OVERVIEW.md`, `docs/AGENT_MAP.md`, `docs/ROADMAP.md`, `scripts/docs-check.mjs`, `docs/plans/completed/README.md`, `docs/audit/README.md`, `docs/logs/README.md`, `docs/sync/README.md`
 Acceptance criteria: Canonical docs no longer list removed surfaces as active; architecture docs and roadmap references are consistent; docs-check gates include stale-surface detection.
 Dependencies: OA-RUST-052, OA-RUST-053, OA-RUST-058, OA-RUST-072.
 
