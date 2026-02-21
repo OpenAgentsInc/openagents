@@ -30,6 +30,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md` — staged rollout + rollback runbook for runtime/Codex Khala cutover.
 - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md` — Khala self-hosted sync-layer architecture plan.
 - `docs/plans/active/khala-runtime-codex-master-roadmap.md` — execution roadmap with delivery gates for runtime/Khala/Codex integration.
+- `docs/plans/active/rust-migration-invariant-gates.md` — non-negotiable migration invariant checks for PR/release gates.
 
 ### 3) Product and runtime code surfaces
 
@@ -77,3 +78,4 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are deploying runtime to Cloud Run: run `apps/runtime/deploy/cloudrun/run-migrate-job.sh` after each deploy (see `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`).
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.
+- If you are changing Rust migration boundaries/cutover behavior: apply `docs/plans/active/rust-migration-invariant-gates.md`.

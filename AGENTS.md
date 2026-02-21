@@ -12,6 +12,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Priorities and sequencing: `docs/ROADMAP.md`
 - Vocabulary authority: `docs/GLOSSARY.md`
 - Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
+- Rust migration invariant gates: `docs/plans/active/rust-migration-invariant-gates.md`
 
 ### Contracts (canonical specs)
 
@@ -65,6 +66,7 @@ Canonical specs:
 - Execution artifacts: `docs/execution/ARTIFACTS.md`
 - Replay format: `docs/execution/REPLAY.md`
 - Protocol field semantics: `docs/protocol/PROTOCOL_SURFACE.md`
+- Rust migration invariant gate checklist: `docs/plans/active/rust-migration-invariant-gates.md`
 
 ## Effect Best Practices (Non-Negotiable)
 

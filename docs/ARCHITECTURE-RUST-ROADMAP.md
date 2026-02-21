@@ -55,6 +55,7 @@ Inventory artifact: `docs/plans/active/rust-migration-legacy-dependency-inventor
 
 ### OA-RUST-003 — [Rust Endstate] Lock migration invariants from architecture doc
 Description: Convert architecture invariants (proto-first, dual authority planes, Khala projection-only, WS-only sync) into explicit checklists and required gates for every implementation PR.
+Invariant gates: `docs/plans/active/rust-migration-invariant-gates.md`
 
 ### OA-RUST-004 — [Rust Endstate] Archive existing ADR set
 Description: Move current `docs/adr/` records to an archived path with index updates so the new Rust-era ADR series can begin cleanly.

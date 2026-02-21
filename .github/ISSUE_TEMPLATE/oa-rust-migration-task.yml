@@ -107,6 +107,23 @@ body:
     validations:
       required: true
 
+  - type: checkboxes
+    id: invariant_gates
+    attributes:
+      label: Invariant gates
+      description: Confirm all applicable architecture invariants before opening.
+      options:
+        - label: INV-01 proto-first contract authority is preserved.
+        - label: INV-02 mutations stay on HTTP APIs (no WS command RPC).
+        - label: INV-03 no new SSE/poll live-sync lane is introduced.
+        - label: INV-04 control/runtime authority boundary is preserved.
+        - label: INV-05 no implicit in-memory service coupling is introduced.
+        - label: INV-06 Khala remains projection/replay delivery only.
+        - label: INV-07 ordering/idempotency requirements are handled for sync changes.
+        - label: INV-08 WorkOS auth provider plus control-plane session authority split remains intact.
+        - label: INV-09 runtime deploy+migrate implications are documented if runtime is touched.
+        - label: INV-10 legacy deletion/cutover steps map to parity gates.
+
   - type: textarea
     id: context
     attributes:
@@ -146,4 +163,3 @@ body:
       description: Commands/tests/checks that prove completion.
     validations:
       required: true
-
