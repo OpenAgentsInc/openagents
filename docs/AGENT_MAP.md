@@ -9,6 +9,7 @@ Start from canonical docs, then drill down by surface.
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/GLOSSARY.md`
 - `docs/ROADMAP.md`
+- `docs/DEPLOYMENT_RUST_SERVICES.md`
 
 ## Architecture and Contract Authority
 

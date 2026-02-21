@@ -87,3 +87,7 @@ cargo test --manifest-path apps/lightning-ops/Cargo.toml
 cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:compile --json --mode mock
 cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:staging --json --mode mock
 ```
+
+## Deployment posture
+
+`lightning-ops` is Rust-only. Canonical execution is Rust binary invocation (`cargo run --manifest-path apps/lightning-ops/Cargo.toml -- <command>`). Legacy TypeScript/Node deploy commands are non-canonical.

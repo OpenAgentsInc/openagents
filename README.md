@@ -5,6 +5,7 @@ OpenAgents is a Rust-first, Rust-target architecture for multi-surface agent exe
 Canonical architecture and migration sequencing live in:
 - `docs/ARCHITECTURE-RUST.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/DEPLOYMENT_RUST_SERVICES.md`
 
 ## Active Surfaces and Services (Canonical)
 

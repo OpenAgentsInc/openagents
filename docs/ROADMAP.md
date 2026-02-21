@@ -41,5 +41,6 @@ Complete migration to a Rust-only production architecture with:
 
 - `docs/ARCHITECTURE-RUST.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/DEPLOYMENT_RUST_SERVICES.md`
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/README.md`
