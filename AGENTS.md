@@ -37,7 +37,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - iOS app: `apps/autopilot-ios/`
 - Desktop app: `apps/autopilot-desktop/`
 - Onyx app: `apps/onyx/`
-- Shared packages: `packages/`
+- Shared Rust crates: `crates/`
 
 ### Operations, testing, and audits
 
@@ -80,7 +80,7 @@ Always consult `effect-solutions` before writing Effect code:
 2. `effect-solutions show <topic>...`
 3. Reference implementations: `.reference/effect/` (run `effect-solutions setup` first)
 
-For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`): run `npm run effect:patch` after install for diagnostics.
+Legacy TypeScript Effect package lanes under `packages/` are archived; do not add new production dependencies on `packages/*`.
 
 ## Git Hygiene (Non-Negotiable)
 
@@ -94,7 +94,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 - iOS surface: `apps/autopilot-ios/`
 - Desktop surface: `apps/autopilot-desktop/`
 - Onyx surface: `apps/onyx/`
-- Shared packages: `packages/*`
+- Shared Rust crates: `crates/*`
 - Canonical docs/contracts: `docs/` (start with `docs/README.md`)
 
 ## Verification Entry Points
