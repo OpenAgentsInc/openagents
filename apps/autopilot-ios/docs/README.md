@@ -2,6 +2,7 @@
 
 - **`BUILDING.md`** — Building the app: XCFramework, Rust artifact script, fixing "no XCFramework found", for developers and coding agents.
 - **`WGPUI-IOS.md`** — WGPUI on iOS: where code lives, FFI, Swift bridge, what’s rendered, how to change it; reference for coding agents.
+- **`IOS-BLACK-SCREEN-TESTFLIGHT.md`** — Black screen on TestFlight (works in dev): architecture, what was tried, root cause analysis, next steps.
 - `../../../docs/autopilot/wgpui-ios-cutover-log.md` — WGPUI iOS background cutover implementation log (2026-02-21).
 - `ios-codex-first-structure.md` — proposed iOS app structure for Codex-first delivery.
 - `codex-connection-roadmap.md` — comprehensive roadmap for connecting iOS to Codex across runtime/desktop/hosted lanes.
