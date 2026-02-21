@@ -178,6 +178,42 @@
           "legendFormat": "hash mismatch incidents"
         }
       ]
+    },
+    {
+      "id": 15,
+      "title": "Sync Socket Auth Failure Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 72},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_sync_socket_auth_count{status=\"error\"}[5m])) / clamp_min(sum(rate(openagents_runtime_sync_socket_auth_count[5m])), 1)",
+          "legendFormat": "auth failure ratio"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Sync Socket Timeout Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 72},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_sync_socket_timeout_count{status=\"timeout\"}[5m]))",
+          "legendFormat": "timeout/s"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Sync Stale Cursor Incidents (10m)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 80},
+      "targets": [
+        {
+          "expr": "sum(increase(openagents_runtime_sync_replay_catchup_duration_ms_count{status=\"stale_cursor\"}[10m]))",
+          "legendFormat": "stale_cursor incidents"
+        }
+      ]
     }
   ]
 }

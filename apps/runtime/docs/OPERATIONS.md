@@ -87,6 +87,24 @@ Actions:
 - Validate fallback behavior is receipt-visible.
 - Roll back recent provider config changes if needed.
 
+### F. Sync auth failures / token mint failures
+
+Actions:
+- Check alerts `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh` and `OpenAgentsKhalaTokenMintFailureRatioHigh`.
+- Inspect auth reject reason classes (`unknown_kid`, `claim_mismatch`, `token_expired`, `missing_token`).
+- Validate control-plane token mint config parity with runtime verifier config.
+- Follow `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures`.
+
+### G. Reconnect timeout storm or stale cursor spike
+
+Actions:
+- Check alerts `OpenAgentsRuntimeSyncSocketTimeoutRateHigh` and `OpenAgentsRuntimeSyncStaleCursorSpike`.
+- Validate heartbeat/reconnect behavior and retention floor configuration.
+- Confirm client resnapshot behavior for stale cursor responses.
+- Follow:
+  - `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-b-ws-reconnect-and-timeout-storm`
+  - `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike`
+
 ## 5. Secrets rotation
 
 Secrets used by runtime:

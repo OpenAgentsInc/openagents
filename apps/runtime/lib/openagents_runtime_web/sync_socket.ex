@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
   use Phoenix.Socket
 
   alias OpenAgentsRuntime.Sync.JwtVerifier
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @known_topics MapSet.new([
                   "runtime.run_summaries",
@@ -13,6 +14,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
                   "runtime.codex_worker_events",
                   "runtime.notifications"
                 ])
+  @auth_event [:openagents_runtime, :sync, :socket, :auth]
 
   channel "sync:v1", OpenAgentsRuntimeWeb.SyncChannel
 
@@ -21,6 +23,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
     case JwtVerifier.verify_and_claims(token, []) do
       {:ok, claims} ->
         allowed_topics = allowed_topics(claims)
+        emit_auth("ok", "authorized")
 
         {:ok,
          socket
@@ -28,12 +31,16 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
          |> assign(:allowed_topics, allowed_topics)
          |> assign(:sync_principal, principal(claims))}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        emit_auth("error", auth_reason(reason))
         :error
     end
   end
 
-  def connect(_params, _socket, _connect_info), do: :error
+  def connect(_params, _socket, _connect_info) do
+    emit_auth("error", "missing_token")
+    :error
+  end
 
   @impl true
   def id(_socket), do: nil
@@ -67,4 +74,16 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
       oa_org_id: Map.get(claims, "oa_org_id")
     }
   end
+
+  defp emit_auth(status, reason_class) do
+    Events.emit(@auth_event, %{count: 1}, %{
+      component: "sync_socket",
+      status: status,
+      reason_class: reason_class
+    })
+  end
+
+  defp auth_reason({:claim_mismatch, _claim}), do: "claim_mismatch"
+  defp auth_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp auth_reason(_reason), do: "invalid_token"
 end

@@ -183,6 +183,7 @@ Internal API docs:
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
 - Load/chaos validation suite: `docs/LOAD_TESTING.md`
 - Restart/reconnect chaos drill runbook: `docs/RESTART_RECONNECT_CHAOS.md`
+- WS/auth/stale-cursor incident runbook: `docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
 - Sanitization/redaction policy: `docs/SANITIZATION_POLICY.md`
 - Kubernetes network policy hardening: `docs/NETWORK_POLICY.md`
 - Deploy runbook (GCP/GKE): `docs/DEPLOY_GCP.md`

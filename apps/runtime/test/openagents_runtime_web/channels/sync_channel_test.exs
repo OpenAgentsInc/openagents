@@ -19,6 +19,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   @worker_events_topic "runtime.codex_worker_events"
 
   @connection_event [:openagents_runtime, :sync, :socket, :connection]
+  @auth_event [:openagents_runtime, :sync, :socket, :auth]
   @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
   @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
@@ -72,6 +73,43 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       )
 
     assert :error = connect(SyncSocket, %{"token" => token})
+  end
+
+  test "socket auth emits telemetry for successful and rejected auth" do
+    auth_ref = "sync-auth-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        auth_ref,
+        @auth_event,
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:sync_auth, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn ->
+      :telemetry.detach(auth_ref)
+    end)
+
+    valid_token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
+    assert {:ok, _socket} = connect(SyncSocket, %{"token" => valid_token})
+
+    assert_receive {:sync_auth, %{count: 1}, %{status: "ok", reason_class: "authorized"}}
+
+    invalid_token =
+      valid_sync_jwt(
+        kid: "sync-auth-unknown-v3",
+        key: "sync-unknown-signing-key",
+        oa_sync_scopes: [@run_topic]
+      )
+
+    assert :error = connect(SyncSocket, %{"token" => invalid_token})
+
+    assert_receive {:sync_auth, %{count: 1}, %{status: "error", reason_class: "unknown_kid"}}
+
+    assert :error = connect(SyncSocket, %{})
+    assert_receive {:sync_auth, %{count: 1}, %{status: "error", reason_class: "missing_token"}}
   end
 
   test "authenticated client can join and subscribe to allowed topics" do
