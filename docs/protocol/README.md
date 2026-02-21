@@ -19,6 +19,7 @@ Entry points:
 - `proto/openagents/codex/v1/workers.proto` (codex worker summary/snapshot schema authority)
 - `proto/openagents/codex/v1/auth.proto` (codex auth hydration/state schema authority)
 - `proto/openagents/lightning/v1/control_plane.proto` (Lightning control-plane schema authority)
+- `crates/openagents-proto/` (Rust proto wire crate generated from `proto/`)
 - `proto/README.md` (proto package layout + generation verification policy)
 - `proto/PACKAGE_MAP.md` (Rust-era proto package ownership + placement rules)
 - `docs/protocol/extensions/` (base extension manifest contract + specialization links)

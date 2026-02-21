@@ -92,6 +92,7 @@ Contract artifacts: `proto/openagents/codex/v1/events.proto`, `proto/openagents/
 
 ### OA-RUST-012 — [Proto] Stand up Rust codegen workspace crate(s)
 Description: Create shared generated Rust crates and enforce deterministic generation output across services and clients.
+Codegen artifacts: `crates/openagents-proto/`, `scripts/verify-rust-proto-crate.sh`
 
 ### OA-RUST-013 — [Proto] Enforce buf lint/breaking/generate gates in local CI lanes
 Description: Wire proto compatibility gates into local CI so breaking schema changes cannot land without explicit versioned evolution.
