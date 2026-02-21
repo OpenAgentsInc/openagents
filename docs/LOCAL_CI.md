@@ -38,6 +38,7 @@ Supported lanes:
 - `web-shell`
 - `workspace-compile`
 - `cross-surface`
+- `ios-rust-core`
 - `test-triggers`
 
 Examples:
@@ -49,6 +50,7 @@ Examples:
 ./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh cross-surface
+./scripts/local-ci.sh ios-rust-core
 ./scripts/local-ci.sh all-rust
 ./scripts/local-ci.sh all
 ```
@@ -62,6 +64,7 @@ Changed-mode trigger note:
 - `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `legacy-openclaw` lane auto-runs for legacy openclaw paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `cross-surface` lane auto-triggers for shared web-shell/desktop/iOS contract harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
+- `ios-rust-core` lane auto-runs for `apps/autopilot-ios/**` and `crates/openagents-client-core/**` changes and enforces deterministic Rust artifact packaging + reproducibility checks.
 
 ## Push Policy
 
