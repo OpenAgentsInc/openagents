@@ -18,6 +18,8 @@ pub struct Config {
     pub fanout_queue_capacity: usize,
     pub khala_poll_default_limit: usize,
     pub khala_poll_max_limit: usize,
+    pub khala_outbound_queue_limit: usize,
+    pub khala_fair_topic_slice_limit: usize,
     pub khala_poll_min_interval_ms: u64,
     pub khala_slow_consumer_lag_threshold: u64,
     pub khala_slow_consumer_max_strikes: u32,
@@ -81,6 +83,10 @@ pub enum ConfigError {
     InvalidKhalaPollDefaultLimit(String),
     #[error("invalid RUNTIME_KHALA_POLL_MAX_LIMIT: {0}")]
     InvalidKhalaPollMaxLimit(String),
+    #[error("invalid RUNTIME_KHALA_OUTBOUND_QUEUE_LIMIT: {0}")]
+    InvalidKhalaOutboundQueueLimit(String),
+    #[error("invalid RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT: {0}")]
+    InvalidKhalaFairTopicSliceLimit(String),
     #[error("invalid RUNTIME_KHALA_POLL_MIN_INTERVAL_MS: {0}")]
     InvalidKhalaPollMinIntervalMs(String),
     #[error("invalid RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD: {0}")]
@@ -134,6 +140,14 @@ impl Config {
             .unwrap_or_else(|_| "200".to_string())
             .parse::<usize>()
             .map_err(|error| ConfigError::InvalidKhalaPollMaxLimit(error.to_string()))?;
+        let khala_outbound_queue_limit = env::var("RUNTIME_KHALA_OUTBOUND_QUEUE_LIMIT")
+            .unwrap_or_else(|_| "200".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidKhalaOutboundQueueLimit(error.to_string()))?;
+        let khala_fair_topic_slice_limit = env::var("RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT")
+            .unwrap_or_else(|_| "50".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidKhalaFairTopicSliceLimit(error.to_string()))?;
         let khala_poll_min_interval_ms = env::var("RUNTIME_KHALA_POLL_MIN_INTERVAL_MS")
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
@@ -237,6 +251,8 @@ impl Config {
             parse_max_payload("RUNTIME_KHALA_FALLBACK_MAX_PAYLOAD_BYTES", "65536")?;
         let khala_poll_max_limit = khala_poll_max_limit.max(1);
         let khala_poll_default_limit = khala_poll_default_limit.max(1).min(khala_poll_max_limit);
+        let khala_outbound_queue_limit = khala_outbound_queue_limit.max(1);
+        let khala_fair_topic_slice_limit = khala_fair_topic_slice_limit.max(1);
         let khala_slow_consumer_max_strikes = khala_slow_consumer_max_strikes.max(1);
         let khala_consumer_registry_capacity = khala_consumer_registry_capacity.max(1);
         let sync_token_signing_key = env::var("RUNTIME_SYNC_TOKEN_SIGNING_KEY")
@@ -275,6 +291,8 @@ impl Config {
             fanout_queue_capacity,
             khala_poll_default_limit,
             khala_poll_max_limit,
+            khala_outbound_queue_limit,
+            khala_fair_topic_slice_limit,
             khala_poll_min_interval_ms,
             khala_slow_consumer_lag_threshold,
             khala_slow_consumer_max_strikes,

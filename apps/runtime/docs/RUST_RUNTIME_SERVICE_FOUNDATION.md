@@ -76,6 +76,8 @@ Runtime config variables controlling Khala delivery policy:
 
 - `RUNTIME_KHALA_POLL_DEFAULT_LIMIT` (default `100`)
 - `RUNTIME_KHALA_POLL_MAX_LIMIT` (default `200`)
+- `RUNTIME_KHALA_OUTBOUND_QUEUE_LIMIT` (default `200`)
+- `RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT` (default `50`)
 - `RUNTIME_KHALA_POLL_MIN_INTERVAL_MS` (default `250`)
 - `RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD` (default `300`)
 - `RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES` (default `3`)
@@ -103,6 +105,7 @@ Policy behavior:
 4. Reconnect guidance includes deterministic jitter (`recommended_reconnect_backoff_ms`) to reduce reconnect herd spikes.
 5. Publish bursts above topic-class rate limits return `429 rate_limited` with reason code `khala_publish_rate_limited`.
 6. Publish frames above topic-class payload limits return `413 payload_too_large` with reason code `khala_frame_payload_too_large`.
+7. When the same principal actively polls multiple topics, per-request replay is fairness-capped by `RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT`.
 
 ## History compatibility gate
 
