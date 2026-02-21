@@ -112,5 +112,27 @@ Failure classes and primary emitters:
 ## Dashboards and alerts
 
 - Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
+- Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/khala-slo-dashboard.json`
 - Alert rules: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
+- Alert rules: `apps/runtime/deploy/monitoring/prometheus/khala-slo-alert-rules.yaml`
 - Operator runbook: `apps/runtime/docs/OPERATIONS_ALERTING.md`
+
+## Khala SLO Targets (OA-RUST-093)
+
+Primary SLIs/SLOs:
+
+1. WS auth failure ratio <= 3% over 10m window.
+2. Replay lag p95 <= 250 events over 10m window.
+3. Stale cursor incidents <= 50 per 10m per environment.
+4. Reconnect telemetry does not exceed reconnect-storm threshold for sustained 10m.
+
+Segmentation requirements:
+
+1. Topic and topic class (`topic`, `topic_class`) where available.
+2. Client surface and app version (`surface`, `app_version`) from client telemetry events.
+3. Auth/replay reason classes (`reason_code`) for deny-path diagnostics.
+
+Client telemetry contract authority:
+
+- `proto/openagents/sync/v1/client_telemetry.proto`
+- `docs/protocol/client-telemetry-v1.md`

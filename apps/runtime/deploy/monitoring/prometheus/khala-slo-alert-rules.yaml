@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: runtime-khala-slo-alert-rules
+  labels:
+    app.kubernetes.io/name: runtime
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: runtime.khala.slo
+      rules:
+        - alert: OpenAgentsKhalaWsAuthFailureRatioHigh
+          expr: sum(rate(openagents_runtime_sync_socket_auth_count{status="error"}[5m])) / clamp_min(sum(rate(openagents_runtime_sync_socket_auth_count[5m])), 1) > 0.03
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+            component: khala
+          annotations:
+            summary: Khala websocket auth failure ratio exceeded 3%
+            description: Verify token minting, anti-replay checks, and client build compatibility.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#incident-a-ws-auth-and-token-failures
+
+        - alert: OpenAgentsKhalaReplayLagP95High
+          expr: quantile_over_time(0.95, openagents_runtime_sync_replay_lag_events[10m]) > 250
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+            component: khala
+          annotations:
+            summary: Khala replay lag p95 exceeded 250 events
+            description: Replay catchup performance is outside SLO budget.
+            runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike
+
+        - alert: OpenAgentsKhalaStaleCursorRateHigh
+          expr: sum(increase(openagents_runtime_sync_replay_catchup_duration_ms_count{status="stale_cursor"}[10m])) > 50
+          for: 5m
+          labels:
+            severity: warning
+            service: runtime
+            component: khala
+          annotations:
+            summary: Khala stale_cursor incidents exceeded SLO budget
+            description: Clients are routinely falling below retention floor; investigate replay window pressure.
+            runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike
+
+        - alert: OpenAgentsKhalaClientReconnectSpike
+          expr: sum(rate(openagents_sync_client_telemetry_event_count{event_type="reconnect"}[5m])) > 1.5
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+            component: khala
+          annotations:
+            summary: Client reconnect telemetry indicates reconnect storm
+            description: Reconnect events exceeded expected fleet baseline.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#sync-socket-timeout-rate
+
+        - alert: OpenAgentsKhalaClientAuthFailureByBuildHigh
+          expr: sum by (app_version) (rate(openagents_sync_client_telemetry_event_count{event_type="auth_failure"}[10m])) > 0.2
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+            component: khala
+          annotations:
+            summary: Client auth failures are elevated for one or more app versions
+            description: Investigate compatibility window and token policy regressions by app version.
+            runbook: apps/runtime/docs/KHALA_WS_THREAT_MODEL.md

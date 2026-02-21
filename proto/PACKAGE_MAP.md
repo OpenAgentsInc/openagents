@@ -55,6 +55,7 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/sync/v1/topics.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
 | `proto/openagents/sync/v1/errors.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
 | `proto/openagents/sync/v1/sync.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
+| `proto/openagents/sync/v1/client_telemetry.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-093 |
 | `proto/openagents/lightning/v1/control_plane.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 / OA-RUST-101 / OA-RUST-102 |
 
 ## Verification
