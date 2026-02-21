@@ -23,6 +23,7 @@ pub mod orchestration;
 pub mod projectors;
 pub mod run_state_machine;
 pub mod server;
+pub mod shadow;
 pub mod types;
 pub mod workers;
 
