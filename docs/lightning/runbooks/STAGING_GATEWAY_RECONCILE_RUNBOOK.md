@@ -9,10 +9,10 @@ This runbook describes the non-interactive deploy/reconcile loop for hosted L402
 
 ## 1. Required environment
 
-Set these variables before running reconcile from `apps/lightning-ops`. **Gateway URLs default** to the canonical staging route; you only need to set Khala URL and secret for Khala-backed runs:
+Set these variables before running reconcile from `apps/lightning-ops`. **Gateway URLs default** to the canonical staging route; you only need to set control-plane API base URL and ops secret:
 
 ```bash
-export OA_LIGHTNING_OPS_KHALA_URL="https://<deployment>.khala.cloud"
+export OA_LIGHTNING_OPS_API_BASE_URL="https://openagents.com"
 export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 # Optional (defaults set by staging-reconcile.sh):
 # OA_LIGHTNING_OPS_GATEWAY_BASE_URL="https://l402.openagents.com"
@@ -30,8 +30,8 @@ export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 
 ```bash
 cd apps/lightning-ops
-# Set only KHALA_URL and SECRET; gateway URLs are defaulted
-export OA_LIGHTNING_OPS_KHALA_URL="https://<deployment>.khala.cloud"
+# Set API base URL and SECRET; gateway URLs are defaulted
+export OA_LIGHTNING_OPS_API_BASE_URL="https://openagents.com"
 export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 ./scripts/staging-reconcile.sh
 ```

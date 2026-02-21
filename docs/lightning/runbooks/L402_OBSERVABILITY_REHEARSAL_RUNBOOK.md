@@ -49,9 +49,9 @@ Domain enums:
 
 Hosted dry run:
 
-- `apps/lightning-ops/src/programs/smokeObservability.ts`
-- CLI: `cd apps/lightning-ops && npm run smoke:observability -- --json`
-- Full-flow CLI (issue `#1604`): `cd apps/lightning-ops && npm run smoke:full-flow -- --json`
+- `apps/lightning-ops/src/main.rs` (`smoke:observability`)
+- CLI: `cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:observability --json --mode mock`
+- Full-flow CLI (issue `#1604`): `cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:full-flow --json --mode mock --allow-missing-local-artifact`
 - Full-flow artifacts: `output/lightning-ops/full-flow/<requestId>/events.jsonl` and `summary.json`
 
 Local dry run:
@@ -80,8 +80,9 @@ Local dry run:
 Run:
 
 ```bash
-cd apps/lightning-ops
-npm run smoke:full-flow -- --json > ../../output/l402-hosted-full-flow-summary.json
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- \
+  smoke:full-flow --json --mode mock --allow-missing-local-artifact \
+  > output/l402-hosted-full-flow-summary.json
 ```
 
 Verify:
@@ -168,9 +169,8 @@ Pass condition:
 Run these before sign-off:
 
 ```bash
-cd packages/lnd-effect && npm run typecheck && npm test
-cd packages/lightning-effect && npm test
-cd apps/lightning-ops && npm run typecheck && npm test && npm run smoke:full-flow -- --json
+cargo test --manifest-path apps/lightning-ops/Cargo.toml
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:full-flow --json --mode mock --allow-missing-local-artifact
 # apps/autopilot-worker and apps/web removed; run L402 e2e from apps/openagents.com or packages/effuse-test as applicable
 cargo check -p autopilot-desktop
 ```

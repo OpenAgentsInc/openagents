@@ -98,10 +98,9 @@ Note: on Cloud Run, `/healthz` may be intercepted and return a platform 404 befo
 EP212 route smoke:
 
 ```bash
-cd apps/lightning-ops
 OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL="https://<l402-wallet-executor-url>" \
 OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN="<token>" \
-npm run smoke:ep212-routes -- --json --mode live
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:ep212-routes --json --mode live
 ```
 
 ## 7. Notes
