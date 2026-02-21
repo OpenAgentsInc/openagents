@@ -1375,6 +1375,10 @@ mod tests {
             route_split_rust_routes: vec![
                 "/chat".to_string(),
                 "/workspace".to_string(),
+                "/login".to_string(),
+                "/register".to_string(),
+                "/authenticate".to_string(),
+                "/onboarding".to_string(),
                 "/account".to_string(),
                 "/settings".to_string(),
                 "/l402".to_string(),
@@ -2127,6 +2131,42 @@ mod tests {
             assert!(
                 html.contains("rust shell"),
                 "management route was not served by rust shell: {path}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_serves_auth_entry_routes_in_rust_cohort() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        for path in [
+            "/login",
+            "/register",
+            "/authenticate",
+            "/onboarding/checklist",
+        ] {
+            let request = Request::builder()
+                .uri(path)
+                .header("x-oa-route-key", "user:route")
+                .body(Body::empty())?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "unexpected status for {path}"
+            );
+            let body = response.into_body().collect().await?.to_bytes();
+            let html = String::from_utf8_lossy(&body);
+            assert!(
+                html.contains("rust shell"),
+                "auth route was not served by rust shell: {path}"
             );
         }
 

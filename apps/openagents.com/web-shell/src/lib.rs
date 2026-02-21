@@ -54,6 +54,10 @@ mod wasm {
         static MANAGEMENT_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
         static CODEX_SEND_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static CODEX_INPUT_KEYDOWN_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::KeyboardEvent)>>> = const { RefCell::new(None) };
+        static AUTH_SEND_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static AUTH_VERIFY_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static AUTH_RESTORE_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static AUTH_LOGOUT_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
 
     const AUTH_STORAGE_KEY: &str = "openagents.web.auth.v1";
@@ -72,6 +76,13 @@ mod wasm {
     const CODEX_CHAT_COMPOSER_ID: &str = "openagents-web-shell-chat-composer";
     const CODEX_CHAT_INPUT_ID: &str = "openagents-web-shell-chat-input";
     const CODEX_CHAT_SEND_ID: &str = "openagents-web-shell-chat-send";
+    const AUTH_PANEL_ID: &str = "openagents-web-shell-auth-panel";
+    const AUTH_EMAIL_INPUT_ID: &str = "openagents-web-shell-auth-email";
+    const AUTH_CODE_INPUT_ID: &str = "openagents-web-shell-auth-code";
+    const AUTH_SEND_ID: &str = "openagents-web-shell-auth-send";
+    const AUTH_VERIFY_ID: &str = "openagents-web-shell-auth-verify";
+    const AUTH_RESTORE_ID: &str = "openagents-web-shell-auth-restore";
+    const AUTH_LOGOUT_ID: &str = "openagents-web-shell-auth-logout";
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
@@ -1370,6 +1381,10 @@ mod wasm {
         match route {
             AppRoute::Chat { thread_id } => thread_id.clone(),
             AppRoute::Home
+            | AppRoute::Login
+            | AppRoute::Register
+            | AppRoute::Authenticate
+            | AppRoute::Onboarding { .. }
             | AppRoute::Workers
             | AppRoute::Account { .. }
             | AppRoute::Settings { .. }
@@ -1386,6 +1401,16 @@ mod wasm {
                 | AppRoute::Settings { .. }
                 | AppRoute::Billing { .. }
                 | AppRoute::Admin { .. }
+        )
+    }
+
+    fn route_is_auth_surface(route: &AppRoute) -> bool {
+        matches!(
+            route,
+            AppRoute::Login
+                | AppRoute::Register
+                | AppRoute::Authenticate
+                | AppRoute::Onboarding { .. }
         )
     }
 
@@ -1494,8 +1519,8 @@ mod wasm {
         let route_split: RouteSplitStatusResponse =
             send_json_request(&route_split_request, &AppState::default()).await?;
 
-        let billing_policy = fetch_billing_policy(access_token, &memberships.data.active_org_id, route)
-            .await?;
+        let billing_policy =
+            fetch_billing_policy(access_token, &memberships.data.active_org_id, route).await?;
 
         Ok(ManagementSurfaceState {
             loaded_session_id: Some(session_id.to_string()),
@@ -2345,6 +2370,179 @@ mod wasm {
             let _ = composer.append_child(&send_button);
 
             let _ = root.append_child(&composer);
+
+            let auth_panel = document
+                .create_element("div")
+                .map_err(|_| "failed to create auth panel".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth panel is not HtmlElement".to_string())?;
+            auth_panel.set_id(AUTH_PANEL_ID);
+            let _ = auth_panel.style().set_property("display", "none");
+            let _ = auth_panel.style().set_property("flex-direction", "column");
+            let _ = auth_panel.style().set_property("gap", "8px");
+            let _ = auth_panel.style().set_property("max-width", "760px");
+            let _ = auth_panel.style().set_property("margin", "0 auto");
+            let _ = auth_panel.style().set_property("width", "100%");
+            let _ = auth_panel.style().set_property("pointer-events", "auto");
+
+            let auth_email_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create auth email row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth email row is not HtmlElement".to_string())?;
+            let _ = auth_email_row.style().set_property("display", "flex");
+            let _ = auth_email_row.style().set_property("gap", "8px");
+
+            let auth_email_input = document
+                .create_element("input")
+                .map_err(|_| "failed to create auth email input".to_string())?
+                .dyn_into::<HtmlInputElement>()
+                .map_err(|_| "auth email input is not HtmlInputElement".to_string())?;
+            auth_email_input.set_id(AUTH_EMAIL_INPUT_ID);
+            auth_email_input.set_placeholder("Email");
+            let _ = auth_email_input.style().set_property("flex", "1");
+            let _ = auth_email_input.style().set_property("height", "40px");
+            let _ = auth_email_input.style().set_property("padding", "0 12px");
+            let _ = auth_email_input
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_email_input
+                .style()
+                .set_property("border", "1px solid #1f2937");
+            let _ = auth_email_input
+                .style()
+                .set_property("background", "#0f172a");
+            let _ = auth_email_input.style().set_property("color", "#e2e8f0");
+            let _ = auth_email_row.append_child(&auth_email_input);
+
+            let auth_send_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create auth send button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth send button is not HtmlElement".to_string())?;
+            auth_send_button.set_id(AUTH_SEND_ID);
+            auth_send_button.set_inner_text("Send code");
+            let _ = auth_send_button.style().set_property("height", "40px");
+            let _ = auth_send_button.style().set_property("padding", "0 14px");
+            let _ = auth_send_button
+                .style()
+                .set_property("border", "1px solid #2563eb");
+            let _ = auth_send_button
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_send_button
+                .style()
+                .set_property("background", "#2563eb");
+            let _ = auth_send_button.style().set_property("color", "#ffffff");
+            let _ = auth_email_row.append_child(&auth_send_button);
+            let _ = auth_panel.append_child(&auth_email_row);
+
+            let auth_code_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create auth code row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth code row is not HtmlElement".to_string())?;
+            let _ = auth_code_row.style().set_property("display", "flex");
+            let _ = auth_code_row.style().set_property("gap", "8px");
+
+            let auth_code_input = document
+                .create_element("input")
+                .map_err(|_| "failed to create auth code input".to_string())?
+                .dyn_into::<HtmlInputElement>()
+                .map_err(|_| "auth code input is not HtmlInputElement".to_string())?;
+            auth_code_input.set_id(AUTH_CODE_INPUT_ID);
+            auth_code_input.set_placeholder("Verification code");
+            let _ = auth_code_input.style().set_property("flex", "1");
+            let _ = auth_code_input.style().set_property("height", "40px");
+            let _ = auth_code_input.style().set_property("padding", "0 12px");
+            let _ = auth_code_input
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_code_input
+                .style()
+                .set_property("border", "1px solid #1f2937");
+            let _ = auth_code_input
+                .style()
+                .set_property("background", "#0f172a");
+            let _ = auth_code_input.style().set_property("color", "#e2e8f0");
+            let _ = auth_code_row.append_child(&auth_code_input);
+
+            let auth_verify_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create auth verify button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth verify button is not HtmlElement".to_string())?;
+            auth_verify_button.set_id(AUTH_VERIFY_ID);
+            auth_verify_button.set_inner_text("Verify");
+            let _ = auth_verify_button.style().set_property("height", "40px");
+            let _ = auth_verify_button.style().set_property("padding", "0 14px");
+            let _ = auth_verify_button
+                .style()
+                .set_property("border", "1px solid #10b981");
+            let _ = auth_verify_button
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_verify_button
+                .style()
+                .set_property("background", "#10b981");
+            let _ = auth_verify_button.style().set_property("color", "#ffffff");
+            let _ = auth_code_row.append_child(&auth_verify_button);
+            let _ = auth_panel.append_child(&auth_code_row);
+
+            let auth_action_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create auth action row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth action row is not HtmlElement".to_string())?;
+            let _ = auth_action_row.style().set_property("display", "flex");
+            let _ = auth_action_row.style().set_property("gap", "8px");
+
+            let auth_restore_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create auth restore button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth restore button is not HtmlElement".to_string())?;
+            auth_restore_button.set_id(AUTH_RESTORE_ID);
+            auth_restore_button.set_inner_text("Restore session");
+            let _ = auth_restore_button.style().set_property("height", "36px");
+            let _ = auth_restore_button
+                .style()
+                .set_property("padding", "0 12px");
+            let _ = auth_restore_button
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_restore_button
+                .style()
+                .set_property("border", "1px solid #1f2937");
+            let _ = auth_restore_button
+                .style()
+                .set_property("background", "#111827");
+            let _ = auth_restore_button.style().set_property("color", "#cbd5e1");
+            let _ = auth_action_row.append_child(&auth_restore_button);
+
+            let auth_logout_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create auth logout button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "auth logout button is not HtmlElement".to_string())?;
+            auth_logout_button.set_id(AUTH_LOGOUT_ID);
+            auth_logout_button.set_inner_text("Sign out");
+            let _ = auth_logout_button.style().set_property("height", "36px");
+            let _ = auth_logout_button.style().set_property("padding", "0 12px");
+            let _ = auth_logout_button
+                .style()
+                .set_property("border-radius", "10px");
+            let _ = auth_logout_button
+                .style()
+                .set_property("border", "1px solid #7f1d1d");
+            let _ = auth_logout_button
+                .style()
+                .set_property("background", "#7f1d1d");
+            let _ = auth_logout_button.style().set_property("color", "#ffffff");
+            let _ = auth_action_row.append_child(&auth_logout_button);
+            let _ = auth_panel.append_child(&auth_action_row);
+
+            let _ = root.append_child(&auth_panel);
             body.append_child(&root)
                 .map_err(|_| "failed to append codex chat root".to_string())?;
         }
@@ -2385,6 +2583,67 @@ mod wasm {
             *slot.borrow_mut() = Some(callback);
         });
 
+        let auth_send_button = document
+            .get_element_by_id(AUTH_SEND_ID)
+            .ok_or_else(|| "missing auth send button".to_string())?;
+        let auth_verify_button = document
+            .get_element_by_id(AUTH_VERIFY_ID)
+            .ok_or_else(|| "missing auth verify button".to_string())?;
+        let auth_restore_button = document
+            .get_element_by_id(AUTH_RESTORE_ID)
+            .ok_or_else(|| "missing auth restore button".to_string())?;
+        let auth_logout_button = document
+            .get_element_by_id(AUTH_LOGOUT_ID)
+            .ok_or_else(|| "missing auth logout button".to_string())?;
+
+        AUTH_SEND_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_auth_send_from_input();
+            }));
+            let _ = auth_send_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        AUTH_VERIFY_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_auth_verify_from_input();
+            }));
+            let _ = auth_verify_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        AUTH_RESTORE_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                queue_intent(CommandIntent::RestoreSession);
+            }));
+            let _ = auth_restore_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        AUTH_LOGOUT_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                queue_intent(CommandIntent::LogoutSession);
+            }));
+            let _ = auth_logout_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
         Ok(())
     }
 
@@ -2407,6 +2666,47 @@ mod wasm {
         }
         input.set_value("");
         codex_send_message(text);
+    }
+
+    fn submit_auth_send_from_input() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(input) = document.get_element_by_id(AUTH_EMAIL_INPUT_ID) else {
+            return;
+        };
+        let Ok(input) = input.dyn_into::<HtmlInputElement>() else {
+            return;
+        };
+        let email = input.value();
+        if email.trim().is_empty() {
+            return;
+        }
+        queue_intent(CommandIntent::StartAuthChallenge { email });
+    }
+
+    fn submit_auth_verify_from_input() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(input) = document.get_element_by_id(AUTH_CODE_INPUT_ID) else {
+            return;
+        };
+        let Ok(input) = input.dyn_into::<HtmlInputElement>() else {
+            return;
+        };
+        let code = input.value();
+        if code.trim().is_empty() {
+            return;
+        }
+        input.set_value("");
+        queue_intent(CommandIntent::VerifyAuthCode { code });
     }
 
     fn render_codex_chat_dom() {
@@ -2432,7 +2732,8 @@ mod wasm {
 
         let thread_id = thread_id_from_route(&route);
         let is_management_route = route_is_management_surface(&route);
-        if thread_id.is_none() && !is_management_route {
+        let is_auth_route = route_is_auth_surface(&route);
+        if thread_id.is_none() && !is_management_route && !is_auth_route {
             let _ = root.style().set_property("display", "none");
             return;
         }
@@ -2457,10 +2758,16 @@ mod wasm {
         else {
             return;
         };
+        let auth_panel = document
+            .get_element_by_id(AUTH_PANEL_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok());
 
         if let Some(thread_id) = thread_id {
             let _ = root.style().set_property("display", "flex");
             let _ = composer.style().set_property("display", "flex");
+            if let Some(auth_panel) = auth_panel.as_ref() {
+                let _ = auth_panel.style().set_property("display", "none");
+            }
             render_codex_thread_messages(&document, &messages_container);
             messages_container.set_scroll_top(messages_container.scroll_height());
             if thread_id.is_empty() {
@@ -2473,6 +2780,19 @@ mod wasm {
 
         let _ = root.style().set_property("display", "flex");
         let _ = composer.style().set_property("display", "none");
+        if let Some(auth_panel) = auth_panel.as_ref() {
+            let _ = auth_panel
+                .style()
+                .set_property("display", if is_auth_route { "flex" } else { "none" });
+        }
+
+        if is_auth_route {
+            sync_auth_form_inputs(&document, &auth_state);
+            render_auth_surface_messages(&document, &messages_container, &route, &auth_state);
+            messages_container.set_scroll_top(0);
+            return;
+        }
+
         render_management_surface_messages(
             &document,
             &messages_container,
@@ -2482,6 +2802,20 @@ mod wasm {
             management_loading,
         );
         messages_container.set_scroll_top(0);
+    }
+
+    fn sync_auth_form_inputs(
+        document: &web_sys::Document,
+        auth_state: &openagents_app_state::AuthState,
+    ) {
+        if let Some(email_input) = document
+            .get_element_by_id(AUTH_EMAIL_INPUT_ID)
+            .and_then(|element| element.dyn_into::<HtmlInputElement>().ok())
+        {
+            if let Some(email) = auth_state.email.as_ref() {
+                email_input.set_value(email);
+            }
+        }
     }
 
     fn render_codex_thread_messages(
@@ -2556,6 +2890,66 @@ mod wasm {
         loading: bool,
     ) {
         let cards = management_surface_cards(route, auth_state, management_state, loading);
+        for card in cards {
+            append_management_card(document, messages_container, card);
+        }
+    }
+
+    fn render_auth_surface_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+    ) {
+        let mut cards = vec![ManagementCard {
+            title: "Route".to_string(),
+            body: route.to_path(),
+            tone: ManagementCardTone::Info,
+        }];
+
+        cards.push(ManagementCard {
+            title: "Auth Status".to_string(),
+            body: format!("{:?}", auth_state.status),
+            tone: if auth_state.has_active_session() {
+                ManagementCardTone::Success
+            } else {
+                ManagementCardTone::Warning
+            },
+        });
+
+        if let Some(email) = auth_state.email.as_ref() {
+            cards.push(ManagementCard {
+                title: "Email".to_string(),
+                body: email.clone(),
+                tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if let Some(challenge_id) = auth_state.challenge_id.as_ref() {
+            cards.push(ManagementCard {
+                title: "Challenge".to_string(),
+                body: challenge_id.clone(),
+                tone: ManagementCardTone::Info,
+            });
+        }
+
+        let guidance = match route {
+            AppRoute::Login | AppRoute::Register | AppRoute::Authenticate => {
+                "Use Send code -> Verify. Restore session checks existing auth; Sign out revokes current session."
+                    .to_string()
+            }
+            AppRoute::Onboarding { section } => format!(
+                "Onboarding section: {}",
+                section.clone().unwrap_or_else(|| "start".to_string())
+            ),
+            _ => "Authentication route".to_string(),
+        };
+        cards.push(ManagementCard {
+            title: "Flow".to_string(),
+            body: guidance,
+            tone: ManagementCardTone::Neutral,
+        });
+
         for card in cards {
             append_management_card(document, messages_container, card);
         }
@@ -2693,9 +3087,7 @@ mod wasm {
         }
 
         if let AppRoute::Billing { section } = route {
-            let section_label = section
-                .clone()
-                .unwrap_or_else(|| "wallet".to_string());
+            let section_label = section.clone().unwrap_or_else(|| "wallet".to_string());
             cards.push(ManagementCard {
                 title: "Billing Surface".to_string(),
                 body: format!("section: {section_label}\noperator route ownership: rust shell"),
@@ -2772,6 +3164,13 @@ mod wasm {
                 thread_id: Some(thread_id),
             } => format!("Codex Thread {thread_id}"),
             AppRoute::Chat { thread_id: None } => "Codex Thread".to_string(),
+            AppRoute::Login => "Sign In".to_string(),
+            AppRoute::Register => "Register".to_string(),
+            AppRoute::Authenticate => "Authenticate".to_string(),
+            AppRoute::Onboarding { section } => match section {
+                Some(section) => format!("Onboarding / {section}"),
+                None => "Onboarding".to_string(),
+            },
             AppRoute::Account { section } => match section {
                 Some(section) => format!("Account / {section}"),
                 None => "Account".to_string(),
