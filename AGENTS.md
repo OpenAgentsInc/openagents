@@ -99,6 +99,14 @@ Legacy TypeScript Effect package lanes under `packages/` are archived; do not ad
 
 ## Verification Entry Points
 
+- **Default local CI changed-files gate (pre-commit hook):**
+  ```bash
+  ./scripts/local-ci.sh changed
+  ```
+- **Default local CI pre-push Rust gate (pre-push hook):**
+  ```bash
+  ./scripts/local-ci.sh all-rust
+  ```
 - **Workspace Rust compile baseline (mandatory migration gate):**
   ```bash
   cargo check --workspace --all-targets

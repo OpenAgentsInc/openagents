@@ -86,7 +86,7 @@ Canonical architecture intent is Rust-only and defined in `ARCHITECTURE-RUST.md`
 ## Local Development
 
 - Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
-- Elixir runtime (execution): `../apps/runtime/` — `cd apps/runtime && mix phx.server`.
+- Rust runtime (execution): `../apps/runtime/` — `cargo run --manifest-path apps/runtime/Cargo.toml --bin openagents-runtime-service`.
 - Local CI policy + hooks: `LOCAL_CI.md`
 - iOS local dev: `../apps/autopilot-ios/docs/README.md`
 - Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.

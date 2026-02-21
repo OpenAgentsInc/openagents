@@ -8,8 +8,8 @@ ENABLE_LEGACY_LANES="${OA_LOCAL_CI_ENABLE_LEGACY:-0}"
 PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)'
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/history_compat/|apps/runtime/Cargo\.toml$|Cargo\.lock$)'
-COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
-OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
+LEGACY_COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
+LEGACY_OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
 RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
@@ -157,13 +157,13 @@ run_trigger_tests() {
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/src/history_compat.rs" "true"
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/docs/DEPLOY_GCP.md" "false"
 
-  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
-  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
-  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "docs/protocol/comms/README.md" "true"
-  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "false"
+  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
+  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
+  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "docs/protocol/comms/README.md" "true"
+  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "false"
 
-  assert_trigger "openclaw" "$OPENCLAW_TRIGGER_PATTERN" "scripts/openclaw-drift-report.sh" "true"
-  assert_trigger "openclaw" "$OPENCLAW_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
+  assert_trigger "legacy-openclaw" "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "scripts/openclaw-drift-report.sh" "true"
+  assert_trigger "legacy-openclaw" "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/web-shell/src/lib.rs" "true"
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
@@ -197,16 +197,16 @@ run_runtime_history_checks() {
   )
 }
 
-run_comms_matrix() {
-  echo "==> comms security/replay matrix"
+run_legacy_comms_matrix() {
+  echo "==> legacy comms security/replay matrix"
   (
     cd "$ROOT_DIR"
     ./scripts/comms-security-replay-matrix.sh all
   )
 }
 
-run_openclaw_drift() {
-  echo "==> openclaw drift strict gate"
+run_legacy_openclaw_drift() {
+  echo "==> legacy openclaw drift strict gate"
   (
     cd "$ROOT_DIR"
     OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/openclaw-drift-report.sh
@@ -248,18 +248,21 @@ has_match() {
   printf '%s\n' "$files" | rg -q "$pattern"
 }
 
-run_all() {
+run_all_rust() {
   run_workspace_compile
+  run_runtime_checks
   run_proto_checks
   run_runtime_history_checks
   run_web_shell_checks
+}
 
+run_all() {
+  run_all_rust
   if legacy_lanes_enabled; then
-    run_runtime_checks
-    run_comms_matrix
-    run_openclaw_drift
+    run_legacy_comms_matrix
+    run_legacy_openclaw_drift
   else
-    echo "==> skipping legacy lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run runtime/comms/openclaw)"
+    echo "==> skipping legacy compatibility lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run legacy-comms/legacy-openclaw)"
   fi
 }
 
@@ -282,24 +285,20 @@ run_changed() {
   fi
 
   if has_match "$RUNTIME_TRIGGER_PATTERN" "$changed_files"; then
+    run_runtime_checks
+  fi
+
+  if has_match "$LEGACY_COMMS_TRIGGER_PATTERN" "$changed_files"; then
     if legacy_lanes_enabled; then
-      run_runtime_checks
+      run_legacy_comms_matrix
     else
       legacy_lanes_detected=1
     fi
   fi
 
-  if has_match "$COMMS_TRIGGER_PATTERN" "$changed_files"; then
+  if has_match "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "$changed_files"; then
     if legacy_lanes_enabled; then
-      run_comms_matrix
-    else
-      legacy_lanes_detected=1
-    fi
-  fi
-
-  if has_match "$OPENCLAW_TRIGGER_PATTERN" "$changed_files"; then
-    if legacy_lanes_enabled; then
-      run_openclaw_drift
+      run_legacy_openclaw_drift
     else
       legacy_lanes_detected=1
     fi
@@ -322,7 +321,7 @@ run_changed() {
   fi
 
   if [[ "$legacy_lanes_detected" -eq 1 ]]; then
-    echo "==> legacy-triggered paths detected; legacy lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
+    echo "==> legacy-triggered paths detected; compatibility lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
   fi
 }
 
@@ -339,11 +338,11 @@ case "$MODE" in
   runtime-history)
     run_runtime_history_checks
     ;;
-  comms)
-    run_comms_matrix
+  legacy-comms)
+    run_legacy_comms_matrix
     ;;
-  openclaw)
-    run_openclaw_drift
+  legacy-openclaw)
+    run_legacy_openclaw_drift
     ;;
   web-shell)
     run_web_shell_checks
@@ -361,16 +360,21 @@ case "$MODE" in
     run_all
     ;;
   all-rust)
-    run_workspace_compile
-    run_proto_checks
-    run_runtime_history_checks
-    run_web_shell_checks
+    run_all_rust
+    ;;
+  comms)
+    echo "lane 'comms' has been renamed to 'legacy-comms'" >&2
+    run_legacy_comms_matrix
+    ;;
+  openclaw)
+    echo "lane 'openclaw' has been renamed to 'legacy-openclaw'" >&2
+    run_legacy_openclaw_drift
     ;;
   changed)
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|workspace-compile|cross-surface|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-openclaw|web-shell|workspace-compile|cross-surface|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -16,7 +16,7 @@ From repository root:
 This configures:
 
 - `.githooks/pre-commit` -> `scripts/local-ci.sh changed`
-- `.githooks/pre-push` -> no-op (checks intentionally disabled for now)
+- `.githooks/pre-push` -> `scripts/local-ci.sh all-rust`
 
 ## Local CI Entrypoint
 
@@ -33,8 +33,8 @@ Supported lanes:
 - `proto`
 - `runtime`
 - `runtime-history`
-- `comms`
-- `openclaw`
+- `legacy-comms`
+- `legacy-openclaw`
 - `web-shell`
 - `workspace-compile`
 - `cross-surface`
@@ -45,7 +45,7 @@ Examples:
 ```bash
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh runtime-history
-./scripts/local-ci.sh comms
+./scripts/local-ci.sh legacy-comms
 ./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh cross-surface
@@ -55,19 +55,29 @@ Examples:
 
 Changed-mode trigger note:
 
-- `comms` lane auto-runs for legacy Laravel/openagents.com surface paths, `apps/runtime/`, comms protocol docs, and comms matrix script changes.
+- `runtime` lane auto-runs for `apps/runtime/**`, `proto/**`, and `buf*.yaml` changes.
 - `runtime-history` lane auto-runs for Rust runtime history-compat paths (`apps/runtime/src/**`, `apps/runtime/fixtures/history_compat/**`, `apps/runtime/Cargo.toml`, `Cargo.lock`) and enforces deterministic replay compatibility fixtures.
-- Rust control-service path `apps/openagents.com/service/` is intentionally excluded from automatic `comms` lane triggering to keep Rust migration iteration fast.
 - `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
-- `runtime/comms/openclaw` lanes are skipped by default in `changed` mode and only run when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
+- `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
+- `legacy-openclaw` lane auto-runs for legacy openclaw paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `cross-surface` lane auto-triggers for shared web-shell/desktop/iOS contract harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 
-## Push Policy (Current)
+## Push Policy
 
-Pre-push checks are intentionally disabled.
+Pre-push runs Rust-first gates by default:
 
-Run gates manually before pushing when needed:
+```bash
+./scripts/local-ci.sh all-rust
+```
+
+Override pre-push mode when needed:
+
+```bash
+OA_LOCAL_CI_PREPUSH_MODE=workspace-compile git push
+```
+
+Run additional gates manually before pushing when needed:
 
 ```bash
 ./scripts/local-ci.sh changed
@@ -157,13 +167,15 @@ OA_SKIP_LOCAL_CI=1 git commit -m "..."
 
 If bypassing, run equivalent lane commands manually before merge.
 
-## Legacy Lane Opt-In
+## Legacy Compatibility Lanes (Opt-In)
 
-When you need runtime/comms/openclaw legacy gates during migration, opt in explicitly:
+When you need non-Rust compatibility gates during migration, opt in explicitly:
 
 ```bash
 OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
 OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh all
+./scripts/local-ci.sh legacy-comms
+./scripts/local-ci.sh legacy-openclaw
 ```
 
 Cross-surface harness opt-in in `changed` mode:
