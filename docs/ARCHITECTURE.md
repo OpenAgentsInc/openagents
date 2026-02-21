@@ -85,6 +85,7 @@ flowchart LR
 3. Khala is projection delivery infrastructure, never an authority write path.
 4. Client apps do not write authority data through Khala.
 5. Shared schema contracts are proto-first under `proto/`.
+6. Proto remains schema source-of-truth even through Rust migration; Rust wire types must be generated from proto, with Rust-native domain types layered above.
 
 ## Laravel Postgres vs Runtime Postgres
 
@@ -151,6 +152,7 @@ Khala protocol model:
 - proto-first contracts under `proto/openagents/sync/v1/`,
 - WS-only live transport (no new SSE lane for Khala),
 - client-side watermark persistence and idempotent doc-version apply.
+- explicit versioned envelope semantics for replay-safe evolution (topic/seq/kind/payload/schema version fields).
 
 ## App Consumption Matrix
 
