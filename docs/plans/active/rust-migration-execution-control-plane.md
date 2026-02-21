@@ -123,13 +123,15 @@ When dedicated owners are assigned, update this map and keep `owner:*` labels al
 ## Triage Rules
 
 1. New `OA-RUST-*` issue creation requires phase/area/owner/risk/deps labels at creation time.
-2. `Ready` requires:
+2. New migration PRs/issues must apply invariant gates from:
+   `docs/plans/active/rust-migration-invariant-gates.md`
+3. `Ready` requires:
    - all blocking dependencies closed or explicitly waived,
    - DRI confirmed in issue body metadata,
    - acceptance criteria present.
-3. Move to `Blocked` immediately when a dependency or external gate is not satisfiable.
-4. Move to `Verification` after implementation lands and before issue closure.
-5. `Done` requires:
+4. Move to `Blocked` immediately when a dependency or external gate is not satisfiable.
+5. Move to `Verification` after implementation lands and before issue closure.
+6. `Done` requires:
    - issue comment with commit/PR links,
    - verification notes,
    - issue closure.
@@ -154,4 +156,3 @@ gh project item-list 12 --owner OpenAgentsInc --limit 500
 gh label list --repo OpenAgentsInc/openagents
 gh issue list --repo OpenAgentsInc/openagents --search "OA-RUST-" --state open --limit 200
 ```
-
