@@ -68,6 +68,10 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_ROUTE_SPLIT_SALT` (stable cohort hash salt, default: `openagents-route-split-v1`)
 - `OA_ROUTE_SPLIT_FORCE_LEGACY` (`true|false`, default: `false`)
 - `OA_ROUTE_SPLIT_LEGACY_BASE_URL` (legacy fallback base URL, e.g. `https://legacy.openagents.com`)
+- `OA_RUNTIME_SYNC_REVOKE_BASE_URL` (optional runtime base URL for websocket revocation propagation, e.g. `https://openagents-runtime.example.com`)
+- `OA_RUNTIME_SYNC_REVOKE_PATH` (default: `/internal/v1/sync/sessions/revoke`)
+- `OA_RUNTIME_SIGNATURE_SECRET` (optional shared runtime internal-signature secret; when unset revocation propagation is skipped)
+- `OA_RUNTIME_SIGNATURE_TTL_SECONDS` (default: `60`)
 
 ## Run locally
 
@@ -133,6 +137,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - Refresh tokens are single-use. Reuse of a revoked/rotated refresh token triggers replay defense and revokes the active session.
 - Session records are device-scoped (`x-device-id` / `device_id`) and auditable via `GET /api/auth/sessions`.
 - Device-scoped and global revocation are supported via `POST /api/auth/sessions/revoke`.
+- When runtime revocation config is set, session invalidation signals are propagated to runtime (`/internal/v1/sync/sessions/revoke`) for live websocket eviction.
 
 ## Route split and rollback
 

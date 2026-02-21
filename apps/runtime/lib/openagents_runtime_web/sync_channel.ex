@@ -9,6 +9,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   alias OpenAgentsRuntime.Sync.KhalaFrame
   alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.Replay
+  alias OpenAgentsRuntime.Sync.SessionRevocation
   alias OpenAgentsRuntime.Sync.StreamEvent
   alias OpenAgentsRuntime.Telemetry.Events
 
@@ -27,31 +28,57 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
   @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
+  @revocation_event [:openagents_runtime, :sync, :socket, :revocation]
   @lag_event [:openagents_runtime, :sync, :replay, :lag]
   @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
 
   @impl true
   def join("sync:v1", _params, socket) do
-    now_ms = monotonic_ms()
-    allowed_topics = socket.assigns[:allowed_topics] || []
-    active_connections = ConnectionTracker.increment()
+    if socket.assigns[:sync_reauth_required] == true do
+      reason =
+        socket.assigns[:sync_reauth_reason]
+        |> case do
+          value when is_binary(value) and value != "" -> value
+          _other -> "session_revoked"
+        end
 
-    response = %{
-      "subscription_id" => subscription_id(socket),
-      "allowed_topics" => allowed_topics,
-      "current_watermarks" => []
-    }
+      Events.emit(@revocation_event, %{count: 1}, %{
+        component: "sync_channel",
+        status: "reauth_required",
+        reason_class: reason,
+        result: "join_denied"
+      })
 
-    emit_connection("connect", active_connections, "ok")
+      {:error,
+       %{
+         "code" => "reauth_required",
+         "message" => "session access was revoked; sign in again",
+         "reauth_required" => true,
+         "reason" => reason
+       }}
+    else
+      now_ms = monotonic_ms()
+      allowed_topics = socket.assigns[:allowed_topics] || []
+      active_connections = ConnectionTracker.increment()
 
-    {:ok, response,
-     socket
-     |> assign(:subscription_id, response["subscription_id"])
-     |> assign(:subscribed_topics, MapSet.new())
-     |> assign(:topic_watermarks, %{})
-     |> assign(:connected_at_ms, now_ms)
-     |> assign(:last_client_heartbeat_ms, now_ms)
-     |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
+      response = %{
+        "subscription_id" => subscription_id(socket),
+        "allowed_topics" => allowed_topics,
+        "current_watermarks" => []
+      }
+
+      emit_connection("connect", active_connections, "ok")
+      SessionRevocation.register_connection(socket.assigns[:sync_session_id], self())
+
+      {:ok, response,
+       socket
+       |> assign(:subscription_id, response["subscription_id"])
+       |> assign(:subscribed_topics, MapSet.new())
+       |> assign(:topic_watermarks, %{})
+       |> assign(:connected_at_ms, now_ms)
+       |> assign(:last_client_heartbeat_ms, now_ms)
+       |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
+    end
   end
 
   def join(_topic, _params, _socket), do: {:error, %{"code" => "bad_topic"}}
@@ -175,6 +202,28 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   end
 
   @impl true
+  def handle_info({:sync_session_revoked, reason}, socket) do
+    payload = %{
+      "code" => "reauth_required",
+      "message" => "session access was revoked; sign in again",
+      "reauth_required" => true,
+      "reason" => reason
+    }
+
+    push(socket, "sync:error", payload)
+    push_khala_frame(socket, "sync.auth", 0, :error, payload)
+
+    Events.emit(@revocation_event, %{count: 1}, %{
+      component: "sync_channel",
+      status: "reauth_required",
+      reason_class: to_string(reason),
+      result: "disconnected"
+    })
+
+    {:stop, :session_revoked, socket}
+  end
+
+  @impl true
   def handle_info({:sync_stream_event, topic, _watermark}, socket) do
     subscribed_topics = socket.assigns[:subscribed_topics] || MapSet.new()
 
@@ -206,6 +255,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
   @impl true
   def terminate(reason, socket) do
+    SessionRevocation.unregister_connection(socket.assigns[:sync_session_id], self())
     active_connections = ConnectionTracker.decrement()
 
     connected_duration_ms =

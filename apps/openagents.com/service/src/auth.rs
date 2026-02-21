@@ -100,6 +100,18 @@ pub enum SessionRevocationReason {
     SecurityPolicy,
 }
 
+impl SessionRevocationReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UserRequested => "user_requested",
+            Self::AdminRevoked => "admin_revoked",
+            Self::TokenReplay => "token_replay",
+            Self::DeviceReplaced => "device_replaced",
+            Self::SecurityPolicy => "security_policy",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RefreshTokenRevocationReason {

@@ -10,8 +10,12 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{SecondsFormat, Utc};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -36,6 +40,7 @@ const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
 const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
 struct AppState {
@@ -44,7 +49,23 @@ struct AppState {
     observability: Observability,
     route_split: RouteSplitService,
     sync_token_issuer: SyncTokenIssuer,
+    runtime_revocation_client: Option<RuntimeRevocationClient>,
     started_at: SystemTime,
+}
+
+#[derive(Clone)]
+struct RuntimeRevocationClient {
+    endpoint_url: String,
+    signature_secret: String,
+    signature_ttl_seconds: u64,
+    http: reqwest::Client,
+}
+
+#[derive(Debug, Serialize)]
+struct RuntimeRevocationRequest {
+    session_ids: Vec<String>,
+    device_ids: Vec<String>,
+    reason: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,12 +200,14 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let auth = AuthService::from_config(&config);
     let route_split = RouteSplitService::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
+    let runtime_revocation_client = RuntimeRevocationClient::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
         auth,
         observability,
         route_split,
         sync_token_issuer,
+        runtime_revocation_client,
         started_at: SystemTime::now(),
     };
 
@@ -235,6 +258,84 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                 .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(TraceLayer::new_for_http()),
         )
+}
+
+impl RuntimeRevocationClient {
+    fn from_config(config: &Config) -> Option<Self> {
+        let base_url = config.runtime_sync_revoke_base_url.as_ref()?;
+        let secret = config.runtime_signature_secret.as_ref()?;
+        let revoke_path = config.runtime_sync_revoke_path.trim();
+        if revoke_path.is_empty() {
+            return None;
+        }
+
+        let normalized_path = if revoke_path.starts_with('/') {
+            revoke_path.to_string()
+        } else {
+            format!("/{revoke_path}")
+        };
+
+        Some(Self {
+            endpoint_url: format!("{}{}", base_url.trim_end_matches('/'), normalized_path),
+            signature_secret: secret.clone(),
+            signature_ttl_seconds: config.runtime_signature_ttl_seconds.max(30),
+            http: reqwest::Client::new(),
+        })
+    }
+
+    async fn revoke_sessions(
+        &self,
+        session_ids: Vec<String>,
+        device_ids: Vec<String>,
+        reason: SessionRevocationReason,
+    ) -> Result<(), String> {
+        if session_ids.is_empty() && device_ids.is_empty() {
+            return Ok(());
+        }
+
+        let token = self
+            .signature_token()
+            .map_err(|error| format!("failed to sign runtime revocation token: {error}"))?;
+
+        let response = self
+            .http
+            .post(&self.endpoint_url)
+            .header("x-oa-runtime-signature", token)
+            .json(&RuntimeRevocationRequest {
+                session_ids,
+                device_ids,
+                reason: reason.as_str().to_string(),
+            })
+            .send()
+            .await
+            .map_err(|error| format!("runtime revocation request failed: {error}"))?;
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("runtime revocation rejected ({status}): {body}"))
+    }
+
+    fn signature_token(&self) -> Result<String, anyhow::Error> {
+        let now = Utc::now().timestamp().max(0) as u64;
+        let payload = serde_json::json!({
+            "iat": now,
+            "exp": now + self.signature_ttl_seconds,
+            "nonce": format!("revk_{}", uuid::Uuid::new_v4().simple()),
+        });
+        let payload_bytes = serde_json::to_vec(&payload)?;
+        let payload_segment = URL_SAFE_NO_PAD.encode(payload_bytes);
+
+        let mut mac = HmacSha256::new_from_slice(self.signature_secret.as_bytes())?;
+        mac.update(payload_segment.as_bytes());
+        let signature = mac.finalize().into_bytes();
+        let signature_segment = URL_SAFE_NO_PAD.encode(signature);
+
+        Ok(format!("v1.{payload_segment}.{signature_segment}"))
+    }
 }
 
 async fn root() -> Json<RootResponse> {
@@ -824,6 +925,15 @@ async fn revoke_sessions(
         .observability
         .increment_counter("auth.sessions.revoked", &request_id);
 
+    propagate_runtime_revocation(
+        &state,
+        &request_id,
+        result.revoked_session_ids.clone(),
+        Vec::new(),
+        reason,
+    )
+    .await?;
+
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
@@ -1179,6 +1289,15 @@ async fn logout_session(
         .observability
         .increment_counter("auth.logout.completed", &request_id);
 
+    propagate_runtime_revocation(
+        &state,
+        &request_id,
+        vec![revoked.session_id.clone()],
+        Vec::new(),
+        SessionRevocationReason::UserRequested,
+    )
+    .await?;
+
     let response = serde_json::json!({
         "ok": true,
         "status": "revoked",
@@ -1214,6 +1333,64 @@ async fn control_status(
     });
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+async fn propagate_runtime_revocation(
+    state: &AppState,
+    request_id: &str,
+    session_ids: Vec<String>,
+    device_ids: Vec<String>,
+    reason: SessionRevocationReason,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    if session_ids.is_empty() && device_ids.is_empty() {
+        return Ok(());
+    }
+
+    let Some(client) = state.runtime_revocation_client.as_ref() else {
+        state.observability.audit(
+            AuditEvent::new(
+                "auth.sessions.revocation.propagation.skipped",
+                request_id.to_string(),
+            )
+            .with_attribute(
+                "reason",
+                "runtime_revocation_client_not_configured".to_string(),
+            )
+            .with_attribute("session_count", session_ids.len().to_string())
+            .with_attribute("device_count", device_ids.len().to_string()),
+        );
+
+        return Ok(());
+    };
+
+    client
+        .revoke_sessions(session_ids.clone(), device_ids.clone(), reason)
+        .await
+        .map_err(|message| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiErrorResponse {
+                    message: "Failed to propagate websocket session revocation.".to_string(),
+                    error: ApiErrorDetail {
+                        code: "service_unavailable",
+                        message,
+                    },
+                    errors: None,
+                }),
+            )
+        })?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "auth.sessions.revocation.propagation.completed",
+            request_id.to_string(),
+        )
+        .with_attribute("reason", reason.as_str().to_string())
+        .with_attribute("session_count", session_ids.len().to_string())
+        .with_attribute("device_count", device_ids.len().to_string()),
+    );
+
+    Ok(())
 }
 
 fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
@@ -1501,13 +1678,7 @@ fn resolve_session_revocation_target(
 }
 
 fn revocation_reason_label(reason: SessionRevocationReason) -> &'static str {
-    match reason {
-        SessionRevocationReason::UserRequested => "user_requested",
-        SessionRevocationReason::AdminRevoked => "admin_revoked",
-        SessionRevocationReason::TokenReplay => "token_replay",
-        SessionRevocationReason::DeviceReplaced => "device_replaced",
-        SessionRevocationReason::SecurityPolicy => "security_policy",
-    }
+    reason.as_str()
 }
 
 fn timestamp(value: chrono::DateTime<Utc>) -> String {
@@ -1532,16 +1703,24 @@ fn header_value(raw: &str) -> Result<HeaderValue, (StatusCode, Json<ApiErrorResp
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddr;
     use std::path::PathBuf;
     use std::sync::Arc;
 
     use anyhow::Result;
     use axum::body::Body;
+    use axum::extract::State;
+    use axum::http::HeaderMap;
     use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
     use axum::http::{Request, StatusCode};
+    use axum::routing::post;
+    use axum::{Json, Router};
     use http_body_util::BodyExt;
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tempfile::tempdir;
+    use tokio::net::TcpListener;
+    use tokio::sync::Mutex;
+    use tokio::task::JoinHandle;
     use tower::ServiceExt;
 
     use crate::build_router;
@@ -1598,6 +1777,10 @@ mod tests {
             route_split_salt: "route-split-test-salt".to_string(),
             route_split_force_legacy: false,
             route_split_legacy_base_url: Some("https://legacy.openagents.test".to_string()),
+            runtime_sync_revoke_base_url: None,
+            runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
+            runtime_signature_secret: None,
+            runtime_signature_ttl_seconds: 60,
         }
     }
 
@@ -1619,6 +1802,45 @@ mod tests {
         let header = response.headers().get(SET_COOKIE)?;
         let raw = header.to_str().ok()?;
         raw.split(';').next().map(|value| value.to_string())
+    }
+
+    async fn start_runtime_revocation_stub(
+        captured: Arc<Mutex<Vec<Value>>>,
+    ) -> Result<(SocketAddr, JoinHandle<()>)> {
+        let app = Router::new()
+            .route(
+                "/internal/v1/sync/sessions/revoke",
+                post(
+                    |State(captured): State<Arc<Mutex<Vec<Value>>>>,
+                     headers: HeaderMap,
+                     Json(payload): Json<Value>| async move {
+                        let signature = headers
+                            .get("x-oa-runtime-signature")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+
+                        captured.lock().await.push(json!({
+                            "signature": signature,
+                            "payload": payload,
+                        }));
+
+                        (StatusCode::OK, Json(json!({"data": {"ok": true}})))
+                    },
+                ),
+            )
+            .with_state(captured);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .expect("runtime revocation stub server failed");
+        });
+
+        Ok((addr, handle))
     }
 
     #[tokio::test]
@@ -2147,6 +2369,79 @@ mod tests {
             .body(Body::empty())?;
         let current_a_after_response = app.oneshot(current_a_after).await?;
         assert_eq!(current_a_after_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn logout_propagates_runtime_revocation_when_configured() -> Result<()> {
+        let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let (runtime_addr, runtime_handle) =
+            start_runtime_revocation_stub(captured.clone()).await?;
+
+        let mut config = test_config(std::env::temp_dir());
+        config.runtime_sync_revoke_base_url = Some(format!("http://{runtime_addr}"));
+        config.runtime_sync_revoke_path = "/internal/v1/sync/sessions/revoke".to_string();
+        config.runtime_signature_secret = Some("runtime-signature-secret".to_string());
+        config.runtime_signature_ttl_seconds = 60;
+
+        let app = build_router(config);
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"runtime-revoke@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-runtime-revoke")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let logout_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let logout_response = app.clone().oneshot(logout_request).await?;
+        assert_eq!(logout_response.status(), StatusCode::OK);
+        let logout_body = read_json(logout_response).await?;
+        let revoked_session_id = logout_body["sessionId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!revoked_session_id.is_empty());
+
+        let records = captured.lock().await.clone();
+        assert_eq!(records.len(), 1);
+        assert!(
+            records[0]["signature"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("v1.")
+        );
+        assert_eq!(records[0]["payload"]["reason"], "user_requested");
+        assert_eq!(
+            records[0]["payload"]["session_ids"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+            vec![Value::String(revoked_session_id)]
+        );
+
+        runtime_handle.abort();
 
         Ok(())
     }

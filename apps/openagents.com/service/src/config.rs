@@ -27,6 +27,8 @@ const DEFAULT_ROUTE_SPLIT_MODE: &str = "rust";
 const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str = "/";
 const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 100;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
+const DEFAULT_RUNTIME_SYNC_REVOKE_PATH: &str = "/internal/v1/sync/sessions/revoke";
+const DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS: u64 = 60;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -59,6 +61,10 @@ pub struct Config {
     pub route_split_salt: String,
     pub route_split_force_legacy: bool,
     pub route_split_legacy_base_url: Option<String>,
+    pub runtime_sync_revoke_base_url: Option<String>,
+    pub runtime_sync_revoke_path: String,
+    pub runtime_signature_secret: Option<String>,
+    pub runtime_signature_ttl_seconds: u64,
 }
 
 #[derive(Debug, Error)]
@@ -234,6 +240,27 @@ impl Config {
             .map(|value| value.trim().trim_end_matches('/').to_string())
             .filter(|value| !value.is_empty());
 
+        let runtime_sync_revoke_base_url = env::var("OA_RUNTIME_SYNC_REVOKE_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty());
+
+        let runtime_sync_revoke_path = env::var("OA_RUNTIME_SYNC_REVOKE_PATH")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_SYNC_REVOKE_PATH.to_string());
+
+        let runtime_signature_secret = env::var("OA_RUNTIME_SIGNATURE_SECRET")
+            .ok()
+            .or_else(|| env::var("RUNTIME_SIGNATURE_SECRET").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let runtime_signature_ttl_seconds = env::var("OA_RUNTIME_SIGNATURE_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS);
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -264,6 +291,10 @@ impl Config {
             route_split_salt,
             route_split_force_legacy,
             route_split_legacy_base_url,
+            runtime_sync_revoke_base_url,
+            runtime_sync_revoke_path,
+            runtime_signature_secret,
+            runtime_signature_ttl_seconds,
         })
     }
 }

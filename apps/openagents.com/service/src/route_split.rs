@@ -315,6 +315,10 @@ mod tests {
             route_split_salt: "salt".to_string(),
             route_split_force_legacy: false,
             route_split_legacy_base_url: Some("https://legacy.example.com".to_string()),
+            runtime_sync_revoke_base_url: None,
+            runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
+            runtime_signature_secret: None,
+            runtime_signature_ttl_seconds: 60,
         }
     }
 
