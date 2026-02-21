@@ -10,6 +10,8 @@ Define the canonical architecture after OpenAgents completes migration to Rust-o
 
 This document is the target architecture, not a statement of current production state.
 
+Implementation sequencing and issue backlog live in `docs/ARCHITECTURE-RUST-ROADMAP.md`.
+
 ## Mandatory Endstate Outcomes
 
 1. `apps/mobile/` is deleted.
@@ -216,14 +218,6 @@ SSR and first-paint strategy:
 2. If needed, add Rust-generated pre-rendered shell HTML for first paint only.
 3. Hydration remains Rust-owned; no split brain with a second UI framework.
 
-Migration sequence to reach this state:
-
-1. Stand up Rust edge service alongside current `apps/openagents.com` stack.
-2. Ship Rust/WGPUI web shell for a small route slice (for example Codex thread surface).
-3. Move route-by-route from Laravel/React pages to Rust/WGPUI modules behind flags.
-4. Switch default route handling to Rust shell once core user flows are complete.
-5. Remove Laravel/React runtime dependencies after parity and soak validation.
-
 ## Inbox Autopilot Consolidation
 
 Endstate inbox architecture:
@@ -303,37 +297,7 @@ Primary target remains GCP deployment topology with:
 - Postgres authority planes.
 - Existing Lightning infra integration.
 
-Operational requirements:
-
-- Deterministic replay checks and projector drift detection.
-- Sync watermark correctness tests.
-- Contract compatibility gates from `proto/`.
-- End-to-end regression harness for web/desktop/iOS against one runtime contract.
-
-## ADR Reset Policy (Required for Endstate)
-
-Before declaring migration complete:
-
-1. Archive all current ADRs under an explicit archive path (example: `docs/plans/archived/adr-pre-rust-reset/`).
-2. Reinitialize `docs/adr/` with a new ADR index and numbering series.
-3. Author a new foundational ADR set at minimum:
-   - Rust-only architecture and language policy.
-   - WGPUI shared UI runtime policy.
-   - Dual authority-plane data ownership.
-   - Khala WS-only replay protocol.
-   - Inbox-autopilot consolidation into autopilot-desktop.
-   - Surface removals (`apps/mobile`, `apps/desktop`, standalone `apps/inbox-autopilot`).
-
-## Definition of Done for This Endstate
-
-The architecture is considered fully realized only when:
-
-1. Deprecated app roots are removed.
-2. Rust services are authoritative in production for both control and runtime planes.
-3. Web/desktop/iOS user-facing product logic is served by shared Rust/WGPUI crates.
-4. Khala WS replay is the sole live sync lane.
-5. New ADR set is in place and old ADR set is archived.
-6. `docs/ARCHITECTURE.md` is replaced or explicitly marked historical in favor of this document.
+Buildout sequencing, migration gates, ADR reset tasks, and definition-of-done tracking are maintained in `docs/ARCHITECTURE-RUST-ROADMAP.md`.
 
 ## Rivet Rust Integration Exploration (for BEAM Replacement)
 
@@ -388,11 +352,6 @@ Rivet's core thesis is valuable for BEAM replacement work: long-lived stateful u
 3. Do not replace OpenAgents contract governance with Rivet-native protocol surfaces.
 
 OpenAgents authority remains Postgres planes (`control.*`, `runtime.*`), with proto-first contracts and Khala as projection/replay transport only.
-
-### First two implementation bets
-
-1. Build a UniversalPubSub-style seam in runtime + Khala fanout, starting with in-memory driver and adding external brokers only when needed.
-2. Adopt Gasoline-inspired workflow history discipline and add deterministic replay compatibility tests as release gates for run orchestration changes.
 
 ### Guardrails
 
