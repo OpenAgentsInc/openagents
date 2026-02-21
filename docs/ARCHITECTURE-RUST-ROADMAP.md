@@ -385,6 +385,63 @@ Description: Specify allowed OpenAgents APIs for Onyx, identity model constraint
 Acceptance criteria: Onyx integration contract doc exists and is linked from architecture docs; API allowlist is enforced; cross-surface auth model is unambiguous.
 Dependencies: OA-RUST-054, OA-RUST-072.
 
+## Phase 12: Migration Closure Gaps (Repository Audit)
+
+### OA-RUST-097 — [Build] Restore workspace-wide Rust compile baseline
+Description: Fix outstanding workspace compile failures and enforce `cargo check --workspace --all-targets` as a migration gate so Rust surfaces remain continuously buildable during cutover.
+Acceptance criteria: Workspace check passes in a clean checkout; known unresolved imports/type errors are removed; release gate references the workspace check explicitly.
+Dependencies: OA-RUST-033, OA-RUST-049, OA-RUST-054.
+
+### OA-RUST-098 — [Proto] Enforce Rust codegen in buf templates and verification scripts
+Description: Update `buf.gen.yaml` and proto verification scripts to generate and validate Rust outputs in addition to existing targets, then wire that into local CI gates.
+Acceptance criteria: Rust proto outputs generate deterministically; proto verification fails when Rust generation breaks; docs/runbooks reflect Rust codegen as mandatory.
+Dependencies: OA-RUST-012, OA-RUST-013, OA-RUST-075.
+
+### OA-RUST-099 — [Runtime] Replace Elixir runtime app scaffolding with Rust service scaffolding
+Description: Complete runtime migration by removing `mix`/Phoenix execution dependencies from `apps/runtime` and replacing them with Rust service entrypoints, build scripts, tests, and deploy runbooks.
+Acceptance criteria: `apps/runtime` builds/tests via Cargo-only workflow; no production runtime dependency on `mix`/Phoenix remains; runtime deploy docs are Rust-native.
+Dependencies: OA-RUST-033, OA-RUST-040, OA-RUST-067.
+
+### OA-RUST-100 — [Web Service] Remove Laravel/PHP runtime from `apps/openagents.com`
+Description: After route and API parity, remove Laravel/PHP runtime dependencies and finalize `apps/openagents.com` as Rust control service + static WGPUI host.
+Acceptance criteria: `composer`/PHP runtime no longer required for production deploys; control APIs and static hosting are served by Rust service only; rollback plan and migration notes are published.
+Dependencies: OA-RUST-015, OA-RUST-062, OA-RUST-063, OA-RUST-064.
+
+### OA-RUST-101 — [Services] Migrate `apps/lightning-ops` to Rust
+Description: Port `apps/lightning-ops` service logic from TypeScript/Effect to Rust while preserving policy/reconcile behavior and operator diagnostics.
+Acceptance criteria: Rust service reaches feature parity for compile/reconcile/smoke workflows; TypeScript runtime path is removed or archived; ops runbooks point to Rust service only.
+Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
+
+### OA-RUST-102 — [Services] Migrate `apps/lightning-wallet-executor` to Rust
+Description: Port wallet executor HTTP service and payment execution flows to Rust, including Spark/mock modes, auth controls, and deterministic smoke coverage.
+Acceptance criteria: Rust executor passes parity tests in mock and live modes; TS runtime path is removed or archived; receipt/security contracts remain unchanged.
+Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
+
+### OA-RUST-103 — [Packages] Retire legacy TypeScript package runtime lanes
+Description: Migrate or archive `packages/*` TypeScript runtime dependencies (Effuse/khala-sync/lightning-effect family) so no production-critical runtime paths depend on Node/TypeScript execution.
+Acceptance criteria: Remaining TS packages are either archived or explicitly non-production tooling; production runtimes import Rust crates only; dependency graph audit is documented.
+Dependencies: OA-RUST-053, OA-RUST-058, OA-RUST-063, OA-RUST-101, OA-RUST-102.
+
+### OA-RUST-104 — [CI] Replace legacy local CI lanes with Rust-first gates
+Description: Rewrite local CI entrypoints to remove mandatory Laravel/Elixir lanes and establish Rust-first verification commands for services/clients/proto contracts.
+Acceptance criteria: `scripts/local-ci.sh` and hooks run Rust-native checks for migrated surfaces; legacy checks are isolated to archival compatibility lanes only; CI docs are updated.
+Dependencies: OA-RUST-097, OA-RUST-098, OA-RUST-099, OA-RUST-100.
+
+### OA-RUST-105 — [Docs] Remove stale legacy surface references from canonical docs
+Description: Update root documentation (`README`, `AGENTS`, `docs/README`, `docs/PROJECT_OVERVIEW`, `docs/AGENT_MAP`, `docs/ROADMAP`) to reflect current migration state and Rust endstate sequencing without stale active-surface claims.
+Acceptance criteria: Canonical docs no longer list removed surfaces as active; architecture docs and roadmap references are consistent; docs-check gates include stale-surface detection.
+Dependencies: OA-RUST-052, OA-RUST-053, OA-RUST-058, OA-RUST-072.
+
+### OA-RUST-106 — [Sync Docs] Align Khala surface contracts with Rust-era client set
+Description: Update `docs/sync/*` to remove legacy mobile/desktop/inbox assumptions and define the authoritative Rust-era consumer matrix (`openagents.com` wasm shell, autopilot-desktop, autopilot-ios, onyx integration scope).
+Acceptance criteria: Sync docs and runbooks match active client architecture; old lane references are archived; release drills use Rust-era surfaces only.
+Dependencies: OA-RUST-048, OA-RUST-058, OA-RUST-062, OA-RUST-072.
+
+### OA-RUST-107 — [iOS Platform] Add deterministic Rust core packaging pipeline for iOS host
+Description: Add reproducible Rust-to-iOS packaging (FFI boundary, artifacts, build scripts) so iOS business/sync logic runs in shared Rust core with Swift limited to host integration.
+Acceptance criteria: iOS build pipeline consumes versioned Rust artifacts deterministically; shared Rust client core owns sync/business logic paths; Swift host boundary is documented and minimal.
+Dependencies: OA-RUST-054, OA-RUST-055, OA-RUST-056.
+
 ## Completion Criteria Summary
 
 Migration is complete only when all of the following are true:
@@ -397,3 +454,9 @@ Migration is complete only when all of the following are true:
 6. Cross-surface contract/e2e/replay gates pass in release workflow.
 7. WorkOS is authoritative for identity/auth across all client surfaces.
 8. Khala retention/compaction/snapshot policy is active and validated in production.
+9. Proto verification gates enforce Rust code generation and compatibility policy.
+10. `apps/runtime` and `apps/openagents.com` no longer require Elixir/PHP runtimes in production.
+11. `apps/lightning-ops` and `apps/lightning-wallet-executor` run on Rust implementations.
+12. Legacy TypeScript runtime packages are retired or explicitly non-production.
+13. Local CI and hooks use Rust-first verification gates for migrated surfaces.
+14. Canonical docs and sync runbooks are aligned to active Rust-era surfaces only.
