@@ -13,6 +13,16 @@ const DEFAULT_MOCK_MAGIC_CODE: &str = "123456";
 const DEFAULT_AUTH_CHALLENGE_TTL_SECONDS: u64 = 600;
 const DEFAULT_AUTH_ACCESS_TTL_SECONDS: u64 = 3600;
 const DEFAULT_AUTH_REFRESH_TTL_SECONDS: u64 = 2_592_000;
+const DEFAULT_SYNC_TOKEN_ISSUER: &str = "https://openagents.com";
+const DEFAULT_SYNC_TOKEN_AUDIENCE: &str = "openagents-sync";
+const DEFAULT_SYNC_TOKEN_KEY_ID: &str = "sync-auth-v1";
+const DEFAULT_SYNC_TOKEN_CLAIMS_VERSION: &str = "oa_sync_claims_v1";
+const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u32 = 300;
+const DEFAULT_SYNC_TOKEN_MIN_TTL_SECONDS: u32 = 60;
+const DEFAULT_SYNC_TOKEN_MAX_TTL_SECONDS: u32 = 900;
+const DEFAULT_SYNC_ALLOWED_SCOPES: &str =
+    "runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries";
+const DEFAULT_SYNC_DEFAULT_SCOPES: &str = "runtime.codex_worker_events";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -27,6 +37,17 @@ pub struct Config {
     pub auth_challenge_ttl_seconds: u64,
     pub auth_access_ttl_seconds: u64,
     pub auth_refresh_ttl_seconds: u64,
+    pub sync_token_enabled: bool,
+    pub sync_token_signing_key: Option<String>,
+    pub sync_token_issuer: String,
+    pub sync_token_audience: String,
+    pub sync_token_key_id: String,
+    pub sync_token_claims_version: String,
+    pub sync_token_ttl_seconds: u32,
+    pub sync_token_min_ttl_seconds: u32,
+    pub sync_token_max_ttl_seconds: u32,
+    pub sync_token_allowed_scopes: Vec<String>,
+    pub sync_token_default_scopes: Vec<String>,
 }
 
 #[derive(Debug, Error)]
@@ -105,6 +126,64 @@ impl Config {
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(DEFAULT_AUTH_REFRESH_TTL_SECONDS);
 
+        let sync_token_enabled = env::var("OA_SYNC_TOKEN_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(true);
+
+        let sync_token_signing_key = env::var("OA_SYNC_TOKEN_SIGNING_KEY")
+            .ok()
+            .or_else(|| env::var("SYNC_TOKEN_SIGNING_KEY").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let sync_token_issuer = env::var("OA_SYNC_TOKEN_ISSUER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_SYNC_TOKEN_ISSUER.to_string());
+
+        let sync_token_audience = env::var("OA_SYNC_TOKEN_AUDIENCE")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_SYNC_TOKEN_AUDIENCE.to_string());
+
+        let sync_token_key_id = env::var("OA_SYNC_TOKEN_KEY_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_SYNC_TOKEN_KEY_ID.to_string());
+
+        let sync_token_claims_version = env::var("OA_SYNC_TOKEN_CLAIMS_VERSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_SYNC_TOKEN_CLAIMS_VERSION.to_string());
+
+        let sync_token_ttl_seconds = env::var("OA_SYNC_TOKEN_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_SYNC_TOKEN_TTL_SECONDS);
+
+        let sync_token_min_ttl_seconds = env::var("OA_SYNC_TOKEN_MIN_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_SYNC_TOKEN_MIN_TTL_SECONDS);
+
+        let sync_token_max_ttl_seconds = env::var("OA_SYNC_TOKEN_MAX_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_SYNC_TOKEN_MAX_TTL_SECONDS);
+
+        let sync_token_allowed_scopes = parse_csv(
+            env::var("OA_SYNC_TOKEN_ALLOWED_SCOPES")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_SYNC_ALLOWED_SCOPES.to_string()),
+        );
+
+        let sync_token_default_scopes = parse_csv(
+            env::var("OA_SYNC_TOKEN_DEFAULT_SCOPES")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_SYNC_DEFAULT_SCOPES.to_string()),
+        );
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -117,6 +196,25 @@ impl Config {
             auth_challenge_ttl_seconds,
             auth_access_ttl_seconds,
             auth_refresh_ttl_seconds,
+            sync_token_enabled,
+            sync_token_signing_key,
+            sync_token_issuer,
+            sync_token_audience,
+            sync_token_key_id,
+            sync_token_claims_version,
+            sync_token_ttl_seconds,
+            sync_token_min_ttl_seconds,
+            sync_token_max_ttl_seconds,
+            sync_token_allowed_scopes,
+            sync_token_default_scopes,
         })
     }
+}
+
+fn parse_csv(value: String) -> Vec<String> {
+    value
+        .split(',')
+        .map(|segment| segment.trim().to_string())
+        .filter(|segment| !segment.is_empty())
+        .collect()
 }

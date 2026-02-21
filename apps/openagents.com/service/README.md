@@ -1,4 +1,4 @@
-# openagents-control-service (OA-RUST-015 skeleton)
+# openagents-control-service (OA-RUST-015..018)
 
 Rust control service scaffold for `apps/openagents.com`.
 
@@ -19,7 +19,8 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/policy/authorize`
   - `GET /api/v1/auth/session`
   - `GET /api/v1/control/status`
-  - `POST /api/v1/sync/token` (OA-RUST-018 placeholder)
+  - `POST /api/sync/token`
+  - `POST /api/v1/sync/token`
   - `GET /assets/*` static host skeleton
 - Request middleware foundations:
   - request ID propagation (`x-request-id`)
@@ -38,6 +39,17 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)
 - `OA_AUTH_ACCESS_TTL_SECONDS` (default: `3600`)
 - `OA_AUTH_REFRESH_TTL_SECONDS` (default: `2592000`)
+- `OA_SYNC_TOKEN_ENABLED` (`true|false`, default: `true`)
+- `OA_SYNC_TOKEN_SIGNING_KEY` / `SYNC_TOKEN_SIGNING_KEY` (required for sync token mint)
+- `OA_SYNC_TOKEN_ISSUER` (default: `https://openagents.com`)
+- `OA_SYNC_TOKEN_AUDIENCE` (default: `openagents-sync`)
+- `OA_SYNC_TOKEN_KEY_ID` (default: `sync-auth-v1`)
+- `OA_SYNC_TOKEN_CLAIMS_VERSION` (default: `oa_sync_claims_v1`)
+- `OA_SYNC_TOKEN_TTL_SECONDS` (default: `300`)
+- `OA_SYNC_TOKEN_MIN_TTL_SECONDS` (default: `60`)
+- `OA_SYNC_TOKEN_MAX_TTL_SECONDS` (default: `900`)
+- `OA_SYNC_TOKEN_ALLOWED_SCOPES` (default: `runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries`)
+- `OA_SYNC_TOKEN_DEFAULT_SCOPES` (default: `runtime.codex_worker_events`)
 
 ## Run locally
 
@@ -63,9 +75,16 @@ curl -c /tmp/oa.cookie -H 'content-type: application/json' \
   -d '{"email":"you@example.com"}' \
   http://127.0.0.1:8787/api/auth/email | jq
 
-curl -b /tmp/oa.cookie -H 'content-type: application/json' -H 'x-client: autopilot-ios' \
+VERIFY_RESPONSE="$(curl -sS -b /tmp/oa.cookie -H 'content-type: application/json' -H 'x-client: autopilot-ios' \
   -d '{"code":"123456"}' \
-  http://127.0.0.1:8787/api/auth/verify | jq
+  http://127.0.0.1:8787/api/auth/verify)"
+echo "${VERIFY_RESPONSE}" | jq
+ACCESS_TOKEN="$(echo "${VERIFY_RESPONSE}" | jq -r '.token')"
+
+curl -sS -H "authorization: Bearer ${ACCESS_TOKEN}" \
+  -H 'content-type: application/json' \
+  -d '{"scopes":["runtime.codex_worker_events"]}' \
+  http://127.0.0.1:8787/api/sync/token | jq
 ```
 
 ## Test

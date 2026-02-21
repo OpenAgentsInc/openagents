@@ -17,9 +17,11 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 pub mod config;
+pub mod sync_token;
 
 use crate::auth::{AuthError, AuthService, PolicyCheckRequest, SessionBundle};
 use crate::config::Config;
+use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
 const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
@@ -28,6 +30,7 @@ const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
 struct AppState {
     config: Arc<Config>,
     auth: AuthService,
+    sync_token_issuer: SyncTokenIssuer,
     started_at: SystemTime,
 }
 
@@ -102,11 +105,25 @@ struct PolicyAuthorizeRequest {
     requested_topics: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SyncTokenRequestPayload {
+    #[serde(default)]
+    scopes: Vec<String>,
+    #[serde(default)]
+    topics: Vec<String>,
+    #[serde(default)]
+    ttl_seconds: Option<u32>,
+    #[serde(default)]
+    device_id: Option<String>,
+}
+
 pub fn build_router(config: Config) -> Router {
     let auth = AuthService::from_config(&config);
+    let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
         auth,
+        sync_token_issuer,
         started_at: SystemTime::now(),
     };
 
@@ -125,9 +142,10 @@ pub fn build_router(config: Config) -> Router {
         .route("/api/orgs/memberships", get(org_memberships))
         .route("/api/orgs/active", post(set_active_org))
         .route("/api/policy/authorize", post(policy_authorize))
+        .route("/api/sync/token", post(sync_token))
         .route("/api/v1/auth/session", get(current_session))
         .route("/api/v1/control/status", get(control_status))
-        .route("/api/v1/sync/token", post(sync_token_placeholder))
+        .route("/api/v1/sync/token", post(sync_token))
         .nest_service("/assets", static_service)
         .with_state(state)
         .layer(
@@ -394,6 +412,70 @@ async fn policy_authorize(
     ))
 }
 
+async fn sync_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SyncTokenRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let device_id = payload
+        .device_id
+        .and_then(non_empty)
+        .unwrap_or_else(|| session.session.device_id.clone());
+
+    if device_id != session.session.device_id {
+        return Err(forbidden_error(
+            "Requested device does not match active authenticated session device.",
+        ));
+    }
+
+    let issued = state
+        .sync_token_issuer
+        .issue(SyncTokenIssueRequest {
+            user_id: session.user.id.clone(),
+            org_id: session.session.active_org_id.clone(),
+            session_id: session.session.session_id.clone(),
+            device_id,
+            requested_scopes: payload.scopes,
+            requested_topics: payload.topics,
+            requested_ttl_seconds: payload.ttl_seconds,
+        })
+        .map_err(map_sync_error)?;
+
+    let decision = state
+        .auth
+        .evaluate_policy_by_access_token(
+            &access_token,
+            PolicyCheckRequest {
+                org_id: Some(issued.org_id.clone()),
+                required_scopes: issued.scopes.clone(),
+                requested_topics: issued
+                    .granted_topics
+                    .iter()
+                    .map(|grant| grant.topic.clone())
+                    .collect(),
+            },
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    if !decision.allowed {
+        return Err(forbidden_error(
+            "Requested sync scopes/topics are not allowed for current org policy.",
+        ));
+    }
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": issued }))))
+}
+
 async fn refresh_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -477,27 +559,6 @@ async fn control_status(
     Ok((StatusCode::OK, Json(response)))
 }
 
-async fn sync_token_placeholder() -> impl IntoResponse {
-    not_implemented(
-        "Sync-token minting API wiring lands in the OA-RUST-018 milestone.",
-        "OA-RUST-018",
-    )
-}
-
-fn not_implemented(
-    message: &'static str,
-    next_issue: &'static str,
-) -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({
-            "error": "not_implemented",
-            "message": message,
-            "nextIssue": next_issue,
-        })),
-    )
-}
-
 fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         AuthError::Validation { field, message } => validation_error(field, &message),
@@ -509,6 +570,44 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
                 message: message.clone(),
                 error: ApiErrorDetail {
                     code: "service_unavailable",
+                    message,
+                },
+                errors: None,
+            }),
+        ),
+    }
+}
+
+fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        SyncTokenError::InvalidScope { message } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiErrorResponse {
+                message: message.clone(),
+                error: ApiErrorDetail {
+                    code: "invalid_scope",
+                    message,
+                },
+                errors: None,
+            }),
+        ),
+        SyncTokenError::InvalidRequest { message } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiErrorResponse {
+                message: message.clone(),
+                error: ApiErrorDetail {
+                    code: "invalid_request",
+                    message,
+                },
+                errors: None,
+            }),
+        ),
+        SyncTokenError::Unavailable { message } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiErrorResponse {
+                message: message.clone(),
+                error: ApiErrorDetail {
+                    code: "sync_token_unavailable",
                     message,
                 },
                 errors: None,
@@ -687,6 +786,21 @@ mod tests {
             auth_challenge_ttl_seconds: 600,
             auth_access_ttl_seconds: 3600,
             auth_refresh_ttl_seconds: 86400,
+            sync_token_enabled: true,
+            sync_token_signing_key: Some("sync-test-signing-key".to_string()),
+            sync_token_issuer: "https://openagents.test".to_string(),
+            sync_token_audience: "openagents-sync-test".to_string(),
+            sync_token_key_id: "sync-auth-test-v1".to_string(),
+            sync_token_claims_version: "oa_sync_claims_v1".to_string(),
+            sync_token_ttl_seconds: 300,
+            sync_token_min_ttl_seconds: 60,
+            sync_token_max_ttl_seconds: 900,
+            sync_token_allowed_scopes: vec![
+                "runtime.codex_worker_events".to_string(),
+                "runtime.codex_worker_summaries".to_string(),
+                "runtime.run_summaries".to_string(),
+            ],
+            sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
         }
     }
 
@@ -965,6 +1079,183 @@ mod tests {
         assert_eq!(deny_topic_response.status(), StatusCode::OK);
         let deny_topic_body = read_json(deny_topic_response).await?;
         assert_eq!(deny_topic_body["data"]["allowed"], false);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sync_token_mint_enforces_scope_and_org_policy() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"sync@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let memberships_request = Request::builder()
+            .uri("/api/orgs/memberships")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let memberships_response = app.clone().oneshot(memberships_request).await?;
+        let memberships_body = read_json(memberships_response).await?;
+        let memberships = memberships_body["data"]["memberships"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let personal_org_id = memberships
+            .iter()
+            .find(|membership| membership["default_org"].as_bool().unwrap_or(false))
+            .and_then(|membership| membership["org_id"].as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let set_openagents_org = Request::builder()
+            .method("POST")
+            .uri("/api/orgs/active")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"org_id":"org:openagents"}"#))?;
+        let set_openagents_response = app.clone().oneshot(set_openagents_org).await?;
+        assert_eq!(set_openagents_response.status(), StatusCode::OK);
+
+        let denied_by_policy_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"scopes":["runtime.codex_worker_events"],"topics":["org:openagents:worker_events"]}"#,
+            ))?;
+        let denied_by_policy_response = app.clone().oneshot(denied_by_policy_request).await?;
+        assert_eq!(denied_by_policy_response.status(), StatusCode::FORBIDDEN);
+
+        let set_personal_org = Request::builder()
+            .method("POST")
+            .uri("/api/orgs/active")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(r#"{{"org_id":"{personal_org_id}"}}"#)))?;
+        let set_personal_response = app.clone().oneshot(set_personal_org).await?;
+        assert_eq!(set_personal_response.status(), StatusCode::OK);
+
+        let invalid_scope_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"scopes":["runtime.unknown_scope"]}"#))?;
+        let invalid_scope_response = app.clone().oneshot(invalid_scope_request).await?;
+        assert_eq!(
+            invalid_scope_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_scope_body = read_json(invalid_scope_response).await?;
+        assert_eq!(invalid_scope_body["error"]["code"], "invalid_scope");
+
+        let mismatched_device_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"scopes":["runtime.codex_worker_events"],"device_id":"mobile:other-device"}"#,
+            ))?;
+        let mismatched_device_response = app.clone().oneshot(mismatched_device_request).await?;
+        assert_eq!(mismatched_device_response.status(), StatusCode::FORBIDDEN);
+
+        let unsupported_topic_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"scopes":["runtime.codex_worker_events"],"topics":["org:openagents:unknown"]}"#,
+            ))?;
+        let unsupported_topic_response = app.clone().oneshot(unsupported_topic_request).await?;
+        assert_eq!(
+            unsupported_topic_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let unsupported_topic_body = read_json(unsupported_topic_response).await?;
+        assert_eq!(unsupported_topic_body["error"]["code"], "invalid_request");
+
+        let success_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"scopes":["runtime.codex_worker_events","runtime.run_summaries"]}"#,
+            ))?;
+        let success_response = app.oneshot(success_request).await?;
+        assert_eq!(success_response.status(), StatusCode::OK);
+        let success_body = read_json(success_response).await?;
+        assert_eq!(success_body["data"]["token_type"], "Bearer");
+        assert_eq!(success_body["data"]["issuer"], "https://openagents.test");
+        assert_eq!(success_body["data"]["claims_version"], "oa_sync_claims_v1");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sync_token_requires_active_non_revoked_session() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"sync-revoke@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let logout_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let logout_response = app.clone().oneshot(logout_request).await?;
+        assert_eq!(logout_response.status(), StatusCode::OK);
+
+        let sync_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+        let sync_response = app.oneshot(sync_request).await?;
+        assert_eq!(sync_response.status(), StatusCode::UNAUTHORIZED);
 
         Ok(())
     }
