@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.sync.client_telemetry_fixture.v1",
+  "events": [
+    {
+      "schema_version": "openagents.sync.client_telemetry.v1",
+      "event_id": "evt_reconnect_001",
+      "occurred_at_unix_ms": 1771700400000,
+      "surface": "CLIENT_SURFACE_IOS",
+      "client_build_id": "ios-2026.02.21.1",
+      "app_version": "1.0.0",
+      "protocol_version": "openagents.sync.v1",
+      "topic": "run:019c7f31:events",
+      "topic_class": "run_events",
+      "actor_scope_hash": "sha256:7d8b8f5b9a8d9ff2b2730f517fef2a9bbd2d0c2c8f5ddf2c2f57d01f70b8f4b3",
+      "session_id": "sess_abc123",
+      "reconnect": {
+        "attempt": 2,
+        "backoff_ms": 950,
+        "resumed": true,
+        "last_applied_seq": 307,
+        "reason_code": "network_path_changed"
+      }
+    },
+    {
+      "schema_version": "openagents.sync.client_telemetry.v1",
+      "event_id": "evt_auth_failure_001",
+      "occurred_at_unix_ms": 1771700415000,
+      "surface": "CLIENT_SURFACE_WEB",
+      "client_build_id": "web-2026.02.21.3",
+      "app_version": "1.0.0",
+      "protocol_version": "openagents.sync.v1",
+      "topic": "worker:desktopw:shared:lifecycle",
+      "topic_class": "worker_lifecycle",
+      "actor_scope_hash": "sha256:5096f8eb7519eec127dc4e7dca5f764fdb28a5d4f80b5f61e5db42e9f64c5578",
+      "session_id": "sess_xyz987",
+      "auth_failure": {
+        "http_status": 401,
+        "reason_code": "token_too_old",
+        "refresh_attempted": true
+      }
+    },
+    {
+      "schema_version": "openagents.sync.client_telemetry.v1",
+      "event_id": "evt_replay_001",
+      "occurred_at_unix_ms": 1771700430000,
+      "surface": "CLIENT_SURFACE_DESKTOP",
+      "client_build_id": "desktop-2026.02.21.2",
+      "app_version": "1.0.0",
+      "protocol_version": "openagents.sync.v1",
+      "topic": "run:019c7f31:events",
+      "topic_class": "run_events",
+      "actor_scope_hash": "sha256:2eb3798f8f8e5ab8ec1876c460f88f1ccf08d993f2ea8f5d415f7cb5dcbdc8d2",
+      "session_id": "sess_desktop_01",
+      "replay": {
+        "status": "stale_cursor",
+        "requested_after_seq": 0,
+        "oldest_available_seq": 940,
+        "head_seq": 1320,
+        "catchup_duration_ms": 0
+      }
+    }
+  ]
+}

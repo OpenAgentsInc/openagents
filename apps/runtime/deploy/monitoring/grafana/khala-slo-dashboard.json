@@ -1,0 +1,87 @@
+{
+  "id": null,
+  "uid": "runtime-khala-slo",
+  "title": "OpenAgents Khala SLO",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "WS Auth Failure Ratio by Reason",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (reason_code) (rate(openagents_runtime_sync_socket_auth_count{status=\"error\"}[5m])) / clamp_min(sum(rate(openagents_runtime_sync_socket_auth_count[5m])), 1)",
+          "legendFormat": "{{reason_code}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Replay Catchup p95 by Topic Class",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "quantile_over_time(0.95, openagents_runtime_sync_replay_catchup_duration_ms{status=\"ok\"}[10m])",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Stale Cursor Incident Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_sync_replay_catchup_duration_ms_count{status=\"stale_cursor\"}[10m]))",
+          "legendFormat": "stale_cursor/s"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Replay Budget Exceeded by Topic Class",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (topic_class) (rate(openagents_runtime_sync_replay_budget_count{status=\"exceeded\"}[10m]))",
+          "legendFormat": "{{topic_class}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Client Reconnect Telemetry by Surface/App Version",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "sum by (surface, app_version) (rate(openagents_sync_client_telemetry_event_count{event_type=\"reconnect\"}[5m]))",
+          "legendFormat": "{{surface}} {{app_version}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Client Auth Failure Telemetry by App Version",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "targets": [
+        {
+          "expr": "sum by (reason_code, app_version) (rate(openagents_sync_client_telemetry_event_count{event_type=\"auth_failure\"}[5m]))",
+          "legendFormat": "{{reason_code}} {{app_version}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package openagents.sync.v1;
+
+// Versioned client telemetry envelope for Khala/runtime diagnostics.
+message ClientTelemetryEvent {
+  string schema_version = 1; // example: openagents.sync.client_telemetry.v1
+  string event_id = 2;
+  int64 occurred_at_unix_ms = 3;
+  ClientSurface surface = 4;
+  string client_build_id = 5;
+  string app_version = 6;
+  string protocol_version = 7;
+  string topic = 8;
+  string topic_class = 9;
+  string actor_scope_hash = 10; // privacy-safe hashed principal scope
+  string session_id = 11;
+
+  oneof event {
+    ClientReconnect reconnect = 20;
+    ClientAuthFailure auth_failure = 21;
+    ClientReplay replay = 22;
+    ClientDeliveryError delivery_error = 23;
+  }
+}
+
+enum ClientSurface {
+  CLIENT_SURFACE_UNSPECIFIED = 0;
+  CLIENT_SURFACE_WEB = 1;
+  CLIENT_SURFACE_DESKTOP = 2;
+  CLIENT_SURFACE_IOS = 3;
+  CLIENT_SURFACE_ONYX = 4;
+}
+
+message ClientReconnect {
+  uint32 attempt = 1;
+  uint32 backoff_ms = 2;
+  bool resumed = 3;
+  uint64 last_applied_seq = 4;
+  string reason_code = 5;
+}
+
+message ClientAuthFailure {
+  uint32 http_status = 1;
+  string reason_code = 2;
+  bool refresh_attempted = 3;
+}
+
+message ClientReplay {
+  string status = 1; // catchup, live, stale_cursor, failed
+  uint64 requested_after_seq = 2;
+  uint64 oldest_available_seq = 3;
+  uint64 head_seq = 4;
+  uint64 catchup_duration_ms = 5;
+}
+
+message ClientDeliveryError {
+  string channel = 1; // ws, replay, projection_apply
+  string reason_code = 2;
+  uint32 rolling_error_count_5m = 3;
+}
