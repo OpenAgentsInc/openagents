@@ -10,6 +10,11 @@ This document defines the implemented internal control-plane contract between La
 - Authentication header: `X-OA-RUNTIME-SIGNATURE` (required on all `/internal/v1/*` routes)
 - Trace headers: `traceparent`, `tracestate`, `x-request-id`
 
+Compatibility policy authority:
+
+- `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+- `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
+
 ## Entity IDs
 
 - `run_id`: stable identifier of an execution run

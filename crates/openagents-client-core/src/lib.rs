@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod codex_worker;
 pub mod command;
+pub mod compatibility;
 pub mod ffi;
 pub mod khala_protocol;
 pub mod sync_persistence;

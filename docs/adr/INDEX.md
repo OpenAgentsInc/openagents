@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0005**
+Next available ADR: **ADR-0006**
 
 ## Lifecycle Statuses
 
@@ -42,6 +42,11 @@ Next available ADR: **ADR-0005**
    - Date: 2026-02-21  
    - File: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`  
    - Source issue: `OA-RUST-077` (`#1892`)
+5. `ADR-0005` — Compatibility negotiation and support window policy  
+   - Status: `Accepted`  
+   - Date: 2026-02-21  
+   - File: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`  
+   - Source issue: `OA-RUST-083` (`#1918`)
 
 ## Legacy Archive
 

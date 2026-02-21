@@ -1,0 +1,75 @@
+{
+  "manifest_version": "openagents.compatibility.v1",
+  "window": {
+    "protocol_version": "khala.ws.v1",
+    "min_client_build_id": "20260221T120000Z",
+    "max_client_build_id": "20260221T180000Z",
+    "min_schema_version": 1,
+    "max_schema_version": 2
+  },
+  "scenarios": [
+    {
+      "name": "supported_client",
+      "request": {
+        "client_build_id": "20260221T130000Z",
+        "protocol_version": "khala.ws.v1",
+        "schema_version": 1
+      },
+      "result": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "build_below_minimum",
+      "request": {
+        "client_build_id": "20260221T110000Z",
+        "protocol_version": "khala.ws.v1",
+        "schema_version": 1
+      },
+      "result": {
+        "accepted": false,
+        "code": "upgrade_required",
+        "upgrade_required": true
+      }
+    },
+    {
+      "name": "protocol_mismatch",
+      "request": {
+        "client_build_id": "20260221T130000Z",
+        "protocol_version": "khala.ws.v2",
+        "schema_version": 1
+      },
+      "result": {
+        "accepted": false,
+        "code": "unsupported_protocol_version",
+        "upgrade_required": true
+      }
+    },
+    {
+      "name": "schema_out_of_range",
+      "request": {
+        "client_build_id": "20260221T130000Z",
+        "protocol_version": "khala.ws.v1",
+        "schema_version": 9
+      },
+      "result": {
+        "accepted": false,
+        "code": "unsupported_schema_version",
+        "upgrade_required": true
+      }
+    },
+    {
+      "name": "build_above_maximum",
+      "request": {
+        "client_build_id": "20260221T190000Z",
+        "protocol_version": "khala.ws.v1",
+        "schema_version": 1
+      },
+      "result": {
+        "accepted": false,
+        "code": "unsupported_client_build",
+        "upgrade_required": true
+      }
+    }
+  ]
+}

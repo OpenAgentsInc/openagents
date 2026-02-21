@@ -129,6 +129,14 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - SW pinning/rollback release order and recovery runbook:
   - `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
 
+## Compatibility negotiation policy
+
+- Canonical policy and failure-code matrix:
+  - `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+  - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
+- Khala WS mapping reference:
+  - `docs/protocol/OA_SYNC_WS_MAPPING.md`
+
 ## Observability baseline
 
 - Request correlation IDs are propagated via `x-request-id` middleware and emitted in structured logs.
