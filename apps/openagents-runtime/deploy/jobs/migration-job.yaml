@@ -22,7 +22,7 @@ spec:
           command:
             - bin/openagents_runtime
             - eval
-            - OpenAgentsRuntime.Release.migrate()
+            - OpenAgentsRuntime.Release.migrate_and_verify!()
           env:
             - name: RELEASE_DISTRIBUTION
               value: none

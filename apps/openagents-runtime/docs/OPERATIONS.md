@@ -109,6 +109,20 @@ apps/openagents-runtime/deploy/jobs/run-postdeploy-gate.sh
 
 Use this after deploys and after infra/security changes.
 
+Cloud Run production flow:
+
+```bash
+GCP_PROJECT=openagentsgemini \
+GCP_REGION=us-central1 \
+RUNTIME_SERVICE=openagents-runtime \
+MIGRATE_JOB=openagents-runtime-migrate \
+apps/openagents-runtime/deploy/cloudrun/run-migrate-job.sh
+```
+
+This script enforces the image-lock invariant for migrations:
+- migrate job image is synced to runtime service image,
+- migration runs with `OpenAgentsRuntime.Release.migrate_and_verify!()`.
+
 ## 7. Rollback policy
 
 - Primary rollback: `kubectl rollout undo statefulset/openagents-runtime`.

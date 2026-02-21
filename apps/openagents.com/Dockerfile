@@ -34,11 +34,14 @@ WORKDIR /app
 # Bring in Node + npm without clobbering PHP's /usr/local.
 COPY --from=node_runtime /usr/local /opt/node
 ENV PATH="/opt/node/bin:$PATH"
+# Cloud Build can pull newer npm versions with regressions on this lockfile.
+# Pin npm here so `npm ci` remains deterministic.
+RUN npm install -g npm@10.9.2 && npm --version
 
-COPY package.json package-lock.json ./
+COPY package.json ./
 COPY packages/khala-sync /packages/khala-sync
 RUN rm -rf /packages/khala-sync/node_modules
-RUN npm ci || npm install
+RUN npm install --no-audit --no-fund --package-lock=false
 
 COPY . ./
 COPY --from=php_deps /app/vendor ./vendor
