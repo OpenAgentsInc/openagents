@@ -14,6 +14,14 @@ pub struct Config {
     pub authority_write_mode: AuthorityWriteMode,
     pub fanout_driver: String,
     pub fanout_queue_capacity: usize,
+    pub khala_poll_default_limit: usize,
+    pub khala_poll_max_limit: usize,
+    pub khala_poll_min_interval_ms: u64,
+    pub khala_slow_consumer_lag_threshold: u64,
+    pub khala_slow_consumer_max_strikes: u32,
+    pub khala_consumer_registry_capacity: usize,
+    pub khala_reconnect_base_backoff_ms: u64,
+    pub khala_reconnect_jitter_ms: u64,
     pub sync_token_signing_key: String,
     pub sync_token_issuer: String,
     pub sync_token_audience: String,
@@ -51,6 +59,22 @@ pub enum ConfigError {
     InvalidAuthorityWriteMode(String),
     #[error("invalid RUNTIME_FANOUT_QUEUE_CAPACITY: {0}")]
     InvalidFanoutQueueCapacity(String),
+    #[error("invalid RUNTIME_KHALA_POLL_DEFAULT_LIMIT: {0}")]
+    InvalidKhalaPollDefaultLimit(String),
+    #[error("invalid RUNTIME_KHALA_POLL_MAX_LIMIT: {0}")]
+    InvalidKhalaPollMaxLimit(String),
+    #[error("invalid RUNTIME_KHALA_POLL_MIN_INTERVAL_MS: {0}")]
+    InvalidKhalaPollMinIntervalMs(String),
+    #[error("invalid RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD: {0}")]
+    InvalidKhalaSlowConsumerLagThreshold(String),
+    #[error("invalid RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES: {0}")]
+    InvalidKhalaSlowConsumerMaxStrikes(String),
+    #[error("invalid RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY: {0}")]
+    InvalidKhalaConsumerRegistryCapacity(String),
+    #[error("invalid RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS: {0}")]
+    InvalidKhalaReconnectBaseBackoffMs(String),
+    #[error("invalid RUNTIME_KHALA_RECONNECT_JITTER_MS: {0}")]
+    InvalidKhalaReconnectJitterMs(String),
 }
 
 impl Config {
@@ -72,6 +96,47 @@ impl Config {
             .unwrap_or_else(|_| "1024".to_string())
             .parse::<usize>()
             .map_err(|error| ConfigError::InvalidFanoutQueueCapacity(error.to_string()))?;
+        let khala_poll_default_limit = env::var("RUNTIME_KHALA_POLL_DEFAULT_LIMIT")
+            .unwrap_or_else(|_| "100".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidKhalaPollDefaultLimit(error.to_string()))?;
+        let khala_poll_max_limit = env::var("RUNTIME_KHALA_POLL_MAX_LIMIT")
+            .unwrap_or_else(|_| "200".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidKhalaPollMaxLimit(error.to_string()))?;
+        let khala_poll_min_interval_ms = env::var("RUNTIME_KHALA_POLL_MIN_INTERVAL_MS")
+            .unwrap_or_else(|_| "250".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidKhalaPollMinIntervalMs(error.to_string()))?;
+        let khala_slow_consumer_lag_threshold =
+            env::var("RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD")
+                .unwrap_or_else(|_| "300".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidKhalaSlowConsumerLagThreshold(error.to_string())
+                })?;
+        let khala_slow_consumer_max_strikes = env::var("RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse::<u32>()
+            .map_err(|error| ConfigError::InvalidKhalaSlowConsumerMaxStrikes(error.to_string()))?;
+        let khala_consumer_registry_capacity = env::var("RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY")
+            .unwrap_or_else(|_| "4096".to_string())
+            .parse::<usize>()
+            .map_err(|error| {
+                ConfigError::InvalidKhalaConsumerRegistryCapacity(error.to_string())
+            })?;
+        let khala_reconnect_base_backoff_ms = env::var("RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS")
+            .unwrap_or_else(|_| "400".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidKhalaReconnectBaseBackoffMs(error.to_string()))?;
+        let khala_reconnect_jitter_ms = env::var("RUNTIME_KHALA_RECONNECT_JITTER_MS")
+            .unwrap_or_else(|_| "250".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidKhalaReconnectJitterMs(error.to_string()))?;
+        let khala_poll_max_limit = khala_poll_max_limit.max(1);
+        let khala_poll_default_limit = khala_poll_default_limit.max(1).min(khala_poll_max_limit);
+        let khala_slow_consumer_max_strikes = khala_slow_consumer_max_strikes.max(1);
+        let khala_consumer_registry_capacity = khala_consumer_registry_capacity.max(1);
         let sync_token_signing_key = env::var("RUNTIME_SYNC_TOKEN_SIGNING_KEY")
             .unwrap_or_else(|_| "dev-sync-key".to_string());
         let sync_token_issuer = env::var("RUNTIME_SYNC_TOKEN_ISSUER")
@@ -95,6 +160,14 @@ impl Config {
             authority_write_mode,
             fanout_driver,
             fanout_queue_capacity,
+            khala_poll_default_limit,
+            khala_poll_max_limit,
+            khala_poll_min_interval_ms,
+            khala_slow_consumer_lag_threshold,
+            khala_slow_consumer_max_strikes,
+            khala_consumer_registry_capacity,
+            khala_reconnect_base_backoff_ms,
+            khala_reconnect_jitter_ms,
             sync_token_signing_key,
             sync_token_issuer,
             sync_token_audience,

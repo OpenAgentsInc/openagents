@@ -1,4 +1,11 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, VecDeque, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use axum::{
     Json, Router,
@@ -9,6 +16,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::{
@@ -17,7 +25,7 @@ use crate::{
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
-    sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer},
+    sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
         RunProjectionSummary, RuntimeRun, StartRunRequest, WorkerHeartbeatRequest, WorkerOwner,
@@ -33,6 +41,7 @@ pub struct AppState {
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
     sync_auth: Arc<SyncAuthorizer>,
+    khala_delivery: Arc<KhalaDeliveryControl>,
     started_at: chrono::DateTime<Utc>,
 }
 
@@ -51,7 +60,95 @@ impl AppState {
             workers,
             fanout,
             sync_auth,
+            khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             started_at: Utc::now(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct KhalaConsumerState {
+    last_poll_at: Option<chrono::DateTime<Utc>>,
+    last_cursor: u64,
+    slow_consumer_strikes: u32,
+}
+
+impl Default for KhalaConsumerState {
+    fn default() -> Self {
+        Self {
+            last_poll_at: None,
+            last_cursor: 0,
+            slow_consumer_strikes: 0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct KhalaDeliveryControl {
+    consumers: Mutex<HashMap<String, KhalaConsumerState>>,
+    recent_disconnect_causes: Mutex<VecDeque<String>>,
+    total_polls: AtomicU64,
+    throttled_polls: AtomicU64,
+    limited_polls: AtomicU64,
+    slow_consumer_evictions: AtomicU64,
+    served_messages: AtomicU64,
+}
+
+#[derive(Debug, Serialize)]
+struct KhalaDeliveryMetricsSnapshot {
+    total_polls: u64,
+    throttled_polls: u64,
+    limited_polls: u64,
+    slow_consumer_evictions: u64,
+    served_messages: u64,
+    active_consumers: usize,
+    recent_disconnect_causes: Vec<String>,
+}
+
+impl KhalaDeliveryControl {
+    fn record_total_poll(&self, served_messages: usize) {
+        self.total_polls.fetch_add(1, Ordering::Relaxed);
+        self.served_messages
+            .fetch_add(served_messages as u64, Ordering::Relaxed);
+    }
+
+    fn record_throttled_poll(&self) {
+        self.throttled_polls.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_limit_capped(&self) {
+        self.limited_polls.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_slow_consumer_eviction(&self) {
+        self.slow_consumer_evictions.fetch_add(1, Ordering::Relaxed);
+    }
+
+    async fn record_disconnect_cause(&self, cause: &str) {
+        let mut causes = self.recent_disconnect_causes.lock().await;
+        causes.push_back(cause.to_string());
+        while causes.len() > 32 {
+            let _ = causes.pop_front();
+        }
+    }
+
+    async fn snapshot(&self) -> KhalaDeliveryMetricsSnapshot {
+        let active_consumers = self.consumers.lock().await.len();
+        let recent_disconnect_causes = self
+            .recent_disconnect_causes
+            .lock()
+            .await
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        KhalaDeliveryMetricsSnapshot {
+            total_polls: self.total_polls.load(Ordering::Relaxed),
+            throttled_polls: self.throttled_polls.load(Ordering::Relaxed),
+            limited_polls: self.limited_polls.load(Ordering::Relaxed),
+            slow_consumer_evictions: self.slow_consumer_evictions.load(Ordering::Relaxed),
+            served_messages: self.served_messages.load(Ordering::Relaxed),
+            active_consumers,
+            recent_disconnect_causes,
         }
     }
 }
@@ -131,14 +228,36 @@ struct FanoutPollResponse {
     messages: Vec<FanoutMessage>,
     oldest_available_cursor: Option<u64>,
     head_cursor: Option<u64>,
+    queue_depth: Option<usize>,
+    dropped_messages: Option<u64>,
     next_cursor: u64,
     replay_complete: bool,
+    limit_applied: usize,
+    limit_capped: bool,
+    consumer_lag: Option<u64>,
+    slow_consumer_strikes: u32,
+    slow_consumer_max_strikes: u32,
+    recommended_reconnect_backoff_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
 struct FanoutHooksResponse {
     driver: String,
     hooks: Vec<ExternalFanoutHook>,
+    delivery_metrics: KhalaDeliveryMetricsSnapshot,
+    topic_windows: Vec<FanoutTopicWindow>,
+}
+
+#[derive(Debug, Serialize)]
+struct FanoutMetricsResponse {
+    driver: String,
+    delivery_metrics: KhalaDeliveryMetricsSnapshot,
+    topic_windows: Vec<FanoutTopicWindow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FanoutMetricsQuery {
+    topic_limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,6 +315,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/khala/fanout/hooks",
             get(get_khala_fanout_hooks),
+        )
+        .route(
+            "/internal/v1/khala/fanout/metrics",
+            get(get_khala_fanout_metrics),
         )
         .route(
             "/internal/v1/projectors/checkpoints/:run_id",
@@ -350,23 +473,120 @@ async fn get_khala_topic_messages(
             "topic is required for khala fanout polling".to_string(),
         ));
     }
-    authorize_khala_topic_access(&state, &headers, &topic).await?;
+    let principal = authorize_khala_topic_access(&state, &headers, &topic).await?;
     let after_seq = query.after_seq.unwrap_or(0);
-    let limit = query.limit.unwrap_or(100);
+    let requested_limit = query
+        .limit
+        .unwrap_or(state.config.khala_poll_default_limit)
+        .max(1);
+    let limit = requested_limit.min(state.config.khala_poll_max_limit);
+    let limit_capped = requested_limit > limit;
+    if limit_capped {
+        state.khala_delivery.record_limit_capped();
+    }
     let window = state
         .fanout
         .topic_window(&topic)
         .await
         .map_err(ApiError::from_fanout)?;
+    let (oldest_available_cursor, head_cursor, queue_depth, dropped_messages) =
+        fanout_window_details(window.as_ref());
+    let consumer_lag = head_cursor.map(|head| head.saturating_sub(after_seq));
+    let consumer_key = khala_consumer_key(&principal, topic.as_str());
+    let now = Utc::now();
+    let jitter_ms = deterministic_jitter_ms(
+        consumer_key.as_str(),
+        after_seq,
+        state.config.khala_reconnect_jitter_ms,
+    );
+    let reconnect_backoff_ms = state
+        .config
+        .khala_reconnect_base_backoff_ms
+        .saturating_add(jitter_ms);
+
+    let slow_consumer_strikes = {
+        let mut consumers = state.khala_delivery.consumers.lock().await;
+        if !consumers.contains_key(&consumer_key)
+            && consumers.len() >= state.config.khala_consumer_registry_capacity
+            && let Some(oldest_key) = consumers
+                .iter()
+                .min_by_key(|(_, value)| value.last_poll_at)
+                .map(|(key, _)| key.clone())
+        {
+            let _ = consumers.remove(&oldest_key);
+        }
+        let consumer_state = consumers.entry(consumer_key.clone()).or_default();
+        if let Some(last_poll_at) = consumer_state.last_poll_at {
+            let elapsed_ms = now
+                .signed_duration_since(last_poll_at)
+                .num_milliseconds()
+                .max(0) as u64;
+            if elapsed_ms < state.config.khala_poll_min_interval_ms {
+                consumer_state.last_poll_at = Some(now);
+                drop(consumers);
+                state.khala_delivery.record_throttled_poll();
+                state
+                    .khala_delivery
+                    .record_disconnect_cause("rate_limited")
+                    .await;
+                let retry_after_ms = state
+                    .config
+                    .khala_poll_min_interval_ms
+                    .saturating_sub(elapsed_ms)
+                    .saturating_add(jitter_ms);
+                return Err(ApiError::RateLimited {
+                    retry_after_ms,
+                    reason_code: "poll_interval_guard".to_string(),
+                });
+            }
+        }
+
+        let lag = consumer_lag.unwrap_or(0);
+        if lag > state.config.khala_slow_consumer_lag_threshold {
+            consumer_state.slow_consumer_strikes =
+                consumer_state.slow_consumer_strikes.saturating_add(1);
+        } else {
+            consumer_state.slow_consumer_strikes = 0;
+        }
+        if consumer_state.slow_consumer_strikes >= state.config.khala_slow_consumer_max_strikes {
+            let strikes = consumer_state.slow_consumer_strikes;
+            let _ = consumers.remove(&consumer_key);
+            drop(consumers);
+            state.khala_delivery.record_slow_consumer_eviction();
+            state
+                .khala_delivery
+                .record_disconnect_cause("slow_consumer_evicted")
+                .await;
+            return Err(ApiError::SlowConsumerEvicted {
+                topic: topic.clone(),
+                lag,
+                lag_threshold: state.config.khala_slow_consumer_lag_threshold,
+                strikes,
+                max_strikes: state.config.khala_slow_consumer_max_strikes,
+                suggested_after_seq: oldest_available_cursor,
+            });
+        }
+
+        consumer_state.last_poll_at = Some(now);
+        consumer_state.slow_consumer_strikes
+    };
+
     let messages = state
         .fanout
         .poll(&topic, after_seq, limit)
         .await
         .map_err(ApiError::from_fanout)?;
-    let (oldest_available_cursor, head_cursor) = fanout_window_cursors(window.as_ref());
+    state.khala_delivery.record_total_poll(messages.len());
     let next_cursor = messages
         .last()
         .map_or(after_seq, |message| message.sequence);
+    {
+        let mut consumers = state.khala_delivery.consumers.lock().await;
+        if let Some(consumer_state) = consumers.get_mut(&consumer_key) {
+            consumer_state.last_cursor = next_cursor;
+            consumer_state.last_poll_at = Some(now);
+        }
+    }
     let replay_complete = head_cursor.map_or(true, |head| next_cursor >= head);
     Ok(Json(FanoutPollResponse {
         topic,
@@ -374,17 +594,50 @@ async fn get_khala_topic_messages(
         messages,
         oldest_available_cursor,
         head_cursor,
+        queue_depth,
+        dropped_messages,
         next_cursor,
         replay_complete,
+        limit_applied: limit,
+        limit_capped,
+        consumer_lag,
+        slow_consumer_strikes,
+        slow_consumer_max_strikes: state.config.khala_slow_consumer_max_strikes,
+        recommended_reconnect_backoff_ms: reconnect_backoff_ms,
     }))
 }
 
 async fn get_khala_fanout_hooks(
     State(state): State<AppState>,
 ) -> Result<Json<FanoutHooksResponse>, ApiError> {
+    let delivery_metrics = state.khala_delivery.snapshot().await;
+    let topic_windows = state
+        .fanout
+        .topic_windows(20)
+        .await
+        .map_err(ApiError::from_fanout)?;
     Ok(Json(FanoutHooksResponse {
         driver: state.fanout.driver_name().to_string(),
         hooks: state.fanout.external_hooks(),
+        delivery_metrics,
+        topic_windows,
+    }))
+}
+
+async fn get_khala_fanout_metrics(
+    State(state): State<AppState>,
+    Query(query): Query<FanoutMetricsQuery>,
+) -> Result<Json<FanoutMetricsResponse>, ApiError> {
+    let delivery_metrics = state.khala_delivery.snapshot().await;
+    let topic_windows = state
+        .fanout
+        .topic_windows(query.topic_limit.unwrap_or(20))
+        .await
+        .map_err(ApiError::from_fanout)?;
+    Ok(Json(FanoutMetricsResponse {
+        driver: state.fanout.driver_name().to_string(),
+        delivery_metrics,
+        topic_windows,
     }))
 }
 
@@ -392,7 +645,7 @@ async fn authorize_khala_topic_access(
     state: &AppState,
     headers: &HeaderMap,
     topic: &str,
-) -> Result<(), ApiError> {
+) -> Result<SyncPrincipal, ApiError> {
     let authorization_header = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
@@ -447,7 +700,7 @@ async fn authorize_khala_topic_access(
         AuthorizedKhalaTopic::RunEvents { .. } | AuthorizedKhalaTopic::CodexWorkerEvents => {}
     }
 
-    Ok(())
+    Ok(principal)
 }
 
 async fn get_run_checkpoint(
@@ -600,6 +853,18 @@ enum ApiError {
     Conflict(String),
     KhalaUnauthorized(String),
     KhalaForbiddenTopic(String),
+    RateLimited {
+        retry_after_ms: u64,
+        reason_code: String,
+    },
+    SlowConsumerEvicted {
+        topic: String,
+        lag: u64,
+        lag_threshold: u64,
+        strikes: u32,
+        max_strikes: u32,
+        suggested_after_seq: Option<u64>,
+    },
     StaleCursor {
         topic: String,
         requested_cursor: u64,
@@ -700,14 +965,44 @@ fn owner_from_parts(
     }
 }
 
-fn fanout_window_cursors(window: Option<&FanoutTopicWindow>) -> (Option<u64>, Option<u64>) {
+fn fanout_window_details(
+    window: Option<&FanoutTopicWindow>,
+) -> (Option<u64>, Option<u64>, Option<usize>, Option<u64>) {
     match window {
         Some(window) => (
             Some(window.oldest_sequence.saturating_sub(1)),
             Some(window.head_sequence),
+            Some(window.queue_depth),
+            Some(window.dropped_messages),
         ),
-        None => (None, None),
+        None => (None, None, None, None),
     }
+}
+
+fn khala_consumer_key(principal: &SyncPrincipal, topic: &str) -> String {
+    let user = principal
+        .user_id
+        .map(|value| format!("user:{value}"))
+        .unwrap_or_else(|| "user:none".to_string());
+    let org = principal
+        .org_id
+        .clone()
+        .unwrap_or_else(|| "org:none".to_string());
+    let device = principal
+        .device_id
+        .clone()
+        .unwrap_or_else(|| "device:none".to_string());
+    format!("{topic}|{user}|{org}|{device}")
+}
+
+fn deterministic_jitter_ms(seed_key: &str, cursor: u64, max_jitter_ms: u64) -> u64 {
+    if max_jitter_ms == 0 {
+        return 0;
+    }
+    let mut hasher = DefaultHasher::new();
+    seed_key.hash(&mut hasher);
+    cursor.hash(&mut hasher);
+    hasher.finish() % (max_jitter_ms.saturating_add(1))
 }
 
 fn ensure_runtime_write_authority(state: &AppState) -> Result<(), ApiError> {
@@ -804,6 +1099,44 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
+            Self::RateLimited {
+                retry_after_ms,
+                reason_code,
+            } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": "rate_limited",
+                    "message": "poll interval guard triggered",
+                    "reason_code": reason_code,
+                    "retry_after_ms": retry_after_ms,
+                })),
+            )
+                .into_response(),
+            Self::SlowConsumerEvicted {
+                topic,
+                lag,
+                lag_threshold,
+                strikes,
+                max_strikes,
+                suggested_after_seq,
+            } => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "slow_consumer_evicted",
+                    "message": "consumer lag exceeded threshold repeatedly",
+                    "reason_code": "slow_consumer_evicted",
+                    "details": {
+                        "topic": topic,
+                        "lag": lag,
+                        "lag_threshold": lag_threshold,
+                        "strikes": strikes,
+                        "max_strikes": max_strikes,
+                        "suggested_after_seq": suggested_after_seq,
+                        "recovery": "advance_cursor_or_rebootstrap"
+                    }
+                })),
+            )
+                .into_response(),
             Self::Conflict(message) => (
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({
@@ -864,6 +1197,7 @@ impl IntoResponse for ApiError {
 mod tests {
     use std::collections::HashSet;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use anyhow::{Result, anyhow};
     use axum::{
@@ -894,26 +1228,37 @@ mod tests {
         std::net::SocketAddr::from(([127, 0, 0, 1], 0))
     }
 
-    fn test_router_with_mode_and_revoked(
+    fn build_test_router_with_config(
         mode: AuthorityWriteMode,
         revoked_jtis: HashSet<String>,
+        mutate_config: impl FnOnce(&mut Config),
     ) -> axum::Router {
         let projectors = InMemoryProjectionPipeline::shared();
         let projector_pipeline: Arc<dyn crate::projectors::ProjectionPipeline> = projectors.clone();
         let revoked_for_config = revoked_jtis.clone();
+        let mut config = Config {
+            service_name: "runtime-test".to_string(),
+            bind_addr: loopback_bind_addr(),
+            build_sha: "test".to_string(),
+            authority_write_mode: mode,
+            fanout_driver: "memory".to_string(),
+            fanout_queue_capacity: 64,
+            khala_poll_default_limit: 100,
+            khala_poll_max_limit: 200,
+            khala_poll_min_interval_ms: 250,
+            khala_slow_consumer_lag_threshold: 300,
+            khala_slow_consumer_max_strikes: 3,
+            khala_consumer_registry_capacity: 4096,
+            khala_reconnect_base_backoff_ms: 400,
+            khala_reconnect_jitter_ms: 250,
+            sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
+            sync_token_issuer: "https://openagents.com".to_string(),
+            sync_token_audience: "openagents-sync".to_string(),
+            sync_revoked_jtis: revoked_for_config,
+        };
+        mutate_config(&mut config);
         let state = AppState::new(
-            Config {
-                service_name: "runtime-test".to_string(),
-                bind_addr: loopback_bind_addr(),
-                build_sha: "test".to_string(),
-                authority_write_mode: mode,
-                fanout_driver: "memory".to_string(),
-                fanout_queue_capacity: 64,
-                sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
-                sync_token_issuer: "https://openagents.com".to_string(),
-                sync_token_audience: "openagents-sync".to_string(),
-                sync_revoked_jtis: revoked_for_config,
-            },
+            config,
             Arc::new(RuntimeOrchestrator::new(
                 Arc::new(InMemoryRuntimeAuthority::with_event_log(
                     DurableEventLog::new_memory(),
@@ -930,6 +1275,13 @@ mod tests {
             })),
         );
         build_router(state)
+    }
+
+    fn test_router_with_mode_and_revoked(
+        mode: AuthorityWriteMode,
+        revoked_jtis: HashSet<String>,
+    ) -> axum::Router {
+        build_test_router_with_config(mode, revoked_jtis, |_| {})
     }
 
     fn test_router_with_mode(mode: AuthorityWriteMode) -> axum::Router {
@@ -1406,8 +1758,30 @@ mod tests {
                 .unwrap_or(false),
             true
         );
+        assert_eq!(
+            messages_json
+                .pointer("/queue_depth")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/limit_applied")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            10
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/limit_capped")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            false
+        );
 
         let hooks_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/internal/v1/khala/fanout/hooks")
@@ -1421,6 +1795,235 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .map_or(0, std::vec::Vec::len);
         assert_eq!(hook_count, 3);
+        assert_eq!(
+            hooks_json
+                .pointer("/delivery_metrics/total_polls")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+        let topic_window_count = hooks_json
+            .pointer("/topic_windows")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, std::vec::Vec::len);
+        assert!(topic_window_count >= 1);
+
+        let metrics_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/fanout/metrics?topic_limit=5")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(metrics_response.status(), axum::http::StatusCode::OK);
+        let metrics_json = response_json(metrics_response).await?;
+        assert_eq!(
+            metrics_json
+                .pointer("/delivery_metrics/total_polls")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_rate_limits_fast_pollers() -> Result<()> {
+        let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "poll-rate-limit",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:poll-rate-limit-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let first_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(first_poll.status(), axum::http::StatusCode::OK);
+
+        let second_poll = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=1&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(
+            second_poll.status(),
+            axum::http::StatusCode::TOO_MANY_REQUESTS
+        );
+        let error_json = response_json(second_poll).await?;
+        assert_eq!(
+            error_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "rate_limited"
+        );
+        assert_eq!(
+            error_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "poll_interval_guard"
+        );
+        assert!(
+            error_json
+                .pointer("/retry_after_ms")
+                .and_then(serde_json::Value::as_u64)
+                .is_some()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_evict_slow_consumers_deterministically() -> Result<()> {
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.khala_poll_min_interval_ms = 1;
+                config.khala_slow_consumer_lag_threshold = 2;
+                config.khala_slow_consumer_max_strikes = 2;
+                config.khala_poll_default_limit = 1;
+                config.khala_poll_max_limit = 1;
+            },
+        );
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "slow-consumer-evict",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:slow-consumer-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        for index in 2..=7 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/internal/v1/runs/{run_id}/events"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "event_type": "run.step",
+                            "payload": {"step": index},
+                            "expected_previous_seq": index - 1
+                        }))?))?,
+                )
+                .await?;
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+
+        let first_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=1"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(first_poll.status(), axum::http::StatusCode::OK);
+        let first_json = response_json(first_poll).await?;
+        assert_eq!(
+            first_json
+                .pointer("/slow_consumer_strikes")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        let second_poll = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=1"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(second_poll.status(), axum::http::StatusCode::CONFLICT);
+        let second_json = response_json(second_poll).await?;
+        assert_eq!(
+            second_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "slow_consumer_evicted"
+        );
+        assert_eq!(
+            second_json
+                .pointer("/details/strikes")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            2
+        );
+        assert_eq!(
+            second_json
+                .pointer("/details/recovery")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "advance_cursor_or_rebootstrap"
+        );
 
         Ok(())
     }

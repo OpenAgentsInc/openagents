@@ -1,6 +1,6 @@
 # Rust Runtime Service Foundation
 
-Status: Introduced by OA-RUST-033 and expanded by OA-RUST-034.
+Status: Introduced by OA-RUST-033 and expanded through OA-RUST-047.
 
 This document defines the initial Rust runtime service footprint inside `apps/runtime`.
 
@@ -44,6 +44,9 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 - `POST /internal/v1/workers/:worker_id/heartbeat` updates worker liveness.
 - `POST /internal/v1/workers/:worker_id/status` applies deterministic status transitions.
 - `GET /internal/v1/workers/:worker_id/checkpoint` reads worker lifecycle projection checkpoint.
+- `GET /internal/v1/khala/topics/:topic/messages` returns replay/live frames with deterministic cursor semantics and delivery policy metadata.
+- `GET /internal/v1/khala/fanout/hooks` returns fanout hooks plus delivery metrics and ranked topic windows.
+- `GET /internal/v1/khala/fanout/metrics` returns delivery metrics and ranked topic windows (operator-focused).
 
 ## Operational notes
 
@@ -62,6 +65,28 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 13. Khala topic polling enforces sync token auth, topic scope ACL matrix, worker ownership checks, and deterministic denied-path reason codes.
 14. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
 15. Workflow history compatibility fixtures (`apps/runtime/fixtures/history_compat/run_workflow_histories_v1.json`) are replayed by `history_compat` tests to gate deterministic upgrade safety for runtime orchestration behavior.
+16. Khala polling applies bounded backpressure policy: capped poll limits, minimum poll interval guard, slow-consumer strike/eviction policy, and deterministic reconnect jitter hints.
+17. Delivery telemetry includes queue depth, dropped-message counts, poll throttle counters, and recent disconnect causes for operational triage.
+
+## Khala backpressure policy defaults
+
+Runtime config variables controlling Khala delivery policy:
+
+- `RUNTIME_KHALA_POLL_DEFAULT_LIMIT` (default `100`)
+- `RUNTIME_KHALA_POLL_MAX_LIMIT` (default `200`)
+- `RUNTIME_KHALA_POLL_MIN_INTERVAL_MS` (default `250`)
+- `RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD` (default `300`)
+- `RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES` (default `3`)
+- `RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY` (default `4096`)
+- `RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS` (default `400`)
+- `RUNTIME_KHALA_RECONNECT_JITTER_MS` (default `250`)
+
+Policy behavior:
+
+1. Requested poll limits above max are capped and reported in response metadata (`limit_applied`, `limit_capped`).
+2. Polls faster than `RUNTIME_KHALA_POLL_MIN_INTERVAL_MS` return `429 rate_limited` with `retry_after_ms`.
+3. Consumers with repeated lag above threshold are evicted with deterministic `409 slow_consumer_evicted` recovery details.
+4. Reconnect guidance includes deterministic jitter (`recommended_reconnect_backoff_ms`) to reduce reconnect herd spikes.
 
 ## History compatibility gate
 
