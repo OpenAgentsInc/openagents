@@ -18,6 +18,9 @@ private final class WgpuiBackgroundUIView: UIView {
         super.init(frame: frame)
         isOpaque = true
         backgroundColor = .black
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
+        addGestureRecognizer(tap)
+        isUserInteractionEnabled = true
         os_log("[WGPUI] WgpuiBackgroundUIView init frame=%@", log: wgpuiLog, type: .default, String(describing: frame))
     }
 
@@ -25,7 +28,19 @@ private final class WgpuiBackgroundUIView: UIView {
         super.init(coder: coder)
         isOpaque = true
         backgroundColor = .black
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
+        addGestureRecognizer(tap)
+        isUserInteractionEnabled = true
         os_log("[WGPUI] WgpuiBackgroundUIView init(coder)", log: wgpuiLog, type: .default)
+    }
+
+    @objc private func handleTapGesture(_ recognizer: UITapGestureRecognizer) {
+        guard let statePtr else { return }
+        let location = recognizer.location(in: self)
+        let scale = Float(layer.contentsScale)
+        let x = Float(location.x) * scale
+        let y = Float(location.y) * scale
+        WgpuiBackgroundBridge.handleTap(state: statePtr, x: x, y: y)
     }
 
     override func layoutSubviews() {
@@ -78,6 +93,41 @@ private final class WgpuiBackgroundUIView: UIView {
         if renderTickCount == 1 || renderTickCount == 60 {
             print("[WGPUI] tick count=\(renderTickCount)")
         }
+        if WgpuiBackgroundBridge.consumeSubmitRequested(state: statePtr) {
+            DispatchQueue.main.async { [weak self] in
+                self?.showSubmitAlert()
+            }
+        }
+        if WgpuiBackgroundBridge.emailFocused(state: statePtr) {
+            WgpuiBackgroundBridge.setEmailFocused(state: statePtr, focused: false)
+            DispatchQueue.main.async { [weak self] in
+                self?.showEmailAlert()
+            }
+        }
+    }
+
+    private func showSubmitAlert() {
+        guard let vc = window?.rootViewController else { return }
+        let alert = UIAlertController(title: "Log in", message: "Submit tapped.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        vc.present(alert, animated: true)
+    }
+
+    private func showEmailAlert() {
+        guard let vc = window?.rootViewController,
+              let statePtr else { return }
+        let alert = UIAlertController(title: "Email", message: "Enter your email", preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = "you@example.com"
+            tf.keyboardType = .emailAddress
+            tf.autocapitalizationType = .none
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            let text = alert.textFields?.first?.text ?? ""
+            WgpuiBackgroundBridge.setLoginEmail(state: statePtr, text)
+        })
+        vc.present(alert, animated: true)
     }
 
     deinit {

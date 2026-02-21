@@ -13,6 +13,12 @@ enum WgpuiBackgroundBridge {
     private typealias RenderFn = @convention(c) (UnsafeMutableRawPointer?) -> Int32
     private typealias ResizeFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt32) -> Void
     private typealias DestroyFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
+    private typealias HandleTapFn = @convention(c) (UnsafeMutableRawPointer?, Float, Float) -> Void
+    private typealias LoginSubmitRequestedFn = @convention(c) (UnsafeMutableRawPointer?) -> Int32
+    private typealias ConsumeSubmitRequestedFn = @convention(c) (UnsafeMutableRawPointer?) -> Int32
+    private typealias EmailFocusedFn = @convention(c) (UnsafeMutableRawPointer?) -> Int32
+    private typealias SetEmailFocusedFn = @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void
+    private typealias SetLoginEmailFn = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, Int) -> Void
 
     /// Load symbol from handle. Returns nil if handle is nil or symbol not found.
     private static func loadSymbol<T>(_ name: String, from handle: UnsafeMutableRawPointer?, as type: T.Type) -> T? {
@@ -44,6 +50,12 @@ enum WgpuiBackgroundBridge {
     private static let renderFn = loadSymbol("wgpui_ios_background_render", from: wgpuiHandle, as: RenderFn.self)
     private static let resizeFn = loadSymbol("wgpui_ios_background_resize", from: wgpuiHandle, as: ResizeFn.self)
     private static let destroyFn = loadSymbol("wgpui_ios_background_destroy", from: wgpuiHandle, as: DestroyFn.self)
+    private static let handleTapFn = loadSymbol("wgpui_ios_background_handle_tap", from: wgpuiHandle, as: HandleTapFn.self)
+    private static let loginSubmitRequestedFn = loadSymbol("wgpui_ios_background_login_submit_requested", from: wgpuiHandle, as: LoginSubmitRequestedFn.self)
+    private static let consumeSubmitRequestedFn = loadSymbol("wgpui_ios_background_consume_submit_requested", from: wgpuiHandle, as: ConsumeSubmitRequestedFn.self)
+    private static let emailFocusedFn = loadSymbol("wgpui_ios_background_email_focused", from: wgpuiHandle, as: EmailFocusedFn.self)
+    private static let setEmailFocusedFn = loadSymbol("wgpui_ios_background_set_email_focused", from: wgpuiHandle, as: SetEmailFocusedFn.self)
+    private static let setLoginEmailFn = loadSymbol("wgpui_ios_background_set_login_email", from: wgpuiHandle, as: SetLoginEmailFn.self)
 
     /// Log which symbols are present/missing and return availability.
     static func logAvailability() -> Bool {
@@ -103,5 +115,41 @@ enum WgpuiBackgroundBridge {
     static func destroy(state: UnsafeMutableRawPointer?) {
         print("[WGPUI] destroy state=\(state != nil ? "non-nil" : "nil")")
         destroyFn?(state)
+    }
+
+    /// Handle tap at logical pixel coordinates (same as Rust: origin top-left, physical pixels).
+    static func handleTap(state: UnsafeMutableRawPointer?, x: Float, y: Float) {
+        handleTapFn?(state, x, y)
+    }
+
+    /// Returns true if user tapped submit and it has not been consumed yet.
+    static func loginSubmitRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        loginSubmitRequestedFn?(state) != 0
+    }
+
+    /// Consume submit-requested flag. Returns true if it was set.
+    static func consumeSubmitRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        consumeSubmitRequestedFn?(state) != 0
+    }
+
+    /// Returns true if email field is focused (user tapped it).
+    static func emailFocused(state: UnsafeMutableRawPointer?) -> Bool {
+        emailFocusedFn?(state) != 0
+    }
+
+    /// Set email field focused state (e.g. false after dismissing native keyboard).
+    static func setEmailFocused(state: UnsafeMutableRawPointer?, focused: Bool) {
+        setEmailFocusedFn?(state, focused ? 1 : 0)
+    }
+
+    /// Set login email from UTF-8 string. Copies into Rust state.
+    static func setLoginEmail(state: UnsafeMutableRawPointer?, _ string: String) {
+        guard let setLoginEmailFn else { return }
+        let utf8 = Array(string.utf8)
+        utf8.withUnsafeBufferPointer { buf in
+            buf.baseAddress?.withMemoryRebound(to: CChar.self, capacity: buf.count) { ptr in
+                setLoginEmailFn(state, ptr, buf.count)
+            }
+        }
     }
 }
