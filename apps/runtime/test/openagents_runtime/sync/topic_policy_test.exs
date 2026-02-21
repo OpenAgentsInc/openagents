@@ -15,6 +15,9 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicyTest do
     assert TopicPolicy.compaction_mode(@run_topic, policies) ==
              "tail_prune_with_snapshot_rehydrate"
 
+    assert TopicPolicy.qos_tier(@run_topic, policies) == "warm"
+    assert TopicPolicy.replay_budget_events(@run_topic, policies) == 20_000
+
     snapshot = TopicPolicy.snapshot_metadata(@run_topic, policies)
     assert snapshot["topic"] == @run_topic
     assert snapshot["format"] == "openagents.sync.snapshot.v1"
@@ -26,6 +29,8 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicyTest do
     policies = TopicPolicy.topic_policies()
 
     assert TopicPolicy.topic_class(@worker_events_topic, policies) == "high_churn_events"
+    assert TopicPolicy.qos_tier(@worker_events_topic, policies) == "hot"
+    assert TopicPolicy.replay_budget_events(@worker_events_topic, policies) == 3_000
     assert TopicPolicy.snapshot_metadata(@worker_events_topic, policies) == nil
   end
 
@@ -35,6 +40,8 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicyTest do
         @worker_events_topic => %{
           retention_seconds: 7_200,
           topic_class: "event_hot",
+          qos_tier: "hot",
+          replay_budget_events: 250,
           compaction_mode: "tail_prune_with_snapshot_rehydrate",
           snapshot: %{
             enabled: true,
@@ -49,6 +56,9 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicyTest do
 
     assert TopicPolicy.compaction_mode(@worker_events_topic, policies) ==
              "tail_prune_with_snapshot_rehydrate"
+
+    assert TopicPolicy.qos_tier(@worker_events_topic, policies) == "hot"
+    assert TopicPolicy.replay_budget_events(@worker_events_topic, policies) == 250
 
     snapshot = TopicPolicy.snapshot_metadata(@worker_events_topic, policies)
     assert snapshot["schema_version"] == 2

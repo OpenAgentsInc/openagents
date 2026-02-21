@@ -1,4 +1,4 @@
-# Khala Retention, Compaction, and Snapshot Policy (OA-RUST-085)
+# Khala Retention, Compaction, Snapshot, and QoS Budget Policy (OA-RUST-085/OA-RUST-086)
 
 Status: Active  
 Owner: Runtime/Khala  
@@ -15,18 +15,20 @@ Define and enforce bounded replay behavior for Khala topics so storage and repla
 3. Compaction is tail-prune only for `runtime.sync_stream_events`; authority and read-model tables are not compacted by this job.
 4. Stale cursor responses are deterministic and include snapshot bootstrap metadata when snapshot-capable topics are affected.
 
-## Topic Classes and Retention Windows
+## Topic Classes, QoS Tiers, and Replay Budgets
 
 Source of truth in code: `apps/runtime/lib/openagents_runtime/sync/topic_policy.ex` and `apps/runtime/config/config.exs`.
 
-| Topic | Class | Retention (seconds) | Retention (human) | Compaction Mode | Snapshot |
+| Topic | Class | QoS Tier | Replay Budget (events) | Retention (seconds) | Retention (human) | Compaction Mode | Snapshot |
 |---|---|---:|---|---|---|
-| `runtime.run_summaries` | `durable_summary` | `604800` | 7 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_run_summaries`) |
-| `runtime.codex_worker_summaries` | `durable_summary` | `259200` | 3 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_codex_worker_summaries`) |
-| `runtime.codex_worker_events` | `high_churn_events` | `86400` | 1 day | `tail_prune_without_snapshot` | Disabled |
-| `runtime.notifications` | `ephemeral_notifications` | `43200` | 12 hours | `tail_prune_without_snapshot` | Disabled |
+| `runtime.run_summaries` | `durable_summary` | `warm` | `20000` | `604800` | 7 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_run_summaries`) |
+| `runtime.codex_worker_summaries` | `durable_summary` | `warm` | `10000` | `259200` | 3 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_codex_worker_summaries`) |
+| `runtime.codex_worker_events` | `high_churn_events` | `hot` | `3000` | `86400` | 1 day | `tail_prune_without_snapshot` | Disabled |
+| `runtime.notifications` | `ephemeral_notifications` | `cold` | `500` | `43200` | 12 hours | `tail_prune_without_snapshot` | Disabled |
 
 Fallback for unknown topics: `86400` seconds.
+Fallback QoS tier: `warm`.
+Fallback replay budget: `10000` events.
 
 ## Snapshot Contract (`openagents.sync.snapshot.v1`)
 
@@ -65,6 +67,9 @@ Stale cursor behavior:
 - `OpenAgentsRuntimeWeb.SyncChannel` returns:
   - `code=stale_cursor`
   - `full_resync_required=true`
+  - `reason_codes[]` with deterministic values:
+    - `retention_floor_breach`
+    - `replay_budget_exceeded`
   - `stale_topics[]`
   - `snapshot_plan` (format + per-topic snapshot metadata for snapshot-capable topics)
 
@@ -74,12 +79,14 @@ New telemetry metric families in `OpenAgentsRuntime.Telemetry.Metrics`:
 
 - `openagents_runtime.sync.retention.cycle.*`
 - `openagents_runtime.sync.retention.topic.*`
+- `openagents_runtime.sync.replay.budget.*`
 
 Topic-level telemetry tags:
 
 - `event_type`
 - `status`
 - `topic_class`
+- `qos_tier`
 - `snapshot`
 
 ## Verification

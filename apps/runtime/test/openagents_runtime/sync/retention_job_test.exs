@@ -55,6 +55,7 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
              "ephemeral_notifications"
            ]
 
+    assert topic_metadata.qos_tier in ["hot", "warm", "cold"]
     assert topic_metadata.snapshot in ["enabled", "disabled"]
 
     remaining =
@@ -77,6 +78,8 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
       @run_topic => %{
         retention_seconds: 10_800,
         topic_class: "durable_summary",
+        qos_tier: "warm",
+        replay_budget_events: 20_000,
         compaction_mode: "tail_prune_with_snapshot_rehydrate",
         snapshot: %{
           enabled: true,
@@ -89,6 +92,8 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
       @worker_events_topic => %{
         retention_seconds: 3_600,
         topic_class: "high_churn_events",
+        qos_tier: "hot",
+        replay_budget_events: 3_000,
         compaction_mode: "tail_prune_without_snapshot",
         snapshot: %{enabled: false}
       }
@@ -107,11 +112,14 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
 
     assert summary.topic_stats[@run_topic].retention_seconds == 10_800
     assert summary.topic_stats[@run_topic].deleted == 0
+    assert summary.topic_stats[@run_topic].qos_tier == "warm"
+    assert summary.topic_stats[@run_topic].replay_budget_events == 20_000
     assert summary.topic_stats[@run_topic].compaction_mode == "tail_prune_with_snapshot_rehydrate"
     assert is_map(summary.topic_stats[@run_topic].snapshot)
 
     assert summary.topic_stats[@worker_events_topic].retention_seconds == 3_600
     assert summary.topic_stats[@worker_events_topic].deleted == 1
+    assert summary.topic_stats[@worker_events_topic].qos_tier == "hot"
     assert summary.topic_stats[@worker_events_topic].snapshot == nil
 
     remaining_run =

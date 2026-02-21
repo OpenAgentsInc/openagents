@@ -161,6 +161,11 @@ Protocol remains unchanged between inline and pointer modes.
 
 `SYNC_ERROR_CODE_STALE_CURSOR` should set `full_resync_required=true`.
 
+Deterministic stale-cursor reason codes:
+
+- `retention_floor_breach`
+- `replay_budget_exceeded`
+
 Current runtime payload shape for stale cursor (`sync:error` event and subscribe error reply):
 
 ```json
@@ -168,6 +173,9 @@ Current runtime payload shape for stale cursor (`sync:error` event and subscribe
   "code": "stale_cursor",
   "message": "cursor is older than retention floor",
   "full_resync_required": true,
+  "reason_codes": [
+    "retention_floor_breach"
+  ],
   "snapshot_plan": {
     "format": "openagents.sync.snapshot.v1",
     "topics": [
@@ -187,8 +195,13 @@ Current runtime payload shape for stale cursor (`sync:error` event and subscribe
   "stale_topics": [
     {
       "topic": "runtime.run_summaries",
+      "reason": "retention_floor_breach",
+      "qos_tier": "warm",
       "resume_after": 10,
-      "retention_floor": 42
+      "retention_floor": 42,
+      "head_watermark": 90,
+      "replay_lag": 80,
+      "replay_budget_events": 20000
     }
   ]
 }

@@ -132,6 +132,8 @@ defmodule OpenAgentsRuntime.Sync.RetentionJob do
         cutoff: cutoff,
         retention_seconds: retention_seconds,
         topic_class: TopicPolicy.topic_class(topic, topic_policies),
+        qos_tier: TopicPolicy.qos_tier(topic, topic_policies),
+        replay_budget_events: TopicPolicy.replay_budget_events(topic, topic_policies),
         compaction_mode: TopicPolicy.compaction_mode(topic, topic_policies),
         snapshot: TopicPolicy.snapshot_metadata(topic, topic_policies)
       })
@@ -216,6 +218,8 @@ defmodule OpenAgentsRuntime.Sync.RetentionJob do
          cutoff: plan.cutoff,
          retention_seconds: plan.retention_seconds,
          topic_class: plan.topic_class,
+         qos_tier: plan.qos_tier,
+         replay_budget_events: plan.replay_budget_events,
          compaction_mode: plan.compaction_mode,
          snapshot: plan.snapshot,
          oldest_watermark: oldest_watermark,
@@ -262,6 +266,7 @@ defmodule OpenAgentsRuntime.Sync.RetentionJob do
         event_type: topic,
         status: if(is_integer(stats.oldest_watermark), do: "active", else: "empty"),
         topic_class: stats.topic_class,
+        qos_tier: stats.qos_tier,
         snapshot: if(is_map(stats.snapshot), do: "enabled", else: "disabled")
       }
 

@@ -65,6 +65,7 @@ High-cardinality keys explicitly prohibited from metric labels:
   - `:timeout` (heartbeat timeout disconnect count)
 - `[:openagents_runtime, :sync, :replay, ...]`
   - `:lag` (topic replay lag at catch-up/live boundaries)
+  - `:budget` (topic replay lag vs QoS replay budget ceilings; exceeded-path detection)
   - `:catchup` (replay catch-up duration distribution)
 - `[:openagents_runtime, :run_events, :notify]`
   - LISTEN/NOTIFY wakeup path
