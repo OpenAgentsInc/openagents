@@ -1,0 +1,84 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  annotations:
+    run.googleapis.com/client-name: gcloud
+    run.googleapis.com/client-version: 556.0.0
+    run.googleapis.com/creator: chris@openagents.com
+    run.googleapis.com/lastModifier: chris@openagents.com
+    run.googleapis.com/operation-id: a993ecd9-67ba-4195-a10b-12316190ebb9
+  creationTimestamp: '2026-02-15T22:20:28.529961Z'
+  generation: 1
+  labels:
+    cloud.googleapis.com/location: us-central1
+    run.googleapis.com/lastUpdatedTime: '2026-02-15T22:20:28.529961Z'
+  name: openagents-migrate
+  namespace: '157437760789'
+  resourceVersion: AAZLOGTQYPU
+  selfLink: /apis/run.googleapis.com/v1/namespaces/157437760789/jobs/openagents-migrate
+  uid: 1c69b253-fbfb-4688-a16b-c34980314e9a
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 556.0.0
+        run.googleapis.com/cloudsql-instances: openagentsgemini:us-central1:l402-aperture-db
+        run.googleapis.com/execution-environment: gen2
+      labels:
+        client.knative.dev/nonce: wud_viy_gin
+    spec:
+      taskCount: 1
+      template:
+        spec:
+          containers:
+          - args:
+            - artisan
+            - migrate
+            - --force
+            command:
+            - php
+            env:
+            - name: APP_ENV
+              value: production
+            - name: APP_DEBUG
+              value: '0'
+            - name: LOG_CHANNEL
+              value: stderr
+            - name: DB_CONNECTION
+              value: pgsql
+            - name: DB_HOST
+              value: /cloudsql/openagentsgemini:us-central1:l402-aperture-db
+            - name: DB_DATABASE
+              value: openagents_web
+            - name: DB_USERNAME
+              value: openagents_web
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: openagents-web-app-key
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: openagents-web-db-password
+            image: us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 512Mi
+          maxRetries: 0
+          serviceAccountName: 157437760789-compute@developer.gserviceaccount.com
+          timeoutSeconds: '600'
+status:
+  conditions:
+  - status: 'True'
+    type: Ready
+  executionCount: 38
+  latestCreatedExecution:
+    completionStatus: EXECUTION_SUCCEEDED
+    completionTimestamp: '2026-02-20T02:44:01.757611Z'
+    creationTimestamp: '2026-02-20T02:41:42.985676Z'
+    name: openagents-migrate-mw2pd
+  observedGeneration: 1

@@ -41,20 +41,20 @@ After a successful run, open the project in Xcode and build the app as usual.
 
 This means either:
 
-1. **`current` points at a version that was never fully built** (e.g. only an empty `Headers` folder), or  
-2. **The build script was never run** (no version dirs), or  
+1. **`current` points at a version that was never fully built** (e.g. only an empty `Headers` folder), or
+2. **The build script was never run** (no version dirs), or
 3. **`current` was removed or broken.**
 
 **Fix options:**
 
-- **Option A — Rebuild and let the script set `current`:**  
+- **Option A — Rebuild and let the script set `current`:**
   Run from repo root:
   ```bash
   ./apps/autopilot-ios/scripts/build-rust-client-core.sh --clean
   ```
   Wait for it to finish; it will create a complete version dir and set `current` to it.
 
-- **Option B — Point `current` at an existing complete version:**  
+- **Option B — Point `current` at an existing complete version:**
   If you have a version dir that already contains `OpenAgentsClientCore.xcframework` (e.g. from a previous successful build):
   ```bash
   cd apps/autopilot-ios/Autopilot/RustCore

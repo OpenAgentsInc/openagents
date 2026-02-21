@@ -79,13 +79,6 @@ struct RuntimeRevocationRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct RootResponse {
-    service: &'static str,
-    version: &'static str,
-    docs: &'static str,
-}
-
-#[derive(Debug, Serialize)]
 struct HealthResponse {
     status: &'static str,
     service: &'static str,
@@ -237,7 +230,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let maintenance_state = state.clone();
 
     Router::new()
-        .route("/", get(root))
+        .route("/", get(web_shell_entry))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
         .route("/api/auth/email", post(send_email_code))
@@ -370,14 +363,6 @@ impl RuntimeRevocationClient {
 
         Ok(format!("v1.{payload_segment}.{signature_segment}"))
     }
-}
-
-async fn root() -> Json<RootResponse> {
-    Json(RootResponse {
-        service: SERVICE_NAME,
-        version: env!("CARGO_PKG_VERSION"),
-        docs: "apps/openagents.com/service/README.md",
-    })
 }
 
 async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
