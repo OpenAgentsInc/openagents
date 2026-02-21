@@ -35,6 +35,7 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     sync_socket_reconnect: [:status],
     sync_socket_timeout: [:status],
     sync_replay_lag: [:event_type, :status],
+    sync_replay_budget: [:event_type, :status, :qos_tier, :reason_class],
     sync_replay_catchup: [:status],
     sync_retention_cycle: [:status],
     sync_retention_topic: [:event_type, :status, :topic_class, :snapshot],
@@ -161,6 +162,15 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
         tags: tags_for(:sync_socket_timeout)
       ),
       summary("openagents_runtime.sync.replay.lag_events", tags: tags_for(:sync_replay_lag)),
+      counter("openagents_runtime.sync.replay.budget.count", tags: tags_for(:sync_replay_budget)),
+      summary("openagents_runtime.sync.replay.budget.lag_events",
+        measurement: :replay_lag,
+        tags: tags_for(:sync_replay_budget)
+      ),
+      summary("openagents_runtime.sync.replay.budget.limit_events",
+        measurement: :replay_budget_events,
+        tags: tags_for(:sync_replay_budget)
+      ),
       summary("openagents_runtime.sync.replay.catchup_duration_ms",
         measurement: :duration_ms,
         tags: tags_for(:sync_replay_catchup)

@@ -89,6 +89,7 @@ These tables are runtime-owned and are not Laravel authority tables.
 
 - Policy authority: `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
 - Runtime applies retention per topic class (not one global horizon).
+- Runtime enforces per-topic QoS tiers and replay-budget ceilings during resume/bootstrap.
 - Compaction mode is tail-prune for replay journal rows in `runtime.sync_stream_events`.
 - Summary topics provide snapshot bootstrap metadata (`openagents.sync.snapshot.v1`) in stale-cursor responses.
 - Event-only topics remain tail-only replay (no snapshot bootstrap source).

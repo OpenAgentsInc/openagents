@@ -6,15 +6,20 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
 
   - per-topic retention windows,
   - compaction strategy class metadata,
+  - QoS tier and replay budget policy,
   - snapshot bootstrap metadata surfaced in stale-cursor flows.
   """
 
   @default_retention_seconds 86_400
+  @default_qos_tier "warm"
+  @default_replay_budget_events 10_000
   @snapshot_format "openagents.sync.snapshot.v1"
 
   @default_topic_policies %{
     "runtime.run_summaries" => %{
       "topic_class" => "durable_summary",
+      "qos_tier" => "warm",
+      "replay_budget_events" => 20_000,
       "retention_seconds" => 604_800,
       "compaction_mode" => "tail_prune_with_snapshot_rehydrate",
       "snapshot" => %{
@@ -27,6 +32,8 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
     },
     "runtime.codex_worker_summaries" => %{
       "topic_class" => "durable_summary",
+      "qos_tier" => "warm",
+      "replay_budget_events" => 10_000,
       "retention_seconds" => 259_200,
       "compaction_mode" => "tail_prune_with_snapshot_rehydrate",
       "snapshot" => %{
@@ -39,12 +46,16 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
     },
     "runtime.codex_worker_events" => %{
       "topic_class" => "high_churn_events",
+      "qos_tier" => "hot",
+      "replay_budget_events" => 3_000,
       "retention_seconds" => 86_400,
       "compaction_mode" => "tail_prune_without_snapshot",
       "snapshot" => %{"enabled" => false}
     },
     "runtime.notifications" => %{
       "topic_class" => "ephemeral_notifications",
+      "qos_tier" => "cold",
+      "replay_budget_events" => 500,
       "retention_seconds" => 43_200,
       "compaction_mode" => "tail_prune_without_snapshot",
       "snapshot" => %{"enabled" => false}
@@ -117,6 +128,23 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
     |> normalize_string("tail_prune_with_snapshot_rehydrate")
   end
 
+  @spec qos_tier(String.t(), topic_policies()) :: String.t()
+  def qos_tier(topic, policies) when is_binary(topic) and is_map(policies) do
+    policies
+    |> Map.get(topic, %{})
+    |> Map.get("qos_tier", @default_qos_tier)
+    |> normalize_string(@default_qos_tier)
+  end
+
+  @spec replay_budget_events(String.t(), topic_policies(), pos_integer()) :: pos_integer()
+  def replay_budget_events(topic, policies, fallback \\ @default_replay_budget_events)
+      when is_binary(topic) and is_map(policies) and is_integer(fallback) and fallback > 0 do
+    policies
+    |> Map.get(topic, %{})
+    |> Map.get("replay_budget_events", fallback)
+    |> normalize_positive_integer(fallback)
+  end
+
   @spec snapshot_metadata(String.t(), topic_policies()) :: map() | nil
   def snapshot_metadata(topic, policies \\ topic_policies())
       when is_binary(topic) and is_map(policies) do
@@ -172,6 +200,13 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
 
   defp normalize_policy(policy) when is_map(policy) do
     topic_class = normalize_string(policy["topic_class"] || policy[:topic_class], "unspecified")
+    qos_tier = normalize_string(policy["qos_tier"] || policy[:qos_tier], @default_qos_tier)
+
+    replay_budget_events =
+      normalize_positive_integer(
+        policy["replay_budget_events"] || policy[:replay_budget_events],
+        @default_replay_budget_events
+      )
 
     retention_seconds =
       normalize_positive_integer(
@@ -195,6 +230,8 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
 
     %{
       "topic_class" => topic_class,
+      "qos_tier" => qos_tier,
+      "replay_budget_events" => replay_budget_events,
       "retention_seconds" => retention_seconds,
       "compaction_mode" => compaction_mode,
       "snapshot" => snapshot
@@ -246,6 +283,8 @@ defmodule OpenAgentsRuntime.Sync.TopicPolicy do
       trimmed -> trimmed
     end
   end
+
+  defp normalize_string(nil, fallback), do: fallback
 
   defp normalize_string(value, fallback) when is_atom(value) do
     value |> Atom.to_string() |> normalize_string(fallback)

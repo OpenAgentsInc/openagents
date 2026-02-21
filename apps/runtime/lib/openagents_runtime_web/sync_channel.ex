@@ -31,6 +31,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
   @revocation_event [:openagents_runtime, :sync, :socket, :revocation]
   @lag_event [:openagents_runtime, :sync, :replay, :lag]
+  @budget_event [:openagents_runtime, :sync, :replay, :budget]
   @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
 
   @impl true
@@ -417,6 +418,8 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   end
 
   defp ensure_fresh_resume(topics, resume_after) when is_map(resume_after) do
+    topic_policies = TopicPolicy.topic_policies()
+
     stale_topics =
       topics
       |> Enum.filter(&Map.has_key?(resume_after, &1))
@@ -424,18 +427,44 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
         resume_watermark = Map.fetch!(resume_after, topic)
         oldest_watermark = Replay.oldest_watermark(topic)
         retention_floor = retention_floor(oldest_watermark)
+        head_watermark = Replay.head_watermark(topic)
+        replay_budget_events = TopicPolicy.replay_budget_events(topic, topic_policies)
+        qos_tier = TopicPolicy.qos_tier(topic, topic_policies)
+        replay_lag = max(head_watermark - resume_watermark, 0)
 
-        if resume_watermark < retention_floor do
-          [
-            %{
-              "topic" => topic,
-              "resume_after" => resume_watermark,
-              "retention_floor" => retention_floor
-            }
-            | acc
-          ]
-        else
-          acc
+        stale_reason =
+          cond do
+            resume_watermark < retention_floor -> "retention_floor_breach"
+            replay_lag > replay_budget_events -> "replay_budget_exceeded"
+            true -> nil
+          end
+
+        emit_replay_budget(
+          topic,
+          qos_tier,
+          replay_budget_events,
+          replay_lag,
+          stale_reason
+        )
+
+        case stale_reason do
+          reason when is_binary(reason) ->
+            [
+              %{
+                "topic" => topic,
+                "reason" => reason,
+                "qos_tier" => qos_tier,
+                "resume_after" => resume_watermark,
+                "retention_floor" => retention_floor,
+                "head_watermark" => head_watermark,
+                "replay_lag" => replay_lag,
+                "replay_budget_events" => replay_budget_events
+              }
+              | acc
+            ]
+
+          _other ->
+            acc
         end
       end)
       |> Enum.reverse()
@@ -558,6 +587,11 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     do: max(oldest_watermark - 1, 0)
 
   defp stale_cursor_payload(stale_topics) do
+    reason_codes =
+      stale_topics
+      |> Enum.map(&Map.get(&1, "reason", "unknown"))
+      |> Enum.uniq()
+
     snapshot_topics =
       stale_topics
       |> Enum.flat_map(fn
@@ -582,8 +616,9 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
     %{
       "code" => "stale_cursor",
-      "message" => "cursor is older than retention floor",
+      "message" => stale_cursor_message(reason_codes),
       "full_resync_required" => true,
+      "reason_codes" => reason_codes,
       "stale_topics" => stale_topics,
       "snapshot_plan" => %{
         "format" => "openagents.sync.snapshot.v1",
@@ -612,6 +647,35 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     do: topic
 
   defp stale_cursor_topic(_stale_topics), do: "sync.unspecified"
+
+  defp stale_cursor_message(["replay_budget_exceeded"]) do
+    "replay budget exceeded for topic qos tier; full resync required"
+  end
+
+  defp stale_cursor_message(_reasons) do
+    "cursor is older than retention floor"
+  end
+
+  defp emit_replay_budget(topic, qos_tier, replay_budget_events, replay_lag, stale_reason) do
+    {status, reason_class} =
+      case stale_reason do
+        "replay_budget_exceeded" -> {"exceeded", "replay_budget_exceeded"}
+        "retention_floor_breach" -> {"stale_cursor", "retention_floor_breach"}
+        _other -> {"ok", "none"}
+      end
+
+    Events.emit(
+      @budget_event,
+      %{count: 1, replay_budget_events: replay_budget_events, replay_lag: replay_lag},
+      %{
+        component: "sync_channel",
+        event_type: topic,
+        status: status,
+        qos_tier: qos_tier,
+        reason_class: reason_class
+      }
+    )
+  end
 
   defp compatibility_failure?(failure) when is_map(failure), do: true
   defp compatibility_failure?(_failure), do: false

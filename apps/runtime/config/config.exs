@@ -26,6 +26,8 @@ config :openagents_runtime,
   khala_sync_topic_policies: %{
     "runtime.run_summaries" => %{
       topic_class: "durable_summary",
+      qos_tier: "warm",
+      replay_budget_events: 20_000,
       retention_seconds: 604_800,
       compaction_mode: "tail_prune_with_snapshot_rehydrate",
       snapshot: %{
@@ -38,6 +40,8 @@ config :openagents_runtime,
     },
     "runtime.codex_worker_summaries" => %{
       topic_class: "durable_summary",
+      qos_tier: "warm",
+      replay_budget_events: 10_000,
       retention_seconds: 259_200,
       compaction_mode: "tail_prune_with_snapshot_rehydrate",
       snapshot: %{
@@ -50,12 +54,16 @@ config :openagents_runtime,
     },
     "runtime.codex_worker_events" => %{
       topic_class: "high_churn_events",
+      qos_tier: "hot",
+      replay_budget_events: 3_000,
       retention_seconds: 86_400,
       compaction_mode: "tail_prune_without_snapshot",
       snapshot: %{enabled: false}
     },
     "runtime.notifications" => %{
       topic_class: "ephemeral_notifications",
+      qos_tier: "cold",
+      replay_budget_events: 500,
       retention_seconds: 43_200,
       compaction_mode: "tail_prune_without_snapshot",
       snapshot: %{enabled: false}

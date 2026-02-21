@@ -125,6 +125,12 @@ Khala websocket compatibility semantics:
 - Unsupported clients are denied with deterministic upgrade payloads (`upgrade_required`, supported build/schema/protocol window).
 - Compatibility auth rejections emit telemetry/audit metadata tagged by surface (`khala_websocket`) and `client_build_id`.
 
+Khala replay QoS and budget semantics:
+
+- Topic policy defines QoS tier + replay budget per topic (`khala_sync_topic_policies`).
+- Resume paths that exceed replay budget return deterministic `stale_cursor` with reason `replay_budget_exceeded`.
+- Retention-floor misses return deterministic `stale_cursor` with reason `retention_floor_breach`.
+
 ## Local development
 
 1. `mix setup`

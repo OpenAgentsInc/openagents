@@ -464,12 +464,15 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert_push "sync:error", %{
       "code" => "stale_cursor",
       "full_resync_required" => true,
+      "reason_codes" => ["retention_floor_breach"],
       "snapshot_plan" => snapshot_plan,
       "stale_topics" => [
         %{
           "topic" => @run_topic,
+          "reason" => "retention_floor_breach",
           "resume_after" => 0,
-          "retention_floor" => 1
+          "retention_floor" => 1,
+          "head_watermark" => 2
         }
       ]
     }
@@ -494,14 +497,95 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert_reply ref, :error, %{
       "code" => "stale_cursor",
       "full_resync_required" => true,
+      "reason_codes" => ["retention_floor_breach"],
       "snapshot_plan" => %{
         "format" => "openagents.sync.snapshot.v1"
       },
       "stale_topics" => [
         %{
           "topic" => @run_topic,
+          "reason" => "retention_floor_breach",
           "resume_after" => 0,
-          "retention_floor" => 1
+          "retention_floor" => 1,
+          "head_watermark" => 2
+        }
+      ]
+    }
+  end
+
+  test "subscribe returns stale_cursor when replay budget is exceeded for topic tier" do
+    previous_topic_policies =
+      Application.get_env(:openagents_runtime, :khala_sync_topic_policies, %{})
+
+    Application.put_env(
+      :openagents_runtime,
+      :khala_sync_topic_policies,
+      Map.merge(previous_topic_policies, %{
+        @run_topic => %{
+          topic_class: "durable_summary",
+          qos_tier: "warm",
+          replay_budget_events: 2,
+          retention_seconds: 604_800,
+          compaction_mode: "tail_prune_with_snapshot_rehydrate",
+          snapshot: %{
+            enabled: true,
+            format: "openagents.sync.snapshot.v1",
+            schema_version: 1,
+            cadence_seconds: 300,
+            source_table: "runtime.sync_run_summaries"
+          }
+        }
+      })
+    )
+
+    on_exit(fn ->
+      Application.put_env(
+        :openagents_runtime,
+        :khala_sync_topic_policies,
+        previous_topic_policies
+      )
+    end)
+
+    insert_stream_event(@run_topic, 1, %{"value" => "one"})
+    insert_stream_event(@run_topic, 2, %{"value" => "two"})
+    insert_stream_event(@run_topic, 3, %{"value" => "three"})
+    insert_stream_event(@run_topic, 4, %{"value" => "four"})
+
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    ref =
+      push(socket, "sync:subscribe", %{
+        "topics" => [@run_topic],
+        "resume_after" => %{@run_topic => 0}
+      })
+
+    assert_push "sync:error", %{
+      "code" => "stale_cursor",
+      "full_resync_required" => true,
+      "reason_codes" => ["replay_budget_exceeded"],
+      "stale_topics" => [
+        %{
+          "topic" => @run_topic,
+          "reason" => "replay_budget_exceeded",
+          "qos_tier" => "warm",
+          "resume_after" => 0,
+          "head_watermark" => 4,
+          "replay_lag" => 4,
+          "replay_budget_events" => 2
+        }
+      ]
+    }
+
+    assert_reply ref, :error, %{
+      "code" => "stale_cursor",
+      "reason_codes" => ["replay_budget_exceeded"],
+      "stale_topics" => [
+        %{
+          "topic" => @run_topic,
+          "reason" => "replay_budget_exceeded",
+          "replay_budget_events" => 2
         }
       ]
     }
