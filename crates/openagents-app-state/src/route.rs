@@ -7,6 +7,13 @@ pub enum AppRoute {
     Chat {
         thread_id: Option<String>,
     },
+    Login,
+    Register,
+    Authenticate,
+    Onboarding {
+        #[serde(default)]
+        section: Option<String>,
+    },
     Workers,
     Account {
         #[serde(default)]
@@ -39,6 +46,18 @@ impl AppRoute {
         if path == "/" {
             return Self::Home;
         }
+        if path == "/login" {
+            return Self::Login;
+        }
+        if path == "/register" {
+            return Self::Register;
+        }
+        if path == "/authenticate" {
+            return Self::Authenticate;
+        }
+        if let Some(section) = section_from_prefix(&path, "/onboarding") {
+            return Self::Onboarding { section };
+        }
         if let Some(section) = section_from_prefix(&path, "/account") {
             return Self::Account { section };
         }
@@ -48,8 +67,8 @@ impl AppRoute {
         if let Some(section) = section_from_prefix(&path, "/settings") {
             return Self::Settings { section };
         }
-        if let Some(section) = section_from_prefix(&path, "/l402")
-            .or_else(|| section_from_prefix(&path, "/billing"))
+        if let Some(section) =
+            section_from_prefix(&path, "/l402").or_else(|| section_from_prefix(&path, "/billing"))
         {
             return Self::Billing { section };
         }
@@ -73,6 +92,10 @@ impl AppRoute {
     pub fn to_path(&self) -> String {
         match self {
             Self::Home => "/".to_string(),
+            Self::Login => "/login".to_string(),
+            Self::Register => "/register".to_string(),
+            Self::Authenticate => "/authenticate".to_string(),
+            Self::Onboarding { section } => section_to_path("/onboarding", section),
             Self::Workers => "/workers".to_string(),
             Self::Account { section } => section_to_path("/account", section),
             Self::Settings { section } => section_to_path("/settings", section),
@@ -137,6 +160,15 @@ mod tests {
             AppRoute::from_path("/account"),
             AppRoute::Account { section: None }
         );
+        assert_eq!(AppRoute::from_path("/login"), AppRoute::Login);
+        assert_eq!(AppRoute::from_path("/register"), AppRoute::Register);
+        assert_eq!(AppRoute::from_path("/authenticate"), AppRoute::Authenticate);
+        assert_eq!(
+            AppRoute::from_path("/onboarding/checklist"),
+            AppRoute::Onboarding {
+                section: Some("checklist".to_string())
+            }
+        );
         assert_eq!(
             AppRoute::from_path("/account/session"),
             AppRoute::Account {
@@ -176,6 +208,12 @@ mod tests {
     #[test]
     fn account_settings_and_admin_routes_round_trip() {
         let routes = vec![
+            AppRoute::Login,
+            AppRoute::Register,
+            AppRoute::Authenticate,
+            AppRoute::Onboarding {
+                section: Some("profile".to_string()),
+            },
             AppRoute::Account {
                 section: Some("profile".to_string()),
             },
