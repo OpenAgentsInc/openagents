@@ -20,6 +20,7 @@ web = [
     "console_error_panic_hook",
 ]
 desktop = ["winit", "pollster"]
+ios = ["pollster"]
 # Optional features - not included in production builds by default
 testing = []  # E2E testing framework (~6,850 lines)
 audio = []    # Bleeps audio system (~1,163 lines)
@@ -100,6 +101,8 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # Desktop (optional)
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
+
+# iOS (optional) - WGPUI background uses create_surface_unsafe(CoreAnimationLayer)
 derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
 web-time = "1.1.0"
 vim = { path = "../vim" }

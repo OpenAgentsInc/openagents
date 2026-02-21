@@ -510,3 +510,232 @@ pub mod desktop {
         fn handle_resize(&mut self) {}
     }
 }
+
+/// iOS platform: WGPUI background renderer (dots grid) from a CAMetalLayer.
+/// Requires `ios` feature. Uses wgpu create_surface_unsafe(CoreAnimationLayer).
+#[cfg(feature = "ios")]
+pub mod ios {
+    use std::ffi::c_void;
+
+    use crate::components::hud::{DotShape, DotsGrid};
+    use crate::components::Component;
+    use crate::geometry::{Bounds, Size};
+    use crate::renderer::Renderer;
+    use crate::scene::{Quad, Scene};
+    use crate::theme;
+    use crate::{PaintContext, TextSystem};
+
+    /// Distance between grid dots (matches desktop autopilot_ui GRID_DOT_DISTANCE).
+    const GRID_DOT_DISTANCE: f32 = 32.0;
+
+    /// State for the iOS WGPUI background renderer (black + dots grid).
+    pub struct IosBackgroundState {
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+        renderer: Renderer,
+        text_system: TextSystem,
+        size: Size,
+        scale: f32,
+    }
+
+    impl IosBackgroundState {
+        /// Create WGPUI render state from a CAMetalLayer pointer and dimensions.
+        /// Call from main thread. Uses Metal backend.
+        /// Safety: `layer_ptr` must be a valid CAMetalLayer and outlive this state.
+        pub unsafe fn new(
+            layer_ptr: *mut c_void,
+            width: u32,
+            height: u32,
+            scale: f32,
+        ) -> Result<Box<Self>, String> {
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::METAL,
+                ..Default::default()
+            });
+
+            let surface = unsafe {
+                instance
+                    .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer_ptr))
+            }
+            .map_err(|e| format!("create_surface_unsafe: {:?}", e))?;
+
+            let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            }))
+            .ok_or("no adapter")?;
+
+            let (device, queue) = pollster::block_on(adapter.request_device(
+                &wgpu::DeviceDescriptor::default(),
+                None,
+            ))
+            .map_err(|e| format!("request_device: {:?}", e))?;
+
+            let caps = surface.get_capabilities(&adapter);
+            let format = caps
+                .formats
+                .iter()
+                .find(|f| f.is_srgb())
+                .copied()
+                .or_else(|| caps.formats.first().copied())
+                .ok_or("no surface format")?;
+
+            let config = wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format,
+                width: width.max(1),
+                height: height.max(1),
+                present_mode: wgpu::PresentMode::AutoVsync,
+                alpha_mode: caps
+                    .alpha_modes
+                    .first()
+                    .copied()
+                    .unwrap_or(wgpu::CompositeAlphaMode::Opaque),
+                view_formats: vec![],
+                desired_maximum_frame_latency: 2,
+            };
+            surface.configure(&device, &config);
+
+            let renderer = Renderer::new(&device, format);
+            let text_system = TextSystem::new(scale);
+            let size = Size::new(width as f32, height as f32);
+
+            Ok(Box::new(Self {
+                device,
+                queue,
+                surface,
+                config,
+                renderer,
+                text_system,
+                size,
+                scale,
+            }))
+        }
+
+        /// Render one frame: black background + dots grid (same as desktop).
+        pub fn render(&mut self) -> Result<(), String> {
+            let mut scene = Scene::new();
+            let mut paint = PaintContext::new(&mut scene, &mut self.text_system, self.scale);
+
+            // Black background (matches desktop)
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(0.0, 0.0, self.size.width, self.size.height))
+                    .with_background(crate::color::Hsla::black()),
+            );
+
+            // Dots grid (same params as autopilot_ui MinimalRoot)
+            let mut dots_grid = DotsGrid::new()
+                .shape(DotShape::Circle)
+                .color(theme::text::MUTED)
+                .opacity(0.12)
+                .distance(GRID_DOT_DISTANCE)
+                .size(1.5);
+            let grid_bounds = Bounds::new(0.0, 0.0, self.size.width, self.size.height);
+            dots_grid.paint(grid_bounds, &mut paint);
+
+            self.renderer
+                .resize(&self.queue, self.size, self.scale);
+
+            if self.text_system.is_dirty() {
+                self.renderer.update_atlas(
+                    &self.queue,
+                    self.text_system.atlas_data(),
+                    self.text_system.atlas_size(),
+                );
+                self.text_system.mark_clean();
+            }
+
+            let output = match self.surface.get_current_texture() {
+                Ok(frame) => frame,
+                Err(wgpu::SurfaceError::Lost) => {
+                    self.surface.configure(&self.device, &self.config);
+                    return Ok(());
+                }
+                Err(e) => return Err(format!("surface get_current_texture: {:?}", e)),
+            };
+
+            let view = output
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("wgpui-ios"),
+                });
+
+            self.renderer
+                .prepare(&self.device, &self.queue, &scene, self.scale);
+            self.renderer.render(&mut encoder, &view);
+            self.queue.submit(std::iter::once(encoder.finish()));
+            output.present();
+
+            Ok(())
+        }
+
+        /// Resize the surface (e.g. on layout change).
+        pub fn resize(&mut self, width: u32, height: u32) {
+            self.config.width = width.max(1);
+            self.config.height = height.max(1);
+            self.surface.configure(&self.device, &self.config);
+            self.size = Size::new(self.config.width as f32, self.config.height as f32);
+        }
+    }
+
+    /// C FFI for Swift: create renderer from CAMetalLayer pointer.
+    /// Returns opaque pointer to IosBackgroundState, or null on error.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_create(
+        layer_ptr: *mut c_void,
+        width: u32,
+        height: u32,
+        scale: f32,
+    ) -> *mut IosBackgroundState {
+        if layer_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+        match unsafe { IosBackgroundState::new(layer_ptr, width, height, scale) } {
+            Ok(state) => Box::into_raw(state),
+            Err(_) => std::ptr::null_mut(),
+        }
+    }
+
+    /// C FFI: render one frame. Returns 1 on success, 0 on error.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_render(state: *mut IosBackgroundState) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        match state.render() {
+            Ok(()) => 1,
+            Err(_) => 0,
+        }
+    }
+
+    /// C FFI: resize the surface.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_resize(
+        state: *mut IosBackgroundState,
+        width: u32,
+        height: u32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.resize(width, height);
+    }
+
+    /// C FFI: destroy state and free memory.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_destroy(state: *mut IosBackgroundState) {
+        if state.is_null() {
+            return;
+        }
+        let _ = unsafe { Box::from_raw(state) };
+    }
+}

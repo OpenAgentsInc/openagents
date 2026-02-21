@@ -1,5 +1,6 @@
 # Autopilot iOS Docs
 
+- `../../../docs/autopilot/wgpui-ios-cutover-log.md` — WGPUI iOS background cutover implementation log (2026-02-21).
 - `ios-codex-first-structure.md` — proposed iOS app structure for Codex-first delivery.
 - `codex-connection-roadmap.md` — comprehensive roadmap for connecting iOS to Codex across runtime/desktop/hosted lanes.
 - `real-device-codex-handshake-runbook.md` — operator runbook for validating real-device iOS handshake against desktop Codex sync.

@@ -6,7 +6,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            OATheme.background.ignoresSafeArea()
+            WgpuiBackgroundView()
 
             TabView {
                 CodexChatView(model: model)
