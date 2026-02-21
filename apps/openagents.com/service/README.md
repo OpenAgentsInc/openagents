@@ -38,9 +38,9 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_CONTROL_LOG_FILTER` (default: `info`)
 - `OA_CONTROL_LOG_FORMAT` (`json|pretty`, default: `json`)
 - `OA_CONTROL_STATIC_DIR` (default: `../web-shell/dist`)
-- `OA_AUTH_PROVIDER_MODE` (`auto|workos|mock`, default: `auto`)
-- `WORKOS_CLIENT_ID` (used when WorkOS provider is active)
-- `WORKOS_API_KEY` (used when WorkOS provider is active)
+- `OA_AUTH_PROVIDER_MODE` (`workos|mock`, default: `workos`; `mock` is local/testing only)
+- `WORKOS_CLIENT_ID` (required in `workos` mode)
+- `WORKOS_API_KEY` (required in `workos` mode)
 - `OA_WORKOS_API_BASE_URL` (default: `https://api.workos.com`)
 - `OA_AUTH_MOCK_MAGIC_CODE` (default: `123456`)
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)
@@ -80,7 +80,7 @@ curl -sS http://127.0.0.1:8787/healthz | jq
 curl -sS http://127.0.0.1:8787/readyz | jq
 ```
 
-Mock-mode auth smoke test:
+Local/testing mock-mode auth smoke test:
 
 ```bash
 OA_AUTH_PROVIDER_MODE=mock cargo run --manifest-path apps/openagents.com/service/Cargo.toml

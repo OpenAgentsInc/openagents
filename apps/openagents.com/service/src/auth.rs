@@ -205,6 +205,11 @@ struct WorkosIdentityProvider {
     http: reqwest::Client,
 }
 
+#[derive(Debug, Clone)]
+struct UnavailableIdentityProvider {
+    message: String,
+}
+
 impl AuthService {
     pub fn from_config(config: &Config) -> Self {
         let provider = provider_from_config(config);
@@ -710,38 +715,27 @@ fn provider_from_config(config: &Config) -> Arc<dyn IdentityProvider> {
         "mock" => Arc::new(MockIdentityProvider {
             code: config.mock_magic_code.clone(),
         }),
-        "workos" => {
-            if let (Some(client_id), Some(api_key)) = (
-                config.workos_client_id.clone(),
-                config.workos_api_key.clone(),
-            ) {
-                Arc::new(WorkosIdentityProvider::new(
-                    client_id,
-                    api_key,
-                    config.workos_api_base_url.clone(),
-                ))
-            } else {
-                Arc::new(MockIdentityProvider {
-                    code: config.mock_magic_code.clone(),
-                })
-            }
-        }
-        _ => {
-            if let (Some(client_id), Some(api_key)) = (
-                config.workos_client_id.clone(),
-                config.workos_api_key.clone(),
-            ) {
-                Arc::new(WorkosIdentityProvider::new(
-                    client_id,
-                    api_key,
-                    config.workos_api_base_url.clone(),
-                ))
-            } else {
-                Arc::new(MockIdentityProvider {
-                    code: config.mock_magic_code.clone(),
-                })
-            }
-        }
+        "workos" | "auto" => workos_or_unavailable(config),
+        _ => workos_or_unavailable(config),
+    }
+}
+
+fn workos_or_unavailable(config: &Config) -> Arc<dyn IdentityProvider> {
+    if let (Some(client_id), Some(api_key)) = (
+        config.workos_client_id.clone(),
+        config.workos_api_key.clone(),
+    ) {
+        Arc::new(WorkosIdentityProvider::new(
+            client_id,
+            api_key,
+            config.workos_api_base_url.clone(),
+        ))
+    } else {
+        Arc::new(UnavailableIdentityProvider {
+            message:
+                "WorkOS identity provider is required. Configure WORKOS_CLIENT_ID and WORKOS_API_KEY or use OA_AUTH_PROVIDER_MODE=mock only for local/testing."
+                    .to_string(),
+        })
     }
 }
 
@@ -1062,6 +1056,32 @@ impl WorkosIdentityProvider {
             .map_err(|error| AuthError::Provider {
                 message: format!("Invalid WorkOS response payload: {error}"),
             })
+    }
+}
+
+#[async_trait]
+impl IdentityProvider for UnavailableIdentityProvider {
+    async fn start_magic_auth(&self, _email: &str) -> Result<StartMagicAuthResult, AuthError> {
+        Err(AuthError::Provider {
+            message: self.message.clone(),
+        })
+    }
+
+    async fn verify_magic_auth(
+        &self,
+        _code: &str,
+        _pending_workos_user_id: &str,
+        _email: &str,
+        _ip_address: &str,
+        _user_agent: &str,
+    ) -> Result<VerifyMagicAuthResult, AuthError> {
+        Err(AuthError::Provider {
+            message: self.message.clone(),
+        })
+    }
+
+    fn name(&self) -> &'static str {
+        "workos"
     }
 }
 

@@ -7,7 +7,7 @@ use thiserror::Error;
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8787";
 const DEFAULT_LOG_FILTER: &str = "info";
 const DEFAULT_STATIC_DIR: &str = "../web-shell/dist";
-const DEFAULT_AUTH_PROVIDER_MODE: &str = "auto";
+const DEFAULT_AUTH_PROVIDER_MODE: &str = "workos";
 const DEFAULT_WORKOS_API_BASE_URL: &str = "https://api.workos.com";
 const DEFAULT_MOCK_MAGIC_CODE: &str = "123456";
 const DEFAULT_AUTH_CHALLENGE_TTL_SECONDS: u64 = 600;

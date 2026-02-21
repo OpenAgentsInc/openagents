@@ -334,6 +334,7 @@ ADR artifact: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.m
 
 ### OA-RUST-078 — [Auth] Codify WorkOS as canonical auth source of truth
 Description: Implement and document WorkOS-authoritative identity/auth semantics across web/desktop/iOS and ensure local control-plane records are derivative, not primary identity authority.
+Enforcement artifacts: `apps/openagents.com/service/src/auth.rs`, `apps/openagents.com/routes/api.php`, `apps/openagents.com/routes/auth.php`, `apps/openagents.com/docs/API_SANCTUM.md`, `docs/ARCHITECTURE-RUST.md`
 Acceptance criteria: All sign-in/session entrypoints validate through WorkOS integration; no standalone local credential authority remains; architecture/runbook docs explicitly state WorkOS authority.
 Dependencies: OA-RUST-010, OA-RUST-015, OA-RUST-016.
 

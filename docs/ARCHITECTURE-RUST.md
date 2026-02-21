@@ -315,6 +315,7 @@ Prohibited anti-pattern:
 5. Client requests sync token from control service with explicit topic scopes and device/session context.
 6. Client connects to Khala WS using sync token; Khala enforces topic ACL and ownership checks before subscription.
 7. If session/device access is revoked, Khala actively evicts live sockets and returns `reauth_required` semantics on reconnect.
+8. Non-WorkOS auth providers are prohibited in production paths; mock/local auth providers are allowed only for local/testing environments.
 
 ## Session and Device Model (Required)
 

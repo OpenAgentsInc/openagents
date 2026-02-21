@@ -12,15 +12,16 @@ This app now exposes a token-authenticated API under `/api` using Laravel Sanctu
   - `routes/api.php` protected by `auth:sanctum`
   - `bootstrap/app.php` with `$middleware->statefulApi()` for SPA/session compatibility
 
-## Bootstrap Signup (Staging/Automation)
+## Bootstrap Signup (Local/Testing Only)
 
-A programmatic signup endpoint is available for staging/automation when enabled by env:
+A programmatic signup endpoint is available only in local/testing environments when enabled by env:
 
 - `POST /api/auth/register`
 
 Guardrails:
 - Disabled by default (`OA_API_SIGNUP_ENABLED=false`).
 - Optional domain allowlist via `OA_API_SIGNUP_ALLOWED_DOMAINS` (comma-separated).
+- Route is not registered outside `local`/`testing` app environments.
 
 Request body example:
 

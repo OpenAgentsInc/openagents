@@ -1392,6 +1392,14 @@ mod tests {
         }
     }
 
+    fn workos_required_config(static_dir: PathBuf) -> Config {
+        let mut config = test_config(static_dir);
+        config.auth_provider_mode = "workos".to_string();
+        config.workos_client_id = None;
+        config.workos_api_key = None;
+        config
+    }
+
     async fn read_json(response: axum::response::Response) -> Result<Value> {
         let bytes = response.into_body().collect().await?.to_bytes();
         let value = serde_json::from_slice::<Value>(&bytes)?;
@@ -1584,6 +1592,28 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "invalid_request");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_email_rejects_when_workos_is_not_configured() -> Result<()> {
+        let app = build_router(workos_required_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"workos-required@example.com"}"#))?;
+
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "service_unavailable");
+
+        let message = body["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("WorkOS identity provider is required"));
+
         Ok(())
     }
 
