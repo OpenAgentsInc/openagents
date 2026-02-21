@@ -4,6 +4,7 @@
 mod wasm {
     use std::cell::RefCell;
 
+    use openagents_app_state::{AppAction, AppState, CommandIntent, apply_action};
     use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::Serialize;
     use wasm_bindgen::JsCast;
@@ -14,6 +15,7 @@ mod wasm {
 
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
+        static APP_STATE: RefCell<AppState> = RefCell::new(AppState::default());
         static DIAGNOSTICS: RefCell<BootDiagnostics> = RefCell::new(BootDiagnostics::default());
     }
 
@@ -22,6 +24,8 @@ mod wasm {
         phase: String,
         detail: String,
         frames_rendered: u64,
+        route_path: String,
+        pending_intents: usize,
         last_error: Option<String>,
     }
 
@@ -31,6 +35,8 @@ mod wasm {
                 phase: "idle".to_string(),
                 detail: "web shell not started".to_string(),
                 frames_rendered: 0,
+                route_path: "/".to_string(),
+                pending_intents: 0,
                 last_error: None,
             }
         }
@@ -79,12 +85,48 @@ mod wasm {
         })
     }
 
+    #[wasm_bindgen]
+    pub fn app_state_json() -> String {
+        APP_STATE.with(|state| {
+            serde_json::to_string(&*state.borrow()).unwrap_or_else(|_| "{}".to_string())
+        })
+    }
+
     async fn boot() -> Result<(), String> {
         if should_force_boot_failure() {
             return Err("forced startup failure because query contains oa_boot_fail=1".to_string());
         }
 
         let canvas = ensure_shell_dom()?;
+
+        let current_path = current_pathname();
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let _ = apply_action(
+                &mut state,
+                AppAction::BootstrapFromPath {
+                    path: current_path.clone(),
+                },
+            );
+            let _ = apply_action(
+                &mut state,
+                AppAction::QueueIntent {
+                    intent: CommandIntent::Bootstrap,
+                },
+            );
+            let _ = apply_action(
+                &mut state,
+                AppAction::QueueIntent {
+                    intent: CommandIntent::RequestSyncToken {
+                        scopes: vec!["runtime.codex_worker_events".to_string()],
+                    },
+                },
+            );
+            let route_path = state.route.to_path();
+            let pending_intents = state.intent_queue.len();
+            update_diagnostics_from_state(route_path, pending_intents);
+        });
+
         set_boot_phase("booting", "initializing GPU platform");
         let platform = WebPlatform::init_on_canvas(canvas).await?;
         let app = WebShellApp::new(platform);
@@ -253,6 +295,28 @@ mod wasm {
             return false;
         };
         search.contains("oa_boot_fail=1")
+    }
+
+    fn current_pathname() -> String {
+        let Some(window) = web_sys::window() else {
+            return "/".to_string();
+        };
+        let Ok(pathname) = window.location().pathname() else {
+            return "/".to_string();
+        };
+        if pathname.trim().is_empty() {
+            "/".to_string()
+        } else {
+            pathname
+        }
+    }
+
+    fn update_diagnostics_from_state(route_path: String, pending_intents: usize) {
+        DIAGNOSTICS.with(|state| {
+            let mut state = state.borrow_mut();
+            state.route_path = route_path;
+            state.pending_intents = pending_intents;
+        });
     }
 }
 
