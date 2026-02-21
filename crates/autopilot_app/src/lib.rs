@@ -443,6 +443,35 @@ pub struct InboxSnapshot {
     pub audit_log: Vec<InboxAuditEntry>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DesktopSurfaceRoute {
+    Codex,
+    Inbox,
+    Mixed,
+}
+
+impl Default for DesktopSurfaceRoute {
+    fn default() -> Self {
+        Self::Mixed
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InboxRoutePane {
+    List,
+    Thread,
+    Approvals,
+    Audit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DesktopRouteState {
+    pub active_surface: DesktopSurfaceRoute,
+    pub codex_thread_id: Option<String>,
+    pub inbox_thread_id: Option<String>,
+    pub inbox_pane: Option<InboxRoutePane>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {

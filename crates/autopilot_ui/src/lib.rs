@@ -5,9 +5,10 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, InboxAuditEntry, InboxSnapshot, InboxThreadSummary, MoltbookCommentSummary,
-    MoltbookPostSummary, MoltbookProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot,
-    ThreadSummary, UserAction, WorkspaceId,
+    AppEvent, DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane,
+    InboxSnapshot, InboxThreadSummary, MoltbookCommentSummary, MoltbookPostSummary,
+    MoltbookProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary,
+    UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -791,6 +792,7 @@ pub struct MinimalRoot {
     thread_entries: Vec<ThreadEntryView>,
     pending_thread_open: Rc<RefCell<Option<String>>>,
     inbox: InboxPaneState,
+    route_state: DesktopRouteState,
     inbox_refresh_button: Button,
     inbox_refresh_bounds: Bounds,
     inbox_open_thread_button: Button,
@@ -3222,6 +3224,7 @@ impl MinimalRoot {
             thread_entries: Vec::new(),
             pending_thread_open,
             inbox: InboxPaneState::default(),
+            route_state: DesktopRouteState::default(),
             inbox_refresh_button,
             inbox_refresh_bounds: Bounds::ZERO,
             inbox_open_thread_button,
@@ -3334,6 +3337,7 @@ impl MinimalRoot {
 
         let screen = Size::new(1280.0, 720.0);
         root.toggle_auth_pane(screen);
+        root.sync_route_state();
         root
     }
 
@@ -3358,7 +3362,7 @@ impl MinimalRoot {
     }
 
     pub fn apply_shortcut(&mut self, command: ShortcutCommand) -> bool {
-        match command {
+        let handled = match command {
             ShortcutCommand::HotbarSlot(slot) => {
                 self.hotbar.flash_slot(slot);
                 self.handle_hotbar_slot(slot)
@@ -3367,7 +3371,11 @@ impl MinimalRoot {
             ShortcutCommand::CycleChatModel => self.cycle_chat_model(),
             ShortcutCommand::CloseActivePane => self.close_active_pane(),
             _ => false,
+        };
+        if handled {
+            self.sync_route_state();
         }
+        handled
     }
 
     pub fn apply_event(&mut self, event: AppEvent) {
@@ -3662,6 +3670,7 @@ impl MinimalRoot {
             }
             _ => {}
         }
+        self.sync_route_state();
     }
 
     pub fn set_send_handler<F>(&mut self, handler: F)
@@ -3677,6 +3686,80 @@ impl MinimalRoot {
 
     fn set_screen_size(&mut self, size: Size) {
         self.screen_size = size;
+    }
+
+    fn inbox_route_for_kind(kind: PaneKind) -> Option<InboxRoutePane> {
+        match kind {
+            PaneKind::InboxList => Some(InboxRoutePane::List),
+            PaneKind::InboxThread => Some(InboxRoutePane::Thread),
+            PaneKind::InboxApprovals => Some(InboxRoutePane::Approvals),
+            PaneKind::InboxAudit => Some(InboxRoutePane::Audit),
+            _ => None,
+        }
+    }
+
+    fn is_inbox_kind(kind: PaneKind) -> bool {
+        matches!(
+            kind,
+            PaneKind::InboxList
+                | PaneKind::InboxThread
+                | PaneKind::InboxApprovals
+                | PaneKind::InboxAudit
+        )
+    }
+
+    fn sync_route_state(&mut self) {
+        let active_kind = self
+            .pane_store
+            .active_pane_id
+            .as_ref()
+            .and_then(|pane_id| self.pane_store.pane(pane_id))
+            .map(|pane| pane.kind.clone());
+        let has_chat_open = self
+            .pane_store
+            .panes()
+            .iter()
+            .any(|pane| pane.kind == PaneKind::Chat);
+        let has_inbox_open = self
+            .pane_store
+            .panes()
+            .iter()
+            .any(|pane| Self::is_inbox_kind(pane.kind.clone()));
+        let active_surface = match active_kind.clone() {
+            Some(PaneKind::Chat) => DesktopSurfaceRoute::Codex,
+            Some(kind) if Self::is_inbox_kind(kind.clone()) => DesktopSurfaceRoute::Inbox,
+            _ if has_chat_open && has_inbox_open => DesktopSurfaceRoute::Mixed,
+            _ if has_chat_open => DesktopSurfaceRoute::Codex,
+            _ if has_inbox_open => DesktopSurfaceRoute::Inbox,
+            _ => DesktopSurfaceRoute::Mixed,
+        };
+        let codex_thread_id = self
+            .pane_store
+            .active_pane_id
+            .as_ref()
+            .and_then(|pane_id| self.chat_panes.get(pane_id))
+            .and_then(|chat| chat.thread_id.clone())
+            .or_else(|| {
+                self.chat_panes
+                    .values()
+                    .find_map(|chat| chat.thread_id.clone())
+            });
+        let inbox_pane = active_kind
+            .and_then(Self::inbox_route_for_kind)
+            .or_else(|| {
+                self.pane_store
+                    .panes()
+                    .iter()
+                    .rev()
+                    .find_map(|pane| Self::inbox_route_for_kind(pane.kind.clone()))
+            });
+
+        self.route_state = DesktopRouteState {
+            active_surface,
+            codex_thread_id,
+            inbox_thread_id: self.inbox.selected_thread_id.clone(),
+            inbox_pane,
+        };
     }
 
     fn open_chat_pane(
@@ -5982,6 +6065,7 @@ impl MinimalRoot {
         self.nip90_submit_button
             .set_disabled(self.nip90_prompt_input.get_value().trim().is_empty());
 
+        self.sync_route_state();
         handled
     }
 
@@ -11898,5 +11982,75 @@ mod tests {
             Some("thread-hit")
         );
         assert!(inbox.row_at(Point::new(200.0, 200.0)).is_none());
+    }
+
+    #[test]
+    fn route_state_tracks_codex_and_inbox_context_together() {
+        let mut root = MinimalRoot::new();
+        let screen = Size::new(1280.0, 720.0);
+        let chat_id = root.open_chat_pane(screen, true, false, DEFAULT_THREAD_MODEL);
+        if let Some(chat) = root.chat_panes.get_mut(&chat_id) {
+            chat.thread_id = Some("codex-thread-1".to_string());
+        }
+
+        root.apply_event(AppEvent::InboxUpdated {
+            snapshot: InboxSnapshot {
+                threads: vec![InboxThreadSummary {
+                    id: "inbox-thread-1".to_string(),
+                    subject: "Inbox Subject".to_string(),
+                    from_address: "sender@example.com".to_string(),
+                    snippet: "snippet".to_string(),
+                    category: "ops".to_string(),
+                    risk: "low".to_string(),
+                    policy: "draft_only".to_string(),
+                    draft_preview: "draft".to_string(),
+                    pending_approval: true,
+                    updated_at: "2026-02-21T00:00:00Z".to_string(),
+                }],
+                selected_thread_id: Some("inbox-thread-1".to_string()),
+                audit_log: Vec::new(),
+            },
+            source: "test".to_string(),
+        });
+
+        root.toggle_inbox_list_pane(screen);
+        root.pane_store.bring_to_front("inbox-list");
+        root.sync_route_state();
+
+        assert_eq!(root.route_state.active_surface, DesktopSurfaceRoute::Inbox);
+        assert_eq!(
+            root.route_state.codex_thread_id.as_deref(),
+            Some("codex-thread-1")
+        );
+        assert_eq!(
+            root.route_state.inbox_thread_id.as_deref(),
+            Some("inbox-thread-1")
+        );
+        assert_eq!(root.route_state.inbox_pane, Some(InboxRoutePane::List));
+    }
+
+    #[test]
+    fn route_state_switches_surface_without_losing_other_domain_context() {
+        let mut root = MinimalRoot::new();
+        let screen = Size::new(1280.0, 720.0);
+        let chat_id = root.open_chat_pane(screen, true, false, DEFAULT_THREAD_MODEL);
+        if let Some(chat) = root.chat_panes.get_mut(&chat_id) {
+            chat.thread_id = Some("codex-thread-2".to_string());
+        }
+        root.toggle_inbox_list_pane(screen);
+        root.inbox.selected_thread_id = Some("inbox-thread-2".to_string());
+
+        root.pane_store.bring_to_front(&chat_id);
+        root.sync_route_state();
+
+        assert_eq!(root.route_state.active_surface, DesktopSurfaceRoute::Codex);
+        assert_eq!(
+            root.route_state.codex_thread_id.as_deref(),
+            Some("codex-thread-2")
+        );
+        assert_eq!(
+            root.route_state.inbox_thread_id.as_deref(),
+            Some("inbox-thread-2")
+        );
     }
 }
