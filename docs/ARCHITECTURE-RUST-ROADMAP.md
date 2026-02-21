@@ -394,6 +394,7 @@ Dependencies: OA-RUST-047.
 
 ### OA-RUST-088 — [Khala] Enforce per-topic rate limits and frame size limits
 Description: Add server-side guardrails for publish/fanout rate and payload size to prevent abuse and protect cluster stability.
+Enforcement artifacts: `apps/runtime/src/config.rs`, `apps/runtime/src/fanout.rs`, `apps/runtime/src/server.rs`, `apps/runtime/docs/KHALA_SYNC.md`, `apps/runtime/docs/RUST_RUNTIME_SERVICE_FOUNDATION.md`
 Acceptance criteria: Limits are configurable and observable; violations emit audited reason codes; clients receive deterministic error semantics.
 Dependencies: OA-RUST-087.
 
