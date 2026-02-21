@@ -93,6 +93,7 @@ These tables are runtime-owned and are not Laravel authority tables.
 - Compaction mode is tail-prune for replay journal rows in `runtime.sync_stream_events`.
 - Summary topics provide snapshot bootstrap metadata (`openagents.sync.snapshot.v1`) in stale-cursor responses.
 - Event-only topics remain tail-only replay (no snapshot bootstrap source).
+- Live delivery fairness is enforced with per-connection queue bounds + topic-slice drain scheduling; slow consumers are throttled/disconnected deterministically.
 
 ## Rebuild Posture
 

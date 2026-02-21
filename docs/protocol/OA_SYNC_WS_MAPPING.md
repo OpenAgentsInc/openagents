@@ -66,6 +66,21 @@ Example join rejection payload:
 }
 ```
 
+Current runtime payload shape for slow consumer overflow (`sync:error` and `sync:frame` error payload):
+
+```json
+{
+  "code": "slow_consumer",
+  "message": "client cannot keep up with live fanout",
+  "action": "disconnect",
+  "topic": "runtime.codex_worker_summaries",
+  "queue_depth": 2,
+  "queue_limit": 1,
+  "reconnect_after_ms": 2000,
+  "full_resync_required": true
+}
+```
+
 ## Event Names
 
 Client -> server:
@@ -155,6 +170,7 @@ Protocol remains unchanged between inline and pointer modes.
 | `SYNC_ERROR_CODE_FORBIDDEN_TOPIC` | subscription not allowed | remove forbidden topic, surface auth error |
 | `SYNC_ERROR_CODE_BAD_SUBSCRIPTION` | malformed payload/request | fix client request, retry |
 | `SYNC_ERROR_CODE_STALE_CURSOR` | resume watermark too old | full hydration + reset watermark |
+| `SYNC_ERROR_CODE_SLOW_CONSUMER` | outbound queue pressure exceeded | throttle/reconnect per server guidance |
 | `SYNC_ERROR_CODE_PAYLOAD_TOO_LARGE` | payload exceeds configured limit | hydrate via HTTP doc endpoint |
 | `SYNC_ERROR_CODE_RATE_LIMITED` | server throttled request | retry after `retry_after_ms` |
 | `SYNC_ERROR_CODE_INTERNAL` | transient server fault | reconnect with backoff |

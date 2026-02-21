@@ -60,8 +60,10 @@ High-cardinality keys explicitly prohibited from metric labels:
   - `:topic` (per-topic deleted counts, stale-risk, oldest/head watermark, topic class, snapshot capability)
 - `[:openagents_runtime, :sync, :socket, ...]`
   - `:connection` (connect/disconnect counts + active connection gauge source)
+  - `:queue` (outbound queue depth + overflow status)
   - `:heartbeat` (server/client heartbeat traffic)
   - `:reconnect` (resume reconnect count)
+  - `:slow_consumer` (throttle/disconnect policy actions)
   - `:timeout` (heartbeat timeout disconnect count)
 - `[:openagents_runtime, :sync, :replay, ...]`
   - `:lag` (topic replay lag at catch-up/live boundaries)

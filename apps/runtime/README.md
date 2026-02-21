@@ -33,6 +33,10 @@ Environment:
 - `OA_COMPAT_KHALA_MIN_SCHEMA_VERSION` (default: `1`)
 - `OA_COMPAT_KHALA_MAX_SCHEMA_VERSION` (default: `1`)
 - `khala_sync_topic_policies` (runtime config map in `config/config.exs`) defines per-topic retention windows, compaction mode, and snapshot metadata source.
+- `khala_sync_outbound_queue_limit` (default: `64`)
+- `khala_sync_fair_drain_topics_per_tick` (default: `2`)
+- `khala_sync_slow_consumer_max_strikes` (default: `3`)
+- `khala_sync_slow_consumer_reconnect_after_ms` (default: `2000`)
 
 Baseline endpoints:
 
@@ -130,6 +134,7 @@ Khala replay QoS and budget semantics:
 - Topic policy defines QoS tier + replay budget per topic (`khala_sync_topic_policies`).
 - Resume paths that exceed replay budget return deterministic `stale_cursor` with reason `replay_budget_exceeded`.
 - Retention-floor misses return deterministic `stale_cursor` with reason `retention_floor_breach`.
+- Live fanout fairness is queue/scheduler enforced; slow-consumer overflow returns deterministic `slow_consumer` errors and may disconnect the socket.
 
 ## Local development
 

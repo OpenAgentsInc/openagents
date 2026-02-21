@@ -388,6 +388,7 @@ Dependencies: OA-RUST-085.
 
 ### OA-RUST-087 — [Khala] Implement fairness and slow-consumer handling policy
 Description: Implement per-connection buffer limits, fair fanout across topics, and explicit slow-consumer actions (throttle/disconnect/resync).
+Enforcement artifacts: `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/lib/openagents_runtime/telemetry/metrics.ex`, `apps/runtime/config/config.exs`, `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`, `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`, `apps/runtime/test/openagents_runtime/telemetry/metrics_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
 Acceptance criteria: Hot topic traffic cannot starve other topics; slow consumers are handled by policy; integration tests verify fairness under load.
 Dependencies: OA-RUST-047.
 

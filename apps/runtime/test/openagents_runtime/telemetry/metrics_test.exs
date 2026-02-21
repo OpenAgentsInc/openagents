@@ -41,6 +41,8 @@ defmodule OpenAgentsRuntime.Telemetry.MetricsTest do
     assert Map.has_key?(allowlist, :sync_socket_heartbeat)
     assert Map.has_key?(allowlist, :sync_socket_reconnect)
     assert Map.has_key?(allowlist, :sync_socket_timeout)
+    assert Map.has_key?(allowlist, :sync_socket_queue)
+    assert Map.has_key?(allowlist, :sync_socket_slow_consumer)
     assert Map.has_key?(allowlist, :sync_replay_lag)
     assert Map.has_key?(allowlist, :sync_replay_budget)
     assert Map.has_key?(allowlist, :sync_replay_catchup)

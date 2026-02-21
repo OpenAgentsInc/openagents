@@ -24,12 +24,18 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   @default_replay_batch_size 200
   @default_heartbeat_interval_ms 15_000
   @default_heartbeat_timeout_ms 60_000
+  @default_outbound_queue_limit 64
+  @default_fair_drain_topics_per_tick 2
+  @default_slow_consumer_max_strikes 3
+  @default_slow_consumer_reconnect_after_ms 2_000
 
   @connection_event [:openagents_runtime, :sync, :socket, :connection]
   @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
   @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
   @revocation_event [:openagents_runtime, :sync, :socket, :revocation]
+  @queue_event [:openagents_runtime, :sync, :socket, :queue]
+  @slow_consumer_event [:openagents_runtime, :sync, :socket, :slow_consumer]
   @lag_event [:openagents_runtime, :sync, :replay, :lag]
   @budget_event [:openagents_runtime, :sync, :replay, :budget]
   @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
@@ -84,6 +90,10 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
          |> assign(:topic_watermarks, %{})
          |> assign(:connected_at_ms, now_ms)
          |> assign(:last_client_heartbeat_ms, now_ms)
+         |> assign(:pending_topics_queue, :queue.new())
+         |> assign(:pending_topics_set, MapSet.new())
+         |> assign(:drain_scheduled, false)
+         |> assign(:slow_consumer_strikes, 0)
          |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
     end
   end
@@ -235,8 +245,26 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     subscribed_topics = socket.assigns[:subscribed_topics] || MapSet.new()
 
     if MapSet.member?(subscribed_topics, topic) do
-      {socket, topic_watermarks} = replay_topics(socket, [topic], %{}, replay_batch_size(%{}))
-      {:noreply, assign(socket, :topic_watermarks, topic_watermarks)}
+      case enqueue_live_topic(socket, topic) do
+        {:ok, socket, queue_depth} ->
+          emit_queue_depth(topic, queue_depth, "queued")
+          {:noreply, maybe_schedule_drain(socket)}
+
+        {:overflow, socket, queue_depth} ->
+          handle_slow_consumer_overflow(socket, topic, queue_depth)
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:drain_replay_queue, socket) do
+    socket = assign(socket, :drain_scheduled, false)
+    {socket, _processed} = drain_pending_topics(socket, fair_drain_topics_per_tick())
+
+    if pending_queue_depth(socket) > 0 do
+      {:noreply, maybe_schedule_drain(socket)}
     else
       {:noreply, socket}
     end
@@ -586,6 +614,182 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   defp retention_floor(oldest_watermark) when is_integer(oldest_watermark),
     do: max(oldest_watermark - 1, 0)
 
+  defp maybe_schedule_drain(socket) do
+    if socket.assigns[:drain_scheduled] == true do
+      socket
+    else
+      Process.send_after(self(), :drain_replay_queue, 0)
+      assign(socket, :drain_scheduled, true)
+    end
+  end
+
+  defp enqueue_live_topic(socket, topic) when is_binary(topic) do
+    queue = socket.assigns[:pending_topics_queue] || :queue.new()
+    pending_topics = socket.assigns[:pending_topics_set] || MapSet.new()
+
+    if MapSet.member?(pending_topics, topic) do
+      {:ok, socket, pending_queue_depth(socket)}
+    else
+      queue_limit = outbound_queue_limit()
+      queue_depth = :queue.len(queue)
+
+      if queue_depth >= queue_limit do
+        {:overflow, socket, queue_depth + 1}
+      else
+        next_queue = :queue.in(topic, queue)
+        next_pending_topics = MapSet.put(pending_topics, topic)
+
+        {:ok,
+         socket
+         |> assign(:pending_topics_queue, next_queue)
+         |> assign(:pending_topics_set, next_pending_topics), :queue.len(next_queue)}
+      end
+    end
+  end
+
+  defp pending_queue_depth(socket) do
+    queue = socket.assigns[:pending_topics_queue] || :queue.new()
+    :queue.len(queue)
+  end
+
+  defp drain_pending_topics(socket, remaining) when remaining <= 0 do
+    {socket, 0}
+  end
+
+  defp drain_pending_topics(socket, remaining) do
+    case pop_pending_topic(socket) do
+      {:empty, socket} ->
+        {socket, 0}
+
+      {{:ok, topic}, socket} ->
+        {socket, needs_more_replay?} = replay_topic_slice(socket, topic, replay_batch_size(%{}))
+
+        socket =
+          if needs_more_replay? do
+            case enqueue_live_topic(socket, topic) do
+              {:ok, socket, _queue_depth} -> socket
+              {:overflow, socket, _queue_depth} -> socket
+            end
+          else
+            socket
+          end
+
+        {socket, processed} = drain_pending_topics(socket, remaining - 1)
+        {socket, processed + 1}
+    end
+  end
+
+  defp pop_pending_topic(socket) do
+    queue = socket.assigns[:pending_topics_queue] || :queue.new()
+    pending_topics = socket.assigns[:pending_topics_set] || MapSet.new()
+
+    case :queue.out(queue) do
+      {:empty, _queue} ->
+        {:empty, socket}
+
+      {{:value, topic}, next_queue} ->
+        next_pending_topics = MapSet.delete(pending_topics, topic)
+
+        {{:ok, topic},
+         socket
+         |> assign(:pending_topics_queue, next_queue)
+         |> assign(:pending_topics_set, next_pending_topics)}
+    end
+  end
+
+  defp replay_topic_slice(socket, topic, replay_batch_size) do
+    topic_watermarks = socket.assigns[:topic_watermarks] || %{}
+    current_watermark = Map.get(topic_watermarks, topic, 0)
+
+    {:ok, %{events: events, next_watermark: next_watermark, head_watermark: head_watermark}} =
+      Replay.fetch_batch(topic, current_watermark, batch_size: replay_batch_size)
+
+    replay_complete = next_watermark >= head_watermark
+    lag_events = max(head_watermark - next_watermark, 0)
+
+    Events.emit(@lag_event, %{count: 1, lag_events: lag_events}, %{
+      component: "sync_channel",
+      event_type: topic,
+      status: if(lag_events == 0, do: "caught_up", else: "lagging")
+    })
+
+    if events != [] do
+      payload = %{
+        "updates" => Enum.map(events, &stream_event_to_update/1),
+        "replay_complete" => replay_complete,
+        "head_watermarks" => [
+          %{
+            "topic" => topic,
+            "watermark" => head_watermark
+          }
+        ]
+      }
+
+      push(socket, "sync:update_batch", payload)
+
+      push_khala_frame(
+        socket,
+        topic,
+        frame_seq(events, next_watermark),
+        :update_batch,
+        payload
+      )
+    end
+
+    final_watermark = max(next_watermark, current_watermark)
+    next_topic_watermarks = Map.put(topic_watermarks, topic, final_watermark)
+    needs_more_replay? = final_watermark < head_watermark
+
+    {assign(socket, :topic_watermarks, next_topic_watermarks), needs_more_replay?}
+  end
+
+  defp handle_slow_consumer_overflow(socket, topic, queue_depth) do
+    strikes = (socket.assigns[:slow_consumer_strikes] || 0) + 1
+    max_strikes = slow_consumer_max_strikes()
+    queue_limit = outbound_queue_limit()
+
+    action = if strikes >= max_strikes, do: "disconnect", else: "throttle"
+
+    payload = %{
+      "code" => "slow_consumer",
+      "message" => "client cannot keep up with live fanout",
+      "action" => action,
+      "topic" => topic,
+      "queue_depth" => queue_depth,
+      "queue_limit" => queue_limit,
+      "reconnect_after_ms" => slow_consumer_reconnect_after_ms(),
+      "full_resync_required" => action == "disconnect"
+    }
+
+    push(socket, "sync:error", payload)
+    push_khala_frame(socket, topic, 0, :error, payload)
+
+    Events.emit(@slow_consumer_event, %{count: 1, queue_depth: queue_depth}, %{
+      component: "sync_channel",
+      status: if(action == "disconnect", do: "error", else: "ok"),
+      reason_class: "queue_overflow",
+      action: action
+    })
+
+    emit_queue_depth(topic, queue_depth, "overflow")
+
+    socket = assign(socket, :slow_consumer_strikes, strikes)
+
+    if action == "disconnect" do
+      {:stop, :slow_consumer, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp emit_queue_depth(topic, queue_depth, status) do
+    Events.emit(@queue_event, %{count: 1, queue_depth: queue_depth}, %{
+      component: "sync_channel",
+      event_type: topic,
+      status: status
+    })
+  end
+
   defp stale_cursor_payload(stale_topics) do
     reason_codes =
       stale_topics
@@ -674,6 +878,31 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
         qos_tier: qos_tier,
         reason_class: reason_class
       }
+    )
+  end
+
+  defp fair_drain_topics_per_tick do
+    read_positive_int_env(
+      :khala_sync_fair_drain_topics_per_tick,
+      @default_fair_drain_topics_per_tick
+    )
+  end
+
+  defp outbound_queue_limit do
+    read_positive_int_env(:khala_sync_outbound_queue_limit, @default_outbound_queue_limit)
+  end
+
+  defp slow_consumer_max_strikes do
+    read_positive_int_env(
+      :khala_sync_slow_consumer_max_strikes,
+      @default_slow_consumer_max_strikes
+    )
+  end
+
+  defp slow_consumer_reconnect_after_ms do
+    read_positive_int_env(
+      :khala_sync_slow_consumer_reconnect_after_ms,
+      @default_slow_consumer_reconnect_after_ms
     )
   end
 
