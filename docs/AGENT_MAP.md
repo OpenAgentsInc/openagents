@@ -10,6 +10,8 @@ Start from canonical docs, then drill down by surface.
 - `docs/GLOSSARY.md`
 - `docs/ROADMAP.md`
 - `docs/DEPLOYMENT_RUST_SERVICES.md`
+- `docs/RUST_DOC_CLASSIFICATION.md`
+- `docs/ARCHIVE_MANIFEST.md`
 
 ## Architecture and Contract Authority
 

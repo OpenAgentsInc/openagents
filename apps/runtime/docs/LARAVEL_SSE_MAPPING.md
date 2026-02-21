@@ -1,22 +1,10 @@
-# Laravel SSE Mapping
+# Legacy SSE Mapping (Archived)
 
-Runtime stream events are mapped to Laravel AI SDK-compatible SSE frames via:
+This file documented Laravel SSE compatibility mapping.
 
-- `OpenAgentsRuntime.Integrations.LaravelEventMapper`
-- `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.run_event/4` (proto-derived adapter validation at boundary)
-- Layer-0 contract source: `docs/protocol/LAYER0_PROTOBUF_MAPPING.md` and `proto/openagents/protocol/v1/events.proto`
+Active runtime sync transport is websocket-first (Khala). See:
 
-## Runtime Event → SSE Data Mapping
+1. `apps/runtime/docs/KHALA_SYNC.md`
+2. `docs/ARCHITECTURE-RUST.md`
 
-- `run.started` -> `{ "type": "start", ... }`
-- `run.delta` / `text.delta` -> `{ "type": "text-delta", "delta": ... }`
-- `tool.call` -> `{ "type": "tool-call", ... }`
-- `tool.result` -> `{ "type": "tool-result", ... }`
-- `run.finished` -> `{ "type": "finish", ... }` then `data: [DONE]`
-- unknown event types -> `{ "type": "event", "eventType": ... }`
-
-## SSE Invariants
-
-- Every emitted frame includes `event: message`.
-- Cursor continuity uses `id: <seq>` on emitted frames.
-- Terminal flows emit literal `[DONE]` as final data payload.
+Original SSE mapping content has been archived to backroom in OA-RUST-113.

@@ -4,6 +4,8 @@ Canonical architecture is Rust-only:
 - `ARCHITECTURE-RUST.md`
 - `ARCHITECTURE-RUST-ROADMAP.md`
 - `DEPLOYMENT_RUST_SERVICES.md`
+- `RUST_DOC_CLASSIFICATION.md`
+- `ARCHIVE_MANIFEST.md`
 
 `ARCHITECTURE.md` is historical context only.
 
@@ -36,8 +38,8 @@ Canonical runtime deploy + migrate command:
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=runtime \
-MIGRATE_JOB=runtime-migrate \
+RUNTIME_SERVICE=openagents-runtime \
+MIGRATE_JOB=openagents-runtime-migrate \
 IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```

@@ -14,6 +14,8 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Canonical architecture: `docs/ARCHITECTURE-RUST.md`
 - Canonical migration sequencing: `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - Canonical Rust deploy/process matrix: `docs/DEPLOYMENT_RUST_SERVICES.md`
+- Rust docs classification: `docs/RUST_DOC_CLASSIFICATION.md`
+- Archive manifest: `docs/ARCHIVE_MANIFEST.md`
 - Historical architecture snapshot (non-canonical): `docs/ARCHITECTURE.md`
 - Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
 - ADR authoring/review process: `docs/adr/README.md`
@@ -126,8 +128,8 @@ Historical lanes (legacy-only, non-canonical for new work): Laravel/PHP app file
     ```bash
     GCP_PROJECT=openagentsgemini \
     GCP_REGION=us-central1 \
-    RUNTIME_SERVICE=runtime \
-    MIGRATE_JOB=runtime-migrate \
+    RUNTIME_SERVICE=openagents-runtime \
+    MIGRATE_JOB=openagents-runtime-migrate \
     IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
     apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
     ```

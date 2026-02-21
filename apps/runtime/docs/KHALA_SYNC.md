@@ -83,7 +83,7 @@ Khala runtime tables include:
 - `runtime.sync_run_summaries`
 - `runtime.sync_codex_worker_summaries`
 
-These tables are runtime-owned and are not Laravel authority tables.
+These tables are runtime-owned and are not control-plane authority tables.
 
 ## Retention, Compaction, and Snapshot Policy
 
@@ -151,8 +151,8 @@ Operational entrypoint:
 
 ## Auth Model
 
-- Laravel remains auth/session authority.
-- Laravel mints short-lived sync tokens (`/api/sync/token`, `/api/khala/token` compatibility).
+- Control service remains auth/session authority.
+- Control service mints short-lived sync tokens (`/api/sync/token` and compatibility endpoints).
 - Runtime/Khala validates issuer, audience, expiry, and scoped entitlements.
 - Operator secrets are never issued to end-user clients.
 - WS threat model + anti-replay policy: `apps/runtime/docs/KHALA_WS_THREAT_MODEL.md`

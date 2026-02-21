@@ -190,6 +190,50 @@ for (const file of deployDocs) {
   })
 }
 
+// 6) Guard active Rust entry docs from unqualified legacy-stack references.
+const activeRustEntryDocs = [
+  "AGENTS.md",
+  "docs/README.md",
+  "docs/AGENT_MAP.md",
+  "docs/STORYBOOK.md",
+  "docs/autopilot/testing/PROD_E2E_TESTING.md",
+  "docs/autopilot/testing/TRACE_RETRIEVAL.md",
+  "docs/autopilot/testing/STREAM_TESTING.md",
+  "apps/autopilot-ios/docs/README.md",
+  "apps/autopilot-ios/docs/ios-codex-first-structure.md",
+  "apps/autopilot-ios/docs/codex-connection-roadmap.md",
+  "apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md",
+  "apps/runtime/docs/RUNTIME_CONTRACT.md",
+  "apps/runtime/docs/KHALA_SYNC.md",
+  "apps/runtime/docs/OBSERVABILITY.md",
+  "apps/openagents.com/docs/API_SANCTUM.md",
+  "apps/openagents.com/docs/WEB_PARITY_STATUS.md",
+]
+
+const legacyStackPatterns = [
+  { pattern: /\bLaravel\b/, label: "Laravel stack reference" },
+  { pattern: /\bInertia\b/, label: "Inertia stack reference" },
+  { pattern: /\bReact\b/, label: "React stack reference" },
+  { pattern: /\bapps\/web\b/, label: "removed apps/web reference" },
+  { pattern: /\bphp artisan\b/i, label: "php artisan command reference" },
+  { pattern: /\bmix test\b/i, label: "mix test command reference" },
+]
+
+for (const file of activeRustEntryDocs) {
+  if (!trackedSet.has(file)) continue
+  const lines = fs.readFileSync(file, "utf8").split("\n")
+  lines.forEach((line, index) => {
+    for (const rule of legacyStackPatterns) {
+      if (rule.pattern.test(line) && !historicalQualifierRe.test(line)) {
+        errors.push({
+          file,
+          message: `legacy stack reference without historical qualifier at line ${index + 1}: ${rule.label}`,
+        })
+      }
+    }
+  })
+}
+
 if (errors.length) {
   const byFile = new Map()
   for (const e of errors) {

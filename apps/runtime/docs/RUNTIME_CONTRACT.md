@@ -1,6 +1,6 @@
 # OpenAgents Runtime Internal Contract (`/internal/v1/*`)
 
-This document defines the implemented internal control-plane contract between Laravel and `runtime`.
+This document defines the implemented internal control-plane contract between the Rust control service and `runtime`.
 
 ## Conventions
 
@@ -778,4 +778,4 @@ Standard runtime span names:
 
 ## Backward Compatibility Rule
 
-Contract changes must be additive or versioned. Breaking changes to `/internal/v1/*` require explicit migration notes and Laravel adapter updates.
+Contract changes must be additive or versioned. Breaking changes to `/internal/v1/*` require explicit migration notes and control-service adapter updates.

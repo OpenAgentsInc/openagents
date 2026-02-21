@@ -1,384 +1,45 @@
-# Autopilot iOS -> Codex Connection Roadmap
+# Autopilot iOS Codex Connection Roadmap
 
-Status: Active roadmap
-Date: 2026-02-19
-Owner: iOS + Runtime + Web teams
+Status: active
 
-## Purpose
+## Goal
 
-Define a comprehensive, implementation-ordered roadmap for connecting `apps/autopilot-ios/` to Codex with production-safe authority boundaries.
+Deliver reliable iOS administration of Codex workers through the Rust control/runtime stack.
 
-This roadmap references working patterns from `~/code/inbox-autopilot/` (local API client + long-lived event loop) and adapts them for OpenAgents, where iOS cannot assume localhost Codex execution.
+## Architecture
 
-## Executive Summary
+1. iOS -> control-service HTTP APIs for commands/mutations.
+2. iOS -> Khala websocket for projection updates.
+3. Runtime remains execution authority.
+4. Control-plane remains auth/session/token authority.
 
-1. iOS should be Codex-admin and observability first, not Codex execution authority.
-2. Runtime remains source of truth for worker lifecycle/events/policy/spend.
-3. iOS talks to Laravel public APIs only (`/api/runtime/codex/workers*`).
-4. Transport/execution backend can vary (`desktop`, hosted sandbox, future direct bridge), but runtime contract stays fixed.
-5. First production lane should be runtime-mediated; direct iOS-to-local-Codex is optional and later.
-6. iOS UX should be zero-config by default: fixed `openagents.com` backend + in-app auth flow (no manual URL/token paste).
+## Phases
 
-## Architecture Guardrails
+1. Foundation
+- stabilize auth refresh + device session behavior.
+- lock shared wire/domain models from `proto/`.
 
-1. Runtime + Postgres are authoritative for worker lifecycle/events.
-2. Khala is read-model projection only.
-3. Laravel is auth/session authority and public API facade.
-4. iOS never calls runtime internal `/internal/v1/*` directly.
-5. Proto definitions under `proto/` remain schema authority.
+2. Read path parity
+- worker list, worker snapshot, run summaries.
+- websocket subscribe/replay/resume with persisted watermarks.
 
-References:
+3. Admin actions
+- send request/stop commands via control-service.
+- show receipts/errors with deterministic UX states.
 
-- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
-- `apps/runtime/docs/RUNTIME_CONTRACT.md`
-- `docs/codex/unified-runtime-desktop-plan.md`
-- `proto/README.md`
+4. Real-device handshake lane
+- desktop worker selected.
+- iOS sends handshake event.
+- desktop/runtime emits ack.
+- iOS marks connected state.
 
-## Current Baseline
+5. Reliability hardening
+- reconnect chaos tests.
+- stale cursor recovery tests.
+- telemetry + SLO dashboards.
 
-OpenAgents already has the cross-surface Codex worker contract in place:
+## Non-goals
 
-1. Runtime internal worker APIs and durable state.
-2. Laravel user-scoped proxy APIs for list/snapshot/request/events/stop and Khala sync token minting.
-3. Web and mobile admin surfaces consuming those APIs.
-4. Desktop runtime sync that mirrors local Codex events into runtime.
-
-Primary references:
-
-- `apps/openagents.com/app/Http/Controllers/Api/RuntimeCodexWorkersController.php`
-- `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
-- legacy Expo mobile API client parity reference (removed root; use git history)
-- `apps/autopilot-desktop/src/main.rs`
-
-## Lessons to Reuse from inbox-autopilot
-
-From `~/code/inbox-autopilot/`, reuse the following patterns:
-
-1. Thin API client with centralized auth/session handling.
-2. Khala websocket frame parser/handler yielding typed worker events.
-3. App-level event task that continuously merges streamed events into observable state.
-4. Keychain-backed secret/session token storage.
-5. Append-only event mindset for auditability.
-
-Useful reference files:
-
-- `/Users/christopherdavid/code/inbox-autopilot/Inbox Autopilot/Inbox Autopilot/DaemonAPIClient.swift`
-- `/Users/christopherdavid/code/inbox-autopilot/Inbox Autopilot/Inbox Autopilot/AppModel.swift`
-- `/Users/christopherdavid/code/inbox-autopilot/docs/ipc-contract.md`
-- `/Users/christopherdavid/code/inbox-autopilot/daemon/src/routes.rs`
-
-## iOS Connection Options (and when to use each)
-
-### Option A: Runtime/Laravel-mediated Codex (recommended default)
-
-Path:
-
-`iOS -> Laravel /api/runtime/codex/workers* -> runtime -> desktop/hosted adapters`
-
-Pros:
-
-1. Matches existing web/mobile path.
-2. Reuses ownership/policy/security controls.
-3. Works for both desktop-backed and hosted-backed workers.
-4. Best for production support and auditability.
-
-Cons:
-
-1. Depends on backend availability.
-2. Requires stable user auth and network connectivity.
-
-### Option B: iOS -> desktop companion over Tailscale/private network (later)
-
-Path:
-
-`iOS -> authenticated desktop gateway -> local Codex on desktop`
-
-Pros:
-
-1. Enables personal-device local execution access.
-2. Useful for power users and low-latency personal workflows.
-
-Cons:
-
-1. Harder security posture (device trust, revocation, NAT/network complexity).
-2. Requires additional gateway protocol and lifecycle management.
-3. Can drift from runtime authority unless carefully mirrored.
-
-Constraint:
-
-If implemented, this path must still mirror all authoritative events/state into runtime so web/mobile/admin remain consistent.
-
-### Option C: iOS -> hosted sandbox backend via runtime (parallel lane)
-
-Path:
-
-`iOS -> Laravel -> runtime -> sandbox backend (Cloudflare/Daytona/OpenAgents GCP)`
-
-Pros:
-
-1. Device-independent execution.
-2. Easier team/shared access patterns.
-
-Cons:
-
-1. Infra/ops complexity.
-2. Requires backend selection policy and cost guardrails.
-
-Reference:
-
-- `docs/codex/webapp-sandbox-and-codex-auth-plan.md`
-
-## Decision for Initial Delivery
-
-Use Option A as the default production lane:
-
-1. build iOS on the existing Laravel runtime proxy APIs,
-2. keep runtime authority intact,
-3. add Option B/C later behind runtime contracts and policy gates.
-
-## Minimum Viable Handshake (Real iPhone <-> Desktop Codex)
-
-This is the minimum connection target for a real iOS device and a desktop Codex session.
-
-### Handshake definition
-
-Handshake is successful when all of the following happen:
-
-1. iOS can discover or select a desktop-backed worker through Laravel runtime APIs.
-2. iOS sends a handshake event into that worker stream.
-3. Desktop receives that handshake event from runtime and emits an ack event.
-4. iOS receives the ack on stream and marks the desktop session as connected.
-
-### Proposed handshake event pair (MVP)
-
-1. iOS -> runtime event ingest:
-   - endpoint: `POST /api/runtime/codex/workers/{workerId}/events`
-   - `event_type`: `worker.event`
-   - payload:
-     - `source: \"autopilot-ios\"`
-     - `method: \"ios/handshake\"`
-     - `handshake_id`
-     - `device_id`
-     - `occurred_at`
-2. Desktop -> runtime ack event:
-   - endpoint: `POST /api/runtime/codex/workers/{workerId}/events`
-   - `event_type`: `worker.event`
-   - payload:
-     - `source: \"autopilot-desktop\"`
-     - `method: \"desktop/handshake_ack\"`
-     - `handshake_id`
-     - `desktop_session_id`
-     - `occurred_at`
-3. iOS live-sync success condition:
-   - `desktop/handshake_ack` received with matching `handshake_id` within timeout window (e.g. 30s).
-
-### Why this MVP shape
-
-1. Uses existing Laravel/runtime worker event APIs without introducing a new authority path.
-2. Avoids forcing immediate runtime adapter redesign for request forwarding.
-3. Creates a real bidirectional signal path between iOS and desktop through the authoritative runtime event ledger.
-4. Keeps future Tailscale or hosted backend options compatible with the same handshake envelope.
-
-### MVP prerequisites
-
-1. Desktop launched with runtime sync env vars (`OPENAGENTS_RUNTIME_SYNC_*`).
-2. iOS user authenticated against Laravel API.
-3. Worker ownership is shared/principal-valid for both device actions.
-4. iOS Khala websocket client supports reconnect + watermark continuity.
-
-### GitHub execution issues
-
-1. Tracker: `#1775`
-2. iOS handshake client + ack matcher: `#1771`
-3. Desktop stream listener + ack emitter: `#1772`
-4. Runtime/Laravel contract docs + tests: `#1773`
-5. Real-device runbook + checklist: `#1774`
-
-Operator runbook:
-
-- `apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md`
-
-## Roadmap Phases
-
-### Phase 0: iOS Foundation and Contracts
-
-Goal:
-
-Create iOS app architecture that can consume Codex worker APIs cleanly.
-
-Work:
-
-1. Create iOS docs and module layout in `apps/autopilot-ios/docs/`.
-2. Add a `RuntimeCodexClient` service layer in Swift.
-3. Define typed worker/snapshot/stream/action models aligned with runtime/Laravel envelopes.
-4. Implement auth token provider + Keychain storage.
-
-Deliverables:
-
-1. `apps/autopilot-ios/docs/ios-codex-first-structure.md`
-2. `apps/autopilot-ios/docs/codex-connection-roadmap.md`
-3. Swift API client skeleton.
-
-### Phase 1: Codex Read Path (List/Snapshot/Khala WS)
-
-Goal:
-
-iOS can observe Codex worker state and stream events.
-
-Work:
-
-1. Worker list screen (`GET /api/runtime/codex/workers`).
-2. Worker detail snapshot (`GET /api/runtime/codex/workers/{id}`).
-3. Khala websocket client (`POST /api/sync/token` + `/sync/socket/websocket`).
-4. Watermark management, reconnect strategy, duplicate suppression.
-5. Event timeline UI with bounded in-memory retention.
-
-Reference parity:
-
-- legacy Expo mobile API client parity reference (removed root; use git history)
-- `/Users/christopherdavid/code/inbox-autopilot/Inbox Autopilot/Inbox Autopilot/DaemonAPIClient.swift`
-
-Exit criteria:
-
-1. signed-in user sees principal-scoped worker list.
-2. websocket reconnects and advances watermarks without event loss/duplication.
-3. snapshot and stream stay coherent under reconnect.
-
-### Phase 2: Codex Admin Actions (Request/Stop)
-
-Goal:
-
-iOS can safely administer workers.
-
-Work:
-
-1. Request action UI (`POST /requests`) with JSON parameter editor.
-2. Stop action UI (`POST /stop`) with reason field.
-3. Error mapping for `401/403/409/422` to explicit UX states.
-4. Action receipts in timeline/notifications.
-
-Reference parity:
-
-- `apps/openagents.com/resources/js/pages/admin/index.tsx`
-- legacy Expo mobile UI parity reference (removed root; use git history)
-
-Exit criteria:
-
-1. request and stop actions work with runtime policy semantics.
-2. forbidden/conflict states are shown clearly and non-destructively.
-
-### Phase 3: Reliability and Observability Hardening
-
-Goal:
-
-Make iOS connection path stable in real-world network conditions.
-
-Work:
-
-1. exponential backoff with jitter for websocket reconnects.
-2. periodic list/snapshot refresh reconciliation.
-3. `x-request-id` generation/propagation in iOS client.
-4. local structured logs for failed API/websocket operations.
-5. optional local event cache for recent timeline continuity.
-
-Reuse pattern:
-
-- event loop/task model from `/Users/christopherdavid/code/inbox-autopilot/Inbox Autopilot/Inbox Autopilot/AppModel.swift`
-
-Exit criteria:
-
-1. network flap tests recover automatically.
-2. action outcomes remain traceable via request IDs.
-
-### Phase 4: Backend Expansion Lanes
-
-Goal:
-
-Support more execution topologies without changing iOS contract.
-
-Workstream A (desktop remote bridge via Tailscale):
-
-1. define desktop companion gateway auth model (device registration, short-lived tokens).
-2. require runtime mirror for all worker lifecycle/events.
-3. add policy switch to enable per-user/per-workspace.
-
-Workstream B (hosted sandbox backends):
-
-1. consume runtime-selected backend metadata in worker snapshot.
-2. keep iOS action surface unchanged.
-3. add backend health/status badges in UI (informational).
-
-Exit criteria:
-
-1. iOS app behavior remains contract-stable while backend varies.
-
-### Phase 5: Khala Read-Model Enhancements (Optional)
-
-Goal:
-
-Improve responsiveness for summaries while preserving runtime authority.
-
-Work:
-
-1. mint Khala token via Laravel (`POST /api/sync/token`, `/api/khala/token` compatibility).
-2. subscribe to worker summary projections for fast list/status updates.
-3. continue using runtime/Laravel APIs for all control actions.
-
-Exit criteria:
-
-1. projection lag/status visible in iOS.
-2. no control-path authority moved to Khala.
-
-## Security and Trust Model
-
-1. Keychain for user tokens and sensitive local state.
-2. Do not store long-lived backend admin secrets in app.
-3. Treat device as untrusted for authority; server enforces ownership/policy.
-4. If Tailscale lane is added, require explicit device enrollment and revocation flow.
-5. Follow least-privilege and replay-safe request patterns.
-
-## Testing and Verification Matrix
-
-### Unit
-
-1. request/response decoding and error mapping.
-2. Khala frame parser and watermark advancement.
-3. retry/backoff logic and cancellation behavior.
-
-### Integration (staging)
-
-1. list -> snapshot -> stream lifecycle.
-2. request -> response event chain.
-3. stop behavior and conflict semantics.
-4. auth expiry and re-auth behavior.
-
-### End-to-end
-
-1. desktop-originated worker events visible in iOS stream.
-2. iOS-admin action visible in web admin timeline.
-3. correlation IDs traceable across Laravel/runtime logs.
-
-## Dependencies and Sequencing
-
-1. Runtime/Laravel Codex APIs must remain stable and versioned.
-2. iOS phase 1 and 2 can run in parallel with UI polish, but not with contract churn.
-3. Any Tailscale/hosted expansion requires threat-model review before implementation.
-
-## Risks and Mitigations
-
-1. Risk: transport fragmentation across desktop/local/hosted lanes.
-   Mitigation: single runtime worker contract, backend hidden behind runtime adapters.
-2. Risk: websocket reliability issues on mobile networks.
-   Mitigation: robust Khala reconnect/resume, watermark replay, periodic snapshot reconciliation.
-3. Risk: authority creep into client.
-   Mitigation: enforce server-side ownership and policy checks only.
-4. Risk: backend-specific behavior leaks into iOS UX.
-   Mitigation: strict client contract abstraction and typed model boundaries.
-
-## Definition of Done (Codex Connection)
-
-1. iOS can observe and administer Codex workers through Laravel/runtime APIs with parity to web/mobile.
-2. websocket reliability meets reconnect and watermark continuity requirements.
-3. request/stop actions honor runtime policy/ownership semantics.
-4. tracing/correlation headers and logs are operationally useful.
-5. backend expansion (desktop bridge or hosted sandbox) does not require iOS contract rewrite.
+1. Direct iOS-to-local runtime authority writes.
+2. WebSocket command RPC.
+3. Manual endpoint configuration in default UX.

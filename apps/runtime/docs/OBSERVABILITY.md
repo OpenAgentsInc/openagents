@@ -76,9 +76,9 @@ High-cardinality keys explicitly prohibited from metric labels:
 
 ## Required Correlation
 
-- Laravel forwards `traceparent`, `tracestate`, and `x-request-id`.
+- Control service forwards `traceparent`, `tracestate`, and `x-request-id`.
 - Runtime attaches this context to telemetry metadata via `OpenAgentsRuntime.Telemetry.Events`.
-- Join path: browser -> Laravel -> runtime -> tool/model.
+- Join path: browser/client -> control service -> runtime -> tool/model.
 
 ## Operational Use
 
