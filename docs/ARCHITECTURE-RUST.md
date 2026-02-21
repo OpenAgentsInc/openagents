@@ -254,3 +254,89 @@ The architecture is considered fully realized only when:
 4. Khala WS replay is the sole live sync lane.
 5. New ADR set is in place and old ADR set is archived.
 6. `docs/ARCHITECTURE.md` is replaced or explicitly marked historical in favor of this document.
+
+## Rivet Rust Integration Exploration (for BEAM Replacement)
+
+This section captures specific Rust components in `~/code/rivet` that are relevant to replacing BEAM-era operational behavior with Rust-native systems in OpenAgents.
+
+### What is relevant to harvest
+
+1. Guard-style WS/HTTP edge gateway patterns  
+   Source:
+   - `~/code/rivet/engine/packages/guard-core/`
+   - `~/code/rivet/docs/engine/GUARD.md`
+   - `~/code/rivet/docs/engine/HIBERNATING_WS.md`
+   
+   Why useful for OpenAgents:
+   - route resolution + proxy lifecycle + websocket handling patterns for high-concurrency ingress.
+   - practical hibernating websocket behavior to reduce idle compute while preserving client sockets.
+
+2. Gasoline durable workflow model  
+   Source:
+   - `~/code/rivet/engine/packages/gasoline/`
+   - `~/code/rivet/docs/engine/GASOLINE/OVERVIEW.md`
+   - `~/code/rivet/docs/engine/GASOLINE/WORKFLOW_HISTORY.md`
+   - `~/code/rivet/engine/packages/workflow-worker/src/lib.rs`
+   
+   Why useful for OpenAgents:
+   - durable, replay-safe workflow steps (`signal`, `activity`, `sleep`, sub-workflow patterns).
+   - versioned workflow history evolution mechanics for long-lived workflows without replay divergence.
+   - maps directly to Codex/agent lifecycle orchestration and recovery semantics.
+
+3. Universal PubSub abstraction patterns  
+   Source:
+   - `~/code/rivet/engine/packages/universalpubsub/`
+   - `~/code/rivet/engine/packages/universalpubsub/src/driver/mod.rs`
+   - `~/code/rivet/engine/packages/universalpubsub/src/pubsub.rs`
+   
+   Why useful for OpenAgents:
+   - multi-driver pubsub facade (memory/nats/postgres drivers).
+   - chunked payload handling, retry/backoff patterns, and local fast-path optimization.
+   - strong candidate for internal runtime event fanout without coupling to a single broker.
+
+4. Universal DB abstraction patterns  
+   Source:
+   - `~/code/rivet/engine/packages/universaldb/`
+   - `~/code/rivet/engine/packages/universaldb/src/driver/mod.rs`
+   - `~/code/rivet/engine/packages/universaldb/src/database.rs`
+   
+   Why useful for OpenAgents:
+   - transactional driver abstraction and retryable txn model.
+   - helps keep runtime storage internals swappable without protocol churn.
+
+5. RivetKit Rust client transport patterns  
+   Source:
+   - `~/code/rivet/rivetkit-rust/packages/client/`
+   - `~/code/rivet/rivetkit-rust/packages/client/src/connection.rs`
+   - `~/code/rivet/rivetkit-rust/packages/client/src/remote_manager.rs`
+   
+   Why useful for OpenAgents:
+   - reconnection-oriented websocket client lifecycle.
+   - explicit connection token/id reuse and protocol framing.
+   - notable alignment with WS-first direction (their SSE path is explicitly not implemented in current gateway flow).
+
+### What should not be lifted wholesale
+
+1. Full actor platform semantics as core OpenAgents domain model.
+2. EPaxos/epoxy multi-region KV stack by default (`~/code/rivet/engine/packages/epoxy/`), unless specific multi-region consistency needs justify complexity.
+3. Rivet protocol surface as-is; OpenAgents remains proto-first under `proto/` and keeps Khala/runtime contracts authoritative.
+
+### Proposed integration posture
+
+OpenAgents should harvest implementation patterns, not adopt Rivet architecture wholesale:
+
+1. Use Guard-core-inspired ingress/websocket lifecycle techniques in the Rust edge + Khala gateway.
+2. Use Gasoline-inspired durable workflow/history strategies for runtime orchestration and recovery.
+3. Use UniversalPubSub-inspired abstractions for internal event fanout.
+4. Keep OpenAgents authority boundaries and contract model unchanged (`control.*` vs `runtime.*`, proto authority, Khala projection-only).
+
+### Implementation guardrails for harvesting
+
+1. Preserve OpenAgents topic/watermark model for Khala; no replacement with actor IDs as authority keys.
+2. Preserve OpenAgents auth/token/ownership policy semantics at edge and subscription layers.
+3. Keep dependency and operational footprint bounded; adopt subsystems incrementally behind feature gates.
+4. Record each adopted pattern as a new Rust-era ADR with explicit rationale and rollback plan.
+
+### Licensing and provenance
+
+Rivet repository is Apache-2.0 licensed (as documented in `~/code/rivet/README.md`), which is compatible with pattern-level reuse and selective code adaptation, subject to preserving required notices when copying implementation code.
