@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 console_error_panic_hook = "0.1"
+gloo-net = "0.6"
 openagents-app-state = { path = "../../../crates/openagents-app-state" }
 openagents-ui-core = { path = "../../../crates/openagents-ui-core" }
 serde.workspace = true
@@ -19,6 +20,7 @@ serde_json.workspace = true
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
+    "Storage",
     "Window",
     "Document",
     "Element",

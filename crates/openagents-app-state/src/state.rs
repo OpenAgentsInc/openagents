@@ -10,14 +10,56 @@ use crate::route::AppRoute;
 pub enum AuthStatus {
     SignedOut,
     SendingCode,
+    AwaitingCode,
     VerifyingCode,
+    SessionRestoring,
+    SessionRefreshing,
     SignedIn,
+    ReauthRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionLifecycleStatus {
+    Active,
+    ReauthRequired,
+    Expired,
+    Revoked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthUser {
+    pub user_id: String,
+    pub email: String,
+    pub name: String,
+    pub workos_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSnapshot {
+    pub session_id: String,
+    pub user_id: String,
+    pub device_id: String,
+    pub token_name: String,
+    pub active_org_id: String,
+    pub status: SessionLifecycleStatus,
+    pub reauth_required: bool,
+    pub issued_at: Option<String>,
+    pub access_expires_at: Option<String>,
+    pub refresh_expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthState {
     pub status: AuthStatus,
     pub email: Option<String>,
+    pub challenge_id: Option<String>,
+    pub token_type: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub user: Option<AuthUser>,
+    pub session: Option<SessionSnapshot>,
+    pub last_error: Option<String>,
 }
 
 impl Default for AuthState {
@@ -25,7 +67,29 @@ impl Default for AuthState {
         Self {
             status: AuthStatus::SignedOut,
             email: None,
+            challenge_id: None,
+            token_type: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+            session: None,
+            last_error: None,
         }
+    }
+}
+
+impl AuthState {
+    #[must_use]
+    pub fn has_tokens(&self) -> bool {
+        self.access_token.is_some() && self.refresh_token.is_some()
+    }
+
+    #[must_use]
+    pub fn has_active_session(&self) -> bool {
+        self.status == AuthStatus::SignedIn
+            && self.session.as_ref().is_some_and(|session| {
+                session.status == SessionLifecycleStatus::Active && !session.reauth_required
+            })
     }
 }
 

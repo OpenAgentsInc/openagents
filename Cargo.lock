@@ -7007,6 +7007,7 @@ name = "openagents-web-shell"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "gloo-net",
  "openagents-app-state",
  "openagents-ui-core",
  "serde",
