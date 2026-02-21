@@ -566,6 +566,52 @@ Streams worker event log as SSE with the same cursor semantics as run streams.
 
 Requests graceful worker shutdown and appends a durable `worker.stopped` event.
 
+### `POST /internal/v1/sync/sessions/revoke`
+
+Internal control-plane signal to revoke sync websocket access and evict live sockets.
+
+Required request body:
+
+- at least one of `session_ids` or `device_ids`
+
+Optional fields:
+
+- `reason` (`user_requested`, `admin_revoked`, `token_replay`, `device_replaced`, `security_policy`)
+
+Request:
+
+```json
+{
+  "session_ids": ["sess_123"],
+  "device_ids": [],
+  "reason": "user_requested"
+}
+```
+
+Success (`200`):
+
+```json
+{
+  "data": {
+    "revoked_session_ids": ["sess_123"],
+    "revoked_device_ids": [],
+    "reason": "user_requested",
+    "revoked_at": 1772000000
+  }
+}
+```
+
+Validation failure (`400`):
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "session_ids or device_ids must include at least one identifier"
+  }
+}
+```
+
 ## Khala Projection Boundary
 
 Khala (self-hosted or cloud) may be used as a reactive sync layer for

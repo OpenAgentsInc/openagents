@@ -406,6 +406,64 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+  /sync/sessions/revoke:
+    post:
+      summary: Revoke sync websocket sessions/devices and evict live sockets
+      operationId: revokeSyncSessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_ids:
+                  type: array
+                  items:
+                    type: string
+                device_ids:
+                  type: array
+                  items:
+                    type: string
+                reason:
+                  type: string
+              additionalProperties: false
+      responses:
+        '200':
+          description: Session/device revocations accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      revoked_session_ids:
+                        type: array
+                        items:
+                          type: string
+                      revoked_device_ids:
+                        type: array
+                        items:
+                          type: string
+                      reason:
+                        type: string
+                      revoked_at:
+                        type: integer
+                    required:
+                      - revoked_session_ids
+                      - revoked_device_ids
+                      - reason
+                      - revoked_at
+                required:
+                  - data
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
   /runs/{run_id}/snapshot:
     get:
       summary: Read latest run snapshot

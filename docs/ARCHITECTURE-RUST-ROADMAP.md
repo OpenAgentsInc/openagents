@@ -346,6 +346,7 @@ Dependencies: OA-RUST-016, OA-RUST-018.
 
 ### OA-RUST-080 — [Auth/Khala] Enforce live WS eviction on session invalidation
 Description: Propagate session revocation to active Khala sockets so unauthorized sessions are disconnected and forced through reauth.
+Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/runtime/lib/openagents_runtime/sync/session_revocation.ex`, `apps/runtime/lib/openagents_runtime_web/sync_socket.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/lib/openagents_runtime_web/controllers/sync_session_controller.ex`
 Acceptance criteria: Revoked sessions are evicted within bounded latency; reconnect returns deterministic `reauth_required` behavior; end-to-end tests cover revoke-during-stream.
 Dependencies: OA-RUST-018, OA-RUST-044.
 

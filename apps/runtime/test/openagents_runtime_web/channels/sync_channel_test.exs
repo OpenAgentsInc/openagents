@@ -8,6 +8,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   alias OpenAgentsRuntime.Sync.ConnectionTracker
   alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.RetentionJob
+  alias OpenAgentsRuntime.Sync.SessionRevocation
   alias OpenAgentsRuntime.Sync.StreamEvent
   alias OpenAgentsRuntimeWeb.SyncChannel
   alias OpenAgentsRuntimeWeb.SyncSocket
@@ -23,11 +24,13 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
   @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
+  @revocation_event [:openagents_runtime, :sync, :socket, :revocation]
   @lag_event [:openagents_runtime, :sync, :replay, :lag]
   @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
 
   setup do
     ConnectionTracker.reset_for_tests()
+    SessionRevocation.reset_for_tests()
     :ok
   end
 
@@ -458,6 +461,74 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
+  @tag :chaos_drill
+  test "revoked session disconnects live socket and reconnect requires reauth" do
+    telemetry_refs = attach_sync_telemetry(self())
+
+    on_exit(fn ->
+      Enum.each(telemetry_refs, &:telemetry.detach/1)
+    end)
+
+    session_id = "sess-live-revoke"
+    device_id = "ios-live-revoke"
+
+    token =
+      valid_sync_jwt(
+        oa_sync_scopes: [@run_topic],
+        oa_session_id: session_id,
+        oa_device_id: device_id
+      )
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    subscribe_ref = push(socket, "sync:subscribe", %{"topics" => [@run_topic]})
+    assert_reply subscribe_ref, :ok, _reply
+
+    Process.unlink(socket.channel_pid)
+    monitor_ref = Process.monitor(socket.channel_pid)
+
+    revoke_result = SessionRevocation.revoke(session_ids: [session_id], reason: "user_requested")
+    assert revoke_result.revoked_session_ids == [session_id]
+
+    assert_receive {:DOWN, ^monitor_ref, :process, _pid, _reason}, 500
+
+    assert {:ok, reconnect_socket} = connect(SyncSocket, %{"token" => token})
+
+    assert {:error,
+            %{
+              "code" => "reauth_required",
+              "reauth_required" => true,
+              "reason" => "user_requested"
+            }} = subscribe_and_join(reconnect_socket, SyncChannel, "sync:v1")
+
+    assert_receive {:sync_revocation, %{count: 1},
+                    %{status: "reauth_required", result: "join_denied"}}
+  end
+
+  test "revoked session auth emits deterministic reauth_required reason" do
+    session_id = "sess-reauth-required"
+    device_id = "ios-reauth-required"
+
+    SessionRevocation.revoke(session_ids: [session_id], reason: "security_policy")
+
+    token =
+      valid_sync_jwt(
+        oa_sync_scopes: [@run_topic],
+        oa_session_id: session_id,
+        oa_device_id: device_id
+      )
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+
+    assert {:error,
+            %{
+              "code" => "reauth_required",
+              "reauth_required" => true,
+              "reason" => "security_policy"
+            }} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+  end
+
   test "subscribe emits reconnect/lag/catch-up telemetry" do
     insert_stream_event(@run_topic, 1, %{"value" => "one"})
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
@@ -562,6 +633,8 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       {"sync-heartbeat-#{System.unique_integer([:positive])}", @heartbeat_event, :sync_heartbeat},
       {"sync-reconnect-#{System.unique_integer([:positive])}", @reconnect_event, :sync_reconnect},
       {"sync-timeout-#{System.unique_integer([:positive])}", @timeout_event, :sync_timeout},
+      {"sync-revocation-#{System.unique_integer([:positive])}", @revocation_event,
+       :sync_revocation},
       {"sync-lag-#{System.unique_integer([:positive])}", @lag_event, :sync_lag},
       {"sync-catchup-#{System.unique_integer([:positive])}", @catchup_event, :sync_catchup}
     ]

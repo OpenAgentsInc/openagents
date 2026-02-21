@@ -46,6 +46,7 @@ Baseline endpoints:
 - `POST /internal/v1/workers/:worker_id/heartbeat`
 - `POST /internal/v1/workers/:worker_id/status`
 - `GET /internal/v1/workers/:worker_id/checkpoint`
+- `POST /internal/v1/sync/sessions/revoke` (internal control-plane revocation signal for live WS eviction)
 
 The Rust boundary modules live under `apps/runtime/src/`:
 
@@ -101,6 +102,12 @@ Khala fanout seam:
 - `RUNTIME_FANOUT_DRIVER` keeps protocol stable while reserving hooks for `nats`, `redis`, and `postgres_notify` adapters.
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
+
+Khala websocket revocation semantics:
+
+- Sync sockets are bound to `oa_session_id` + `oa_device_id` claims.
+- Runtime tracks revoked sessions/devices and denies reconnect with `reauth_required`.
+- Revocation signals from control-plane disconnect matching live sockets immediately.
 
 ## Local development
 

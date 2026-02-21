@@ -34,6 +34,7 @@ defmodule OpenAgentsRuntimeWeb.Router do
     post "/codex/workers/:worker_id/requests", CodexWorkerController, :request
     post "/codex/workers/:worker_id/events", CodexWorkerController, :events
     post "/codex/workers/:worker_id/stop", CodexWorkerController, :stop
+    post "/sync/sessions/revoke", SyncSessionController, :revoke
     get "/runs/:run_id/snapshot", RunController, :snapshot
     post "/runs/:run_id/frames", RunController, :append_frame
     post "/runs/:run_id/cancel", RunController, :cancel

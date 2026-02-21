@@ -100,6 +100,9 @@ defmodule OpenAgentsRuntimeWeb.AuthHelpers do
         "jti" => "jti-#{System.unique_integer([:positive])}",
         "oa_user_id" => opts[:user_id] || 1,
         "oa_org_id" => opts[:oa_org_id] || "org_123",
+        "oa_session_id" =>
+          opts[:oa_session_id] || "sess_test_#{System.unique_integer([:positive])}",
+        "oa_device_id" => opts[:oa_device_id] || "device:test",
         "oa_sync_scopes" => opts[:oa_sync_scopes] || [],
         "oa_claims_version" => claims_version
       }
