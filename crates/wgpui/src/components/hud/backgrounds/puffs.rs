@@ -7,12 +7,15 @@ use crate::{Bounds, Hsla, InputEvent, Quad, Size};
 
 use super::BackgroundAnimator;
 
-/// Animated puffs background with expanding glow bursts.
+/// Animated puffs background with expanding glow bursts (Arwes-style).
+/// When `grid_distance` is set, puffs spawn on grid columns and float up along the grid.
 pub struct PuffsBackground {
     id: Option<ComponentId>,
     color: Hsla,
     quantity: usize,
     padding: f32,
+    /// When set, puffs spawn at x positions aligned to this spacing (grid columns).
+    grid_distance: Option<f32>,
     x_offset: (f32, f32),
     y_offset: (f32, f32),
     radius_initial: f32,
@@ -34,6 +37,7 @@ impl PuffsBackground {
             color: Hsla::new(180.0, 0.5, 0.7, 0.2),
             quantity: 10,
             padding: 50.0,
+            grid_distance: None,
             x_offset: (0.0, 0.0),
             y_offset: (-10.0, -100.0),
             radius_initial: 4.0,
@@ -47,6 +51,13 @@ impl PuffsBackground {
             puffs_sets: Vec::new(),
             last_size: None,
         }
+    }
+
+    /// Spawn puffs on grid columns (x aligned to spacing); they float up along grid lines.
+    pub fn grid_distance(mut self, distance: Option<f32>) -> Self {
+        self.grid_distance = distance.filter(|&d| d > 0.0);
+        self.last_size = None;
+        self
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -182,6 +193,7 @@ impl PuffsBackground {
             self.quantity,
             self.sets,
             self.padding,
+            self.grid_distance,
             self.x_offset,
             self.y_offset,
             self.radius_initial,
@@ -361,6 +373,7 @@ fn create_puffs_sets(
     quantity: usize,
     sets: usize,
     padding: f32,
+    grid_distance: Option<f32>,
     x_offset: (f32, f32),
     y_offset: (f32, f32),
     radius_initial: f32,
@@ -371,11 +384,20 @@ fn create_puffs_sets(
     let width = (size.width - padding * 2.0).max(1.0);
     let height = (size.height - padding * 2.0).max(1.0);
 
+    let grid_d = grid_distance.filter(|&v| v > 0.0);
+    let n_cols = grid_d.map(|d| (width / d).floor().max(1.0) as u32);
+
     (0..sets)
         .map(|_| {
             (0..per_set)
                 .map(|_| {
-                    let x = padding + rng.next_f32() * width;
+                    let x = match (grid_d, n_cols) {
+                        (Some(d), Some(cols)) => {
+                            let col = (rng.next_f32() * cols as f32).min((cols - 1) as f32) as u32;
+                            padding + col as f32 * d
+                        }
+                        _ => padding + rng.next_f32() * width,
+                    };
                     let y = padding + rng.next_f32() * height;
                     let r = radius_initial.max(1.0);
                     let xo = x_offset.0 + rng.next_f32() * x_offset.1;
@@ -417,8 +439,11 @@ fn draw_puff(
 
         let size = (layer_radius * 2.0).max(1.0);
         let bounds = Bounds::new(x - layer_radius, y - layer_radius, size, size);
-        cx.scene
-            .draw_quad(Quad::new(bounds).with_background(color.with_alpha(layer_alpha)));
+        cx.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(color.with_alpha(layer_alpha))
+                .with_corner_radius(layer_radius),
+        );
     }
 }
 

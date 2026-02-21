@@ -562,7 +562,12 @@ pub mod ios {
     }
 
     impl IosBackgroundState {
+        fn logical_to_physical(value: u32, scale: f32) -> u32 {
+            ((value.max(1) as f32) * scale.max(1.0)).ceil() as u32
+        }
+
         /// Create WGPUI render state from a CAMetalLayer pointer and dimensions.
+        /// `width`/`height` are logical points; surface config uses physical pixels via `scale`.
         /// Call from main thread. Uses Metal backend.
         /// Safety: `layer_ptr` must be a valid CAMetalLayer and outlive this state.
         pub unsafe fn new(
@@ -571,6 +576,7 @@ pub mod ios {
             height: u32,
             scale: f32,
         ) -> Result<Box<Self>, String> {
+            let scale = scale.max(1.0);
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
                 backends: wgpu::Backends::METAL,
                 ..Default::default()
@@ -604,11 +610,16 @@ pub mod ios {
                 .or_else(|| caps.formats.first().copied())
                 .ok_or("no surface format")?;
 
+            let logical_width = width.max(1);
+            let logical_height = height.max(1);
+            let physical_width = Self::logical_to_physical(logical_width, scale);
+            let physical_height = Self::logical_to_physical(logical_height, scale);
+
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format,
-                width: width.max(1),
-                height: height.max(1),
+                width: physical_width,
+                height: physical_height,
                 present_mode: wgpu::PresentMode::AutoVsync,
                 alpha_mode: caps
                     .alpha_modes
@@ -622,7 +633,7 @@ pub mod ios {
 
             let renderer = Renderer::new(&device, format);
             let text_system = TextSystem::new(scale);
-            let size = Size::new(width as f32, height as f32);
+            let size = Size::new(logical_width as f32, logical_height as f32);
             let mut puffs = PuffsBackground::new()
                 .color(theme::text::MUTED.with_alpha(0.15))
                 .quantity(18)
@@ -837,14 +848,17 @@ pub mod ios {
 
         /// Resize the surface (e.g. on layout change).
         pub fn resize(&mut self, width: u32, height: u32) {
-            self.config.width = width.max(1);
-            self.config.height = height.max(1);
+            let logical_width = width.max(1);
+            let logical_height = height.max(1);
+            self.config.width = Self::logical_to_physical(logical_width, self.scale);
+            self.config.height = Self::logical_to_physical(logical_height, self.scale);
             self.surface.configure(&self.device, &self.config);
-            self.size = Size::new(self.config.width as f32, self.config.height as f32);
+            self.size = Size::new(logical_width as f32, logical_height as f32);
         }
     }
 
     /// C FFI for Swift: create renderer from CAMetalLayer pointer.
+    /// `width`/`height` are logical points.
     /// Returns opaque pointer to IosBackgroundState, or null on error.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_create(
@@ -909,7 +923,7 @@ pub mod ios {
         let _ = unsafe { Box::from_raw(state) };
     }
 
-    /// C FFI: handle tap at logical pixel coordinates (origin top-left). Call from Swift on tap.
+    /// C FFI: handle tap at logical point coordinates (origin top-left). Call from Swift on tap.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_handle_tap(
         state: *mut IosBackgroundState,

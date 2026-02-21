@@ -2,7 +2,52 @@
 
 **Symptom:** App works in development (Debug build, simulator or device). After archiving and installing via TestFlight, the app shows only a black screen.
 
-**Status:** Unresolved. This document records the architecture, what was tried, and recommended next steps.
+**Status:** Resolved on 2026-02-21. Root cause and fix are documented below.
+
+---
+
+## 0. Resolution (2026-02-21)
+
+### Root cause
+
+Release/TestFlight builds enable linker dead-strip (`-dead_strip`). The Swift bridge was loading WGPUI symbols at runtime via `dlsym`, so the linker saw no static references to most WGPUI FFI functions and stripped them.
+
+Only `_wgpui_ios_background_create` survived because the project explicitly forced it via `-u _wgpui_ios_background_create`. As a result:
+
+- `dlsym(..., "wgpui_ios_background_create")` could succeed,
+- but `dlsym(..., "wgpui_ios_background_render|resize|destroy")` returned nil,
+- so `WgpuiBackgroundBridge.isAvailable` evaluated false,
+- and SwiftUI rendered fallback `Color.black`.
+
+### Fix applied
+
+`apps/autopilot-ios/Autopilot/Autopilot/WgpuiBackgroundBridge.swift` now uses direct C-ABI bindings (`@_silgen_name`) for WGPUI functions instead of runtime `dlsym`.
+
+This makes the linker retain the referenced symbols in Release builds and removes the runtime symbol-table dependency that differed between Debug (`Autopilot.debug.dylib`) and TestFlight.
+
+### Verification
+
+Release simulator build:
+
+```bash
+xcodebuild -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj \
+  -scheme Autopilot \
+  -configuration Release \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' build
+```
+
+Binary symbol check:
+
+```bash
+nm -gU <.../Release-iphonesimulator/Autopilot.app/Autopilot> | rg 'wgpui_ios_background_(create|render|resize|destroy)'
+```
+
+Confirmed present in Release binary after fix:
+- `_wgpui_ios_background_create`
+- `_wgpui_ios_background_render`
+- `_wgpui_ios_background_resize`
+- `_wgpui_ios_background_destroy`
 
 ---
 
@@ -20,18 +65,15 @@ So a black screen in production can mean either:
 - **A)** Bridge reports “not available” → we never create the Metal/WGPUI view and show `Color.black`, or  
 - **B)** Bridge is available but **`wgpui_ios_background_create`** returns **null** → we create the Metal view but never start the display link; the view’s `backgroundColor = .black` is what you see.
 
-### 1.2 Symbol loading (why “available” can be false in Release)
+### 1.2 Symbol binding (current behavior)
 
-WGPUI is **not** linked at compile time from Swift. The Swift bridge loads the Rust C symbols at **runtime** via **`dlsym`**:
+WGPUI is now linked at compile time from Swift through direct C-ABI function bindings in `WgpuiBackgroundBridge.swift` (using `@_silgen_name`).
 
-- **`WgpuiBackgroundBridge`** (`WgpuiBackgroundBridge.swift`):
-  - `wgpuiHandle`: first tries **`dlopen(nil, RTLD_NOW)`** (main executable), then falls back to **`Autopilot.debug.dylib`** (only present in some debug setups).
-  - Loads: `wgpui_ios_background_create`, `_render`, `_resize`, `_destroy`, plus tap/login/email FFI.
-  - **`isAvailable`** = all of create/render/resize/destroy are non-nil.
+- No runtime `dlsym` lookup is used for WGPUI startup.
+- No `Autopilot.debug.dylib` fallback path is needed.
+- Missing symbols now fail the app build/link step instead of silently degrading to a runtime black-screen fallback.
 
-Rust symbols come from the **statically linked** `libopenagents_client_core.a` (device: `ios-arm64`, simulator: `ios-arm64_x86_64-simulator`). The linker is given **`-u _wgpui_ios_background_create`** and **`-force_load …/libopenagents_client_core.a`** so the .o that defines the WGPUI FFI is included. For Archive (device), SDK-conditional **`OTHER_LDFLAGS[sdk=iphoneos*]`** and **`LIBRARY_SEARCH_PATHS[sdk=iphoneos*]`** point at the device slice only.
-
-If the **symbol table is stripped** in the Release/Archive binary, **`dlsym(mainHandle, "wgpui_ios_background_create")`** returns **nil** → **`isAvailable`** is false → **Color.black**.
+Rust symbols come from the statically linked `libopenagents_client_core.a` (device: `ios-arm64`, simulator: `ios-arm64_x86_64-simulator`) and are retained by direct symbol references from Swift.
 
 ### 1.3 What happens when create() is called
 
