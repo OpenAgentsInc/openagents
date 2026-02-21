@@ -22,6 +22,7 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid.workspace = true
 hex.workspace = true
+jsonwebtoken = "9"
 
 [dev-dependencies]
 anyhow.workspace = true

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     net::{AddrParseError, SocketAddr},
 };
@@ -13,6 +14,10 @@ pub struct Config {
     pub authority_write_mode: AuthorityWriteMode,
     pub fanout_driver: String,
     pub fanout_queue_capacity: usize,
+    pub sync_token_signing_key: String,
+    pub sync_token_issuer: String,
+    pub sync_token_audience: String,
+    pub sync_revoked_jtis: HashSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +72,22 @@ impl Config {
             .unwrap_or_else(|_| "1024".to_string())
             .parse::<usize>()
             .map_err(|error| ConfigError::InvalidFanoutQueueCapacity(error.to_string()))?;
+        let sync_token_signing_key = env::var("RUNTIME_SYNC_TOKEN_SIGNING_KEY")
+            .unwrap_or_else(|_| "dev-sync-key".to_string());
+        let sync_token_issuer = env::var("RUNTIME_SYNC_TOKEN_ISSUER")
+            .unwrap_or_else(|_| "https://openagents.com".to_string());
+        let sync_token_audience = env::var("RUNTIME_SYNC_TOKEN_AUDIENCE")
+            .unwrap_or_else(|_| "openagents-sync".to_string());
+        let sync_revoked_jtis = env::var("RUNTIME_SYNC_REVOKED_JTIS")
+            .ok()
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
         Ok(Self {
             service_name,
             bind_addr,
@@ -74,6 +95,10 @@ impl Config {
             authority_write_mode,
             fanout_driver,
             fanout_queue_capacity,
+            sync_token_signing_key,
+            sync_token_issuer,
+            sync_token_audience,
+            sync_revoked_jtis,
         })
     }
 }

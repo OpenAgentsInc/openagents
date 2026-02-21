@@ -58,4 +58,5 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 10. Authority cutover is controlled by `RUNTIME_AUTHORITY_WRITE_MODE`; legacy write freeze is controlled by `LEGACY_RUNTIME_WRITE_FREEZE`.
 11. Khala live delivery path is wired through an internal fanout seam (`FanoutDriver`) with bounded in-memory adapter and external-driver hooks.
 12. Khala topic polling enforces strict `stale_cursor` semantics (`410` with deterministic replay-floor metadata) and successful poll responses expose replay bootstrap metadata (`oldest_available_cursor`, `head_cursor`, `next_cursor`, `replay_complete`).
-13. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+13. Khala topic polling enforces sync token auth, topic scope ACL matrix, worker ownership checks, and deterministic denied-path reason codes.
+14. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
