@@ -50,6 +50,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Plans
 
 - Repo-wide plans hub: `plans/`
+- Rust migration execution board + owner map: `plans/active/rust-migration-execution-control-plane.md`
 
 ## Product Surfaces
 
