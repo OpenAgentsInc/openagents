@@ -21,7 +21,7 @@ Implementation sequencing and issue backlog live in `docs/ARCHITECTURE-RUST-ROAD
 5. Runtime and sync stack are Rust implementations (no Elixir runtime in endstate).
 6. Existing ADR set under `docs/adr/` is archived; a new ADR series is authored from scratch for the Rust endstate.
 
-## Architecture Principles (Endstate)
+## Architecture Principles
 
 1. Rust is the implementation language for all product logic, authority logic, and sync delivery logic.
 2. WGPUI is the shared UI system across web, desktop, and iOS surfaces.
@@ -44,7 +44,7 @@ flowchart LR
   end
 
   subgraph core["Rust Service Plane"]
-    edge["openagents.com control service\nRust control API + static host"]
+    control["openagents.com control service\nRust control APIs + static host"]
     runtime["runtime\nRust execution authority"]
     khala["Khala\nRust WS sync + replay"]
     lops["lightning-ops\nRust policy/reconcile"]
@@ -62,20 +62,20 @@ flowchart LR
     bitcoind["bitcoind"]
   end
 
-  web --> edge
-  desktop --> edge
-  ios --> edge
-  onyx -.->|selected APIs| edge
+  web --> control
+  desktop --> control
+  ios --> control
+  onyx -.->|selected APIs| control
 
-  edge --> runtime
+  control --> runtime
   runtime --> khala
-  edge --> khala
+  control --> khala
 
-  edge --> controlDb
+  control --> controlDb
   runtime --> runtimeDb
   khala --> runtimeDb
 
-  lops --> edge
+  lops --> control
   lops --> aperture
   lwe --> lnd
   aperture --> lnd
@@ -106,10 +106,10 @@ flowchart LR
 
 Owns:
 
-- WorkOS is the canonical identity/authentication provider.
-- OpenAgents control-plane is authoritative for authorization, sessions, device management, org membership, and revocation, derived from WorkOS identity.
+- WorkOS is the canonical identity and authentication provider.
+- OpenAgents control-plane is authoritative for authorization, sessions, device management, org membership, and revocation derived from WorkOS identity (WorkOS is not an authorization database).
 - Sync token minting and scope derivation.
-- Public control API gateway behavior.
+- Public control APIs and request policy enforcement.
 - Static hosting for WGPUI WASM bundles.
 
 Does not own:
@@ -127,7 +127,7 @@ Owns:
 
 Does not own:
 
-- User identity/session authority records.
+- Identity/session authority records in `control.*`.
 
 ### 3) Khala (Rust sync service, runtime-owned contracts)
 
@@ -144,9 +144,9 @@ Does not own:
 
 Ordering contract:
 
-- `seq` allocation is performed transactionally in runtime Postgres and is the single ordering oracle.
+- `seq` allocation is performed transactionally in `runtime.*` Postgres and is the single ordering oracle.
 
-## Data Plane Model (unchanged in concept, Rust in implementation)
+## Data Plane Model
 
 Two authority planes remain mandatory:
 
@@ -161,9 +161,9 @@ Allowed deployment options:
 Invariant:
 
 - Cross-plane writes are forbidden.
-- Cross-plane interaction happens only through explicit service APIs/contracts.
+- Cross-plane interaction happens only through explicit service APIs and proto-defined contracts.
 
-## UI Runtime Endstate (WGPUI Everywhere)
+## UI Runtime Endstate
 
 ### Shared UI and state
 
@@ -179,7 +179,7 @@ Invariant:
 
 No product/business logic remains in React Native, Electron, SwiftUI view logic, or legacy web stacks.
 
-### `openagents.com` implementation (in-process Rust WGPUI on web)
+### `openagents.com` implementation
 
 The web shell runs Rust UI logic in-process inside the browser (WASM). The Rust/WGPUI runtime owns rendering state, route state, and command/subscription orchestration exactly like desktop, with only a minimal JavaScript host shim.
 
@@ -192,14 +192,14 @@ Runtime model:
 
 JS boundary rules:
 
-1. JS is host glue only: startup, service worker registration, browser APIs that require JS interop.
-2. Product routes, feature logic, command handling, auth/session state, and presentation logic stay in Rust crates.
-3. No React/Inertia/SPA framework runtime in endstate.
+1. JS is host glue only: startup, service worker registration, and browser APIs requiring JS interop.
+2. Product routes, feature logic, command handling, auth/session state, and presentation logic remain in Rust crates.
+3. No React/Inertia/SPA framework runtime exists in endstate.
 
 Proposed crate split for the web surface:
 
 1. `crates/openagents-ui-core`: shared WGPUI components, theme tokens, layout primitives.
-2. `crates/openagents-app-state`: shared route graph, view-model reducers, command queue, watermark cache interfaces.
+2. `crates/openagents-app-state`: shared route graph, reducers, command queue, watermark cache interfaces.
 3. `crates/openagents-proto-client`: proto-generated wire clients + domain mapping adapters.
 4. `crates/openagents-khala-client`: WS session/reconnect/resume logic, topic subscriptions, replay bootstrap.
 5. `apps/openagents.com/web-shell`: wasm entrypoint and browser host adapters.
@@ -220,7 +220,7 @@ Build and release shape:
 
 SSR and first-paint strategy:
 
-1. Initial endstate can be CSR-first with fast wasm boot and skeleton shell.
+1. Initial endstate may be CSR-first with fast wasm boot and a skeleton shell.
 2. If needed, add Rust-generated pre-rendered shell HTML for first paint only.
 3. Hydration remains Rust-owned; no split brain with a second UI framework.
 
@@ -241,13 +241,13 @@ Locked behavior:
 1. Commands/mutations go through authenticated HTTP APIs (protobuf or strict JSON mapping). gRPC is permitted for internal service-to-service only.
 2. Read model updates stream via Khala WebSocket subscriptions.
 3. Clients persist per-topic watermarks and resume deterministically.
-4. `stale_cursor` forces full bootstrap refresh and watermark reset.
+4. `stale_cursor` forces snapshot/replay bootstrap and local watermark reset before resuming live tail.
 
 ## Topic Taxonomy and Scope Grammar
 
 1. Topic names follow deterministic prefixes (for example `user:{user_id}:runs`, `org:{org_id}:workers`, `run:{run_id}:events`).
 2. Sync scope claims are derived from validated topic prefix grammar, not arbitrary free-form strings.
-3. Auth decisions are evaluated against user/org/device ownership and topic prefix policy before subscription is accepted.
+3. Authorization decisions are evaluated against user/org/device ownership and topic prefix policy before subscription is accepted.
 
 ## Protocol and Contract Governance
 
@@ -271,7 +271,7 @@ Prohibited anti-pattern:
 
 - “types-first in Rust” for Khala/runtime/control contracts.
 
-## Auth and Identity Flow (Rust Endstate)
+## Auth and Identity Flow
 
 1. Client authenticates through WorkOS-driven control-plane auth at control service APIs.
 2. Control service validates WorkOS identity/session claims and maps them to OpenAgents control-plane authorization state.

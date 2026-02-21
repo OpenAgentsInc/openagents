@@ -80,9 +80,9 @@ Description: Wire proto compatibility gates into local CI so breaking schema cha
 ### OA-RUST-014 — [Proto] Add wire-to-domain conversion test harness
 Description: Add tests validating `TryFrom`/`From` conversions between proto wire types and Rust domain models, including invalid payload behavior.
 
-## Phase 2: Rust Edge/Control Service (`apps/openagents.com/service`)
+## Phase 2: Rust Control Service (`apps/openagents.com/service`)
 
-### OA-RUST-015 — [Web Service] Bootstrap Rust edge/control service skeleton
+### OA-RUST-015 — [Web Service] Bootstrap Rust control service skeleton
 Description: Create Rust service foundation for auth, control APIs, sync token minting, and static wasm asset hosting at `apps/openagents.com`.
 
 ### OA-RUST-016 — [Web Service] Implement auth/session API parity
@@ -95,7 +95,7 @@ Description: Port org membership and policy enforcement APIs currently required 
 Description: Implement secure sync token issuance with topic scope validation for Khala subscriptions across web/desktop/iOS.
 
 ### OA-RUST-019 — [Web Service] Implement static host for versioned wasm assets
-Description: Serve hashed JS/WASM artifacts and static manifest from Rust edge service with cache-control/versioning strategy.
+Description: Serve hashed JS/WASM artifacts and static manifest from Rust control service with cache-control/versioning strategy.
 
 ### OA-RUST-020 — [Web Service] Add request correlation, audit logs, and structured observability
 Description: Add structured logs, request correlation IDs, and audit events equivalent to current operational requirements.
@@ -103,7 +103,7 @@ Description: Add structured logs, request correlation IDs, and audit events equi
 ### OA-RUST-021 — [Web Service] Add feature-flagged route split between legacy and Rust web shell
 Description: Implement routing controls to gradually shift traffic route-by-route to Rust/WGPUI while preserving rollback.
 
-### OA-RUST-022 — [Web Service] Canary deploy and rollback runbook for Rust edge
+### OA-RUST-022 — [Web Service] Canary deploy and rollback runbook for Rust control service
 Description: Add canary rollout strategy, rollback procedure, and verification checklist for production cutovers.
 
 ## Phase 3: In-Process Rust/WGPUI Web App (`apps/openagents.com/web-shell`)
@@ -316,10 +316,10 @@ Dependencies: OA-RUST-019, OA-RUST-023.
 
 ### OA-RUST-083 — [Protocol] Define compatibility negotiation and support window policy
 Description: Publish ADR-level compatibility rules for `schema_version`, server/client negotiation behavior, and supported-version window policy.
-Acceptance criteria: Compatibility matrix is documented; negotiation failures return explicit upgrade errors; policy is referenced by edge and Khala services.
+Acceptance criteria: Compatibility matrix is documented; negotiation failures return explicit upgrade errors; policy is referenced by control service and Khala services.
 Dependencies: OA-RUST-008, OA-RUST-075, OA-RUST-076.
 
-### OA-RUST-084 — [Protocol] Enforce minimum client version in edge and Khala
+### OA-RUST-084 — [Protocol] Enforce minimum client version in control service and Khala
 Description: Implement minimum supported client version checks and coordinated rollout controls in control-plane APIs and websocket handshake flow.
 Acceptance criteria: Min-version gates are configurable per environment; older clients receive deterministic upgrade path responses; telemetry captures rejection reasons.
 Dependencies: OA-RUST-083.
@@ -351,11 +351,11 @@ Dependencies: OA-RUST-041, OA-RUST-042, OA-RUST-043.
 
 ### OA-RUST-090 — [Data] Publish zero-downtime schema evolution playbook
 Description: Define online migration patterns for proto and DB evolution with backward-compatible rollout rules and explicit cutover gates.
-Acceptance criteria: Playbook includes expand/migrate/contract path; runtime+edge compatibility sequencing is documented; migration tests cover mixed-version deploys.
+Acceptance criteria: Playbook includes expand/migrate/contract path; runtime+control-service compatibility sequencing is documented; migration tests cover mixed-version deploys.
 Dependencies: OA-RUST-013, OA-RUST-067.
 
-### OA-RUST-091 — [Testing] Extend shadow-mode verification to edge and Khala
-Description: Add shadow read/write and parity-diff harnesses for edge and Khala, not only runtime, to derisk production cutovers.
+### OA-RUST-091 — [Testing] Extend shadow-mode verification to control service and Khala
+Description: Add shadow read/write and parity-diff harnesses for control service and Khala, not only runtime, to derisk production cutovers.
 Acceptance criteria: Shadow harness runs in non-prod and staged prod; parity diff reports are generated per deploy; release gate blocks on critical divergence.
 Dependencies: OA-RUST-039, OA-RUST-090.
 
@@ -389,7 +389,7 @@ Dependencies: OA-RUST-054, OA-RUST-072.
 Migration is complete only when all of the following are true:
 
 1. `apps/mobile/`, `apps/desktop/`, and standalone `apps/inbox-autopilot/` are removed.
-2. `apps/openagents.com` runs Rust edge service + Rust/WGPUI web shell in production.
+2. `apps/openagents.com` runs Rust control service + Rust/WGPUI web shell in production.
 3. Runtime authority writes and projections are Rust-owned.
 4. Khala websocket is the sole live sync lane.
 5. New ADR set is published and old ADRs are archived.
