@@ -82,5 +82,6 @@ Internal API docs:
 - Sanitization/redaction policy: `docs/SANITIZATION_POLICY.md`
 - Kubernetes network policy hardening: `docs/NETWORK_POLICY.md`
 - Deploy runbook (GCP/GKE): `docs/DEPLOY_GCP.md`
+- Deploy runbook (Cloud Run): `docs/DEPLOY_CLOUD_RUN.md`
 - Runtime operations runbook: `docs/OPERATIONS.md`
 - Reprojection and drift-repair runbook: `docs/REPROJECTION.md`

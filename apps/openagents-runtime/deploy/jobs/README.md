@@ -5,7 +5,7 @@ This directory provides deploy-time database migration and post-deploy smoke-tes
 ## Files
 
 - `migration-job.yaml`
-  - Runs release migrations with `OpenAgentsRuntime.Release.migrate/0`.
+  - Runs release migrations with `OpenAgentsRuntime.Release.migrate_and_verify!/0`.
 - `smoke-job.yaml`
   - Runs HTTP + runtime-path smoke checks with `OpenAgentsRuntime.Deploy.Smoke.run!/1`.
 - `run-postdeploy-gate.sh`

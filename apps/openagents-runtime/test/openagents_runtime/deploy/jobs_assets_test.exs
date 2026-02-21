@@ -17,7 +17,7 @@ defmodule OpenAgentsRuntime.Deploy.JobsAssetsTest do
     assert migration_container["command"] == [
              "bin/openagents_runtime",
              "eval",
-             "OpenAgentsRuntime.Release.migrate()"
+             "OpenAgentsRuntime.Release.migrate_and_verify!()"
            ]
 
     assert smoke_container["command"] == [

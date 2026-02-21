@@ -2,6 +2,8 @@
 
 This runbook defines the production deploy flow for `apps/openagents-runtime`.
 
+For Cloud Run production deploys, use `apps/openagents-runtime/docs/DEPLOY_CLOUD_RUN.md`.
+
 ## 1. Preconditions
 
 - You have `gcloud` + `kubectl` authenticated to the target project/cluster.
