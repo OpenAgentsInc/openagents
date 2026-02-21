@@ -54,6 +54,8 @@ struct HealthResponse {
     service: String,
     build_sha: String,
     uptime_seconds: i64,
+    authority_write_mode: String,
+    authority_writer_active: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +64,7 @@ struct ReadinessResponse {
     authority_ready: bool,
     projector_ready: bool,
     workers_ready: bool,
+    authority_writer_active: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,6 +189,8 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         service: state.config.service_name,
         build_sha: state.config.build_sha,
         uptime_seconds,
+        authority_write_mode: state.config.authority_write_mode.as_str().to_string(),
+        authority_writer_active: state.config.authority_write_mode.writes_enabled(),
     })
 }
 
@@ -205,6 +210,7 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             authority_ready: runtime_readiness.authority_ready,
             projector_ready: runtime_readiness.projector_ready,
             workers_ready,
+            authority_writer_active: state.config.authority_write_mode.writes_enabled(),
         }),
     )
 }
@@ -213,6 +219,7 @@ async fn start_run(
     State(state): State<AppState>,
     Json(body): Json<StartRunBody>,
 ) -> Result<(StatusCode, Json<RunResponse>), ApiError> {
+    ensure_runtime_write_authority(&state)?;
     let run = state
         .orchestrator
         .start_run(StartRunRequest {
@@ -229,6 +236,7 @@ async fn append_run_event(
     Path(run_id): Path<Uuid>,
     Json(body): Json<AppendRunEventBody>,
 ) -> Result<Json<RunResponse>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
     let run = state
         .orchestrator
         .append_run_event(
@@ -337,6 +345,7 @@ async fn register_worker(
     State(state): State<AppState>,
     Json(body): Json<RegisterWorkerBody>,
 ) -> Result<(StatusCode, Json<WorkerResponse>), ApiError> {
+    ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
     let snapshot = state
         .workers
@@ -375,6 +384,7 @@ async fn heartbeat_worker(
     Path(worker_id): Path<String>,
     Json(body): Json<WorkerHeartbeatBody>,
 ) -> Result<Json<WorkerResponse>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
     let snapshot = state
         .workers
@@ -395,6 +405,7 @@ async fn transition_worker(
     Path(worker_id): Path<String>,
     Json(body): Json<WorkerTransitionBody>,
 ) -> Result<Json<WorkerResponse>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
     let snapshot = state
         .workers
@@ -428,6 +439,7 @@ enum ApiError {
     NotFound,
     Forbidden(String),
     Conflict(String),
+    WritePathFrozen(String),
     InvalidRequest(String),
     Internal(String),
 }
@@ -491,6 +503,17 @@ fn owner_from_parts(
     }
 }
 
+fn ensure_runtime_write_authority(state: &AppState) -> Result<(), ApiError> {
+    if state.config.authority_write_mode.writes_enabled() {
+        Ok(())
+    } else {
+        Err(ApiError::WritePathFrozen(format!(
+            "runtime authority writes are disabled in mode {}",
+            state.config.authority_write_mode.as_str()
+        )))
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
@@ -513,6 +536,14 @@ impl IntoResponse for ApiError {
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({
                     "error": "conflict",
+                    "message": message,
+                })),
+            )
+                .into_response(),
+            Self::WritePathFrozen(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "write_path_frozen",
                     "message": message,
                 })),
             )
@@ -552,8 +583,11 @@ mod tests {
 
     use super::{AppState, build_router};
     use crate::{
-        authority::InMemoryRuntimeAuthority, config::Config, event_log::DurableEventLog,
-        orchestration::RuntimeOrchestrator, projectors::InMemoryProjectionPipeline,
+        authority::InMemoryRuntimeAuthority,
+        config::{AuthorityWriteMode, Config},
+        event_log::DurableEventLog,
+        orchestration::RuntimeOrchestrator,
+        projectors::InMemoryProjectionPipeline,
         workers::InMemoryWorkerRegistry,
     };
 
@@ -561,7 +595,7 @@ mod tests {
         std::net::SocketAddr::from(([127, 0, 0, 1], 0))
     }
 
-    fn test_router() -> axum::Router {
+    fn test_router_with_mode(mode: AuthorityWriteMode) -> axum::Router {
         let projectors = InMemoryProjectionPipeline::shared();
         let projector_pipeline: Arc<dyn crate::projectors::ProjectionPipeline> = projectors.clone();
         let state = AppState::new(
@@ -569,6 +603,7 @@ mod tests {
                 service_name: "runtime-test".to_string(),
                 bind_addr: loopback_bind_addr(),
                 build_sha: "test".to_string(),
+                authority_write_mode: mode,
             },
             Arc::new(RuntimeOrchestrator::new(
                 Arc::new(InMemoryRuntimeAuthority::with_event_log(
@@ -579,6 +614,10 @@ mod tests {
             Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
         );
         build_router(state)
+    }
+
+    fn test_router() -> axum::Router {
+        test_router_with_mode(AuthorityWriteMode::RustActive)
     }
 
     async fn response_json(response: axum::response::Response) -> Result<Value> {
@@ -936,6 +975,34 @@ mod tests {
             .await?;
         assert_eq!(drift_not_found.status(), axum::http::StatusCode::NOT_FOUND);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_endpoints_are_frozen_when_authority_mode_is_read_only() -> Result<()> {
+        let app = test_router_with_mode(AuthorityWriteMode::ReadOnly);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:blocked-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+
+        let response_json = response_json(response).await?;
+        assert_eq!(
+            response_json
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "write_path_frozen"
+        );
         Ok(())
     }
 

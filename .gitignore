@@ -166,3 +166,4 @@ docker/autopilot/bin/
 .wrangler/
 
 *.txt
+.runtime-data/

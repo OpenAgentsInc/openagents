@@ -55,4 +55,5 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 7. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
 8. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
 9. Shadow-mode parity harness (`runtime-shadow-harness`) compares legacy vs Rust artifacts and enforces cutover gate thresholds.
-10. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+10. Authority cutover is controlled by `RUNTIME_AUTHORITY_WRITE_MODE`; legacy write freeze is controlled by `LEGACY_RUNTIME_WRITE_FREEZE`.
+11. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
