@@ -4,8 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LANE="${1:-all}"
 
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command for legacy comms lane: $cmd" >&2
+    exit 1
+  fi
+}
+
 run_laravel() {
   echo "==> Laravel comms security/replay lane"
+  require_cmd php
   (
     cd "${ROOT_DIR}/apps/openagents.com"
     php artisan test \
@@ -19,6 +28,7 @@ run_laravel() {
 
 run_runtime() {
   echo "==> Runtime comms security/replay lane"
+  require_cmd mix
   (
     cd "${ROOT_DIR}/apps/runtime"
     mix test --warnings-as-errors \
@@ -29,6 +39,8 @@ run_runtime() {
       test/openagents_runtime/security/sanitization_integration_test.exs
   )
 }
+
+echo "==> legacy compatibility lane: comms security/replay matrix (non-Rust, opt-in)"
 
 case "${LANE}" in
   laravel)
