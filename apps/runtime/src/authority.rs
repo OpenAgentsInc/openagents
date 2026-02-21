@@ -26,6 +26,11 @@ pub trait RuntimeAuthority: Send + Sync {
         payload: serde_json::Value,
     ) -> Result<RunEvent, AuthorityError>;
     async fn get_run(&self, run_id: Uuid) -> Result<Option<RuntimeRun>, AuthorityError>;
+    async fn update_run_status(
+        &self,
+        run_id: Uuid,
+        status: RunStatus,
+    ) -> Result<RuntimeRun, AuthorityError>;
 }
 
 #[derive(Default)]
@@ -52,7 +57,7 @@ impl RuntimeAuthority for InMemoryRuntimeAuthority {
         let run = RuntimeRun {
             id: Uuid::now_v7(),
             worker_id: request.worker_id,
-            status: RunStatus::Running,
+            status: RunStatus::Created,
             metadata: request.metadata,
             events: Vec::new(),
             created_at: now,
@@ -96,6 +101,20 @@ impl RuntimeAuthority for InMemoryRuntimeAuthority {
     async fn get_run(&self, run_id: Uuid) -> Result<Option<RuntimeRun>, AuthorityError> {
         let runs = self.runs.read().await;
         Ok(runs.get(&run_id).cloned())
+    }
+
+    async fn update_run_status(
+        &self,
+        run_id: Uuid,
+        status: RunStatus,
+    ) -> Result<RuntimeRun, AuthorityError> {
+        let mut runs = self.runs.write().await;
+        let run = runs
+            .get_mut(&run_id)
+            .ok_or(AuthorityError::RunNotFound(run_id))?;
+        run.status = status;
+        run.updated_at = Utc::now();
+        Ok(run.clone())
     }
 }
 

@@ -19,6 +19,7 @@ pub mod authority;
 pub mod config;
 pub mod orchestration;
 pub mod projectors;
+pub mod run_state_machine;
 pub mod server;
 pub mod types;
 pub mod workers;
