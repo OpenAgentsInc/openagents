@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var model = CodexHandshakeViewModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -21,6 +22,9 @@ struct ContentView: View {
         }
         .tint(OATheme.ring)
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, phase in
+            model.handleScenePhaseChange(phase)
+        }
     }
 }
 

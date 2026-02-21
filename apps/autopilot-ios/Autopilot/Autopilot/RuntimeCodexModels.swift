@@ -447,6 +447,109 @@ struct CodexAuthFlowState: Equatable {
     }
 }
 
+struct CodexLifecycleResumeState: Equatable {
+    private(set) var generation: UInt64 = 0
+    private(set) var suspendedAtGeneration: UInt64?
+
+    mutating func markBackground() -> UInt64 {
+        generation &+= 1
+        suspendedAtGeneration = generation
+        return generation
+    }
+
+    mutating func beginForegroundResume() -> UInt64? {
+        guard suspendedAtGeneration != nil else {
+            return nil
+        }
+        generation &+= 1
+        suspendedAtGeneration = nil
+        return generation
+    }
+
+    func shouldAccept(generation: UInt64) -> Bool {
+        self.generation == generation
+    }
+
+    mutating func invalidate() {
+        generation &+= 1
+        suspendedAtGeneration = nil
+    }
+}
+
+struct CodexResumeCheckpoint: Codable, Equatable {
+    let namespace: String
+    let workerID: String
+    var topicWatermarks: [String: Int]
+    var sessionID: String?
+    var updatedAt: String
+}
+
+struct CodexResumeCheckpointStore: Codable, Equatable {
+    private(set) var checkpoints: [String: CodexResumeCheckpoint] = [:]
+
+    func watermark(namespace: String, workerID: String, topic: String) -> Int {
+        guard let checkpoint = checkpoints[checkpointKey(namespace: namespace, workerID: workerID)] else {
+            return 0
+        }
+        return max(0, checkpoint.topicWatermarks[topic] ?? 0)
+    }
+
+    mutating func upsert(
+        namespace: String,
+        workerID: String,
+        topic: String,
+        watermark: Int,
+        sessionID: String?,
+        updatedAt: String
+    ) {
+        let key = checkpointKey(namespace: namespace, workerID: workerID)
+        var checkpoint = checkpoints[key] ?? CodexResumeCheckpoint(
+            namespace: namespace,
+            workerID: workerID,
+            topicWatermarks: [:],
+            sessionID: nil,
+            updatedAt: updatedAt
+        )
+
+        let normalizedWatermark = max(0, watermark)
+        let existingWatermark = max(0, checkpoint.topicWatermarks[topic] ?? 0)
+        checkpoint.topicWatermarks[topic] = max(existingWatermark, normalizedWatermark)
+
+        if let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sessionID.isEmpty {
+            checkpoint.sessionID = sessionID
+        }
+        checkpoint.updatedAt = updatedAt
+        checkpoints[key] = checkpoint
+    }
+
+    mutating func resetTopic(namespace: String, workerID: String, topic: String, updatedAt: String) {
+        let key = checkpointKey(namespace: namespace, workerID: workerID)
+        guard var checkpoint = checkpoints[key] else {
+            return
+        }
+
+        checkpoint.topicWatermarks.removeValue(forKey: topic)
+        checkpoint.updatedAt = updatedAt
+
+        if checkpoint.topicWatermarks.isEmpty {
+            checkpoints.removeValue(forKey: key)
+        } else {
+            checkpoints[key] = checkpoint
+        }
+    }
+
+    mutating func removeNamespace(_ namespace: String) {
+        checkpoints = checkpoints.filter { _, value in
+            value.namespace != namespace
+        }
+    }
+
+    private func checkpointKey(namespace: String, workerID: String) -> String {
+        "\(namespace)|\(workerID)"
+    }
+}
+
 struct RuntimeCodexSyncToken: Decodable, Equatable {
     let token: String
     let tokenType: String?
