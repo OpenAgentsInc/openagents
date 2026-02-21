@@ -25,12 +25,18 @@ Baseline endpoints:
 - `POST /internal/v1/runs/:run_id/events`
 - `GET /internal/v1/runs/:run_id`
 - `GET /internal/v1/projectors/checkpoints/:run_id`
+- `POST /internal/v1/workers`
+- `GET /internal/v1/workers/:worker_id?owner_user_id=<id>`
+- `POST /internal/v1/workers/:worker_id/heartbeat`
+- `POST /internal/v1/workers/:worker_id/status`
+- `GET /internal/v1/workers/:worker_id/checkpoint`
 
 The Rust boundary modules live under `apps/runtime/src/`:
 
 - `authority.rs`: authority write interface + in-memory implementation
 - `orchestration.rs`: run/event command orchestration and validation
 - `projectors.rs`: projection checkpoint pipeline foundation
+- `workers.rs`: worker registry, ownership checks, heartbeat/liveness, status transitions
 - `server.rs`: HTTP routes, health/readiness, API handlers
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.

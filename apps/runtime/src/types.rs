@@ -57,3 +57,98 @@ pub struct ProjectionCheckpoint {
     pub last_event_type: String,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerStatus {
+    Starting,
+    Running,
+    Stopping,
+    Stopped,
+    Failed,
+}
+
+impl WorkerStatus {
+    #[must_use]
+    pub fn as_event_label(&self) -> &'static str {
+        match self {
+            Self::Starting => "worker.starting",
+            Self::Running => "worker.running",
+            Self::Stopping => "worker.stopping",
+            Self::Stopped => "worker.stopped",
+            Self::Failed => "worker.failed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerOwner {
+    pub user_id: Option<u64>,
+    pub guest_scope: Option<String>,
+}
+
+impl WorkerOwner {
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        match (self.user_id, self.guest_scope.as_deref()) {
+            (Some(_), Some(scope)) => scope.trim().is_empty(),
+            (Some(_), None) => true,
+            (None, Some(scope)) => !scope.trim().is_empty(),
+            (None, None) => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RuntimeWorker {
+    pub worker_id: String,
+    pub owner: WorkerOwner,
+    pub workspace_ref: Option<String>,
+    pub codex_home_ref: Option<String>,
+    pub adapter: String,
+    pub status: WorkerStatus,
+    pub latest_seq: u64,
+    pub metadata: Value,
+    pub started_at: DateTime<Utc>,
+    pub stopped_at: Option<DateTime<Utc>>,
+    pub last_heartbeat_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerLifecycleEvent {
+    pub seq: u64,
+    pub event_type: String,
+    pub payload: Value,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RegisterWorkerRequest {
+    pub worker_id: Option<String>,
+    pub owner: WorkerOwner,
+    pub workspace_ref: Option<String>,
+    pub codex_home_ref: Option<String>,
+    pub adapter: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerHeartbeatRequest {
+    pub owner: WorkerOwner,
+    pub metadata_patch: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerStatusTransitionRequest {
+    pub owner: WorkerOwner,
+    pub status: WorkerStatus,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerLiveness {
+    pub heartbeat_age_ms: Option<i64>,
+    pub heartbeat_stale_after_ms: i64,
+    pub heartbeat_state: String,
+}
