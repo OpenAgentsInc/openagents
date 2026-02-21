@@ -299,7 +299,12 @@ mod tests {
             sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
             route_split_enabled: true,
             route_split_mode: "cohort".to_string(),
-            route_split_rust_routes: vec!["/chat".to_string()],
+            route_split_rust_routes: vec![
+                "/chat".to_string(),
+                "/account".to_string(),
+                "/settings".to_string(),
+                "/admin".to_string(),
+            ],
             route_split_cohort_percentage: 100,
             route_split_salt: "salt".to_string(),
             route_split_force_legacy: false,
@@ -325,5 +330,19 @@ mod tests {
         let decision = service.evaluate("/chat", "user:1").await;
         assert_eq!(decision.target, RouteTarget::Legacy);
         assert_eq!(decision.reason, "runtime_override");
+    }
+
+    #[tokio::test]
+    async fn management_prefixes_match_rust_routes() {
+        let service = RouteSplitService::from_config(&test_config());
+
+        for path in ["/account/session", "/settings/profile", "/admin/tools"] {
+            let decision = service.evaluate(path, "user:1").await;
+            assert_eq!(
+                decision.target,
+                RouteTarget::RustShell,
+                "path should route to rust shell: {path}"
+            );
+        }
     }
 }

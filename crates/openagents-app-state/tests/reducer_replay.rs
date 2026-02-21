@@ -52,10 +52,10 @@ fn navigate_action_tracks_route_history() {
     let _ = apply_action(
         &mut state,
         AppAction::Navigate {
-            route: AppRoute::Settings,
+            route: AppRoute::Settings { section: None },
         },
     );
 
-    assert_eq!(state.route, AppRoute::Settings);
+    assert_eq!(state.route, AppRoute::Settings { section: None });
     assert_eq!(state.route_history, vec![AppRoute::Home, AppRoute::Workers]);
 }
