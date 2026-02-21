@@ -64,11 +64,18 @@ Current files:
 
 ## Codegen
 
-Rust wire generation is build-driven via workspace crate `crates/openagents-proto`.
+Rust-only generation is enforced in two complementary lanes:
+
+1. `buf generate` using `buf.gen.yaml`:
+   - Rust plugin: `buf.build/community/neoeinstein-prost`
+   - Verification output path: `target/buf/rust`
+   - Purpose: enforce Buf template viability and non-empty Rust output.
+2. Build-driven generation in `crates/openagents-proto/build.rs`:
+   - Purpose: compile-time wire type generation used by Rust crates.
 
 Policy:
 - No non-Rust proto generation targets are part of active workflows.
-- Rust wire generation determinism is verified with `scripts/verify-rust-proto-crate.sh`.
+- `scripts/verify-rust-proto-crate.sh` verifies both Buf Rust output and crate generation determinism.
 - `scripts/verify-proto-generate.sh` is a compatibility alias that forwards to the Rust-only verifier.
 
 Local verification command (canonical):
@@ -86,5 +93,5 @@ Rust crate verification command:
 Optional manual contract check (lint + breaking):
 
 ```bash
-buf lint && buf breaking --against '.git#branch=main,subdir=proto'
+buf lint && buf generate --template buf.gen.yaml && buf breaking --against '.git#branch=main,subdir=proto'
 ```

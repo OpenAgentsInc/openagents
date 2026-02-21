@@ -13,7 +13,7 @@ Boundary rule:
 
 ## Regeneration Workflow
 
-Generation is build-driven via `build.rs`.
+Generation is build-driven via `build.rs`, and verified alongside Buf Rust generation (`buf.gen.yaml` -> `target/buf/rust`).
 
 Canonical verification command:
 
@@ -21,7 +21,10 @@ Canonical verification command:
 scripts/verify-rust-proto-crate.sh
 ```
 
-This script runs two clean builds and compares generated snapshots to ensure deterministic output.
+This script verifies:
+1. `buf generate` produces non-empty Rust output deterministically.
+2. `build.rs` proto output is deterministic across repeated builds.
+3. crate contract tests pass.
 
 ## Usage
 
