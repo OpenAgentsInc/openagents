@@ -32,9 +32,11 @@ Route::middleware('guest')->group(function () {
 
     Route::get('authenticate', fn () => redirect()->route('login'));
 
-    Route::get('internal/test-login', LocalTestLoginController::class)
-        ->middleware(['signed', 'throttle:30,1'])
-        ->name('internal.test-login');
+    if (app()->environment(['local', 'testing'])) {
+        Route::get('internal/test-login', LocalTestLoginController::class)
+            ->middleware(['signed', 'throttle:30,1'])
+            ->name('internal.test-login');
+    }
 });
 
 Route::post('logout', function (Request $request, PostHogService $posthog) {

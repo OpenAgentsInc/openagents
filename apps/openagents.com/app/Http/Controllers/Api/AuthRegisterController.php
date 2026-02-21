@@ -19,10 +19,10 @@ use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 class AuthRegisterController extends Controller
 {
     /**
-     * Bootstrap an API user + bearer token (staging/automation).
+     * Bootstrap an API user + bearer token (local/testing only).
      *
-     * This bypasses WorkOS email code auth and is intended for staging
-     * automation. Controlled by `OA_API_SIGNUP_ENABLED`.
+     * This bypasses WorkOS email code auth and is intentionally restricted
+     * to local/test automation paths. Controlled by `OA_API_SIGNUP_ENABLED`.
      */
     #[OpenApi\Operation(tags: ['Auth'])]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 201)]
@@ -31,6 +31,10 @@ class AuthRegisterController extends Controller
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     public function store(Request $request, AutopilotService $autopilotService): JsonResponse
     {
+        if (! app()->environment(['local', 'testing'])) {
+            abort(404);
+        }
+
         if (! (bool) config('auth.api_signup.enabled', false)) {
             abort(404);
         }

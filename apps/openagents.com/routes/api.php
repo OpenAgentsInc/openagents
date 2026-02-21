@@ -26,9 +26,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/shouts', [ShoutsController::class, 'index']);
 Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 
-// Staging/automation bootstrap signup (disabled by default via config).
-Route::post('/auth/register', [AuthRegisterController::class, 'store'])
-    ->middleware('throttle:30,1');
+// Local/testing bootstrap helper only (never active in staging/production paths).
+if (app()->environment(['local', 'testing'])) {
+    Route::post('/auth/register', [AuthRegisterController::class, 'store'])
+        ->middleware('throttle:30,1');
+}
 
 Route::post('/webhooks/resend', [ResendWebhookController::class, 'store']);
 
