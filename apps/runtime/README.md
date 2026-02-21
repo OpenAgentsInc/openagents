@@ -39,6 +39,11 @@ The Rust boundary modules live under `apps/runtime/src/`:
 - `workers.rs`: worker registry, ownership checks, heartbeat/liveness, status transitions
 - `server.rs`: HTTP routes, health/readiness, API handlers
 
+Run state machine semantics:
+
+- Supported statuses: `created`, `running`, `canceling`, `canceled`, `succeeded`, `failed`.
+- Runtime validates event-driven transitions (for example `run.started`, `run.cancel_requested`, `run.finished`) and rejects illegal transitions with `400 invalid_request`.
+
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 
 ## Local development

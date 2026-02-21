@@ -3,19 +3,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus {
-    Pending,
+    Created,
     Running,
-    Completed,
+    Canceling,
+    Canceled,
+    Succeeded,
     Failed,
-    Cancelled,
 }
 
 impl Default for RunStatus {
     fn default() -> Self {
-        Self::Pending
+        Self::Created
     }
 }
 

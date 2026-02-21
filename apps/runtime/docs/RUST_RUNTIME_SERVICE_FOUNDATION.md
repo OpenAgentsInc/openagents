@@ -10,6 +10,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 2. Establish module boundaries for authority writes, orchestration, and projectors.
 3. Expose baseline health/readiness and runtime contract smoke routes.
 4. Port worker lifecycle authority basics (registration, heartbeat, status transitions).
+5. Enforce deterministic run state transitions for replay-safe runtime events.
 
 ## Current shape
 
@@ -41,5 +42,6 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 ## Operational notes
 
 1. Storage is currently in-memory and intentionally ephemeral for bootstrap validation.
-2. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
-3. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+2. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
+3. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
+4. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.

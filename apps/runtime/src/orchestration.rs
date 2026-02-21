@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::{
     authority::{AuthorityError, RuntimeAuthority},
     projectors::{ProjectionPipeline, ProjectorError},
+    run_state_machine::{RunStateMachineError, apply_transition, transition_for_event},
     types::{AppendRunEventRequest, ProjectionCheckpoint, RuntimeRun, StartRunRequest},
 };
 
@@ -16,6 +17,8 @@ pub enum OrchestrationError {
     Authority(#[from] AuthorityError),
     #[error("projector error: {0}")]
     Projector(#[from] ProjectorError),
+    #[error("run state machine error: {0}")]
+    RunStateMachine(#[from] RunStateMachineError),
     #[error("event type cannot be empty")]
     EmptyEventType,
     #[error("run not found: {0}")]
@@ -57,23 +60,14 @@ impl RuntimeOrchestrator {
         request: StartRunRequest,
     ) -> Result<RuntimeRun, OrchestrationError> {
         let run = self.authority.create_run(request).await?;
-        let started_event = self
-            .authority
-            .append_event(
-                run.id,
-                "run.started".to_string(),
-                serde_json::json!({"source": "runtime"}),
-            )
-            .await?;
-        self.projectors
-            .apply_run_event(run.id, &started_event)
-            .await?;
-        let refreshed = self
-            .authority
-            .get_run(run.id)
-            .await?
-            .ok_or(OrchestrationError::RunNotFound(run.id))?;
-        Ok(refreshed)
+        self.append_run_event(
+            run.id,
+            AppendRunEventRequest {
+                event_type: "run.started".to_string(),
+                payload: serde_json::json!({"source": "runtime"}),
+            },
+        )
+        .await
     }
 
     pub async fn append_run_event(
@@ -85,12 +79,28 @@ impl RuntimeOrchestrator {
         if trimmed.is_empty() {
             return Err(OrchestrationError::EmptyEventType);
         }
+        let existing = self
+            .authority
+            .get_run(run_id)
+            .await?
+            .ok_or(OrchestrationError::RunNotFound(run_id))?;
+        let transition = transition_for_event(trimmed, &request.payload)?;
+        let transition_outcome = transition
+            .as_ref()
+            .map(|value| apply_transition(&existing.status, value))
+            .transpose()?;
 
         let event = self
             .authority
             .append_event(run_id, trimmed.to_string(), request.payload)
             .await?;
         self.projectors.apply_run_event(run_id, &event).await?;
+        if let Some(outcome) = transition_outcome {
+            let _updated = self
+                .authority
+                .update_run_status(run_id, outcome.next_status)
+                .await?;
+        }
         let refreshed = self
             .authority
             .get_run(run_id)

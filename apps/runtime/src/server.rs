@@ -348,6 +348,9 @@ impl ApiError {
             OrchestrationError::EmptyEventType => {
                 Self::InvalidRequest("event_type cannot be empty".to_string())
             }
+            OrchestrationError::RunStateMachine(state_error) => {
+                Self::InvalidRequest(state_error.to_string())
+            }
             other => Self::Internal(other.to_string()),
         }
     }
@@ -543,6 +546,65 @@ mod tests {
             .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| anyhow!("missing checkpoint last_seq"))?;
         assert_eq!(last_seq, 2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_state_machine_rejects_invalid_terminal_transition() -> Result<()> {
+        let app = test_router();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:worker-state",
+                        "metadata": {"source": "state-machine-test"}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let finish_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.finished",
+                        "payload": {"status": "succeeded", "reason_class": "completed"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(finish_response.status(), axum::http::StatusCode::OK);
+
+        let invalid_transition = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.cancel_requested",
+                        "payload": {"reason": "late_cancel"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(
+            invalid_transition.status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
 
         Ok(())
     }
