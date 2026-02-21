@@ -18,7 +18,7 @@ use tower_http::trace::TraceLayer;
 pub mod auth;
 pub mod config;
 
-use crate::auth::{AuthError, AuthService, SessionBundle};
+use crate::auth::{AuthError, AuthService, PolicyCheckRequest, SessionBundle};
 use crate::config::Config;
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -87,6 +87,21 @@ struct RefreshSessionRequest {
     rotate_refresh_token: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SetActiveOrgRequest {
+    org_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PolicyAuthorizeRequest {
+    #[serde(default)]
+    org_id: Option<String>,
+    #[serde(default)]
+    required_scopes: Vec<String>,
+    #[serde(default)]
+    requested_topics: Vec<String>,
+}
+
 pub fn build_router(config: Config) -> Router {
     let auth = AuthService::from_config(&config);
     let state = AppState {
@@ -107,8 +122,11 @@ pub fn build_router(config: Config) -> Router {
         .route("/api/auth/refresh", post(refresh_session))
         .route("/api/auth/logout", post(logout_session))
         .route("/api/me", get(me))
+        .route("/api/orgs/memberships", get(org_memberships))
+        .route("/api/orgs/active", post(set_active_org))
+        .route("/api/policy/authorize", post(policy_authorize))
         .route("/api/v1/auth/session", get(current_session))
-        .route("/api/v1/control/status", get(control_status_placeholder))
+        .route("/api/v1/control/status", get(control_status))
         .route("/api/v1/sync/token", post(sync_token_placeholder))
         .nest_service("/assets", static_service)
         .with_state(state)
@@ -298,6 +316,84 @@ async fn me(
     Ok((StatusCode::OK, Json(response)))
 }
 
+async fn org_memberships(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let response = serde_json::json!({
+        "data": {
+            "activeOrgId": bundle.session.active_org_id,
+            "memberships": bundle.memberships,
+        }
+    });
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+async fn set_active_org(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SetActiveOrgRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let normalized_org_id = payload.org_id.trim().to_string();
+    if normalized_org_id.is_empty() {
+        return Err(validation_error("org_id", "Organization id is required."));
+    }
+
+    let bundle = state
+        .auth
+        .set_active_org_by_access_token(&access_token, &normalized_org_id)
+        .await
+        .map_err(map_auth_error)?;
+
+    let response = serde_json::json!({
+        "ok": true,
+        "activeOrgId": bundle.session.active_org_id,
+        "memberships": bundle.memberships,
+    });
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+async fn policy_authorize(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<PolicyAuthorizeRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let decision = state
+        .auth
+        .evaluate_policy_by_access_token(
+            &access_token,
+            PolicyCheckRequest {
+                org_id: payload.org_id,
+                required_scopes: payload.required_scopes,
+                requested_topics: payload.requested_topics,
+            },
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": decision })),
+    ))
+}
+
 async fn refresh_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -356,11 +452,29 @@ async fn logout_session(
     Ok((StatusCode::OK, Json(response)))
 }
 
-async fn control_status_placeholder() -> impl IntoResponse {
-    not_implemented(
-        "Control-policy API wiring lands in the OA-RUST-017 milestone.",
-        "OA-RUST-017",
-    )
+async fn control_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let response = serde_json::json!({
+        "data": {
+            "service": SERVICE_NAME,
+            "authProvider": state.auth.provider_name(),
+            "activeOrgId": bundle.session.active_org_id,
+            "memberships": bundle.memberships,
+        }
+    });
+
+    Ok((StatusCode::OK, Json(response)))
 }
 
 async fn sync_token_placeholder() -> impl IntoResponse {
@@ -388,6 +502,7 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         AuthError::Validation { field, message } => validation_error(field, &message),
         AuthError::Unauthorized { message } => unauthorized_error(&message),
+        AuthError::Forbidden { message } => forbidden_error(&message),
         AuthError::Provider { message } => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ApiErrorResponse {
@@ -433,6 +548,20 @@ fn unauthorized_error(message: &str) -> (StatusCode, Json<ApiErrorResponse>) {
     )
 }
 
+fn forbidden_error(message: &str) -> (StatusCode, Json<ApiErrorResponse>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(ApiErrorResponse {
+            message: message.to_string(),
+            error: ApiErrorDetail {
+                code: "forbidden",
+                message: message.to_string(),
+            },
+            errors: None,
+        }),
+    )
+}
+
 fn session_payload(bundle: SessionBundle) -> serde_json::Value {
     serde_json::json!({
         "data": {
@@ -454,7 +583,8 @@ fn session_payload(bundle: SessionBundle) -> serde_json::Value {
                 "email": bundle.user.email,
                 "name": bundle.user.name,
                 "workosId": bundle.user.workos_user_id,
-            }
+            },
+            "memberships": bundle.memberships,
         }
     })
 }
@@ -739,6 +869,102 @@ mod tests {
             .body(Body::empty())?;
         let old_session_response = app.oneshot(old_session_request).await?;
         assert_eq!(old_session_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn org_membership_and_policy_matrix_enforces_boundaries() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"policy@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let memberships_request = Request::builder()
+            .uri("/api/orgs/memberships")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let memberships_response = app.clone().oneshot(memberships_request).await?;
+        assert_eq!(memberships_response.status(), StatusCode::OK);
+        let memberships_body = read_json(memberships_response).await?;
+        let memberships = memberships_body["data"]["memberships"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let has_openagents_org = memberships.iter().any(|membership| {
+            membership["org_id"]
+                .as_str()
+                .map(|org_id| org_id == "org:openagents")
+                .unwrap_or(false)
+        });
+        assert!(has_openagents_org);
+
+        let set_org_request = Request::builder()
+            .method("POST")
+            .uri("/api/orgs/active")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"org_id":"org:openagents"}"#))?;
+        let set_org_response = app.clone().oneshot(set_org_request).await?;
+        assert_eq!(set_org_response.status(), StatusCode::OK);
+
+        let deny_scope_request = Request::builder()
+            .method("POST")
+            .uri("/api/policy/authorize")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"org_id":"org:openagents","required_scopes":["runtime.write"],"requested_topics":["org:openagents:workers"]}"#,
+            ))?;
+        let deny_scope_response = app.clone().oneshot(deny_scope_request).await?;
+        assert_eq!(deny_scope_response.status(), StatusCode::OK);
+        let deny_scope_body = read_json(deny_scope_response).await?;
+        assert_eq!(deny_scope_body["data"]["allowed"], false);
+
+        let allow_request = Request::builder()
+            .method("POST")
+            .uri("/api/policy/authorize")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"org_id":"org:openagents","required_scopes":["runtime.read"],"requested_topics":["org:openagents:workers"]}"#,
+            ))?;
+        let allow_response = app.clone().oneshot(allow_request).await?;
+        assert_eq!(allow_response.status(), StatusCode::OK);
+        let allow_body = read_json(allow_response).await?;
+        assert_eq!(allow_body["data"]["allowed"], true);
+
+        let deny_topic_request = Request::builder()
+            .method("POST")
+            .uri("/api/policy/authorize")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"org_id":"org:openagents","required_scopes":["runtime.read"],"requested_topics":["org:other:workers"]}"#,
+            ))?;
+        let deny_topic_response = app.oneshot(deny_topic_request).await?;
+        assert_eq!(deny_topic_response.status(), StatusCode::OK);
+        let deny_topic_body = read_json(deny_topic_response).await?;
+        assert_eq!(deny_topic_body["data"]["allowed"], false);
 
         Ok(())
     }

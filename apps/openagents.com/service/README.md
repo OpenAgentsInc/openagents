@@ -14,8 +14,11 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/auth/refresh`
   - `POST /api/auth/logout`
   - `GET /api/me`
+  - `GET /api/orgs/memberships`
+  - `POST /api/orgs/active`
+  - `POST /api/policy/authorize`
   - `GET /api/v1/auth/session`
-  - `GET /api/v1/control/status` (OA-RUST-017 placeholder)
+  - `GET /api/v1/control/status`
   - `POST /api/v1/sync/token` (OA-RUST-018 placeholder)
   - `GET /assets/*` static host skeleton
 - Request middleware foundations:
