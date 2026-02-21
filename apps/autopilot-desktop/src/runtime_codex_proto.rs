@@ -14,6 +14,15 @@ pub struct RuntimeCodexStreamEvent {
     pub payload: Value,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct KhalaSocketFrame {
+    pub join_ref: Option<String>,
+    pub reference: Option<String>,
+    pub topic: String,
+    pub event: String,
+    pub payload: Value,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IosUserMessage {
     pub message_id: String,
@@ -55,72 +64,87 @@ struct ProtoWorkerHandshakePayload {
     occurred_at: Option<String>,
 }
 
-pub fn parse_runtime_stream_events(raw: &str) -> Vec<RuntimeCodexStreamEvent> {
-    let normalized = raw.replace("\r\n", "\n");
-    let mut events = Vec::new();
-    let mut id: Option<u64> = None;
-    let mut data_lines: Vec<String> = Vec::new();
-    let mut saw_event_fields = false;
-
-    for line in normalized.split('\n') {
-        if line.is_empty() {
-            flush_stream_event(&mut events, &mut id, &mut data_lines);
-            saw_event_fields = false;
-            continue;
-        }
-
-        if let Some(value) = line.strip_prefix("id:") {
-            // Some upstream streams omit blank separators; treat a new `id:` as a frame boundary.
-            if !data_lines.is_empty() {
-                flush_stream_event(&mut events, &mut id, &mut data_lines);
-            }
-            id = value.trim().parse::<u64>().ok();
-            saw_event_fields = true;
-            continue;
-        }
-
-        if line.strip_prefix("event:").is_some() {
-            saw_event_fields = true;
-            continue;
-        }
-
-        if let Some(value) = line.strip_prefix("data:") {
-            data_lines.push(value.trim().to_string());
-            saw_event_fields = true;
-            continue;
-        }
-
-        // If a folded payload line arrives without `data:`, append it to the current data block.
-        if saw_event_fields {
-            if let Some(last) = data_lines.last_mut() {
-                last.push('\n');
-                last.push_str(line);
-            } else {
-                data_lines.push(line.to_string());
-            }
-        }
-    }
-
-    flush_stream_event(&mut events, &mut id, &mut data_lines);
-    events
+#[must_use]
+pub fn build_khala_frame(
+    join_ref: Option<&str>,
+    reference: Option<&str>,
+    topic: &str,
+    event: &str,
+    payload: Value,
+) -> String {
+    serde_json::to_string(&Value::Array(vec![
+        join_ref.map_or(Value::Null, |value| Value::String(value.to_string())),
+        reference.map_or(Value::Null, |value| Value::String(value.to_string())),
+        Value::String(topic.to_string()),
+        Value::String(event.to_string()),
+        payload,
+    ]))
+    .unwrap_or_else(|_| "[]".to_string())
 }
 
-fn flush_stream_event(
-    events: &mut Vec<RuntimeCodexStreamEvent>,
-    id: &mut Option<u64>,
-    data_lines: &mut Vec<String>,
-) {
-    if data_lines.is_empty() {
-        *id = None;
-        return;
+pub fn parse_khala_frame(raw: &str) -> Option<KhalaSocketFrame> {
+    let value = serde_json::from_str::<Value>(raw).ok()?;
+    let frame = value.as_array()?;
+    if frame.len() != 5 {
+        return None;
     }
 
-    let raw_data = data_lines.join("\n");
-    let payload = serde_json::from_str::<Value>(&raw_data).unwrap_or(Value::String(raw_data));
-    events.push(RuntimeCodexStreamEvent { id: *id, payload });
+    Some(KhalaSocketFrame {
+        join_ref: frame[0].as_str().map(ToString::to_string),
+        reference: frame[1].as_str().map(ToString::to_string),
+        topic: frame[2].as_str()?.to_string(),
+        event: frame[3].as_str()?.to_string(),
+        payload: frame[4].clone(),
+    })
+}
 
-    *id = None;
-    data_lines.clear();
+pub fn extract_runtime_events_from_khala_update(
+    payload: &Value,
+    expected_topic: &str,
+    worker_id: &str,
+) -> Vec<RuntimeCodexStreamEvent> {
+    let updates = payload
+        .as_object()
+        .and_then(|object| object.get("updates"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    updates
+        .into_iter()
+        .filter_map(|update| {
+            let update_object = update.as_object()?;
+            let topic = update_object.get("topic")?.as_str()?;
+            if topic != expected_topic {
+                return None;
+            }
+
+            let stream_payload = update_object.get("payload")?.as_object()?;
+            let event_worker_id = stream_payload
+                .get("workerId")
+                .and_then(Value::as_str)
+                .or_else(|| stream_payload.get("worker_id").and_then(Value::as_str))?;
+            if event_worker_id != worker_id {
+                return None;
+            }
+
+            let payload = Value::Object(stream_payload.clone());
+            let seq = stream_payload
+                .get("seq")
+                .and_then(Value::as_u64)
+                .or_else(|| update_object.get("watermark").and_then(Value::as_u64));
+
+            Some(RuntimeCodexStreamEvent { id: seq, payload })
+        })
+        .collect()
+}
+
+pub fn khala_error_code(payload: &Value) -> Option<String> {
+    payload
+        .as_object()
+        .and_then(|object| object.get("code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
 }
 
 pub fn stream_event_seq(event: &RuntimeCodexStreamEvent) -> Option<u64> {
@@ -270,33 +294,83 @@ fn first_non_empty_string(values: &[Option<&Value>]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProtoWorkerEventEnvelope, RuntimeCodexStreamEvent, WORKER_EVENT_TYPE,
+        ProtoWorkerEventEnvelope, RuntimeCodexStreamEvent, WORKER_EVENT_TYPE, build_khala_frame,
         extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
-        handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
+        extract_runtime_events_from_khala_update, handshake_dedupe_key, khala_error_code,
+        merge_retry_cursor, parse_khala_frame, stream_event_seq,
     };
     use serde_json::{Value, json};
     use std::collections::HashSet;
 
     #[test]
-    fn parse_runtime_stream_events_parses_sse_frames() {
-        let raw = "event: codex.worker.event\r\nid: 41\r\ndata: {\"seq\":41,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"ios/handshake\"}}\r\n\r\n\
-event: codex.worker.event\r\nid: 42\r\ndata: {\"seq\":42,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"desktop/handshake_ack\"}}\r\n\r\n";
-
-        let events = parse_runtime_stream_events(raw);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].id, Some(41));
-        assert_eq!(events[1].id, Some(42));
+    fn parse_khala_frame_roundtrips_phoenix_frame_shape() {
+        let raw = build_khala_frame(
+            None,
+            Some("42"),
+            "sync:v1",
+            "sync:update_batch",
+            json!({"updates": []}),
+        );
+        let frame = parse_khala_frame(&raw).expect("frame should parse");
+        assert_eq!(frame.reference.as_deref(), Some("42"));
+        assert_eq!(frame.topic, "sync:v1");
+        assert_eq!(frame.event, "sync:update_batch");
     }
 
     #[test]
-    fn parse_runtime_stream_events_tolerates_missing_blank_separators() {
-        let raw = "event: codex.worker.event\nid: 41\ndata: {\"seq\":41,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"ios/handshake\"}}\n\
-event: codex.worker.event\nid: 42\ndata: {\"seq\":42,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"desktop/handshake_ack\"}}\n";
+    fn extract_runtime_events_from_khala_update_filters_topic_and_worker() {
+        let payload = json!({
+            "updates": [
+                {
+                    "topic": "runtime.codex_worker_events",
+                    "watermark": 12,
+                    "payload": {
+                        "workerId": "desktopw:shared",
+                        "seq": 12,
+                        "eventType": "worker.event",
+                        "payload": {
+                            "method": "ios/handshake",
+                            "handshake_id": "hs-12",
+                            "source": "autopilot-ios",
+                            "device_id": "ios-device",
+                            "occurred_at": "2026-02-20T00:00:00Z"
+                        }
+                    }
+                },
+                {
+                    "topic": "runtime.codex_worker_events",
+                    "watermark": 13,
+                    "payload": {
+                        "workerId": "desktopw:other",
+                        "seq": 13
+                    }
+                }
+            ]
+        });
 
-        let events = parse_runtime_stream_events(raw);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].id, Some(41));
-        assert_eq!(events[1].id, Some(42));
+        let events = extract_runtime_events_from_khala_update(
+            &payload,
+            "runtime.codex_worker_events",
+            "desktopw:shared",
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, Some(12));
+        assert_eq!(
+            events[0]
+                .payload
+                .get("eventType")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+            "worker.event"
+        );
+    }
+
+    #[test]
+    fn khala_error_code_extracts_sync_error_code() {
+        assert_eq!(
+            khala_error_code(&json!({"code": "stale_cursor"})).as_deref(),
+            Some("stale_cursor")
+        );
     }
 
     #[test]

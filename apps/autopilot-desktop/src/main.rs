@@ -37,7 +37,7 @@ use full_auto::{
     FullAutoDecisionResult, FullAutoState, FullAutoTurnSummary, decision_model, ensure_codex_lm,
     run_full_auto_decision,
 };
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use moltbook::{CommentSort, CreateCommentRequest, MoltbookClient, MoltbookError, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
@@ -49,6 +49,7 @@ use pylon::provider::{ProviderError, PylonProvider};
 use reqwest::{Client as HttpClient, Method};
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 use wgpui::renderer::Renderer;
@@ -72,9 +73,10 @@ use runtime_auth::{
     runtime_auth_state_path,
 };
 use runtime_codex_proto::{
-    RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-    extract_ios_user_message, handshake_dedupe_key, merge_retry_cursor,
-    parse_runtime_stream_events, stream_event_seq,
+    RuntimeCodexStreamEvent, build_khala_frame, extract_desktop_handshake_ack_id,
+    extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
+    handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
+    stream_event_seq,
 };
 
 const WINDOW_TITLE: &str = "Autopilot";
@@ -105,9 +107,12 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
-const RUNTIME_SYNC_STREAM_TAIL_MS: u64 = 4_000;
-const RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS: u64 = 250;
+const RUNTIME_SYNC_KHALA_TOPIC: &str = "runtime.codex_worker_events";
+const RUNTIME_SYNC_KHALA_CHANNEL: &str = "sync:v1";
+const RUNTIME_SYNC_KHALA_WS_VSN: &str = "2.0.0";
+const RUNTIME_SYNC_KHALA_HEARTBEAT_MS: u64 = 20_000;
 const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
+type RuntimeSyncWebSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[derive(Parser, Debug)]
 #[command(name = "autopilot-desktop", about = "Autopilot desktop app")]
@@ -315,8 +320,7 @@ impl RuntimeCodexSync {
         let session_id_text = session_id.map(|value| value.to_string());
 
         if let Some(session_id) = session_id {
-            self.set_worker_session_id(&worker_id, session_id)
-                .await;
+            self.set_worker_session_id(&worker_id, session_id).await;
         }
 
         let already_synced = {
@@ -425,11 +429,7 @@ impl RuntimeCodexSync {
         let mut cursor = match self.fetch_worker_latest_seq(&worker_id).await {
             Ok(latest_seq) => latest_seq,
             Err(error) => {
-                tracing::warn!(
-                    worker_id = %worker_id,
-                    error = %error,
-                    "runtime sync stream bootstrap fallback to cursor=0"
-                );
+                tracing::warn!(worker_id = %worker_id, error = %error, "runtime sync khala bootstrap fallback to cursor=0");
                 0
             }
         };
@@ -437,73 +437,327 @@ impl RuntimeCodexSync {
         tracing::info!(
             worker_id = %worker_id,
             cursor,
-            "runtime sync stream started"
+            "runtime sync khala stream started"
         );
 
         loop {
-            match self
-                .stream_worker_events(&worker_id, cursor, RUNTIME_SYNC_STREAM_TAIL_MS)
-                .await
-            {
-                Ok(events) => {
-                    if events.is_empty() {
-                        tokio::time::sleep(Duration::from_millis(
-                            RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS,
-                        ))
-                        .await;
-                        continue;
-                    }
+            match self.run_worker_khala_session(&worker_id, &mut cursor).await {
+                Ok(()) => tracing::info!(
+                    worker_id = %worker_id,
+                    cursor,
+                    "runtime sync khala stream session ended; reconnecting"
+                ),
+                Err(error) => tracing::warn!(
+                    worker_id = %worker_id,
+                    cursor,
+                    error = %error,
+                    "runtime sync khala stream failed; reconnecting"
+                ),
+            }
 
-                    let mut next_cursor = cursor;
-                    let mut retry_cursor: Option<u64> = None;
+            tokio::time::sleep(Duration::from_millis(
+                RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS,
+            ))
+            .await;
+        }
+    }
 
-                    for event in events {
-                        let seq = stream_event_seq(&event);
-                        if let Some(seq_value) = seq {
-                            next_cursor = next_cursor.max(seq_value);
-                        }
+    async fn run_worker_khala_session(
+        &self,
+        worker_id: &str,
+        cursor: &mut u64,
+    ) -> Result<(), String> {
+        let khala_token = self
+            .mint_khala_sync_token(vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()])
+            .await?;
+        let websocket_url = self.build_khala_websocket_url(&khala_token).await?;
+        let (mut socket, _response) = connect_async(websocket_url.as_str())
+            .await
+            .map_err(|error| error.to_string())?;
 
-                        if let Err(error) =
-                            self.handle_worker_stream_event(&worker_id, &event).await
-                        {
-                            tracing::warn!(
-                                worker_id = %worker_id,
-                                seq = ?seq,
-                                error = %error,
-                                "runtime sync stream event processing failed"
-                            );
+        let mut ref_counter: u64 = 0;
+        let join_ref = Self::next_khala_ref(&mut ref_counter);
+        let join_frame = build_khala_frame(
+            None,
+            Some(join_ref.as_str()),
+            RUNTIME_SYNC_KHALA_CHANNEL,
+            "phx_join",
+            json!({}),
+        );
+        socket
+            .send(Message::Text(join_frame))
+            .await
+            .map_err(|error| error.to_string())?;
 
-                            if let Some(seq_value) = seq {
-                                retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
-                            }
-                        }
-                    }
+        let _join_response = self
+            .await_khala_reply(&mut socket, worker_id, cursor, join_ref.as_str())
+            .await?;
 
-                    if let Some(replay_cursor) = retry_cursor {
-                        tracing::info!(
-                            worker_id = %worker_id,
-                            cursor = replay_cursor,
-                            "runtime sync stream rewinding cursor to retry handshake processing"
-                        );
-                        cursor = replay_cursor;
-                    } else {
-                        cursor = next_cursor;
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        worker_id = %worker_id,
-                        cursor,
-                        error = %error,
-                        "runtime sync stream request failed; reconnecting"
+        let subscribe_ref = Self::next_khala_ref(&mut ref_counter);
+        let subscribe_frame = build_khala_frame(
+            Some(join_ref.as_str()),
+            Some(subscribe_ref.as_str()),
+            RUNTIME_SYNC_KHALA_CHANNEL,
+            "sync:subscribe",
+            json!({
+                "topics": [RUNTIME_SYNC_KHALA_TOPIC],
+                "resume_after": {
+                    RUNTIME_SYNC_KHALA_TOPIC: *cursor,
+                },
+                "replay_batch_size": 200,
+            }),
+        );
+        socket
+            .send(Message::Text(subscribe_frame))
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let _subscribe_response = self
+            .await_khala_reply(&mut socket, worker_id, cursor, subscribe_ref.as_str())
+            .await?;
+
+        let mut heartbeat =
+            tokio::time::interval(Duration::from_millis(RUNTIME_SYNC_KHALA_HEARTBEAT_MS));
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                _ = heartbeat.tick() => {
+                    let heartbeat_ref = Self::next_khala_ref(&mut ref_counter);
+                    let heartbeat_frame = build_khala_frame(
+                        Some(join_ref.as_str()),
+                        Some(heartbeat_ref.as_str()),
+                        RUNTIME_SYNC_KHALA_CHANNEL,
+                        "sync:heartbeat",
+                        json!({}),
                     );
-                    tokio::time::sleep(Duration::from_millis(
-                        RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS,
-                    ))
-                    .await;
+                    socket
+                        .send(Message::Text(heartbeat_frame))
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+                next_message = socket.next() => {
+                    let Some(message) = next_message else {
+                        return Err("khala websocket closed".to_string());
+                    };
+                    let message = message.map_err(|error| error.to_string())?;
+                    self.process_khala_socket_message(worker_id, cursor, message).await?;
                 }
             }
         }
+    }
+
+    async fn mint_khala_sync_token(&self, scopes: Vec<String>) -> Result<String, String> {
+        let response = self
+            .post_json("/api/khala/token", json!({ "scope": scopes }))
+            .await?;
+        response
+            .get("data")
+            .and_then(|value| value.get("token"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string)
+            .ok_or_else(|| "runtime sync khala token response missing token".to_string())
+    }
+
+    async fn build_khala_websocket_url(&self, token: &str) -> Result<String, String> {
+        let base_url = self.base_url.read().await.clone();
+        let mut url = reqwest::Url::parse(base_url.as_str()).map_err(|error| error.to_string())?;
+        let ws_scheme = match url.scheme() {
+            "https" => "wss",
+            "http" => "ws",
+            other => {
+                return Err(format!(
+                    "runtime sync base URL uses unsupported scheme for websocket: {other}"
+                ));
+            }
+        };
+        url.set_scheme(ws_scheme)
+            .map_err(|_| "failed to set websocket URL scheme".to_string())?;
+        url.set_path("/sync/socket/websocket");
+        {
+            let mut query = url.query_pairs_mut();
+            query.clear();
+            query.append_pair("token", token);
+            query.append_pair("vsn", RUNTIME_SYNC_KHALA_WS_VSN);
+        }
+        Ok(url.to_string())
+    }
+
+    async fn await_khala_reply(
+        &self,
+        socket: &mut RuntimeSyncWebSocket,
+        worker_id: &str,
+        cursor: &mut u64,
+        expected_reference: &str,
+    ) -> Result<Value, String> {
+        loop {
+            let next_message = socket
+                .next()
+                .await
+                .ok_or_else(|| "khala websocket closed while awaiting reply".to_string())?;
+            let message = next_message.map_err(|error| error.to_string())?;
+            let raw = Self::decode_websocket_text(message)?;
+            let Some(frame) = parse_khala_frame(raw.as_str()) else {
+                continue;
+            };
+
+            if frame.topic != RUNTIME_SYNC_KHALA_CHANNEL {
+                continue;
+            }
+
+            if frame.event == "sync:update_batch" {
+                self.process_khala_update_batch(worker_id, cursor, &frame.payload)
+                    .await?;
+                continue;
+            }
+
+            if frame.event == "sync:error" {
+                if khala_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
+                    *cursor = 0;
+                    return Err("khala stale_cursor; replay bootstrap required".to_string());
+                }
+                return Err(format!(
+                    "khala sync error while awaiting reply: {}",
+                    frame.payload
+                ));
+            }
+
+            if frame.event != "phx_reply" || frame.reference.as_deref() != Some(expected_reference)
+            {
+                continue;
+            }
+
+            let payload_object = frame
+                .payload
+                .as_object()
+                .ok_or_else(|| "khala phx_reply payload is not an object".to_string())?;
+            let status = payload_object
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("error");
+            if status != "ok" {
+                let response = payload_object
+                    .get("response")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+                let code = response
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                if code == "stale_cursor" {
+                    *cursor = 0;
+                }
+                return Err(format!("khala phx_reply status={status} code={code}"));
+            }
+
+            return Ok(payload_object
+                .get("response")
+                .cloned()
+                .unwrap_or_else(|| json!({})));
+        }
+    }
+
+    async fn process_khala_socket_message(
+        &self,
+        worker_id: &str,
+        cursor: &mut u64,
+        message: Message,
+    ) -> Result<(), String> {
+        let raw = Self::decode_websocket_text(message)?;
+        let Some(frame) = parse_khala_frame(raw.as_str()) else {
+            return Ok(());
+        };
+        if frame.topic != RUNTIME_SYNC_KHALA_CHANNEL {
+            return Ok(());
+        }
+
+        match frame.event.as_str() {
+            "sync:update_batch" => {
+                self.process_khala_update_batch(worker_id, cursor, &frame.payload)
+                    .await
+            }
+            "sync:error" => {
+                if khala_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
+                    *cursor = 0;
+                    return Err("khala stale_cursor; resetting replay cursor".to_string());
+                }
+                Err(format!("khala sync error: {}", frame.payload))
+            }
+            "phx_error" | "phx_close" => Err(format!("khala channel error: {}", frame.event)),
+            _ => Ok(()),
+        }
+    }
+
+    async fn process_khala_update_batch(
+        &self,
+        worker_id: &str,
+        cursor: &mut u64,
+        payload: &Value,
+    ) -> Result<(), String> {
+        let events =
+            extract_runtime_events_from_khala_update(payload, RUNTIME_SYNC_KHALA_TOPIC, worker_id);
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        let mut next_cursor = *cursor;
+        let mut retry_cursor: Option<u64> = None;
+
+        for event in events {
+            let seq = stream_event_seq(&event);
+            if let Some(seq_value) = seq {
+                next_cursor = next_cursor.max(seq_value);
+            }
+
+            if let Err(error) = self.handle_worker_stream_event(worker_id, &event).await {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    seq = ?seq,
+                    error = %error,
+                    "runtime sync khala event processing failed"
+                );
+
+                if let Some(seq_value) = seq {
+                    retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
+                }
+            }
+        }
+
+        if let Some(replay_cursor) = retry_cursor {
+            tracing::info!(
+                worker_id = %worker_id,
+                cursor = replay_cursor,
+                "runtime sync khala rewinding cursor to retry handshake processing"
+            );
+            *cursor = replay_cursor;
+        } else {
+            *cursor = next_cursor;
+        }
+
+        Ok(())
+    }
+
+    fn decode_websocket_text(message: Message) -> Result<String, String> {
+        match message {
+            Message::Text(text) => Ok(text.to_string()),
+            Message::Binary(bytes) => {
+                String::from_utf8(bytes.to_vec()).map_err(|err| err.to_string())
+            }
+            Message::Close(frame) => {
+                let reason = frame
+                    .map(|close| close.reason.to_string())
+                    .unwrap_or_else(|| "no close reason".to_string());
+                Err(format!("khala websocket closed: {reason}"))
+            }
+            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(String::new()),
+        }
+    }
+
+    fn next_khala_ref(counter: &mut u64) -> String {
+        *counter = counter.saturating_add(1);
+        counter.to_string()
     }
 
     async fn ingest_notification(
@@ -640,35 +894,6 @@ impl RuntimeCodexSync {
             .and_then(|data| data.get("latest_seq"))
             .and_then(|latest_seq| latest_seq.as_u64())
             .ok_or_else(|| "runtime sync worker snapshot missing latest_seq".to_string())
-    }
-
-    async fn stream_worker_events(
-        &self,
-        worker_id: &str,
-        cursor: u64,
-        tail_ms: u64,
-    ) -> Result<Vec<RuntimeCodexStreamEvent>, String> {
-        let path = format!(
-            "/api/runtime/codex/workers/{worker_id}/stream?cursor={cursor}&tail_ms={tail_ms}"
-        );
-
-        let response = self
-            .request_builder(Method::GET, &path)
-            .await?
-            .header("accept", "text/event-stream")
-            .header("last-event-id", cursor.to_string())
-            .send()
-            .await
-            .map_err(|err| err.to_string())?;
-
-        let status = response.status();
-        let text = response.text().await.map_err(|err| err.to_string())?;
-
-        if !status.is_success() {
-            return Err(runtime_sync_error_message(status, &text));
-        }
-
-        Ok(parse_runtime_stream_events(&text))
     }
 
     async fn set_worker_session_id(&self, worker_id: &str, session_id: SessionId) {

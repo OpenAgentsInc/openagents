@@ -8,7 +8,7 @@ Owner: iOS + Runtime + Web teams
 
 Define a comprehensive, implementation-ordered roadmap for connecting `apps/autopilot-ios/` to Codex with production-safe authority boundaries.
 
-This roadmap references working patterns from `~/code/inbox-autopilot/` (local API client + SSE event loop) and adapts them for OpenAgents, where iOS cannot assume localhost Codex execution.
+This roadmap references working patterns from `~/code/inbox-autopilot/` (local API client + long-lived event loop) and adapts them for OpenAgents, where iOS cannot assume localhost Codex execution.
 
 ## Executive Summary
 
@@ -39,7 +39,7 @@ References:
 OpenAgents already has the cross-surface Codex worker contract in place:
 
 1. Runtime internal worker APIs and durable state.
-2. Laravel user-scoped proxy APIs for list/snapshot/request/events/stream/stop.
+2. Laravel user-scoped proxy APIs for list/snapshot/request/events/stop and Khala sync token minting.
 3. Web and mobile admin surfaces consuming those APIs.
 4. Desktop runtime sync that mirrors local Codex events into runtime.
 
@@ -55,7 +55,7 @@ Primary references:
 From `~/code/inbox-autopilot/`, reuse the following patterns:
 
 1. Thin API client with centralized auth/session handling.
-2. SSE stream parser returning `AsyncThrowingStream` and yielding typed events.
+2. Khala websocket frame parser/handler yielding typed worker events.
 3. App-level event task that continuously merges streamed events into observable state.
 4. Keychain-backed secret/session token storage.
 5. Append-only event mindset for auditability.
@@ -169,7 +169,7 @@ Handshake is successful when all of the following happen:
      - `handshake_id`
      - `desktop_session_id`
      - `occurred_at`
-3. iOS stream success condition:
+3. iOS live-sync success condition:
    - `desktop/handshake_ack` received with matching `handshake_id` within timeout window (e.g. 30s).
 
 ### Why this MVP shape
@@ -184,7 +184,7 @@ Handshake is successful when all of the following happen:
 1. Desktop launched with runtime sync env vars (`OPENAGENTS_RUNTIME_SYNC_*`).
 2. iOS user authenticated against Laravel API.
 3. Worker ownership is shared/principal-valid for both device actions.
-4. iOS stream client supports reconnect + cursor continuity.
+4. iOS Khala websocket client supports reconnect + watermark continuity.
 
 ### GitHub execution issues
 
@@ -219,7 +219,7 @@ Deliverables:
 2. `apps/autopilot-ios/docs/codex-connection-roadmap.md`
 3. Swift API client skeleton.
 
-### Phase 1: Codex Read Path (List/Snapshot/Stream)
+### Phase 1: Codex Read Path (List/Snapshot/Khala WS)
 
 Goal:
 
@@ -229,8 +229,8 @@ Work:
 
 1. Worker list screen (`GET /api/runtime/codex/workers`).
 2. Worker detail snapshot (`GET /api/runtime/codex/workers/{id}`).
-3. SSE stream client (`GET /api/runtime/codex/workers/{id}/stream?cursor=&tail_ms=`).
-4. Cursor management, reconnect strategy, duplicate suppression.
+3. Khala websocket client (`POST /api/sync/token` + `/sync/socket/websocket`).
+4. Watermark management, reconnect strategy, duplicate suppression.
 5. Event timeline UI with bounded in-memory retention.
 
 Reference parity:
@@ -241,7 +241,7 @@ Reference parity:
 Exit criteria:
 
 1. signed-in user sees principal-scoped worker list.
-2. stream reconnects and advances cursor without event loss/duplication.
+2. websocket reconnects and advances watermarks without event loss/duplication.
 3. snapshot and stream stay coherent under reconnect.
 
 ### Phase 2: Codex Admin Actions (Request/Stop)
@@ -275,10 +275,10 @@ Make iOS connection path stable in real-world network conditions.
 
 Work:
 
-1. exponential backoff with jitter for stream reconnects.
+1. exponential backoff with jitter for websocket reconnects.
 2. periodic list/snapshot refresh reconciliation.
 3. `x-request-id` generation/propagation in iOS client.
-4. local structured logs for failed API/stream operations.
+4. local structured logs for failed API/websocket operations.
 5. optional local event cache for recent timeline continuity.
 
 Reuse pattern:
@@ -320,7 +320,7 @@ Improve responsiveness for summaries while preserving runtime authority.
 
 Work:
 
-1. mint Khala token via Laravel (`POST /api/khala/token`).
+1. mint Khala token via Laravel (`POST /api/sync/token`, `/api/khala/token` compatibility).
 2. subscribe to worker summary projections for fast list/status updates.
 3. continue using runtime/Laravel APIs for all control actions.
 
@@ -342,7 +342,7 @@ Exit criteria:
 ### Unit
 
 1. request/response decoding and error mapping.
-2. SSE parser and cursor advancement.
+2. Khala frame parser and watermark advancement.
 3. retry/backoff logic and cancellation behavior.
 
 ### Integration (staging)
@@ -368,8 +368,8 @@ Exit criteria:
 
 1. Risk: transport fragmentation across desktop/local/hosted lanes.
    Mitigation: single runtime worker contract, backend hidden behind runtime adapters.
-2. Risk: stream reliability issues on mobile networks.
-   Mitigation: robust SSE reconnection, cursor replay, periodic snapshot reconciliation.
+2. Risk: websocket reliability issues on mobile networks.
+   Mitigation: robust Khala reconnect/resume, watermark replay, periodic snapshot reconciliation.
 3. Risk: authority creep into client.
    Mitigation: enforce server-side ownership and policy checks only.
 4. Risk: backend-specific behavior leaks into iOS UX.
@@ -378,7 +378,7 @@ Exit criteria:
 ## Definition of Done (Codex Connection)
 
 1. iOS can observe and administer Codex workers through Laravel/runtime APIs with parity to web/mobile.
-2. stream reliability meets reconnect and cursor continuity requirements.
+2. websocket reliability meets reconnect and watermark continuity requirements.
 3. request/stop actions honor runtime policy/ownership semantics.
 4. tracing/correlation headers and logs are operationally useful.
 5. backend expansion (desktop bridge or hosted sandbox) does not require iOS contract rewrite.
