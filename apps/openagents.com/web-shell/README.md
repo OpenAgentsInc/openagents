@@ -55,9 +55,16 @@ This writes:
 
 - `apps/openagents.com/web-shell/dist/index.html`
 - `apps/openagents.com/web-shell/dist/manifest.json`
+- `apps/openagents.com/web-shell/dist/sw.js`
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell.js`
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell_bg.wasm`
 - `apps/openagents.com/web-shell/dist/assets/host-shim.js`
+
+Service-worker pinning + skew verification:
+
+```bash
+apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
+```
 
 ## Performance + Soak Signoff
 
