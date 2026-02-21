@@ -16,7 +16,6 @@ From repository root:
 This configures:
 
 - `.githooks/pre-commit` -> `scripts/local-ci.sh changed`
-- `.githooks/pre-push` -> `scripts/local-ci.sh all-rust`
 
 ## Local CI Entrypoint
 
@@ -68,16 +67,10 @@ Changed-mode trigger note:
 
 ## Push Policy
 
-Pre-push runs Rust-first gates by default:
+Run Rust-first gates manually before pushing:
 
 ```bash
 ./scripts/local-ci.sh all-rust
-```
-
-Override pre-push mode when needed:
-
-```bash
-OA_LOCAL_CI_PREPUSH_MODE=workspace-compile git push
 ```
 
 Run additional gates manually before pushing when needed:
