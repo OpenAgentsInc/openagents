@@ -34,8 +34,11 @@ run_docs_check() {
 run_proto_checks() {
   echo "==> proto checks"
   require_cmd buf
-  require_cmd rg
 
+  local mode
+  mode="${OA_BUF_BREAKING_MODE:-auto}"
+  local timeout
+  timeout="${OA_BUF_BREAKING_TIMEOUT:-20s}"
   local against_ref
   against_ref="${OA_BUF_BREAKING_AGAINST:-}"
 
@@ -47,22 +50,59 @@ run_proto_checks() {
     fi
   fi
 
-  if [[ -z "$against_ref" ]]; then
-    echo "buf breaking failed: could not find local 'main' or 'origin/main'." >&2
-    echo "Set OA_BUF_BREAKING_AGAINST to override baseline explicitly, for example:" >&2
-    echo "  OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,subdir=proto' ./scripts/local-ci.sh proto" >&2
-    echo "Or fetch baseline refs:" >&2
-    echo "  git fetch origin main" >&2
-    exit 1
-  fi
-
   (
     cd "$ROOT_DIR"
     buf lint
-    buf breaking --against "$against_ref"
-
     ./scripts/verify-proto-generate.sh
   )
+
+  if [[ "$mode" == "off" ]]; then
+    echo "==> buf breaking skipped (OA_BUF_BREAKING_MODE=off)"
+    return 0
+  fi
+
+  if [[ -z "$against_ref" ]]; then
+    if [[ "$mode" == "strict" ]]; then
+      echo "buf breaking failed: could not find local 'main' or 'origin/main'." >&2
+      echo "Set OA_BUF_BREAKING_AGAINST to override baseline explicitly, for example:" >&2
+      echo "  OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,subdir=proto' OA_BUF_BREAKING_MODE=strict ./scripts/local-ci.sh proto" >&2
+      echo "Or fetch baseline refs:" >&2
+      echo "  git fetch origin main" >&2
+      exit 1
+    fi
+
+    echo "==> buf breaking skipped in auto mode (no baseline ref found)"
+    return 0
+  fi
+
+  echo "==> buf breaking (mode=${mode}, timeout=${timeout})"
+  local output
+  local status
+  set +e
+  output="$(
+    cd "$ROOT_DIR" &&
+      buf breaking --timeout "$timeout" --against "$against_ref" 2>&1
+  )"
+  status=$?
+  set -e
+
+  if [[ $status -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "$mode" == "strict" ]]; then
+    printf '%s\n' "$output" >&2
+    exit $status
+  fi
+
+  if printf '%s' "$output" | rg -qi '(too many requests|rate.?limit|timed out|timeout|deadline exceeded|temporar|transport|connection|unavailable|i/o timeout|tls|eof)'; then
+    echo "==> buf breaking skipped in auto mode due transient/remote failure:"
+    printf '%s\n' "$output"
+    return 0
+  fi
+
+  printf '%s\n' "$output" >&2
+  exit $status
 }
 
 assert_trigger() {

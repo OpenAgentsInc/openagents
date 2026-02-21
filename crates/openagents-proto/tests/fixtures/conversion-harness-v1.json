@@ -1,0 +1,114 @@
+{
+  "sync": {
+    "valid": {
+      "topic": "runtime.codex_worker_events",
+      "seq": 44,
+      "kind": "UPDATE_BATCH",
+      "payload_bytes": [1, 2, 3],
+      "schema_version": 1
+    },
+    "invalid_missing_topic": {
+      "topic": "  ",
+      "seq": 1,
+      "kind": "HEARTBEAT",
+      "payload_bytes": [],
+      "schema_version": 1
+    }
+  },
+  "control_auth_session": {
+    "valid": {
+      "session_id": "sess_01",
+      "user_id": "1",
+      "device_id": "ios:23b7",
+      "status": "ACTIVE",
+      "access_token": "pat_local",
+      "refresh_token": "rt_local",
+      "active_org_id": "user:1",
+      "reauth_required": false
+    },
+    "invalid_missing_session_id": {
+      "session_id": "",
+      "user_id": "1",
+      "device_id": "ios:23b7",
+      "status": "ACTIVE",
+      "access_token": "pat_local",
+      "refresh_token": "rt_local",
+      "active_org_id": "user:1",
+      "reauth_required": false
+    },
+    "invalid_status_unspecified": {
+      "session_id": "sess_01",
+      "user_id": "1",
+      "device_id": "ios:23b7",
+      "status": "UNSPECIFIED",
+      "access_token": "pat_local",
+      "refresh_token": "rt_local",
+      "active_org_id": "user:1",
+      "reauth_required": false
+    }
+  },
+  "codex_notification": {
+    "valid_turn_started": {
+      "worker_id": "desktopw:test",
+      "seq": 301,
+      "method": "TURN_STARTED",
+      "payload_type": "turn_started",
+      "payload": {
+        "thread_id": "thr_01",
+        "turn_id": "turn_01",
+        "model": "gpt-5.2-codex",
+        "reasoning_effort": "low"
+      }
+    },
+    "invalid_payload_mismatch": {
+      "worker_id": "desktopw:test",
+      "seq": 302,
+      "method": "TURN_STARTED",
+      "payload_type": "thread_started",
+      "payload": {
+        "thread_id": "thr_01"
+      }
+    },
+    "invalid_user_message_missing_text": {
+      "worker_id": "desktopw:test",
+      "seq": 303,
+      "method": "USER_MESSAGE",
+      "payload_type": "user_message",
+      "payload": {
+        "thread_id": "thr_01",
+        "turn_id": "turn_01",
+        "message_id": "msg_01",
+        "text": ""
+      }
+    }
+  },
+  "runtime_run_event": {
+    "valid_text_delta": {
+      "run_id": "run_01",
+      "seq": 9,
+      "event_type": "text.delta",
+      "payload_type": "text_delta",
+      "payload": {
+        "delta": "hello",
+        "frame_id": "frame_01"
+      }
+    },
+    "invalid_missing_payload": {
+      "run_id": "run_01",
+      "seq": 10,
+      "event_type": "run.finished",
+      "payload_type": "none"
+    },
+    "invalid_run_finished_status_unspecified": {
+      "run_id": "run_01",
+      "seq": 11,
+      "event_type": "run.finished",
+      "payload_type": "run_finished",
+      "payload": {
+        "status": "UNSPECIFIED",
+        "reason": "",
+        "reason_class": ""
+      }
+    }
+  }
+}
