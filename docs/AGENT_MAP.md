@@ -39,7 +39,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `apps/openagents.com/README.md` — web dev/test/deploy entrypoint.
 - `apps/runtime/` — Elixir runtime (execution, policy, replay, contracts).
 - `apps/runtime/README.md` — runtime setup and test entrypoint.
-- `apps/mobile/README.md` — mobile app.
+- `apps/autopilot-ios/docs/README.md` — iOS app docs and runbooks.
 - `apps/autopilot-desktop/` — Rust desktop Codex app.
 - `apps/onyx/` — Rust local-first notes app.
 - `packages/` — shared libraries (`effuse*`, `dse`, `lightning-effect`, `hud`).

@@ -25,7 +25,6 @@ Purpose: define exactly how each app consumes Khala, which topics it subscribes 
 | Surface | Khala Subscription Topics | Bootstrap + Recovery HTTP | Local Watermark Storage | Current Status |
 |---|---|---|---|---|
 | Web Codex admin (`apps/openagents.com`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | `/api/runtime/codex/workers*` + sync hydration endpoints as they land | localStorage/IndexedDB | Feature-gated via `VITE_KHALA_SYNC_ENABLED` |
-| Mobile Codex workers (`apps/mobile`) | `runtime.codex_worker_summaries` | `/api/runtime/codex/workers*` + stale-cursor hydration endpoints | AsyncStorage/SQLite/MMKV-backed persistence | Feature-gated via `EXPO_PUBLIC_KHALA_SYNC_ENABLED` |
 | Autopilot desktop (`apps/autopilot-desktop`) | `runtime.codex_worker_events` (primary), optional `runtime.codex_worker_summaries`; inbox lane is desktop-local projection (no Khala topic) | Laravel/runtime worker APIs + desktop auth flow + sync token minting where enabled | desktop-local state | Active Rust desktop shell (legacy Electron desktop removed) |
 | Autopilot iOS (`apps/autopilot-ios`) | `runtime.codex_worker_events` (live Codex event lane), optional `runtime.codex_worker_summaries` | `/api/runtime/codex/workers*`, `/api/runtime/codex/workers/{id}/events`, `/api/sync/token` | app-local (UserDefaults in v1) | Khala WS is primary live lane |
 | Lightning ops (`apps/lightning-ops`) | none for control-plane lane | `/api/internal/lightning-ops/control-plane/query|mutation` | N/A | API/mock transport; no Khala authority dependency |

@@ -31,7 +31,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 
 - Core web app: `apps/openagents.com/`
 - Runtime: `apps/runtime/`
-- Mobile app: `apps/mobile/`
+- iOS app: `apps/autopilot-ios/`
 - Desktop app: `apps/autopilot-desktop/`
 - Onyx app: `apps/onyx/`
 - Shared packages: `packages/`
@@ -88,7 +88,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 ## Where To Change Things
 
 - **Core web app:** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript). See `docs/plans/active/laravel-rebuild.md`.
-- Mobile surface: `apps/mobile/`
+- iOS surface: `apps/autopilot-ios/`
 - Desktop surface: `apps/autopilot-desktop/`
 - Onyx surface: `apps/onyx/`
 - Shared packages: `packages/*`
@@ -107,7 +107,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
     MIGRATE_JOB=runtime-migrate \
     apps/runtime/deploy/cloudrun/run-migrate-job.sh
     ```
-- Mobile: `apps/mobile/README.md`
+- iOS: `apps/autopilot-ios/docs/README.md`
 - Desktop: `apps/autopilot-desktop/README.md`
 
 Production debugging and request correlation:

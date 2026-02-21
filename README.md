@@ -10,7 +10,6 @@ OpenAgents is a multi-surface agent platform with two authority planes and one r
 
 - `apps/openagents.com/`: Laravel web/control-plane app.
 - `apps/runtime/`: Elixir runtime service.
-- `apps/mobile/`: React Native + Expo app.
 - `apps/autopilot-desktop/`: Rust + WGPUI desktop shell (Codex + inbox workflows).
 - `apps/autopilot-ios/`: Swift/iOS app.
 - `apps/onyx/`: Rust local-first notes app.
@@ -23,7 +22,6 @@ OpenAgents is a multi-surface agent platform with two authority planes and one r
 flowchart LR
   subgraph clients["Client Apps"]
     web["openagents.com\nWeb"]
-    mobile["mobile\nRN/Expo"]
     autopilotDesktop["autopilot-desktop\nRust + WGPUI"]
     ios["autopilot-ios\nSwiftUI"]
   end
@@ -48,7 +46,6 @@ flowchart LR
   end
 
   web --> laravel
-  mobile --> laravel
   autopilotDesktop --> laravel
   ios --> laravel
 
@@ -100,9 +97,8 @@ Deployment topology:
 | Surface | Khala Usage | Bootstrap Path | Authority Writes |
 |---|---|---|---|
 | `apps/openagents.com` | Khala WS behind `VITE_KHALA_SYNC_ENABLED` for reactive Codex summaries | Laravel/runtime HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
-| `apps/mobile` | Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` for worker summaries | Runtime APIs + `POST /api/sync/token` | Laravel/runtime APIs |
 | `apps/autopilot-desktop` | Runtime worker stream + consolidated inbox/codex panes | Laravel/runtime HTTP + runtime auth flow | Laravel/runtime APIs |
-| `apps/autopilot-ios` | Not primary today (runtime SSE lane remains) | Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
+| `apps/autopilot-ios` | Khala WS + runtime replay lane for Codex worker events | Laravel/runtime HTTP + `POST /api/sync/token` | Laravel/runtime APIs |
 | `apps/onyx` | No Khala dependency (local-first storage) | Local vault bootstrap | Local-only data writes |
 | `apps/lightning-ops` | No Khala dependency for control-plane (API/mock transport modes) | Internal Laravel control-plane APIs | Laravel internal control-plane APIs |
 | `apps/lightning-wallet-executor` | No Khala dependency | Service-local + Lightning infra | Service-local + Lightning infra |

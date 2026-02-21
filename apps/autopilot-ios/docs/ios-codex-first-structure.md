@@ -99,7 +99,7 @@ References:
 
 - `apps/openagents.com/app/Http/Controllers/Api/RuntimeCodexWorkersController.php`
 - `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
-- `apps/mobile/app/services/runtimeCodexApi.ts`
+- legacy Expo mobile parity reference (removed root; use git history)
 
 ## API and Data Layer Design
 
@@ -111,7 +111,7 @@ Use a single `RuntimeCodexClient` in iOS that owns:
 4. watermark advancement and idempotent event merge,
 5. header propagation for `x-request-id` and tracing metadata.
 
-Guideline: match semantics from `apps/mobile/app/services/runtimeCodexApi.ts` first, then optimize for Swift ergonomics.
+Guideline: match the legacy mobile runtime semantics (now represented in iOS client tests/docs), then optimize for Swift ergonomics.
 
 ## UI Composition (SwiftUI)
 
@@ -182,7 +182,7 @@ After Codex worker admin path is stable:
 
 Recommended fixture parity source:
 
-- `apps/mobile/app/services/runtimeCodexApi.test.ts`
+- legacy Expo mobile fixture parity reference (removed root; use git history)
 - `docs/autopilot/testing/STREAM_TESTING.md`
 
 ## Practical Build Order (First 2 Weeks)

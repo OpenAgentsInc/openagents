@@ -2,7 +2,7 @@
 
 Date: 2026-02-19  
 Status: Active  
-Owner: Runtime + Web + Mobile + Desktop + Infra  
+Owner: Runtime + Web + iOS + Desktop + Infra  
 Primary audience: implementation teams and autonomous coding agents
 
 ## Goal
@@ -62,7 +62,7 @@ This roadmap covers:
 4. Gate G3: Laravel Khala JWT minting + client subscription auth flow validated.
 5. Gate G4: Web Codex admin surfaces live from runtime + Khala summaries.
 6. Gate G5: Desktop Codex events fully mirrored into runtime and reflected in Khala.
-7. Gate G6: Mobile read/admin parity on same runtime/Khala contracts.
+7. Gate G6: iOS read/admin parity on same runtime/Khala contracts.
 8. Gate G7: Production cutover with rollback drill completed.
 
 ## Phased Roadmap
@@ -81,7 +81,7 @@ Backlog:
 2. Ensure `openagents_runtime_dev` exists and migrations run cleanly.
 3. Add/verify local setup section in runtime docs with exact commands.
 4. Create a release checklist artifact for Gates G0-G7.
-5. Define CI verification matrix for runtime/web/desktop/mobile touchpoints.
+5. Define CI verification matrix for runtime/web/desktop/iOS touchpoints.
 
 Verification:
 
@@ -106,7 +106,7 @@ Exit criteria:
 | Comms replay matrix | `./scripts/comms-security-replay-matrix.sh all` | comms auth/secret/replay changes across Laravel/runtime | both `laravel` and `runtime` lanes pass |
 | Proto compatibility | `buf lint && buf breaking --against '.git#branch=main,subdir=proto' && ./scripts/verify-proto-generate.sh` | `proto/**`, `buf.yaml`, `buf.gen.yaml` | lint + breaking + generation checks pass |
 | Desktop (Rust) | `cargo check -p autopilot-desktop && cargo check -p pylon` | `apps/autopilot-desktop/**`, `crates/pylon/**` | both crates compile with no errors |
-| Mobile | `cd apps/mobile && bun run compile && bun run test` | `apps/mobile/**` | compile and test pass |
+| iOS | `xcodebuild -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj -scheme Autopilot -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:AutopilotTests` | `apps/autopilot-ios/**` | iOS unit/integration suite passes |
 | OpenClaw drift gate | `OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/openclaw-drift-report.sh` | openclaw intake/fixture drift changes | report generated, actionable drift rows = 0 |
 
 Execution wiring:
@@ -236,7 +236,7 @@ Backlog:
 2. Map OpenAgents user/session claims to Khala identity claims.
 3. Add explicit token TTL, issuer, audience, and scope enforcement.
 4. Add tests for token mint denial paths and refresh behavior.
-5. Document auth flow for web/mobile/desktop clients.
+5. Document auth flow for web/iOS/desktop clients.
 
 Verification:
 
@@ -320,37 +320,37 @@ Exit criteria:
 - desktop activity appears in runtime and Khala summaries in near real time,
 - cross-client admin actions reflect actual desktop worker state.
 
-## Phase 7: Mobile Read/Admin Parity (G6)
+## Phase 7: iOS Read/Admin Parity (G6)
 
 Objectives:
 
-- bring mobile onto the same runtime/Khala contract model.
+- bring iOS onto the same runtime/Khala contract model.
 
 Backlog:
 
 1. Ship read parity first: worker snapshot + status subscriptions.
 2. Add scoped admin controls behind policy/role checks.
 3. Reuse Laravel token mint and runtime proxy pathways.
-4. Add mobile resilience paths for token refresh and reconnect.
+4. Add iOS resilience paths for token refresh and reconnect.
 
 Implementation status (2026-02-19):
 
-- Mobile now includes a runtime-backed Codex worker screen with:
+- iOS now includes a runtime-backed Codex worker screen with:
   - worker list + snapshot reads via Laravel runtime proxy APIs,
   - long-poll stream parity using runtime SSE endpoint semantics (`cursor` + `tail_ms`),
   - khala projection status visibility from runtime worker summaries.
 - Scoped admin actions (`request`, `stop`) use the same Laravel runtime endpoints and honor runtime policy responses (`403`/`409`) without client-side bypass.
-- Khala auth for mobile now uses Laravel token minting (`POST /api/khala/token`) with short-lived token caching and refresh.
-- Stream reconnect, list polling refresh, and auth-error fallback paths are implemented for mobile reconnect resilience.
+- Khala auth for iOS uses Laravel token minting (`POST /api/sync/token`) with short-lived token caching and refresh.
+- Stream reconnect, list polling refresh, and auth-error fallback paths are implemented for iOS reconnect resilience.
 
 Verification:
 
-- mobile integration tests against staging runtime + Khala
-- manual E2E: web/desktop/mobile consistency checks
+- iOS integration tests against staging runtime + Khala
+- manual E2E: web/desktop/iOS consistency checks
 
 Exit criteria:
 
-- mobile sees the same worker lifecycle truth as web/desktop,
+- iOS sees the same worker lifecycle truth as web/desktop,
 - controls are policy-safe and auditable.
 
 ## Phase 8: Production Hardening and Cutover (G7)
@@ -470,7 +470,7 @@ The roadmap is complete only when:
 
 1. Gates G0 through G7 are each closed with verification artifacts.
 2. Runtime/Postgres authority remains intact with no Khala authority creep.
-3. Web/mobile/desktop observe consistent Codex worker state from shared contracts.
+3. Web/iOS/desktop observe consistent Codex worker state from shared contracts.
 4. Replay-based Khala projection rebuild is documented, tested, and exercised.
 5. Operational runbooks and alerting are in place for production support.
 
@@ -485,7 +485,7 @@ Use this checklist in order; do not claim completion without evidence.
 5. Land Laravel Khala JWT endpoint and close G3.
 6. Ship web Codex admin surfaces and close G4.
 7. Finish desktop runtime sync and close G5.
-8. Ship mobile parity and close G6.
+8. Ship iOS parity and close G6.
 9. Run production hardening/cutover and close G7.
 
 ## Decision Log
