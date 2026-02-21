@@ -516,19 +516,31 @@ pub mod desktop {
 #[cfg(feature = "ios")]
 pub mod ios {
     use std::ffi::c_void;
+    use std::time::Duration;
 
-    use crate::components::hud::{DotShape, DotsGrid};
-    use crate::components::Component;
+    use crate::animation::AnimatorState;
+    use crate::components::hud::{DotShape, DotsGrid, PuffsBackground};
+    use crate::components::{Button, ButtonVariant, Component, Text, TextInput};
     use crate::geometry::{Bounds, Size};
     use crate::renderer::Renderer;
     use crate::scene::{Quad, Scene};
     use crate::theme;
     use crate::{PaintContext, TextSystem};
+    use web_time::Instant;
 
     /// Distance between grid dots (matches desktop autopilot_ui GRID_DOT_DISTANCE).
     const GRID_DOT_DISTANCE: f32 = 32.0;
 
-    /// State for the iOS WGPUI background renderer (black + dots grid).
+    /// Login card layout (centered).
+    const CARD_WIDTH: f32 = 280.0;
+    const CARD_PADDING: f32 = 24.0;
+    const CARD_CORNER_RADIUS: f32 = 12.0;
+    const TITLE_FONT_SIZE: f32 = 20.0;
+    const INPUT_HEIGHT: f32 = 40.0;
+    const BUTTON_HEIGHT: f32 = 36.0;
+    const ELEMENT_GAP: f32 = 12.0;
+
+    /// State for the iOS WGPUI background renderer (black + puffs + dots grid + login card).
     pub struct IosBackgroundState {
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -538,6 +550,15 @@ pub mod ios {
         text_system: TextSystem,
         size: Size,
         scale: f32,
+        /// Puffs floating up along grid lines (Arwes-style).
+        puffs: PuffsBackground,
+        last_frame: Option<Instant>,
+        /// Email value for the login card (updated via FFI when user types in native field).
+        pub login_email: String,
+        /// Set when user taps the submit button; Swift reads and consumes.
+        login_submit_requested: bool,
+        /// True when user has tapped the email field (Swift can show native text input).
+        email_focused: bool,
     }
 
     impl IosBackgroundState {
@@ -602,6 +623,18 @@ pub mod ios {
             let renderer = Renderer::new(&device, format);
             let text_system = TextSystem::new(scale);
             let size = Size::new(width as f32, height as f32);
+            let mut puffs = PuffsBackground::new()
+                .color(theme::text::MUTED.with_alpha(0.15))
+                .quantity(18)
+                .padding(0.0)
+                .grid_distance(Some(GRID_DOT_DISTANCE))
+                .y_offset((-8.0, -80.0))
+                .radius_initial(3.0)
+                .radius_offset((4.0, 24.0))
+                .sets(5)
+                .layers(6)
+                .cycle_duration(Duration::from_secs_f32(3.0));
+            puffs.set_state(AnimatorState::Entered);
 
             Ok(Box::new(Self {
                 device,
@@ -612,10 +645,79 @@ pub mod ios {
                 text_system,
                 size,
                 scale,
+                puffs,
+                last_frame: None,
+                login_email: String::new(),
+                login_submit_requested: false,
+                email_focused: false,
             }))
         }
 
-        /// Render one frame: black background + dots grid (same as desktop).
+        /// Compute login card and control bounds (same layout as render). All in logical pixels.
+        fn login_card_bounds(&self) -> (Bounds, Bounds, Bounds) {
+            let card_height = CARD_PADDING
+                + TITLE_FONT_SIZE
+                + ELEMENT_GAP
+                + INPUT_HEIGHT
+                + ELEMENT_GAP
+                + BUTTON_HEIGHT
+                + CARD_PADDING;
+            let card_x = (self.size.width - CARD_WIDTH) / 2.0;
+            let card_y = (self.size.height - card_height) / 2.0;
+            let content_x = card_x + CARD_PADDING;
+            let content_width = CARD_WIDTH - CARD_PADDING * 2.0;
+            let mut y = card_y + CARD_PADDING + TITLE_FONT_SIZE * 1.4 + ELEMENT_GAP;
+            let input_bounds = Bounds::new(content_x, y, content_width, INPUT_HEIGHT);
+            y += INPUT_HEIGHT + ELEMENT_GAP;
+            let button_bounds = Bounds::new(content_x, y, content_width, BUTTON_HEIGHT);
+            let card_bounds = Bounds::new(card_x, card_y, CARD_WIDTH, card_height);
+            (card_bounds, input_bounds, button_bounds)
+        }
+
+        /// Handle tap at logical coordinates (same as render: origin top-left, units = pixels).
+        pub fn handle_tap(&mut self, x: f32, y: f32) {
+            use crate::geometry::Point;
+            let (_card, input_bounds, button_bounds) = self.login_card_bounds();
+            let p = Point::new(x, y);
+            if input_bounds.contains(p) {
+                self.email_focused = true;
+            }
+            if button_bounds.contains(p) {
+                self.login_submit_requested = true;
+            }
+        }
+
+        pub fn login_submit_requested(&self) -> bool {
+            self.login_submit_requested
+        }
+
+        pub fn consume_submit_requested(&mut self) -> bool {
+            let v = self.login_submit_requested;
+            self.login_submit_requested = false;
+            v
+        }
+
+        pub fn email_focused(&self) -> bool {
+            self.email_focused
+        }
+
+        pub fn set_email_focused(&mut self, focused: bool) {
+            self.email_focused = focused;
+        }
+
+        /// Set login email from UTF-8 bytes (e.g. from native text field). Copies into state.
+        pub fn set_login_email_utf8(&mut self, ptr: *const u8, len: usize) {
+            if ptr.is_null() || len == 0 {
+                self.login_email.clear();
+                return;
+            }
+            let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+            if let Ok(s) = std::str::from_utf8(slice) {
+                self.login_email = s.to_string();
+            }
+        }
+
+        /// Render one frame: black background + dots grid + centered login card.
         pub fn render(&mut self) -> Result<(), String> {
             let mut scene = Scene::new();
             let mut paint = PaintContext::new(&mut scene, &mut self.text_system, self.scale);
@@ -626,6 +728,18 @@ pub mod ios {
                     .with_background(crate::color::Hsla::black()),
             );
 
+            // Puffs floating up along grid lines (Arwes-style)
+            let now = Instant::now();
+            let delta = self
+                .last_frame
+                .map(|t| now.saturating_duration_since(t))
+                .unwrap_or(Duration::ZERO);
+            self.last_frame = Some(now);
+            self.puffs
+                .update_with_delta(AnimatorState::Entered, delta);
+            let grid_bounds = Bounds::new(0.0, 0.0, self.size.width, self.size.height);
+            self.puffs.paint(grid_bounds, &mut paint);
+
             // Dots grid (same params as autopilot_ui MinimalRoot)
             let mut dots_grid = DotsGrid::new()
                 .shape(DotShape::Circle)
@@ -633,8 +747,53 @@ pub mod ios {
                 .opacity(0.12)
                 .distance(GRID_DOT_DISTANCE)
                 .size(1.5);
-            let grid_bounds = Bounds::new(0.0, 0.0, self.size.width, self.size.height);
             dots_grid.paint(grid_bounds, &mut paint);
+
+            // Centered login card: "Log in" title, email input, submit button
+            let card_height = CARD_PADDING
+                + TITLE_FONT_SIZE
+                + ELEMENT_GAP
+                + INPUT_HEIGHT
+                + ELEMENT_GAP
+                + BUTTON_HEIGHT
+                + CARD_PADDING;
+            let card_x = (self.size.width - CARD_WIDTH) / 2.0;
+            let card_y = (self.size.height - card_height) / 2.0;
+            let card_bounds = Bounds::new(card_x, card_y, CARD_WIDTH, card_height);
+            paint.scene.draw_quad(
+                Quad::new(card_bounds)
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(CARD_CORNER_RADIUS),
+            );
+            let mut y = card_y + CARD_PADDING;
+            let content_x = card_x + CARD_PADDING;
+            let content_width = CARD_WIDTH - CARD_PADDING * 2.0;
+
+            let mut title = Text::new("Log in")
+                .font_size(TITLE_FONT_SIZE)
+                .color(theme::text::PRIMARY)
+                .no_wrap();
+            title.paint(
+                Bounds::new(content_x, y, content_width, TITLE_FONT_SIZE * 1.4),
+                &mut paint,
+            );
+            y += TITLE_FONT_SIZE * 1.4 + ELEMENT_GAP;
+
+            let mut email_input = TextInput::new().placeholder("Email");
+            email_input.set_value(&self.login_email);
+            email_input.set_focused(self.email_focused);
+            email_input.paint(
+                Bounds::new(content_x, y, content_width, INPUT_HEIGHT),
+                &mut paint,
+            );
+            y += INPUT_HEIGHT + ELEMENT_GAP;
+
+            let mut submit_btn = Button::new("Log in").variant(ButtonVariant::Primary);
+            submit_btn.paint(
+                Bounds::new(content_x, y, content_width, BUTTON_HEIGHT),
+                &mut paint,
+            );
 
             self.renderer
                 .resize(&self.queue, self.size, self.scale);
@@ -748,5 +907,93 @@ pub mod ios {
             return;
         }
         let _ = unsafe { Box::from_raw(state) };
+    }
+
+    /// C FFI: handle tap at logical pixel coordinates (origin top-left). Call from Swift on tap.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_handle_tap(
+        state: *mut IosBackgroundState,
+        x: f32,
+        y: f32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.handle_tap(x, y);
+    }
+
+    /// C FFI: returns 1 if user tapped submit and it has not been consumed yet, else 0.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_login_submit_requested(state: *mut IosBackgroundState) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        if state.login_submit_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// C FFI: consume submit-requested flag. Returns 1 if it was set, 0 otherwise.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_submit_requested(state: *mut IosBackgroundState) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_submit_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// C FFI: returns 1 if email field is focused (user tapped it), else 0.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_email_focused(state: *mut IosBackgroundState) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        if state.email_focused() {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// C FFI: set email field focused state (e.g. 0 after dismissing native keyboard).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_email_focused(
+        state: *mut IosBackgroundState,
+        focused: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_email_focused(focused != 0);
+    }
+
+    /// C FFI: set login email from UTF-8 bytes. ptr may be null (clears email); len is byte length.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_login_email(
+        state: *mut IosBackgroundState,
+        ptr: *const std::ffi::c_char,
+        len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        if ptr.is_null() || len == 0 {
+            state.set_login_email_utf8(std::ptr::null(), 0);
+            return;
+        }
+        let ptr_u8 = ptr as *const u8;
+        state.set_login_email_utf8(ptr_u8, len);
     }
 }
