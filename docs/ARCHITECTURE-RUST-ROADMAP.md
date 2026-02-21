@@ -106,6 +106,7 @@ Harness artifacts: `crates/openagents-proto/tests/conversion_harness.rs`, `crate
 
 ### OA-RUST-015 — [Web Service] Bootstrap Rust control service skeleton
 Description: Create Rust service foundation for auth, control APIs, sync token minting, and static wasm asset hosting at `apps/openagents.com`.
+Bootstrap artifacts: `apps/openagents.com/service/Cargo.toml`, `apps/openagents.com/service/src/main.rs`, `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/README.md`
 
 ### OA-RUST-016 — [Web Service] Implement auth/session API parity
 Description: Port auth/session endpoints and token lifecycle semantics required by current clients while keeping WorkOS as identity/auth source of truth, preserving security and audit invariants.
