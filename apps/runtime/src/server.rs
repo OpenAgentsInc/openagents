@@ -1,0 +1,347 @@
+use std::sync::Arc;
+
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::{
+    config::Config,
+    orchestration::{OrchestrationError, RuntimeOrchestrator},
+    types::{AppendRunEventRequest, ProjectionCheckpoint, RuntimeRun, StartRunRequest},
+};
+
+#[derive(Clone)]
+pub struct AppState {
+    config: Config,
+    orchestrator: Arc<RuntimeOrchestrator>,
+    started_at: chrono::DateTime<Utc>,
+}
+
+impl AppState {
+    #[must_use]
+    pub fn new(config: Config, orchestrator: Arc<RuntimeOrchestrator>) -> Self {
+        Self {
+            config,
+            orchestrator,
+            started_at: Utc::now(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    service: String,
+    build_sha: String,
+    uptime_seconds: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct ReadinessResponse {
+    status: &'static str,
+    authority_ready: bool,
+    projector_ready: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartRunBody {
+    worker_id: Option<String>,
+    #[serde(default)]
+    metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppendRunEventBody {
+    event_type: String,
+    #[serde(default)]
+    payload: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+struct RunResponse {
+    run: RuntimeRun,
+}
+
+#[derive(Debug, Serialize)]
+struct CheckpointResponse {
+    checkpoint: ProjectionCheckpoint,
+}
+
+pub fn build_router(state: AppState) -> Router {
+    Router::new()
+        .route("/healthz", get(health))
+        .route("/readyz", get(readiness))
+        .route("/internal/v1/runs", post(start_run))
+        .route("/internal/v1/runs/:run_id", get(get_run))
+        .route("/internal/v1/runs/:run_id/events", post(append_run_event))
+        .route(
+            "/internal/v1/projectors/checkpoints/:run_id",
+            get(get_run_checkpoint),
+        )
+        .with_state(state)
+}
+
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+    let uptime_seconds = (Utc::now() - state.started_at).num_seconds();
+    Json(HealthResponse {
+        status: "ok",
+        service: state.config.service_name,
+        build_sha: state.config.build_sha,
+        uptime_seconds,
+    })
+}
+
+async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
+    let readiness = state.orchestrator.readiness();
+    let status = if readiness.is_ready() {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (
+        status,
+        Json(ReadinessResponse {
+            status: if readiness.is_ready() {
+                "ready"
+            } else {
+                "not_ready"
+            },
+            authority_ready: readiness.authority_ready,
+            projector_ready: readiness.projector_ready,
+        }),
+    )
+}
+
+async fn start_run(
+    State(state): State<AppState>,
+    Json(body): Json<StartRunBody>,
+) -> Result<(StatusCode, Json<RunResponse>), ApiError> {
+    let run = state
+        .orchestrator
+        .start_run(StartRunRequest {
+            worker_id: body.worker_id,
+            metadata: body.metadata,
+        })
+        .await
+        .map_err(ApiError::from_orchestration)?;
+    Ok((StatusCode::CREATED, Json(RunResponse { run })))
+}
+
+async fn append_run_event(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+    Json(body): Json<AppendRunEventBody>,
+) -> Result<Json<RunResponse>, ApiError> {
+    let run = state
+        .orchestrator
+        .append_run_event(
+            run_id,
+            AppendRunEventRequest {
+                event_type: body.event_type,
+                payload: body.payload,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+    Ok(Json(RunResponse { run }))
+}
+
+async fn get_run(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<RunResponse>, ApiError> {
+    let run = state
+        .orchestrator
+        .get_run(run_id)
+        .await
+        .map_err(ApiError::from_orchestration)?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(RunResponse { run }))
+}
+
+async fn get_run_checkpoint(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<CheckpointResponse>, ApiError> {
+    let checkpoint = state
+        .orchestrator
+        .checkpoint_for_run(run_id)
+        .await
+        .map_err(ApiError::from_orchestration)?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(CheckpointResponse { checkpoint }))
+}
+
+enum ApiError {
+    NotFound,
+    InvalidRequest(String),
+    Internal(String),
+}
+
+impl ApiError {
+    fn from_orchestration(error: OrchestrationError) -> Self {
+        match error {
+            OrchestrationError::RunNotFound(_) => Self::NotFound,
+            OrchestrationError::EmptyEventType => {
+                Self::InvalidRequest("event_type cannot be empty".to_string())
+            }
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::NotFound => (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": "not_found",
+                })),
+            )
+                .into_response(),
+            Self::InvalidRequest(message) => (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid_request",
+                    "message": message,
+                })),
+            )
+                .into_response(),
+            Self::Internal(message) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "internal",
+                    "message": message,
+                })),
+            )
+                .into_response(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use anyhow::{Result, anyhow};
+    use axum::{
+        body::Body,
+        http::{Method, Request},
+    };
+    use http_body_util::BodyExt;
+    use serde_json::Value;
+    use tower::ServiceExt;
+
+    use super::{AppState, build_router};
+    use crate::{
+        authority::InMemoryRuntimeAuthority, config::Config, orchestration::RuntimeOrchestrator,
+        projectors::InMemoryProjectionPipeline,
+    };
+
+    fn test_router() -> axum::Router {
+        let state = AppState::new(
+            Config {
+                service_name: "runtime-test".to_string(),
+                bind_addr: "127.0.0.1:0"
+                    .parse()
+                    .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 0))),
+                build_sha: "test".to_string(),
+            },
+            Arc::new(RuntimeOrchestrator::new(
+                InMemoryRuntimeAuthority::shared(),
+                InMemoryProjectionPipeline::shared(),
+            )),
+        );
+        build_router(state)
+    }
+
+    async fn response_json(response: axum::response::Response) -> Result<Value> {
+        let collected = response.into_body().collect().await?;
+        let bytes = collected.to_bytes();
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    #[tokio::test]
+    async fn health_and_readiness_endpoints_are_available() -> Result<()> {
+        let app = test_router();
+
+        let health = app
+            .clone()
+            .oneshot(Request::builder().uri("/healthz").body(Body::empty())?)
+            .await?;
+        let readiness = app
+            .oneshot(Request::builder().uri("/readyz").body(Body::empty())?)
+            .await?;
+
+        assert_eq!(health.status(), axum::http::StatusCode::OK);
+        assert_eq!(readiness.status(), axum::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_lifecycle_updates_projector_checkpoint() -> Result<()> {
+        let app = test_router();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:worker-1",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let append_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step.completed",
+                        "payload": {"step": 1}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(append_response.status(), axum::http::StatusCode::OK);
+
+        let checkpoint_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/projectors/checkpoints/{run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(checkpoint_response.status(), axum::http::StatusCode::OK);
+        let checkpoint_json = response_json(checkpoint_response).await?;
+        let last_seq = checkpoint_json
+            .pointer("/checkpoint/last_seq")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow!("missing checkpoint last_seq"))?;
+        assert_eq!(last_seq, 2);
+
+        Ok(())
+    }
+}

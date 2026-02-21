@@ -2,6 +2,39 @@
 
 Internal runtime service for OpenAgents long-running agent execution.
 
+## Rust service foundation (OA-RUST-033)
+
+`apps/runtime` now includes a Rust service foundation used for runtime authority migration.
+
+Commands:
+
+1. `cargo run -p openagents-runtime-service`
+2. `cargo test -p openagents-runtime-service`
+
+Environment:
+
+- `RUNTIME_BIND_ADDR` (default `127.0.0.1:4100`)
+- `RUNTIME_SERVICE_NAME` (default `runtime`)
+- `RUNTIME_BUILD_SHA` (default `dev`)
+
+Baseline endpoints:
+
+- `GET /healthz`
+- `GET /readyz`
+- `POST /internal/v1/runs`
+- `POST /internal/v1/runs/:run_id/events`
+- `GET /internal/v1/runs/:run_id`
+- `GET /internal/v1/projectors/checkpoints/:run_id`
+
+The Rust boundary modules live under `apps/runtime/src/`:
+
+- `authority.rs`: authority write interface + in-memory implementation
+- `orchestration.rs`: run/event command orchestration and validation
+- `projectors.rs`: projection checkpoint pipeline foundation
+- `server.rs`: HTTP routes, health/readiness, API handlers
+
+Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
+
 ## Local development
 
 1. `mix setup`

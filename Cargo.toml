@@ -4,6 +4,7 @@ members = [
     "apps/autopilot-desktop",
     "apps/openagents.com/service",
     "apps/openagents.com/web-shell",
+    "apps/runtime",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",
