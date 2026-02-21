@@ -1080,6 +1080,7 @@ dependencies = [
  "moltbook",
  "nostr 0.1.0",
  "nostr-client",
+ "openagents-client-core",
  "openagents-spark",
  "pollster 0.4.0",
  "pylon",
@@ -6944,6 +6945,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-client-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "openagents-control-service"
 version = "0.1.0"
 dependencies = [
@@ -7073,6 +7085,7 @@ dependencies = [
  "gloo-net",
  "gloo-timers",
  "openagents-app-state",
+ "openagents-client-core",
  "openagents-ui-core",
  "serde",
  "serde_json",

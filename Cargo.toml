@@ -32,6 +32,7 @@ members = [
     "crates/nostr/client",
     "crates/openagents-cli",
     "crates/openagents-app-state",
+    "crates/openagents-client-core",
     "crates/openagents-ui-core",
     "crates/openagents-registry",
     "crates/openagents-utils",

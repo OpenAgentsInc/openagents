@@ -3,6 +3,10 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use chrono::Utc;
+use openagents_client_core::auth::{
+    normalize_base_url as normalize_base_url_core, normalize_email as normalize_email_core,
+    normalize_verification_code as normalize_verification_code_core,
+};
 use reqwest::{Client as HttpClient, Method};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -212,46 +216,15 @@ async fn post_json(
 }
 
 fn normalize_base_url(raw: &str) -> Result<String, String> {
-    let trimmed = raw.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        return Err("base url must not be empty".to_string());
-    }
-    Ok(trimmed.to_string())
+    normalize_base_url_core(raw).map_err(|error| error.to_string())
 }
 
 fn normalize_email(raw: &str) -> Result<String, String> {
-    let normalized = raw.trim().to_lowercase();
-    if normalized.is_empty() {
-        return Err("email must not be empty".to_string());
-    }
-    Ok(normalized)
+    normalize_email_core(raw).map_err(|error| error.to_string())
 }
 
 fn normalize_code(raw: &str) -> Result<String, String> {
-    let collapsed = raw.split_whitespace().collect::<String>();
-    if collapsed.is_empty() {
-        return Err("verification code must not be empty".to_string());
-    }
-
-    // Users often paste the full email snippet ("Code: 123456.") into the field.
-    // Prefer a strict 6-digit extraction when available.
-    let digits_only = collapsed
-        .chars()
-        .filter(|ch| ch.is_ascii_digit())
-        .collect::<String>();
-    if digits_only.len() == 6 {
-        return Ok(digits_only);
-    }
-
-    let alnum = collapsed
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric())
-        .collect::<String>();
-    if alnum.is_empty() {
-        return Err("verification code must contain letters or digits".to_string());
-    }
-
-    Ok(alnum)
+    normalize_verification_code_core(raw).map_err(|error| error.to_string())
 }
 
 fn read_code_from_stdin() -> Result<String, String> {
