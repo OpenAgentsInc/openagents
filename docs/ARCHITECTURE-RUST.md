@@ -20,6 +20,21 @@ Implementation sequencing and issue backlog live in `docs/ARCHITECTURE-RUST-ROAD
 4. `apps/openagents.com/` is converted to Rust + WGPUI (no Laravel/React runtime in endstate).
 5. Runtime and sync stack are Rust implementations (no Elixir runtime in endstate).
 6. Existing ADR set under `docs/adr/` is archived; a new ADR series is authored from scratch for the Rust endstate.
+7. `packages/` is deleted in full; shared runtime/product code lives under Rust crates only.
+8. All PHP, TypeScript, JavaScript, and other non-Rust runtime/application implementations are removed from active production paths.
+
+## Rust-Only Elimination Mandate
+
+This migration is not "Rust-first"; it is Rust-only for all product and service execution paths.
+
+Hard requirements:
+
+1. No PHP/Laravel runtime remains in any production request path.
+2. No TypeScript/Node runtime remains in any production request path.
+3. No React/Inertia/Electron/React Native runtime remains in any production request path.
+4. No Elixir runtime remains as an authority or sync execution lane.
+5. Shared code must live in Rust crates (`crates/` and Rust app crates), with `proto/` as wire-schema authority.
+6. Any non-Rust artifacts that remain are docs/spec/build glue only and are not allowed to contain product/business/runtime authority logic.
 
 ## Architecture Principles
 
