@@ -9,7 +9,7 @@ Updated: 2026-02-21
 
 - Pilot route: `/chat/:thread_id`
 - Rust target: `apps/openagents.com/web-shell`
-- Rollback target: `OA_ROUTE_SPLIT_LEGACY_BASE_URL` + route-split override API
+- Legacy chat fallback: removed (pilot route is Rust-only)
 
 ## Implemented for pilot
 
@@ -31,7 +31,7 @@ Updated: 2026-02-21
 2. Khala replay/resume restores stream continuity after reload.
 3. User send command returns accepted response and stays deterministic in local state.
 4. Duplicate/out-of-order replay does not duplicate user/assistant text in local transcript.
-5. Rollback to legacy route can be triggered immediately via route-split override.
+5. Legacy override does not reroute `/chat/*`; pilot route remains Rust-only.
 
 ## Rollout and rollback notes
 
@@ -43,11 +43,11 @@ Updated: 2026-02-21
 4. Start with `OA_ROUTE_SPLIT_COHORT_PERCENTAGE=5`
 5. Monitor route-split decision audits + command error rates before increasing cohort
 
-### Fast rollback
+### Rollback behavior
 
-1. Call `POST /api/v1/control/route-split/override` with `{ "target": "legacy" }`
-2. Validate `/chat/:thread_id` returns temporary redirect to legacy base URL
-3. Keep Khala/session auth lanes running; clear override after remediation
+1. `POST /api/v1/control/route-split/override` still applies to non-pilot routes.
+2. `/chat/*` remains pinned to Rust shell (`pilot_route_rust_only`) even when override target is `legacy`.
+3. Pilot rollback is implemented as Rust-surface feature changes, not legacy handoff.
 
 ## Verification commands
 

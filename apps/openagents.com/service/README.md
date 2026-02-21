@@ -126,6 +126,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ## Route split and rollback
 
 - Route targeting is deterministic per request/cohort key (`x-oa-route-key`) using configured route prefixes and split mode.
+- `/chat/*` pilot route is pinned to Rust shell (`pilot_route_rust_only`) and is not redirected to legacy.
 - Fast rollback is supported with authenticated override:
   - `POST /api/v1/control/route-split/override` with body `{"target":"legacy"}` forces legacy immediately.
   - `POST /api/v1/control/route-split/override` with body `{"target":"clear"}` returns to configured mode.
