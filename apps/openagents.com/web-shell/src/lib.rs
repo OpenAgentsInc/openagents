@@ -1,15 +1,22 @@
 #![allow(clippy::needless_pass_by_value)]
 
+#[cfg(any(target_arch = "wasm32", test))]
+mod khala_protocol;
+
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
+    use futures_util::{FutureExt, SinkExt, StreamExt, pin_mut, select};
     use gloo_net::http::Request;
+    use gloo_net::websocket::{Message as WsMessage, futures::WebSocket};
+    use gloo_timers::future::sleep;
     use openagents_app_state::{
         AppAction, AppState, AuthRequirement, AuthUser, CommandError, CommandErrorKind,
         CommandIntent, HttpCommandRequest, HttpMethod, SessionLifecycleStatus, SessionSnapshot,
-        apply_action, classify_http_error, command_latency_metric, map_intent_to_http,
+        StreamStatus, apply_action, classify_http_error, command_latency_metric,
+        map_intent_to_http,
     };
     use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::{Deserialize, Serialize};
@@ -19,14 +26,29 @@ mod wasm {
     use web_sys::{HtmlCanvasElement, HtmlElement};
     use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
+    use crate::khala_protocol::{
+        KhalaEventPayload, SyncErrorPayload, TopicWatermark, WatermarkDecision, apply_watermark,
+        build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
+    };
+
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
         static APP_STATE: RefCell<AppState> = RefCell::new(AppState::default());
         static DIAGNOSTICS: RefCell<BootDiagnostics> = RefCell::new(BootDiagnostics::default());
         static COMMAND_LOOP_ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static KHALA_STREAM_ENABLED: Cell<bool> = const { Cell::new(false) };
+        static KHALA_STREAM_RUNNING: Cell<bool> = const { Cell::new(false) };
+        static KHALA_REF_COUNTER: Cell<u64> = const { Cell::new(1) };
     }
 
     const AUTH_STORAGE_KEY: &str = "openagents.web.auth.v1";
+    const KHALA_CHANNEL_TOPIC: &str = "sync:v1";
+    const KHALA_WS_VSN: &str = "2.0.0";
+    const KHALA_DEFAULT_TOPIC: &str = "runtime.codex_worker_events";
+    const KHALA_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
+    const KHALA_POLL_INTERVAL: Duration = Duration::from_secs(4);
+    const KHALA_RECONNECT_BASE_DELAY_MS: u64 = 750;
+    const KHALA_RECONNECT_MAX_DELAY_MS: u64 = 8_000;
 
     #[derive(Debug, Clone, Serialize)]
     struct BootDiagnostics {
@@ -211,6 +233,25 @@ mod wasm {
         workos_id: String,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct SyncTokenEnvelope {
+        data: SyncTokenData,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct SyncTokenData {
+        token: String,
+        #[serde(default)]
+        scopes: Vec<String>,
+        #[serde(default)]
+        granted_topics: Vec<SyncTokenGrant>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct SyncTokenGrant {
+        topic: String,
+    }
+
     #[derive(Debug, Clone)]
     struct SessionSnapshotWithUser {
         session: SessionSnapshot,
@@ -297,6 +338,16 @@ mod wasm {
     #[wasm_bindgen]
     pub fn auth_logout() {
         queue_intent(CommandIntent::LogoutSession);
+    }
+
+    #[wasm_bindgen]
+    pub fn khala_connect() {
+        queue_intent(CommandIntent::ConnectStream { worker_id: None });
+    }
+
+    #[wasm_bindgen]
+    pub fn khala_disconnect() {
+        queue_intent(CommandIntent::DisconnectStream);
     }
 
     async fn boot() -> Result<(), String> {
@@ -501,9 +552,18 @@ mod wasm {
             CommandIntent::RestoreSession => restore_session_flow().await,
             CommandIntent::RefreshSession => refresh_session_flow().await,
             CommandIntent::LogoutSession => logout_flow().await,
-            CommandIntent::RequestSyncToken { .. } => Ok(()),
-            CommandIntent::ConnectStream { .. } => Ok(()),
-            CommandIntent::DisconnectStream => Ok(()),
+            CommandIntent::RequestSyncToken { scopes } => {
+                let _ = mint_sync_token(scopes).await?;
+                Ok(())
+            }
+            CommandIntent::ConnectStream { .. } => {
+                ensure_khala_stream_running();
+                Ok(())
+            }
+            CommandIntent::DisconnectStream => {
+                stop_khala_stream();
+                Ok(())
+            }
             CommandIntent::SendThreadMessage { .. } => Ok(()),
             CommandIntent::Navigate { route } => {
                 APP_STATE.with(|state| {
@@ -537,6 +597,7 @@ mod wasm {
                     access_token: tokens.access_token,
                     refresh_token: tokens.refresh_token,
                 });
+                queue_intent(CommandIntent::ConnectStream { worker_id: None });
                 Ok(())
             }
             Err(error) if error.is_unauthorized() => match refresh_then_hydrate(tokens).await {
@@ -548,6 +609,7 @@ mod wasm {
                         access_token: hydrated.access_token,
                         refresh_token: hydrated.refresh_token,
                     });
+                    queue_intent(CommandIntent::ConnectStream { worker_id: None });
                     Ok(())
                 }
                 Err(refresh_error) => {
@@ -584,6 +646,7 @@ mod wasm {
                     access_token: tokens.access_token,
                     refresh_token: tokens.refresh_token,
                 });
+                queue_intent(CommandIntent::ConnectStream { worker_id: None });
                 Ok(())
             }
             Err(error) => {
@@ -597,6 +660,7 @@ mod wasm {
                                 access_token: snapshot.access_token,
                                 refresh_token: snapshot.refresh_token,
                             });
+                            queue_intent(CommandIntent::ConnectStream { worker_id: None });
                             Ok(())
                         }
                         Err(refresh_error) => {
@@ -643,6 +707,7 @@ mod wasm {
             access_token: next_tokens.access_token,
             refresh_token: next_tokens.refresh_token,
         });
+        queue_intent(CommandIntent::ConnectStream { worker_id: None });
         Ok(())
     }
 
@@ -656,6 +721,7 @@ mod wasm {
         }
 
         clear_persisted_tokens();
+        stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
         Ok(())
     }
@@ -695,6 +761,548 @@ mod wasm {
         token_type: String,
         access_token: String,
         refresh_token: String,
+    }
+
+    fn ensure_khala_stream_running() {
+        KHALA_STREAM_ENABLED.with(|enabled| enabled.set(true));
+
+        let already_running = KHALA_STREAM_RUNNING.with(|running| {
+            if running.get() {
+                true
+            } else {
+                running.set(true);
+                false
+            }
+        });
+
+        if already_running {
+            return;
+        }
+
+        set_stream_status(StreamStatus::Connecting);
+
+        spawn_local(async {
+            let mut reconnect_attempt: u32 = 0;
+
+            loop {
+                if !khala_stream_enabled() {
+                    break;
+                }
+
+                match run_khala_session().await {
+                    Ok(()) => {
+                        reconnect_attempt = 0;
+                        if !khala_stream_enabled() {
+                            break;
+                        }
+                        set_stream_status(StreamStatus::Connecting);
+                    }
+                    Err(error) => {
+                        if error.kind == CommandErrorKind::Unauthorized
+                            || error.kind == CommandErrorKind::Forbidden
+                        {
+                            KHALA_STREAM_ENABLED.with(|enabled| enabled.set(false));
+                            set_stream_status(StreamStatus::Error {
+                                message: error.message,
+                            });
+                            break;
+                        }
+
+                        set_stream_status(StreamStatus::Error {
+                            message: error.message.clone(),
+                        });
+
+                        reconnect_attempt = reconnect_attempt.saturating_add(1);
+                        let backoff_ms = reconnect_backoff_ms(reconnect_attempt);
+                        sleep(Duration::from_millis(backoff_ms)).await;
+                        set_stream_status(StreamStatus::Connecting);
+                    }
+                }
+            }
+
+            KHALA_STREAM_RUNNING.with(|running| running.set(false));
+            if !khala_stream_enabled() {
+                set_stream_status(StreamStatus::Disconnected);
+            }
+        });
+    }
+
+    fn stop_khala_stream() {
+        KHALA_STREAM_ENABLED.with(|enabled| enabled.set(false));
+        set_stream_status(StreamStatus::Disconnected);
+    }
+
+    fn khala_stream_enabled() -> bool {
+        KHALA_STREAM_ENABLED.with(Cell::get)
+    }
+
+    fn reconnect_backoff_ms(attempt: u32) -> u64 {
+        let multiplier = 2_u64.saturating_pow(attempt.min(6));
+        let candidate = KHALA_RECONNECT_BASE_DELAY_MS.saturating_mul(multiplier);
+        candidate.min(KHALA_RECONNECT_MAX_DELAY_MS)
+    }
+
+    fn set_stream_status(status: StreamStatus) {
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let _ = apply_action(&mut state, AppAction::StreamStatusChanged { status });
+            update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
+        });
+    }
+
+    async fn run_khala_session() -> Result<(), ControlApiError> {
+        let sync_token = mint_sync_token(vec![KHALA_DEFAULT_TOPIC.to_string()]).await?;
+        let socket_url = build_sync_websocket_url(&sync_token.token)?;
+        let mut socket = WebSocket::open(&socket_url).map_err(map_websocket_error)?;
+
+        let join_ref = next_khala_ref();
+        send_khala_frame(
+            &mut socket,
+            None,
+            Some(&join_ref),
+            "phx_join",
+            serde_json::json!({}),
+        )
+        .await?;
+        let _join_response = await_khala_reply(&mut socket, &join_ref).await?;
+
+        let topics = resolve_khala_topics(&sync_token);
+        let subscribe_ref = next_khala_ref();
+        let resume_after = current_resume_after(&topics);
+        send_khala_frame(
+            &mut socket,
+            Some(&join_ref),
+            Some(&subscribe_ref),
+            "sync:subscribe",
+            serde_json::json!({
+                "topics": topics,
+                "resume_after": resume_after,
+                "replay_batch_size": 200,
+            }),
+        )
+        .await?;
+        let _subscribe_response = await_khala_reply(&mut socket, &subscribe_ref).await?;
+
+        set_stream_status(StreamStatus::Live);
+        let mut last_heartbeat_at = Instant::now();
+
+        while khala_stream_enabled() {
+            let next_frame = socket.next().fuse();
+            let tick = sleep(KHALA_POLL_INTERVAL).fuse();
+            pin_mut!(next_frame, tick);
+
+            select! {
+                websocket_message = next_frame => {
+                    match websocket_message {
+                        Some(Ok(message)) => {
+                            process_khala_message(message).await?;
+                        }
+                        Some(Err(error)) => return Err(map_websocket_error(error)),
+                        None => {
+                            return Err(ControlApiError {
+                                status_code: 0,
+                                code: Some("khala_socket_closed".to_string()),
+                                message: "Khala socket closed.".to_string(),
+                                kind: CommandErrorKind::Network,
+                                retryable: true,
+                            });
+                        }
+                    }
+                }
+                _ = tick => {}
+            }
+
+            if last_heartbeat_at.elapsed() >= KHALA_HEARTBEAT_INTERVAL {
+                let heartbeat_ref = next_khala_ref();
+                send_khala_frame(
+                    &mut socket,
+                    Some(&join_ref),
+                    Some(&heartbeat_ref),
+                    "sync:heartbeat",
+                    serde_json::json!({}),
+                )
+                .await?;
+                last_heartbeat_at = Instant::now();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn next_khala_ref() -> String {
+        KHALA_REF_COUNTER.with(|counter| {
+            let next = counter.get().saturating_add(1);
+            counter.set(next);
+            next.to_string()
+        })
+    }
+
+    async fn send_khala_frame(
+        socket: &mut WebSocket,
+        join_ref: Option<&str>,
+        reference: Option<&str>,
+        event: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), ControlApiError> {
+        let raw = build_phoenix_frame(join_ref, reference, KHALA_CHANNEL_TOPIC, event, payload);
+        socket
+            .send(WsMessage::Text(raw))
+            .await
+            .map_err(map_websocket_error)
+    }
+
+    async fn await_khala_reply(
+        socket: &mut WebSocket,
+        expected_ref: &str,
+    ) -> Result<serde_json::Value, ControlApiError> {
+        loop {
+            let Some(next_message) = socket.next().await else {
+                return Err(ControlApiError {
+                    status_code: 0,
+                    code: Some("khala_reply_closed".to_string()),
+                    message: "Khala socket closed while waiting for reply.".to_string(),
+                    kind: CommandErrorKind::Network,
+                    retryable: true,
+                });
+            };
+            let message = next_message.map_err(map_websocket_error)?;
+            let raw = websocket_text(message)?;
+            let Some(frame) = parse_phoenix_frame(&raw) else {
+                continue;
+            };
+
+            if frame.topic != KHALA_CHANNEL_TOPIC {
+                continue;
+            }
+
+            if frame.event == "phx_reply" && frame.reference.as_deref() == Some(expected_ref) {
+                let payload =
+                    frame
+                        .payload
+                        .as_object()
+                        .cloned()
+                        .ok_or_else(|| ControlApiError {
+                            status_code: 500,
+                            code: Some("khala_invalid_reply".to_string()),
+                            message: "Invalid Khala reply payload.".to_string(),
+                            kind: CommandErrorKind::Decode,
+                            retryable: false,
+                        })?;
+
+                let status = payload
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("error");
+
+                if status == "ok" {
+                    return Ok(payload
+                        .get("response")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({})));
+                }
+
+                let response = payload
+                    .get("response")
+                    .and_then(serde_json::Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+                let code = response
+                    .get("code")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string);
+                let message = response
+                    .get("message")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "Khala request failed.".to_string());
+                if code.as_deref() == Some("stale_cursor") {
+                    let topics = response
+                        .get("stale_topics")
+                        .and_then(serde_json::Value::as_array)
+                        .map(|entries| {
+                            entries
+                                .iter()
+                                .filter_map(|entry| {
+                                    entry
+                                        .get("topic")
+                                        .and_then(serde_json::Value::as_str)
+                                        .map(ToString::to_string)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    if !topics.is_empty() {
+                        APP_STATE.with(|state| {
+                            let mut state = state.borrow_mut();
+                            let _ = apply_action(
+                                &mut state,
+                                AppAction::TopicWatermarksReset { topics },
+                            );
+                        });
+                    }
+                }
+                let classified = classify_http_error(409, code.as_deref(), message);
+                return Err(ControlApiError {
+                    status_code: 409,
+                    code,
+                    message: classified.message,
+                    kind: classified.kind,
+                    retryable: classified.retryable,
+                });
+            }
+
+            apply_khala_frame(&frame)?;
+        }
+    }
+
+    async fn process_khala_message(message: WsMessage) -> Result<(), ControlApiError> {
+        let raw = websocket_text(message)?;
+        let Some(frame) = parse_phoenix_frame(&raw) else {
+            return Ok(());
+        };
+        if frame.event == "phx_error" || frame.event == "phx_close" {
+            return Err(ControlApiError {
+                status_code: 0,
+                code: Some("khala_channel_error".to_string()),
+                message: "Khala channel closed with error.".to_string(),
+                kind: CommandErrorKind::Network,
+                retryable: true,
+            });
+        }
+        apply_khala_frame(&frame)
+    }
+
+    fn apply_khala_frame(
+        frame: &crate::khala_protocol::PhoenixFrame,
+    ) -> Result<(), ControlApiError> {
+        let Some(payload) = decode_khala_payload(frame) else {
+            return Ok(());
+        };
+
+        match payload {
+            KhalaEventPayload::UpdateBatch(batch) => {
+                for update in batch.updates {
+                    let current = current_watermark(&update.topic);
+                    match apply_watermark(current, update.watermark) {
+                        WatermarkDecision::Advanced { next } => {
+                            APP_STATE.with(|state| {
+                                let mut state = state.borrow_mut();
+                                let _ = apply_action(
+                                    &mut state,
+                                    AppAction::TopicWatermarkUpdated {
+                                        topic: update.topic.clone(),
+                                        watermark: next,
+                                    },
+                                );
+                            });
+                        }
+                        WatermarkDecision::Duplicate | WatermarkDecision::OutOfOrder { .. } => {}
+                    }
+                }
+                Ok(())
+            }
+            KhalaEventPayload::Heartbeat(watermarks) => {
+                apply_heartbeat_watermarks(watermarks);
+                Ok(())
+            }
+            KhalaEventPayload::Error(error) => handle_khala_error(error),
+            KhalaEventPayload::Other => Ok(()),
+        }
+    }
+
+    fn apply_heartbeat_watermarks(watermarks: Vec<TopicWatermark>) {
+        for watermark in watermarks {
+            let current = current_watermark(&watermark.topic);
+            if let WatermarkDecision::Advanced { next } =
+                apply_watermark(current, watermark.watermark)
+            {
+                APP_STATE.with(|state| {
+                    let mut state = state.borrow_mut();
+                    let _ = apply_action(
+                        &mut state,
+                        AppAction::TopicWatermarkUpdated {
+                            topic: watermark.topic.clone(),
+                            watermark: next,
+                        },
+                    );
+                });
+            }
+        }
+    }
+
+    fn handle_khala_error(error: SyncErrorPayload) -> Result<(), ControlApiError> {
+        if error.code == "stale_cursor" {
+            let topics: Vec<String> = error
+                .stale_topics
+                .iter()
+                .map(|topic| topic.topic.clone())
+                .collect();
+            if !topics.is_empty() {
+                APP_STATE.with(|state| {
+                    let mut state = state.borrow_mut();
+                    let _ = apply_action(&mut state, AppAction::TopicWatermarksReset { topics });
+                });
+            }
+
+            return Err(ControlApiError {
+                status_code: 409,
+                code: Some("stale_cursor".to_string()),
+                message: error.message,
+                kind: CommandErrorKind::Validation,
+                retryable: true,
+            });
+        }
+
+        let status = if error.code == "unauthorized" {
+            401
+        } else if error.code == "forbidden_topic" {
+            403
+        } else {
+            500
+        };
+        let classified = classify_http_error(status, Some(&error.code), error.message);
+        Err(ControlApiError {
+            status_code: status,
+            code: Some(error.code),
+            message: classified.message,
+            kind: classified.kind,
+            retryable: classified.retryable,
+        })
+    }
+
+    fn current_watermark(topic: &str) -> u64 {
+        APP_STATE.with(|state| {
+            state
+                .borrow()
+                .stream
+                .topic_watermarks
+                .get(topic)
+                .copied()
+                .unwrap_or(0)
+        })
+    }
+
+    fn current_resume_after(topics: &[String]) -> serde_json::Map<String, serde_json::Value> {
+        APP_STATE.with(|state| {
+            let state = state.borrow();
+            topics
+                .iter()
+                .map(|topic| {
+                    let watermark = state
+                        .stream
+                        .topic_watermarks
+                        .get(topic)
+                        .copied()
+                        .unwrap_or(0);
+                    (topic.clone(), serde_json::Value::Number(watermark.into()))
+                })
+                .collect()
+        })
+    }
+
+    async fn mint_sync_token(scopes: Vec<String>) -> Result<SyncTokenData, ControlApiError> {
+        let mut state = snapshot_state();
+        if state.auth.access_token.is_none() {
+            return Err(ControlApiError::from_command_error(
+                CommandError::missing_credential("access token is unavailable"),
+            ));
+        }
+
+        let resolved_scopes = if scopes.is_empty() {
+            vec![KHALA_DEFAULT_TOPIC.to_string()]
+        } else {
+            scopes
+        };
+        let request = plan_http_request(
+            &CommandIntent::RequestSyncToken {
+                scopes: resolved_scopes,
+            },
+            &state,
+        )?;
+        let response: SyncTokenEnvelope = send_json_request(&request, &state).await?;
+        let token = response.data.token.trim().to_string();
+        if token.is_empty() {
+            return Err(ControlApiError {
+                status_code: 500,
+                code: Some("sync_token_missing".to_string()),
+                message: "Sync token response is missing token.".to_string(),
+                kind: CommandErrorKind::Decode,
+                retryable: false,
+            });
+        }
+        state.auth.access_token = state.auth.access_token.clone();
+        Ok(response.data)
+    }
+
+    fn resolve_khala_topics(token: &SyncTokenData) -> Vec<String> {
+        let mut topics = token
+            .granted_topics
+            .iter()
+            .map(|grant| grant.topic.clone())
+            .filter(|topic| !topic.trim().is_empty())
+            .collect::<Vec<_>>();
+
+        if topics.is_empty() {
+            topics = token
+                .scopes
+                .iter()
+                .map(|scope| scope.trim().to_string())
+                .filter(|scope| scope.starts_with("runtime."))
+                .collect();
+        }
+
+        if topics.is_empty() {
+            topics.push(KHALA_DEFAULT_TOPIC.to_string());
+        }
+
+        topics.sort();
+        topics.dedup();
+        topics
+    }
+
+    fn build_sync_websocket_url(token: &str) -> Result<String, ControlApiError> {
+        let window = web_sys::window().ok_or_else(|| ControlApiError {
+            status_code: 0,
+            code: Some("window_unavailable".to_string()),
+            message: "window is unavailable".to_string(),
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
+        })?;
+        let location = window.location();
+        let protocol = location.protocol().map_err(|_| ControlApiError {
+            status_code: 0,
+            code: Some("location_protocol_unavailable".to_string()),
+            message: "browser protocol is unavailable".to_string(),
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
+        })?;
+        let host = location.host().map_err(|_| ControlApiError {
+            status_code: 0,
+            code: Some("location_host_unavailable".to_string()),
+            message: "browser host is unavailable".to_string(),
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
+        })?;
+
+        let ws_protocol = if protocol == "https:" { "wss" } else { "ws" };
+        Ok(format!(
+            "{ws_protocol}://{host}/sync/socket/websocket?token={token}&vsn={KHALA_WS_VSN}"
+        ))
+    }
+
+    fn websocket_text(message: WsMessage) -> Result<String, ControlApiError> {
+        match message {
+            WsMessage::Text(text) => Ok(text),
+            WsMessage::Bytes(bytes) => {
+                String::from_utf8(bytes.to_vec()).map_err(|error| ControlApiError {
+                    status_code: 0,
+                    code: Some("khala_frame_utf8_error".to_string()),
+                    message: format!("invalid websocket frame encoding: {error}"),
+                    kind: CommandErrorKind::Decode,
+                    retryable: false,
+                })
+            }
+        }
     }
 
     async fn post_send_code(email: &str) -> Result<SendCodeResponse, ControlApiError> {
@@ -834,6 +1442,17 @@ mod wasm {
     }
 
     fn map_network_error(error: gloo_net::Error) -> ControlApiError {
+        let classified = classify_http_error(0, Some("network_error"), error.to_string());
+        ControlApiError {
+            status_code: 0,
+            code: Some("network_error".to_string()),
+            message: classified.message,
+            kind: classified.kind,
+            retryable: classified.retryable,
+        }
+    }
+
+    fn map_websocket_error<E: std::fmt::Display>(error: E) -> ControlApiError {
         let classified = classify_http_error(0, Some("network_error"), error.to_string());
         ControlApiError {
             status_code: 0,

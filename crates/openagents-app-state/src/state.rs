@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -107,6 +107,7 @@ pub struct StreamState {
     pub status: StreamStatus,
     pub active_worker_id: Option<String>,
     pub last_seq: Option<u64>,
+    pub topic_watermarks: BTreeMap<String, u64>,
 }
 
 impl Default for StreamState {
@@ -115,6 +116,7 @@ impl Default for StreamState {
             status: StreamStatus::Disconnected,
             active_worker_id: None,
             last_seq: None,
+            topic_watermarks: BTreeMap::new(),
         }
     }
 }

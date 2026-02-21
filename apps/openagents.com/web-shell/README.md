@@ -17,6 +17,12 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
 6. Supports forced startup error simulation with `?oa_boot_fail=1`.
 7. Uses `crates/openagents-ui-core` shared tokens/primitives for shell backdrop/card rendering.
 8. Uses shared command-bus planning from `crates/openagents-app-state::command_bus` for typed intent -> HTTP adapter mapping and deterministic error/retry classification.
+9. Includes Khala WS client lane (Rust-only) with:
+   - sync token minting (`/api/sync/token`)
+   - Phoenix join/subscribe over `/sync/socket/websocket`
+   - replay resume from persisted topic watermarks
+   - stale-cursor reset + reconnect behavior
+   - idempotent duplicate/out-of-order watermark handling.
 
 ## Build (WASM)
 
@@ -70,3 +76,5 @@ Auth helper exports available from wasm module:
 - `auth_restore_session()`
 - `auth_refresh_session()`
 - `auth_logout()`
+- `khala_connect()`
+- `khala_disconnect()`
