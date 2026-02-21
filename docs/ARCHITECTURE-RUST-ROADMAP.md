@@ -17,6 +17,7 @@ It moves implementation steps out of the architecture definition and expands the
 3. `proto/` remains universal schema authority for cross-process contracts.
 4. Khala remains WS-only for live sync in endstate.
 5. Rivet is harvested for subsystem patterns, not adopted wholesale as platform authority.
+6. WorkOS remains the canonical identity provider and authentication source of truth.
 
 ## How To Use This For GitHub Issues Later
 
@@ -65,7 +66,7 @@ Description: Define/lock `KhalaFrame` envelope fields (`topic`, `seq`, `kind`, `
 Description: Define run lifecycle, worker lifecycle, and durable receipt/replay proto messages used by runtime authority and clients.
 
 ### OA-RUST-010 — [Proto] Finalize control-plane auth/session/scope contracts
-Description: Define control-plane messages for auth/session, org membership, and sync token scope derivation used by web, desktop, and iOS.
+Description: Define control-plane messages for auth/session, org membership, WorkOS identity mapping, and sync token scope derivation used by web, desktop, and iOS.
 
 ### OA-RUST-011 — [Proto] Finalize Codex worker/event contracts for all surfaces
 Description: Lock Codex worker event envelopes, turn status updates, and replay metadata contracts so web/desktop/iOS consume the same wire protocol.
@@ -85,7 +86,7 @@ Description: Add tests validating `TryFrom`/`From` conversions between proto wir
 Description: Create Rust service foundation for auth, control APIs, sync token minting, and static wasm asset hosting at `apps/openagents.com`.
 
 ### OA-RUST-016 — [Web Service] Implement auth/session API parity
-Description: Port auth/session endpoints and token lifecycle semantics required by current clients, preserving security and audit invariants.
+Description: Port auth/session endpoints and token lifecycle semantics required by current clients while keeping WorkOS as identity/auth source of truth, preserving security and audit invariants.
 
 ### OA-RUST-017 — [Web Service] Implement org membership and policy API parity
 Description: Port org membership and policy enforcement APIs currently required for runtime access and scoped actions.
@@ -286,6 +287,103 @@ Description: Capture WS-only transport policy, replay/watermark semantics, and f
 ### OA-RUST-077 — [ADR] Author ADR-0004 Rivet harvest posture and adoption boundaries
 Description: Capture exactly which Rivet patterns are adopted and which platform-level semantics are explicitly rejected.
 
+## Phase 11: Critical Hardening and Edge Cases
+
+### OA-RUST-078 — [Auth] Codify WorkOS as canonical auth source of truth
+Description: Implement and document WorkOS-authoritative identity/auth semantics across web/desktop/iOS and ensure local control-plane records are derivative, not primary identity authority.
+Acceptance criteria: All sign-in/session entrypoints validate through WorkOS integration; no standalone local credential authority remains; architecture/runbook docs explicitly state WorkOS authority.
+Dependencies: OA-RUST-010, OA-RUST-015, OA-RUST-016.
+
+### OA-RUST-079 — [Auth] Implement refresh-token rotation and device session model
+Description: Add strict refresh token rotation, revocation list behavior, and stable per-install `device_id` semantics used by auth/session/sync.
+Acceptance criteria: Rotated refresh tokens are single-use; per-device revoke and global revoke are supported; device-scoped session queries are auditable.
+Dependencies: OA-RUST-016, OA-RUST-018.
+
+### OA-RUST-080 — [Auth/Khala] Enforce live WS eviction on session invalidation
+Description: Propagate session revocation to active Khala sockets so unauthorized sessions are disconnected and forced through reauth.
+Acceptance criteria: Revoked sessions are evicted within bounded latency; reconnect returns deterministic `reauth_required` behavior; end-to-end tests cover revoke-during-stream.
+Dependencies: OA-RUST-018, OA-RUST-044.
+
+### OA-RUST-081 — [WGPUI Web] Implement IndexedDB persistence layer and schema migrations
+Description: Define browser persistence for watermarks and local state using IndexedDB with versioned migrations and corruption handling.
+Acceptance criteria: State survives app reload/version upgrade; migration failure triggers safe reset path; no localStorage-only authority state remains.
+Dependencies: OA-RUST-029, OA-RUST-030.
+
+### OA-RUST-082 — [WGPUI Web] Implement service worker asset pinning and rollback policy
+Description: Add service worker/update controls for JS/WASM artifact pinning, compatibility-aware updates, and rollback-safe cache invalidation.
+Acceptance criteria: Stale asset skew is detectable; rollback to previous bundle is supported without protocol deadlock; release runbook includes update order.
+Dependencies: OA-RUST-019, OA-RUST-023.
+
+### OA-RUST-083 — [Protocol] Define compatibility negotiation and support window policy
+Description: Publish ADR-level compatibility rules for `schema_version`, server/client negotiation behavior, and supported-version window policy.
+Acceptance criteria: Compatibility matrix is documented; negotiation failures return explicit upgrade errors; policy is referenced by edge and Khala services.
+Dependencies: OA-RUST-008, OA-RUST-075, OA-RUST-076.
+
+### OA-RUST-084 — [Protocol] Enforce minimum client version in edge and Khala
+Description: Implement minimum supported client version checks and coordinated rollout controls in control-plane APIs and websocket handshake flow.
+Acceptance criteria: Min-version gates are configurable per environment; older clients receive deterministic upgrade path responses; telemetry captures rejection reasons.
+Dependencies: OA-RUST-083.
+
+### OA-RUST-085 — [Khala] Define retention, compaction, and snapshotting policy
+Description: Establish explicit per-topic retention windows, compaction rules, and snapshot generation strategy to keep replay bounded.
+Acceptance criteria: Retention policy exists for all topic classes; snapshot format/versioning is documented; automated tests verify replay correctness across compaction boundaries.
+Dependencies: OA-RUST-038, OA-RUST-043.
+
+### OA-RUST-086 — [Khala] Define topic QoS tiers, replay budgets, and stale-cursor policy
+Description: Introduce topic QoS tiers (hot/cold), replay budget controls, and deterministic stale-cursor trigger conditions.
+Acceptance criteria: Each topic is assigned a tier and replay budget; stale-cursor reasons are explicit and surfaced to clients; operator dashboards expose budget pressure.
+Dependencies: OA-RUST-085.
+
+### OA-RUST-087 — [Khala] Implement fairness and slow-consumer handling policy
+Description: Implement per-connection buffer limits, fair fanout across topics, and explicit slow-consumer actions (throttle/disconnect/resync).
+Acceptance criteria: Hot topic traffic cannot starve other topics; slow consumers are handled by policy; integration tests verify fairness under load.
+Dependencies: OA-RUST-047.
+
+### OA-RUST-088 — [Khala] Enforce per-topic rate limits and frame size limits
+Description: Add server-side guardrails for publish/fanout rate and payload size to prevent abuse and protect cluster stability.
+Acceptance criteria: Limits are configurable and observable; violations emit audited reason codes; clients receive deterministic error semantics.
+Dependencies: OA-RUST-087.
+
+### OA-RUST-089 — [Khala] Specify multi-node ordering and delivery semantics
+Description: Define and implement multi-node ordering behavior with Postgres/runtime as ordering oracle and at-least-once delivery semantics.
+Acceptance criteria: Per-topic ordering by `seq` is provable across nodes; at-least-once semantics are documented; idempotent-apply client guidance is published.
+Dependencies: OA-RUST-041, OA-RUST-042, OA-RUST-043.
+
+### OA-RUST-090 — [Data] Publish zero-downtime schema evolution playbook
+Description: Define online migration patterns for proto and DB evolution with backward-compatible rollout rules and explicit cutover gates.
+Acceptance criteria: Playbook includes expand/migrate/contract path; runtime+edge compatibility sequencing is documented; migration tests cover mixed-version deploys.
+Dependencies: OA-RUST-013, OA-RUST-067.
+
+### OA-RUST-091 — [Testing] Extend shadow-mode verification to edge and Khala
+Description: Add shadow read/write and parity-diff harnesses for edge and Khala, not only runtime, to derisk production cutovers.
+Acceptance criteria: Shadow harness runs in non-prod and staged prod; parity diff reports are generated per deploy; release gate blocks on critical divergence.
+Dependencies: OA-RUST-039, OA-RUST-090.
+
+### OA-RUST-092 — [Security] Publish Khala WS threat model and anti-replay policy
+Description: Create a websocket threat model covering token replay, origin enforcement, session hijack scenarios, and subscription audit requirements.
+Acceptance criteria: Threat model and controls are documented; jti/TTL/origin checks are tested; audit events exist for auth failures and denied joins.
+Dependencies: OA-RUST-044, OA-RUST-080.
+
+### OA-RUST-093 — [Observability] Implement Khala SLO dashboards and client telemetry schema
+Description: Define and ship golden-signal dashboards for Khala/runtime plus a privacy-safe client telemetry schema for reconnect, replay, and auth failure diagnostics.
+Acceptance criteria: SLOs are defined and alerting is active; key metrics are tagged by topic/app version; client telemetry contract is versioned.
+Dependencies: OA-RUST-068, OA-RUST-071.
+
+### OA-RUST-094 — [WGPUI Web] Define WASM boot performance budget and capability fallback policy
+Description: Define bundle-size and first-paint budgets, boot instrumentation, compression/caching strategy, and WebGPU fallback UX behavior.
+Acceptance criteria: Budgets are enforced in CI or release checks; fallback matrix is documented and tested; performance telemetry is visible in dashboards.
+Dependencies: OA-RUST-023, OA-RUST-065.
+
+### OA-RUST-095 — [Payments] Define wallet-executor auth, key custody, and receipt canonicalization
+Description: Formalize wallet-executor identity/auth channel, secret and key custody/rotation policies, and canonical payment receipt hashing contract.
+Acceptance criteria: Executor auth path is documented and enforced; key rotation runbook exists; receipt proto/hash compatibility tests pass.
+Dependencies: OA-RUST-060, OA-RUST-075.
+
+### OA-RUST-096 — [Onyx] Define allowed integration surface and non-goals
+Description: Specify allowed OpenAgents APIs for Onyx, identity model constraints, and explicit non-goals for offline/sync behavior.
+Acceptance criteria: Onyx integration contract doc exists and is linked from architecture docs; API allowlist is enforced; cross-surface auth model is unambiguous.
+Dependencies: OA-RUST-054, OA-RUST-072.
+
 ## Completion Criteria Summary
 
 Migration is complete only when all of the following are true:
@@ -296,3 +394,5 @@ Migration is complete only when all of the following are true:
 4. Khala websocket is the sole live sync lane.
 5. New ADR set is published and old ADRs are archived.
 6. Cross-surface contract/e2e/replay gates pass in release workflow.
+7. WorkOS is authoritative for identity/auth across all client surfaces.
+8. Khala retention/compaction/snapshot policy is active and validated in production.

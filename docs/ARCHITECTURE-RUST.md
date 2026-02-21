@@ -106,7 +106,8 @@ flowchart LR
 
 Owns:
 
-- User identity, auth/session, org membership, API policy surfaces.
+- WorkOS integration as the canonical identity and primary authentication source of truth.
+- Control-plane auth/session, org membership, and API policy surfaces derived from WorkOS identity state.
 - Sync token minting and scope derivation.
 - Public API gateway behavior.
 - Static hosting for WGPUI WASM bundles.
@@ -261,11 +262,20 @@ Prohibited anti-pattern:
 
 ## Auth and Identity Flow (Rust Endstate)
 
-1. Client authenticates with edge control-plane APIs.
-2. Edge returns access token and (if needed) refresh token.
-3. Client requests sync token from edge with explicit topic scopes.
-4. Client connects to Khala WS using sync token.
-5. Khala enforces topic ACL and ownership checks before subscription.
+1. Client authenticates through WorkOS-driven control-plane auth at edge APIs.
+2. Edge validates WorkOS identity/session claims and maps them to OpenAgents control-plane authorization state.
+3. Edge returns OpenAgents access token and rotating refresh token bound to a stable `device_id`.
+4. Refresh token rotation is mandatory; old refresh token IDs become revoked as soon as a new token is issued.
+5. Client requests sync token from edge with explicit topic scopes and device/session context.
+6. Client connects to Khala WS using sync token; Khala enforces topic ACL and ownership checks before subscription.
+7. If session/device access is revoked, Khala actively evicts live sockets and returns `reauth_required` semantics on reconnect.
+
+## Session and Device Model (Required)
+
+1. Every client installation has a stable `device_id` used for session scoping, sync token issuance, and watermark namespace partitioning.
+2. Session controls include per-device revoke and global revoke ("log out other devices") behavior.
+3. Revocation propagates from control plane to Khala fast enough to terminate unauthorized live subscriptions.
+4. Watermark caches are namespaced by user/org/device so cross-device cursor bleed cannot occur.
 
 ## Khala Frame Envelope (Rust Endstate)
 
@@ -279,6 +289,43 @@ Khala keeps proto-first transport frames with an explicit envelope for replay st
 
 This envelope is mandatory for deterministic replay, forward/backward compatibility, and cross-target decoder parity (native + wasm + iOS host bridges).
 
+## Compatibility and Version Policy (Required)
+
+1. `schema_version` is enforced as a negotiated compatibility contract between client and server, not a passive metadata field.
+2. Edge and Khala enforce minimum supported client versions for safety-critical protocol changes.
+3. Compatibility windows are explicit and time-bounded; out-of-window clients receive deterministic upgrade-required responses.
+4. Replay window semantics and cursor behavior changes must ship with compatibility gates and migration handling.
+
+## Khala Retention, Compaction, and Delivery Semantics (Required)
+
+1. Per-topic ordering is authoritative by `seq`, with Postgres/runtime authority as the ordering oracle across multi-node Khala deployment.
+2. Delivery semantics are at-least-once; clients must apply frames idempotently by topic/sequence.
+3. Retention windows are explicit per topic/QoS tier, with replay budget limits and operator-visible cost controls.
+4. Long-lived topics require periodic snapshot/compaction so replay remains bounded and affordable.
+5. `stale_cursor` is raised by deterministic policy (expired retention, compaction boundary, or invalid cursor lineage), not ad hoc failure.
+6. Slow-consumer policy is explicit: bounded per-connection buffers, fairness across topics, and forced resync/disconnect behavior when limits are exceeded.
+
+## Web WASM Persistence and Update Policy (Required)
+
+1. Web state/watermarks persist in IndexedDB with schema-versioned migrations.
+2. Bundle updates require asset pinning and service worker rollout rules to avoid JS/WASM/protocol skew.
+3. Offline mode behavior is explicit per route (read-only cached state vs online-required hard fail).
+4. Rollback behavior must include persisted-state migration safety for downgraded bundles.
+
+## WS Security and Audit Policy (Required)
+
+1. Sync tokens include short TTLs and anti-replay controls (`jti`, nonce discipline, revocation checks).
+2. Browser WS connections enforce allowed origin policy and reject invalid cross-origin handshake attempts.
+3. Subscription attempts (allow/deny) and WS auth failures are auditable events in control/runtime observability lanes.
+4. Topic join authorization is enforced continuously for session validity, not only at first connection.
+
+## Observability and SLO Baseline (Required)
+
+1. Khala golden signals: active connections, reconnect rate, join rate, replay lag, replay duration, stale-cursor rate.
+2. Delivery health metrics: outbound queue depth, dropped frames, slow-consumer disconnects, per-topic throughput.
+3. Correctness metrics: projector drift hashes and replay verification outcomes.
+4. Client telemetry schema captures reconnect reasons, auth failures, and crash/boot timing without violating privacy policy.
+
 ## Lightning and Payment Architecture (Rust Endstate)
 
 - `apps/lightning-ops/` remains control-plane policy/reconcile authority in Rust.
@@ -286,6 +333,13 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 - Control intent remains in control-plane authority data.
 - Settlement execution remains externalized to wallet executor + Lightning infra.
 - Khala may stream derived operational summaries; it never becomes settlement authority.
+- Wallet executor identity/authentication, key custody, secret rotation, and payment receipt canonicalization are explicit ADR-governed requirements.
+
+## Onyx Integration Contract (Required)
+
+1. Onyx consumes only explicitly allowed control/runtime APIs documented as public integration surfaces.
+2. Onyx identity binding (shared user/org vs delegated identity) is explicitly defined and enforced by control-plane policy.
+3. Offline behavior and sync expectations for Onyx are documented separately from core Codex client guarantees.
 
 ## Deployment and Operations
 
