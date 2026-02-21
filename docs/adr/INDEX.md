@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0001**
+Next available ADR: **ADR-0002**
 
 ## Lifecycle Statuses
 
@@ -22,7 +22,11 @@ Next available ADR: **ADR-0001**
 
 ## Active ADRs
 
-No Rust-era ADRs are published yet. Add the first accepted/proposed ADR here once authored.
+1. `ADR-0001` — Rust-only architecture baseline  
+   - Status: `Accepted`  
+   - Date: 2026-02-21  
+   - File: `docs/adr/ADR-0001-rust-only-architecture-baseline.md`  
+   - Source issue: `OA-RUST-074` (`#1889`)
 
 ## Legacy Archive
 

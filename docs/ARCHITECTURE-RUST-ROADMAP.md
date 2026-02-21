@@ -316,6 +316,7 @@ Decision artifacts: `docs/audits/OA-RUST-073-ENDSTATE-READINESS-REVIEW-2026-02-2
 
 ### OA-RUST-074 — [ADR] Author ADR-0001 Rust-only architecture baseline
 Description: Capture foundational architecture, boundaries, and non-goals for Rust-only OpenAgents.
+ADR artifact: `docs/adr/ADR-0001-rust-only-architecture-baseline.md` (`Accepted`)
 
 ### OA-RUST-075 — [ADR] Author ADR-0002 Proto-first contract governance
 Description: Capture proto-first authority policy, codegen requirements, and wire/domain boundary rules.
