@@ -57,10 +57,10 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_SYNC_TOKEN_MAX_TTL_SECONDS` (default: `900`)
 - `OA_SYNC_TOKEN_ALLOWED_SCOPES` (default: `runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries`)
 - `OA_SYNC_TOKEN_DEFAULT_SCOPES` (default: `runtime.codex_worker_events`)
-- `OA_ROUTE_SPLIT_ENABLED` (`true|false`, default: `false`)
-- `OA_ROUTE_SPLIT_MODE` (`legacy|rust|cohort`, default: `legacy`)
-- `OA_ROUTE_SPLIT_RUST_ROUTES` (CSV route prefixes, default: `/chat,/workspace,/login,/register,/authenticate,/onboarding,/account,/settings,/l402,/billing,/admin`)
-- `OA_ROUTE_SPLIT_COHORT_PERCENTAGE` (`0..100`, default: `0`)
+- `OA_ROUTE_SPLIT_ENABLED` (`true|false`, default: `true`)
+- `OA_ROUTE_SPLIT_MODE` (`legacy|rust|cohort`, default: `rust`)
+- `OA_ROUTE_SPLIT_RUST_ROUTES` (CSV route prefixes, default: `/` for full rust-shell ownership)
+- `OA_ROUTE_SPLIT_COHORT_PERCENTAGE` (`0..100`, default: `100`)
 - `OA_ROUTE_SPLIT_SALT` (stable cohort hash salt, default: `openagents-route-split-v1`)
 - `OA_ROUTE_SPLIT_FORCE_LEGACY` (`true|false`, default: `false`)
 - `OA_ROUTE_SPLIT_LEGACY_BASE_URL` (legacy fallback base URL, e.g. `https://legacy.openagents.com`)
@@ -126,7 +126,8 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ## Route split and rollback
 
 - Route targeting is deterministic per request/cohort key (`x-oa-route-key`) using configured route prefixes and split mode.
-- `/chat/*` pilot route is pinned to Rust shell (`pilot_route_rust_only`) and is not redirected to legacy.
+- Rust shell is the default web route target for configured surfaces (`OA_ROUTE_SPLIT_MODE=rust` + `OA_ROUTE_SPLIT_RUST_ROUTES=/`).
+- `/chat/*` remains pinned to Rust shell (`pilot_route_rust_only`) and is never redirected to legacy.
 - Auth/onboarding entry routes are Rust-shell prefixes during OA-RUST-061 rollout:
   - `/login`
   - `/register`
@@ -147,6 +148,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - Auth/onboarding rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-auth-onboarding.md`
 - Account/settings/admin rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-account-settings-admin.md`
 - Billing/lightning rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-billing-lightning.md`
+- Default router cutover checklist: `apps/openagents.com/docs/20260221-route-cutover-default-rust.md`
 
 ## Canary Runbook
 

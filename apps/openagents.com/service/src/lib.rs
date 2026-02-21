@@ -2174,6 +2174,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn route_split_rust_mode_with_root_prefix_serves_unlisted_paths() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let app = build_router(config);
+
+        for path in ["/feed", "/new-surface/path", "/login"] {
+            let request = Request::builder()
+                .uri(path)
+                .header("x-oa-route-key", "user:route")
+                .body(Body::empty())?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "unexpected status for {path}"
+            );
+            let body = response.into_body().collect().await?.to_bytes();
+            let html = String::from_utf8_lossy(&body);
+            assert!(
+                html.contains("rust shell"),
+                "path was not served by rust shell: {path}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn route_split_override_keeps_chat_pilot_on_rust_shell() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
