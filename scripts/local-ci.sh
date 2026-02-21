@@ -52,7 +52,6 @@ run_proto_checks() {
     buf breaking --against "$against_ref"
 
     ./scripts/verify-proto-generate.sh
-    ./scripts/verify-rust-proto-crate.sh
   )
 }
 

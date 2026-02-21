@@ -62,15 +62,12 @@ Current files:
 
 ## Codegen
 
-Initial generation targets configured in `buf.gen.yaml`:
-- TypeScript (`generated/ts`)
-- PHP (`generated/php`)
-- Rust via workspace crate `crates/openagents-proto` (build-driven generation from `proto/`)
+Rust wire generation is build-driven via workspace crate `crates/openagents-proto`.
 
 Policy:
-- Generated artifacts under `generated/` are **not checked into git**.
-- CI enforces generation viability for TS/PHP targets using `scripts/verify-proto-generate.sh`.
+- No non-Rust proto generation targets are part of active workflows.
 - Rust wire generation determinism is verified with `scripts/verify-rust-proto-crate.sh`.
+- `scripts/verify-proto-generate.sh` is a compatibility alias that forwards to the Rust-only verifier.
 
 Local verification command (canonical):
 
@@ -84,8 +81,8 @@ Rust crate verification command:
 ./scripts/verify-rust-proto-crate.sh
 ```
 
-Optional manual local generation (for inspection only):
+Optional manual contract check (lint + breaking):
 
 ```bash
-buf generate
+buf lint && buf breaking --against '.git#branch=main,subdir=proto'
 ```
