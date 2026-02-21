@@ -317,4 +317,4 @@ Load/chaos tests:
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`
 - `apps/runtime/docs/KHALA_SYNC.md`
-- `docs/adr/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`

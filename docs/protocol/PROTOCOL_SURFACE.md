@@ -18,11 +18,11 @@ These identifiers appear across artifacts and telemetry.
 - `job_hash`
   Content hash that binds spending or external execution to an outcome/job definition.
 - `policy_bundle_id`
-  Identifier for the policy bundle used for the run (see `docs/adr/ADR-0015-policy-bundles.md`).
+  Identifier for the policy bundle used for the run (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md`).
 
 ## Hashes
 
-Whenever a hash is emitted, it MUST be computed deterministically over canonicalized inputs (see `docs/adr/ADR-0006-deterministic-hashing.md`).
+Whenever a hash is emitted, it MUST be computed deterministically over canonicalized inputs (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`).
 
 Recommended representation:
 - `sha256:<hex>` (or bare hex if the algorithm is implied by the containing schema).
@@ -56,7 +56,7 @@ Canonical terms:
 
 Normative notes:
 - Use the term **Cashu Proof** (not generic "proof") for `type = "cashu_proof"`.
-- New proof types may be added; existing types must remain stable (see `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`).
+- New proof types may be added; existing types must remain stable (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md`).
 
 ## Receipt Field Set (Protocol-Level)
 
@@ -81,5 +81,5 @@ This section defines the minimal **protocol-level** payment receipt field set. S
 
 See also:
 - `docs/execution/ARTIFACTS.md` (session receipt schema: `RECEIPT.json`)
-- `docs/adr/ADR-0013-receipt-schema-payment-proofs.md` (normative rules)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md` (normative rules)
 

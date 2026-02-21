@@ -15,7 +15,7 @@ Primary inputs reviewed:
 - OpenAgents:
   - `README.md`
   - `docs/ARCHITECTURE.md`
-  - `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
+  - `docs/plans/archived/adr-legacy-2026-02-21/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
   - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
   - `docs/plans/active/khala-runtime-codex-master-roadmap.md`
   - `apps/runtime/docs/KHALA_SYNC.md`
@@ -52,7 +52,7 @@ Key conclusion:
 Architecture intent is explicit and consistent:
 
 - `apps/runtime/docs/KHALA_SYNC.md` declares runtime as source-of-truth and Khala as projection-only.
-- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` locks single-writer projection and Laravel auth bridge.
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` locks single-writer projection and Laravel auth bridge.
 
 Implemented runtime pieces:
 
@@ -210,7 +210,7 @@ Prefer a clean OpenAgents protocol and client SDK generated from proto contracts
 
 OpenAgents already has the right governance foundation:
 
-- `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0028-layer0-proto-canonical-schema.md`
 - `proto/README.md`
 - `docs/protocol/LAYER0_PROTOBUF_MAPPING.md`
 

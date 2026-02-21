@@ -4,7 +4,7 @@ Metrics score outputs of signatures/modules. They enable optimization and safe r
 
 See:
 - `docs/GLOSSARY.md` (Metric, Proxy Metric, Truth Metric)
-- `docs/adr/ADR-0015-policy-bundles.md` (rollout states)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (rollout states)
 
 ## Metric IDs
 

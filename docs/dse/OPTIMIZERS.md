@@ -3,12 +3,12 @@
 This doc defines the canonical on-disk expectations for **policy bundles** and optimizer-produced artifacts.
 
 Normative references:
-- `docs/adr/ADR-0015-policy-bundles.md` (policy bundle semantics)
-- `docs/adr/ADR-0008-session-storage-layout.md` (base paths)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (policy bundle semantics)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md` (base paths)
 
 ## Policy Bundle Storage
 
-Per `docs/adr/ADR-0008-session-storage-layout.md`, bundles live under:
+Per `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md`, bundles live under:
 
 ```text
 ${OPENAGENTS_HOME}/policies/

@@ -18,8 +18,8 @@ replace authority docs.
 
 Architecture and invariants are defined by:
 
-- `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
-- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0028-layer0-proto-canonical-schema.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`

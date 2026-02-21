@@ -3,7 +3,7 @@
 This doc defines the canonical requirements for tools used by OpenAgents runtimes.
 
 Normative references:
-- `docs/adr/ADR-0007-tool-execution-contract.md` (runtime vs adapters vs refine)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md` (runtime vs adapters vs refine)
 - `docs/execution/ARTIFACTS.md` (receipt fields)
 - `docs/execution/REPLAY.md` (ToolCall/ToolResult events)
 

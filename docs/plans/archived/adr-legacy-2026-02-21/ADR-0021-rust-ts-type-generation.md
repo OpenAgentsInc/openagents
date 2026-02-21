@@ -98,7 +98,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 
 ## References
 
-- `docs/adr/ADR-0001-adoption-of-adrs.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0001-adoption-of-adrs.md`
 - `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`
 - `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs`
 - `apps/autopilot-desktop/src/gen/tauri-contracts.ts`

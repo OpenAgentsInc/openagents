@@ -3,8 +3,8 @@
 This doc defines the canonical expectations for **compiled policy bundles** produced by the DSE/compiler layer.
 
 Normative references:
-- `docs/adr/ADR-0015-policy-bundles.md` (rollout states, pin/rollback, attribution)
-- `docs/adr/ADR-0008-session-storage-layout.md` (`OPENAGENTS_HOME` layout)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (rollout states, pin/rollback, attribution)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md` (`OPENAGENTS_HOME` layout)
 
 ## Bundle Immutability
 

@@ -2,7 +2,7 @@
 
 Adapters are responsible for **formatting** provider requests and **parsing** provider responses.
 
-Normative contract (see `docs/adr/ADR-0007-tool-execution-contract.md`):
+Normative contract (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`):
 - Adapters MUST serialize/parse only.
 - Adapters MUST NOT validate tool params against schemas.
 - Adapters MUST NOT execute tools.

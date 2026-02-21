@@ -40,8 +40,8 @@ This blueprint is based on:
 - `apps/mobile/` architecture (React Native app with auth + Khala client)
 - `packages/dse`, `packages/effuse`, `packages/effuse-test`, and related shared package boundaries
 - `docs/GLOSSARY.md`, `docs/PROJECT_OVERVIEW.md`, `docs/ROADMAP.md`
-- `docs/adr/ADR-0007-tool-execution-contract.md`
-- `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md`
 
 ## 3. Current State Assessment
 

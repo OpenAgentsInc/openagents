@@ -59,6 +59,7 @@ Invariant gates: `docs/plans/active/rust-migration-invariant-gates.md`
 
 ### OA-RUST-004 — [Rust Endstate] Archive existing ADR set
 Description: Move current `docs/adr/` records to an archived path with index updates so the new Rust-era ADR series can begin cleanly.
+Archive path: `docs/plans/archived/adr-legacy-2026-02-21/`
 
 ### OA-RUST-005 — [Rust Endstate] Reinitialize ADR index and numbering for Rust era
 Description: Create new ADR index, numbering conventions, and templates focused on Rust-only service/client architecture and migration decisions.
