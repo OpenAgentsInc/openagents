@@ -23,8 +23,9 @@ This contract set defines control-plane boundaries for:
 1. Refresh token rotation is mandatory for `SessionRefreshResponse`; `replaced_refresh_token_id` tracks revoked predecessor token lineage.
 2. `device_id` is required on session and sync-token paths for per-device revocation and auditability.
 3. Sync-token grants are scope-limited (`granted_scopes` + `granted_topics`) and may not imply mutation authority.
-4. Reauthentication states are explicit (`SESSION_STATUS_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_SESSION_REVOKED`) for deterministic client UX.
-5. Control-plane errors are machine-readable via `ControlErrorCode` and must preserve the `request_id` correlation boundary.
+4. Sync-token claims include client-surface attribution (`oa_client_surface`) so runtime policy can enforce per-surface topic allowlists (for example, Onyx restrictions).
+5. Reauthentication states are explicit (`SESSION_STATUS_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_SESSION_REVOKED`) for deterministic client UX.
+6. Control-plane errors are machine-readable via `ControlErrorCode` and must preserve the `request_id` correlation boundary.
 
 ## Compatibility Rules
 

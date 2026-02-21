@@ -18,6 +18,7 @@ Entry points:
 - `docs/protocol/control-auth-session-v1.md` (WorkOS/control authority split + auth/session compatibility notes)
 - `docs/protocol/codex-worker-events-v1.md` (codex worker/event/auth compatibility notes)
 - `docs/protocol/client-telemetry-v1.md` (privacy-safe client telemetry schema + governance)
+- `docs/protocol/onyx-integration-contract-v1.md` (Onyx allowlist, identity constraints, and non-goals)
 - `docs/protocol/lightning-wallet-executor-receipt-v1.md` (wallet executor auth assertion + canonical receipt contract notes)
 - `proto/openagents/control/v1/auth.proto` (control-plane auth/session/scope schema authority)
 - `proto/openagents/runtime/v1/orchestration.proto` (runtime orchestration schema authority)

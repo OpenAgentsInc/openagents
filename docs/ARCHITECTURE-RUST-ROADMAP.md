@@ -436,6 +436,7 @@ Dependencies: OA-RUST-060, OA-RUST-075.
 
 ### OA-RUST-096 — [Onyx] Define allowed integration surface and non-goals
 Description: Specify allowed OpenAgents APIs for Onyx, identity model constraints, and explicit non-goals for offline/sync behavior.
+Enforcement artifacts: `docs/protocol/onyx-integration-contract-v1.md`, `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`, `apps/runtime/src/sync_auth.rs`, `apps/runtime/src/server.rs`
 Acceptance criteria: Onyx integration contract doc exists and is linked from architecture docs; API allowlist is enforced; cross-surface auth model is unambiguous.
 Dependencies: OA-RUST-054, OA-RUST-072.
 
