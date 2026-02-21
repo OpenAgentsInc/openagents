@@ -99,6 +99,14 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 ## Verification Entry Points
 
+- **Workspace Rust compile baseline (mandatory migration gate):**
+  ```bash
+  cargo check --workspace --all-targets
+  ```
+- **Workspace compile lane via local CI wrapper:**
+  ```bash
+  ./scripts/local-ci.sh workspace-compile
+  ```
 - **Laravel web (core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
 - **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
 - **Runtime Cloud Run deploy/runbook:** `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`

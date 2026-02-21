@@ -442,6 +442,7 @@ Dependencies: OA-RUST-054, OA-RUST-072.
 ### OA-RUST-097 — [Build] Restore workspace-wide Rust compile baseline
 Description: Fix outstanding workspace compile failures and enforce `cargo check --workspace --all-targets` as a migration gate so Rust surfaces remain continuously buildable during cutover.
 Acceptance criteria: Workspace check passes in a clean checkout; known unresolved imports/type errors are removed; release gate references the workspace check explicitly.
+Rust migration release gate: `./scripts/local-ci.sh workspace-compile` must pass before OA-RUST-098+ implementation branches are merged.
 Dependencies: OA-RUST-033, OA-RUST-049, OA-RUST-054.
 
 ### OA-RUST-098 — [Proto] Enforce Rust codegen in buf templates and verification scripts
