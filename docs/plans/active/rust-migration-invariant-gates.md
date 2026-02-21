@@ -52,6 +52,7 @@ All migration PRs/issues must explicitly address:
 3. No unresolved invariant violations remain in PR review comments.
 4. Runtime deployments include migration-job evidence (`INV-09`).
 5. Any legacy deletion/change references parity dependencies and owner signoff (`INV-10`).
+6. Cross-surface contract harness passes for release candidate (`scripts/run-cross-surface-contract-harness.sh`).
 
 ## Reviewer Guidance
 

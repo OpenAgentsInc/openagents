@@ -294,6 +294,7 @@ Alarm artifacts: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.
 
 ### OA-RUST-069 — [Testing] Build cross-surface e2e harness (web/desktop/iOS)
 Description: Add one contract test harness that verifies shared behavior against a single runtime contract set.
+Harness artifacts: `scripts/run-cross-surface-contract-harness.sh`, `docs/autopilot/testing/cross-surface-contract-scenarios.json`, `docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS.md`
 
 ### OA-RUST-070 — [Reliability] Run restart/reconnect chaos drills for Khala/runtime
 Description: Validate reconnect/resume behavior through controlled failure drills and document remediations.

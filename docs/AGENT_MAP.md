@@ -55,6 +55,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 
 - `docs/autopilot/testing/PROD_E2E_TESTING.md` — production-safe validation flow.
 - `docs/autopilot/testing/TRACE_RETRIEVAL.md` — trace/debug retrieval workflow.
+- `docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS.md` — shared web/desktop/iOS contract harness gate.
 - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md` — canonical runtime Cloud Run deploy + migration image-lock runbook.
 - `apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md` — canonical real-app iOS↔desktop handshake gate (runtime-mediated).
 - `docs/autopilot/runbooks/` — operational runbooks.

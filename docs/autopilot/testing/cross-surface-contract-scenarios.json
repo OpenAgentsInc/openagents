@@ -1,0 +1,34 @@
+{
+  "version": "oa.cross_surface_contract.v1",
+  "scenarios": [
+    {
+      "id": "worker_event_envelope_decode",
+      "description": "Surface decodes runtime Codex worker envelopes without schema drift.",
+      "contract": "runtime.codex_worker_events.payload"
+    },
+    {
+      "id": "sync_replay_dedupe",
+      "description": "Surface replay logic remains idempotent across reconnect/resume boundaries.",
+      "contract": "topic+seq monotonic apply and duplicate suppression"
+    },
+    {
+      "id": "system_noise_suppression",
+      "description": "Surface suppresses known-noise system events while keeping contract-significant system transitions.",
+      "contract": "deterministic system event visibility policy"
+    }
+  ],
+  "surface_adapters": {
+    "web": {
+      "suite": "cargo test -p openagents-web-shell codex_thread::tests",
+      "notes": "Rust web-shell codex thread reducer/assembler contract tests"
+    },
+    "desktop": {
+      "suite": "cargo test -p autopilot-desktop runtime_codex_proto::tests",
+      "notes": "Desktop Khala frame parser + handshake/replay dedupe contract tests"
+    },
+    "ios": {
+      "suite": "xcodebuild test -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj -scheme Autopilot -only-testing:AutopilotTests",
+      "notes": "AutopilotTests contract suite for handshake/replay/parser behavior"
+    }
+  }
+}
