@@ -171,6 +171,59 @@ Invariant:
 
 No product/business logic remains in React Native, Electron, SwiftUI view logic, or legacy web stacks.
 
+### `openagents.com` implementation (in-process Rust WGPUI on web)
+
+The web app runs Rust UI logic in-process inside the browser (WASM). The Rust/WGPUI runtime owns rendering state, route state, and command/subscription orchestration exactly like desktop, with only a minimal JavaScript host shim.
+
+Runtime model:
+
+1. Browser loads `index.html`, a tiny JS bootstrap, and a versioned `.wasm` bundle from `apps/openagents.com`.
+2. JS bootstrap creates the browser surface (WebGPU/WebGL fallback), then hands control to Rust entrypoint.
+3. Rust/WGPUI app shell mounts, restores local persisted state, and executes bootstrap queries.
+4. App opens Khala WebSocket subscriptions directly from Rust networking code and applies replay/live frames to shared state stores.
+
+JS boundary rules:
+
+1. JS is host glue only: startup, service worker registration, browser APIs that require JS interop.
+2. Product routes, feature logic, command handling, auth/session state, and presentation logic stay in Rust crates.
+3. No React/Inertia/SPA framework runtime in endstate.
+
+Proposed crate split for the web surface:
+
+1. `crates/openagents-ui-core`: shared WGPUI components, theme tokens, layout primitives.
+2. `crates/openagents-app-state`: shared route graph, view-model reducers, command queue, watermark cache interfaces.
+3. `crates/openagents-proto-client`: proto-generated wire clients + domain mapping adapters.
+4. `crates/openagents-khala-client`: WS session/reconnect/resume logic, topic subscriptions, replay bootstrap.
+5. `apps/openagents.com/web-shell`: wasm entrypoint and browser host adapters.
+6. `apps/openagents.com/service`: Rust edge/control API service + static asset host.
+
+Client data flow on web:
+
+1. Command path: WGPUI action -> Rust command bus -> HTTPS API call (edge/runtime) -> authority write -> ack/result.
+2. Read path: Rust Khala WS client receives `KhalaFrame` stream -> reducer applies ordered projection updates -> WGPUI rerender.
+3. Resume path: local watermark cache + subscription resume -> replay gap fill -> live tail.
+
+Build and release shape:
+
+1. Build wasm bundle from shared Rust app crates (`wasm32-unknown-unknown`).
+2. Produce content-hashed JS/WASM assets and static manifest.
+3. Rust edge service serves static assets and control APIs from one deployable unit.
+4. Runtime/Khala deploy independently; web bundle pins protocol compatibility versions at build time.
+
+SSR and first-paint strategy:
+
+1. Initial endstate can be CSR-first with fast wasm boot and skeleton shell.
+2. If needed, add Rust-generated pre-rendered shell HTML for first paint only.
+3. Hydration remains Rust-owned; no split brain with a second UI framework.
+
+Migration sequence to reach this state:
+
+1. Stand up Rust edge service alongside current `apps/openagents.com` stack.
+2. Ship Rust/WGPUI web shell for a small route slice (for example Codex thread surface).
+3. Move route-by-route from Laravel/React pages to Rust/WGPUI modules behind flags.
+4. Switch default route handling to Rust shell once core user flows are complete.
+5. Remove Laravel/React runtime dependencies after parity and soak validation.
+
 ## Inbox Autopilot Consolidation
 
 Endstate inbox architecture:
