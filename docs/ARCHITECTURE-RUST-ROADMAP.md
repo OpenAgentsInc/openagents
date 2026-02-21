@@ -320,6 +320,7 @@ ADR artifact: `docs/adr/ADR-0001-rust-only-architecture-baseline.md` (`Accepted`
 
 ### OA-RUST-075 — [ADR] Author ADR-0002 Proto-first contract governance
 Description: Capture proto-first authority policy, codegen requirements, and wire/domain boundary rules.
+ADR artifact: `docs/adr/ADR-0002-proto-first-contract-governance.md` (`Accepted`)
 
 ### OA-RUST-076 — [ADR] Author ADR-0003 Khala WS-only replay transport
 Description: Capture WS-only transport policy, replay/watermark semantics, and failure handling expectations.
