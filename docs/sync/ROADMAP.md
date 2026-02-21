@@ -3,6 +3,7 @@
 Date: 2026-02-20  
 Status: Active program  
 Owner lanes: Runtime, Web, iOS, Desktop, Infra, Protocol
+Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 Khala is the OpenAgents runtime-owned sync engine.
 

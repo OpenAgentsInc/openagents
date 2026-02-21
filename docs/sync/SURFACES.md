@@ -2,6 +2,7 @@
 
 Date: 2026-02-20  
 Status: Active
+Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 Purpose: define exactly how each app consumes Khala, which topics it subscribes to, and what HTTP paths are used for bootstrap and recovery.
 

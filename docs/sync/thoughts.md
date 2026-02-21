@@ -3,6 +3,7 @@
 Date: 2026-02-20  
 Status: Proposed (doctrine lock)  
 Scope: Runtime/Codex sync first, then remaining reactive surfaces.
+Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 Khala is the codename for the OpenAgents sync engine: shared consciousness / collective signal.
 
