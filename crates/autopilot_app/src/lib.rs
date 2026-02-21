@@ -242,6 +242,19 @@ pub enum UserAction {
     ThreadOpen {
         thread_id: String,
     },
+    InboxRefresh,
+    InboxSelectThread {
+        thread_id: String,
+    },
+    InboxApproveDraft {
+        thread_id: String,
+    },
+    InboxRejectDraft {
+        thread_id: String,
+    },
+    InboxLoadAudit {
+        thread_id: String,
+    },
     OpenFile {
         path: String,
     },
@@ -401,6 +414,35 @@ pub struct ThreadSnapshot {
     pub turns: Vec<ThreadTurn>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct InboxThreadSummary {
+    pub id: String,
+    pub subject: String,
+    pub from_address: String,
+    pub snippet: String,
+    pub category: String,
+    pub risk: String,
+    pub policy: String,
+    pub draft_preview: String,
+    pub pending_approval: bool,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct InboxAuditEntry {
+    pub thread_id: String,
+    pub action: String,
+    pub detail: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct InboxSnapshot {
+    pub threads: Vec<InboxThreadSummary>,
+    pub selected_thread_id: Option<String>,
+    pub audit_log: Vec<InboxAuditEntry>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {
@@ -459,6 +501,10 @@ pub enum AppEvent {
         session_id: SessionId,
         thread: ThreadSnapshot,
         model: String,
+    },
+    InboxUpdated {
+        snapshot: InboxSnapshot,
+        source: String,
     },
     FileOpened {
         path: PathBuf,

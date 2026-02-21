@@ -68,6 +68,7 @@ mod inbox_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
 
+use inbox_domain::DesktopInboxState;
 use runtime_auth::{
     DEFAULT_AUTH_BASE_URL, RuntimeSyncAuthFlow, RuntimeSyncAuthState, clear_runtime_auth_state,
     load_runtime_auth_state, login_with_email_code, persist_runtime_auth_state,
@@ -2652,6 +2653,11 @@ fn spawn_event_bridge(
             let pending_runtime_auth_flow_actions = pending_runtime_auth_flow.clone();
             tokio::task::spawn_blocking(move || {
                 let mut pylon_runtime = InProcessPylon::new();
+                let mut inbox_state = DesktopInboxState::new();
+                let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                    snapshot: inbox_state.snapshot(),
+                    source: "bootstrap".to_string(),
+                });
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
                     match action {
@@ -3324,6 +3330,41 @@ fn spawn_event_bridge(
                                         });
                                     }
                                 }
+                            });
+                        }
+                        UserAction::InboxRefresh => {
+                            inbox_state.refresh();
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "refresh".to_string(),
+                            });
+                        }
+                        UserAction::InboxSelectThread { thread_id } => {
+                            inbox_state.select_thread(thread_id.as_str());
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "select_thread".to_string(),
+                            });
+                        }
+                        UserAction::InboxApproveDraft { thread_id } => {
+                            inbox_state.approve_draft(thread_id.as_str());
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "approve_draft".to_string(),
+                            });
+                        }
+                        UserAction::InboxRejectDraft { thread_id } => {
+                            inbox_state.reject_draft(thread_id.as_str());
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "reject_draft".to_string(),
+                            });
+                        }
+                        UserAction::InboxLoadAudit { thread_id } => {
+                            inbox_state.load_audit(thread_id.as_str());
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "load_audit".to_string(),
                             });
                         }
                         UserAction::OpenFile { path } => {
