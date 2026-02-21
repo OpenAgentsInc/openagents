@@ -276,6 +276,7 @@ Description: Remove no-longer-needed deployment artifacts tied to legacy web run
 
 ### OA-RUST-065 — [WGPUI Web] Run performance/soak signoff for wasm shell
 Description: Execute and record load, latency, and client stability soak tests before hard cutover completion.
+Signoff artifacts: `apps/openagents.com/web-shell/scripts/perf-soak-signoff.sh`, `apps/openagents.com/web-shell/perf/latest.json`, `apps/openagents.com/docs/20260221-wasm-shell-performance-soak-signoff.md`
 
 ## Phase 9: Data, Deploy, and Reliability Gates
 
