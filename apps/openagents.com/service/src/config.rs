@@ -13,6 +13,8 @@ const DEFAULT_MOCK_MAGIC_CODE: &str = "123456";
 const DEFAULT_AUTH_CHALLENGE_TTL_SECONDS: u64 = 600;
 const DEFAULT_AUTH_ACCESS_TTL_SECONDS: u64 = 3600;
 const DEFAULT_AUTH_REFRESH_TTL_SECONDS: u64 = 2_592_000;
+const DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED: bool = false;
+const DEFAULT_ADMIN_EMAILS: &str = "";
 const DEFAULT_SYNC_TOKEN_ISSUER: &str = "https://openagents.com";
 const DEFAULT_SYNC_TOKEN_AUDIENCE: &str = "openagents-sync";
 const DEFAULT_SYNC_TOKEN_KEY_ID: &str = "sync-auth-v1";
@@ -29,6 +31,8 @@ const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 100;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 const DEFAULT_RUNTIME_SYNC_REVOKE_PATH: &str = "/internal/v1/sync/sessions/revoke";
 const DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS: u64 = 60;
+const DEFAULT_RUNTIME_INTERNAL_KEY_ID: &str = "runtime-internal-v1";
+const DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS: u64 = 60;
 const DEFAULT_MAINTENANCE_MODE_ENABLED: bool = false;
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME: &str = "oa_maintenance_bypass";
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS: u64 = 900;
@@ -49,6 +53,8 @@ pub struct Config {
     pub workos_api_key: Option<String>,
     pub workos_api_base_url: String,
     pub mock_magic_code: String,
+    pub auth_local_test_login_enabled: bool,
+    pub admin_emails: Vec<String>,
     pub auth_challenge_ttl_seconds: u64,
     pub auth_access_ttl_seconds: u64,
     pub auth_refresh_ttl_seconds: u64,
@@ -74,6 +80,9 @@ pub struct Config {
     pub runtime_sync_revoke_path: String,
     pub runtime_signature_secret: Option<String>,
     pub runtime_signature_ttl_seconds: u64,
+    pub runtime_internal_shared_secret: Option<String>,
+    pub runtime_internal_key_id: String,
+    pub runtime_internal_signature_ttl_seconds: u64,
     pub maintenance_mode_enabled: bool,
     pub maintenance_bypass_token: Option<String>,
     pub maintenance_bypass_cookie_name: String,
@@ -147,6 +156,20 @@ impl Config {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_MOCK_MAGIC_CODE.to_string());
+
+        let auth_local_test_login_enabled = env::var("OA_AUTH_LOCAL_TEST_LOGIN_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED);
+
+        let admin_emails = parse_csv(
+            env::var("OA_ADMIN_EMAILS")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_ADMIN_EMAILS.to_string()),
+        )
+        .into_iter()
+        .map(|email| email.to_lowercase())
+        .collect();
 
         let auth_challenge_ttl_seconds = env::var("OA_AUTH_CHALLENGE_TTL_SECONDS")
             .ok()
@@ -281,6 +304,24 @@ impl Config {
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS);
 
+        let runtime_internal_shared_secret = env::var("OA_RUNTIME_INTERNAL_SHARED_SECRET")
+            .ok()
+            .or_else(|| env::var("RUNTIME_INTERNAL_SHARED_SECRET").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let runtime_internal_key_id = env::var("OA_RUNTIME_INTERNAL_KEY_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_INTERNAL_KEY_ID.to_string());
+
+        let runtime_internal_signature_ttl_seconds =
+            env::var("OA_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS)
+                .max(1);
+
         let maintenance_mode_enabled = env::var("OA_MAINTENANCE_MODE_ENABLED")
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
@@ -350,6 +391,8 @@ impl Config {
             workos_api_key,
             workos_api_base_url,
             mock_magic_code,
+            auth_local_test_login_enabled,
+            admin_emails,
             auth_challenge_ttl_seconds,
             auth_access_ttl_seconds,
             auth_refresh_ttl_seconds,
@@ -375,6 +418,9 @@ impl Config {
             runtime_sync_revoke_path,
             runtime_signature_secret,
             runtime_signature_ttl_seconds,
+            runtime_internal_shared_secret,
+            runtime_internal_key_id,
+            runtime_internal_signature_ttl_seconds,
             maintenance_mode_enabled,
             maintenance_bypass_token,
             maintenance_bypass_cookie_name,

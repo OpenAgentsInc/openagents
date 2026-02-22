@@ -1,8 +1,10 @@
+use std::collections::{HashMap, VecDeque};
 use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::body::Body;
+use axum::body::to_bytes;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -19,13 +21,14 @@ use openagents_client_core::compatibility::{
     negotiate_compatibility,
 };
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
+use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-pub mod auth;
 pub mod api_envelope;
+pub mod auth;
 pub mod config;
 pub mod observability;
 pub mod route_split;
@@ -52,8 +55,21 @@ const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
 const HEADER_OA_CLIENT_BUILD_ID: &str = "x-oa-client-build-id";
 const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
 const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
+const HEADER_X_FORWARDED_FOR: &str = "x-forwarded-for";
+const HEADER_X_REAL_IP: &str = "x-real-ip";
+const RUNTIME_INTERNAL_BODY_HASH_HEADER: &str = "x-oa-internal-body-sha256";
+const RUNTIME_INTERNAL_KEY_ID_HEADER: &str = "x-oa-internal-key-id";
+const RUNTIME_INTERNAL_NONCE_HEADER: &str = "x-oa-internal-nonce";
+const RUNTIME_INTERNAL_SIGNATURE_HEADER: &str = "x-oa-internal-signature";
+const RUNTIME_INTERNAL_TIMESTAMP_HEADER: &str = "x-oa-internal-timestamp";
 const MAINTENANCE_BYPASS_QUERY_PARAM: &str = "maintenance_bypass";
 const MAINTENANCE_CACHE_CONTROL: &str = "no-store, no-cache, must-revalidate";
+const THROTTLE_AUTH_EMAIL_LIMIT: usize = 30;
+const THROTTLE_AUTH_EMAIL_WINDOW_SECONDS: i64 = 60;
+const THROTTLE_THREAD_MESSAGE_LIMIT: usize = 60;
+const THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS: i64 = 60;
+const RUNTIME_INTERNAL_NONCE_GRACE_SECONDS: i64 = 5;
+const RUNTIME_INTERNAL_MAX_BODY_BYTES: usize = 1024 * 1024;
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -64,7 +80,19 @@ struct AppState {
     route_split: RouteSplitService,
     sync_token_issuer: SyncTokenIssuer,
     runtime_revocation_client: Option<RuntimeRevocationClient>,
+    throttle_state: ThrottleState,
+    runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
+}
+
+#[derive(Clone, Default)]
+struct ThrottleState {
+    buckets: Arc<Mutex<HashMap<String, VecDeque<i64>>>>,
+}
+
+#[derive(Clone, Default)]
+struct RuntimeInternalNonceState {
+    entries: Arc<Mutex<HashMap<String, i64>>>,
 }
 
 #[derive(Clone)]
@@ -214,21 +242,33 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         route_split,
         sync_token_issuer,
         runtime_revocation_client,
+        throttle_state: ThrottleState::default(),
+        runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
     let compatibility_state = state.clone();
     let maintenance_state = state.clone();
+    let auth_email_throttle_state = state.clone();
+    let thread_message_throttle_state = state.clone();
+    let authenticated_routes_state = state.clone();
+    let workos_session_state = state.clone();
+    let admin_state = state.clone();
 
-    Router::new()
-        .route("/", get(web_shell_entry))
-        .route("/healthz", get(health))
-        .route("/readyz", get(readiness))
-        .route("/api/auth/email", post(send_email_code))
+    let public_api_router = Router::new()
+        .route(
+            "/api/auth/email",
+            post(send_email_code).route_layer(middleware::from_fn_with_state(
+                auth_email_throttle_state,
+                throttle_auth_email_gate,
+            )),
+        )
         .route("/api/auth/verify", post(verify_email_code))
+        .route("/api/auth/refresh", post(refresh_session));
+
+    let protected_api_router = Router::new()
         .route("/api/auth/session", get(current_session))
         .route("/api/auth/sessions", get(list_sessions))
         .route("/api/auth/sessions/revoke", post(revoke_sessions))
-        .route("/api/auth/refresh", post(refresh_session))
         .route("/api/auth/logout", post(logout_session))
         .route("/api/me", get(me))
         .route("/api/orgs/memberships", get(org_memberships))
@@ -237,7 +277,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/api/sync/token", post(sync_token))
         .route(
             "/api/runtime/threads/:thread_id/messages",
-            post(send_thread_message),
+            post(send_thread_message).route_layer(middleware::from_fn_with_state(
+                thread_message_throttle_state,
+                throttle_thread_message_gate,
+            )),
         )
         .route("/api/v1/auth/session", get(current_session))
         .route("/api/v1/auth/sessions", get(list_sessions))
@@ -249,13 +292,31 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         )
         .route(
             "/api/v1/control/route-split/override",
-            post(route_split_override),
+            post(route_split_override).route_layer(middleware::from_fn_with_state(
+                admin_state,
+                admin_email_gate,
+            )),
         )
         .route(
             "/api/v1/control/route-split/evaluate",
             post(route_split_evaluate),
         )
         .route("/api/v1/sync/token", post(sync_token))
+        .route_layer(middleware::from_fn_with_state(
+            workos_session_state,
+            workos_session_gate,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            authenticated_routes_state,
+            auth_session_gate,
+        ));
+
+    Router::new()
+        .route("/", get(web_shell_entry))
+        .route("/healthz", get(health))
+        .route("/readyz", get(readiness))
+        .merge(public_api_router)
+        .merge(protected_api_router)
         .route("/sw.js", get(static_service_worker))
         .route("/manifest.json", get(static_manifest))
         .route("/assets/*path", get(static_asset))
@@ -390,6 +451,324 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             static_dir,
         }),
     )
+}
+
+async fn auth_session_gate(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    match session_bundle_from_headers(&state, request.headers()).await {
+        Ok(bundle) => {
+            request.extensions_mut().insert(bundle);
+            next.run(request).await
+        }
+        Err(response) => response.into_response(),
+    }
+}
+
+async fn workos_session_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state.auth.provider_name() != "workos" {
+        return next.run(request).await;
+    }
+
+    let bundle = if let Some(existing) = request.extensions().get::<SessionBundle>() {
+        existing.clone()
+    } else {
+        match session_bundle_from_headers(&state, request.headers()).await {
+            Ok(bundle) => bundle,
+            Err(response) => return response.into_response(),
+        }
+    };
+
+    let workos_user_id = bundle.user.workos_user_id.trim();
+    if workos_user_id.is_empty() {
+        return unauthorized_error("WorkOS session required.").into_response();
+    }
+
+    if workos_user_id.starts_with("test_local_") && !state.config.auth_local_test_login_enabled {
+        return unauthorized_error("WorkOS session required.").into_response();
+    }
+
+    next.run(request).await
+}
+
+async fn admin_email_gate(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let bundle = if let Some(existing) = request.extensions().get::<SessionBundle>() {
+        existing.clone()
+    } else {
+        match session_bundle_from_headers(&state, request.headers()).await {
+            Ok(bundle) => bundle,
+            Err(response) => return response.into_response(),
+        }
+    };
+
+    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
+        return forbidden_error("Forbidden.").into_response();
+    }
+
+    next.run(request).await
+}
+
+async fn throttle_auth_email_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let key = format!("auth.email:{}", request_identity_key(request.headers()));
+    match consume_throttle_token(
+        &state.throttle_state,
+        &key,
+        THROTTLE_AUTH_EMAIL_LIMIT,
+        THROTTLE_AUTH_EMAIL_WINDOW_SECONDS,
+    )
+    .await
+    {
+        Ok(()) => next.run(request).await,
+        Err(retry_after_seconds) => error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            format!("Too many requests. Retry in {retry_after_seconds}s."),
+        )
+        .into_response(),
+    }
+}
+
+async fn throttle_thread_message_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let key = format!(
+        "runtime.thread.message:{}",
+        request_identity_key(request.headers())
+    );
+    match consume_throttle_token(
+        &state.throttle_state,
+        &key,
+        THROTTLE_THREAD_MESSAGE_LIMIT,
+        THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS,
+    )
+    .await
+    {
+        Ok(()) => next.run(request).await,
+        Err(retry_after_seconds) => error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            format!("Too many requests. Retry in {retry_after_seconds}s."),
+        )
+        .into_response(),
+    }
+}
+
+#[allow(dead_code)]
+async fn runtime_internal_request_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let (parts, body) = request.into_parts();
+    let body_bytes = match to_bytes(body, RUNTIME_INTERNAL_MAX_BODY_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return error_response_with_status(
+                StatusCode::UNAUTHORIZED,
+                ApiErrorCode::Unauthorized,
+                "Invalid runtime internal request body.".to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    if let Err(response) =
+        verify_runtime_internal_headers(&state, &parts.headers, &body_bytes).await
+    {
+        return response.into_response();
+    }
+
+    let request = Request::from_parts(parts, Body::from(body_bytes));
+    next.run(request).await
+}
+
+async fn verify_runtime_internal_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    let secret = state
+        .config
+        .runtime_internal_shared_secret
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorCode::InternalError,
+                "Runtime internal auth is misconfigured.".to_string(),
+            )
+        })?;
+
+    let provided_key_id =
+        header_string(headers, RUNTIME_INTERNAL_KEY_ID_HEADER).unwrap_or_default();
+    if provided_key_id.is_empty() || provided_key_id != state.config.runtime_internal_key_id {
+        return Err(unauthorized_error("Runtime internal key id is invalid."));
+    }
+
+    let timestamp = header_string(headers, RUNTIME_INTERNAL_TIMESTAMP_HEADER).unwrap_or_default();
+    let nonce = header_string(headers, RUNTIME_INTERNAL_NONCE_HEADER).unwrap_or_default();
+    let provided_body_hash =
+        header_string(headers, RUNTIME_INTERNAL_BODY_HASH_HEADER).unwrap_or_default();
+    let provided_signature =
+        header_string(headers, RUNTIME_INTERNAL_SIGNATURE_HEADER).unwrap_or_default();
+
+    if timestamp.is_empty()
+        || nonce.is_empty()
+        || provided_body_hash.is_empty()
+        || provided_signature.is_empty()
+    {
+        return Err(unauthorized_error(
+            "Runtime internal auth headers are missing.",
+        ));
+    }
+
+    let timestamp_epoch = timestamp
+        .parse::<i64>()
+        .map_err(|_| unauthorized_error("Runtime internal timestamp is invalid."))?;
+
+    let now_epoch = Utc::now().timestamp();
+    let ttl_seconds = state.config.runtime_internal_signature_ttl_seconds as i64;
+    if (now_epoch - timestamp_epoch).abs() > ttl_seconds {
+        return Err(unauthorized_error("Runtime internal signature expired."));
+    }
+
+    let computed_body_hash = sha256_hex(body);
+    if computed_body_hash != provided_body_hash {
+        return Err(unauthorized_error("Runtime internal body hash mismatch."));
+    }
+
+    let payload = format!("{timestamp}\n{nonce}\n{computed_body_hash}");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| {
+        error_response_with_status(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ApiErrorCode::InternalError,
+            "Runtime internal auth is misconfigured.".to_string(),
+        )
+    })?;
+    mac.update(payload.as_bytes());
+    let expected_signature = sha256_bytes_hex(&mac.finalize().into_bytes());
+    if expected_signature != provided_signature {
+        return Err(unauthorized_error("Runtime internal signature is invalid."));
+    }
+
+    let replay_key = format!("{provided_key_id}:{nonce}");
+    let expires_at = timestamp_epoch + ttl_seconds + RUNTIME_INTERNAL_NONCE_GRACE_SECONDS;
+    let mut entries = state.runtime_internal_nonces.entries.lock().await;
+    entries.retain(|_, expiry| *expiry > now_epoch);
+    if entries.contains_key(&replay_key) {
+        return Err(unauthorized_error(
+            "Runtime internal nonce replay detected.",
+        ));
+    }
+    entries.insert(replay_key, expires_at);
+
+    Ok(())
+}
+
+async fn consume_throttle_token(
+    throttle_state: &ThrottleState,
+    bucket_key: &str,
+    max_requests: usize,
+    window_seconds: i64,
+) -> Result<(), i64> {
+    let now_epoch = Utc::now().timestamp();
+    let window_start = now_epoch - window_seconds;
+
+    let mut buckets = throttle_state.buckets.lock().await;
+    let bucket = buckets.entry(bucket_key.to_string()).or_default();
+
+    while let Some(oldest) = bucket.front() {
+        if *oldest < window_start {
+            let _ = bucket.pop_front();
+        } else {
+            break;
+        }
+    }
+
+    if bucket.len() >= max_requests {
+        let retry_after = bucket
+            .front()
+            .map(|oldest| ((*oldest + window_seconds) - now_epoch).max(1))
+            .unwrap_or(1);
+        return Err(retry_after);
+    }
+
+    bucket.push_back(now_epoch);
+    Ok(())
+}
+
+async fn session_bundle_from_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionBundle, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)
+}
+
+fn request_identity_key(headers: &HeaderMap) -> String {
+    if let Some(access_token) = bearer_token(headers) {
+        return format!("token:{access_token}");
+    }
+
+    if let Some(value) = header_string(headers, HEADER_X_FORWARDED_FOR) {
+        let first_ip = value.split(',').next().unwrap_or_default().trim();
+        if !first_ip.is_empty() {
+            return format!("ip:{first_ip}");
+        }
+    }
+
+    if let Some(value) = header_string(headers, HEADER_X_REAL_IP) {
+        let ip = value.trim();
+        if !ip.is_empty() {
+            return format!("ip:{ip}");
+        }
+    }
+
+    "ip:unknown".to_string()
+}
+
+fn is_admin_email(email: &str, admin_emails: &[String]) -> bool {
+    let normalized_email = email.trim().to_lowercase();
+    if normalized_email.is_empty() {
+        return false;
+    }
+
+    admin_emails.iter().any(|configured| {
+        let candidate = configured.trim().to_lowercase();
+        !candidate.is_empty() && candidate == normalized_email
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    sha256_bytes_hex(&digest)
+}
+
+fn sha256_bytes_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
 }
 
 async fn maintenance_mode_gate(
@@ -770,11 +1149,13 @@ enum StaticResponseError {
 fn map_static_error(error: StaticResponseError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         StaticResponseError::NotFound(message) => static_not_found(message),
-        StaticResponseError::Io(_) | StaticResponseError::InvalidHeader(_) => error_response_with_status(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            ApiErrorCode::StaticAssetError,
-            "Failed to serve static asset.".to_string(),
-        ),
+        StaticResponseError::Io(_) | StaticResponseError::InvalidHeader(_) => {
+            error_response_with_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorCode::StaticAssetError,
+                "Failed to serve static asset.".to_string(),
+            )
+        }
     }
 }
 
@@ -1533,9 +1914,11 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
 
 fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
-        SyncTokenError::InvalidScope { message } => {
-            error_response_with_status(StatusCode::UNPROCESSABLE_ENTITY, ApiErrorCode::InvalidScope, message)
-        }
+        SyncTokenError::InvalidScope { message } => error_response_with_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiErrorCode::InvalidScope,
+            message,
+        ),
         SyncTokenError::InvalidRequest { message } => error_response_with_status(
             StatusCode::UNPROCESSABLE_ENTITY,
             ApiErrorCode::InvalidRequest,
@@ -1954,9 +2337,10 @@ mod tests {
     use axum::extract::State;
     use axum::http::HeaderMap;
     use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
-    use axum::http::{Request, StatusCode};
+    use axum::http::{HeaderValue, Request, StatusCode};
     use axum::routing::post;
     use axum::{Json, Router};
+    use hmac::Mac;
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -1982,6 +2366,11 @@ mod tests {
             workos_api_key: None,
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
+            auth_local_test_login_enabled: false,
+            admin_emails: vec![
+                "chris@openagents.com".to_string(),
+                "routes@openagents.com".to_string(),
+            ],
             auth_challenge_ttl_seconds: 600,
             auth_access_ttl_seconds: 3600,
             auth_refresh_ttl_seconds: 86400,
@@ -2023,6 +2412,9 @@ mod tests {
             runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
             runtime_signature_secret: None,
             runtime_signature_ttl_seconds: 60,
+            runtime_internal_shared_secret: None,
+            runtime_internal_key_id: "runtime-internal-v1".to_string(),
+            runtime_internal_signature_ttl_seconds: 60,
             maintenance_mode_enabled: false,
             maintenance_bypass_token: None,
             maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),
@@ -2064,6 +2456,24 @@ mod tests {
         config.maintenance_bypass_cookie_ttl_seconds = 300;
         config.maintenance_allowed_paths = vec!["/healthz".to_string(), "/readyz".to_string()];
         config
+    }
+
+    fn test_app_state(config: Config) -> super::AppState {
+        let auth = super::AuthService::from_config(&config);
+        let route_split = super::RouteSplitService::from_config(&config);
+        let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
+        let runtime_revocation_client = super::RuntimeRevocationClient::from_config(&config);
+        super::AppState {
+            config: Arc::new(config),
+            auth,
+            observability: Observability::default(),
+            route_split,
+            sync_token_issuer,
+            runtime_revocation_client,
+            throttle_state: super::ThrottleState::default(),
+            runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
+            started_at: std::time::SystemTime::now(),
+        }
     }
 
     async fn read_json(response: axum::response::Response) -> Result<Value> {
@@ -2117,6 +2527,31 @@ mod tests {
         Ok((addr, handle))
     }
 
+    async fn authenticate_token(app: Router, email: &str) -> Result<String> {
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({ "email": email }).to_string()))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+
+        Ok(verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
+    }
+
     #[tokio::test]
     async fn healthz_route_returns_ok() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
@@ -2128,6 +2563,152 @@ mod tests {
         assert_eq!(body["status"], "ok");
         assert_eq!(body["service"], "openagents-control-service");
         assert_eq!(body["auth_provider"], "mock");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_email_route_enforces_throttle_limit() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        for _ in 0..super::THROTTLE_AUTH_EMAIL_LIMIT {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/auth/email")
+                .header("content-type", "application/json")
+                .header("x-forwarded-for", "203.0.113.10")
+                .body(Body::from(r#"{"email":"throttle@openagents.com"}"#))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let exceeded = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", "203.0.113.10")
+            .body(Body::from(r#"{"email":"throttle@openagents.com"}"#))?;
+        let response = app.oneshot(exceeded).await?;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "rate_limited");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn thread_message_route_enforces_throttle_limit() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "thread-throttle@openagents.com").await?;
+
+        for index in 0..super::THROTTLE_THREAD_MESSAGE_LIMIT {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/runtime/threads/thread-1/messages")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .header("x-forwarded-for", "198.51.100.22")
+                .body(Body::from(format!(r#"{{"text":"message-{index}"}}"#)))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let exceeded = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/threads/thread-1/messages")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .header("x-forwarded-for", "198.51.100.22")
+            .body(Body::from(r#"{"text":"over-limit"}"#))?;
+        let response = app.oneshot(exceeded).await?;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "rate_limited");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_override_requires_admin_email() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.admin_emails = vec!["admin@openagents.com".to_string()];
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "not-admin@openagents.com").await?;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"target":"legacy"}"#))?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "forbidden");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_internal_signature_validation_rejects_nonce_replay() -> Result<()> {
+        let mut config = test_config(std::env::temp_dir());
+        config.runtime_internal_shared_secret = Some("runtime-internal-secret".to_string());
+        config.runtime_internal_key_id = "runtime-internal-v1".to_string();
+        config.runtime_internal_signature_ttl_seconds = 60;
+        let state = test_app_state(config);
+
+        let body = br#"{"provider":"resend","integration_id":"int_runtime"}"#;
+        let timestamp = chrono::Utc::now().timestamp().to_string();
+        let nonce = "nonce-runtime-internal-1";
+        let body_hash = super::sha256_hex(body);
+        let signing_payload = format!("{timestamp}\n{nonce}\n{body_hash}");
+
+        let mut mac =
+            super::HmacSha256::new_from_slice(b"runtime-internal-secret").expect("hmac key");
+        mac.update(signing_payload.as_bytes());
+        let signature = super::sha256_bytes_hex(&mac.finalize().into_bytes());
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::RUNTIME_INTERNAL_KEY_ID_HEADER,
+            HeaderValue::from_static("runtime-internal-v1"),
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_TIMESTAMP_HEADER,
+            HeaderValue::from_str(&timestamp)?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_NONCE_HEADER,
+            HeaderValue::from_static(nonce),
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_BODY_HASH_HEADER,
+            HeaderValue::from_str(&body_hash)?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_SIGNATURE_HEADER,
+            HeaderValue::from_str(&signature)?,
+        );
+
+        let first = super::verify_runtime_internal_headers(&state, &headers, body).await;
+        assert!(first.is_ok());
+
+        let replay = super::verify_runtime_internal_headers(&state, &headers, body)
+            .await
+            .expect_err("expected nonce replay rejection");
+        assert_eq!(replay.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(replay.1.0.error.code, "unauthorized");
+        assert!(
+            replay.1.0.error.message.contains("nonce replay"),
+            "unexpected replay message: {}",
+            replay.1.0.error.message
+        );
+
         Ok(())
     }
 

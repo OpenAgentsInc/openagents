@@ -36,6 +36,10 @@ Rust control service scaffold for `apps/openagents.com`.
 - Request middleware foundations:
   - request ID propagation (`x-request-id`)
   - HTTP trace layer
+  - auth + WorkOS session gates
+  - admin gate allowlist
+  - in-memory throttle gates
+  - runtime-internal signature/replay guard layer
 
 ## Environment
 
@@ -48,6 +52,8 @@ Rust control service scaffold for `apps/openagents.com`.
 - `WORKOS_API_KEY` (required in `workos` mode)
 - `OA_WORKOS_API_BASE_URL` (default: `https://api.workos.com`)
 - `OA_AUTH_MOCK_MAGIC_CODE` (default: `123456`)
+- `OA_AUTH_LOCAL_TEST_LOGIN_ENABLED` (`true|false`, default: `false`; allows `test_local_*` WorkOS bypass lane in local testing)
+- `OA_ADMIN_EMAILS` (CSV admin allowlist for admin middleware parity routes)
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)
 - `OA_AUTH_ACCESS_TTL_SECONDS` (default: `3600`)
 - `OA_AUTH_REFRESH_TTL_SECONDS` (default: `2592000`)
@@ -73,6 +79,9 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_RUNTIME_SYNC_REVOKE_PATH` (default: `/internal/v1/sync/sessions/revoke`)
 - `OA_RUNTIME_SIGNATURE_SECRET` (optional shared runtime internal-signature secret; when unset revocation propagation is skipped)
 - `OA_RUNTIME_SIGNATURE_TTL_SECONDS` (default: `60`)
+- `OA_RUNTIME_INTERNAL_SHARED_SECRET` (optional shared secret for runtime-internal middleware parity checks)
+- `OA_RUNTIME_INTERNAL_KEY_ID` (default: `runtime-internal-v1`)
+- `OA_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS` (default: `60`)
 - `OA_MAINTENANCE_MODE_ENABLED` (`true|false`, default: `false`)
 - `OA_MAINTENANCE_BYPASS_TOKEN` (optional; required to enable operator bypass flow)
 - `OA_MAINTENANCE_BYPASS_COOKIE_NAME` (default: `oa_maintenance_bypass`)
@@ -151,6 +160,11 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `apps/openagents.com/service/src/api_envelope.rs`
 - Canonical error-code/status matrix:
   - `apps/openagents.com/service/docs/API_ENVELOPE_ERROR_MATRIX.md`
+
+## Middleware parity matrix
+
+- Canonical middleware parity mapping:
+  - `apps/openagents.com/service/docs/MIDDLEWARE_PARITY.md`
 
 ## Compatibility negotiation policy
 

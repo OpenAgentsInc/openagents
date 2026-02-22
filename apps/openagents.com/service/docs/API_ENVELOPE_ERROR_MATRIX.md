@@ -41,6 +41,7 @@ Error envelope:
 | `invalid_request` | 422 | validation failure |
 | `unauthorized` | 401 | unauthenticated |
 | `forbidden` | 403 | unauthorized action |
+| `rate_limited` | 429 | throttle exceeded |
 | `not_found` | 404 | missing route/resource |
 | `conflict` | 409 | conflict |
 | `invalid_scope` | 422 | invalid scope request |

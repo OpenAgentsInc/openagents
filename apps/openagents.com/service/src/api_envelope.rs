@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use serde::Serialize;
 
 pub type ApiErrorTuple = (StatusCode, Json<ApiErrorResponse>);
@@ -11,6 +11,7 @@ pub enum ApiErrorCode {
     InvalidRequest,
     Unauthorized,
     Forbidden,
+    RateLimited,
     NotFound,
     Conflict,
     InvalidScope,
@@ -27,6 +28,7 @@ impl ApiErrorCode {
             Self::InvalidRequest => "invalid_request",
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
+            Self::RateLimited => "rate_limited",
             Self::NotFound => "not_found",
             Self::Conflict => "conflict",
             Self::InvalidScope => "invalid_scope",
@@ -43,6 +45,7 @@ impl ApiErrorCode {
             Self::InvalidRequest => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict => StatusCode::CONFLICT,
             Self::InvalidScope => StatusCode::UNPROCESSABLE_ENTITY,
@@ -149,7 +152,7 @@ pub struct ApiErrorMatrixEntry {
     pub laravel_equivalent: &'static str,
 }
 
-const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 11] = [
+const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 12] = [
     ApiErrorMatrixEntry {
         code: "invalid_request",
         status: 422,
@@ -164,6 +167,11 @@ const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 11] = [
         code: "forbidden",
         status: 403,
         laravel_equivalent: "forbidden",
+    },
+    ApiErrorMatrixEntry {
+        code: "rate_limited",
+        status: 429,
+        laravel_equivalent: "throttle_exceeded",
     },
     ApiErrorMatrixEntry {
         code: "not_found",
