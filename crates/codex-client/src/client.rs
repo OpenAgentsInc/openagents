@@ -462,6 +462,10 @@ impl AppServerClient {
         self.transport.request("thread/resume", Some(&params)).await
     }
 
+    pub async fn thread_read(&self, params: ThreadReadParams) -> Result<ThreadReadResponse> {
+        self.transport.request("thread/read", Some(&params)).await
+    }
+
     pub async fn thread_archive(
         &self,
         params: ThreadArchiveParams,
