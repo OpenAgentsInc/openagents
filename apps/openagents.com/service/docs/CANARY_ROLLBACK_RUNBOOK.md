@@ -14,6 +14,10 @@ Maintenance-mode cutover/bypass procedure is documented in:
 
 - `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
 
+Steady-state compatibility stream operations are documented in:
+
+- `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
+
 ## Preconditions
 
 1. Rust control service image built and available in Artifact Registry.

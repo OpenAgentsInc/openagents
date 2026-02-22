@@ -70,6 +70,10 @@ Compatibility stream aliases:
 
 These routes use the same compatibility headers and deterministic `426` rejection envelope as other control APIs before endpoint-specific auth/validation runs.
 
+Steady-state operations for these compatibility aliases are governed by:
+
+- `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
+
 ## Khala WS Contract
 
 Failure response semantics:
