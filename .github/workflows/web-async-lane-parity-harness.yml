@@ -1,0 +1,22 @@
+name: web-async-lane-parity-harness
+
+on:
+  workflow_dispatch:
+
+jobs:
+  async-lane-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run async lane parity harness
+        run: ./apps/openagents.com/scripts/run-async-lane-parity-harness.sh
+
+      - name: Upload harness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-async-lane-parity-harness
+          path: apps/openagents.com/storage/app/async-lane-parity-harness/**
+          if-no-files-found: warn

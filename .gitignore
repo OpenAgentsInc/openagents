@@ -72,6 +72,7 @@ apps/openagents.com/storage/app/non-http-parity-harness/
 apps/openagents.com/storage/app/auth-session-edge-cases/
 apps/openagents.com/storage/app/webhook-parity-harness/
 apps/openagents.com/storage/app/static-asset-sw-parity-harness/
+apps/openagents.com/storage/app/async-lane-parity-harness/
 
 *.log
 !docs/logs/runs/*.log

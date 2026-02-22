@@ -293,6 +293,14 @@ run_static_asset_sw_parity_harness() {
   )
 }
 
+run_async_lane_parity_harness() {
+  echo "==> async lane parity harness"
+  (
+    cd "$ROOT_DIR"
+    ./apps/openagents.com/scripts/run-async-lane-parity-harness.sh
+  )
+}
+
 run_cross_surface_harness() {
   echo "==> cross-surface contract harness"
   (
@@ -483,6 +491,9 @@ case "$MODE" in
   static-asset-sw-parity-harness)
     run_static_asset_sw_parity_harness
     ;;
+  async-lane-parity-harness)
+    run_async_lane_parity_harness
+    ;;
   workspace-compile)
     run_workspace_compile
     ;;
@@ -520,7 +531,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
     exit 2
     ;;
 esac

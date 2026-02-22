@@ -220,6 +220,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-webhook-parity-harness.sh`, `.github/workflows/web-webhook-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-064-webhook-signature-idempotency-replay.md`
 - [x] Static asset host and service-worker delivery parity (`OA-WEBPARITY-065`)
   Harness/report: `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`, `.github/workflows/web-static-asset-sw-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-065-static-asset-sw-parity.md`
+- [x] Queue/scheduler/listener parity and Laravel scheduler shutdown (`OA-WEBPARITY-066`)
+  Harness/report: `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`, `.github/workflows/web-async-lane-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-066-queue-scheduler-listener-parity.md`
 
 ## Checklist Freeze Rules
 
