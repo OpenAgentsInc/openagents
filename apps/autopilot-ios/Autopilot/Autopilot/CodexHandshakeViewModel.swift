@@ -40,6 +40,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
+    private var activeKhalaSession: UnsafeMutableRawPointer?
     private var activeStreamWorkerID: String?
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var khalaWorkerEventsWatermark: Int
@@ -278,6 +279,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     deinit {
         streamTask?.cancel()
         handshakeTimeoutTask?.cancel()
+        if let activeKhalaSession {
+            RustClientCoreBridge.freeKhalaSession(activeKhalaSession)
+            self.activeKhalaSession = nil
+        }
         for (_, task) in controlRequestTimeoutTasks {
             task.cancel()
         }
@@ -434,6 +439,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        clearActiveKhalaSession()
         activeStreamWorkerID = nil
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
@@ -1075,6 +1081,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        clearActiveKhalaSession()
         activeStreamWorkerID = nil
         streamState = .idle
         resetReconnectTracking()
@@ -1091,6 +1098,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             streamTask = nil
             activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
             activeKhalaSocket = nil
+            clearActiveKhalaSession()
             activeStreamWorkerID = nil
             streamState = .idle
             resetReconnectTracking()
@@ -1112,6 +1120,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        clearActiveKhalaSession()
         activeStreamWorkerID = workerID
         resetReconnectTracking()
 
@@ -1137,6 +1146,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        clearActiveKhalaSession()
         activeStreamWorkerID = nil
         streamState = .idle
         resetReconnectTracking()
@@ -1209,35 +1219,35 @@ final class CodexHandshakeViewModel: ObservableObject {
                 socket.resume()
                 activeKhalaSocket = socket
 
-                let joinRef = try await khalaJoin(socket: socket, workerID: workerID)
-                try await khalaSubscribe(
-                    socket: socket,
-                    joinRef: joinRef,
+                guard let khalaSession = RustClientCoreBridge.createKhalaSession(
                     workerID: workerID,
-                    resumeAfterWatermark: khalaWorkerEventsWatermark
-                )
-
-                streamState = .live
-                errorMessage = nil
-                statusMessage = "Stream live for \(shortWorkerID(workerID))."
-                streamLifecycle.successfulSessions += 1
-                if reconnectAttempt > 0 {
-                    streamLifecycle.recoveredSessions += 1
-                    if let reconnectStartedAt = reconnectWindowStartedAt {
-                        streamLifecycle.lastRecoveryLatencyMs = max(
-                            0,
-                            Int(now().timeIntervalSince(reconnectStartedAt) * 1000.0)
-                        )
-                    }
+                    workerEventsTopic: Self.khalaWorkerEventsTopic,
+                    resumeAfter: khalaWorkerEventsWatermark
+                ) else {
+                    throw RuntimeCodexApiError(
+                        message: "khala_session_init_failed",
+                        code: .unknown,
+                        status: nil
+                    )
                 }
-                recordLifecycleEvent(
-                    "stream_live worker=\(shortWorkerID(workerID)) reconnect_attempts=\(reconnectAttempt)"
+                activeKhalaSession = khalaSession
+
+                guard let startStep = RustClientCoreBridge.khalaSessionStart(khalaSession) else {
+                    throw RuntimeCodexApiError(
+                        message: "khala_session_start_failed",
+                        code: .unknown,
+                        status: nil
+                    )
+                }
+                try await applyKhalaSessionStep(
+                    startStep,
+                    socket: socket,
+                    workerID: workerID,
+                    client: client
                 )
-                resetReconnectTracking()
-                await dispatchQueuedControlRequestsIfPossible(clientOverride: client)
 
                 let heartbeatTask = Task { [weak self] in
-                    await self?.runKhalaHeartbeatLoop(socket: socket, joinRef: joinRef)
+                    await self?.runKhalaHeartbeatLoop(socket: socket, khalaSession: khalaSession)
                 }
 
                 defer {
@@ -1247,10 +1257,11 @@ final class CodexHandshakeViewModel: ObservableObject {
                     if activeKhalaSocket === socket {
                         activeKhalaSocket = nil
                     }
+                    clearActiveKhalaSession()
                 }
 
                 while !Task.isCancelled {
-                    guard let frame = try await receiveKhalaFrame(socket: socket) else {
+                    guard let rawFrame = try await receiveKhalaRawFrame(socket: socket) else {
                         throw RuntimeCodexApiError(
                             message: "khala_stream_closed",
                             code: .network,
@@ -1258,14 +1269,28 @@ final class CodexHandshakeViewModel: ObservableObject {
                         )
                     }
 
-                    try await handleKhalaFrame(frame, workerID: workerID)
+                    guard let step = RustClientCoreBridge.khalaSessionOnFrame(
+                        khalaSession,
+                        raw: rawFrame
+                    ) else {
+                        continue
+                    }
+
+                    try await applyKhalaSessionStep(
+                        step,
+                        socket: socket,
+                        workerID: workerID,
+                        client: client
+                    )
                 }
 
                 return
             } catch {
                 if Task.isCancelled {
+                    clearActiveKhalaSession()
                     return
                 }
+                clearActiveKhalaSession()
 
                 if let runtimeError = error as? RuntimeCodexApiError,
                    runtimeError.code == .auth || runtimeError.status == 401 {
@@ -1302,11 +1327,109 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
     }
 
+    private func applyKhalaSessionStep(
+        _ step: RustClientCoreBridge.KhalaSessionStep,
+        socket: URLSessionWebSocketTask,
+        workerID: String,
+        client: RuntimeCodexClient
+    ) async throws {
+        switch step.kind {
+        case "ignore":
+            return
+
+        case "outbound":
+            guard let frame = step.frame, !frame.isEmpty else {
+                return
+            }
+            try await socket.send(.string(frame))
+
+        case "live":
+            streamState = .live
+            errorMessage = nil
+            statusMessage = "Stream live for \(shortWorkerID(workerID))."
+            streamLifecycle.successfulSessions += 1
+            if reconnectAttempt > 0 {
+                streamLifecycle.recoveredSessions += 1
+                if let reconnectStartedAt = reconnectWindowStartedAt {
+                    streamLifecycle.lastRecoveryLatencyMs = max(
+                        0,
+                        Int(now().timeIntervalSince(reconnectStartedAt) * 1000.0)
+                    )
+                }
+            }
+            recordLifecycleEvent(
+                "stream_live worker=\(shortWorkerID(workerID)) reconnect_attempts=\(reconnectAttempt)"
+            )
+            resetReconnectTracking()
+            await dispatchQueuedControlRequestsIfPossible(clientOverride: client)
+
+        case "events":
+            if let watermark = step.watermark, watermark > khalaWorkerEventsWatermark {
+                persistWatermark(
+                    watermark,
+                    topic: Self.khalaWorkerEventsTopic,
+                    workerID: workerID
+                )
+            }
+
+            let mappedEvents = (step.events ?? []).map { event in
+                RuntimeCodexStreamEvent(
+                    id: event.seq,
+                    event: "codex.worker.event",
+                    payload: event.payload,
+                    rawData: jsonString(from: event.payload) ?? "{}"
+                )
+            }
+
+            guard !mappedEvents.isEmpty else {
+                return
+            }
+
+            let orderedEvents = mappedEvents.sorted { lhs, rhs in
+                (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
+            }
+            handleIncoming(events: orderedEvents, workerID: workerID)
+
+        case "error":
+            let code = step.code ?? "sync_error"
+            let message = step.message ?? "khala stream error"
+            if step.staleCursor == true {
+                resetKhalaWorkerEventsWatermarkForReplayBootstrap(
+                    reason: "rust_session_error",
+                    workerID: workerID
+                )
+            }
+
+            let runtimeError: RuntimeCodexApiError
+            switch code {
+            case "unauthorized":
+                runtimeError = RuntimeCodexApiError(message: message, code: .auth, status: 401)
+            case "forbidden_topic":
+                runtimeError = RuntimeCodexApiError(message: message, code: .forbidden, status: 403)
+            case "stale_cursor":
+                runtimeError = RuntimeCodexApiError(message: message, code: .conflict, status: 409)
+            default:
+                runtimeError = RuntimeCodexApiError(message: message, code: .unknown, status: step.status)
+            }
+            throw runtimeError
+
+        default:
+            return
+        }
+    }
+
     private func resetReconnectTracking() {
         reconnectAttempt = 0
         reconnectWindowStartedAt = nil
         streamLifecycle.lastBackoffMs = 0
         streamLifecycle.lastRecoveryLatencyMs = 0
+    }
+
+    private func clearActiveKhalaSession() {
+        if let activeKhalaSession {
+            RustClientCoreBridge.freeKhalaSession(activeKhalaSession)
+            self.activeKhalaSession = nil
+        }
     }
 
     private func recordLifecycleEvent(_ message: String) {
@@ -1377,7 +1500,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private func runKhalaHeartbeatLoop(
         socket: URLSessionWebSocketTask,
-        joinRef: String
+        khalaSession: UnsafeMutableRawPointer
     ) async {
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: Self.khalaHeartbeatIntervalNS)
@@ -1386,14 +1509,10 @@ final class CodexHandshakeViewModel: ObservableObject {
                 return
             }
 
-            let heartbeatRef = nextKhalaRef()
-            try? await sendKhalaFrame(
-                socket: socket,
-                joinRef: joinRef,
-                ref: heartbeatRef,
-                event: "sync:heartbeat",
-                payload: [:]
-            )
+            guard let frame = RustClientCoreBridge.khalaSessionHeartbeat(khalaSession) else {
+                continue
+            }
+            try? await socket.send(.string(frame))
         }
     }
 
@@ -1609,10 +1728,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         try await socket.send(.string(text))
     }
 
-    private func receiveKhalaFrame(socket: URLSessionWebSocketTask) async throws -> KhalaFrame? {
+    private func receiveKhalaRawFrame(socket: URLSessionWebSocketTask) async throws -> String? {
         let message = try await socket.receive()
-        let raw: String
 
+        let raw: String
         switch message {
         case .string(let text):
             raw = text
@@ -1622,7 +1741,12 @@ final class CodexHandshakeViewModel: ObservableObject {
             return nil
         }
 
-        guard !raw.isEmpty else {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func receiveKhalaFrame(socket: URLSessionWebSocketTask) async throws -> KhalaFrame? {
+        guard let raw = try await receiveKhalaRawFrame(socket: socket) else {
             return nil
         }
 

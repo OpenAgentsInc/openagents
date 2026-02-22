@@ -10,11 +10,54 @@ enum RustClientCoreBridge {
         let payload: JSONValue
     }
 
+    struct KhalaSessionEvent: Decodable {
+        let seq: Int?
+        let payload: JSONValue
+    }
+
+    struct KhalaSessionStep: Decodable {
+        let kind: String
+        let frame: String?
+        let events: [KhalaSessionEvent]?
+        let watermark: Int?
+        let code: String?
+        let message: String?
+        let status: Int?
+        let staleCursor: Bool?
+        let unauthorized: Bool?
+        let forbidden: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case kind
+            case frame
+            case events
+            case watermark
+            case code
+            case message
+            case status
+            case staleCursor = "stale_cursor"
+            case unauthorized
+            case forbidden
+        }
+    }
+
     private static let expectedFFIContractVersion: UInt32 = 1
 
     private typealias TransformFunction = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
     private typealias FreeFunction = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
     private typealias ContractVersionFunction = @convention(c) () -> UInt32
+    private typealias KhalaSessionCreateFunction = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        UInt64
+    ) -> UnsafeMutableRawPointer?
+    private typealias KhalaSessionStepFunction = @convention(c) (UnsafeMutableRawPointer?) -> UnsafeMutablePointer<CChar>?
+    private typealias KhalaSessionOnFrameFunction = @convention(c) (
+        UnsafeMutableRawPointer?,
+        UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
+    private typealias KhalaSessionLatestWatermarkFunction = @convention(c) (UnsafeMutableRawPointer?) -> UInt64
+    private typealias KhalaSessionFreeFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
     private struct Symbols {
         let normalizeEmail: TransformFunction?
@@ -22,6 +65,12 @@ enum RustClientCoreBridge {
         let normalizeMessageText: TransformFunction?
         let extractDesktopHandshakeAckID: TransformFunction?
         let parseKhalaFrame: TransformFunction?
+        let khalaSessionCreate: KhalaSessionCreateFunction?
+        let khalaSessionStart: KhalaSessionStepFunction?
+        let khalaSessionOnFrame: KhalaSessionOnFrameFunction?
+        let khalaSessionHeartbeat: KhalaSessionStepFunction?
+        let khalaSessionLatestWatermark: KhalaSessionLatestWatermarkFunction?
+        let khalaSessionFree: KhalaSessionFreeFunction?
         let freeString: FreeFunction?
         let ffiContractVersion: ContractVersionFunction?
 
@@ -49,6 +98,30 @@ enum RustClientCoreBridge {
                     as: TransformFunction.self
                 ),
                 parseKhalaFrame: loadSymbol("oa_client_core_parse_khala_frame", as: TransformFunction.self),
+                khalaSessionCreate: loadSymbol(
+                    "oa_client_core_khala_session_create",
+                    as: KhalaSessionCreateFunction.self
+                ),
+                khalaSessionStart: loadSymbol(
+                    "oa_client_core_khala_session_start",
+                    as: KhalaSessionStepFunction.self
+                ),
+                khalaSessionOnFrame: loadSymbol(
+                    "oa_client_core_khala_session_on_frame",
+                    as: KhalaSessionOnFrameFunction.self
+                ),
+                khalaSessionHeartbeat: loadSymbol(
+                    "oa_client_core_khala_session_heartbeat",
+                    as: KhalaSessionStepFunction.self
+                ),
+                khalaSessionLatestWatermark: loadSymbol(
+                    "oa_client_core_khala_session_latest_watermark",
+                    as: KhalaSessionLatestWatermarkFunction.self
+                ),
+                khalaSessionFree: loadSymbol(
+                    "oa_client_core_khala_session_free",
+                    as: KhalaSessionFreeFunction.self
+                ),
                 freeString: loadSymbol("oa_client_core_free_string", as: FreeFunction.self),
                 ffiContractVersion: loadSymbol(
                     "oa_client_core_ffi_contract_version",
@@ -82,6 +155,12 @@ enum RustClientCoreBridge {
             && symbols.normalizeMessageText != nil
             && symbols.extractDesktopHandshakeAckID != nil
             && symbols.parseKhalaFrame != nil
+            && symbols.khalaSessionCreate != nil
+            && symbols.khalaSessionStart != nil
+            && symbols.khalaSessionOnFrame != nil
+            && symbols.khalaSessionHeartbeat != nil
+            && symbols.khalaSessionLatestWatermark != nil
+            && symbols.khalaSessionFree != nil
             && symbols.freeString != nil
             && symbols.ffiContractVersion != nil
             && isContractVersionCompatible
@@ -119,6 +198,80 @@ enum RustClientCoreBridge {
         )
     }
 
+    static func createKhalaSession(
+        workerID: String,
+        workerEventsTopic: String,
+        resumeAfter: Int
+    ) -> UnsafeMutableRawPointer? {
+        guard let create = symbols.khalaSessionCreate else {
+            return nil
+        }
+
+        return withTwoCStringInputs(workerID, workerEventsTopic) { workerPtr, topicPtr in
+            create(workerPtr, topicPtr, UInt64(max(0, resumeAfter)))
+        }
+    }
+
+    static func freeKhalaSession(_ session: UnsafeMutableRawPointer?) {
+        symbols.khalaSessionFree?(session)
+    }
+
+    static func khalaSessionStart(_ session: UnsafeMutableRawPointer?) -> KhalaSessionStep? {
+        invokeSessionStep(symbols.khalaSessionStart, session: session)
+    }
+
+    static func khalaSessionOnFrame(_ session: UnsafeMutableRawPointer?, raw: String) -> KhalaSessionStep? {
+        guard let function = symbols.khalaSessionOnFrame,
+              let freeString = symbols.freeString else {
+            return nil
+        }
+
+        return raw.withCString { rawPtr in
+            guard let rawStep = function(session, rawPtr) else {
+                return nil
+            }
+            defer {
+                freeString(rawStep)
+            }
+            guard let json = String(cString: rawStep).data(using: .utf8) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(KhalaSessionStep.self, from: json)
+        }
+    }
+
+    static func khalaSessionHeartbeat(_ session: UnsafeMutableRawPointer?) -> String? {
+        guard let step = invokeSessionStep(symbols.khalaSessionHeartbeat, session: session),
+              step.kind == "outbound" else {
+            return nil
+        }
+        return step.frame
+    }
+
+    static func khalaSessionLatestWatermark(_ session: UnsafeMutableRawPointer?) -> Int {
+        Int(symbols.khalaSessionLatestWatermark?(session) ?? 0)
+    }
+
+    private static func invokeSessionStep(
+        _ function: KhalaSessionStepFunction?,
+        session: UnsafeMutableRawPointer?
+    ) -> KhalaSessionStep? {
+        guard let function,
+              let freeString = symbols.freeString,
+              let rawOutput = function(session) else {
+            return nil
+        }
+
+        defer {
+            freeString(rawOutput)
+        }
+
+        guard let jsonData = String(cString: rawOutput).data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(KhalaSessionStep.self, from: jsonData)
+    }
+
     private static func invoke(_ function: TransformFunction?, with input: String) -> String? {
         guard let function,
               let freeString = symbols.freeString else {
@@ -135,6 +288,18 @@ enum RustClientCoreBridge {
             }
 
             return String(cString: rawOutput)
+        }
+    }
+
+    private static func withTwoCStringInputs<T>(
+        _ lhs: String,
+        _ rhs: String,
+        _ body: (_ lhs: UnsafePointer<CChar>?, _ rhs: UnsafePointer<CChar>?) -> T
+    ) -> T {
+        lhs.withCString { lhsPtr in
+            rhs.withCString { rhsPtr in
+                body(lhsPtr, rhsPtr)
+            }
         }
     }
 
