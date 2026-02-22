@@ -1,48 +1,29 @@
-# Optimizers (Policy Bundles and On-Disk Layout)
+# Optimizers (Bundle Output and Storage Expectations)
 
-This doc defines the canonical on-disk expectations for **policy bundles** and optimizer-produced artifacts.
+Optimizers produce candidate bundles and selection evidence.
 
-Normative references:
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (policy bundle semantics)
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md` (base paths)
-
-## Policy Bundle Storage
-
-Per `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md`, bundles live under:
+## Required Bundle Layout
 
 ```text
-${OPENAGENTS_HOME}/policies/
-  {policy_bundle_id}/
-```
-
-## Bundle Layout (Minimum)
-
-Each `{policy_bundle_id}` directory MUST contain:
-
-```text
-{policy_bundle_id}/
+${OPENAGENTS_HOME}/policies/{policy_bundle_id}/
   manifest.json
   signatures/
   modules/
   metrics/
 ```
 
-Recommended additional directories:
-- `datasets/` (dataset references/hashes used for compilation)
-- `scorecards/` (evaluation outputs)
-- `notes/` (human-readable bundle notes)
+## Recommended Additions
 
-## manifest.json
+- `datasets/`
+- `scorecards/`
+- `notes/`
 
-`manifest.json` MUST satisfy the minimum fields in:
-- `docs/dse/COMPILER-CONTRACT.md`
+## Optimizer Trace Requirements
 
-## Optimizer Outputs
+Record at minimum:
 
-Optimizers SHOULD record:
-- optimizer id + version
+- optimizer id/version
 - candidate ids and scores
-- counterfactual comparisons vs baseline
+- baseline comparison
 
-The purpose is attribution and rollback, not perfect reproducibility of optimizer internals.
-
+Purpose: attribution, debugging, and rollback clarity.

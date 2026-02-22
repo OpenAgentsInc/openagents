@@ -60,13 +60,9 @@ Next available ADR: **ADR-0008**
 
 ## Legacy Archive
 
-Pre-reset ADR corpus (archived by OA-RUST-004):
+Pre-reset ADR corpora were moved to backroom and are historical context only:
 
-- `docs/plans/archived/adr-legacy-2026-02-21/`
-- Catalog: `docs/plans/archived/adr-legacy-2026-02-21/CATALOG.md`
-- Removed placeholder ADR stubs: `docs/plans/archived/adr-rust-stubs-2026-02-21/`
-
-Legacy ADRs are historical context only and not authoritative for Rust-era architecture decisions.
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/plans/archived/`
 
 ## Authoring Process
 

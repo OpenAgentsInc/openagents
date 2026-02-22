@@ -1,21 +1,9 @@
 # Extensions Protocol
 
-Canonical runtime extension manifest contracts:
+Canonical base manifest contract:
 
 - `docs/protocol/extensions/extension-manifest.schema.v1.json`
 
-Tool-pack specific specializations:
+Use this schema as the base for runtime extension packaging and validation.
 
-- `docs/protocol/comms/integration-manifest.schema.v1.json`
-- `docs/protocol/comms/tool-pack-contract.v1.json`
-- `docs/protocol/coding/integration-manifest.schema.v1.json`
-- `docs/protocol/coding/tool-pack-contract.v1.json`
-
-Runtime validation path:
-
-- Base validator: `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`
-- Activation registry: `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`
-
-Validation errors are machine-readable and use runtime reason taxonomy:
-
-- `reason_code: manifest_validation.invalid_schema`
+Service-specific extension schemas should live beside the owning service code and be linked from that service's docs.

@@ -1,47 +1,35 @@
 # Tools (Schema + Execution Contract)
 
-This doc defines the canonical requirements for tools used by OpenAgents runtimes.
-
-Normative references:
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md` (runtime vs adapters vs refine)
-- `docs/execution/ARTIFACTS.md` (receipt fields)
-- `docs/execution/REPLAY.md` (ToolCall/ToolResult events)
+Canonical requirements for runtime tool execution.
 
 ## Tool Definition Requirements
 
-Each tool MUST have:
-- A stable `tool` name (string id).
-- A JSON schema for params.
-- Deterministic failure modes (bounded errors, no silent partial success).
-- Bounded outputs (truncate/limit where necessary).
-- A timeout.
+Each tool must provide:
 
-## Runtime Requirements
+- stable `tool` id
+- params schema
+- deterministic error behavior
+- bounded output policy
+- timeout policy
 
-The execution runtime MUST:
-- Validate tool params against schemas **before execution**.
-- Execute tools deterministically (bounded output, timeouts).
-- Emit replay events:
-  - `ToolCall` (includes `params` + `params_hash`)
-  - `ToolResult` (includes `output_hash`, `latency_ms`, `side_effects`, `step_utility?`)
-- Emit receipt entries with:
-  - `params_hash`, `output_hash`, `latency_ms`, `side_effects`
+## Runtime Execution Requirements
 
-## Side Effects
+Runtime must:
 
-Tool results MUST declare side effects to support policy/auditing.
+1. Validate params against schema before execution.
+2. Apply timeout and output bounds deterministically.
+3. Emit replay events for call/result.
+4. Emit receipt entries with hashes, latency, and side-effect tags.
 
-Recommended side effect tags:
-- `fs_read`, `fs_write`
+## Side-Effect Tags
+
+Recommended tags include:
+
+- `fs_read`
+- `fs_write`
 - `network`
 - `process_spawn`
 - `deploy`
 - `payment`
 
-## Canonical Tool Registries (Current)
-
-These are the highest-signal locations to look for tool contracts/handlers:
-- `apps/openagents.com/app/AI/Tools/` (web control-plane tool contracts + handlers)
-- `apps/runtime/lib/openagents_runtime/` (runtime execution orchestration)
-- `packages/lightning-effect/` and `packages/dse/` (shared typed contracts/services)
-- `crates/` (desktop/local execution tool surfaces)
+See `docs/execution/ARTIFACTS.md` and `docs/execution/REPLAY.md`.

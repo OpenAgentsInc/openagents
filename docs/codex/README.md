@@ -1,14 +1,21 @@
 # Codex Docs
 
-Repository-local notes related to Codex / agent workflows.
+Rust-era Codex planning and integration boundaries.
 
-Entry points:
-- `docs/codex/unified-runtime-desktop-plan.md` (canonical active plan)
-- `docs/codex/webapp-sandbox-and-codex-auth-plan.md` (active hosted sandbox backend architecture: Cloudflare, Daytona, OpenAgents GCP)
-- `docs/codex/shared-client-core-host-adapters.md` (shared Rust client core + per-host adapter boundary for web/desktop/iOS)
-- `docs/codex/codex-worker-control-plane-ownership.md` (authoritative ownership decision for `/api/runtime/codex/workers*`)
-- `docs/plans/active/khala-self-hosting-runtime-sync-plan.md` (active Khala self-hosted sync-layer plan)
-- `docs/plans/active/khala-runtime-codex-master-roadmap.md` (active execution roadmap with phases, gates, and verification checklists)
+## Canonical Doc
 
-Archived:
-- `docs/plans/archived/codex/opencode-codex-auth.md` (legacy OpenCode auth deep-dive)
+- `docs/codex/rust-codex-unified-plan.md`
+
+## Related Docs
+
+- `docs/ARCHITECTURE-RUST.md`
+- `docs/sync/thoughts.md`
+- `docs/sync/ROADMAP.md`
+- `docs/protocol/codex-worker-events-v1.md`
+- `docs/protocol/codex-worker-control-v1.md`
+
+## Archive
+
+Superseded Codex plans were moved to:
+
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/codex/`

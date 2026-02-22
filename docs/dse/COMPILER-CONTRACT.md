@@ -1,38 +1,33 @@
 # Compiler Contract (Policy Bundle Manifests)
 
-This doc defines the canonical expectations for **compiled policy bundles** produced by the DSE/compiler layer.
-
-Normative references:
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (rollout states, pin/rollback, attribution)
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md` (`OPENAGENTS_HOME` layout)
+Defines required properties for compiled policy bundles.
 
 ## Bundle Immutability
 
-- A bundle is immutable once created.
-- Promotion/rollback is done by selecting a different bundle id as default, not by rewriting bundles in place.
+1. Bundle content is immutable once created.
+2. Promotion/rollback is done by selecting a different bundle id.
 
-## Manifest (Minimum Fields)
+## Minimum Manifest Fields
 
-A policy bundle MUST contain a manifest file with:
-- `policy_bundle_id` (string, required)
-- `created_at` (string, ISO-8601, required)
-- `rollout_state` (string, required; see ADR-0015)
-- `compiler` (object, required)
-  - `name` (string)
-  - `version` (string)
-- `inputs` (object, optional but recommended)
-  - `datasets` (array of `{ id, hash }`)
-  - `code_hash` (string)
-- `artifacts` (object, required)
-  - `signatures` (array; stable signature ids + paths)
-  - `modules` (array; stable module ids + paths)
-  - `metrics` (array; stable metric ids + paths)
+- `policy_bundle_id`
+- `created_at`
+- `rollout_state`
+- `compiler.name`
+- `compiler.version`
+- `artifacts.signatures[]`
+- `artifacts.modules[]`
+- `artifacts.metrics[]`
 
-## Attribution
+Optional but recommended:
 
-Sessions MUST record the bundle id used:
+- `inputs.datasets[]`
+- `inputs.code_hash`
+
+## Attribution Requirements
+
+Session artifacts should record bundle provenance:
+
 - `RECEIPT.json.policy_bundle_id`
-- `REPLAY.jsonl` (`SessionStart.policy_bundle_id`)
+- `REPLAY.jsonl` `SessionStart.policy_bundle_id`
 
 See `docs/execution/ARTIFACTS.md` and `docs/execution/REPLAY.md`.
-

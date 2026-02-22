@@ -1,27 +1,16 @@
 # Callbacks (Internal Observability)
 
-Callbacks are an **internal observability** mechanism for module and model execution.
+Callbacks are in-process observability events, distinct from replay logs.
 
-They are distinct from replay logs:
-- Callbacks: in-process events (Layer A).
-- REPLAY.jsonl: session recording (Layer B) and exportable publication format (Layer C).
+## Layering
 
-See:
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0017-telemetry-trace-contract.md` (Layer A/B/C separation)
-- `docs/execution/REPLAY.md` (replay event format)
+1. Callback layer: local/in-process telemetry.
+2. Replay layer: durable session event log (`REPLAY.jsonl`).
 
-## Requirements (Normative)
+## Requirements
 
-- Callback failures MUST NOT crash execution.
-- Callbacks SHOULD be non-blocking (use queues/channels if needed).
-- Callback events MAY include full, unredacted data (Layer A).
+1. Callback failure must not crash execution.
+2. Callback handling should be non-blocking.
+3. Callback data may be richer than externally published replay artifacts.
 
-## Implementation Pointers
-
-In the active TypeScript/Effect stack, callback-like observability typically maps to:
-- Effect `Logger` / structured logs
-- tracing spans (OpenTelemetry-style)
-- in-memory event streams used by the UI/HUD
-
-If a Rust-era doc refers to `crates/dsrs/src/callbacks.rs`, treat it as historical; the *contract* in ADR-0017 still applies.
-
+See `docs/execution/REPLAY.md` for durable replay semantics.

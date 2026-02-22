@@ -1,13 +1,6 @@
 # OpenAgents Documentation Index
 
-Canonical architecture is Rust-only:
-- `ARCHITECTURE-RUST.md`
-- `ARCHITECTURE-RUST-ROADMAP.md`
-- `DEPLOYMENT_RUST_SERVICES.md`
-- `RUST_DOC_CLASSIFICATION.md`
-- `ARCHIVE_MANIFEST.md`
-
-`ARCHITECTURE.md` is historical context only.
+This tree contains current Rust-era documentation and forward strategy only.
 
 ## Start Here
 
@@ -19,73 +12,54 @@ Canonical architecture is Rust-only:
 - `adr/INDEX.md`
 - `../AGENTS.md`
 
-## Core Service Docs
+## Canonical Architecture and Program Docs
 
-- Rust deploy/process matrix: `DEPLOYMENT_RUST_SERVICES.md`
-- Rust staging/prod validation gate: `RUST_STAGING_PROD_VALIDATION.md`
-- Rust legacy infra decommission plan: `RUST_LEGACY_INFRA_DECOMMISSION.md`
-- Rust control service runbook: `../apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
-- Rust runtime API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
-- Runtime observability and operations: `../apps/runtime/docs/OBSERVABILITY.md`
-- Runtime deploy and migration gate: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
-- Runtime WS threat model: `../apps/runtime/docs/KHALA_WS_THREAT_MODEL.md`
-- Runtime reconnect/chaos drills: `../apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
-- Runtime incident runbook (WS/auth/stale cursor): `../apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
-- Schema evolution playbook: `SCHEMA_EVOLUTION_PLAYBOOK.md`
-
-Canonical runtime deploy + migrate command:
-
-```bash
-GCP_PROJECT=openagentsgemini \
-GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
-apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
-```
-
-## Sync and Codex
-
-- Unified Codex plan: `codex/unified-runtime-desktop-plan.md`
-- Sync architecture/invariants: `sync/thoughts.md`
-- Sync roadmap: `sync/ROADMAP.md`
-- Sync surface contract: `sync/SURFACES.md`
-- Runtime/Codex cutover runbook: `sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
-- Sync docs index: `sync/README.md`
+- `ARCHITECTURE-RUST.md`
+- `ARCHITECTURE-RUST-ROADMAP.md`
+- `DEPLOYMENT_RUST_SERVICES.md`
+- `RUST_STAGING_PROD_VALIDATION.md`
+- `RUST_LEGACY_INFRA_DECOMMISSION.md`
+- `SCHEMA_EVOLUTION_PLAYBOOK.md`
+- `SYNTHESIS.md`
+- `SYNTHESIS_EXECUTION.md`
 
 ## Contracts
 
-- Execution artifacts/replay: `execution/`
-- Protocol contracts: `protocol/`
-- DSE/compiler contracts: `dse/`
-- Proto generation policy: `../proto/README.md`
-- Proto package map: `../proto/PACKAGE_MAP.md`
+- `execution/` (artifacts + replay)
+- `protocol/` (wire/auth/sync/client contracts)
+- `dse/` (compiler/tool/callback/privacy contracts)
+- `../proto/README.md` (proto authority and generation policy)
+
+## Sync and Codex
+
+- `sync/README.md`
+- `sync/thoughts.md`
+- `sync/ROADMAP.md`
+- `sync/SURFACES.md`
+- `sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
+- `codex/README.md`
 
 ## Plans
 
-- Plans hub: `plans/`
-- Active plans: `plans/active/`
-- Completed plans: `plans/completed/`
-- Archived plans: `plans/archived/`
+- `plans/README.md`
+- `plans/active/rust-migration-invariant-gates.md`
+- `plans/active/rust-migration-execution-control-plane.md`
 
 ## Product Surfaces
 
-- Web service + shell: `../apps/openagents.com/service/`, `../apps/openagents.com/web-shell/`
-- Desktop app: `../apps/autopilot-desktop/`
-- iOS app: `../apps/autopilot-ios/`
-- Onyx app: `../apps/onyx/`
-- Shared Rust crates: `../crates/`
+- `../apps/openagents.com/service/`
+- `../apps/openagents.com/web-shell/`
+- `../apps/runtime/`
+- `../apps/autopilot-desktop/`
+- `../apps/autopilot-ios/`
+- `../apps/onyx/`
+- `../crates/`
 
-## Local Development
+## Archiving Metadata
 
-- Rust control service: `cargo run --manifest-path ../apps/openagents.com/service/Cargo.toml`
-- Rust runtime: `cargo run --manifest-path ../apps/runtime/Cargo.toml --bin openagents-runtime-service`
-- Desktop app: `cargo run -p autopilot-desktop`
-- iOS docs: `../apps/autopilot-ios/docs/README.md`
-- Local CI policy: `LOCAL_CI.md`
+- `RUST_DOC_CLASSIFICATION.md`
+- `ARCHIVE_MANIFEST.md`
 
-## Audits and History
+Historical docs were moved to:
 
-- Audit index: `audits/README.md`
-- One-off audit reports: `audit/`
-- Historical architecture snapshot: `ARCHITECTURE.md`
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/`

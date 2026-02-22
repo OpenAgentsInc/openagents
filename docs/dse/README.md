@@ -1,8 +1,9 @@
 # DSE / Compiler Docs
 
-This directory contains canonical docs for the **compiler layer** (DSE) and related execution contracts that are referenced by ADRs.
+Canonical contracts for signature evaluation, optimization, tool boundaries, callbacks, and privacy.
 
-Entry points:
+## Entry Points
+
 - `docs/dse/SIGNATURES.md`
 - `docs/dse/METRICS.md`
 - `docs/dse/OPTIMIZERS.md`
@@ -12,7 +13,8 @@ Entry points:
 - `docs/dse/CALLBACKS.md`
 - `docs/dse/PRIVACY.md`
 
-Related:
-- `packages/dse/` (implementation)
-- `docs/autopilot/dse/` (autopilot-specific DSE/RLM docs)
+## Related
 
+- `docs/execution/README.md`
+- `docs/protocol/PROTOCOL_SURFACE.md`
+- `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
