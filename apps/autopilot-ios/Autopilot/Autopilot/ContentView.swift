@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct ContentView: View {
+/// Production iOS Codex root: WGPUI renderer surface only.
+struct WgpuiCodexRootView: View {
     @StateObject private var model = CodexHandshakeViewModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -19,6 +20,13 @@ struct ContentView: View {
     }
 }
 
+@available(*, deprecated, message: "Use WgpuiCodexRootView for production UI.")
+struct ContentView: View {
+    var body: some View {
+        WgpuiCodexRootView()
+    }
+}
+
 #Preview {
-    ContentView()
+    WgpuiCodexRootView()
 }
