@@ -71,7 +71,7 @@ pub mod web {
     use std::cell::RefCell;
     use std::rc::Rc;
     use wasm_bindgen::JsCast;
-    use wasm_bindgen::{prelude::*, JsValue};
+    use wasm_bindgen::{JsValue, prelude::*};
     use web_sys::HtmlCanvasElement;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -562,9 +562,12 @@ pub mod ios {
     const OPS_TEXT_BLOCK_HEIGHT: f32 = 54.0;
     const MISSION_STATUS_FONT_SIZE: f32 = 11.5;
     const MISSION_FILTER_CHIP_HEIGHT: f32 = 22.0;
-    const MISSION_EVENT_ROW_HEIGHT: f32 = 42.0;
+    const MISSION_EVENT_ROW_HEIGHT: f32 = 56.0;
     const MISSION_WORKER_CARD_HEIGHT: f32 = 44.0;
     const MISSION_DETAIL_ROW_HEIGHT: f32 = 38.0;
+    const MISSION_OVERVIEW_PAYLOAD_PREVIEW_CHARS: usize = 92;
+    const MISSION_INSPECTOR_PREVIEW_CHARS: usize = 1_800;
+    const MISSION_INSPECTOR_EXPANDED_MAX_CHARS: usize = 12_000;
     const MISSION_INSPECTOR_MAX_PAYLOAD_CHARS: usize = 2_400;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -704,6 +707,7 @@ pub mod ios {
         severity: MissionEventSeverity,
         occurred_at: String,
         payload_json: String,
+        payload_preview: String,
         resync_marker: bool,
     }
 
@@ -806,6 +810,69 @@ pub mod ios {
         }
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MissionRetentionProfile {
+        Compact = 0,
+        Balanced = 1,
+        Extended = 2,
+    }
+
+    impl Default for MissionRetentionProfile {
+        fn default() -> Self {
+            Self::Balanced
+        }
+    }
+
+    impl MissionRetentionProfile {
+        fn from_u8(value: u8) -> Self {
+            match value {
+                0 => Self::Compact,
+                2 => Self::Extended,
+                _ => Self::Balanced,
+            }
+        }
+
+        fn label(self) -> &'static str {
+            match self {
+                Self::Compact => "Compact",
+                Self::Balanced => "Balanced",
+                Self::Extended => "Extended",
+            }
+        }
+
+        fn cadence_ms(self) -> u32 {
+            match self {
+                Self::Compact => 100,
+                Self::Balanced => 160,
+                Self::Extended => 240,
+            }
+        }
+
+        fn max_events(self) -> usize {
+            match self {
+                Self::Compact => 512,
+                Self::Balanced => 1_024,
+                Self::Extended => 2_048,
+            }
+        }
+
+        fn max_timeline_entries(self) -> usize {
+            match self {
+                Self::Compact => 160,
+                Self::Balanced => 320,
+                Self::Extended => 640,
+            }
+        }
+
+        fn next(self) -> Self {
+            match self {
+                Self::Compact => Self::Balanced,
+                Self::Balanced => Self::Extended,
+                Self::Extended => Self::Compact,
+            }
+        }
+    }
+
     #[derive(Clone, Debug)]
     struct MissionWorkerTapRegion {
         bounds: Bounds,
@@ -838,6 +905,11 @@ pub mod ios {
         filter: MissionEventFilter,
     }
 
+    #[derive(Clone, Debug)]
+    struct MissionRetentionTapRegion {
+        bounds: Bounds,
+    }
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum MissionQuickAction {
         Interrupt,
@@ -862,6 +934,7 @@ pub mod ios {
         request_id: String,
         method: String,
         summary: String,
+        payload_preview: String,
         severity: MissionEventSeverity,
         count: usize,
         critical: bool,
@@ -915,6 +988,8 @@ pub mod ios {
         refresh_snapshot_requested: bool,
         mission_control_mode: bool,
         mission_mutations_enabled: bool,
+        mission_retention_profile: MissionRetentionProfile,
+        mission_retention_cycle_requested: bool,
         mission_route: MissionRoute,
         mission_filter: MissionEventFilter,
         mission_pin_critical: bool,
@@ -930,11 +1005,16 @@ pub mod ios {
         mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion>,
         mission_event_tap_regions: Vec<MissionEventTapRegion>,
         mission_filter_tap_regions: Vec<MissionFilterTapRegion>,
+        mission_retention_tap_regions: Vec<MissionRetentionTapRegion>,
         mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion>,
         mission_back_tap_region: Option<Bounds>,
         mission_pin_toggle_tap_region: Option<Bounds>,
         mission_older_tap_region: Option<Bounds>,
         mission_newer_tap_region: Option<Bounds>,
+        mission_inspector_toggle_tap_region: Option<Bounds>,
+        mission_inspector_payload_expanded: bool,
+        mission_inspector_cached_pretty_event_id: Option<u64>,
+        mission_inspector_cached_pretty_payload: String,
         operator_panel_visible: bool,
         active_input_target: InputTarget,
     }
@@ -1071,6 +1151,8 @@ pub mod ios {
                 refresh_snapshot_requested: false,
                 mission_control_mode: true,
                 mission_mutations_enabled: true,
+                mission_retention_profile: MissionRetentionProfile::default(),
+                mission_retention_cycle_requested: false,
                 mission_route: MissionRoute::Overview,
                 mission_filter: MissionEventFilter::All,
                 mission_pin_critical: false,
@@ -1086,11 +1168,16 @@ pub mod ios {
                 mission_lane_mute_tap_regions: Vec::new(),
                 mission_event_tap_regions: Vec::new(),
                 mission_filter_tap_regions: Vec::new(),
+                mission_retention_tap_regions: Vec::new(),
                 mission_quick_action_tap_regions: Vec::new(),
                 mission_back_tap_region: None,
                 mission_pin_toggle_tap_region: None,
                 mission_older_tap_region: None,
                 mission_newer_tap_region: None,
+                mission_inspector_toggle_tap_region: None,
+                mission_inspector_payload_expanded: false,
+                mission_inspector_cached_pretty_event_id: None,
+                mission_inspector_cached_pretty_payload: String::new(),
                 operator_panel_visible: false,
                 active_input_target: InputTarget::None,
             }))
@@ -1134,15 +1221,87 @@ pub mod ios {
             }
         }
 
-        fn cap_payload(value: &str) -> String {
-            if value.chars().count() <= MISSION_INSPECTOR_MAX_PAYLOAD_CHARS {
+        fn cap_payload(value: &str, max_chars: usize) -> String {
+            if value.chars().count() <= max_chars {
                 return value.to_string();
             }
-            let truncated: String = value
-                .chars()
-                .take(MISSION_INSPECTOR_MAX_PAYLOAD_CHARS)
-                .collect();
+            let truncated: String = value.chars().take(max_chars).collect();
             format!("{}…", truncated)
+        }
+
+        fn payload_preview(value: &str) -> String {
+            let trimmed = value.trim();
+            if trimmed.is_empty() || trimmed == "n/a" || trimmed == "{}" || trimmed == "[]" {
+                return String::new();
+            }
+            let collapsed = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+            Self::cap_payload(&collapsed, MISSION_OVERVIEW_PAYLOAD_PREVIEW_CHARS)
+        }
+
+        fn pretty_payload(value: &str) -> String {
+            let trimmed = value.trim();
+            if trimmed.is_empty() || trimmed == "n/a" {
+                return "n/a".to_string();
+            }
+            let starts_like_json = trimmed.starts_with('{') || trimmed.starts_with('[');
+            if !starts_like_json {
+                return Self::cap_payload(trimmed, MISSION_INSPECTOR_EXPANDED_MAX_CHARS);
+            }
+
+            let mut output = String::with_capacity(trimmed.len() + trimmed.len() / 3);
+            let mut depth = 0usize;
+            let mut in_string = false;
+            let mut escaped = false;
+
+            for ch in trimmed.chars() {
+                if escaped {
+                    output.push(ch);
+                    escaped = false;
+                    continue;
+                }
+                if ch == '\\' && in_string {
+                    output.push(ch);
+                    escaped = true;
+                    continue;
+                }
+                if ch == '"' {
+                    in_string = !in_string;
+                    output.push(ch);
+                    continue;
+                }
+                if in_string {
+                    output.push(ch);
+                    continue;
+                }
+
+                match ch {
+                    '{' | '[' => {
+                        output.push(ch);
+                        output.push('\n');
+                        depth = depth.saturating_add(1);
+                        output.push_str(&"  ".repeat(depth));
+                    }
+                    '}' | ']' => {
+                        output.push('\n');
+                        depth = depth.saturating_sub(1);
+                        output.push_str(&"  ".repeat(depth));
+                        output.push(ch);
+                    }
+                    ',' => {
+                        output.push(',');
+                        output.push('\n');
+                        output.push_str(&"  ".repeat(depth));
+                    }
+                    ':' => {
+                        output.push(':');
+                        output.push(' ');
+                    }
+                    c if c.is_whitespace() => {}
+                    _ => output.push(ch),
+                }
+            }
+
+            Self::cap_payload(&output, MISSION_INSPECTOR_EXPANDED_MAX_CHARS)
         }
 
         fn primary_panel_bounds(&self) -> Bounds {
@@ -1165,10 +1324,8 @@ pub mod ios {
                     panel.width() - 20.0,
                     status_height,
                 );
-                let mission_thread_detail = matches!(
-                    self.mission_route,
-                    MissionRoute::ThreadDetail { .. }
-                );
+                let mission_thread_detail =
+                    matches!(self.mission_route, MissionRoute::ThreadDetail { .. });
                 let mission_composer_reserved = if mission_thread_detail {
                     COMPOSER_HEIGHT + CONTROL_GAP + 8.0
                 } else {
@@ -1480,12 +1637,19 @@ pub mod ios {
             }
 
             if self.mission_control_mode {
-                let mission_thread_detail = matches!(self.mission_route, MissionRoute::ThreadDetail { .. });
-                if self.mission_mutations_enabled && mission_thread_detail && composer_bounds.contains(p) {
+                let mission_thread_detail =
+                    matches!(self.mission_route, MissionRoute::ThreadDetail { .. });
+                if self.mission_mutations_enabled
+                    && mission_thread_detail
+                    && composer_bounds.contains(p)
+                {
                     self.active_input_target = InputTarget::Composer;
                     return;
                 }
-                if self.mission_mutations_enabled && mission_thread_detail && send_bounds.contains(p) {
+                if self.mission_mutations_enabled
+                    && mission_thread_detail
+                    && send_bounds.contains(p)
+                {
                     self.send_requested = true;
                     self.active_input_target = InputTarget::None;
                     return;
@@ -1493,6 +1657,9 @@ pub mod ios {
                 if let Some(bounds) = self.mission_back_tap_region {
                     if bounds.contains(p) {
                         self.mission_route = MissionRoute::Overview;
+                        self.mission_inspector_payload_expanded = false;
+                        self.mission_inspector_cached_pretty_event_id = None;
+                        self.mission_inspector_cached_pretty_payload.clear();
                         self.active_input_target = InputTarget::None;
                         return;
                     }
@@ -1519,6 +1686,16 @@ pub mod ios {
                         self.active_input_target = InputTarget::None;
                         return;
                     }
+                }
+                if self
+                    .mission_retention_tap_regions
+                    .iter()
+                    .any(|region| region.bounds.contains(p))
+                {
+                    self.mission_retention_profile = self.mission_retention_profile.next();
+                    self.mission_retention_cycle_requested = true;
+                    self.active_input_target = InputTarget::None;
+                    return;
                 }
                 if self.mission_mutations_enabled {
                     if let Some(region) = self
@@ -1562,6 +1739,9 @@ pub mod ios {
                     self.mission_route = MissionRoute::WorkerDetail {
                         worker_id: region.worker_id.clone(),
                     };
+                    self.mission_inspector_payload_expanded = false;
+                    self.mission_inspector_cached_pretty_event_id = None;
+                    self.mission_inspector_cached_pretty_payload.clear();
                     self.active_input_target = InputTarget::None;
                     return;
                 }
@@ -1574,6 +1754,9 @@ pub mod ios {
                         worker_id: region.worker_id.clone(),
                         thread_id: region.thread_id.clone(),
                     };
+                    self.mission_inspector_payload_expanded = false;
+                    self.mission_inspector_cached_pretty_event_id = None;
+                    self.mission_inspector_cached_pretty_payload.clear();
                     self.active_input_target = InputTarget::None;
                     return;
                 }
@@ -1599,8 +1782,23 @@ pub mod ios {
                     self.mission_route = MissionRoute::EventInspector {
                         event_id: region.event_id,
                     };
+                    self.mission_inspector_payload_expanded = false;
+                    self.mission_inspector_cached_pretty_event_id = None;
+                    self.mission_inspector_cached_pretty_payload.clear();
                     self.active_input_target = InputTarget::None;
                     return;
+                }
+                if let Some(bounds) = self.mission_inspector_toggle_tap_region {
+                    if bounds.contains(p) {
+                        self.mission_inspector_payload_expanded =
+                            !self.mission_inspector_payload_expanded;
+                        if !self.mission_inspector_payload_expanded {
+                            self.mission_inspector_cached_pretty_event_id = None;
+                            self.mission_inspector_cached_pretty_payload.clear();
+                        }
+                        self.active_input_target = InputTarget::None;
+                        return;
+                    }
                 }
                 self.active_input_target = InputTarget::None;
                 return;
@@ -1756,11 +1954,16 @@ pub mod ios {
             self.mission_lane_mute_tap_regions.clear();
             self.mission_event_tap_regions.clear();
             self.mission_filter_tap_regions.clear();
+            self.mission_retention_tap_regions.clear();
             self.mission_quick_action_tap_regions.clear();
             self.mission_back_tap_region = None;
             self.mission_pin_toggle_tap_region = None;
             self.mission_older_tap_region = None;
             self.mission_newer_tap_region = None;
+            self.mission_inspector_toggle_tap_region = None;
+            self.mission_inspector_payload_expanded = false;
+            self.mission_inspector_cached_pretty_event_id = None;
+            self.mission_inspector_cached_pretty_payload.clear();
         }
 
         #[allow(clippy::too_many_arguments)]
@@ -1949,6 +2152,7 @@ pub mod ios {
                 Self::compact_optional(Self::read_utf8_string(occurred_at_ptr, occurred_at_len));
             let payload_json =
                 Self::compact_optional(Self::read_utf8_string(payload_ptr, payload_len));
+            let payload_preview = Self::payload_preview(&payload_json);
 
             self.mission_events.push(MissionEventRecord {
                 id,
@@ -1964,6 +2168,7 @@ pub mod ios {
                 severity: MissionEventSeverity::from_u8(severity),
                 occurred_at,
                 payload_json,
+                payload_preview,
                 resync_marker,
             });
         }
@@ -2060,6 +2265,10 @@ pub mod ios {
             }
         }
 
+        fn set_mission_retention_profile(&mut self, value: u8) {
+            self.mission_retention_profile = MissionRetentionProfile::from_u8(value);
+        }
+
         pub fn consume_send_requested(&mut self) -> bool {
             let requested = self.send_requested;
             self.send_requested = false;
@@ -2147,6 +2356,12 @@ pub mod ios {
         pub fn consume_refresh_snapshot_requested(&mut self) -> bool {
             let requested = self.refresh_snapshot_requested;
             self.refresh_snapshot_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_retention_cycle_requested(&mut self) -> bool {
+            let requested = self.mission_retention_cycle_requested;
+            self.mission_retention_cycle_requested = false;
             requested
         }
 
@@ -2328,6 +2543,11 @@ pub mod ios {
                     }
                 }
             }
+            if !matches!(self.mission_route, MissionRoute::EventInspector { .. }) {
+                self.mission_inspector_payload_expanded = false;
+                self.mission_inspector_cached_pretty_event_id = None;
+                self.mission_inspector_cached_pretty_payload.clear();
+            }
         }
 
         fn mission_route_title(route: &MissionRoute) -> &'static str {
@@ -2391,6 +2611,7 @@ pub mod ios {
                         {
                             previous.anchor_event_id = event.id;
                             previous.seq = event.seq.or(previous.seq);
+                            previous.payload_preview = event.payload_preview.clone();
                             previous.count = previous.count.saturating_add(1);
                             continue;
                         }
@@ -2406,6 +2627,7 @@ pub mod ios {
                     request_id: event.request_id.clone(),
                     method: event.method.clone(),
                     summary: event.summary.clone(),
+                    payload_preview: event.payload_preview.clone(),
                     severity: event.severity,
                     count: 1,
                     critical,
@@ -2466,6 +2688,7 @@ pub mod ios {
             let active_input_target = self.active_input_target;
             let mission_control_mode = self.mission_control_mode;
             let mission_mutations_enabled = self.mission_mutations_enabled;
+            let mission_retention_profile = self.mission_retention_profile;
             let mission_route = self.mission_route.clone();
             let mission_filter = self.mission_filter;
             let mission_pin_critical = self.mission_pin_critical;
@@ -2476,6 +2699,11 @@ pub mod ios {
             let mission_timeline_entries = self.mission_timeline_entries.clone();
             let mission_events = self.mission_events.clone();
             let mission_requests = self.mission_requests.clone();
+            let mission_inspector_payload_expanded = self.mission_inspector_payload_expanded;
+            let mission_inspector_cached_pretty_event_id =
+                self.mission_inspector_cached_pretty_event_id;
+            let mission_inspector_cached_pretty_payload =
+                self.mission_inspector_cached_pretty_payload.clone();
             let operator_panel_bounds = self.operator_panel_bounds();
             let operator_layout = self.operator_layout(operator_panel_bounds);
 
@@ -2546,13 +2774,19 @@ pub mod ios {
             let mut mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion> = Vec::new();
             let mut mission_event_tap_regions: Vec<MissionEventTapRegion> = Vec::new();
             let mut mission_filter_tap_regions: Vec<MissionFilterTapRegion> = Vec::new();
-            let mut mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion> =
-                Vec::new();
+            let mut mission_retention_tap_regions: Vec<MissionRetentionTapRegion> = Vec::new();
+            let mut mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion> = Vec::new();
             let mut mission_back_tap_region: Option<Bounds> = None;
             let mut mission_pin_toggle_tap_region: Option<Bounds> = None;
             let mut mission_older_tap_region: Option<Bounds> = None;
             let mut mission_newer_tap_region: Option<Bounds> = None;
+            let mut mission_inspector_toggle_tap_region: Option<Bounds> = None;
             let mut mission_event_scroll_updated = mission_event_scroll;
+            let mission_inspector_payload_expanded_updated = mission_inspector_payload_expanded;
+            let mut mission_inspector_cached_pretty_event_id_updated =
+                mission_inspector_cached_pretty_event_id;
+            let mut mission_inspector_cached_pretty_payload_updated =
+                mission_inspector_cached_pretty_payload.clone();
 
             paint.scene.draw_quad(
                 Quad::new(transcript_bounds)
@@ -2589,11 +2823,15 @@ pub mod ios {
 
                 let muted_count = mission_muted_lanes.len();
                 let mut summary_text = Text::new(format!(
-                    "events: {} | control: {} | muted={} | pin={}",
+                    "events: {} | control: {} | muted={} | pin={} | ret={} {}ms e{} t{}",
                     events_text,
                     control_text,
                     muted_count,
-                    if mission_pin_critical { "on" } else { "off" }
+                    if mission_pin_critical { "on" } else { "off" },
+                    mission_retention_profile.label(),
+                    mission_retention_profile.cadence_ms(),
+                    mission_retention_profile.max_events(),
+                    mission_retention_profile.max_timeline_entries()
                 ))
                 .font_size(MISSION_STATUS_FONT_SIZE)
                 .color(theme::text::MUTED)
@@ -2626,15 +2864,16 @@ pub mod ios {
                     auxiliary_line_y += 14.0;
                 }
 
-                if let Some(marker) = mission_events.iter().rev().find(|event| event.resync_marker)
+                if let Some(marker) = mission_events
+                    .iter()
+                    .rev()
+                    .find(|event| event.resync_marker)
                 {
-                    let mut reconciled = Text::new(format!(
-                        "history reconciled: {}",
-                        marker.summary
-                    ))
-                    .font_size(MISSION_STATUS_FONT_SIZE)
-                    .color(theme::status::WARNING.with_alpha(0.9))
-                    .no_wrap();
+                    let mut reconciled =
+                        Text::new(format!("history reconciled: {}", marker.summary))
+                            .font_size(MISSION_STATUS_FONT_SIZE)
+                            .color(theme::status::WARNING.with_alpha(0.9))
+                            .no_wrap();
                     reconciled.paint(
                         Bounds::new(
                             context_bounds.x() + 8.0,
@@ -2662,9 +2901,9 @@ pub mod ios {
                     context_bounds.y() + context_bounds.height() - MISSION_FILTER_CHIP_HEIGHT - 6.0;
                 let mut chip_x = context_bounds.x() + 8.0;
                 let right_reserved = if matches!(mission_route, MissionRoute::Overview) {
-                    220.0
+                    328.0
                 } else {
-                    104.0
+                    206.0
                 };
                 for filter in MissionEventFilter::all() {
                     let label = filter.label();
@@ -2709,6 +2948,28 @@ pub mod ios {
                     });
                     chip_x += chip_width + 6.0;
                 }
+
+                let retention_bounds = if matches!(mission_route, MissionRoute::Overview) {
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() - 318.0,
+                        chip_y,
+                        100.0,
+                        MISSION_FILTER_CHIP_HEIGHT,
+                    )
+                } else {
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() - 198.0,
+                        chip_y,
+                        100.0,
+                        MISSION_FILTER_CHIP_HEIGHT,
+                    )
+                };
+                let mut retention = Button::new(mission_retention_profile.label())
+                    .variant(ButtonVariant::Secondary);
+                retention.paint(retention_bounds, &mut paint);
+                mission_retention_tap_regions.push(MissionRetentionTapRegion {
+                    bounds: retention_bounds,
+                });
 
                 let pin_bounds = if matches!(mission_route, MissionRoute::Overview) {
                     Bounds::new(
@@ -2762,10 +3023,8 @@ pub mod ios {
                         let action_row_y = transcript_bounds.y() + 8.0;
                         let action_height = 24.0;
                         let action_gap = 6.0;
-                        let action_width = ((transcript_bounds.width() - 16.0
-                            - action_gap * 3.0)
-                            / 4.0)
-                            .max(66.0);
+                        let action_width =
+                            ((transcript_bounds.width() - 16.0 - action_gap * 3.0) / 4.0).max(66.0);
                         let mut action_x = transcript_bounds.x() + 8.0;
                         let overview_actions = [
                             ("Interrupt", MissionQuickAction::Interrupt),
@@ -2982,12 +3241,28 @@ pub mod ios {
                                 row_summary.paint(
                                     Bounds::new(
                                         row_bounds.x() + 8.0,
-                                        row_bounds.y() + 16.0,
+                                        row_bounds.y() + 18.0,
                                         row_bounds.width() - 12.0,
                                         16.0,
                                     ),
                                     &mut paint,
                                 );
+                                if !event.payload_preview.is_empty() {
+                                    let mut payload_preview =
+                                        Text::new(format!("payload {}", event.payload_preview))
+                                            .font_size(10.6)
+                                            .color(theme::text::MUTED)
+                                            .no_wrap();
+                                    payload_preview.paint(
+                                        Bounds::new(
+                                            row_bounds.x() + 8.0,
+                                            row_bounds.y() + 35.0,
+                                            row_bounds.width() - 12.0,
+                                            14.0,
+                                        ),
+                                        &mut paint,
+                                    );
+                                }
                                 mission_event_tap_regions.push(MissionEventTapRegion {
                                     bounds: row_bounds,
                                     event_id: event.anchor_event_id,
@@ -3051,8 +3326,8 @@ pub mod ios {
                         let action_row_y = detail_bounds.y() + 34.0;
                         let action_height = 24.0;
                         let action_gap = 6.0;
-                        let action_width = ((detail_bounds.width() - action_gap * 3.0) / 4.0)
-                            .max(66.0);
+                        let action_width =
+                            ((detail_bounds.width() - action_gap * 3.0) / 4.0).max(66.0);
                         let mut action_x = detail_bounds.x();
                         let worker_actions = [
                             ("Interrupt", MissionQuickAction::Interrupt),
@@ -3278,13 +3553,11 @@ pub mod ios {
                         let mut thread_requests = mission_requests
                             .iter()
                             .filter(|request| {
-                                request.worker_id == *worker_id
-                                    && request.thread_id == *thread_id
+                                request.worker_id == *worker_id && request.thread_id == *thread_id
                             })
                             .cloned()
                             .collect::<Vec<_>>();
-                        thread_requests
-                            .sort_by(|lhs, rhs| rhs.occurred_at.cmp(&lhs.occurred_at));
+                        thread_requests.sort_by(|lhs, rhs| rhs.occurred_at.cmp(&lhs.occurred_at));
                         if !thread_requests.is_empty() {
                             let mut chip_x = detail_bounds.x();
                             for request in thread_requests.iter().take(3) {
@@ -3349,9 +3622,9 @@ pub mod ios {
                                 &mut paint,
                             );
                         } else {
-                            let available_height =
-                                (detail_bounds.y() + detail_bounds.height() - timeline_top_y)
-                                    .max(24.0);
+                            let available_height = (detail_bounds.y() + detail_bounds.height()
+                                - timeline_top_y)
+                                .max(24.0);
                             let max_rows = (available_height / 24.0).floor() as usize;
                             let start = rows.len().saturating_sub(max_rows.max(1));
                             rows = rows[start..].to_vec();
@@ -3383,9 +3656,7 @@ pub mod ios {
                     }
                     MissionRoute::EventInspector { event_id } => {
                         let detail_bounds = transcript_bounds.inset(8.0);
-                        if let Some(event) = mission_events
-                            .iter()
-                            .find(|item| item.id == *event_id)
+                        if let Some(event) = mission_events.iter().find(|item| item.id == *event_id)
                         {
                             let seq_label = event
                                 .seq
@@ -3441,10 +3712,48 @@ pub mod ios {
                                 );
                             }
 
-                            let payload = Self::cap_payload(&event.payload_json);
-                            let mut payload_text = Text::new(format!("payload\n{}", payload))
-                                .font_size(10.8)
-                                .color(theme::text::PRIMARY);
+                            let toggle_bounds = Bounds::new(
+                                detail_bounds.x() + detail_bounds.width() - 114.0,
+                                detail_bounds.y() + 64.0,
+                                106.0,
+                                24.0,
+                            );
+                            let toggle_label = if mission_inspector_payload_expanded_updated {
+                                "Preview"
+                            } else {
+                                "Expand JSON"
+                            };
+                            let mut toggle =
+                                Button::new(toggle_label).variant(ButtonVariant::Secondary);
+                            toggle.paint(toggle_bounds, &mut paint);
+                            mission_inspector_toggle_tap_region = Some(toggle_bounds);
+
+                            let payload = if mission_inspector_payload_expanded_updated {
+                                if mission_inspector_cached_pretty_event_id_updated
+                                    != Some(event.id)
+                                {
+                                    mission_inspector_cached_pretty_payload_updated =
+                                        Self::pretty_payload(&event.payload_json);
+                                    mission_inspector_cached_pretty_event_id_updated =
+                                        Some(event.id);
+                                }
+                                mission_inspector_cached_pretty_payload_updated.clone()
+                            } else {
+                                Self::cap_payload(
+                                    &event.payload_json,
+                                    MISSION_INSPECTOR_PREVIEW_CHARS
+                                        .min(MISSION_INSPECTOR_MAX_PAYLOAD_CHARS),
+                                )
+                            };
+                            let payload_title = if mission_inspector_payload_expanded_updated {
+                                "payload (expanded)"
+                            } else {
+                                "payload (preview)"
+                            };
+                            let mut payload_text =
+                                Text::new(format!("{}\n{}", payload_title, payload))
+                                    .font_size(10.8)
+                                    .color(theme::text::PRIMARY);
                             payload_text.paint(
                                 Bounds::new(
                                     detail_bounds.x(),
@@ -3600,23 +3909,36 @@ pub mod ios {
                 self.mission_lane_mute_tap_regions = mission_lane_mute_tap_regions;
                 self.mission_event_tap_regions = mission_event_tap_regions;
                 self.mission_filter_tap_regions = mission_filter_tap_regions;
+                self.mission_retention_tap_regions = mission_retention_tap_regions;
                 self.mission_quick_action_tap_regions = mission_quick_action_tap_regions;
                 self.mission_back_tap_region = mission_back_tap_region;
                 self.mission_pin_toggle_tap_region = mission_pin_toggle_tap_region;
                 self.mission_older_tap_region = mission_older_tap_region;
                 self.mission_newer_tap_region = mission_newer_tap_region;
+                self.mission_inspector_toggle_tap_region = mission_inspector_toggle_tap_region;
                 self.mission_event_scroll = mission_event_scroll_updated;
+                self.mission_inspector_payload_expanded =
+                    mission_inspector_payload_expanded_updated;
+                self.mission_inspector_cached_pretty_event_id =
+                    mission_inspector_cached_pretty_event_id_updated;
+                self.mission_inspector_cached_pretty_payload =
+                    mission_inspector_cached_pretty_payload_updated;
             } else {
                 self.mission_worker_tap_regions.clear();
                 self.mission_thread_tap_regions.clear();
                 self.mission_lane_mute_tap_regions.clear();
                 self.mission_event_tap_regions.clear();
                 self.mission_filter_tap_regions.clear();
+                self.mission_retention_tap_regions.clear();
                 self.mission_quick_action_tap_regions.clear();
                 self.mission_back_tap_region = None;
                 self.mission_pin_toggle_tap_region = None;
                 self.mission_older_tap_region = None;
                 self.mission_newer_tap_region = None;
+                self.mission_inspector_toggle_tap_region = None;
+                self.mission_inspector_payload_expanded = false;
+                self.mission_inspector_cached_pretty_event_id = None;
+                self.mission_inspector_cached_pretty_payload.clear();
             }
 
             if operator_panel_visible {
@@ -3799,6 +4121,7 @@ pub mod ios {
                 severity,
                 occurred_at: format!("2026-02-22T00:00:{:02}Z", id % 60),
                 payload_json: "{}".to_string(),
+                payload_preview: String::new(),
                 resync_marker: false,
             }
         }
@@ -3925,6 +4248,59 @@ pub mod ios {
             assert_eq!(folded.len(), 2);
             assert_eq!(folded[0].anchor_event_id, 2);
             assert_eq!(folded[1].anchor_event_id, 3);
+        }
+
+        #[test]
+        fn payload_preview_is_bounded_and_compact() {
+            let preview = IosBackgroundState::payload_preview(
+                "{\n  \"delta\": \"this is a very long payload that should be compacted before rendering on the overview rows\"\n}",
+            );
+            assert!(!preview.contains('\n'));
+            assert!(preview.chars().count() <= MISSION_OVERVIEW_PAYLOAD_PREVIEW_CHARS + 1);
+        }
+
+        #[test]
+        fn pretty_payload_formats_json_without_dropping_keys() {
+            let pretty = IosBackgroundState::pretty_payload("{\"a\":1,\"b\":{\"c\":2}}");
+            assert!(pretty.contains('\n'));
+            assert!(pretty.contains("\"a\""));
+            assert!(pretty.contains("\"b\""));
+            assert!(pretty.contains("\"c\""));
+        }
+
+        #[test]
+        fn fold_benchmark_smoke_for_high_event_density() {
+            let events = (1..=10_000)
+                .map(|id| {
+                    event(
+                        id,
+                        "worker-a",
+                        "thread-a",
+                        "turn/delta",
+                        "worker.event",
+                        "assistant streaming",
+                        MissionEventSeverity::Info,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            let start = std::time::Instant::now();
+            let folded = IosBackgroundState::fold_mission_events_for_overview(
+                &events,
+                MissionEventFilter::All,
+                &HashSet::new(),
+                false,
+            );
+            let elapsed = start.elapsed();
+            eprintln!(
+                "mission_fold_bench events={} folded={} elapsed_ms={}",
+                events.len(),
+                folded.len(),
+                elapsed.as_millis()
+            );
+
+            assert!(!folded.is_empty());
+            assert!(elapsed < std::time::Duration::from_secs(5));
         }
     }
 
@@ -4697,16 +5073,24 @@ pub mod ios {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_retention_profile(
+        state: *mut IosBackgroundState,
+        profile: u8,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_retention_profile(profile);
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_composer_focused(state: *mut IosBackgroundState) -> i32 {
         if state.is_null() {
             return 0;
         }
         let state = unsafe { &*state };
-        if state.composer_focused() {
-            1
-        } else {
-            0
-        }
+        if state.composer_focused() { 1 } else { 0 }
     }
 
     #[unsafe(no_mangle)]
@@ -4729,11 +5113,7 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &mut *state };
-        if state.consume_send_requested() {
-            1
-        } else {
-            0
-        }
+        if state.consume_send_requested() { 1 } else { 0 }
     }
 
     #[unsafe(no_mangle)]
@@ -4946,6 +5326,21 @@ pub mod ios {
         }
     }
 
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_retention_cycle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_retention_cycle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
     /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_login_submit_requested(
@@ -4955,11 +5350,7 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &mut *state };
-        if state.send_code_requested {
-            1
-        } else {
-            0
-        }
+        if state.send_code_requested { 1 } else { 0 }
     }
 
     /// Backward-compatible alias for older iOS bridge code.

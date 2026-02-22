@@ -28,6 +28,31 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     var onThreadReadRequested: (() -> Void)?
     var onStopWorkerRequested: (() -> Void)?
     var onRefreshSnapshotRequested: (() -> Void)?
+    var onMissionRetentionCycleRequested: (() -> Void)?
+
+    private struct MissionBridgeSnapshot {
+        let rows: [(role: CodexChatRole, text: String, streaming: Bool)]
+        let threadLabel: String
+        let turnLabel: String
+        let modelLabel: String
+        let reasoningLabel: String
+        let emptyTitle: String
+        let emptyDetail: String
+        let email: String
+        let verificationCode: String
+        let authStatus: String
+        let workerStatus: String
+        let streamStatus: String
+        let handshakeStatus: String
+        let deviceStatus: String
+        let telemetry: String
+        let events: String
+        let control: String
+        let missionMutationsEnabled: Bool
+        let missionRetentionProfileValue: UInt8
+        let projection: RuntimeMissionControlProjection
+        let cadenceSeconds: TimeInterval
+    }
 
     private var statePtr: UnsafeMutableRawPointer?
     private var displayLink: CADisplayLink?
@@ -38,6 +63,8 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     private var activeInputTarget: WgpuiInputTarget = .none
     private var pendingInputTargetAfterForeground: WgpuiInputTarget?
     private var configuredScale: CGFloat?
+    private var pendingMissionSnapshot: MissionBridgeSnapshot?
+    private var lastMissionProjectionSyncAt: TimeInterval = 0
     private let keyboardProxyField = UITextField(frame: .zero)
 
     private var effectiveScale: CGFloat {
@@ -216,60 +243,16 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
         configuredScale = nil
         renderTickCount = 0
+        pendingMissionSnapshot = nil
+        lastMissionProjectionSyncAt = 0
         displayLink?.invalidate()
         displayLink = nil
     }
 
     func sync(model: CodexHandshakeViewModel) {
-        guard let statePtr else { return }
-
-        WgpuiBackgroundBridge.clearCodexMessages(state: statePtr)
-        for message in missionOverviewRows(model: model).suffix(220) {
-            WgpuiBackgroundBridge.pushCodexMessage(
-                state: statePtr,
-                role: mapRole(message.role),
-                text: message.text,
-                streaming: message.streaming
-            )
-        }
-
-        let modelLabel = model.selectedModelOverride == "default" ? "model:auto" : model.selectedModelOverride
-        let reasoningLabel = model.selectedReasoningEffort == "default" ? "reasoning:auto" : model.selectedReasoningEffort
-        let projection = model.missionControlProjection
-        WgpuiBackgroundBridge.setCodexContext(
-            state: statePtr,
-            thread: "workers: \(projection.workers.count)",
-            turn: "events: \(projection.events.count)",
-            model: modelLabel,
-            reasoning: reasoningLabel
-        )
-        let emptyState = resolveEmptyState(model: model)
-        WgpuiBackgroundBridge.setEmptyState(
-            state: statePtr,
-            title: emptyState.title,
-            detail: emptyState.detail
-        )
-        WgpuiBackgroundBridge.setAuthFields(
-            state: statePtr,
-            email: model.email,
-            code: model.verificationCode,
-            authStatus: authDescription(model.authState)
-        )
-        WgpuiBackgroundBridge.setOperatorStatus(
-            state: statePtr,
-            workerStatus: workerStatusText(model: model),
-            streamStatus: model.missionControlStreamBadge,
-            handshakeStatus: handshakeDescription(model.handshakeState),
-            deviceStatus: "device: \(model.deviceID)",
-            telemetry: telemetrySummary(model: model),
-            events: eventsSummary(model: model),
-            control: controlRequestSummary(model: model)
-        )
-        WgpuiBackgroundBridge.setMissionMutationsEnabled(
-            state: statePtr,
-            enabled: model.missionMutationsAllowed
-        )
-        syncMissionControlProjection(state: statePtr, projection: projection)
+        guard statePtr != nil else { return }
+        pendingMissionSnapshot = buildMissionBridgeSnapshot(model: model)
+        flushMissionSnapshotIfNeeded(force: lastMissionProjectionSyncAt == 0)
 
         composerDraft = model.messageDraft
         WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
@@ -278,6 +261,103 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         WgpuiBackgroundBridge.setAuthEmail(state: statePtr, authEmailDraft)
         WgpuiBackgroundBridge.setAuthCode(state: statePtr, authCodeDraft)
         syncKeyboardProxyText()
+    }
+
+    private func buildMissionBridgeSnapshot(model: CodexHandshakeViewModel) -> MissionBridgeSnapshot {
+        let modelLabel = model.selectedModelOverride == "default" ? "model:auto" : model.selectedModelOverride
+        let reasoningLabel = model.selectedReasoningEffort == "default"
+            ? "reasoning:auto"
+            : model.selectedReasoningEffort
+        let projection = model.missionControlProjection
+        let emptyState = resolveEmptyState(model: model)
+
+        return MissionBridgeSnapshot(
+            rows: missionOverviewRows(model: model),
+            threadLabel: "workers: \(projection.workers.count)",
+            turnLabel: "events: \(projection.events.count)",
+            modelLabel: modelLabel,
+            reasoningLabel: reasoningLabel,
+            emptyTitle: emptyState.title,
+            emptyDetail: emptyState.detail,
+            email: model.email,
+            verificationCode: model.verificationCode,
+            authStatus: authDescription(model.authState),
+            workerStatus: workerStatusText(model: model),
+            streamStatus: model.missionControlStreamBadge,
+            handshakeStatus: handshakeDescription(model.handshakeState),
+            deviceStatus: "device: \(model.deviceID)",
+            telemetry: telemetrySummary(model: model),
+            events: eventsSummary(model: model),
+            control: controlRequestSummary(model: model),
+            missionMutationsEnabled: model.missionMutationsAllowed,
+            missionRetentionProfileValue: model.missionRetentionProfileWgpuiValue,
+            projection: projection,
+            cadenceSeconds: model.missionProjectionCadenceSeconds
+        )
+    }
+
+    private func flushMissionSnapshotIfNeeded(force: Bool) {
+        guard let statePtr,
+              let snapshot = pendingMissionSnapshot else {
+            return
+        }
+
+        let now = ProcessInfo.processInfo.systemUptime
+        let cadenceSeconds = min(0.25, max(0.1, snapshot.cadenceSeconds))
+        if !force, now - lastMissionProjectionSyncAt < cadenceSeconds {
+            return
+        }
+
+        pendingMissionSnapshot = nil
+        lastMissionProjectionSyncAt = now
+
+        WgpuiBackgroundBridge.clearCodexMessages(state: statePtr)
+        for message in snapshot.rows.suffix(220) {
+            WgpuiBackgroundBridge.pushCodexMessage(
+                state: statePtr,
+                role: mapRole(message.role),
+                text: message.text,
+                streaming: message.streaming
+            )
+        }
+
+        WgpuiBackgroundBridge.setCodexContext(
+            state: statePtr,
+            thread: snapshot.threadLabel,
+            turn: snapshot.turnLabel,
+            model: snapshot.modelLabel,
+            reasoning: snapshot.reasoningLabel
+        )
+        WgpuiBackgroundBridge.setEmptyState(
+            state: statePtr,
+            title: snapshot.emptyTitle,
+            detail: snapshot.emptyDetail
+        )
+        WgpuiBackgroundBridge.setAuthFields(
+            state: statePtr,
+            email: snapshot.email,
+            code: snapshot.verificationCode,
+            authStatus: snapshot.authStatus
+        )
+        WgpuiBackgroundBridge.setOperatorStatus(
+            state: statePtr,
+            workerStatus: snapshot.workerStatus,
+            streamStatus: snapshot.streamStatus,
+            handshakeStatus: snapshot.handshakeStatus,
+            deviceStatus: snapshot.deviceStatus,
+            telemetry: snapshot.telemetry,
+            events: snapshot.events,
+            control: snapshot.control
+        )
+        WgpuiBackgroundBridge.setMissionMutationsEnabled(
+            state: statePtr,
+            enabled: snapshot.missionMutationsEnabled
+        )
+        WgpuiBackgroundBridge.setMissionRetentionProfile(
+            state: statePtr,
+            profile: snapshot.missionRetentionProfileValue
+        )
+        syncMissionControlProjection(state: statePtr, projection: snapshot.projection)
     }
 
     private func syncKeyboardProxyText() {
@@ -409,6 +489,7 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
 
     @objc private func tick() {
         guard let statePtr else { return }
+        flushMissionSnapshotIfNeeded(force: false)
         _ = WgpuiBackgroundBridge.render(state: statePtr, logFirstFrame: renderTickCount == 0)
         renderTickCount += 1
 
@@ -456,6 +537,9 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
         if WgpuiBackgroundBridge.consumeRefreshSnapshotRequested(state: statePtr) {
             onRefreshSnapshotRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionRetentionCycleRequested(state: statePtr) {
+            onMissionRetentionCycleRequested?()
         }
 
         let target = WgpuiBackgroundBridge.activeInputTarget(state: statePtr)
@@ -857,6 +941,9 @@ struct WgpuiBackgroundView: View {
                 guard let model else { return }
                 Task { await model.refreshSelectedWorkerSnapshot() }
             }
+            view.onMissionRetentionCycleRequested = { [weak model] in
+                model?.cycleMissionRetentionProfile()
+            }
             return view
         }
 
@@ -881,6 +968,9 @@ struct WgpuiBackgroundView: View {
             uiView.onRefreshSnapshotRequested = { [weak model] in
                 guard let model else { return }
                 Task { await model.refreshSelectedWorkerSnapshot() }
+            }
+            uiView.onMissionRetentionCycleRequested = { [weak model] in
+                model?.cycleMissionRetentionProfile()
             }
             uiView.sync(model: model)
         }

@@ -10,6 +10,7 @@
 - `codex-wgpui-parity-gates.md` — CI guardrails + parity harness coverage for iOS Codex WGPUI lanes.
 - `rust-client-core-integration.md` — deterministic Rust client-core packaging, FFI contract, and CI verification for iOS host integration.
 - `wgpui-codex-ownership-boundaries.md` — current production ownership split for iOS Codex (WGPUI surface, Rust-authoritative lanes, host-adapter boundaries).
+- `mission-control-performance-guardrails.md` — Mission Control cadence, retention profiles, and payload rendering performance defaults/tradeoffs.
 
 Current iOS default UX target:
 

@@ -2,6 +2,80 @@ import Foundation
 import Combine
 import SwiftUI
 
+private enum MissionRetentionProfile: String, CaseIterable {
+    case compact
+    case balanced
+    case extended
+
+    static let fallback: MissionRetentionProfile = .balanced
+
+    var maxEvents: Int {
+        switch self {
+        case .compact:
+            return 512
+        case .balanced:
+            return 1_024
+        case .extended:
+            return 2_048
+        }
+    }
+
+    var maxTimelineEntries: Int {
+        switch self {
+        case .compact:
+            return 160
+        case .balanced:
+            return 320
+        case .extended:
+            return 640
+        }
+    }
+
+    var projectionCadenceSeconds: TimeInterval {
+        switch self {
+        case .compact:
+            return 0.10
+        case .balanced:
+            return 0.16
+        case .extended:
+            return 0.24
+        }
+    }
+
+    var wgpuiValue: UInt8 {
+        switch self {
+        case .compact:
+            return 0
+        case .balanced:
+            return 1
+        case .extended:
+            return 2
+        }
+    }
+
+    var summaryLabel: String {
+        switch self {
+        case .compact:
+            return "Compact"
+        case .balanced:
+            return "Balanced"
+        case .extended:
+            return "Extended"
+        }
+    }
+
+    func next() -> MissionRetentionProfile {
+        switch self {
+        case .compact:
+            return .balanced
+        case .balanced:
+            return .extended
+        case .extended:
+            return .compact
+        }
+    }
+}
+
 @MainActor
 final class CodexHandshakeViewModel: ObservableObject {
     @Published var email: String
@@ -43,6 +117,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published private(set) var controlRequests: [RuntimeCodexControlRequestTracker] = []
     @Published private(set) var missionControlProjection: RuntimeMissionControlProjection = .empty
     @Published private(set) var missionControlReadOnlyMode: Bool = false
+    private var missionRetentionProfile: MissionRetentionProfile = .fallback
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
@@ -89,6 +164,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
     private let khalaWorkerEventsWatermarkKey = "autopilot.ios.codex.khala.workerEventsWatermark"
     private let khalaResumeStoreKey = "autopilot.ios.codex.khala.resumeStore.v1"
+    private let missionRetentionProfileKey = "autopilot.ios.codex.missionRetentionProfile"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
     private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
@@ -169,6 +245,14 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamReconnectStateLabel()
     }
 
+    var missionProjectionCadenceSeconds: TimeInterval {
+        missionRetentionProfile.projectionCadenceSeconds
+    }
+
+    var missionRetentionProfileWgpuiValue: UInt8 {
+        missionRetentionProfile.wgpuiValue
+    }
+
     var canInterruptTurn: Bool {
         guard isAuthenticated else {
             return false
@@ -228,6 +312,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         let savedAuthUserID = defaults.string(forKey: authUserIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let savedWorkerEventsWatermark = max(0, defaults.integer(forKey: khalaWorkerEventsWatermarkKey))
         let savedSelectedWorkerID = defaults.string(forKey: selectedWorkerIDKey)
+        let savedMissionRetentionProfileRaw = defaults.string(forKey: missionRetentionProfileKey)
+        let savedMissionRetentionProfile =
+            MissionRetentionProfile(rawValue: savedMissionRetentionProfileRaw ?? "")
+                ?? .fallback
 
         let loadedResumeStore: CodexResumeCheckpointStore
         if let data = defaults.data(forKey: "autopilot.ios.codex.khala.resumeStore.v1"),
@@ -274,6 +362,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         self.selectedWorkerID = savedSelectedWorkerID
         self.deviceID = resolvedDeviceID
+        self.missionRetentionProfile = savedMissionRetentionProfile
 
         // Migrate any legacy single-watermark value into namespaced checkpoint storage.
         if initialWatermark > resumeWatermark, let workerID = savedSelectedWorkerID {
@@ -289,8 +378,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         missionControlProjection = missionControlStore.configure(
-            maxEvents: 2_048,
-            maxTimelineEntries: 640
+            maxEvents: savedMissionRetentionProfile.maxEvents,
+            maxTimelineEntries: savedMissionRetentionProfile.maxTimelineEntries
         )
     }
 
@@ -466,6 +555,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         controlCoordinator = RuntimeCodexControlCoordinator()
         controlRequests = []
         missionControlProjection = missionControlStore.reset()
+        missionControlProjection = missionControlStore.configure(
+            maxEvents: missionRetentionProfile.maxEvents,
+            maxTimelineEntries: missionRetentionProfile.maxTimelineEntries
+        )
         resetReconnectTracking()
         let namespaceToRemove = currentResumeNamespace
 
@@ -625,6 +718,16 @@ final class CodexHandshakeViewModel: ObservableObject {
             current: selectedReasoningEffort,
             options: reasoningEffortOptions
         )
+    }
+
+    func cycleMissionRetentionProfile() {
+        missionRetentionProfile = missionRetentionProfile.next()
+        defaults.set(missionRetentionProfile.rawValue, forKey: missionRetentionProfileKey)
+        missionControlProjection = missionControlStore.configure(
+            maxEvents: missionRetentionProfile.maxEvents,
+            maxTimelineEntries: missionRetentionProfile.maxTimelineEntries
+        )
+        statusMessage = "Mission retention \(missionRetentionProfile.summaryLabel): \(missionRetentionProfile.maxEvents) events / \(missionRetentionProfile.maxTimelineEntries) timeline / \(Int((missionRetentionProfile.projectionCadenceSeconds * 1_000).rounded()))ms."
     }
 
     @discardableResult

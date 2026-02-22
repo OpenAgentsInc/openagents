@@ -254,6 +254,9 @@ private func wgpui_ios_background_set_active_input_target(_ state: UnsafeMutable
 @_silgen_name("wgpui_ios_background_set_mission_mutations_enabled")
 private func wgpui_ios_background_set_mission_mutations_enabled(_ state: UnsafeMutableRawPointer?, _ enabled: Int32)
 
+@_silgen_name("wgpui_ios_background_set_mission_retention_profile")
+private func wgpui_ios_background_set_mission_retention_profile(_ state: UnsafeMutableRawPointer?, _ profile: UInt8)
+
 @_silgen_name("wgpui_ios_background_consume_send_requested")
 private func wgpui_ios_background_consume_send_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
@@ -298,6 +301,9 @@ private func wgpui_ios_background_consume_stop_worker_requested(_ state: UnsafeM
 
 @_silgen_name("wgpui_ios_background_consume_refresh_snapshot_requested")
 private func wgpui_ios_background_consume_refresh_snapshot_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_retention_cycle_requested")
+private func wgpui_ios_background_consume_mission_retention_cycle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
 // Backward-compatible alias symbols.
 @_silgen_name("wgpui_ios_background_login_submit_requested")
@@ -772,6 +778,10 @@ enum WgpuiBackgroundBridge {
         wgpui_ios_background_set_mission_mutations_enabled(state, enabled ? 1 : 0)
     }
 
+    static func setMissionRetentionProfile(state: UnsafeMutableRawPointer?, profile: UInt8) {
+        wgpui_ios_background_set_mission_retention_profile(state, profile)
+    }
+
     static func consumeSendRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_send_requested(state) != 0
     }
@@ -830,6 +840,10 @@ enum WgpuiBackgroundBridge {
 
     static func consumeRefreshSnapshotRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_refresh_snapshot_requested(state) != 0
+    }
+
+    static func consumeMissionRetentionCycleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_retention_cycle_requested(state) != 0
     }
 
     // Compatibility wrappers (legacy login naming).
