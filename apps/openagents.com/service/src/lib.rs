@@ -13,7 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use chrono::{SecondsFormat, Utc};
 use hmac::{Hmac, Mac};
 use openagents_client_core::compatibility::{
@@ -584,6 +584,21 @@ struct AgentPaymentsSendSparkRequestPayload {
     amount_sats: u64,
     #[serde(default, alias = "timeoutMs")]
     timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct AgentInvoicePaymentResult {
+    payment_id: Option<String>,
+    preimage: String,
+    status: String,
+    raw: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+struct AgentInvoicePaymentError {
+    status: StatusCode,
+    code: String,
+    message: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4819,19 +4834,52 @@ async fn agent_payments_pay_invoice(
         );
     };
 
-    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
-    let preimage = Uuid::new_v4().simple().to_string();
-    let payment_id = format!("payment_{}", Uuid::new_v4().simple());
-    let status = "completed";
-    let raw = serde_json::json!({
-        "paymentId": payment_id,
-        "preimage": preimage,
-        "status": status,
-        "quotedAmountMsats": quoted_amount_msats,
-        "maxAmountMsats": max_amount_msats,
-        "timeoutMs": timeout_ms,
-        "host": payload.host,
-    });
+    let wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let payer_kind = l402_invoice_payer_kind();
+    let payment = match agent_payments_pay_invoice_with_adapter(
+        &state,
+        payer_kind.as_str(),
+        &bundle.user.id,
+        &wallet,
+        &invoice,
+        max_amount_msats,
+        timeout_ms,
+        payload.host.clone(),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            state.observability.audit(
+                AuditEvent::new("agent_payments.invoice_pay_failed", request_id.clone())
+                    .with_user_id(bundle.user.id)
+                    .with_session_id(bundle.session.session_id)
+                    .with_org_id(bundle.session.active_org_id)
+                    .with_device_id(bundle.session.device_id)
+                    .with_attribute(
+                        "quoted_amount_msats",
+                        quoted_amount_msats.unwrap_or_default().to_string(),
+                    )
+                    .with_attribute("max_amount_msats", max_amount_msats.to_string())
+                    .with_attribute("payment_backend", payer_kind)
+                    .with_attribute("error_code", error.code.clone())
+                    .with_attribute("error_message", error.message.clone()),
+            );
+            state
+                .observability
+                .increment_counter("agent_payments.invoice_pay_failed", &request_id);
+            return Ok((
+                error.status,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": error.code,
+                        "message": error.message,
+                    }
+                })),
+            )
+                .into_response());
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("agent_payments.invoice_paid", request_id.clone())
@@ -4839,8 +4887,9 @@ async fn agent_payments_pay_invoice(
             .with_session_id(bundle.session.session_id)
             .with_org_id(bundle.session.active_org_id)
             .with_device_id(bundle.session.device_id)
-            .with_attribute("payment_id", payment_id.clone())
-            .with_attribute("status", status.to_string())
+            .with_attribute("payment_id", payment.payment_id.clone().unwrap_or_default())
+            .with_attribute("status", payment.status.clone())
+            .with_attribute("payment_backend", payer_kind)
             .with_attribute("max_amount_msats", max_amount_msats.to_string()),
     );
     state
@@ -4849,16 +4898,532 @@ async fn agent_payments_pay_invoice(
 
     Ok(ok_data(serde_json::json!({
         "payment": {
-            "paymentId": payment_id,
-            "preimage": preimage.clone(),
-            "proofReference": format!("preimage:{}", preimage.chars().take(16).collect::<String>()),
+            "paymentId": payment.payment_id,
+            "preimage": payment.preimage.clone(),
+            "proofReference": format!("preimage:{}", payment.preimage.chars().take(16).collect::<String>()),
             "quotedAmountMsats": quoted_amount_msats,
             "maxAmountMsats": max_amount_msats,
-            "status": status,
-            "raw": raw,
+            "status": payment.status,
+            "raw": payment.raw,
         }
     }))
     .into_response())
+}
+
+async fn agent_payments_pay_invoice_with_adapter(
+    state: &AppState,
+    payer_kind: &str,
+    user_id: &str,
+    wallet: &UserSparkWalletRecord,
+    invoice: &str,
+    max_amount_msats: u64,
+    timeout_ms: u64,
+    host: Option<String>,
+) -> Result<AgentInvoicePaymentResult, AgentInvoicePaymentError> {
+    agent_payments_invoice_cap_guard(invoice, max_amount_msats)?;
+
+    match payer_kind {
+        "fake" => {
+            agent_payments_pay_invoice_fake(invoice, max_amount_msats, timeout_ms, host).await
+        }
+        "spark_wallet" => {
+            agent_payments_pay_invoice_spark(
+                state,
+                user_id,
+                wallet,
+                invoice,
+                max_amount_msats,
+                timeout_ms,
+                host,
+            )
+            .await
+        }
+        "lnd_rest" => agent_payments_pay_invoice_lnd(invoice, max_amount_msats, timeout_ms).await,
+        _ => Err(agent_payments_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invoice_payer_invalid",
+            format!("Unknown L402 invoice payer: {payer_kind}"),
+        )),
+    }
+}
+
+fn agent_payments_invoice_cap_guard(
+    invoice: &str,
+    max_amount_msats: u64,
+) -> Result<(), AgentInvoicePaymentError> {
+    let Some(quoted_amount_msats) = Bolt11::amount_msats(invoice) else {
+        return Ok(());
+    };
+    if quoted_amount_msats > max_amount_msats {
+        return Err(agent_payments_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "quoted_amount_exceeds_cap",
+            "Quoted invoice amount exceeds maxAmountMsats.",
+        ));
+    }
+    Ok(())
+}
+
+fn l402_invoice_payer_kind() -> String {
+    env_non_empty_any(&["L402_INVOICE_PAYER", "OA_L402_INVOICE_PAYER"])
+        .unwrap_or_else(|| {
+            if cfg!(test) {
+                "fake".to_string()
+            } else {
+                "spark_wallet".to_string()
+            }
+        })
+        .to_ascii_lowercase()
+}
+
+async fn agent_payments_pay_invoice_fake(
+    invoice: &str,
+    max_amount_msats: u64,
+    timeout_ms: u64,
+    host: Option<String>,
+) -> Result<AgentInvoicePaymentResult, AgentInvoicePaymentError> {
+    let preimage = sha256_hex(format!("preimage:{invoice}").as_bytes());
+    let payment_hash = sha256_hex(format!("payment:{invoice}").as_bytes());
+    let payment_id = format!("fake:{}", &payment_hash[..16]);
+
+    Ok(AgentInvoicePaymentResult {
+        payment_id: Some(payment_id.clone()),
+        preimage: preimage.clone(),
+        status: "completed".to_string(),
+        raw: serde_json::json!({
+            "paymentId": payment_id,
+            "preimage": preimage,
+            "status": "completed",
+            "maxAmountMsats": max_amount_msats,
+            "timeoutMs": timeout_ms,
+            "host": host.and_then(non_empty).map(|value| value.to_lowercase()),
+        }),
+    })
+}
+
+async fn agent_payments_pay_invoice_spark(
+    _state: &AppState,
+    _user_id: &str,
+    wallet: &UserSparkWalletRecord,
+    invoice: &str,
+    max_amount_msats: u64,
+    timeout_ms: u64,
+    host: Option<String>,
+) -> Result<AgentInvoicePaymentResult, AgentInvoicePaymentError> {
+    let Some(base_url) = env_non_empty_any(&[
+        "SPARK_EXECUTOR_BASE_URL",
+        "OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL",
+    ]) else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_not_configured",
+            "Spark wallet executor is not configured in this environment. Set SPARK_EXECUTOR_BASE_URL and SPARK_EXECUTOR_AUTH_TOKEN.",
+        ));
+    };
+
+    let executor_timeout_ms = env_u64("SPARK_EXECUTOR_TIMEOUT_MS", 20_000);
+    let timeout_seconds = executor_timeout_ms.div_ceil(1000).max(1);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_seconds))
+        .build()
+        .map_err(|error| {
+            agent_payments_error(
+                StatusCode::BAD_GATEWAY,
+                "spark_executor_error",
+                format!("Failed to build Spark executor client: {error}"),
+            )
+        })?;
+
+    let mut request = client
+        .post(format!(
+            "{}/wallets/pay-bolt11",
+            base_url.trim_end_matches('/')
+        ))
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::CONTENT_TYPE, "application/json");
+
+    if let Some(auth_token) = env_non_empty_any(&[
+        "SPARK_EXECUTOR_AUTH_TOKEN",
+        "OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN",
+    ]) {
+        request = request.bearer_auth(auth_token);
+    }
+
+    let normalized_host = host.and_then(non_empty).map(|value| value.to_lowercase());
+    let mut payload = serde_json::json!({
+        "walletId": wallet.wallet_id,
+        "mnemonic": wallet.mnemonic,
+        "invoice": invoice,
+        "maxAmountMsats": max_amount_msats,
+        "timeoutMs": timeout_ms.max(1_000),
+    });
+    if let Some(value) = normalized_host {
+        payload["host"] = serde_json::json!(value);
+    }
+
+    let response = request.json(&payload).send().await.map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_error",
+            format!("Spark executor request failed: {error}"),
+        )
+    })?;
+    let status = response.status();
+    let body_text = response.text().await.map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_error",
+            format!("Spark executor response read failed: {error}"),
+        )
+    })?;
+    let body = serde_json::from_str::<serde_json::Value>(&body_text).map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_error",
+            format!("Spark executor returned non-JSON response: {error}"),
+        )
+    })?;
+
+    let payload_failed = body
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .map(|ok| !ok)
+        .unwrap_or(false);
+    if !status.is_success() || payload_failed {
+        let error = body.get("error").and_then(serde_json::Value::as_object);
+        let code = error
+            .and_then(|value| value.get("code"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("spark_executor_error");
+        let message = error
+            .and_then(|value| value.get("message"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!(
+                    "Spark executor request failed with HTTP {}",
+                    status.as_u16()
+                )
+            });
+        return Err(agent_payments_error(StatusCode::BAD_GATEWAY, code, message));
+    }
+
+    let Some(result) = json_result_object(&body) else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_error",
+            "Spark executor response did not include an object result.",
+        ));
+    };
+
+    let Some(preimage) = json_first_string(
+        result,
+        &[
+            "preimage",
+            "paymentPreimage",
+            "payment.preimage",
+            "payment.paymentPreimage",
+        ],
+    ) else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_error",
+            "Spark wallet payer did not return a payment preimage.",
+        ));
+    };
+    let preimage = normalize_preimage_hex(&preimage)?;
+    let payment_id = json_first_string(
+        result,
+        &[
+            "paymentId",
+            "paymentHash",
+            "payment.paymentId",
+            "payment.paymentHash",
+        ],
+    );
+    let status = json_first_string(result, &["status", "payment.status"])
+        .unwrap_or_else(|| "completed".to_string());
+
+    Ok(AgentInvoicePaymentResult {
+        payment_id,
+        preimage,
+        status,
+        raw: result.clone(),
+    })
+}
+
+async fn agent_payments_pay_invoice_lnd(
+    invoice: &str,
+    _max_amount_msats: u64,
+    timeout_ms: u64,
+) -> Result<AgentInvoicePaymentResult, AgentInvoicePaymentError> {
+    let Some(base_url) = env_non_empty("LND_REST_BASE_URL") else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_not_configured",
+            "LND REST payer not configured. Set LND_REST_BASE_URL and LND_REST_MACAROON_HEX.",
+        ));
+    };
+    let Some(macaroon_hex) = env_non_empty("LND_REST_MACAROON_HEX") else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_not_configured",
+            "LND REST payer not configured. Set LND_REST_BASE_URL and LND_REST_MACAROON_HEX.",
+        ));
+    };
+
+    let timeout_seconds = timeout_ms.div_ceil(1000).max(1);
+    let mut client_builder =
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(timeout_seconds));
+
+    if let Some(cert_base64) = env_non_empty("LND_REST_TLS_CERT_BASE64") {
+        let decoded = STANDARD.decode(cert_base64).map_err(|error| {
+            agent_payments_error(
+                StatusCode::BAD_GATEWAY,
+                "lnd_rest_invalid_tls_cert",
+                format!("Invalid base64 in LND_REST_TLS_CERT_BASE64: {error}"),
+            )
+        })?;
+        let certificate = reqwest::Certificate::from_pem(&decoded)
+            .or_else(|_| reqwest::Certificate::from_der(&decoded))
+            .map_err(|error| {
+                agent_payments_error(
+                    StatusCode::BAD_GATEWAY,
+                    "lnd_rest_invalid_tls_cert",
+                    format!("Invalid certificate in LND_REST_TLS_CERT_BASE64: {error}"),
+                )
+            })?;
+        client_builder = client_builder.add_root_certificate(certificate);
+    } else if !env_bool("LND_REST_TLS_VERIFY", true) {
+        client_builder = client_builder.danger_accept_invalid_certs(true);
+    }
+
+    let client = client_builder.build().map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            format!("Failed to build LND REST client: {error}"),
+        )
+    })?;
+
+    let response = client
+        .post(format!(
+            "{}/v1/channels/transactions",
+            base_url.trim_end_matches('/')
+        ))
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&serde_json::json!({
+            "payment_request": invoice,
+        }))
+        .send()
+        .await
+        .map_err(|error| {
+            agent_payments_error(
+                StatusCode::BAD_GATEWAY,
+                "lnd_rest_error",
+                format!("LND REST pay request failed: {error}"),
+            )
+        })?;
+
+    let status = response.status();
+    let body_text = response.text().await.map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            format!("LND REST pay response read failed: {error}"),
+        )
+    })?;
+    if !status.is_success() {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            format!(
+                "LND REST pay failed: HTTP {} {}",
+                status.as_u16(),
+                body_text
+            ),
+        ));
+    }
+
+    let body = serde_json::from_str::<serde_json::Value>(&body_text).map_err(|error| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            format!("LND REST pay failed: invalid JSON response ({error})"),
+        )
+    })?;
+    let Some(object) = body.as_object() else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            "LND REST pay failed: invalid JSON response",
+        ));
+    };
+
+    if let Some(payment_error) = object
+        .get("payment_error")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            format!("LND REST pay failed: {payment_error}"),
+        ));
+    }
+
+    let Some(preimage_raw) = object
+        .get("payment_preimage")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            "LND REST pay failed: missing payment_preimage",
+        ));
+    };
+    let preimage = normalize_preimage_hex(preimage_raw).map_err(|_| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "lnd_rest_error",
+            "LND REST pay failed: payment_preimage is neither hex nor base64",
+        )
+    })?;
+
+    Ok(AgentInvoicePaymentResult {
+        payment_id: object
+            .get("payment_hash")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        preimage,
+        status: "completed".to_string(),
+        raw: body,
+    })
+}
+
+fn agent_payments_error(
+    status: StatusCode,
+    code: &str,
+    message: impl Into<String>,
+) -> AgentInvoicePaymentError {
+    AgentInvoicePaymentError {
+        status,
+        code: code.to_string(),
+        message: message.into(),
+    }
+}
+
+fn json_result_object(payload: &serde_json::Value) -> Option<&serde_json::Value> {
+    let result = payload
+        .get("result")
+        .or_else(|| payload.get("status"))
+        .or_else(|| payload.get("data"))
+        .unwrap_or(payload);
+    result.as_object().map(|_| result)
+}
+
+fn json_first_string(payload: &serde_json::Value, paths: &[&str]) -> Option<String> {
+    for path in paths {
+        let mut current = payload;
+        let mut found = true;
+        for segment in path.split('.') {
+            let Some(next) = current.get(segment) else {
+                found = false;
+                break;
+            };
+            current = next;
+        }
+        if !found {
+            continue;
+        }
+        if let Some(value) = current
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn normalize_preimage_hex(preimage: &str) -> Result<String, AgentInvoicePaymentError> {
+    let value = preimage.trim();
+    if value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Ok(value.to_ascii_lowercase());
+    }
+    let decoded = STANDARD.decode(value).map_err(|_| {
+        agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "invoice_payer_error",
+            "payment preimage is neither hex nor base64",
+        )
+    })?;
+    Ok(bytes_to_hex(&decoded))
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
+    for byte in bytes {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}
+
+fn env_non_empty_any(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| env_non_empty(key))
+}
+
+fn env_non_empty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .map(|value| match value.as_str() {
+            "1" | "true" | "yes" => true,
+            "0" | "false" | "no" => false,
+            _ => default,
+        })
+        .unwrap_or(default)
+}
+
+fn l402_allowlist_hosts_from_env() -> Vec<String> {
+    env_non_empty("L402_ALLOWLIST_HOSTS")
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec!["sats4ai.com".to_string(), "l402.openagents.com".to_string()])
 }
 
 async fn agent_payments_send_spark(
@@ -7000,25 +7565,34 @@ fn l402_wallet_payload(wallet: Option<&UserSparkWalletRecord>) -> serde_json::Va
 }
 
 fn l402_settings_payload() -> serde_json::Value {
+    let invoice_payer = l402_invoice_payer_kind();
+    let allowlist_hosts = l402_allowlist_hosts_from_env();
     serde_json::json!({
-        "enforceHostAllowlist": false,
-        "allowlistHosts": Vec::<String>::new(),
-        "invoicePayer": "unknown",
-        "credentialTtlSeconds": 0,
-        "paymentTimeoutMs": 0,
-        "responseMaxBytes": 0,
-        "responsePreviewBytes": 0,
+        "enforceHostAllowlist": env_bool("L402_ENFORCE_HOST_ALLOWLIST", false),
+        "allowlistHosts": allowlist_hosts,
+        "invoicePayer": invoice_payer,
+        "credentialTtlSeconds": env_u64("L402_CREDENTIAL_TTL_SECONDS", 600),
+        "paymentTimeoutMs": env_u64("L402_PAYMENT_TIMEOUT_MS", 12_000),
+        "responseMaxBytes": env_u64("L402_RESPONSE_MAX_BYTES", 65_536),
+        "responsePreviewBytes": env_u64("L402_RESPONSE_PREVIEW_BYTES", 1_024),
     })
 }
 
 fn l402_deployments_config_snapshot_payload() -> serde_json::Value {
+    let invoice_payer = l402_invoice_payer_kind();
+    let allowlist_hosts = l402_allowlist_hosts_from_env();
     serde_json::json!({
-        "enforceHostAllowlist": false,
-        "allowlistHosts": Vec::<String>::new(),
-        "invoicePayer": "unknown",
-        "credentialTtlSeconds": 0,
-        "paymentTimeoutMs": 0,
-        "demoPresets": Vec::<String>::new(),
+        "enforceHostAllowlist": env_bool("L402_ENFORCE_HOST_ALLOWLIST", false),
+        "allowlistHosts": allowlist_hosts,
+        "invoicePayer": invoice_payer,
+        "credentialTtlSeconds": env_u64("L402_CREDENTIAL_TTL_SECONDS", 600),
+        "paymentTimeoutMs": env_u64("L402_PAYMENT_TIMEOUT_MS", 12_000),
+        "demoPresets": vec![
+            "sats4ai",
+            "ep212_openagents_premium",
+            "ep212_openagents_expensive",
+            "fake",
+        ],
     })
 }
 
@@ -11339,6 +11913,7 @@ mod tests {
     use axum::http::{HeaderValue, Request, StatusCode};
     use axum::routing::post;
     use axum::{Json, Router};
+    use base64::Engine as _;
     use chrono::Utc;
     use hmac::Mac;
     use http_body_util::BodyExt;
@@ -17543,7 +18118,16 @@ mod tests {
         assert_eq!(pay_response.status(), StatusCode::OK);
         let pay_body = read_json(pay_response).await?;
         assert_eq!(pay_body["data"]["payment"]["status"], json!("completed"));
-        assert!(pay_body["data"]["payment"]["paymentId"].is_string());
+        let pay_payment_id = pay_body["data"]["payment"]["paymentId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let pay_preimage = pay_body["data"]["payment"]["preimage"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(pay_payment_id.starts_with("fake:"));
+        assert_eq!(pay_preimage.len(), 64);
 
         let pay_alias_request = Request::builder()
             .method("POST")
@@ -17559,6 +18143,14 @@ mod tests {
         assert_eq!(
             pay_alias_body["data"]["payment"]["status"],
             json!("completed")
+        );
+        assert_eq!(
+            pay_alias_body["data"]["payment"]["paymentId"],
+            json!(pay_payment_id)
+        );
+        assert_eq!(
+            pay_alias_body["data"]["payment"]["preimage"],
+            json!(pay_preimage)
         );
 
         let send_request = Request::builder()
@@ -17591,6 +18183,47 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn agent_payments_fake_payer_is_deterministic_and_cap_guard_rejects_overage() {
+        let invoice = "lnbc42n1invoicefixture";
+        let payment = super::agent_payments_pay_invoice_fake(
+            invoice,
+            42_000,
+            12_000,
+            Some("Sats4Ai.Com".to_string()),
+        )
+        .await
+        .expect("fake payer should succeed");
+
+        let expected_payment_hash = super::sha256_hex(format!("payment:{invoice}").as_bytes());
+        let expected_payment_id = format!("fake:{}", &expected_payment_hash[..16]);
+        let expected_preimage = super::sha256_hex(format!("preimage:{invoice}").as_bytes());
+        assert_eq!(payment.payment_id, Some(expected_payment_id));
+        assert_eq!(payment.preimage, expected_preimage);
+        assert_eq!(payment.raw["host"], json!("sats4ai.com"));
+
+        let cap_error = super::agent_payments_invoice_cap_guard("lnbc2000n1toobig", 10_000)
+            .expect_err("expected over-cap guard failure");
+        assert_eq!(cap_error.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cap_error.code, "quoted_amount_exceeds_cap");
+    }
+
+    #[test]
+    fn normalize_preimage_hex_handles_hex_and_base64_forms() {
+        let hex_input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let normalized_hex = super::normalize_preimage_hex(hex_input).expect("hex normalization");
+        assert_eq!(
+            normalized_hex,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+
+        let bytes = vec![0x11u8; 32];
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let normalized_b64 =
+            super::normalize_preimage_hex(&encoded).expect("base64 normalization to hex");
+        assert_eq!(normalized_b64, super::bytes_to_hex(&bytes));
     }
 
     #[tokio::test]

@@ -1988,12 +1988,12 @@ fn response_example(key: &str) -> Option<Value> {
                 },
                 "settings": {
                     "enforceHostAllowlist": false,
-                    "allowlistHosts": [],
-                    "invoicePayer": "unknown",
-                    "credentialTtlSeconds": 0,
-                    "paymentTimeoutMs": 0,
-                    "responseMaxBytes": 0,
-                    "responsePreviewBytes": 0
+                    "allowlistHosts": ["sats4ai.com", "l402.openagents.com"],
+                    "invoicePayer": "spark_wallet",
+                    "credentialTtlSeconds": 600,
+                    "paymentTimeoutMs": 12000,
+                    "responseMaxBytes": 65536,
+                    "responsePreviewBytes": 1024
                 },
                 "filter": {
                     "autopilot": {
@@ -2206,11 +2206,11 @@ fn response_example(key: &str) -> Option<Value> {
                 ],
                 "configSnapshot": {
                     "enforceHostAllowlist": false,
-                    "allowlistHosts": [],
-                    "invoicePayer": "unknown",
-                    "credentialTtlSeconds": 0,
-                    "paymentTimeoutMs": 0,
-                    "demoPresets": []
+                    "allowlistHosts": ["sats4ai.com", "l402.openagents.com"],
+                    "invoicePayer": "spark_wallet",
+                    "credentialTtlSeconds": 600,
+                    "paymentTimeoutMs": 12000,
+                    "demoPresets": ["sats4ai", "ep212_openagents_premium", "ep212_openagents_expensive", "fake"]
                 },
                 "filter": {
                     "autopilot": null
