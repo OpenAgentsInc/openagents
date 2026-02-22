@@ -76,6 +76,8 @@ mod wasm {
         static SETTINGS_RESEND_TEST_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static SETTINGS_GOOGLE_CONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static SETTINGS_GOOGLE_DISCONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static L402_SURFACE_STATE: RefCell<L402SurfaceState> = RefCell::new(L402SurfaceState::default());
+        static L402_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
         static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
@@ -188,6 +190,14 @@ mod wasm {
         google_connected: Option<bool>,
         google_secret_last4: Option<String>,
         last_status: Option<String>,
+        last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct L402SurfaceState {
+        loaded_session_id: Option<String>,
+        loaded_route_path: Option<String>,
+        payload: Option<serde_json::Value>,
         last_error: Option<String>,
     }
 
@@ -374,6 +384,11 @@ mod wasm {
     #[derive(Debug, Clone, Deserialize)]
     struct SettingsDeleteProfilePayload {
         deleted: bool,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct JsonDataEnvelope {
+        data: serde_json::Value,
     }
 
     #[derive(Debug, Clone, Serialize)]
@@ -775,6 +790,7 @@ mod wasm {
         APP_STATE.with(|state| replace_route_in_browser_history(&state.borrow().route));
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
+        schedule_l402_surface_refresh();
         render_codex_chat_dom();
 
         let dom_ready_latency_ms =
@@ -1049,6 +1065,7 @@ mod wasm {
                     clear_runtime_sync_state();
                     reset_management_surface_state();
                     reset_settings_surface_state();
+                    reset_l402_surface_state();
                     reset_codex_history_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
@@ -1066,6 +1083,7 @@ mod wasm {
         let Some(tokens) = load_tokens().or_else(auth_tokens_from_state) else {
             reset_management_surface_state();
             reset_settings_surface_state();
+            reset_l402_surface_state();
             reset_codex_history_state();
             apply_auth_action(AppAction::AuthSignedOut);
             return Ok(());
@@ -1108,6 +1126,7 @@ mod wasm {
                             clear_runtime_sync_state();
                             reset_management_surface_state();
                             reset_settings_surface_state();
+                            reset_l402_surface_state();
                             reset_codex_history_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
@@ -1169,6 +1188,7 @@ mod wasm {
         clear_runtime_sync_state();
         reset_management_surface_state();
         reset_settings_surface_state();
+        reset_l402_surface_state();
         reset_codex_history_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
@@ -1216,6 +1236,7 @@ mod wasm {
         schedule_codex_history_refresh();
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
+        schedule_l402_surface_refresh();
     }
 
     async fn refresh_then_hydrate(
@@ -1717,6 +1738,7 @@ mod wasm {
         schedule_codex_history_refresh();
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
+        schedule_l402_surface_refresh();
         render_codex_chat_dom();
     }
 
@@ -1920,6 +1942,10 @@ mod wasm {
         matches!(route, AppRoute::Settings { .. })
     }
 
+    fn route_is_l402_surface(route: &AppRoute) -> bool {
+        matches!(route, AppRoute::Billing { .. })
+    }
+
     fn route_is_codex_chat_surface(route: &AppRoute) -> bool {
         matches!(
             route,
@@ -1948,6 +1974,13 @@ mod wasm {
         SETTINGS_SURFACE_LOADING.with(|loading| loading.set(false));
         SETTINGS_SURFACE_STATE.with(|state| {
             *state.borrow_mut() = SettingsSurfaceState::default();
+        });
+    }
+
+    fn reset_l402_surface_state() {
+        L402_SURFACE_LOADING.with(|loading| loading.set(false));
+        L402_SURFACE_STATE.with(|state| {
+            *state.borrow_mut() = L402SurfaceState::default();
         });
     }
 
@@ -2410,6 +2443,130 @@ mod wasm {
         };
         apply_autopilot_payload_to_settings_state(&mut state, autopilots.data.first());
         Ok(state)
+    }
+
+    fn schedule_l402_surface_refresh() {
+        let (access_token, session_id, route) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (
+                state.auth.access_token.clone(),
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.clone()),
+                state.route.clone(),
+            )
+        });
+
+        if !route_is_l402_surface(&route) {
+            return;
+        }
+
+        let route_path = route.to_path();
+        let Some(access_token) = access_token else {
+            reset_l402_surface_state();
+            return;
+        };
+        let Some(session_id) = session_id else {
+            reset_l402_surface_state();
+            return;
+        };
+        if access_token.trim().is_empty() {
+            reset_l402_surface_state();
+            return;
+        }
+
+        let already_loaded = L402_SURFACE_STATE.with(|state| {
+            let state = state.borrow();
+            state.loaded_session_id.as_deref() == Some(session_id.as_str())
+                && state.loaded_route_path.as_deref() == Some(route_path.as_str())
+                && state.last_error.is_none()
+        });
+        if already_loaded {
+            return;
+        }
+
+        let already_loading = L402_SURFACE_LOADING.with(|loading| {
+            if loading.get() {
+                true
+            } else {
+                loading.set(true);
+                false
+            }
+        });
+        if already_loading {
+            return;
+        }
+
+        spawn_local(async move {
+            let result =
+                fetch_l402_surface_state(&access_token, &session_id, &route, &route_path).await;
+            L402_SURFACE_LOADING.with(|loading| loading.set(false));
+            L402_SURFACE_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                match result {
+                    Ok(snapshot) => {
+                        *state = snapshot;
+                    }
+                    Err(error) => {
+                        state.loaded_session_id = Some(session_id.clone());
+                        state.loaded_route_path = Some(route_path.clone());
+                        state.payload = None;
+                        state.last_error = Some(error.message);
+                    }
+                }
+            });
+            render_codex_chat_dom();
+        });
+    }
+
+    async fn fetch_l402_surface_state(
+        access_token: &str,
+        session_id: &str,
+        route: &AppRoute,
+        route_path: &str,
+    ) -> Result<L402SurfaceState, ControlApiError> {
+        let request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: l402_api_path_for_route(route),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let response: JsonDataEnvelope = send_json_request(&request, &AppState::default()).await?;
+        Ok(L402SurfaceState {
+            loaded_session_id: Some(session_id.to_string()),
+            loaded_route_path: Some(route_path.to_string()),
+            payload: Some(response.data),
+            last_error: None,
+        })
+    }
+
+    fn l402_api_path_for_route(route: &AppRoute) -> String {
+        let AppRoute::Billing { section } = route else {
+            return "/api/l402/wallet".to_string();
+        };
+
+        match section.as_deref() {
+            None | Some("") | Some("wallet") => "/api/l402/wallet".to_string(),
+            Some("transactions") => "/api/l402/transactions?per_page=50&page=1".to_string(),
+            Some(path) if path.starts_with("transactions/") => {
+                let event_id = path.trim_start_matches("transactions/").trim();
+                if event_id.is_empty() {
+                    "/api/l402/transactions?per_page=50&page=1".to_string()
+                } else {
+                    format!("/api/l402/transactions/{event_id}")
+                }
+            }
+            Some("paywalls") => "/api/l402/paywalls".to_string(),
+            Some("settlements") => "/api/l402/settlements".to_string(),
+            Some("deployments") => "/api/l402/deployments".to_string(),
+            Some(_) => "/api/l402/wallet".to_string(),
+        }
     }
 
     fn apply_autopilot_payload_to_settings_state(
@@ -4592,6 +4749,8 @@ mod wasm {
         let management_loading = MANAGEMENT_SURFACE_LOADING.with(Cell::get);
         let settings_state = SETTINGS_SURFACE_STATE.with(|state| state.borrow().clone());
         let settings_loading = SETTINGS_SURFACE_LOADING.with(Cell::get);
+        let l402_state = L402_SURFACE_STATE.with(|state| state.borrow().clone());
+        let l402_loading = L402_SURFACE_LOADING.with(Cell::get);
 
         let thread_id = thread_id_from_route(&route);
         let is_management_route = route_is_management_surface(&route);
@@ -4732,6 +4891,20 @@ mod wasm {
 
         if route_is_settings_surface(&route) {
             sync_settings_form_inputs(&document, &settings_state, settings_loading);
+        }
+
+        if route_is_l402_surface(&route) {
+            render_l402_surface_messages(
+                &document,
+                &messages_container,
+                &route,
+                &auth_state,
+                &management_state,
+                &l402_state,
+                l402_loading,
+            );
+            messages_container.set_scroll_top(0);
+            return;
         }
 
         render_management_surface_messages(
@@ -5184,6 +5357,908 @@ mod wasm {
 
         for card in cards {
             append_management_card(document, messages_container, card);
+        }
+    }
+
+    fn render_l402_surface_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+        management_state: &ManagementSurfaceState,
+        l402_state: &L402SurfaceState,
+        loading: bool,
+    ) {
+        let route_path = route.to_path();
+        append_l402_navigation(document, messages_container, route_path.as_str());
+
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "L402 Route".to_string(),
+                body: route_path,
+                tone: ManagementCardTone::Info,
+            },
+        );
+
+        if let Some(policy) = management_state.billing_policy.as_ref() {
+            let tone = if policy.allowed {
+                ManagementCardTone::Success
+            } else {
+                ManagementCardTone::Error
+            };
+            let denied_reasons = if policy.denied_reasons.is_empty() {
+                "none".to_string()
+            } else {
+                policy.denied_reasons.join("|")
+            };
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Policy".to_string(),
+                    body: format!(
+                        "allowed={} org={} scopes={} denied={}",
+                        policy.allowed,
+                        policy.resolved_org_id,
+                        policy.granted_scopes.join(","),
+                        denied_reasons
+                    ),
+                    tone,
+                },
+            );
+        }
+
+        if l402_section_from_route(route).as_deref() == Some("paywalls")
+            && !has_admin_access(auth_state, management_state)
+        {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Paywall Guard".to_string(),
+                    body: "Paywall mutation operations require owner/admin membership on the active org."
+                        .to_string(),
+                    tone: ManagementCardTone::Warning,
+                },
+            );
+        }
+
+        if loading {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "L402 Data".to_string(),
+                    body: format!("Loading {}.", l402_api_path_for_route(route)),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+            return;
+        }
+
+        if let Some(error) = l402_state.last_error.as_ref() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "L402 Data Error".to_string(),
+                    body: error.clone(),
+                    tone: ManagementCardTone::Error,
+                },
+            );
+            return;
+        }
+
+        let Some(payload) = l402_state.payload.as_ref() else {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "L402 Data".to_string(),
+                    body: "No L402 data has loaded for this route yet.".to_string(),
+                    tone: ManagementCardTone::Warning,
+                },
+            );
+            return;
+        };
+
+        match l402_route_view(route) {
+            L402RouteView::Wallet => render_l402_wallet_view(document, messages_container, payload),
+            L402RouteView::Transactions => {
+                render_l402_transactions_view(document, messages_container, payload)
+            }
+            L402RouteView::TransactionDetail => {
+                render_l402_transaction_detail_view(document, messages_container, payload)
+            }
+            L402RouteView::Paywalls => {
+                render_l402_paywalls_view(document, messages_container, payload)
+            }
+            L402RouteView::Settlements => {
+                render_l402_settlements_view(document, messages_container, payload)
+            }
+            L402RouteView::Deployments => {
+                render_l402_deployments_view(document, messages_container, payload)
+            }
+            L402RouteView::Unknown(section) => {
+                append_management_card(
+                    document,
+                    messages_container,
+                    ManagementCard {
+                        title: "Unknown Section".to_string(),
+                        body: format!("Unknown L402 section `{section}`."),
+                        tone: ManagementCardTone::Warning,
+                    },
+                );
+            }
+        }
+    }
+
+    enum L402RouteView {
+        Wallet,
+        Transactions,
+        TransactionDetail,
+        Paywalls,
+        Settlements,
+        Deployments,
+        Unknown(String),
+    }
+
+    fn l402_route_view(route: &AppRoute) -> L402RouteView {
+        let section = l402_section_from_route(route).unwrap_or_else(|| "wallet".to_string());
+        if section == "wallet" {
+            return L402RouteView::Wallet;
+        }
+        if section == "transactions" {
+            return L402RouteView::Transactions;
+        }
+        if section.starts_with("transactions/") {
+            return L402RouteView::TransactionDetail;
+        }
+        if section == "paywalls" {
+            return L402RouteView::Paywalls;
+        }
+        if section == "settlements" {
+            return L402RouteView::Settlements;
+        }
+        if section == "deployments" {
+            return L402RouteView::Deployments;
+        }
+        L402RouteView::Unknown(section)
+    }
+
+    fn l402_section_from_route(route: &AppRoute) -> Option<String> {
+        match route {
+            AppRoute::Billing { section } => Some(
+                section
+                    .clone()
+                    .unwrap_or_else(|| "wallet".to_string())
+                    .trim()
+                    .to_string(),
+            ),
+            _ => None,
+        }
+    }
+
+    fn append_l402_navigation(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        current_path: &str,
+    ) {
+        let Some(panel) = append_l402_panel(document, messages_container, "L402 Navigation") else {
+            return;
+        };
+        let Ok(nav_row) = document.create_element("div") else {
+            return;
+        };
+        let Ok(nav_row) = nav_row.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = nav_row.style().set_property("display", "flex");
+        let _ = nav_row.style().set_property("flex-wrap", "wrap");
+        let _ = nav_row.style().set_property("gap", "8px");
+        let _ = nav_row.style().set_property("margin-top", "4px");
+
+        for (href, label) in [
+            ("/l402", "Wallet"),
+            ("/l402/transactions", "Transactions"),
+            ("/l402/paywalls", "Paywalls"),
+            ("/l402/settlements", "Settlements"),
+            ("/l402/deployments", "Deployments"),
+        ] {
+            let Ok(anchor) = document.create_element("a") else {
+                continue;
+            };
+            let Ok(anchor) = anchor.dyn_into::<HtmlElement>() else {
+                continue;
+            };
+            let _ = anchor.set_attribute("href", href);
+            let is_active = current_path == href
+                || (href == "/l402/transactions"
+                    && current_path.starts_with("/l402/transactions/"));
+            let _ = anchor.style().set_property("display", "inline-flex");
+            let _ = anchor.style().set_property("align-items", "center");
+            let _ = anchor.style().set_property("padding", "4px 9px");
+            let _ = anchor.style().set_property("border-radius", "999px");
+            let _ = anchor.style().set_property(
+                "border",
+                if is_active {
+                    "1px solid #2563eb"
+                } else {
+                    "1px solid #1f2937"
+                },
+            );
+            let _ = anchor
+                .style()
+                .set_property("background", if is_active { "#1d4ed8" } else { "#0f172a" });
+            let _ = anchor
+                .style()
+                .set_property("color", if is_active { "#ffffff" } else { "#cbd5e1" });
+            let _ = anchor.style().set_property("font-size", "12px");
+            let _ = anchor.style().set_property("text-decoration", "none");
+            anchor.set_inner_text(label);
+            let _ = nav_row.append_child(&anchor);
+        }
+
+        let _ = panel.append_child(&nav_row);
+    }
+
+    fn render_l402_wallet_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        let summary = payload.get("summary").unwrap_or(&serde_json::Value::Null);
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Wallet Summary".to_string(),
+                body: format!(
+                    "attempts={} paid={} cached={} blocked={} failed={} totalPaidSats={} totalPaidMsats={}",
+                    l402_value_text(summary.get("totalAttempts")),
+                    l402_value_text(summary.get("paidCount")),
+                    l402_value_text(summary.get("cachedCount")),
+                    l402_value_text(summary.get("blockedCount")),
+                    l402_value_text(summary.get("failedCount")),
+                    l402_value_text(summary.get("totalPaidSats")),
+                    l402_value_text(summary.get("totalPaidMsats"))
+                ),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+
+        if let Some(last_paid) = payload.get("lastPaid").filter(|value| value.is_object()) {
+            let event_id = l402_value_text(last_paid.get("eventId"));
+            let host = l402_value_text(last_paid.get("host"));
+            let status = l402_value_text(last_paid.get("status"));
+            let amount = l402_primary_amount(last_paid);
+            let scope = l402_value_text(last_paid.get("scope"));
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Last Paid".to_string(),
+                    body: format!(
+                        "eventId={event_id}\nhost={host}\nstatus={status}\namountSats={amount}\nscope={scope}"
+                    ),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+            append_l402_link_row(
+                document,
+                messages_container,
+                "/l402/transactions/".to_string() + event_id.as_str(),
+                "Open transaction detail",
+                &format!("event #{event_id}"),
+            );
+        }
+
+        if let Some(panel) = append_l402_panel(document, messages_container, "Recent L402 Attempts")
+        {
+            let rows = payload
+                .get("recent")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if rows.is_empty() {
+                append_l402_panel_line(document, &panel, "No recent L402 attempts.", true, false);
+            } else {
+                for item in rows.iter().take(12) {
+                    append_l402_transaction_link(document, &panel, item);
+                }
+            }
+        }
+
+        if let Some(panel) = append_l402_panel(document, messages_container, "Runtime Settings") {
+            let settings = payload.get("settings").unwrap_or(&serde_json::Value::Null);
+            append_l402_panel_line(
+                document,
+                &panel,
+                &format!(
+                    "invoicePayer={} credentialTtlSeconds={} paymentTimeoutMs={}",
+                    l402_value_text(settings.get("invoicePayer")),
+                    l402_value_text(settings.get("credentialTtlSeconds")),
+                    l402_value_text(settings.get("paymentTimeoutMs"))
+                ),
+                true,
+                false,
+            );
+            append_l402_panel_line(
+                document,
+                &panel,
+                &format!(
+                    "responseMaxBytes={} responsePreviewBytes={} allowlistHosts={}",
+                    l402_value_text(settings.get("responseMaxBytes")),
+                    l402_value_text(settings.get("responsePreviewBytes")),
+                    l402_csv_text(settings.get("allowlistHosts")),
+                ),
+                true,
+                false,
+            );
+
+            let spark_wallet = payload
+                .get("sparkWallet")
+                .unwrap_or(&serde_json::Value::Null);
+            append_l402_panel_line(
+                document,
+                &panel,
+                &format!(
+                    "sparkWalletId={} sparkAddress={}",
+                    l402_value_text(spark_wallet.get("walletId")),
+                    l402_value_text(spark_wallet.get("sparkAddress"))
+                ),
+                true,
+                false,
+            );
+        }
+    }
+
+    fn render_l402_transactions_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        let pagination = payload
+            .get("pagination")
+            .unwrap_or(&serde_json::Value::Null);
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Transactions Pagination".to_string(),
+                body: format!(
+                    "page={} lastPage={} perPage={} total={} hasMore={}",
+                    l402_value_text(pagination.get("currentPage")),
+                    l402_value_text(pagination.get("lastPage")),
+                    l402_value_text(pagination.get("perPage")),
+                    l402_value_text(pagination.get("total")),
+                    l402_value_text(pagination.get("hasMorePages"))
+                ),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+
+        let Some(panel) = append_l402_panel(document, messages_container, "Transactions Table")
+        else {
+            return;
+        };
+        let rows = payload
+            .get("transactions")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if rows.is_empty() {
+            append_l402_panel_line(document, &panel, "No L402 transactions found.", true, false);
+            return;
+        }
+
+        for tx in rows.iter().take(60) {
+            append_l402_transaction_link(document, &panel, tx);
+        }
+    }
+
+    fn render_l402_transaction_detail_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        let transaction = payload
+            .get("transaction")
+            .unwrap_or(&serde_json::Value::Null);
+        if !transaction.is_object() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Transaction".to_string(),
+                    body: "Transaction details are unavailable for this route.".to_string(),
+                    tone: ManagementCardTone::Warning,
+                },
+            );
+            return;
+        }
+
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Transaction Detail".to_string(),
+                body: format!(
+                    "eventId={} status={} host={} amountSats={} createdAt={}",
+                    l402_value_text(transaction.get("eventId")),
+                    l402_value_text(transaction.get("status")),
+                    l402_value_text(transaction.get("host")),
+                    l402_primary_amount(transaction),
+                    l402_value_text(transaction.get("createdAt"))
+                ),
+                tone: ManagementCardTone::Info,
+            },
+        );
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Receipt Context".to_string(),
+                body: format!(
+                    "scope={} paid={} cacheStatus={} denyCode={} proofReference={}\nthreadId={} threadTitle={} runId={} runStatus={}",
+                    l402_value_text(transaction.get("scope")),
+                    l402_value_text(transaction.get("paid")),
+                    l402_value_text(transaction.get("cacheStatus")),
+                    l402_value_text(transaction.get("denyCode")),
+                    l402_value_text(transaction.get("proofReference")),
+                    l402_value_text(transaction.get("threadId")),
+                    l402_value_text(transaction.get("threadTitle")),
+                    l402_value_text(transaction.get("runId")),
+                    l402_value_text(transaction.get("runStatus")),
+                ),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+        append_l402_link_row(
+            document,
+            messages_container,
+            "/l402/transactions".to_string(),
+            "Back to transactions",
+            "",
+        );
+
+        let thread_id = l402_value_text(transaction.get("threadId"));
+        if thread_id != "-" {
+            append_l402_link_row(
+                document,
+                messages_container,
+                format!("/chat/{thread_id}"),
+                "Open thread",
+                &format!("thread {thread_id}"),
+            );
+        }
+
+        if let Ok(raw_json) = serde_json::to_string_pretty(transaction) {
+            if let Some(panel) =
+                append_l402_panel(document, messages_container, "Raw Transaction JSON")
+            {
+                append_l402_pre(document, &panel, &raw_json);
+            }
+        }
+    }
+
+    fn render_l402_paywalls_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        let summary = payload.get("summary").unwrap_or(&serde_json::Value::Null);
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Paywalls Summary".to_string(),
+                body: format!(
+                    "uniqueTargets={} totalAttempts={} totalPaidCount={}",
+                    l402_value_text(summary.get("uniqueTargets")),
+                    l402_value_text(summary.get("totalAttempts")),
+                    l402_value_text(summary.get("totalPaidCount"))
+                ),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+
+        let Some(panel) = append_l402_panel(document, messages_container, "Paywall Targets") else {
+            return;
+        };
+        let rows = payload
+            .get("paywalls")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if rows.is_empty() {
+            append_l402_panel_line(
+                document,
+                &panel,
+                "No paywall targets observed yet.",
+                true,
+                false,
+            );
+            return;
+        }
+
+        for row in rows.iter().take(100) {
+            let line = format!(
+                "{} {} attempts={} paid={} cached={} blocked={} failed={} totalPaidSats={} lastStatus={} lastAttemptAt={}",
+                l402_value_text(row.get("host")),
+                l402_value_text(row.get("scope")),
+                l402_value_text(row.get("attempts")),
+                l402_value_text(row.get("paid")),
+                l402_value_text(row.get("cached")),
+                l402_value_text(row.get("blocked")),
+                l402_value_text(row.get("failed")),
+                l402_value_text(row.get("totalPaidSats")),
+                l402_value_text(row.get("lastStatus")),
+                l402_value_text(row.get("lastAttemptAt")),
+            );
+            append_l402_panel_line(document, &panel, &line, true, true);
+        }
+    }
+
+    fn render_l402_settlements_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        let summary = payload.get("summary").unwrap_or(&serde_json::Value::Null);
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Settlements Summary".to_string(),
+                body: format!(
+                    "settledCount={} totalSats={} totalMsats={} latestSettlementAt={}",
+                    l402_value_text(summary.get("settledCount")),
+                    l402_value_text(summary.get("totalSats")),
+                    l402_value_text(summary.get("totalMsats")),
+                    l402_value_text(summary.get("latestSettlementAt")),
+                ),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+
+        if let Some(panel) =
+            append_l402_panel(document, messages_container, "Daily Settlement Totals")
+        {
+            let rows = payload
+                .get("daily")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if rows.is_empty() {
+                append_l402_panel_line(
+                    document,
+                    &panel,
+                    "No settlement totals available.",
+                    true,
+                    false,
+                );
+            } else {
+                for row in rows.iter().take(60) {
+                    let line = format!(
+                        "{} count={} totalSats={} totalMsats={}",
+                        l402_value_text(row.get("date")),
+                        l402_value_text(row.get("count")),
+                        l402_value_text(row.get("totalSats")),
+                        l402_value_text(row.get("totalMsats")),
+                    );
+                    append_l402_panel_line(document, &panel, &line, true, true);
+                }
+            }
+        }
+
+        if let Some(panel) = append_l402_panel(document, messages_container, "Recent Settlements") {
+            let rows = payload
+                .get("settlements")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if rows.is_empty() {
+                append_l402_panel_line(document, &panel, "No settled receipts yet.", true, false);
+            } else {
+                for row in rows.iter().take(80) {
+                    append_l402_transaction_link(document, &panel, row);
+                }
+            }
+        }
+    }
+
+    fn render_l402_deployments_view(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        payload: &serde_json::Value,
+    ) {
+        if let Some(panel) = append_l402_panel(document, messages_container, "Config Snapshot") {
+            let config = payload
+                .get("configSnapshot")
+                .unwrap_or(&serde_json::Value::Null);
+            append_l402_panel_line(
+                document,
+                &panel,
+                &format!(
+                    "invoicePayer={} credentialTtlSeconds={} paymentTimeoutMs={} allowlistHosts={} demoPresets={}",
+                    l402_value_text(config.get("invoicePayer")),
+                    l402_value_text(config.get("credentialTtlSeconds")),
+                    l402_value_text(config.get("paymentTimeoutMs")),
+                    l402_csv_text(config.get("allowlistHosts")),
+                    l402_csv_text(config.get("demoPresets")),
+                ),
+                true,
+                false,
+            );
+        }
+
+        let Some(panel) = append_l402_panel(document, messages_container, "Deployment Events")
+        else {
+            return;
+        };
+        let rows = payload
+            .get("deployments")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if rows.is_empty() {
+            append_l402_panel_line(
+                document,
+                &panel,
+                "No deployment events captured for this account yet.",
+                true,
+                false,
+            );
+            return;
+        }
+
+        for row in rows.iter().take(40) {
+            let event_line = format!(
+                "#{} {} {}",
+                l402_value_text(row.get("eventId")),
+                l402_value_text(row.get("type")),
+                l402_value_text(row.get("createdAt")),
+            );
+            append_l402_panel_line(document, &panel, &event_line, true, true);
+            if let Ok(payload_json) =
+                serde_json::to_string(row.get("payload").unwrap_or(&serde_json::Value::Null))
+            {
+                append_l402_panel_line(document, &panel, &payload_json, true, true);
+            }
+        }
+    }
+
+    fn append_l402_transaction_link(
+        document: &web_sys::Document,
+        panel: &HtmlElement,
+        transaction: &serde_json::Value,
+    ) {
+        let event_id = l402_value_text(transaction.get("eventId"));
+        let host = l402_value_text(transaction.get("host"));
+        let status = l402_value_text(transaction.get("status"));
+        let amount = l402_primary_amount(transaction);
+        let scope = l402_value_text(transaction.get("scope"));
+        let created_at = l402_value_text(transaction.get("createdAt"));
+
+        let Ok(anchor) = document.create_element("a") else {
+            return;
+        };
+        let Ok(anchor) = anchor.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = anchor.set_attribute("href", &format!("/l402/transactions/{event_id}"));
+        let _ = anchor.style().set_property("display", "flex");
+        let _ = anchor
+            .style()
+            .set_property("justify-content", "space-between");
+        let _ = anchor.style().set_property("gap", "10px");
+        let _ = anchor.style().set_property("padding", "6px 8px");
+        let _ = anchor.style().set_property("border-radius", "8px");
+        let _ = anchor.style().set_property("border", "1px solid #1f2937");
+        let _ = anchor.style().set_property("background", "#0b1220");
+        let _ = anchor.style().set_property("color", "#dbeafe");
+        let _ = anchor.style().set_property("font-size", "12px");
+        let _ = anchor.style().set_property("line-height", "1.4");
+        let _ = anchor.style().set_property("text-decoration", "none");
+
+        let Ok(left) = document.create_element("div") else {
+            return;
+        };
+        let Ok(left) = left.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        left.set_inner_text(&format!("{host} [{status}]  sats={amount}  scope={scope}"));
+        let _ = anchor.append_child(&left);
+
+        let Ok(right) = document.create_element("div") else {
+            return;
+        };
+        let Ok(right) = right.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = right.style().set_property("color", "#94a3b8");
+        right.set_inner_text(&format!("event={event_id}  {created_at}"));
+        let _ = anchor.append_child(&right);
+        let _ = panel.append_child(&anchor);
+    }
+
+    fn append_l402_link_row(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        href: String,
+        label: &str,
+        detail: &str,
+    ) {
+        let Some(panel) = append_l402_panel(document, messages_container, label) else {
+            return;
+        };
+        let Ok(anchor) = document.create_element("a") else {
+            return;
+        };
+        let Ok(anchor) = anchor.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = anchor.set_attribute("href", &href);
+        let _ = anchor.style().set_property("color", "#93c5fd");
+        let _ = anchor.style().set_property("font-size", "13px");
+        let _ = anchor.style().set_property("text-decoration", "none");
+        anchor.set_inner_text(href.as_str());
+        let _ = panel.append_child(&anchor);
+        if !detail.trim().is_empty() {
+            append_l402_panel_line(document, &panel, detail, true, false);
+        }
+    }
+
+    fn append_l402_panel(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        title: &str,
+    ) -> Option<HtmlElement> {
+        let row = document
+            .create_element("div")
+            .ok()?
+            .dyn_into::<HtmlElement>()
+            .ok()?;
+        let _ = row.style().set_property("display", "flex");
+        let _ = row.style().set_property("width", "100%");
+        let _ = row.style().set_property("justify-content", "flex-start");
+
+        let panel = document
+            .create_element("div")
+            .ok()?
+            .dyn_into::<HtmlElement>()
+            .ok()?;
+        let _ = panel.style().set_property("max-width", "92%");
+        let _ = panel.style().set_property("width", "100%");
+        let _ = panel.style().set_property("padding", "10px 12px");
+        let _ = panel.style().set_property("border-radius", "12px");
+        let _ = panel.style().set_property("background", "#0b1220");
+        let _ = panel.style().set_property("border", "1px solid #1f2937");
+        let _ = panel.style().set_property("display", "flex");
+        let _ = panel.style().set_property("flex-direction", "column");
+        let _ = panel.style().set_property("gap", "6px");
+
+        if !title.trim().is_empty() {
+            let heading = document
+                .create_element("div")
+                .ok()?
+                .dyn_into::<HtmlElement>()
+                .ok()?;
+            let _ = heading.style().set_property("font-size", "12px");
+            let _ = heading.style().set_property("text-transform", "uppercase");
+            let _ = heading.style().set_property("letter-spacing", "0.06em");
+            let _ = heading.style().set_property("color", "#93c5fd");
+            heading.set_inner_text(title);
+            let _ = panel.append_child(&heading);
+        }
+
+        let _ = row.append_child(&panel);
+        let _ = messages_container.append_child(&row);
+        Some(panel)
+    }
+
+    fn append_l402_panel_line(
+        document: &web_sys::Document,
+        panel: &HtmlElement,
+        text: &str,
+        muted: bool,
+        monospace: bool,
+    ) {
+        let Ok(line) = document.create_element("div") else {
+            return;
+        };
+        let Ok(line) = line.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = line.style().set_property("font-size", "12px");
+        let _ = line.style().set_property("line-height", "1.4");
+        let _ = line.style().set_property("white-space", "pre-wrap");
+        let _ = line
+            .style()
+            .set_property("color", if muted { "#cbd5e1" } else { "#e2e8f0" });
+        if monospace {
+            let _ = line.style().set_property(
+                "font-family",
+                "ui-monospace, SFMono-Regular, Menlo, monospace",
+            );
+        }
+        line.set_inner_text(text);
+        let _ = panel.append_child(&line);
+    }
+
+    fn append_l402_pre(document: &web_sys::Document, panel: &HtmlElement, text: &str) {
+        let Ok(pre) = document.create_element("pre") else {
+            return;
+        };
+        let Ok(pre) = pre.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = pre.style().set_property("margin", "0");
+        let _ = pre.style().set_property("max-height", "220px");
+        let _ = pre.style().set_property("overflow", "auto");
+        let _ = pre.style().set_property("padding", "8px");
+        let _ = pre.style().set_property("border-radius", "8px");
+        let _ = pre.style().set_property("background", "#020617");
+        let _ = pre.style().set_property("border", "1px solid #1f2937");
+        let _ = pre.style().set_property("color", "#cbd5e1");
+        let _ = pre.style().set_property("font-size", "11px");
+        let _ = pre.style().set_property("line-height", "1.45");
+        pre.set_inner_text(text);
+        let _ = panel.append_child(&pre);
+    }
+
+    fn l402_primary_amount(transaction: &serde_json::Value) -> String {
+        let amount = l402_value_text(transaction.get("amountSats"));
+        if amount != "-" {
+            return amount;
+        }
+        l402_value_text(transaction.get("quotedAmountSats"))
+    }
+
+    fn l402_csv_text(value: Option<&serde_json::Value>) -> String {
+        let Some(value) = value else {
+            return "-".to_string();
+        };
+        let Some(items) = value.as_array() else {
+            return l402_value_text(Some(value));
+        };
+        if items.is_empty() {
+            return "(none)".to_string();
+        }
+        items
+            .iter()
+            .map(|item| l402_value_text(Some(item)))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn l402_value_text(value: Option<&serde_json::Value>) -> String {
+        match value {
+            None | Some(serde_json::Value::Null) => "-".to_string(),
+            Some(serde_json::Value::String(text)) => {
+                if text.trim().is_empty() {
+                    "-".to_string()
+                } else {
+                    text.clone()
+                }
+            }
+            Some(serde_json::Value::Bool(value)) => value.to_string(),
+            Some(serde_json::Value::Number(value)) => value.to_string(),
+            Some(serde_json::Value::Array(values)) => {
+                if values.is_empty() {
+                    "[]".to_string()
+                } else {
+                    values
+                        .iter()
+                        .map(|item| l402_value_text(Some(item)))
+                        .collect::<Vec<_>>()
+                        .join("|")
+                }
+            }
+            Some(other) => serde_json::to_string(other).unwrap_or_else(|_| "-".to_string()),
         }
     }
 
