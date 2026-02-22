@@ -229,11 +229,19 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `x-oa-protocol-version`
   - `x-oa-schema-version`
 - When control compatibility enforcement is enabled, unsupported requests return `426 Upgrade Required` with deterministic `compatibility` failure payloads.
+- Compatibility rejection response headers:
+  - `x-oa-compatibility-code`
+  - `x-oa-compatibility-upgrade-required`
+  - `x-oa-compatibility-protocol-version`
+  - `x-oa-compatibility-min-client-build-id`
+  - `x-oa-compatibility-max-client-build-id` (when configured)
+  - `x-oa-compatibility-min-schema-version`
+  - `x-oa-compatibility-max-schema-version`
 
 ## Observability baseline
 
 - Request correlation IDs are propagated via `x-request-id` middleware and emitted in structured logs.
-- Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.verify.completed`, `auth.refresh.completed`, `auth.logout.completed`, `auth.active_org.updated`, `auth.sessions.listed`, `auth.sessions.revoked`, `sync.token.issued`).
+- Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.challenge.failed`, `auth.verify.completed`, `auth.verify.failed`, `auth.refresh.completed`, `auth.refresh.failed`, `auth.logout.completed`, `auth.logout.failed`, `auth.active_org.updated`, `auth.sessions.listed`, `auth.sessions.revoked`, `sync.token.issued`, `compatibility.rejected`).
 - Service emits JSON logs by default (`OA_CONTROL_LOG_FORMAT=json`) for machine parsing.
 
 ## Session model guarantees

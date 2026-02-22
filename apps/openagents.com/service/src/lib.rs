@@ -74,6 +74,13 @@ const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
 const HEADER_OA_CLIENT_BUILD_ID: &str = "x-oa-client-build-id";
+const HEADER_OA_COMPAT_CODE: &str = "x-oa-compatibility-code";
+const HEADER_OA_COMPAT_MAX_BUILD: &str = "x-oa-compatibility-max-client-build-id";
+const HEADER_OA_COMPAT_MAX_SCHEMA: &str = "x-oa-compatibility-max-schema-version";
+const HEADER_OA_COMPAT_MIN_BUILD: &str = "x-oa-compatibility-min-client-build-id";
+const HEADER_OA_COMPAT_MIN_SCHEMA: &str = "x-oa-compatibility-min-schema-version";
+const HEADER_OA_COMPAT_PROTOCOL: &str = "x-oa-compatibility-protocol-version";
+const HEADER_OA_COMPAT_UPGRADE_REQUIRED: &str = "x-oa-compatibility-upgrade-required";
 const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
 const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
 const HEADER_X_FORWARDED_FOR: &str = "x-forwarded-for";
@@ -1048,14 +1055,17 @@ async fn control_compatibility_gate(
     next: Next,
 ) -> Response {
     let path = request.uri().path().to_string();
-    if !path.starts_with("/api/") || !state.config.compat_control_enforced {
+    let Some(surface) = compatibility_surface_for_path(&path) else {
+        return next.run(request).await;
+    };
+    if !state.config.compat_control_enforced {
         return next.run(request).await;
     }
 
     let header_snapshot = request.headers().clone();
     let request_id = request_id(&header_snapshot);
 
-    match validate_control_compatibility(&state.config, &header_snapshot) {
+    match validate_control_compatibility(surface, &state.config, &header_snapshot) {
         Ok(()) => next.run(request).await,
         Err(failure) => {
             let client_name = header_string(&header_snapshot, "x-client")
@@ -1073,7 +1083,7 @@ async fn control_compatibility_gate(
             state.observability.audit(
                 AuditEvent::new("compatibility.rejected", request_id.clone())
                     .with_outcome("rejected")
-                    .with_attribute("surface", "control_api")
+                    .with_attribute("surface", compatibility_surface_label(surface))
                     .with_attribute("path", path)
                     .with_attribute("client", client_name)
                     .with_attribute("client_build_id", client_build_id)
@@ -1086,7 +1096,27 @@ async fn control_compatibility_gate(
     }
 }
 
+fn compatibility_surface_for_path(path: &str) -> Option<CompatibilitySurface> {
+    if path.starts_with("/api/v1/control/") {
+        return Some(CompatibilitySurface::ControlApi);
+    }
+
+    if path == ROUTE_V1_SYNC_TOKEN {
+        return Some(CompatibilitySurface::ControlApi);
+    }
+
+    None
+}
+
+fn compatibility_surface_label(surface: CompatibilitySurface) -> &'static str {
+    match surface {
+        CompatibilitySurface::ControlApi => "control_api",
+        CompatibilitySurface::KhalaWebSocket => "khala_websocket",
+    }
+}
+
 fn validate_control_compatibility(
+    surface: CompatibilitySurface,
     config: &Config,
     headers: &HeaderMap,
 ) -> Result<(), CompatibilityFailure> {
@@ -1108,12 +1138,19 @@ fn validate_control_compatibility(
         max_schema_version: config.compat_control_max_schema_version,
     };
 
-    negotiate_compatibility(CompatibilitySurface::ControlApi, &handshake, &window)
+    negotiate_compatibility(surface, &handshake, &window)
 }
 
 fn compatibility_failure_response(failure: CompatibilityFailure) -> Response {
+    let code = failure.code.clone();
+    let protocol_version = failure.protocol_version.clone();
+    let min_client_build_id = failure.min_client_build_id.clone();
+    let max_client_build_id = failure.max_client_build_id.clone();
+    let min_schema_version = failure.min_schema_version;
+    let max_schema_version = failure.max_schema_version;
+    let upgrade_required = failure.upgrade_required;
     let message = failure.message.clone();
-    (
+    let mut response = (
         StatusCode::UPGRADE_REQUIRED,
         Json(CompatibilityErrorResponse {
             message: message.clone(),
@@ -1124,7 +1161,47 @@ fn compatibility_failure_response(failure: CompatibilityFailure) -> Response {
             compatibility: failure,
         }),
     )
-        .into_response()
+        .into_response();
+
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        HEADER_OA_COMPAT_UPGRADE_REQUIRED,
+        HeaderValue::from_static(if upgrade_required { "true" } else { "false" }),
+    );
+    if let Ok(value) = HeaderValue::from_str(&code) {
+        response.headers_mut().insert(HEADER_OA_COMPAT_CODE, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&protocol_version) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_PROTOCOL, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&min_client_build_id) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MIN_BUILD, value);
+    }
+    if let Some(max_client_build_id) = max_client_build_id
+        && let Ok(value) = HeaderValue::from_str(&max_client_build_id)
+    {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MAX_BUILD, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&min_schema_version.to_string()) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MIN_SCHEMA, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&max_schema_version.to_string()) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MAX_SCHEMA, value);
+    }
+
+    response
 }
 
 async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
@@ -1744,11 +1821,13 @@ async fn send_email_code(
     Json(payload): Json<SendEmailCodeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let request_id = request_id(&headers);
-    let challenge = state
-        .auth
-        .start_challenge(payload.email)
-        .await
-        .map_err(map_auth_error)?;
+    let challenge = match state.auth.start_challenge(payload.email).await {
+        Ok(challenge) => challenge,
+        Err(error) => {
+            emit_auth_failure_event(&state, &request_id, "auth.challenge.failed", &error);
+            return Err(map_auth_error(error));
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("auth.challenge.requested", request_id.clone())
@@ -1947,7 +2026,7 @@ async fn verify_email_code(
     let ip_address = header_string(&headers, "x-forwarded-for").unwrap_or_default();
     let user_agent = header_string(&headers, "user-agent").unwrap_or_default();
 
-    let verified = state
+    let verified = match state
         .auth
         .verify_challenge(
             &challenge_id,
@@ -1958,7 +2037,13 @@ async fn verify_email_code(
             &user_agent,
         )
         .await
-        .map_err(map_auth_error)?;
+    {
+        Ok(verified) => verified,
+        Err(error) => {
+            emit_auth_failure_event(&state, &request_id, "auth.verify.failed", &error);
+            return Err(map_auth_error(error));
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("auth.verify.completed", request_id.clone())
@@ -2959,11 +3044,17 @@ async fn refresh_session(
 
     let rotate = payload.rotate_refresh_token.unwrap_or(true);
 
-    let refreshed = state
+    let refreshed = match state
         .auth
         .refresh_session(&token, requested_device_id.as_deref(), rotate)
         .await
-        .map_err(map_auth_error)?;
+    {
+        Ok(refreshed) => refreshed,
+        Err(error) => {
+            emit_auth_failure_event(&state, &request_id, "auth.refresh.failed", &error);
+            return Err(map_auth_error(error));
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("auth.refresh.completed", request_id.clone())
@@ -3001,17 +3092,25 @@ async fn logout_session(
     let access_token =
         bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
-    let bundle = state
-        .auth
-        .session_from_access_token(&access_token)
-        .await
-        .map_err(map_auth_error)?;
+    let bundle = match state.auth.session_from_access_token(&access_token).await {
+        Ok(bundle) => bundle,
+        Err(error) => {
+            emit_auth_failure_event(&state, &request_id, "auth.logout.failed", &error);
+            return Err(map_auth_error(error));
+        }
+    };
 
-    let revoked = state
+    let revoked = match state
         .auth
         .revoke_session_by_access_token(&access_token)
         .await
-        .map_err(map_auth_error)?;
+    {
+        Ok(revoked) => revoked,
+        Err(error) => {
+            emit_auth_failure_event(&state, &request_id, "auth.logout.failed", &error);
+            return Err(map_auth_error(error));
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("auth.logout.completed", request_id.clone())
@@ -3136,6 +3235,37 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
             message,
         ),
     }
+}
+
+fn auth_error_reason(error: &AuthError) -> (&'static str, Option<&'static str>) {
+    match error {
+        AuthError::Validation { field, .. } => ("invalid_request", Some(*field)),
+        AuthError::Unauthorized { .. } => ("unauthorized", None),
+        AuthError::Forbidden { .. } => ("forbidden", None),
+        AuthError::Conflict { .. } => ("conflict", None),
+        AuthError::Provider { .. } => ("service_unavailable", None),
+    }
+}
+
+fn emit_auth_failure_event(
+    state: &AppState,
+    request_id: &str,
+    event_name: &str,
+    error: &AuthError,
+) {
+    let (reason, field) = auth_error_reason(error);
+    let mut event = AuditEvent::new(event_name, request_id.to_string())
+        .with_outcome("failure")
+        .with_attribute("reason", reason.to_string());
+
+    if let Some(field) = field {
+        event = event.with_attribute("field", field.to_string());
+    }
+
+    state.observability.audit(event);
+    state
+        .observability
+        .increment_counter(event_name, request_id);
 }
 
 fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
@@ -4571,6 +4701,20 @@ mod tests {
         let response = app.oneshot(request).await?;
 
         assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(
+            response
+                .headers()
+                .get(super::HEADER_OA_COMPAT_CODE)
+                .and_then(|value| value.to_str().ok()),
+            Some("invalid_client_build")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(super::HEADER_OA_COMPAT_UPGRADE_REQUIRED)
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "invalid_client_build");
         assert_eq!(body["compatibility"]["upgrade_required"], true);
@@ -4614,6 +4758,22 @@ mod tests {
         let response = app.oneshot(request).await?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_skips_auth_bootstrap_routes() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"compat-skip@openagents.com"}"#))?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
         Ok(())
     }
 
@@ -6178,6 +6338,109 @@ mod tests {
             .body(Body::empty())?;
         let read_other_response = app.oneshot(read_other_request).await?;
         assert_eq!(read_other_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_failure_paths_emit_failure_audit_events() -> Result<()> {
+        let static_dir = tempdir()?;
+        let sink = Arc::new(RecordingAuditSink::default());
+        let app = build_router_with_observability(
+            test_config(static_dir.path().to_path_buf()),
+            Observability::new(sink.clone()),
+        );
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("x-request-id", "req-auth-send")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"failure-audit@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::OK);
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("x-request-id", "req-auth-verify-failed")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"000000"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        let refresh_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/refresh")
+            .header("x-request-id", "req-auth-refresh-failed")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"refresh_token":"oa_rt_invalid","rotate_refresh_token":true}"#,
+            ))?;
+        let refresh_response = app.clone().oneshot(refresh_request).await?;
+        assert_eq!(refresh_response.status(), StatusCode::UNAUTHORIZED);
+
+        let valid_session_token =
+            authenticate_token(app.clone(), "logout-failure@openagents.com").await?;
+        let create_pat_request = Request::builder()
+            .method("POST")
+            .uri("/api/tokens")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {valid_session_token}"))
+            .body(Body::from(r#"{"name":"logout-failure-pat"}"#))?;
+        let create_pat_response = app.clone().oneshot(create_pat_request).await?;
+        assert_eq!(create_pat_response.status(), StatusCode::CREATED);
+        let create_pat_body = read_json(create_pat_response).await?;
+        let pat_token = create_pat_body["data"]["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let logout_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout")
+            .header("x-request-id", "req-auth-logout-failed")
+            .header("authorization", format!("Bearer {pat_token}"))
+            .body(Body::empty())?;
+        let logout_response = app.oneshot(logout_request).await?;
+        assert_eq!(logout_response.status(), StatusCode::UNAUTHORIZED);
+
+        let events = sink.events();
+        let verify_failed = events
+            .iter()
+            .find(|event| event.event_name == "auth.verify.failed")
+            .expect("missing auth.verify.failed audit event");
+        assert_eq!(verify_failed.request_id, "req-auth-verify-failed");
+        assert_eq!(verify_failed.outcome, "failure");
+        assert_eq!(
+            verify_failed.attributes.get("reason").map(String::as_str),
+            Some("invalid_request")
+        );
+
+        let refresh_failed = events
+            .iter()
+            .find(|event| event.event_name == "auth.refresh.failed")
+            .expect("missing auth.refresh.failed audit event");
+        assert_eq!(refresh_failed.request_id, "req-auth-refresh-failed");
+        assert_eq!(refresh_failed.outcome, "failure");
+        assert_eq!(
+            refresh_failed.attributes.get("reason").map(String::as_str),
+            Some("unauthorized")
+        );
+
+        let logout_failed = events
+            .iter()
+            .find(|event| event.event_name == "auth.logout.failed")
+            .expect("missing auth.logout.failed audit event");
+        assert_eq!(logout_failed.request_id, "req-auth-logout-failed");
+        assert_eq!(logout_failed.outcome, "failure");
+        assert_eq!(
+            logout_failed.attributes.get("reason").map(String::as_str),
+            Some("unauthorized")
+        );
 
         Ok(())
     }
