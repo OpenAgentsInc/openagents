@@ -177,11 +177,11 @@ Webhooks and utility:
 
 Artisan command replacements required before cutover:
 
-- [ ] `demo:l402` -> Rust CLI replacement
-- [ ] `khala:import-chat` -> Rust CLI replacement
-- [ ] `ops:test-login-link` -> Rust CLI replacement
-- [ ] `runtime:tools:invoke-api` -> Rust CLI replacement
-- [ ] `ops:create-api-token` -> Rust CLI replacement
+- [x] `demo:l402` -> Rust CLI replacement
+- [x] `khala:import-chat` -> Rust CLI replacement
+- [x] `ops:test-login-link` -> Rust CLI replacement
+- [x] `runtime:tools:invoke-api` -> Rust CLI replacement
+- [x] `ops:create-api-token` -> Rust CLI replacement
 
 ## Test Target Checklist
 

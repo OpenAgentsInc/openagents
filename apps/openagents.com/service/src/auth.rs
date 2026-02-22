@@ -1572,6 +1572,23 @@ impl AuthService {
         Ok(tokens)
     }
 
+    pub async fn user_by_email(&self, email: &str) -> Result<Option<AuthUser>, AuthError> {
+        let normalized_email = normalize_email(email)?;
+        let state = self.state.read().await;
+        let Some(user_id) = state.users_by_email.get(&normalized_email) else {
+            return Ok(None);
+        };
+        let Some(user) = state.users_by_id.get(user_id) else {
+            return Ok(None);
+        };
+        Ok(Some(AuthUser {
+            id: user.id.clone(),
+            email: user.email.clone(),
+            name: user.name.clone(),
+            workos_user_id: user.workos_user_id.clone(),
+        }))
+    }
+
     pub async fn issue_personal_access_token(
         &self,
         user_id: &str,
@@ -2800,6 +2817,35 @@ mod tests {
         assert_eq!(restored_tokens.len(), 1);
         assert!(restored_tokens[0].revoked_at.is_some());
         assert!(store_path.is_file());
+    }
+
+    #[tokio::test]
+    async fn user_by_email_returns_hydrated_user() {
+        let auth = AuthService::from_config(&test_config(None));
+
+        let challenge = auth
+            .start_challenge("lookup-user@openagents.com".to_string())
+            .await
+            .expect("start challenge");
+        let verified = auth
+            .verify_challenge(
+                &challenge.challenge_id,
+                "123456".to_string(),
+                Some("openagents-web"),
+                Some("browser:lookup"),
+                "127.0.0.1",
+                "test-agent",
+            )
+            .await
+            .expect("verify challenge");
+
+        let resolved = auth
+            .user_by_email("lookup-user@openagents.com")
+            .await
+            .expect("lookup by email")
+            .expect("user should exist");
+        assert_eq!(resolved.id, verified.user.id);
+        assert_eq!(resolved.email, "lookup-user@openagents.com");
     }
 
     #[tokio::test]

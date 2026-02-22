@@ -138,6 +138,16 @@ From repository root:
 cargo run --manifest-path apps/openagents.com/service/Cargo.toml
 ```
 
+Operator CLI replacements (OA-WEBPARITY-055):
+
+```bash
+cargo run --manifest-path apps/openagents.com/service/Cargo.toml \
+  --bin openagents-control-ops -- demo:l402 --token <ACCESS_TOKEN>
+```
+
+Command mapping and flags:
+- `apps/openagents.com/docs/20260222-oa-webparity-055-rust-cli-replacements.md`
+
 Health checks:
 
 ```bash
