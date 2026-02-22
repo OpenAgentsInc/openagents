@@ -301,6 +301,14 @@ run_async_lane_parity_harness() {
   )
 }
 
+run_mixed_version_deploy_safety_harness() {
+  echo "==> mixed-version deploy safety harness"
+  (
+    cd "$ROOT_DIR"
+    ./apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh
+  )
+}
+
 run_cross_surface_harness() {
   echo "==> cross-surface contract harness"
   (
@@ -494,6 +502,9 @@ case "$MODE" in
   async-lane-parity-harness)
     run_async_lane_parity_harness
     ;;
+  mixed-version-deploy-safety)
+    run_mixed_version_deploy_safety_harness
+    ;;
   workspace-compile)
     run_workspace_compile
     ;;
@@ -531,7 +542,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
     exit 2
     ;;
 esac

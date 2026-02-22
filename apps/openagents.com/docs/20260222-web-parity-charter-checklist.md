@@ -222,6 +222,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`, `.github/workflows/web-static-asset-sw-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-065-static-asset-sw-parity.md`
 - [x] Queue/scheduler/listener parity and Laravel scheduler shutdown (`OA-WEBPARITY-066`)
   Harness/report: `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`, `.github/workflows/web-async-lane-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-066-queue-scheduler-listener-parity.md`
+- [x] Mixed-version deploy safety, rollback, and backfill invariants (`OA-WEBPARITY-067`)
+  Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `.github/workflows/web-mixed-version-deploy-safety-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
 
 ## Checklist Freeze Rules
 
