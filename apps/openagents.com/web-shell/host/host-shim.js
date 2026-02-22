@@ -8,6 +8,11 @@ import {
 const STATUS_ID = "openagents-web-shell-status";
 const CURRENT_BUILD_ID = "__OA_BUILD_ID__";
 const BUILD_SKEW_PROMOTION_TIMEOUT_MS = 4_000;
+const HARD_BLOCK_SKEW_REASONS = new Set([
+  "missing_current_build",
+  "below_min_client",
+  "above_max_client",
+]);
 
 function detectWebGl2Support() {
   try {
@@ -132,6 +137,20 @@ async function enforceBuildCompatibility(registration) {
   });
 
   if (!decision.skewDetected) {
+    return false;
+  }
+
+  if (!HARD_BLOCK_SKEW_REASONS.has(decision.reason)) {
+    setStatus(`Update available (${decision.reason}). Continuing boot...`);
+    promoteUpdatedWorker(registration)
+      .then((promoted) => {
+        if (promoted) {
+          window.location.reload();
+        }
+      })
+      .catch((error) => {
+        console.warn("service worker promotion failed", error);
+      });
     return false;
   }
 

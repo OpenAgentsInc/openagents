@@ -166,4 +166,26 @@ manifest = {
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 PY
 
+echo "[web-shell] generating precompressed static assets"
+for file in "${ASSETS_DIR}"/*; do
+  if [[ ! -f "${file}" ]]; then
+    continue
+  fi
+  case "${file}" in
+    *.js|*.wasm)
+      ;;
+    *.gz|*.br)
+      continue
+      ;;
+    *)
+      continue
+      ;;
+  esac
+
+  gzip -9 -n -c "${file}" > "${file}.gz"
+  if command -v brotli >/dev/null 2>&1; then
+    brotli -q 11 -f -o "${file}.br" "${file}"
+  fi
+done
+
 echo "[web-shell] dist output ready: ${OUT_DIR}"
