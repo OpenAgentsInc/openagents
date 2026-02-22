@@ -7110,6 +7110,7 @@ dependencies = [
  "http-body-util",
  "mime_guess",
  "openagents-client-core",
+ "openapiv3",
  "reqwest",
  "serde",
  "serde_json",
@@ -7264,6 +7265,17 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "openapiv3"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c8d427828b22ae1fff2833a03d8486c2c881367f1c336349f307f321e7f4d05"
+dependencies = [
+ "indexmap 2.13.0",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

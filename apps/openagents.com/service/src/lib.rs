@@ -31,6 +31,7 @@ pub mod api_envelope;
 pub mod auth;
 pub mod config;
 pub mod observability;
+pub mod openapi;
 pub mod route_split;
 pub mod sync_token;
 
@@ -44,6 +45,15 @@ use crate::auth::{
 };
 use crate::config::Config;
 use crate::observability::{AuditEvent, Observability};
+use crate::openapi::{
+    ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_SESSION,
+    ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY, ROUTE_ME,
+    ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
+    ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_SYNC_TOKEN, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
+    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
+};
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
@@ -256,52 +266,49 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
 
     let public_api_router = Router::new()
         .route(
-            "/api/auth/email",
+            ROUTE_AUTH_EMAIL,
             post(send_email_code).route_layer(middleware::from_fn_with_state(
                 auth_email_throttle_state,
                 throttle_auth_email_gate,
             )),
         )
-        .route("/api/auth/verify", post(verify_email_code))
-        .route("/api/auth/refresh", post(refresh_session));
+        .route(ROUTE_AUTH_VERIFY, post(verify_email_code))
+        .route(ROUTE_AUTH_REFRESH, post(refresh_session));
 
     let protected_api_router = Router::new()
-        .route("/api/auth/session", get(current_session))
-        .route("/api/auth/sessions", get(list_sessions))
-        .route("/api/auth/sessions/revoke", post(revoke_sessions))
-        .route("/api/auth/logout", post(logout_session))
-        .route("/api/me", get(me))
-        .route("/api/orgs/memberships", get(org_memberships))
-        .route("/api/orgs/active", post(set_active_org))
-        .route("/api/policy/authorize", post(policy_authorize))
-        .route("/api/sync/token", post(sync_token))
+        .route(ROUTE_AUTH_SESSION, get(current_session))
+        .route(ROUTE_AUTH_SESSIONS, get(list_sessions))
+        .route(ROUTE_AUTH_SESSIONS_REVOKE, post(revoke_sessions))
+        .route(ROUTE_AUTH_LOGOUT, post(logout_session))
+        .route(ROUTE_ME, get(me))
+        .route(ROUTE_ORGS_MEMBERSHIPS, get(org_memberships))
+        .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
+        .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
+        .route(ROUTE_SYNC_TOKEN, post(sync_token))
         .route(
-            "/api/runtime/threads/:thread_id/messages",
+            ROUTE_RUNTIME_THREAD_MESSAGES,
             post(send_thread_message).route_layer(middleware::from_fn_with_state(
                 thread_message_throttle_state,
                 throttle_thread_message_gate,
             )),
         )
-        .route("/api/v1/auth/session", get(current_session))
-        .route("/api/v1/auth/sessions", get(list_sessions))
-        .route("/api/v1/auth/sessions/revoke", post(revoke_sessions))
-        .route("/api/v1/control/status", get(control_status))
+        .route(ROUTE_V1_AUTH_SESSION, get(current_session))
+        .route(ROUTE_V1_AUTH_SESSIONS, get(list_sessions))
+        .route(ROUTE_V1_AUTH_SESSIONS_REVOKE, post(revoke_sessions))
+        .route(ROUTE_V1_CONTROL_STATUS, get(control_status))
+        .route(ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, get(route_split_status))
         .route(
-            "/api/v1/control/route-split/status",
-            get(route_split_status),
-        )
-        .route(
-            "/api/v1/control/route-split/override",
+            ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
             post(route_split_override).route_layer(middleware::from_fn_with_state(
                 admin_state,
                 admin_email_gate,
             )),
         )
         .route(
-            "/api/v1/control/route-split/evaluate",
+            ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
             post(route_split_evaluate),
         )
-        .route("/api/v1/sync/token", post(sync_token))
+        .route(ROUTE_V1_SYNC_TOKEN, post(sync_token))
         .route_layer(middleware::from_fn_with_state(
             workos_session_state,
             workos_session_gate,
@@ -317,6 +324,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/readyz", get(readiness))
         .merge(public_api_router)
         .merge(protected_api_router)
+        .route(ROUTE_OPENAPI_JSON, get(openapi_spec))
         .route("/sw.js", get(static_service_worker))
         .route("/manifest.json", get(static_manifest))
         .route("/assets/*path", get(static_asset))
@@ -906,6 +914,28 @@ fn compatibility_failure_response(failure: CompatibilityFailure) -> Response {
         }),
     )
         .into_response()
+}
+
+async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let document = openapi_document();
+    let encoded = serde_json::to_vec(&document).map_err(|_| {
+        error_response_with_status(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ApiErrorCode::InternalError,
+            "Failed to generate OpenAPI document.".to_string(),
+        )
+    })?;
+
+    let mut response = Response::new(Body::from(encoded));
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_MANIFEST));
+
+    Ok(response)
 }
 
 async fn static_manifest(
@@ -2957,6 +2987,43 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some(CACHE_MANIFEST)
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn openapi_route_serves_generated_minified_json() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .uri(super::ROUTE_OPENAPI_JSON)
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_MANIFEST)
+        );
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("application/json"));
+
+        let body = response.into_body().collect().await?.to_bytes();
+        let body_text = String::from_utf8(body.to_vec())?;
+        assert!(body_text.starts_with("{\"openapi\":\"3.0.2\""));
+        assert!(!body_text.contains('\n'));
+
+        let parsed = serde_json::from_str::<Value>(&body_text)?;
+        assert_eq!(parsed["openapi"], "3.0.2");
+        assert!(parsed["paths"]["/api/auth/email"].is_object());
+        assert!(parsed["components"]["securitySchemes"]["bearerAuth"].is_object());
 
         Ok(())
     }

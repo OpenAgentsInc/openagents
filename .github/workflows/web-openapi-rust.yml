@@ -1,0 +1,35 @@
+name: web-openapi-rust
+
+on:
+  pull_request:
+    paths:
+      - 'apps/openagents.com/service/**'
+      - 'apps/openagents.com/docs/OPENAPI.md'
+      - '.github/workflows/web-openapi-rust.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/openagents.com/service/**'
+      - 'apps/openagents.com/docs/OPENAPI.md'
+      - '.github/workflows/web-openapi-rust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  openapi-rust:
+    runs-on: ubuntu-latest
+    name: openapi-rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify OpenAPI model tests
+        run: cargo test --manifest-path apps/openagents.com/service/Cargo.toml openapi::tests::
+
+      - name: Verify OpenAPI snapshot parity
+        run: apps/openagents.com/service/scripts/verify-openapi-json.sh

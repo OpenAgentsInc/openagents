@@ -29,6 +29,7 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/sync/token`
   - `POST /api/v1/sync/token`
   - `POST /api/runtime/threads/:thread_id/messages` (Codex thread command lane)
+  - `GET /openapi.json` Rust-generated OpenAPI document
   - `GET /sw.js` service worker script host
   - `GET /manifest.json` static manifest
   - `GET /assets/*` versioned static asset host
@@ -165,6 +166,21 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 - Canonical middleware parity mapping:
   - `apps/openagents.com/service/docs/MIDDLEWARE_PARITY.md`
+
+## OpenAPI pipeline
+
+- Rust route-contract source:
+  - `apps/openagents.com/service/src/openapi.rs`
+- Runtime document route:
+  - `GET /openapi.json`
+- Snapshot generation:
+  - `apps/openagents.com/service/scripts/generate-openapi-json.sh`
+- Snapshot verification:
+  - `apps/openagents.com/service/scripts/verify-openapi-json.sh`
+- Committed snapshot:
+  - `apps/openagents.com/service/openapi/openapi.json`
+- CI gate:
+  - `.github/workflows/web-openapi-rust.yml`
 
 ## Compatibility negotiation policy
 

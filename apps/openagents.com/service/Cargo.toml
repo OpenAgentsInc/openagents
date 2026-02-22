@@ -30,9 +30,14 @@ uuid.workspace = true
 [dev-dependencies]
 anyhow.workspace = true
 http-body-util = "0.1"
+openapiv3 = "2.0"
 tempfile.workspace = true
 tower = { version = "0.5", features = ["util"] }
 
 [[bin]]
 name = "openagents-control-service"
 path = "src/main.rs"
+
+[[bin]]
+name = "openagents-control-openapi-export"
+path = "src/bin/openapi_export.rs"
