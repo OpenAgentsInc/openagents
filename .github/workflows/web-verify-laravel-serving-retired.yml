@@ -1,0 +1,22 @@
+name: web-verify-laravel-serving-retired
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Laravel serving lane is retired
+        run: ./apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-verify-laravel-serving-retired
+          path: apps/openagents.com/storage/app/legacy-serving-retirement/**
+          if-no-files-found: warn

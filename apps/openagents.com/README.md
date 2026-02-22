@@ -7,6 +7,7 @@ Active web runtime path is Rust-only:
 - Shared UI/state crates under `crates/` (`openagents-ui-core`, `openagents-app-state`, etc.)
 
 Legacy Laravel/Inertia/React sources remain in-repo only as historical/transition artifacts and are not part of the active runtime lane.
+Legacy agent guidance is archived at `apps/openagents.com/docs/archived/legacy-laravel-deploy/AGENTS.laravel-boost.md`.
 
 Rust-only container path:
 
