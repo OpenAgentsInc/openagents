@@ -10,6 +10,8 @@ pub const ROUTE_AUTH_SESSIONS: &str = "/api/auth/sessions";
 pub const ROUTE_AUTH_SESSIONS_REVOKE: &str = "/api/auth/sessions/revoke";
 pub const ROUTE_AUTH_LOGOUT: &str = "/api/auth/logout";
 pub const ROUTE_ME: &str = "/api/me";
+pub const ROUTE_LEGACY_CHAT_STREAM: &str = "/api/chat/stream";
+pub const ROUTE_LEGACY_CHATS_STREAM: &str = "/api/chats/:conversation_id/stream";
 pub const ROUTE_AUTOPILOTS: &str = "/api/autopilots";
 pub const ROUTE_AUTOPILOTS_BY_ID: &str = "/api/autopilots/:autopilot";
 pub const ROUTE_AUTOPILOTS_THREADS: &str = "/api/autopilots/:autopilot/threads";
@@ -211,6 +213,30 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("me"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_LEGACY_CHAT_STREAM,
+        operation_id: "legacyChatStream",
+        summary: "Compatibility stream alias for Codex chat turns.",
+        tag: "compat",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("legacy_chat_stream_request"),
+        response_example: Some("legacy_chat_stream_response"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_LEGACY_CHATS_STREAM,
+        operation_id: "legacyChatsConversationStream",
+        summary: "Compatibility stream alias using conversation id path.",
+        tag: "compat",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("legacy_chat_stream_request"),
+        response_example: Some("legacy_chat_stream_response"),
     },
     OpenApiContract {
         method: "get",
@@ -1705,6 +1731,16 @@ fn request_example(key: &str) -> Option<Value> {
             "thread_id": "thread_123",
             "user_id": "usr_123"
         })),
+        "legacy_chat_stream_request" => Some(json!({
+            "conversationId": "thread_123",
+            "messages": [
+                {
+                    "id": "m1",
+                    "role": "user",
+                    "content": "Bridge this turn with compatibility headers."
+                }
+            ]
+        })),
         "autopilot_create" => Some(json!({
             "handle": "ep212-bot",
             "displayName": "EP212 Bot",
@@ -1830,6 +1866,25 @@ fn response_example(key: &str) -> Option<Value> {
                         "updatedAt": "2026-02-22T00:00:00Z"
                     }
                 ]
+            }
+        })),
+        "legacy_chat_stream_response" => Some(json!({
+            "data": {
+                "retired": true,
+                "stream_protocol": "disabled",
+                "canonical": "/api/runtime/codex/workers/:worker_id/requests",
+                "bridge": {
+                    "method": "turn/start",
+                    "worker_id": "desktopw:shared",
+                    "request_id": "legacy_stream_req_123"
+                },
+                "response": {
+                    "thread_id": "thread_123",
+                    "turn": {
+                        "id": "turn_456"
+                    },
+                    "ok": true
+                }
             }
         })),
         "autopilot" => Some(json!({
@@ -3024,5 +3079,23 @@ mod tests {
             .and_then(|content| content.get("application/json"))
             .and_then(|content| content.get("example"));
         assert!(register_example.is_some());
+
+        let legacy_stream_example = document
+            .get("paths")
+            .and_then(|paths| paths.get(ROUTE_LEGACY_CHAT_STREAM))
+            .and_then(|path| path.get("post"))
+            .and_then(|post| post.get("requestBody"))
+            .and_then(|body| body.get("content"))
+            .and_then(|content| content.get("application/json"))
+            .and_then(|content| content.get("example"));
+        assert!(legacy_stream_example.is_some());
+
+        let legacy_path_stream = document
+            .get("paths")
+            .and_then(|paths| paths.get("/api/chats/{conversation_id}/stream"))
+            .and_then(|path| path.get("post"))
+            .and_then(|post| post.get("deprecated"))
+            .and_then(Value::as_bool);
+        assert_eq!(legacy_path_stream, Some(true));
     }
 }

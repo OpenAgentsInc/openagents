@@ -8,7 +8,8 @@ This document defines the canonical compatibility negotiation contract across:
 
 1. control-service APIs,
 2. Khala websocket join/subscribe flows,
-3. web-shell asset rollout support windows.
+3. web-shell asset rollout support windows,
+4. compatibility stream aliases (`/api/chat/stream`, `/api/chats/{conversationId}/stream`).
 
 Authoritative decision record: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`.
 
@@ -61,6 +62,13 @@ Failure response semantics:
 - HTTP status: `426 Upgrade Required` (preferred) or explicit compatibility status override per route.
 - JSON envelope carries required fields above.
 - Client behavior: block command/read paths requiring compatibility and prompt upgrade/reload.
+
+Compatibility stream aliases:
+
+- `POST /api/chat/stream`
+- `POST /api/chats/{conversationId}/stream`
+
+These routes use the same compatibility headers and deterministic `426` rejection envelope as other control APIs before endpoint-specific auth/validation runs.
 
 ## Khala WS Contract
 

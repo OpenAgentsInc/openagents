@@ -76,7 +76,8 @@ use crate::openapi::{
     ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
     ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
     ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
-    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
+    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LEGACY_CHATS_STREAM,
+    ROUTE_LEGACY_CHAT_STREAM, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
     ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
     ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE, ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
@@ -1237,7 +1238,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             "/api/chat/guest-session",
             get(legacy_chat_guest_session_retired),
         )
-        .route("/api/chat/stream", post(legacy_chat_stream))
+        .route(ROUTE_LEGACY_CHAT_STREAM, post(legacy_chat_stream))
         .route(
             "/api/chats",
             get(legacy_chats_index).post(legacy_chats_store),
@@ -1247,10 +1248,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             "/api/chats/:conversation_id/messages",
             get(legacy_chats_messages),
         )
-        .route(
-            "/api/chats/:conversation_id/stream",
-            post(legacy_chats_stream),
-        )
+        .route(ROUTE_LEGACY_CHATS_STREAM, post(legacy_chats_stream))
         .route("/api/chats/:conversation_id/runs", get(legacy_chats_runs))
         .route(
             "/api/chats/:conversation_id/runs/:run_id/events",
@@ -2091,7 +2089,22 @@ fn compatibility_surface_for_path(path: &str) -> Option<CompatibilitySurface> {
         return Some(CompatibilitySurface::ControlApi);
     }
 
+    if path == ROUTE_LEGACY_CHAT_STREAM || is_legacy_chats_stream_path(path) {
+        return Some(CompatibilitySurface::ControlApi);
+    }
+
     None
+}
+
+fn is_legacy_chats_stream_path(path: &str) -> bool {
+    let Some(remainder) = path.strip_prefix("/api/chats/") else {
+        return false;
+    };
+    let Some(conversation_id) = remainder.strip_suffix("/stream") else {
+        return false;
+    };
+
+    !conversation_id.is_empty() && !conversation_id.contains('/')
 }
 
 fn compatibility_surface_label(surface: CompatibilitySurface) -> &'static str {
@@ -16140,6 +16153,109 @@ mod tests {
         let response = app.oneshot(request).await?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_rejects_legacy_chat_stream_missing_headers() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"messages":[{"role":"user","content":"compat please"}]}"#,
+            ))?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(
+            response
+                .headers()
+                .get(super::HEADER_OA_COMPAT_CODE)
+                .and_then(|value| value.to_str().ok()),
+            Some("invalid_client_build")
+        );
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "invalid_client_build");
+        assert_eq!(body["compatibility"]["upgrade_required"], true);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_rejects_legacy_chat_stream_protocol_mismatch() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/chats/thread-compat/stream")
+            .header("content-type", "application/json")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v0")
+            .header("x-oa-schema-version", "1")
+            .body(Body::from(
+                r#"{"messages":[{"role":"user","content":"compat protocol"}]}"#,
+            ))?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "unsupported_protocol_version");
+        assert_eq!(
+            body["compatibility"]["protocol_version"],
+            "openagents.control.v1"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_rejects_legacy_chat_stream_schema_mismatch() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "99")
+            .body(Body::from(
+                r#"{"messages":[{"role":"user","content":"compat schema"}]}"#,
+            ))?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "unsupported_schema_version");
+        assert_eq!(body["compatibility"]["min_schema_version"], 1);
+        assert_eq!(body["compatibility"]["max_schema_version"], 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_allows_legacy_chat_stream_supported_client() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1")
+            .body(Body::from(
+                r#"{"messages":[{"role":"user","content":"compat accepted"}]}"#,
+            ))?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "unauthorized");
         Ok(())
     }
 
