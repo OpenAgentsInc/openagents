@@ -16,6 +16,7 @@ base64 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+openagents-codex-control = { path = "../openagents-codex-control" }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 wgpui = { path = "../wgpui", default-features = false, features = ["ios"] }

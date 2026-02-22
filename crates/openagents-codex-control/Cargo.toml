@@ -1,0 +1,15 @@
+[package]
+name = "openagents-codex-control"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Host-agnostic Codex worker control parsing, targeting, and receipt primitives"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
