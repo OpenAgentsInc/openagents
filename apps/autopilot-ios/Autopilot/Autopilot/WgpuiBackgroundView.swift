@@ -504,6 +504,13 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     }
 
     private func workerStatusText(model: CodexHandshakeViewModel) -> String {
+        if let activeWorker = model.missionControlProjection.workers.first(where: { lane in
+            lane.workerID == model.missionControlProjection.activeWorkerID
+        }) ?? model.missionControlProjection.workers.first {
+            let latestSeq = activeWorker.latestSeq.map(String.init) ?? "n/a"
+            let heartbeat = activeWorker.heartbeatState ?? "unknown"
+            return "\(activeWorker.workerID) (\(activeWorker.status) seq=\(latestSeq) heartbeat=\(heartbeat))"
+        }
         if let selected = model.selectedWorkerID {
             let snapshotStatus = model.latestSnapshot?.status ?? "unknown"
             return "\(selected) (\(snapshotStatus))"
@@ -525,6 +532,17 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     }
 
     private func eventsSummary(model: CodexHandshakeViewModel) -> String {
+        if !model.missionControlProjection.events.isEmpty {
+            return model.missionControlProjection.events
+                .suffix(4)
+                .map { record in
+                    if let workerID = record.workerID {
+                        return "\(workerID):\(record.summary)"
+                    }
+                    return record.summary
+                }
+                .joined(separator: " | ")
+        }
         if model.recentEvents.isEmpty {
             return "none"
         }
@@ -532,6 +550,18 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     }
 
     private func controlRequestSummary(model: CodexHandshakeViewModel) -> String {
+        if !model.missionControlProjection.requests.isEmpty {
+            return model.missionControlProjection.requests
+                .suffix(6)
+                .map { request in
+                    let shortID = String(request.requestID.suffix(6))
+                    if request.state == "error", let code = request.errorCode, !code.isEmpty {
+                        return "\(request.method)#\(shortID)[error:\(code)]"
+                    }
+                    return "\(request.method)#\(shortID)[\(request.state)]"
+                }
+                .joined(separator: " | ")
+        }
         if model.controlRequests.isEmpty {
             return "none"
         }
