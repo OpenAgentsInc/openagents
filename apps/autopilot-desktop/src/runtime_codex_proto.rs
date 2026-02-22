@@ -20,7 +20,7 @@ mod tests {
         RuntimeCodexStreamEvent, build_khala_frame, extract_control_request,
         extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
         extract_runtime_events_from_khala_update, handshake_dedupe_key, khala_error_code,
-        merge_retry_cursor, parse_khala_frame, stream_event_seq,
+        merge_retry_cursor, parse_khala_frame, stream_event_seq, terminal_receipt_dedupe_key,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -331,6 +331,20 @@ mod tests {
         assert!(request.is_some());
         let request = request.unwrap_or_else(|| unreachable!());
         assert_eq!(request.request_id, "req-1");
+    }
+
+    #[test]
+    fn terminal_receipt_dedupe_key_is_stable_across_restart_resume_replay() {
+        let worker_id = "desktopw:shared";
+        let request_id = "req-terminal-1";
+        let replayed_key = terminal_receipt_dedupe_key(worker_id, request_id);
+
+        let mut seen = HashSet::new();
+        assert!(seen.insert(replayed_key.clone()));
+        assert!(!seen.insert(replayed_key));
+
+        let next_request_key = terminal_receipt_dedupe_key(worker_id, "req-terminal-2");
+        assert!(seen.insert(next_request_key));
     }
 
     #[test]

@@ -1,0 +1,36 @@
+{
+  "suite_id": "oa.cross_surface_contract.v1",
+  "version": 1,
+  "updated_at": "2026-02-22",
+  "scenarios": [
+    {
+      "id": "codex-control-turn-start-interrupt",
+      "description": "End-to-end control lane covers turn/start with model+effort overrides followed by turn/interrupt on the same thread/turn context.",
+      "surface_contracts": [
+        "ios-control-coordinator",
+        "runtime-codex-workers-api",
+        "desktop-control-proto"
+      ],
+      "assertions": [
+        "turn/start request reaches runtime control endpoint",
+        "turn/start response carries deterministic thread_id and turn.id",
+        "turn/interrupt request reaches runtime control endpoint",
+        "turn/interrupt response confirms interrupted status"
+      ]
+    },
+    {
+      "id": "codex-control-restart-resume-terminal-receipts",
+      "description": "Reconnect and desktop restart/replay paths do not lose terminal receipts and do not emit duplicate terminal outcomes for the same (worker_id, request_id).",
+      "surface_contracts": [
+        "ios-replay-reconciliation",
+        "runtime-idempotency-forwarding",
+        "desktop-terminal-receipt-dedupe"
+      ],
+      "assertions": [
+        "duplicate terminal receipts are ignored idempotently",
+        "replayed terminal receipt reconciles pending request state",
+        "idempotent replay marker is preserved through runtime API"
+      ]
+    }
+  ]
+}

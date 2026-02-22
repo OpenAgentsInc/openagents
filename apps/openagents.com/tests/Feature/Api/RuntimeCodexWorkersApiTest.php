@@ -266,6 +266,87 @@ test('runtime codex workers api forwards idempotent replay semantics for duplica
     Http::assertSentCount(2);
 });
 
+test('runtime codex workers api proxies deterministic turn start then interrupt flow', function () {
+    $user = User::factory()->create();
+    $calls = 0;
+
+    Http::fake(function (HttpRequest $request) use (&$calls) {
+        if ($request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_turn/requests') {
+            $calls++;
+            $payload = $request->data();
+            $method = $payload['request']['method'] ?? null;
+
+            if ($calls === 1 && $method === 'turn/start') {
+                return Http::response([
+                    'data' => [
+                        'worker_id' => 'codexw_turn',
+                        'request_id' => 'req_turn_start',
+                        'ok' => true,
+                        'method' => 'turn/start',
+                        'response' => [
+                            'thread_id' => 'thread_turn',
+                            'turn' => ['id' => 'turn_abc'],
+                        ],
+                    ],
+                ], 200);
+            }
+
+            if ($calls === 2 && $method === 'turn/interrupt') {
+                return Http::response([
+                    'data' => [
+                        'worker_id' => 'codexw_turn',
+                        'request_id' => 'req_turn_interrupt',
+                        'ok' => true,
+                        'method' => 'turn/interrupt',
+                        'response' => [
+                            'status' => 'interrupted',
+                            'turn_id' => 'turn_abc',
+                        ],
+                    ],
+                ], 200);
+            }
+
+            return Http::response(['error' => ['code' => 'invalid_request']], 422);
+        }
+
+        return Http::response(['error' => ['code' => 'not_found']], 404);
+    });
+
+    $start = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_turn/requests', [
+        'request' => [
+            'request_id' => 'req_turn_start',
+            'method' => 'turn/start',
+            'params' => [
+                'thread_id' => 'thread_turn',
+                'text' => 'continue',
+                'model' => 'gpt-5-codex',
+                'effort' => 'medium',
+            ],
+        ],
+    ]);
+
+    $interrupt = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_turn/requests', [
+        'request' => [
+            'request_id' => 'req_turn_interrupt',
+            'method' => 'turn/interrupt',
+            'params' => [
+                'thread_id' => 'thread_turn',
+                'turn_id' => 'turn_abc',
+            ],
+        ],
+    ]);
+
+    $start
+        ->assertOk()
+        ->assertJsonPath('data.method', 'turn/start')
+        ->assertJsonPath('data.response.turn.id', 'turn_abc');
+
+    $interrupt
+        ->assertOk()
+        ->assertJsonPath('data.method', 'turn/interrupt')
+        ->assertJsonPath('data.response.status', 'interrupted');
+});
+
 test('runtime codex workers api keeps handshake ingest and control request lanes interoperable', function () {
     $user = User::factory()->create();
 
