@@ -378,6 +378,29 @@ private struct CodexDebugView: View {
                     }
                 }
 
+                Section("Control Requests") {
+                    if model.controlRequests.isEmpty {
+                        Text("No control requests yet")
+                            .foregroundStyle(OATheme.mutedForeground)
+                    } else {
+                        ForEach(model.controlRequests.prefix(20)) { request in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(request.request.method.rawValue) [\(request.state.rawValue)]")
+                                    .font(.caption)
+                                Text(request.requestID)
+                                    .font(.caption2)
+                                    .foregroundStyle(OATheme.mutedForeground)
+                                    .textSelection(.enabled)
+                                if let message = request.errorMessage, !message.isEmpty {
+                                    Text(message)
+                                        .font(.caption2)
+                                        .foregroundStyle(OATheme.destructive)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let status = model.statusMessage {
                     Section("Status") {
                         Text(status)
