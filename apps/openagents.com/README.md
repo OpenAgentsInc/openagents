@@ -35,7 +35,9 @@ apps/openagents.com/web-shell/build-dist.sh
 
 - `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
-- `apps/openagents.com/docs/20260221-route-cutover-default-rust.md`
+- `apps/openagents.com/docs/20260222-oa-webparity-058-production-canary-rollback-drill.md`
+- `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
+- `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
 
 Optional helper (no Laravel/Node runtime steps):
 

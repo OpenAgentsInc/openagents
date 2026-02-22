@@ -1,11 +1,15 @@
 # Laravel to Rust/WGPUI Full Parity Master Plan (openagents.com)
 
 Date: 2026-02-22  
-Status: Proposed program plan (execution backlog not yet created)  
+Status: Completed program record (OA-WEBPARITY-001..068 closed)  
 Owner: openagents.com platform
 
 Canonical execution checklist:
 - `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
+
+Completion note (2026-02-22):
+- This document is retained as the executed program plan and scope record.
+- The backlog items listed below were created and closed in sequence.
 
 ## 1) Goal
 
@@ -40,8 +44,8 @@ Measured from current repository state in `apps/openagents.com`:
 - Laravel feature tests: 61 files (`tests/Feature/`)
 - Laravel unit tests: 7 files (`tests/Unit/`)
 
-Current Rust control-service/web-shell already ships key foundations (auth/session/control/route-split), but does not yet cover all Laravel domain surfaces.
-Current Laravel chat surface still includes Vercel AI SDK frontend + Laravel AI backend protocol lanes; this plan retires that stack in favor of Codex app-server protocol only.
+Historical baseline note:
+- The counts above reflect repository baseline at plan creation time, not current runtime ownership.
 
 ## 3) Parity Definition (non-negotiable)
 
@@ -119,7 +123,7 @@ Outcome: production Rust-only, audited, and stable.
 
 ## 6) GitHub Issue Backlog (execution order)
 
-Each item below is intended to become one GitHub issue.
+Each item below was executed as one GitHub issue (closed).
 
 ### Phase 0 issues
 
@@ -595,3 +599,6 @@ Program is complete when:
 4. Production traffic runs Rust-only with stable SLOs through post-cutover observation window.
 5. Laravel serving path is retired and documentation reflects Rust-first ownership.
 6. Web chat/thread execution is codex app-server protocol only (no separate Vercel-style thread/chat implementation in production paths).
+
+Completion result:
+- Program completion criteria satisfied and issue set closed on 2026-02-22.

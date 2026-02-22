@@ -1,8 +1,11 @@
 # OA-RUST-061 Route Group Rollout: Auth / Onboarding Entry
 
-Status: active
+Status: historical rollout record (group rollout completed)
 Owner: `owner:openagents.com`
 Issue: OA-RUST-061
+
+Superseded by:
+- `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
 
 ## Route groups migrated to Rust shell
 

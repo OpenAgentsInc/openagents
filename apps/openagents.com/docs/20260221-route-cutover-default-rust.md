@@ -1,8 +1,11 @@
 # OA-RUST-062 Default Router Cutover: Rust Shell
 
-Status: active
+Status: historical rollout record (default cutover completed)
 Owner: `owner:openagents.com`
 Issue: OA-RUST-062
+
+Superseded by:
+- `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
 
 ## Objective
 

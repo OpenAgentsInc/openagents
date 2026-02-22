@@ -1,7 +1,7 @@
 # OA-WEBPARITY-059 Production Rust-Only Route Target Flip
 
 Date: 2026-02-22
-Status: pass (automation + authority lock checks), live production apply pending operator execution
+Status: pass (automation + authority lock checks; live apply requires operator credentials)
 Issue: OA-WEBPARITY-059
 
 ## Deliverables

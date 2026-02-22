@@ -1,9 +1,12 @@
 # Codex Thread Rust Pilot (OA-RUST-031)
 
-Status: active pilot route plan
+Status: historical rollout record (pilot completed)
 Owner: `apps/openagents.com`
 Issue: `#1846` (OA-RUST-031)
 Updated: 2026-02-21
+
+Superseded by:
+- `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
 
 ## Route scope
 

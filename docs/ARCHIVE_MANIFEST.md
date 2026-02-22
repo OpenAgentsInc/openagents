@@ -10,6 +10,9 @@ Date: 2026-02-21
 2. Stale-doc cleanup pass
 - `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/`
 
+3. Docs hygiene pass
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-22-doc-hygiene-pass/`
+
 ## Stale-Doc Cleanup Scope (2026-02-21)
 
 Moved from repo docs tree to backroom:

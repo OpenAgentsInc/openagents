@@ -67,3 +67,4 @@ This tree contains current Rust-era documentation and forward strategy only.
 Historical docs were moved to:
 
 - `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/`
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-22-doc-hygiene-pass/`

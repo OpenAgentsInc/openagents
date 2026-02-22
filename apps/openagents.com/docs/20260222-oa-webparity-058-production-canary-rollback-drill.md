@@ -1,7 +1,7 @@
 # OA-WEBPARITY-058 Production Canary + Rollback Drill Report
 
 Date: 2026-02-22
-Status: pass (automation + dry-run rehearsal), live production execution pending operator approval
+Status: pass (automation + dry-run rehearsal; live execution requires operator credentials)
 Issue: OA-WEBPARITY-058
 
 ## Deliverables

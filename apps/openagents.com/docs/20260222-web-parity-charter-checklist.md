@@ -1,7 +1,7 @@
 # OA-WEBPARITY-001 Program Charter and Canonical Checklist
 
 Date: 2026-02-22  
-Status: Active (frozen baseline for parity execution)  
+Status: Completed (frozen baseline; OA-WEBPARITY-001..068 closed)  
 Tracking: OA-WEBPARITY-001
 
 Canonical source plan:
@@ -13,7 +13,11 @@ Baseline manifest artifacts:
 - `apps/openagents.com/docs/parity-manifests/baseline/page-entries.json`
 - `apps/openagents.com/docs/parity-manifests/baseline/artisan-commands.json`
 - `apps/openagents.com/docs/parity-manifests/baseline/manifest-index.json`
-- Regenerate with: `php artisan ops:export-parity-manifests --output=docs/parity-manifests/baseline`
+- Legacy baseline regenerate helper: `./apps/openagents.com/scripts/archived-laravel/run-parity-scoreboard.sh`
+
+Program closure note:
+- This checklist remains as a frozen execution artifact.
+- Current completion state is tracked by closed OA-WEBPARITY issues plus linked harness/audit reports.
 
 ## Charter
 

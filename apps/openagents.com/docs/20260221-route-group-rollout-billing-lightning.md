@@ -1,8 +1,11 @@
 # OA-RUST-060 Route Group Rollout: Billing / Lightning Operator
 
-Status: active
+Status: historical rollout record (group rollout completed)
 Owner: `owner:openagents.com`
 Issue: OA-RUST-060
+
+Superseded by:
+- `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
 
 ## Route groups migrated to Rust shell
 
