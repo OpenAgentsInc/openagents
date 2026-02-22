@@ -6,6 +6,7 @@ mod codex_thread;
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
+    use std::collections::HashMap;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use futures_util::{FutureExt, SinkExt, StreamExt, pin_mut, select};
@@ -86,6 +87,8 @@ mod wasm {
         static ADMIN_WORKER_REQUEST_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ADMIN_WORKER_EVENT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ADMIN_WORKER_STREAM_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static GLOBAL_SHORTCUT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::KeyboardEvent)>>> = const { RefCell::new(None) };
+        static ROUTE_SCROLL_POSITIONS: RefCell<HashMap<String, i32>> = RefCell::new(HashMap::new());
         static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
@@ -1780,6 +1783,7 @@ mod wasm {
     }
 
     fn apply_route_transition(route: AppRoute, push_history: bool) {
+        remember_route_scroll_position();
         APP_STATE.with(|state| {
             let mut state = state.borrow_mut();
             let _ = apply_action(&mut state, AppAction::Navigate { route });
@@ -1796,6 +1800,43 @@ mod wasm {
         schedule_l402_surface_refresh();
         schedule_admin_worker_surface_refresh();
         render_codex_chat_dom();
+    }
+
+    fn remember_route_scroll_position() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(messages_container) = document.get_element_by_id(CODEX_CHAT_MESSAGES_ID) else {
+            return;
+        };
+        let Ok(messages_container) = messages_container.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let route = APP_STATE.with(|state| state.borrow().route.clone());
+        remember_scroll_position_for_route(&messages_container, &route);
+    }
+
+    fn remember_scroll_position_for_route(messages_container: &HtmlElement, route: &AppRoute) {
+        let route_path = route.to_path();
+        ROUTE_SCROLL_POSITIONS.with(|positions| {
+            positions
+                .borrow_mut()
+                .insert(route_path, messages_container.scroll_top());
+        });
+    }
+
+    fn restore_route_scroll_position(
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        fallback: i32,
+    ) {
+        let route_path = route.to_path();
+        let scroll_top =
+            ROUTE_SCROLL_POSITIONS.with(|positions| positions.borrow().get(&route_path).copied());
+        messages_container.set_scroll_top(scroll_top.unwrap_or(fallback));
     }
 
     fn install_browser_navigation_handlers() {
@@ -3666,6 +3707,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "codex quick prompts is not HtmlElement".to_string())?;
             quick_prompts.set_id(CODEX_CHAT_QUICK_PROMPTS_ID);
+            let _ = quick_prompts.set_attribute("role", "group");
             quick_prompts
                 .style()
                 .set_property("display", "none")
@@ -3702,6 +3744,7 @@ mod wasm {
                     .dyn_into::<HtmlElement>()
                     .map_err(|_| "codex quick prompt button is not HtmlElement".to_string())?;
                 prompt_button.set_id(CHAT_QUICK_PROMPT_IDS[index]);
+                let _ = prompt_button.set_attribute("type", "button");
                 prompt_button.set_inner_text(prompt);
                 let _ = prompt_button.style().set_property("padding", "6px 10px");
                 let _ = prompt_button.style().set_property("border-radius", "999px");
@@ -3755,6 +3798,7 @@ mod wasm {
                 .map_err(|_| "codex input is not HtmlInputElement".to_string())?;
             input.set_id(CODEX_CHAT_INPUT_ID);
             input.set_placeholder("Message Codex");
+            let _ = input.set_attribute("aria-label", "Message Codex");
             let _ = input.style().set_property("flex", "1");
             let _ = input.style().set_property("height", "40px");
             let _ = input.style().set_property("padding", "0 12px");
@@ -3775,6 +3819,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "codex send button is not HtmlElement".to_string())?;
             send_button.set_id(CODEX_CHAT_SEND_ID);
+            let _ = send_button.set_attribute("type", "button");
             send_button.set_inner_text("Send");
             let _ = send_button.style().set_property("height", "40px");
             let _ = send_button.style().set_property("padding", "0 16px");
@@ -3839,6 +3884,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "auth send button is not HtmlElement".to_string())?;
             auth_send_button.set_id(AUTH_SEND_ID);
+            let _ = auth_send_button.set_attribute("type", "button");
             auth_send_button.set_inner_text("Send code");
             let _ = auth_send_button.style().set_property("height", "40px");
             let _ = auth_send_button.style().set_property("padding", "0 14px");
@@ -3891,6 +3937,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "auth verify button is not HtmlElement".to_string())?;
             auth_verify_button.set_id(AUTH_VERIFY_ID);
+            let _ = auth_verify_button.set_attribute("type", "button");
             auth_verify_button.set_inner_text("Verify");
             let _ = auth_verify_button.style().set_property("height", "40px");
             let _ = auth_verify_button.style().set_property("padding", "0 14px");
@@ -3921,6 +3968,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "auth restore button is not HtmlElement".to_string())?;
             auth_restore_button.set_id(AUTH_RESTORE_ID);
+            let _ = auth_restore_button.set_attribute("type", "button");
             auth_restore_button.set_inner_text("Restore session");
             let _ = auth_restore_button.style().set_property("height", "36px");
             let _ = auth_restore_button
@@ -3944,6 +3992,7 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "auth logout button is not HtmlElement".to_string())?;
             auth_logout_button.set_id(AUTH_LOGOUT_ID);
+            let _ = auth_logout_button.set_attribute("type", "button");
             auth_logout_button.set_inner_text("Sign out");
             let _ = auth_logout_button.style().set_property("height", "36px");
             let _ = auth_logout_button.style().set_property("padding", "0 12px");
@@ -4081,9 +4130,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "settings autopilot row is not HtmlElement".to_string())?;
             let _ = autopilot_row.style().set_property("display", "grid");
-            let _ = autopilot_row
-                .style()
-                .set_property("grid-template-columns", "repeat(2, minmax(0, 1fr))");
+            let _ = autopilot_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(220px, 1fr))",
+            );
             let _ = autopilot_row.style().set_property("gap", "8px");
 
             for (id, placeholder) in [
@@ -4145,9 +4195,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "settings resend row is not HtmlElement".to_string())?;
             let _ = resend_row.style().set_property("display", "grid");
-            let _ = resend_row
-                .style()
-                .set_property("grid-template-columns", "repeat(3, minmax(0, 1fr))");
+            let _ = resend_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = resend_row.style().set_property("gap", "8px");
             for (id, placeholder) in [
                 (SETTINGS_RESEND_KEY_ID, "Resend API key"),
@@ -4292,9 +4343,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "admin worker row is not HtmlElement".to_string())?;
             let _ = worker_row.style().set_property("display", "grid");
-            let _ = worker_row
-                .style()
-                .set_property("grid-template-columns", "2fr 2fr 1fr auto auto");
+            let _ = worker_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = worker_row.style().set_property("gap", "8px");
 
             for (id, placeholder) in [
@@ -4347,9 +4399,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "admin stop row is not HtmlElement".to_string())?;
             let _ = stop_row.style().set_property("display", "grid");
-            let _ = stop_row
-                .style()
-                .set_property("grid-template-columns", "2fr 2fr auto");
+            let _ = stop_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = stop_row.style().set_property("gap", "8px");
 
             for (id, placeholder) in [
@@ -4395,9 +4448,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "admin request row is not HtmlElement".to_string())?;
             let _ = request_row.style().set_property("display", "grid");
-            let _ = request_row
-                .style()
-                .set_property("grid-template-columns", "2fr 2fr auto");
+            let _ = request_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = request_row.style().set_property("gap", "8px");
 
             for (id, placeholder) in [
@@ -4476,9 +4530,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "admin event row is not HtmlElement".to_string())?;
             let _ = event_row.style().set_property("display", "grid");
-            let _ = event_row
-                .style()
-                .set_property("grid-template-columns", "2fr 3fr auto");
+            let _ = event_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = event_row.style().set_property("gap", "8px");
 
             for (id, placeholder) in [
@@ -4528,9 +4583,10 @@ mod wasm {
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "admin stream row is not HtmlElement".to_string())?;
             let _ = stream_row.style().set_property("display", "grid");
-            let _ = stream_row
-                .style()
-                .set_property("grid-template-columns", "1fr 1fr auto");
+            let _ = stream_row.style().set_property(
+                "grid-template-columns",
+                "repeat(auto-fit, minmax(180px, 1fr))",
+            );
             let _ = stream_row.style().set_property("gap", "8px");
             for (id, placeholder) in [
                 (ADMIN_STREAM_CURSOR_ID, "cursor (default 0)"),
@@ -4612,6 +4668,20 @@ mod wasm {
                 },
             ));
             let _ = input
+                .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        GLOBAL_SHORTCUT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::wrap(Box::new(
+                move |event: web_sys::KeyboardEvent| {
+                    handle_global_shortcut(event);
+                },
+            ));
+            let _ = document
                 .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
             *slot.borrow_mut() = Some(callback);
         });
@@ -4914,6 +4984,102 @@ mod wasm {
         });
 
         Ok(())
+    }
+
+    fn handle_global_shortcut(event: web_sys::KeyboardEvent) {
+        if event.default_prevented() || event.repeat() {
+            return;
+        }
+        if event.key().to_ascii_lowercase() != "k" {
+            return;
+        }
+        if !(event.meta_key() || event.ctrl_key()) || event.alt_key() || event.shift_key() {
+            return;
+        }
+
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        if active_element_accepts_text(&document) {
+            return;
+        }
+
+        event.prevent_default();
+        let should_navigate_to_chat = APP_STATE.with(|state| {
+            let route = state.borrow().route.clone();
+            !route_is_codex_chat_surface(&route)
+        });
+        if should_navigate_to_chat {
+            apply_route_transition(AppRoute::Chat { thread_id: None }, true);
+        }
+        let _ = focus_codex_chat_input(&document);
+    }
+
+    fn focus_codex_chat_input(document: &web_sys::Document) -> bool {
+        let Some(composer) = document
+            .get_element_by_id(CODEX_CHAT_COMPOSER_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok())
+        else {
+            return false;
+        };
+        if composer
+            .style()
+            .get_property_value("display")
+            .unwrap_or_default()
+            == "none"
+        {
+            return false;
+        }
+
+        let Some(input) = document
+            .get_element_by_id(CODEX_CHAT_INPUT_ID)
+            .and_then(|element| element.dyn_into::<HtmlInputElement>().ok())
+        else {
+            return false;
+        };
+        let _ = input.focus();
+        true
+    }
+
+    fn active_element_accepts_text(document: &web_sys::Document) -> bool {
+        let Some(active) = document.active_element() else {
+            return false;
+        };
+
+        if active.has_attribute("contenteditable") {
+            let content_editable = active
+                .get_attribute("contenteditable")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if content_editable != "false" {
+                return true;
+            }
+        }
+
+        let tag = active.tag_name().to_ascii_lowercase();
+        if tag == "textarea" {
+            return true;
+        }
+        if tag != "input" {
+            return false;
+        }
+
+        if let Ok(input) = active.dyn_into::<HtmlInputElement>() {
+            let kind = input.type_();
+            is_text_input_type(&kind)
+        } else {
+            true
+        }
+    }
+
+    fn is_text_input_type(input_type: &str) -> bool {
+        matches!(
+            input_type.trim().to_ascii_lowercase().as_str(),
+            "" | "text" | "search" | "email" | "password" | "tel" | "url" | "number"
+        )
     }
 
     fn submit_codex_message_from_input() {
@@ -5794,6 +5960,7 @@ mod wasm {
         let Ok(messages_container) = messages_container.dyn_into::<HtmlElement>() else {
             return;
         };
+        remember_scroll_position_for_route(&messages_container, &route);
         messages_container.set_inner_html("");
 
         let Some(composer) = document
@@ -5831,7 +5998,7 @@ mod wasm {
                 let _ = admin_panel.style().set_property("display", "none");
             }
             render_chat_auth_gate_messages(&document, &messages_container, &route);
-            messages_container.set_scroll_top(0);
+            restore_route_scroll_position(&messages_container, &route, 0);
             return;
         }
 
@@ -5890,7 +6057,7 @@ mod wasm {
                 &codex_history_state,
                 codex_history_loading,
             );
-            messages_container.set_scroll_top(0);
+            restore_route_scroll_position(&messages_container, &route, 0);
             return;
         }
 
@@ -5928,7 +6095,7 @@ mod wasm {
         if is_auth_route {
             sync_auth_form_inputs(&document, &auth_state);
             render_auth_surface_messages(&document, &messages_container, &route, &auth_state);
-            messages_container.set_scroll_top(0);
+            restore_route_scroll_position(&messages_container, &route, 0);
             return;
         }
 
@@ -5945,7 +6112,7 @@ mod wasm {
                 &admin_state,
                 admin_loading,
             );
-            messages_container.set_scroll_top(0);
+            restore_route_scroll_position(&messages_container, &route, 0);
             return;
         }
 
@@ -5959,7 +6126,7 @@ mod wasm {
                 &l402_state,
                 l402_loading,
             );
-            messages_container.set_scroll_top(0);
+            restore_route_scroll_position(&messages_container, &route, 0);
             return;
         }
 
@@ -5971,7 +6138,7 @@ mod wasm {
             &management_state,
             management_loading,
         );
-        messages_container.set_scroll_top(0);
+        restore_route_scroll_position(&messages_container, &route, 0);
     }
 
     fn sync_auth_form_inputs(
