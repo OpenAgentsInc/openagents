@@ -75,10 +75,11 @@ use runtime_auth::{
     runtime_auth_state_path,
 };
 use runtime_codex_proto::{
-    RuntimeCodexStreamEvent, build_khala_frame, extract_desktop_handshake_ack_id,
+    RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame, extract_control_request,
+    extract_desktop_handshake_ack_id,
     extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
-    stream_event_seq,
+    request_dedupe_key, stream_event_seq,
 };
 
 const WINDOW_TITLE: &str = "Autopilot";
@@ -114,6 +115,8 @@ const RUNTIME_SYNC_KHALA_CHANNEL: &str = "sync:v1";
 const RUNTIME_SYNC_KHALA_WS_VSN: &str = "2.0.0";
 const RUNTIME_SYNC_KHALA_HEARTBEAT_MS: u64 = 20_000;
 const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
+const RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK: &str = "runtime/request";
+const RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX: &str = "invalid-request-seq";
 type RuntimeSyncWebSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[derive(Parser, Debug)]
@@ -162,6 +165,7 @@ struct RuntimeCodexSync {
     worker_sessions: Arc<tokio::sync::Mutex<HashMap<String, SessionId>>>,
     acked_handshakes: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
     action_tx: mpsc::Sender<UserAction>,
 }
 
@@ -231,6 +235,7 @@ impl RuntimeCodexSync {
             worker_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             action_tx,
         })
     }
@@ -793,7 +798,7 @@ impl RuntimeCodexSync {
         }
 
         if let Some(incoming) = extract_ios_user_message(&event.payload) {
-            let dedupe_key = format!("{worker_id}::{}", incoming.message_id);
+            let dedupe_key = request_dedupe_key(worker_id, &incoming.message_id);
             if self.is_ios_user_message_seen(&dedupe_key).await {
                 tracing::debug!(
                     worker_id = %worker_id,
@@ -831,6 +836,72 @@ impl RuntimeCodexSync {
                 "runtime sync dispatched ios user message to desktop session"
             );
             return Ok(());
+        }
+
+        match extract_control_request(&event.payload) {
+            Ok(Some(request)) => {
+                let dedupe_key = request_dedupe_key(worker_id, &request.request_id);
+                if self.is_control_request_seen(&dedupe_key).await {
+                    tracing::debug!(
+                        worker_id = %worker_id,
+                        request_id = %request.request_id,
+                        method = request.method.as_str(),
+                        "runtime sync skipped duplicate remote control request"
+                    );
+                    return Ok(());
+                }
+
+                self.mark_control_request_seen(dedupe_key).await;
+                tracing::info!(
+                    worker_id = %worker_id,
+                    request_id = %request.request_id,
+                    method = request.method.as_str(),
+                    "runtime sync accepted remote control request"
+                );
+
+                // Phase 1 parse/validation lane: request is accepted and deduped here.
+                // Execution dispatch is wired in the next phase.
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let request_id = error.request_id.unwrap_or_else(|| {
+                    stream_event_seq(event)
+                        .map(|seq| format!("{RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX}-{seq}"))
+                        .unwrap_or_else(|| {
+                            format!("{RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX}-unknown")
+                        })
+                });
+                let method = error
+                    .method
+                    .unwrap_or_else(|| RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK.to_string());
+
+                let receipt = build_error_receipt(
+                    &request_id,
+                    &method,
+                    error.code,
+                    &error.message,
+                    false,
+                    Some(json!({
+                        "phase": "parse",
+                        "worker_id": worker_id,
+                        "seq": stream_event_seq(event),
+                    })),
+                    &Utc::now().to_rfc3339(),
+                );
+
+                self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
+                    .await?;
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    request_id = %request_id,
+                    method = %method,
+                    code = error.code,
+                    message = %error.message,
+                    "runtime sync rejected malformed remote control request"
+                );
+                return Ok(());
+            }
         }
 
         let Some(handshake_id) = extract_ios_handshake_id(&event.payload) else {
@@ -927,6 +998,16 @@ impl RuntimeCodexSync {
 
     async fn mark_ios_user_message_seen(&self, dedupe_key: String) {
         let mut guard = self.seen_ios_user_messages.lock().await;
+        guard.insert(dedupe_key);
+    }
+
+    async fn is_control_request_seen(&self, dedupe_key: &str) -> bool {
+        let guard = self.seen_control_requests.lock().await;
+        guard.contains(dedupe_key)
+    }
+
+    async fn mark_control_request_seen(&self, dedupe_key: String) {
+        let mut guard = self.seen_control_requests.lock().await;
         guard.insert(dedupe_key);
     }
 
