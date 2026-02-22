@@ -220,21 +220,22 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         guard let statePtr else { return }
 
         WgpuiBackgroundBridge.clearCodexMessages(state: statePtr)
-        for message in model.chatMessages.suffix(220) {
+        for message in missionOverviewRows(model: model).suffix(220) {
             WgpuiBackgroundBridge.pushCodexMessage(
                 state: statePtr,
                 role: mapRole(message.role),
                 text: message.text,
-                streaming: message.isStreaming
+                streaming: message.streaming
             )
         }
 
         let modelLabel = model.selectedModelOverride == "default" ? "model:auto" : model.selectedModelOverride
         let reasoningLabel = model.selectedReasoningEffort == "default" ? "reasoning:auto" : model.selectedReasoningEffort
+        let projection = model.missionControlProjection
         WgpuiBackgroundBridge.setCodexContext(
             state: statePtr,
-            thread: "thread: \(model.activeThreadID ?? "none")",
-            turn: "turn: \(model.activeTurnID ?? "none")",
+            thread: "workers: \(projection.workers.count)",
+            turn: "events: \(projection.events.count)",
             model: modelLabel,
             reasoning: reasoningLabel
         )
@@ -438,6 +439,52 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
     }
 
+    private func missionOverviewRows(model: CodexHandshakeViewModel) -> [(role: CodexChatRole, text: String, streaming: Bool)] {
+        let projection = model.missionControlProjection
+        var rows: [(role: CodexChatRole, text: String, streaming: Bool)] = []
+
+        let workerRows = projection.workers.sorted { lhs, rhs in
+            if lhs.status != rhs.status {
+                return lhs.status < rhs.status
+            }
+            return lhs.workerID < rhs.workerID
+        }
+        for worker in workerRows.prefix(18) {
+            let seq = worker.latestSeq.map(String.init) ?? "n/a"
+            let heartbeat = worker.heartbeatState ?? "unknown"
+            let turns = worker.runningTurns
+            let queued = worker.queuedRequests
+            let failed = worker.failedRequests
+            rows.append((
+                role: worker.status == "running" ? .assistant : .system,
+                text: "[lane] \(worker.workerID) | status=\(worker.status) seq=\(seq) hb=\(heartbeat) turns=\(turns) queued=\(queued) failed=\(failed)",
+                streaming: false
+            ))
+        }
+
+        for event in projection.events.suffix(120) {
+            let worker = event.workerID ?? "unknown-worker"
+            let thread = event.threadID ?? "thread:none"
+            let label = event.resyncMarker ? "resync" : "event"
+            let role: CodexChatRole = {
+                if event.severity == .error {
+                    return .error
+                }
+                if event.resyncMarker {
+                    return .system
+                }
+                return .tool
+            }()
+            rows.append((
+                role: role,
+                text: "[\(label)] \(worker) | \(thread) | \(event.summary)",
+                streaming: false
+            ))
+        }
+
+        return rows
+    }
+
     private func resolveEmptyState(model: CodexHandshakeViewModel) -> (title: String, detail: String) {
         if let error = model.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
             return ("Codex Error", error)
@@ -447,11 +494,11 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
         switch model.streamState {
         case .connecting:
-            return ("Connecting", "Connecting to your desktop Codex stream...")
+            return ("Mission Control Connecting", "Connecting to your desktop Codex stream...")
         case .reconnecting:
-            return ("Reconnecting", "Recovering your desktop Codex stream...")
+            return ("Mission Control Reconnecting", "Recovering your desktop Codex stream...")
         default:
-            return ("No Codex Messages Yet", "Waiting for Codex events from desktop.")
+            return ("Mission Control Empty", "Waiting for Codex worker lanes and events.")
         }
     }
 
@@ -504,12 +551,13 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     }
 
     private func workerStatusText(model: CodexHandshakeViewModel) -> String {
-        if let activeWorker = model.missionControlProjection.workers.first(where: { lane in
-            lane.workerID == model.missionControlProjection.activeWorkerID
-        }) ?? model.missionControlProjection.workers.first {
-            let latestSeq = activeWorker.latestSeq.map(String.init) ?? "n/a"
-            let heartbeat = activeWorker.heartbeatState ?? "unknown"
-            return "\(activeWorker.workerID) (\(activeWorker.status) seq=\(latestSeq) heartbeat=\(heartbeat))"
+        let projection = model.missionControlProjection
+        if !projection.workers.isEmpty {
+            let running = projection.workers.filter { $0.status == "running" }.count
+            let totalTurns = projection.workers.reduce(0) { $0 + Int($1.runningTurns) }
+            let queued = projection.workers.reduce(0) { $0 + Int($1.queuedRequests) }
+            let failed = projection.workers.reduce(0) { $0 + Int($1.failedRequests) }
+            return "workers=\(projection.workers.count) running=\(running) turns=\(totalTurns) queued=\(queued) failed=\(failed)"
         }
         if let selected = model.selectedWorkerID {
             let snapshotStatus = model.latestSnapshot?.status ?? "unknown"

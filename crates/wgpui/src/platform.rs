@@ -656,6 +656,7 @@ pub mod ios {
         connect_stream_requested: bool,
         disconnect_stream_requested: bool,
         send_handshake_requested: bool,
+        mission_control_mode: bool,
         operator_panel_visible: bool,
         active_input_target: InputTarget,
     }
@@ -787,6 +788,7 @@ pub mod ios {
                 connect_stream_requested: false,
                 disconnect_stream_requested: false,
                 send_handshake_requested: false,
+                mission_control_mode: true,
                 operator_panel_visible: false,
                 active_input_target: InputTarget::None,
             }))
@@ -817,6 +819,26 @@ pub mod ios {
 
         fn controls_layout(&self) -> (Bounds, Bounds, Bounds, Bounds, Bounds, Bounds) {
             let panel = self.primary_panel_bounds();
+            if self.mission_control_mode {
+                let status_bounds = Bounds::new(
+                    panel.x() + 10.0,
+                    panel.y() + TITLE_HEIGHT + 10.0,
+                    panel.width() - 20.0,
+                    TOP_CONTEXT_HEIGHT + 10.0,
+                );
+                let transcript_bounds = Bounds::new(
+                    panel.x() + 10.0,
+                    status_bounds.y() + status_bounds.height() + 8.0,
+                    panel.width() - 20.0,
+                    (panel.y() + panel.height()
+                        - (status_bounds.y() + status_bounds.height())
+                        - 18.0)
+                        .max(80.0),
+                );
+                let zero = Bounds::new(0.0, 0.0, 0.0, 0.0);
+                return (transcript_bounds, status_bounds, zero, zero, zero, zero);
+            }
+
             let control_y_start = panel.y() + panel.height()
                 - (TOP_CONTEXT_HEIGHT
                     + CONTROL_GAP
@@ -1082,6 +1104,11 @@ pub mod ios {
                     self.operator_panel_visible = false;
                     self.active_input_target = InputTarget::None;
                 }
+                return;
+            }
+
+            if self.mission_control_mode {
+                self.active_input_target = InputTarget::None;
                 return;
             }
 
@@ -1500,6 +1527,7 @@ pub mod ios {
             let events_text = self.events_text.clone();
             let control_text = self.control_text.clone();
             let active_input_target = self.active_input_target;
+            let mission_control_mode = self.mission_control_mode;
             let operator_panel_bounds = self.operator_panel_bounds();
             let operator_layout = self.operator_layout(operator_panel_bounds);
 
@@ -1538,7 +1566,12 @@ pub mod ios {
                     .with_corner_radius(PANEL_CORNER_RADIUS),
             );
 
-            let mut title = Text::new("Codex")
+            let title_text = if mission_control_mode {
+                "Mission Control"
+            } else {
+                "Codex"
+            };
+            let mut title = Text::new(title_text)
                 .font_size(24.0)
                 .color(theme::text::PRIMARY)
                 .no_wrap();
@@ -1574,85 +1607,103 @@ pub mod ios {
                 &mut paint,
             );
 
-            paint.scene.draw_quad(
-                Quad::new(model_bounds)
-                    .with_background(theme::bg::SURFACE.with_alpha(0.9))
-                    .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
-                    .with_corner_radius(8.0),
-            );
-            paint.scene.draw_quad(
-                Quad::new(reasoning_bounds)
-                    .with_background(theme::bg::SURFACE.with_alpha(0.9))
-                    .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
-                    .with_corner_radius(8.0),
-            );
+            if mission_control_mode {
+                paint.scene.draw_quad(
+                    Quad::new(context_bounds)
+                        .with_background(theme::bg::SURFACE.with_alpha(0.9))
+                        .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
+                        .with_corner_radius(8.0),
+                );
 
-            let mut model = Text::new(&model_label)
-                .font_size(SMALL_TEXT_SIZE)
-                .color(theme::text::PRIMARY)
-                .no_wrap();
-            model.paint(
-                Bounds::new(
-                    model_bounds.x() + 8.0,
-                    model_bounds.y() + 3.0,
-                    model_bounds.width() - 12.0,
-                    model_bounds.height() - 6.0,
-                ),
-                &mut paint,
-            );
-            let mut reasoning = Text::new(&reasoning_label)
-                .font_size(SMALL_TEXT_SIZE)
-                .color(theme::text::PRIMARY)
-                .no_wrap();
-            reasoning.paint(
-                Bounds::new(
-                    reasoning_bounds.x() + 8.0,
-                    reasoning_bounds.y() + 3.0,
-                    reasoning_bounds.width() - 12.0,
-                    reasoning_bounds.height() - 6.0,
-                ),
-                &mut paint,
-            );
+                let mission_status_text = format!(
+                    "{}\nstream={} | handshake={}\n{}\n{}",
+                    worker_status, stream_status, handshake_status, events_text, control_text
+                );
+                let mut mission_status = Text::new(mission_status_text)
+                    .font_size(11.5)
+                    .color(theme::text::MUTED);
+                mission_status.paint(context_bounds.inset(8.0), &mut paint);
+            } else {
+                paint.scene.draw_quad(
+                    Quad::new(model_bounds)
+                        .with_background(theme::bg::SURFACE.with_alpha(0.9))
+                        .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
+                        .with_corner_radius(8.0),
+                );
+                paint.scene.draw_quad(
+                    Quad::new(reasoning_bounds)
+                        .with_background(theme::bg::SURFACE.with_alpha(0.9))
+                        .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
+                        .with_corner_radius(8.0),
+                );
 
-            let mut thread_text = Text::new(&active_thread_label)
-                .font_size(SMALL_TEXT_SIZE)
-                .color(theme::text::MUTED)
-                .no_wrap();
-            thread_text.paint(
-                Bounds::new(
-                    context_bounds.x() + context_bounds.width() * 0.58,
-                    context_bounds.y(),
-                    context_bounds.width() * 0.42,
-                    SMALL_TEXT_SIZE + 3.0,
-                ),
-                &mut paint,
-            );
-            let mut turn_text = Text::new(&active_turn_label)
-                .font_size(SMALL_TEXT_SIZE)
-                .color(theme::text::MUTED)
-                .no_wrap();
-            turn_text.paint(
-                Bounds::new(
-                    context_bounds.x() + context_bounds.width() * 0.58,
-                    context_bounds.y() + SMALL_TEXT_SIZE + 4.0,
-                    context_bounds.width() * 0.42,
-                    SMALL_TEXT_SIZE + 3.0,
-                ),
-                &mut paint,
-            );
+                let mut model = Text::new(&model_label)
+                    .font_size(SMALL_TEXT_SIZE)
+                    .color(theme::text::PRIMARY)
+                    .no_wrap();
+                model.paint(
+                    Bounds::new(
+                        model_bounds.x() + 8.0,
+                        model_bounds.y() + 3.0,
+                        model_bounds.width() - 12.0,
+                        model_bounds.height() - 6.0,
+                    ),
+                    &mut paint,
+                );
+                let mut reasoning = Text::new(&reasoning_label)
+                    .font_size(SMALL_TEXT_SIZE)
+                    .color(theme::text::PRIMARY)
+                    .no_wrap();
+                reasoning.paint(
+                    Bounds::new(
+                        reasoning_bounds.x() + 8.0,
+                        reasoning_bounds.y() + 3.0,
+                        reasoning_bounds.width() - 12.0,
+                        reasoning_bounds.height() - 6.0,
+                    ),
+                    &mut paint,
+                );
 
-            let mut new_thread = Button::new("New Thread").variant(ButtonVariant::Secondary);
-            new_thread.paint(new_thread_bounds, &mut paint);
-            let mut interrupt = Button::new("Interrupt").variant(ButtonVariant::Secondary);
-            interrupt.paint(interrupt_bounds, &mut paint);
+                let mut thread_text = Text::new(&active_thread_label)
+                    .font_size(SMALL_TEXT_SIZE)
+                    .color(theme::text::MUTED)
+                    .no_wrap();
+                thread_text.paint(
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() * 0.58,
+                        context_bounds.y(),
+                        context_bounds.width() * 0.42,
+                        SMALL_TEXT_SIZE + 3.0,
+                    ),
+                    &mut paint,
+                );
+                let mut turn_text = Text::new(&active_turn_label)
+                    .font_size(SMALL_TEXT_SIZE)
+                    .color(theme::text::MUTED)
+                    .no_wrap();
+                turn_text.paint(
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() * 0.58,
+                        context_bounds.y() + SMALL_TEXT_SIZE + 4.0,
+                        context_bounds.width() * 0.42,
+                        SMALL_TEXT_SIZE + 3.0,
+                    ),
+                    &mut paint,
+                );
 
-            let mut composer = TextInput::new().placeholder("Message Codex");
-            composer.set_value(&composer_text);
-            composer.set_focused(active_input_target == InputTarget::Composer);
-            composer.paint(composer_bounds, &mut paint);
+                let mut new_thread = Button::new("New Thread").variant(ButtonVariant::Secondary);
+                new_thread.paint(new_thread_bounds, &mut paint);
+                let mut interrupt = Button::new("Interrupt").variant(ButtonVariant::Secondary);
+                interrupt.paint(interrupt_bounds, &mut paint);
 
-            let mut send = Button::new("Send").variant(ButtonVariant::Primary);
-            send.paint(send_bounds, &mut paint);
+                let mut composer = TextInput::new().placeholder("Message Codex");
+                composer.set_value(&composer_text);
+                composer.set_focused(active_input_target == InputTarget::Composer);
+                composer.paint(composer_bounds, &mut paint);
+
+                let mut send = Button::new("Send").variant(ButtonVariant::Primary);
+                send.paint(send_bounds, &mut paint);
+            }
 
             if operator_panel_visible {
                 paint.scene.draw_quad(
