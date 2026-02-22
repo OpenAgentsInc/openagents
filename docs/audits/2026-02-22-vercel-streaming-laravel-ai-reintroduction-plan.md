@@ -147,21 +147,18 @@ Adopt pattern, not direct transplant:
 - conversation/thread resolution
 - event normalization layer
 - Vercel SSE writer
-8. `OA-WEBPARITY-076` Replace current retired responses for `/api/chat*` and `/api/chats*` with real compatibility behavior behind feature flag.
+8. `OA-WEBPARITY-076` Replace current retired responses for `/api/chat*` and `/api/chats*` with real compatibility behavior as the default production behavior.
 
 ### Phase D: Web client path integration
 
-9. `OA-WEBPARITY-077` Add web-shell compatibility mode toggle:
-- mode 1: current codex-worker + Khala WS lane
-- mode 2: Vercel SSE lane
-- preserve default route-shell behavior and auth/session gates
-10. `OA-WEBPARITY-078` Add dual-run/shadow compare between mode 1 and mode 2 outputs for canary cohorts.
+9. `OA-WEBPARITY-077` Switch web-shell chat transport to the Vercel SSE-compatible endpoints as the single production mode while preserving route-shell behavior and auth/session gates.
+10. `OA-WEBPARITY-078` Run full-traffic pre-prod dual-run/shadow comparison between codex-native and Vercel-compatible outputs before production cutover.
 
 ### Phase E: Test + rollout + cleanup
 
 11. `OA-WEBPARITY-079` Port legacy Laravel chat streaming edge-case tests into Rust service integration tests.
-12. `OA-WEBPARITY-080` Run staging canary with rollback drills and explicit SLO/error-budget gates.
-13. `OA-WEBPARITY-081` Promote feature flag to prod default after steady-state window.
+12. `OA-WEBPARITY-080` Execute a one-shot production cutover with explicit rollback drills and hard SLO/error-budget gates.
+13. `OA-WEBPARITY-081` Validate post-cutover steady-state and lock the one-shot cutover behavior as the standard lane.
 14. `OA-WEBPARITY-082` Remove retired-header semantics and old retirement assertions once stable.
 
 ## 8) Proposed Contract Semantics
@@ -212,26 +209,20 @@ Required before any production cutover:
 
 ## 10) Rollout and Rollback
 
-### 10.1 Feature flags
+### 10.1 One-shot cutover plan
 
-- `OA_WEB_CHAT_VERCEL_COMPAT_ENABLED`
-- `OA_WEB_CHAT_VERCEL_COMPAT_PERCENT`
-- `OA_WEB_CHAT_VERCEL_COMPAT_REQUIRE_AUTH` (keep true by default)
+1. Complete all contract/test/load gates in staging with full-traffic replay/shadow diff evidence.
+2. Schedule a production cutover window and deploy server + web-shell together.
+3. Switch `/api/chat*` and `/api/chats*` to Vercel-compatible streaming behavior in one release.
+4. Run immediate post-deploy smoke + auth + stream-shape checks.
+5. Hold release only if SLOs stay within thresholds and no critical contract drift appears.
 
-### 10.2 Canary progression
+### 10.2 Rollback plan
 
-- 1% internal
-- 5% authenticated users
-- 25% authenticated users
-- 100% authenticated users
-
-Advance only with green SLOs and no critical contract drift.
-
-### 10.3 Rollback plan
-
-- Flip compatibility flag off (instant).
-- Revert clients to codex-worker + Khala WS mode.
-- Keep command authority unchanged, so rollback is transport/adapter-only.
+1. Revert to previous release artifacts (service + web-shell) if cutover SLO gates fail.
+2. Restore previous retired/bridge behavior for `/api/chat*` and `/api/chats*` via release rollback.
+3. Keep command authority unchanged, so rollback remains transport/adapter-only.
+4. Re-run smoke + parity fixtures before reopening production cutover.
 
 ## 11) Risks and Mitigations
 
@@ -265,7 +256,6 @@ This reintroduction is complete when all are true:
 1. Governance docs are updated and accepted (`ADR-0008` + parity docs + invariant text).
 2. Rust service streams Vercel protocol on `/api/chat*` and `/api/chats*` with fixture parity.
 3. Canonical command authority remains codex worker control endpoints.
-4. Web-shell can operate in compatibility mode with no critical regressions.
-5. Canary and rollback evidence are documented.
+4. Web-shell uses the Vercel-compatible streaming lane in production with no critical regressions.
+5. One-shot cutover and rollback evidence are documented.
 6. Old retired-response behavior and related tests are removed or marked historical.
-
