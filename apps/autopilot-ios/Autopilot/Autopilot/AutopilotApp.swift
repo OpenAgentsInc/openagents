@@ -15,7 +15,7 @@ struct AutopilotApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            WgpuiCodexRootView()
         }
     }
 

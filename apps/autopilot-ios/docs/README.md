@@ -8,6 +8,7 @@
 - `codex-connection-roadmap.md` — phased iOS Codex roadmap over Rust control/runtime + Khala.
 - `real-device-codex-handshake-runbook.md` — real-device handshake validation between iOS and desktop Codex lanes.
 - `rust-client-core-integration.md` — deterministic Rust client-core packaging, FFI contract, and CI verification for iOS host integration.
+- `wgpui-codex-ownership-boundaries.md` — current production ownership split for iOS Codex (WGPUI surface, Rust-authoritative lanes, host-adapter boundaries).
 
 Current iOS default UX target:
 
