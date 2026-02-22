@@ -104,6 +104,120 @@ private func wgpui_ios_background_set_operator_status(
     _ controlLen: Int
 )
 
+@_silgen_name("wgpui_ios_background_clear_mission_data")
+private func wgpui_ios_background_clear_mission_data(_ state: UnsafeMutableRawPointer?)
+
+@_silgen_name("wgpui_ios_background_push_mission_worker")
+private func wgpui_ios_background_push_mission_worker(
+    _ state: UnsafeMutableRawPointer?,
+    _ workerIDPtr: UnsafePointer<CChar>?,
+    _ workerIDLen: Int,
+    _ statusPtr: UnsafePointer<CChar>?,
+    _ statusLen: Int,
+    _ heartbeatStatePtr: UnsafePointer<CChar>?,
+    _ heartbeatStateLen: Int,
+    _ latestSeq: Int64,
+    _ lagEvents: Int64,
+    _ reconnectStatePtr: UnsafePointer<CChar>?,
+    _ reconnectStateLen: Int,
+    _ lastEventAtPtr: UnsafePointer<CChar>?,
+    _ lastEventAtLen: Int,
+    _ runningTurns: UInt64,
+    _ queuedRequests: UInt64,
+    _ failedRequests: UInt64
+)
+
+@_silgen_name("wgpui_ios_background_push_mission_thread")
+private func wgpui_ios_background_push_mission_thread(
+    _ state: UnsafeMutableRawPointer?,
+    _ workerIDPtr: UnsafePointer<CChar>?,
+    _ workerIDLen: Int,
+    _ threadIDPtr: UnsafePointer<CChar>?,
+    _ threadIDLen: Int,
+    _ activeTurnIDPtr: UnsafePointer<CChar>?,
+    _ activeTurnIDLen: Int,
+    _ lastSummaryPtr: UnsafePointer<CChar>?,
+    _ lastSummaryLen: Int,
+    _ lastEventAtPtr: UnsafePointer<CChar>?,
+    _ lastEventAtLen: Int,
+    _ freshnessSeq: Int64,
+    _ unreadCount: UInt64,
+    _ muted: Int32
+)
+
+@_silgen_name("wgpui_ios_background_push_mission_timeline_entry")
+private func wgpui_ios_background_push_mission_timeline_entry(
+    _ state: UnsafeMutableRawPointer?,
+    _ workerIDPtr: UnsafePointer<CChar>?,
+    _ workerIDLen: Int,
+    _ threadIDPtr: UnsafePointer<CChar>?,
+    _ threadIDLen: Int,
+    _ rolePtr: UnsafePointer<CChar>?,
+    _ roleLen: Int,
+    _ textPtr: UnsafePointer<CChar>?,
+    _ textLen: Int,
+    _ isStreaming: Int32,
+    _ turnIDPtr: UnsafePointer<CChar>?,
+    _ turnIDLen: Int,
+    _ itemIDPtr: UnsafePointer<CChar>?,
+    _ itemIDLen: Int,
+    _ occurredAtPtr: UnsafePointer<CChar>?,
+    _ occurredAtLen: Int
+)
+
+@_silgen_name("wgpui_ios_background_push_mission_event")
+private func wgpui_ios_background_push_mission_event(
+    _ state: UnsafeMutableRawPointer?,
+    _ id: UInt64,
+    _ topicPtr: UnsafePointer<CChar>?,
+    _ topicLen: Int,
+    _ seq: Int64,
+    _ workerIDPtr: UnsafePointer<CChar>?,
+    _ workerIDLen: Int,
+    _ threadIDPtr: UnsafePointer<CChar>?,
+    _ threadIDLen: Int,
+    _ turnIDPtr: UnsafePointer<CChar>?,
+    _ turnIDLen: Int,
+    _ requestIDPtr: UnsafePointer<CChar>?,
+    _ requestIDLen: Int,
+    _ eventTypePtr: UnsafePointer<CChar>?,
+    _ eventTypeLen: Int,
+    _ methodPtr: UnsafePointer<CChar>?,
+    _ methodLen: Int,
+    _ summaryPtr: UnsafePointer<CChar>?,
+    _ summaryLen: Int,
+    _ severity: UInt8,
+    _ occurredAtPtr: UnsafePointer<CChar>?,
+    _ occurredAtLen: Int,
+    _ payloadPtr: UnsafePointer<CChar>?,
+    _ payloadLen: Int,
+    _ resyncMarker: Int32
+)
+
+@_silgen_name("wgpui_ios_background_push_mission_request")
+private func wgpui_ios_background_push_mission_request(
+    _ state: UnsafeMutableRawPointer?,
+    _ requestIDPtr: UnsafePointer<CChar>?,
+    _ requestIDLen: Int,
+    _ workerIDPtr: UnsafePointer<CChar>?,
+    _ workerIDLen: Int,
+    _ threadIDPtr: UnsafePointer<CChar>?,
+    _ threadIDLen: Int,
+    _ methodPtr: UnsafePointer<CChar>?,
+    _ methodLen: Int,
+    _ statePtr: UnsafePointer<CChar>?,
+    _ stateLen: Int,
+    _ occurredAtPtr: UnsafePointer<CChar>?,
+    _ occurredAtLen: Int,
+    _ errorCodePtr: UnsafePointer<CChar>?,
+    _ errorCodeLen: Int,
+    _ errorMessagePtr: UnsafePointer<CChar>?,
+    _ errorMessageLen: Int,
+    _ retryable: Int32,
+    _ responsePtr: UnsafePointer<CChar>?,
+    _ responseLen: Int
+)
+
 @_silgen_name("wgpui_ios_background_set_composer_text")
 private func wgpui_ios_background_set_composer_text(
     _ state: UnsafeMutableRawPointer?,
@@ -353,6 +467,258 @@ enum WgpuiBackgroundBridge {
                                         controlPtr,
                                         controlLen
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func clearMissionData(state: UnsafeMutableRawPointer?) {
+        wgpui_ios_background_clear_mission_data(state)
+    }
+
+    static func pushMissionWorker(
+        state: UnsafeMutableRawPointer?,
+        workerID: String,
+        status: String,
+        heartbeatState: String?,
+        latestSeq: Int?,
+        lagEvents: Int?,
+        reconnectState: String?,
+        lastEventAt: String?,
+        runningTurns: UInt64,
+        queuedRequests: UInt64,
+        failedRequests: UInt64
+    ) {
+        withCStringBytes(workerID) { workerIDPtr, workerIDLen in
+            withCStringBytes(status) { statusPtr, statusLen in
+                withCStringBytes(heartbeatState ?? "") { heartbeatPtr, heartbeatLen in
+                    withCStringBytes(reconnectState ?? "") { reconnectPtr, reconnectLen in
+                        withCStringBytes(lastEventAt ?? "") { lastEventPtr, lastEventLen in
+                            wgpui_ios_background_push_mission_worker(
+                                state,
+                                workerIDPtr,
+                                workerIDLen,
+                                statusPtr,
+                                statusLen,
+                                heartbeatPtr,
+                                heartbeatLen,
+                                Int64(latestSeq ?? -1),
+                                Int64(lagEvents ?? -1),
+                                reconnectPtr,
+                                reconnectLen,
+                                lastEventPtr,
+                                lastEventLen,
+                                runningTurns,
+                                queuedRequests,
+                                failedRequests
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func pushMissionThread(
+        state: UnsafeMutableRawPointer?,
+        workerID: String,
+        threadID: String,
+        activeTurnID: String?,
+        lastSummary: String,
+        lastEventAt: String?,
+        freshnessSeq: Int?,
+        unreadCount: UInt64,
+        muted: Bool
+    ) {
+        withCStringBytes(workerID) { workerIDPtr, workerIDLen in
+            withCStringBytes(threadID) { threadIDPtr, threadIDLen in
+                withCStringBytes(activeTurnID ?? "") { activeTurnPtr, activeTurnLen in
+                    withCStringBytes(lastSummary) { summaryPtr, summaryLen in
+                        withCStringBytes(lastEventAt ?? "") { lastEventPtr, lastEventLen in
+                            wgpui_ios_background_push_mission_thread(
+                                state,
+                                workerIDPtr,
+                                workerIDLen,
+                                threadIDPtr,
+                                threadIDLen,
+                                activeTurnPtr,
+                                activeTurnLen,
+                                summaryPtr,
+                                summaryLen,
+                                lastEventPtr,
+                                lastEventLen,
+                                Int64(freshnessSeq ?? -1),
+                                unreadCount,
+                                muted ? 1 : 0
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func pushMissionTimelineEntry(
+        state: UnsafeMutableRawPointer?,
+        workerID: String,
+        threadID: String,
+        role: String,
+        text: String,
+        isStreaming: Bool,
+        turnID: String?,
+        itemID: String?,
+        occurredAt: String?
+    ) {
+        withCStringBytes(workerID) { workerIDPtr, workerIDLen in
+            withCStringBytes(threadID) { threadIDPtr, threadIDLen in
+                withCStringBytes(role) { rolePtr, roleLen in
+                    withCStringBytes(text) { textPtr, textLen in
+                        withCStringBytes(turnID ?? "") { turnPtr, turnLen in
+                            withCStringBytes(itemID ?? "") { itemPtr, itemLen in
+                                withCStringBytes(occurredAt ?? "") { occurredPtr, occurredLen in
+                                    wgpui_ios_background_push_mission_timeline_entry(
+                                        state,
+                                        workerIDPtr,
+                                        workerIDLen,
+                                        threadIDPtr,
+                                        threadIDLen,
+                                        rolePtr,
+                                        roleLen,
+                                        textPtr,
+                                        textLen,
+                                        isStreaming ? 1 : 0,
+                                        turnPtr,
+                                        turnLen,
+                                        itemPtr,
+                                        itemLen,
+                                        occurredPtr,
+                                        occurredLen
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func pushMissionEvent(
+        state: UnsafeMutableRawPointer?,
+        id: UInt64,
+        topic: String,
+        seq: Int?,
+        workerID: String?,
+        threadID: String?,
+        turnID: String?,
+        requestID: String?,
+        eventType: String?,
+        method: String?,
+        summary: String,
+        severity: UInt8,
+        occurredAt: String?,
+        payloadJSON: String,
+        resyncMarker: Bool
+    ) {
+        withCStringBytes(topic) { topicPtr, topicLen in
+            withCStringBytes(workerID ?? "") { workerPtr, workerLen in
+                withCStringBytes(threadID ?? "") { threadPtr, threadLen in
+                    withCStringBytes(turnID ?? "") { turnPtr, turnLen in
+                        withCStringBytes(requestID ?? "") { requestPtr, requestLen in
+                            withCStringBytes(eventType ?? "") { eventTypePtr, eventTypeLen in
+                                withCStringBytes(method ?? "") { methodPtr, methodLen in
+                                    withCStringBytes(summary) { summaryPtr, summaryLen in
+                                        withCStringBytes(occurredAt ?? "") { occurredPtr, occurredLen in
+                                            withCStringBytes(payloadJSON) { payloadPtr, payloadLen in
+                                                wgpui_ios_background_push_mission_event(
+                                                    state,
+                                                    id,
+                                                    topicPtr,
+                                                    topicLen,
+                                                    Int64(seq ?? -1),
+                                                    workerPtr,
+                                                    workerLen,
+                                                    threadPtr,
+                                                    threadLen,
+                                                    turnPtr,
+                                                    turnLen,
+                                                    requestPtr,
+                                                    requestLen,
+                                                    eventTypePtr,
+                                                    eventTypeLen,
+                                                    methodPtr,
+                                                    methodLen,
+                                                    summaryPtr,
+                                                    summaryLen,
+                                                    severity,
+                                                    occurredPtr,
+                                                    occurredLen,
+                                                    payloadPtr,
+                                                    payloadLen,
+                                                    resyncMarker ? 1 : 0
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func pushMissionRequest(
+        state: UnsafeMutableRawPointer?,
+        requestID: String,
+        workerID: String,
+        threadID: String?,
+        method: String,
+        requestState: String,
+        occurredAt: String?,
+        errorCode: String?,
+        errorMessage: String?,
+        retryable: Bool,
+        responseJSON: String?
+    ) {
+        withCStringBytes(requestID) { requestPtr, requestLen in
+            withCStringBytes(workerID) { workerPtr, workerLen in
+                withCStringBytes(threadID ?? "") { threadPtr, threadLen in
+                    withCStringBytes(method) { methodPtr, methodLen in
+                        withCStringBytes(requestState) { statePtr, stateLen in
+                            withCStringBytes(occurredAt ?? "") { occurredPtr, occurredLen in
+                                withCStringBytes(errorCode ?? "") { codePtr, codeLen in
+                                    withCStringBytes(errorMessage ?? "") { messagePtr, messageLen in
+                                        withCStringBytes(responseJSON ?? "") { responsePtr, responseLen in
+                                            wgpui_ios_background_push_mission_request(
+                                                state,
+                                                requestPtr,
+                                                requestLen,
+                                                workerPtr,
+                                                workerLen,
+                                                threadPtr,
+                                                threadLen,
+                                                methodPtr,
+                                                methodLen,
+                                                statePtr,
+                                                stateLen,
+                                                occurredPtr,
+                                                occurredLen,
+                                                codePtr,
+                                                codeLen,
+                                                messagePtr,
+                                                messageLen,
+                                                retryable ? 1 : 0,
+                                                responsePtr,
+                                                responseLen
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import UIKit
 import QuartzCore
@@ -261,6 +262,7 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
             events: eventsSummary(model: model),
             control: controlRequestSummary(model: model)
         )
+        syncMissionControlProjection(state: statePtr, projection: projection)
 
         composerDraft = model.messageDraft
         WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
@@ -286,6 +288,116 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         if keyboardProxyField.text != text {
             keyboardProxyField.text = text
         }
+    }
+
+    private func syncMissionControlProjection(
+        state: UnsafeMutableRawPointer,
+        projection: RuntimeMissionControlProjection
+    ) {
+        WgpuiBackgroundBridge.clearMissionData(state: state)
+
+        for worker in projection.workers {
+            WgpuiBackgroundBridge.pushMissionWorker(
+                state: state,
+                workerID: worker.workerID,
+                status: worker.status,
+                heartbeatState: worker.heartbeatState,
+                latestSeq: worker.latestSeq,
+                lagEvents: worker.lagEvents,
+                reconnectState: worker.reconnectState,
+                lastEventAt: worker.lastEventAt,
+                runningTurns: UInt64(max(0, worker.runningTurns)),
+                queuedRequests: UInt64(max(0, worker.queuedRequests)),
+                failedRequests: UInt64(max(0, worker.failedRequests))
+            )
+        }
+
+        for thread in projection.threads {
+            WgpuiBackgroundBridge.pushMissionThread(
+                state: state,
+                workerID: thread.workerID,
+                threadID: thread.threadID,
+                activeTurnID: thread.activeTurnID,
+                lastSummary: thread.lastSummary,
+                lastEventAt: thread.lastEventAt,
+                freshnessSeq: thread.freshnessSeq,
+                unreadCount: UInt64(max(0, thread.unreadCount)),
+                muted: thread.muted
+            )
+        }
+
+        for timeline in projection.timelines {
+            for entry in timeline.entries {
+                WgpuiBackgroundBridge.pushMissionTimelineEntry(
+                    state: state,
+                    workerID: entry.workerID,
+                    threadID: entry.threadID,
+                    role: entry.role,
+                    text: entry.text,
+                    isStreaming: entry.isStreaming,
+                    turnID: entry.turnID,
+                    itemID: entry.itemID,
+                    occurredAt: entry.occurredAt
+                )
+            }
+        }
+
+        for event in projection.events {
+            WgpuiBackgroundBridge.pushMissionEvent(
+                state: state,
+                id: UInt64(max(0, event.id)),
+                topic: event.topic,
+                seq: event.seq,
+                workerID: event.workerID,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                requestID: event.requestID,
+                eventType: event.eventType,
+                method: event.method,
+                summary: event.summary,
+                severity: missionSeverityValue(event.severity),
+                occurredAt: event.occurredAt,
+                payloadJSON: jsonString(from: event.payload) ?? "{}",
+                resyncMarker: event.resyncMarker
+            )
+        }
+
+        for request in projection.requests {
+            WgpuiBackgroundBridge.pushMissionRequest(
+                state: state,
+                requestID: request.requestID,
+                workerID: request.workerID,
+                threadID: request.threadID,
+                method: request.method,
+                requestState: request.state,
+                occurredAt: request.occurredAt,
+                errorCode: request.errorCode,
+                errorMessage: request.errorMessage,
+                retryable: request.retryable,
+                responseJSON: jsonString(from: request.response)
+            )
+        }
+    }
+
+    private func missionSeverityValue(_ severity: RuntimeMissionControlEventSeverity) -> UInt8 {
+        switch severity {
+        case .info:
+            return 0
+        case .warning:
+            return 1
+        case .error:
+            return 2
+        }
+    }
+
+    private func jsonString(from value: JSONValue?) -> String? {
+        guard let value else {
+            return nil
+        }
+        guard let data = try? JSONEncoder().encode(value) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     @objc private func tick() {
