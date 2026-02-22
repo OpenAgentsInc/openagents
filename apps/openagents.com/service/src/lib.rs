@@ -14744,6 +14744,50 @@ mod tests {
         Ok(String::from_utf8(bytes.to_vec())?)
     }
 
+    fn sse_event_types(wire: &str) -> Vec<String> {
+        let mut events = Vec::new();
+        for line in wire.lines() {
+            let Some(payload) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let payload = payload.trim();
+            if payload == "[DONE]" {
+                continue;
+            }
+            let Ok(parsed) = serde_json::from_str::<Value>(payload) else {
+                continue;
+            };
+            if let Some(kind) = parsed.get("type").and_then(Value::as_str) {
+                events.push(kind.to_string());
+            }
+        }
+        events
+    }
+
+    fn sse_done_count(wire: &str) -> usize {
+        wire.lines()
+            .filter(|line| line.trim() == "data: [DONE]")
+            .count()
+    }
+
+    fn legacy_stream_request(
+        path: &str,
+        access_token: Option<&str>,
+        body: &str,
+    ) -> Result<Request<Body>> {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1");
+        if let Some(token) = access_token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        Ok(builder.body(Body::from(body.to_string()))?)
+    }
+
     fn cookie_value(response: &axum::response::Response) -> Option<String> {
         let header = response.headers().get(SET_COOKIE)?;
         let raw = header.to_str().ok()?;
@@ -19415,6 +19459,162 @@ mod tests {
         assert_eq!(stream_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let stream_body = read_json(stream_response).await?;
         assert_eq!(stream_body["error"]["code"], json!("invalid_request"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_edge_malformed_payloads_reject_deterministically() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+        let token = authenticate_token(app.clone(), "legacy-stream-edge-malformed@openagents.com")
+            .await?;
+
+        let malformed_json_request = legacy_stream_request(
+            "/api/chat/stream",
+            Some(&token),
+            r#"{"messages":[{"role":"user","content":"oops"}"#,
+        )?;
+        let malformed_json_response = app.clone().oneshot(malformed_json_request).await?;
+        assert_eq!(malformed_json_response.status(), StatusCode::BAD_REQUEST);
+
+        let missing_text_request = legacy_stream_request(
+            "/api/chat/stream",
+            Some(&token),
+            r#"{"messages":[{"role":"assistant","content":"no user payload"}]}"#,
+        )?;
+        let missing_text_response = app.oneshot(missing_text_request).await?;
+        assert_eq!(missing_text_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let missing_text_body = read_json(missing_text_response).await?;
+        assert_eq!(missing_text_body["error"]["code"], json!("invalid_request"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_edge_guest_auth_gating_requires_bearer_token() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let unauthenticated_request = legacy_stream_request(
+            "/api/chat/stream",
+            None,
+            r#"{"messages":[{"role":"user","content":"missing auth"}]}"#,
+        )?;
+        let unauthenticated_response = app.clone().oneshot(unauthenticated_request).await?;
+        assert_eq!(unauthenticated_response.status(), StatusCode::UNAUTHORIZED);
+        let unauthenticated_body = read_json(unauthenticated_response).await?;
+        assert_eq!(unauthenticated_body["error"]["code"], json!("unauthorized"));
+
+        let token =
+            authenticate_token(app.clone(), "legacy-stream-edge-auth@openagents.com").await?;
+        let authenticated_request = legacy_stream_request(
+            "/api/chat/stream",
+            Some(&token),
+            r#"{"messages":[{"role":"user","content":"authorized"}]}"#,
+        )?;
+        let authenticated_response = app.oneshot(authenticated_request).await?;
+        assert_eq!(authenticated_response.status(), StatusCode::OK);
+        let wire = read_text(authenticated_response).await?;
+        assert_eq!(
+            sse_event_types(&wire),
+            vec!["start", "start-step", "finish-step", "finish"]
+        );
+        assert_eq!(sse_done_count(&wire), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_edge_tool_event_ordering_matches_legacy_contract() -> Result<()> {
+        let stream = super::vercel_sse_adapter::translate_codex_events(&[
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "thread/started".to_string(),
+                params: json!({"thread_id":"thread_edge_tools"}),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "turn/started".to_string(),
+                params: json!({
+                    "thread_id":"thread_edge_tools",
+                    "turn_id":"turn_edge_tools",
+                    "model":"gpt-5.2-codex"
+                }),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "item/started".to_string(),
+                params: json!({
+                    "item_id":"tool_edge_1",
+                    "item_kind":"mcp_tool_call",
+                    "item":{"tool_name":"openagents_api","arguments":{"q":"status"}}
+                }),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "item/toolOutput/delta".to_string(),
+                params: json!({"item_id":"tool_edge_1","delta":"{\"ok\":true}"}),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "item/completed".to_string(),
+                params: json!({
+                    "item_id":"tool_edge_1",
+                    "item_kind":"mcp_tool_call",
+                    "item_status":"completed"
+                }),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "turn/completed".to_string(),
+                params: json!({"turn_id":"turn_edge_tools","status":"completed"}),
+            },
+        ])?;
+
+        assert_eq!(
+            sse_event_types(&stream.wire),
+            vec![
+                "start",
+                "start-step",
+                "tool-input",
+                "tool-output",
+                "tool-output",
+                "finish-step",
+                "finish"
+            ]
+        );
+        assert_eq!(sse_done_count(&stream.wire), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_edge_terminal_error_sequence_is_stable() -> Result<()> {
+        let stream = super::vercel_sse_adapter::translate_codex_events(&[
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "thread/started".to_string(),
+                params: json!({"thread_id":"thread_edge_error"}),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "turn/started".to_string(),
+                params: json!({
+                    "thread_id":"thread_edge_error",
+                    "turn_id":"turn_edge_error",
+                    "model":"gpt-5.2-codex"
+                }),
+            },
+            super::vercel_sse_adapter::CodexCompatibilityEvent {
+                method: "turn/failed".to_string(),
+                params: json!({"message":"forced failure","will_retry":false}),
+            },
+        ])?;
+
+        let event_types = sse_event_types(&stream.wire);
+        assert_eq!(event_types, vec!["start", "start-step", "error", "finish"]);
+        assert_eq!(
+            stream.events[2].get("code").and_then(Value::as_str),
+            Some("turn_failed")
+        );
+        assert_eq!(
+            stream.events[3].get("status").and_then(Value::as_str),
+            Some("error")
+        );
+        assert_eq!(sse_done_count(&stream.wire), 1);
 
         Ok(())
     }

@@ -95,6 +95,9 @@ run_step "legacy-chat-stream-path-alias" "stream" "Legacy /api/chats/{id}/stream
 run_step "legacy-chat-retirement-invalid-payload" "stream" "Legacy stream endpoint keeps explicit retirement validation semantics" \
   "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chat_stream_alias_rejects_payload_without_user_text"
 
+run_step "legacy-chat-stream-edge-matrix" "stream" "Legacy stream edge-case matrix (malformed/auth/tool/error ordering) stays stable" \
+  "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chat_stream_edge_"
+
 run_step "codex-control-authority" "internal" "Codex app-server worker control remains canonical write authority" \
   "cargo test --manifest-path apps/openagents.com/service/Cargo.toml runtime_codex_control_request_accepts_turn_start_and_persists_message"
 
