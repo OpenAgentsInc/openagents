@@ -15,7 +15,11 @@ Authority mutations happen through authenticated HTTP APIs only.
 
 ## INV-03: Khala WS-only live transport
 
-Khala live subscriptions use WebSocket only. No new SSE/poll live lanes.
+Khala live subscriptions use WebSocket only. No SSE/poll live authority lanes are allowed.
+
+Bounded exception:
+- SSE is allowed only as an HTTP presentation adapter over existing codex/Khala authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
+- SSE is prohibited as an alternate authority source or as a Khala live-sync transport.
 
 ## INV-04: Control-plane authority isolation
 

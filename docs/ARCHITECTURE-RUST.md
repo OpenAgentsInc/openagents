@@ -45,7 +45,7 @@ Hard requirements:
    - Control-plane authority
    - Execution-plane authority
 5. Khala remains projection/replay delivery infrastructure, never an authority write path.
-6. WebSocket is the only live sync transport for Khala. No new SSE lanes.
+6. WebSocket is the only live sync transport for Khala. SSE is allowed only as adapter serialization over existing authority outputs, never as a Khala live transport or authority lane (ADR-0008).
 
 ## Non-Goals
 
