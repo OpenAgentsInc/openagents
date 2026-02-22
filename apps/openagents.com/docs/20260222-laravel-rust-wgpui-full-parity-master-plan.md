@@ -1,7 +1,7 @@
 # Laravel to Rust/WGPUI Full Parity Master Plan (openagents.com)
 
 Date: 2026-02-22  
-Status: Completed program record (OA-WEBPARITY-001..068 closed)  
+Status: Completed base program record (OA-WEBPARITY-001..068 closed); compatibility extension tracked by OA-WEBPARITY-069..082  
 Owner: openagents.com platform
 
 Canonical execution checklist:
@@ -11,6 +11,11 @@ Completion note (2026-02-22):
 - This document is retained as the executed program plan and scope record.
 - The backlog items listed below were created and closed in sequence.
 
+Compatibility addendum (2026-02-22):
+- ADR-0008 permits a bounded Vercel-compatible SSE lane as an adapter-only compatibility scope.
+- Codex app-server + Khala WS remain authority lanes; no second chat authority is allowed.
+- Execution tracking for this addendum is OA-WEBPARITY-069..082.
+
 ## 1) Goal
 
 Port or explicitly retire 100% of currently active Laravel web app functionality in `apps/openagents.com` to Rust services (`service`) plus Rust/WGPUI web UI (`web-shell`), with production running Rust-only once parity is verified.
@@ -18,6 +23,7 @@ Port or explicitly retire 100% of currently active Laravel web app functionality
 Chat/thread scope decision for this plan:
 - End-state chat is Codex app-server protocol only.
 - No parallel Vercel-style chat/thread authority lane is allowed.
+- A bounded Vercel-compatible SSE lane is allowed only as a presentation adapter over codex/Khala authority outputs (`docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
 - First-pass chat access requires a user ChatGPT account for Codex-backed flows.
 - A future OpenAgents-native non-Codex chat lane is out of scope for this plan and must be proposed separately if revisited.
 
@@ -51,7 +57,7 @@ Historical baseline note:
 
 Parity is complete only when all conditions hold:
 
-1. All API routes in the Laravel API manifest are accounted for in Rust via either (a) parity-preserved implementation or (b) explicit retirement/deprecation with approved migration behavior; Vercel-style chat lanes are retired, not reimplemented.
+1. All API routes in the Laravel API manifest are accounted for in Rust via either (a) parity-preserved implementation or (b) explicit retirement/deprecation with approved migration behavior; any Vercel-compatible streaming support is adapter-only and not a separate authority lane.
 2. All active web routes/pages (`/`, `/feed`, `/login`, `/settings/*`, `/l402/*`, `/admin`, `/openapi.json`) are served by Rust and preserve user-visible behavior, deep-link redirects, and error-state UX; legacy `/aui` is deleted and not recreated.
 3. Khala WebSocket replay/live subscriptions preserve protocol semantics for chat/autopilot/codex worker delivery, including finish/error/tool events and replay/resume ordering guarantees.
 4. Data writes/reads are backed by Rust-owned persistence logic and schema migration paths.
@@ -62,7 +68,7 @@ Parity is complete only when all conditions hold:
 9. Cookie/session behavior parity is proven for guest + authenticated flows, including cookie attributes (`SameSite`, `Secure`, domain/path scope) and session upgrade behavior.
 10. Rate limiting and throttles preserve Laravel semantics (keying strategy, window sizes, and violation responses).
 11. Static asset hosting parity is proven (content hashing, `Cache-Control`/ETag semantics, compression, and service-worker update behavior).
-12. Production chat code paths do not depend on Vercel AI SDK protocol semantics or Laravel AI package adapters; Codex app-server protocol is the single chat/thread authority lane.
+12. Production chat code paths keep Codex app-server protocol as the single chat/thread authority lane; any Vercel-compatible SSE behavior is a bounded adapter and not a second authority implementation.
 13. First-pass Codex chat access policy is explicit and enforced (ChatGPT account required).
 14. Final cleanup removes remaining PHP and TypeScript implementation code from active product paths so runtime/product implementation is Rust-only.
 15. Web routing parity is implemented as a single-shell architecture: non-API GET requests resolve to one Rust-hosted shell entry (`index.html`), and internal navigation is handled in-app via route state + browser history (`pushState`/`popstate`) without full-page reloads.
@@ -80,14 +86,15 @@ Use domain-sliced migration with strict contract verification:
 7. Decommission Laravel serving path.
 8. Use expand/migrate/contract database rollout rules with explicit mixed-version support while Laravel and Rust run concurrently.
 9. Require data invariants/checksum validation after backfills and before route-group cutovers.
-10. Consolidate chat/thread behavior onto Codex app-server protocol and remove duplicate Vercel/Laravel-AI chat execution paths from production code.
+10. Consolidate chat/thread behavior onto Codex app-server protocol and remove duplicate Vercel/Laravel-AI chat execution paths from production code, while allowing a bounded adapter-only compatibility stream surface per ADR-0008.
 11. Final gate: eradicate remaining PHP and TypeScript implementation lanes from active product paths.
 
 Transport doctrine for this plan:
 1. Khala live delivery is WS-only per `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`.
-2. No new SSE live lanes are allowed (`docs/plans/active/rust-migration-invariant-gates.md`, `INV-03`).
+2. No new SSE live authority lanes are allowed (`docs/plans/active/rust-migration-invariant-gates.md`, `INV-03`).
 3. Command/mutation flows stay on authenticated HTTP APIs; subscriptions/replay stay on Khala WS (`docs/sync/ROADMAP.md`).
 4. Codex control/event contracts follow `docs/protocol/codex-worker-control-v1.md` and `docs/protocol/codex-worker-events-v1.md`, aligned to the Codex app-server protocol subset audited in `docs/audits/2026-02-22-codex-app-server-parity-audit.md`.
+5. Vercel-compatible SSE may exist only as an adapter over codex/Khala authority outputs and must remain removable without authority-state impact (`docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
 
 ## 5) Phase Plan
 
@@ -362,7 +369,7 @@ Description: Remove or archive all remaining PHP and TypeScript implementation c
 ## 7) Endpoint Coverage Map (Laravel API manifest -> issue mapping)
 
 This map ensures every manifest endpoint has an owning issue.
-Legacy `/stream` endpoints listed below are compatibility scope only; canonical live delivery must migrate to Khala WS replay/live subscriptions.
+Legacy `/stream` endpoints listed below are compatibility scope only; Khala replay/live authority remains WS-only.
 Legacy Vercel chat endpoints (`/api/chat*`, `/api/chats*`) are migration/deprecation scope and must not remain as a separate production chat authority lane.
 
 ### Auth and identity
@@ -583,8 +590,8 @@ Mitigation: parity-test async effects and do not disable Laravel scheduler/worke
 7. Risk: static asset cache/service-worker mismatch causes stale clients after deploy.
 Mitigation: enforce hashed asset + cache policy + SW update regression checks before production rollout.
 
-8. Risk: split-brain chat behavior if Vercel-style lane remains partially active.
-Mitigation: codex-only chat authority gate, explicit deprecation of `/api/chat*` + `/api/chats*`, and CI checks that block Vercel/Laravel-AI chat path reintroduction.
+8. Risk: split-brain chat behavior if Vercel-compatible surface drifts into a second authority lane.
+Mitigation: codex-only chat authority gate, adapter-only constraints from ADR-0008, explicit compatibility negotiation headers, and CI checks that block Vercel/Laravel-AI authority path reintroduction.
 
 9. Risk: web navigation appears functional but silently reloads the full document, causing state loss and runtime churn.
 Mitigation: require route-shell tests that assert `pushState`/`popstate` wiring and verify no full-page reload on same-origin internal navigation.
@@ -598,7 +605,7 @@ Program is complete when:
 3. All active web routes/pages are Rust/WGPUI-owned and validated on desktop and mobile browsers (and iOS host app where applicable).
 4. Production traffic runs Rust-only with stable SLOs through post-cutover observation window.
 5. Laravel serving path is retired and documentation reflects Rust-first ownership.
-6. Web chat/thread execution is codex app-server protocol only (no separate Vercel-style thread/chat implementation in production paths).
+6. Web chat/thread execution keeps codex app-server as sole authority and allows only bounded adapter serialization for Vercel-compatible clients (no separate Vercel-style thread/chat authority implementation).
 
 Completion result:
 - Program completion criteria satisfied and issue set closed on 2026-02-22.

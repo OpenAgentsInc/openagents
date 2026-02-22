@@ -1,11 +1,15 @@
 # OA-WEBPARITY-001 Program Charter and Canonical Checklist
 
 Date: 2026-02-22  
-Status: Completed (frozen baseline; OA-WEBPARITY-001..068 closed)  
+Status: Completed baseline (frozen baseline; OA-WEBPARITY-001..068 closed) with active compatibility extension OA-WEBPARITY-069..082  
 Tracking: OA-WEBPARITY-001
 
 Canonical source plan:
 - `apps/openagents.com/docs/20260222-laravel-rust-wgpui-full-parity-master-plan.md`
+
+Compatibility governance pointers:
+- `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+- OA-WEBPARITY-069..082 issue lane (adapter-only compatibility scope)
 
 Baseline manifest artifacts:
 - `apps/openagents.com/docs/parity-manifests/baseline/api-routes.json`
@@ -23,7 +27,7 @@ Program closure note:
 
 1. Port or explicitly retire all active Laravel product behavior for `apps/openagents.com` into Rust service + Rust/WGPUI web shell.
 2. Preserve externally visible contracts unless retirement behavior is explicitly approved and documented.
-3. Use Khala WebSocket replay/live as the only streaming transport for live delivery.
+3. Use Khala WebSocket replay/live as the only streaming transport for authority delivery; allow bounded SSE only as a presentation adapter per ADR-0008.
 4. Keep Codex app-server protocol as the only production chat/thread authority path.
 5. Complete cutover with Rust-only serving and archive legacy Laravel lanes.
 
@@ -49,8 +53,9 @@ All items below must be true for overall parity to pass:
 6. Data migration/backfill and mixed-version rollback safety checks are validated.
 7. Static asset hashing/cache/compression/service-worker behavior matches target policy.
 8. Staging dual-run + production canary + rollback drills are completed and documented.
-9. No production Vercel-protocol chat authority remains.
+9. No separate Vercel-protocol chat authority lane remains (adapter-only compatibility lane is allowed).
 10. Active product implementation lanes are Rust-only at terminal gate.
+11. Compatibility stream endpoints, if enabled, remain adapter-only and removable without authority-state impact.
 
 ## Canonical Route Checklist
 
@@ -230,6 +235,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `.github/workflows/web-mixed-version-deploy-safety-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
 - [x] Rust-only terminal gate (`OA-WEBPARITY-068`)
   Harness/report: `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`, `.github/workflows/web-rust-only-terminal-gate.yml`, `apps/openagents.com/docs/20260222-oa-webparity-068-rust-only-terminal-gate.md`
+- [ ] Compatibility extension lane (`OA-WEBPARITY-069..082`)
+  Governance and rollout evidence: ADR-0008, mapping spec, fixture corpus, adapter tests, staging dual-run diff, cutover/steady-state reports, and retired-header cleanup closure.
 
 ## Checklist Freeze Rules
 
