@@ -6,9 +6,11 @@ use App\Lightning\L402\L402Client;
 use App\Support\KhalaImport\KhalaChatImportService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -716,3 +718,158 @@ Artisan::command('ops:capture-parity-contract-fixtures {--output=docs/parity-fix
 
     return 0;
 })->purpose('Capture golden HTTP JSON fixtures and Khala WS transcript fixtures for Rust parity conformance.');
+
+Artisan::command('ops:seed-parity-fixtures {--fixture=docs/parity-fixtures/baseline/shared-seed-state.json : Path to shared parity fixture JSON} {--replace : Clear seeded tables before inserting fixture rows}', function () {
+    $fixtureInput = trim((string) $this->option('fixture'));
+    if ($fixtureInput === '') {
+        $this->error('Fixture path is required.');
+
+        return 1;
+    }
+
+    $fixturePath = str_starts_with($fixtureInput, DIRECTORY_SEPARATOR)
+        ? $fixtureInput
+        : base_path($fixtureInput);
+
+    if (! File::exists($fixturePath)) {
+        $this->error('Fixture not found: '.$fixturePath);
+
+        return 1;
+    }
+
+    $decoded = json_decode((string) File::get($fixturePath), true);
+    if (! is_array($decoded)) {
+        $this->error('Fixture JSON decode failed: '.$fixturePath);
+
+        return 1;
+    }
+
+    $tableSeeds = $decoded['laravel_seed']['tables'] ?? null;
+    if (! is_array($tableSeeds)) {
+        $this->error('Fixture missing laravel_seed.tables object.');
+
+        return 1;
+    }
+
+    $tablePrimaryKeys = [
+        'users' => ['id'],
+        'personal_access_tokens' => ['id'],
+        'threads' => ['id'],
+        'messages' => ['id'],
+        'autopilots' => ['id'],
+        'autopilot_profiles' => ['autopilot_id'],
+        'autopilot_policies' => ['autopilot_id'],
+        'autopilot_runtime_bindings' => ['id'],
+        'l402_credentials' => ['id'],
+        'l402_paywalls' => ['id'],
+        'user_spark_wallets' => ['id'],
+        'user_integrations' => ['id'],
+        'user_integration_audits' => ['id'],
+        'comms_webhook_events' => ['idempotency_key'],
+        'comms_delivery_projections' => ['user_id', 'provider', 'integration_id'],
+        'shouts' => ['id'],
+        'whispers' => ['id'],
+    ];
+
+    $orderedTables = array_keys($tablePrimaryKeys);
+
+    $normalizeRow = function (array $row): array {
+        $normalized = [];
+
+        foreach ($row as $key => $value) {
+            if (is_array($value)) {
+                $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $normalized[$key] = is_string($encoded) ? $encoded : null;
+
+                continue;
+            }
+
+            if (is_bool($value) || is_int($value) || is_float($value) || is_string($value) || $value === null) {
+                $normalized[$key] = $value;
+
+                continue;
+            }
+
+            $normalized[$key] = is_object($value)
+                ? json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                : (string) $value;
+        }
+
+        return $normalized;
+    };
+
+    if ((bool) $this->option('replace')) {
+        Schema::disableForeignKeyConstraints();
+
+        foreach (array_reverse($orderedTables) as $table) {
+            if (! array_key_exists($table, $tableSeeds)) {
+                continue;
+            }
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            DB::table($table)->delete();
+        }
+
+        Schema::enableForeignKeyConstraints();
+    }
+
+    $seeded = [];
+
+    foreach ($orderedTables as $table) {
+        if (! array_key_exists($table, $tableSeeds)) {
+            continue;
+        }
+
+        if (! Schema::hasTable($table)) {
+            $this->warn('Skipping missing table: '.$table);
+
+            continue;
+        }
+
+        $rows = $tableSeeds[$table];
+        if (! is_array($rows)) {
+            $this->warn('Skipping non-array table payload: '.$table);
+
+            continue;
+        }
+
+        $keys = $tablePrimaryKeys[$table];
+        $seededCount = 0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $normalized = $normalizeRow($row);
+
+            $match = [];
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $normalized)) {
+                    $match[$key] = $normalized[$key];
+                }
+            }
+
+            if ($match === []) {
+                $this->warn("Skipping row without primary key fields for table {$table}");
+
+                continue;
+            }
+
+            DB::table($table)->updateOrInsert($match, $normalized);
+            $seededCount++;
+        }
+
+        $seeded[$table] = $seededCount;
+    }
+
+    $this->info('Parity fixture seed completed.');
+    $this->line('  fixture: '.$fixturePath);
+
+    foreach ($seeded as $table => $count) {
+        $this->line(sprintf('  %-32s %d', $table.':', $count));
+    }
+
+    return 0;
+})->purpose('Seed deterministic shared parity fixtures into Laravel tables for cross-stack parity tests.');

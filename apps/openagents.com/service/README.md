@@ -224,6 +224,7 @@ Rust ownership migration/backfill runbook + scripts:
 - `apps/openagents.com/service/scripts/run-rust-ownership-backfill.sh`
 - `apps/openagents.com/service/scripts/verify-rust-ownership-backfill.sh`
 - `apps/openagents.com/service/scripts/rollback-rust-ownership-backfill.sh`
+- `apps/openagents.com/service/scripts/seed-parity-fixtures.sh`
 
 ## Route split and rollback
 
