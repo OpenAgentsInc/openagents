@@ -65,6 +65,7 @@ mod wasm {
         static AUTH_VERIFY_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static AUTH_RESTORE_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static AUTH_LOGOUT_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static CODEX_QUICK_PROMPT_CLICK_HANDLERS: RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>> = RefCell::new(Vec::new());
         static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
@@ -82,9 +83,14 @@ mod wasm {
     const CODEX_CHAT_ROOT_ID: &str = "openagents-web-shell-chat";
     const CODEX_CHAT_HEADER_ID: &str = "openagents-web-shell-chat-header";
     const CODEX_CHAT_MESSAGES_ID: &str = "openagents-web-shell-chat-messages";
+    const CODEX_CHAT_QUICK_PROMPTS_ID: &str = "openagents-web-shell-chat-quick-prompts";
     const CODEX_CHAT_COMPOSER_ID: &str = "openagents-web-shell-chat-composer";
     const CODEX_CHAT_INPUT_ID: &str = "openagents-web-shell-chat-input";
     const CODEX_CHAT_SEND_ID: &str = "openagents-web-shell-chat-send";
+    const CODEX_CHAT_PROMPT_0_ID: &str = "openagents-web-shell-chat-prompt-0";
+    const CODEX_CHAT_PROMPT_1_ID: &str = "openagents-web-shell-chat-prompt-1";
+    const CODEX_CHAT_PROMPT_2_ID: &str = "openagents-web-shell-chat-prompt-2";
+    const CODEX_CHAT_PROMPT_3_ID: &str = "openagents-web-shell-chat-prompt-3";
     const AUTH_PANEL_ID: &str = "openagents-web-shell-auth-panel";
     const AUTH_EMAIL_INPUT_ID: &str = "openagents-web-shell-auth-email";
     const AUTH_CODE_INPUT_ID: &str = "openagents-web-shell-auth-code";
@@ -96,6 +102,18 @@ mod wasm {
     const GPU_INIT_BUDGET_MS: u64 = 1_600;
     const FIRST_FRAME_BUDGET_MS: u64 = 2_200;
     const BOOT_TOTAL_BUDGET_MS: u64 = 2_500;
+    const CHAT_QUICK_PROMPTS: [&str; 4] = [
+        "What tools do you have?",
+        "Make a test OpenAgents API call",
+        "What can you do with bitcoin?",
+        "Explain what you can do with the OpenAgents API",
+    ];
+    const CHAT_QUICK_PROMPT_IDS: [&str; 4] = [
+        CODEX_CHAT_PROMPT_0_ID,
+        CODEX_CHAT_PROMPT_1_ID,
+        CODEX_CHAT_PROMPT_2_ID,
+        CODEX_CHAT_PROMPT_3_ID,
+    ];
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
@@ -559,20 +577,16 @@ mod wasm {
 
     #[wasm_bindgen]
     pub fn codex_send_message(text: String) {
-        let Some(thread_id) = active_thread_id() else {
+        if let Some(thread_id) = active_thread_id() {
             CODEX_THREAD_STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .append_local_system_message("No active thread route.");
+                state.borrow_mut().append_local_user_message(&text);
             });
             render_codex_chat_dom();
+            queue_intent(CommandIntent::SendThreadMessage { thread_id, text });
             return;
-        };
-        CODEX_THREAD_STATE.with(|state| {
-            state.borrow_mut().append_local_user_message(&text);
-        });
-        render_codex_chat_dom();
-        queue_intent(CommandIntent::SendThreadMessage { thread_id, text });
+        }
+
+        start_codex_thread_with_prompt(text);
     }
 
     async fn boot() -> Result<(), String> {
@@ -1504,6 +1518,46 @@ mod wasm {
 
     fn active_thread_id() -> Option<String> {
         APP_STATE.with(|state| thread_id_from_route(&state.borrow().route))
+    }
+
+    fn start_codex_thread_with_prompt(prompt: String) {
+        let prompt = prompt.trim().to_string();
+        if prompt.is_empty() {
+            return;
+        }
+
+        let has_session = APP_STATE.with(|state| state.borrow().auth.has_active_session());
+        if !has_session {
+            CODEX_THREAD_STATE.with(|state| {
+                state
+                    .borrow_mut()
+                    .append_local_system_message("Sign in first to use Codex chat.");
+            });
+            render_codex_chat_dom();
+            return;
+        }
+
+        let thread_id = generate_codex_thread_id();
+        apply_route_transition(
+            AppRoute::Chat {
+                thread_id: Some(thread_id.clone()),
+            },
+            true,
+        );
+        CODEX_THREAD_STATE.with(|state| {
+            state.borrow_mut().append_local_user_message(&prompt);
+        });
+        render_codex_chat_dom();
+        queue_intent(CommandIntent::SendThreadMessage {
+            thread_id,
+            text: prompt,
+        });
+    }
+
+    fn generate_codex_thread_id() -> String {
+        let timestamp = now_unix_ms();
+        let random = (js_sys::Math::random() * 1_000_000.0).floor() as u64;
+        format!("thread_web_{timestamp}_{random:06}")
     }
 
     fn sync_thread_route_from_state(state: &AppState) {
@@ -2888,6 +2942,63 @@ mod wasm {
                 .map_err(|_| "failed to style codex chat messages".to_string())?;
             let _ = root.append_child(&messages);
 
+            let quick_prompts = document
+                .create_element("div")
+                .map_err(|_| "failed to create codex quick prompts".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "codex quick prompts is not HtmlElement".to_string())?;
+            quick_prompts.set_id(CODEX_CHAT_QUICK_PROMPTS_ID);
+            quick_prompts
+                .style()
+                .set_property("display", "none")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("flex-wrap", "wrap")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("gap", "8px")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("max-width", "760px")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("width", "100%")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("margin", "0 auto")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+            quick_prompts
+                .style()
+                .set_property("pointer-events", "auto")
+                .map_err(|_| "failed to style codex quick prompts".to_string())?;
+
+            for (index, prompt) in CHAT_QUICK_PROMPTS.iter().enumerate() {
+                let prompt_button = document
+                    .create_element("button")
+                    .map_err(|_| "failed to create codex quick prompt button".to_string())?
+                    .dyn_into::<HtmlElement>()
+                    .map_err(|_| "codex quick prompt button is not HtmlElement".to_string())?;
+                prompt_button.set_id(CHAT_QUICK_PROMPT_IDS[index]);
+                prompt_button.set_inner_text(prompt);
+                let _ = prompt_button.style().set_property("padding", "6px 10px");
+                let _ = prompt_button.style().set_property("border-radius", "999px");
+                let _ = prompt_button
+                    .style()
+                    .set_property("border", "1px solid #1f2937");
+                let _ = prompt_button.style().set_property("background", "#111827");
+                let _ = prompt_button.style().set_property("color", "#cbd5e1");
+                let _ = prompt_button.style().set_property("font-size", "13px");
+                let _ = prompt_button.style().set_property("line-height", "1.2");
+                let _ = prompt_button.style().set_property("cursor", "pointer");
+                let _ = quick_prompts.append_child(&prompt_button);
+            }
+            let _ = root.append_child(&quick_prompts);
+
             let composer = document
                 .create_element("div")
                 .map_err(|_| "failed to create codex composer".to_string())?
@@ -2934,9 +3045,10 @@ mod wasm {
             let _ = input.style().set_property("background", "#0f172a");
             let _ = input.style().set_property("color", "#e2e8f0");
             let _ = input.style().set_property("font-size", "15px");
-            let _ = input
-                .style()
-                .set_property("font-family", "Inter, sans-serif");
+            let _ = input.style().set_property(
+                "font-family",
+                "-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            );
             let _ = composer.append_child(&input);
 
             let send_button = document
@@ -3171,6 +3283,26 @@ mod wasm {
             *slot.borrow_mut() = Some(callback);
         });
 
+        CODEX_QUICK_PROMPT_CLICK_HANDLERS.with(|slot| {
+            let mut handlers = slot.borrow_mut();
+            if !handlers.is_empty() {
+                return;
+            }
+            for (index, prompt) in CHAT_QUICK_PROMPTS.iter().enumerate() {
+                let Some(button) = document.get_element_by_id(CHAT_QUICK_PROMPT_IDS[index]) else {
+                    continue;
+                };
+                let prompt = prompt.to_string();
+                let callback =
+                    Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                        start_codex_thread_with_prompt(prompt.clone());
+                    }));
+                let _ = button
+                    .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+                handlers.push(callback);
+            }
+        });
+
         let auth_send_button = document
             .get_element_by_id(AUTH_SEND_ID)
             .ok_or_else(|| "missing auth send button".to_string())?;
@@ -3349,6 +3481,9 @@ mod wasm {
         else {
             return;
         };
+        let quick_prompt_row = document
+            .get_element_by_id(CODEX_CHAT_QUICK_PROMPTS_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok());
         let auth_panel = document
             .get_element_by_id(AUTH_PANEL_ID)
             .and_then(|element| element.dyn_into::<HtmlElement>().ok());
@@ -3356,6 +3491,9 @@ mod wasm {
         if is_codex_chat_route && !auth_state.has_active_session() {
             let _ = root.style().set_property("display", "flex");
             let _ = composer.style().set_property("display", "none");
+            if let Some(quick_prompt_row) = quick_prompt_row.as_ref() {
+                let _ = quick_prompt_row.style().set_property("display", "none");
+            }
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
             }
@@ -3367,6 +3505,9 @@ mod wasm {
         if let Some(thread_id) = thread_id {
             let _ = root.style().set_property("display", "flex");
             let _ = composer.style().set_property("display", "flex");
+            if let Some(quick_prompt_row) = quick_prompt_row.as_ref() {
+                let _ = quick_prompt_row.style().set_property("display", "none");
+            }
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
             }
@@ -3389,7 +3530,10 @@ mod wasm {
 
         if is_codex_chat_route {
             let _ = root.style().set_property("display", "flex");
-            let _ = composer.style().set_property("display", "none");
+            let _ = composer.style().set_property("display", "flex");
+            if let Some(quick_prompt_row) = quick_prompt_row.as_ref() {
+                let _ = quick_prompt_row.style().set_property("display", "flex");
+            }
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
             }
@@ -3407,6 +3551,9 @@ mod wasm {
 
         let _ = root.style().set_property("display", "flex");
         let _ = composer.style().set_property("display", "none");
+        if let Some(quick_prompt_row) = quick_prompt_row.as_ref() {
+            let _ = quick_prompt_row.style().set_property("display", "none");
+        }
         if let Some(auth_panel) = auth_panel.as_ref() {
             let _ = auth_panel
                 .style()
@@ -3693,7 +3840,7 @@ mod wasm {
             },
             ManagementCard {
                 title: "Start Thread".to_string(),
-                body: "Open /chat/<thread-id> for any existing thread or create one by sending the first message."
+                body: "Use a quick prompt below or send from the composer to create a new /chat/<thread-id> thread."
                     .to_string(),
                 tone: ManagementCardTone::Info,
             },
