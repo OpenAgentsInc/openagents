@@ -6496,6 +6496,28 @@ mod wasm {
             },
         );
 
+        if let Some(panel) = append_l402_panel(document, messages_container, "Utility Surfaces") {
+            for (href, label) in [
+                ("/openapi.json", "OpenAPI document"),
+                ("/api/smoke/stream", "Khala smoke stream contract"),
+            ] {
+                let Ok(anchor) = document.create_element("a") else {
+                    continue;
+                };
+                let Ok(anchor) = anchor.dyn_into::<HtmlElement>() else {
+                    continue;
+                };
+                let _ = anchor.set_attribute("href", href);
+                let _ = anchor.style().set_property("display", "inline-flex");
+                let _ = anchor.style().set_property("padding", "4px 0");
+                let _ = anchor.style().set_property("color", "#93c5fd");
+                let _ = anchor.style().set_property("font-size", "12px");
+                let _ = anchor.style().set_property("text-decoration", "none");
+                anchor.set_inner_text(&format!("{label} ({href})"));
+                let _ = panel.append_child(&anchor);
+            }
+        }
+
         if loading {
             append_management_card(
                 document,

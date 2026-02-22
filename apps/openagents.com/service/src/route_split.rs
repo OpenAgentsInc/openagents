@@ -534,6 +534,7 @@ mod tests {
             runtime_comms_delivery_timeout_ms: 10_000,
             runtime_comms_delivery_max_retries: 2,
             runtime_comms_delivery_retry_backoff_ms: 200,
+            smoke_stream_secret: None,
             resend_webhook_secret: None,
             resend_webhook_tolerance_seconds: 300,
             google_oauth_client_id: None,

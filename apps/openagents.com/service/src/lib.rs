@@ -85,9 +85,9 @@ use crate::openapi::{
     ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
     ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT,
     ROUTE_SETTINGS_INTEGRATIONS_RESEND, ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST,
-    ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS, ROUTE_SHOUTS_ZONES, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
-    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
-    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS, ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SYNC_TOKEN,
+    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
+    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
@@ -114,6 +114,8 @@ const HEADER_OA_COMPAT_MIN_SCHEMA: &str = "x-oa-compatibility-min-schema-version
 const HEADER_OA_COMPAT_PROTOCOL: &str = "x-oa-compatibility-protocol-version";
 const HEADER_OA_COMPAT_UPGRADE_REQUIRED: &str = "x-oa-compatibility-upgrade-required";
 const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
+const HEADER_OA_SMOKE: &str = "x-oa-smoke";
+const HEADER_OA_SMOKE_SECRET: &str = "x-oa-smoke-secret";
 const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
 const HEADER_X_FORWARDED_FOR: &str = "x-forwarded-for";
 const HEADER_X_REAL_IP: &str = "x-real-ip";
@@ -1109,6 +1111,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_AUTH_REFRESH, post(refresh_session))
         .route(ROUTE_SHOUTS, get(shouts_index))
         .route(ROUTE_SHOUTS_ZONES, get(shouts_zones))
+        .route(ROUTE_SMOKE_STREAM, get(smoke_stream))
         .route(ROUTE_WEBHOOKS_RESEND, post(webhooks_resend_store));
 
     let protected_api_router = Router::new()
@@ -2141,6 +2144,54 @@ async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorR
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_MANIFEST));
+
+    Ok(response)
+}
+
+async fn smoke_stream(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let expected_secret = state
+        .config
+        .smoke_stream_secret
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let provided_secret = header_string(&headers, HEADER_OA_SMOKE_SECRET).unwrap_or_default();
+    if expected_secret.is_empty()
+        || provided_secret.is_empty()
+        || !constant_time_eq(expected_secret.as_bytes(), provided_secret.as_bytes())
+    {
+        return Err(unauthorized_error("Unauthenticated."));
+    }
+
+    let mut response = ok_data(serde_json::json!({
+        "status": "ok",
+        "stream_protocol": "khala_ws",
+        "delivery": {
+            "transport": "khala_ws",
+            "topic": "runtime.codex_worker_events",
+            "scope": "runtime.codex_worker_events",
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+            "sseEnabled": false,
+        },
+        "event_contract": {
+            "chat": ["turn.start", "turn.finish", "turn.error", "turn.tool"],
+            "worker": ["worker.event", "worker.response", "worker.stopped"],
+        },
+    }))
+    .into_response();
+    response
+        .headers_mut()
+        .insert(HEADER_OA_SMOKE, HeaderValue::from_static("1"));
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
     Ok(response)
 }
@@ -12275,6 +12326,17 @@ fn header_string(headers: &HeaderMap, key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (lhs, rhs) in left.iter().zip(right.iter()) {
+        diff |= lhs ^ rhs;
+    }
+    diff == 0
+}
+
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let authorization = headers.get(AUTHORIZATION)?.to_str().ok()?.trim();
     let token = authorization.strip_prefix("Bearer ")?.trim();
@@ -14061,6 +14123,7 @@ mod tests {
             runtime_comms_delivery_timeout_ms: 10_000,
             runtime_comms_delivery_max_retries: 2,
             runtime_comms_delivery_retry_backoff_ms: 200,
+            smoke_stream_secret: Some("secret".to_string()),
             resend_webhook_secret: None,
             resend_webhook_tolerance_seconds: 300,
             google_oauth_client_id: None,
@@ -15369,6 +15432,65 @@ mod tests {
         assert_eq!(parsed["openapi"], "3.0.2");
         assert!(parsed["paths"]["/api/auth/email"].is_object());
         assert!(parsed["components"]["securitySchemes"]["bearerAuth"].is_object());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn smoke_stream_requires_secret_header() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let missing_request = Request::builder()
+            .uri(super::ROUTE_SMOKE_STREAM)
+            .body(Body::empty())?;
+        let missing_response = app.clone().oneshot(missing_request).await?;
+        assert_eq!(missing_response.status(), StatusCode::UNAUTHORIZED);
+
+        let wrong_request = Request::builder()
+            .uri(super::ROUTE_SMOKE_STREAM)
+            .header(super::HEADER_OA_SMOKE_SECRET, "wrong")
+            .body(Body::empty())?;
+        let wrong_response = app.oneshot(wrong_request).await?;
+        assert_eq!(wrong_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn smoke_stream_returns_khala_ws_contract_metadata() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .uri(super::ROUTE_SMOKE_STREAM)
+            .header(super::HEADER_OA_SMOKE_SECRET, "secret")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(super::HEADER_OA_SMOKE)
+                .and_then(|value| value.to_str().ok()),
+            Some("1")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+
+        let body = read_json(response).await?;
+        assert_eq!(body["data"]["status"], "ok");
+        assert_eq!(body["data"]["stream_protocol"], "khala_ws");
+        assert_eq!(body["data"]["delivery"]["transport"], "khala_ws");
+        assert_eq!(body["data"]["delivery"]["sseEnabled"], false);
+        assert_eq!(
+            body["data"]["delivery"]["syncTokenRoute"],
+            super::ROUTE_SYNC_TOKEN
+        );
 
         Ok(())
     }

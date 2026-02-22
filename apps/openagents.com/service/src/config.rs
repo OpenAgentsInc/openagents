@@ -142,6 +142,7 @@ pub struct Config {
     pub runtime_comms_delivery_timeout_ms: u64,
     pub runtime_comms_delivery_max_retries: u32,
     pub runtime_comms_delivery_retry_backoff_ms: u64,
+    pub smoke_stream_secret: Option<String>,
     pub resend_webhook_secret: Option<String>,
     pub resend_webhook_tolerance_seconds: u64,
     pub google_oauth_client_id: Option<String>,
@@ -553,6 +554,11 @@ impl Config {
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS);
 
+        let smoke_stream_secret = env::var("OA_SMOKE_SECRET")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
         let resend_webhook_secret = env::var("OA_RESEND_WEBHOOK_SECRET")
             .ok()
             .map(|value| value.trim().to_string())
@@ -781,6 +787,7 @@ impl Config {
             runtime_comms_delivery_timeout_ms,
             runtime_comms_delivery_max_retries,
             runtime_comms_delivery_retry_backoff_ms,
+            smoke_stream_secret,
             resend_webhook_secret,
             resend_webhook_tolerance_seconds,
             google_oauth_client_id,

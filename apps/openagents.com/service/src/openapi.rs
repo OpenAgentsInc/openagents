@@ -36,6 +36,7 @@ pub const ROUTE_SHOUTS_ZONES: &str = "/api/shouts/zones";
 pub const ROUTE_WHISPERS: &str = "/api/whispers";
 pub const ROUTE_WHISPERS_READ: &str = "/api/whispers/:id/read";
 pub const ROUTE_WEBHOOKS_RESEND: &str = "/api/webhooks/resend";
+pub const ROUTE_SMOKE_STREAM: &str = "/api/smoke/stream";
 pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
@@ -1242,6 +1243,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("sync_token"),
         response_example: Some("sync_token"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SMOKE_STREAM,
+        operation_id: "smokeStream",
+        summary: "Return Khala WS smoke stream contract metadata (no SSE transport).",
+        tag: "utility",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: None,
     },
     OpenApiContract {
         method: "get",
