@@ -188,7 +188,8 @@ final class RuntimeCodexClient {
         let response: DataResponse<RuntimeCodexWorkerActionResult> = try await requestJSON(
             path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)/requests",
             method: "POST",
-            body: WorkerActionRequestEnvelope(request: request)
+            body: WorkerActionRequestEnvelope(request: request),
+            headers: ["X-Request-Id": request.requestID]
         )
 
         guard let data = response.data else {

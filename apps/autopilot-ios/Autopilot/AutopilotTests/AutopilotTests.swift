@@ -603,6 +603,7 @@ struct AutopilotTests {
         RuntimeCodexClientURLProtocol.setHandler { request in
             #expect(request.httpMethod == "POST")
             #expect(request.url?.path == "/api/runtime/codex/workers/desktopw%3Ashared/requests")
+            #expect(request.value(forHTTPHeaderField: "X-Request-Id") == "req-ios-1")
 
             let body = readRequestBodyData(request)
             let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]

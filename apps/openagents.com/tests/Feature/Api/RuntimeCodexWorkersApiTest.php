@@ -146,6 +146,76 @@ test('runtime codex workers api proxies lifecycle endpoints', function () {
     });
 });
 
+test('runtime codex workers api enforces control method allowlist before runtime dispatch', function () {
+    $user = User::factory()->create();
+    Http::fake();
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_unsupported/requests', [
+        'request' => [
+            'request_id' => 'req_unsupported',
+            'method' => 'shell/exec',
+            'params' => ['command' => 'rm -rf /'],
+        ],
+    ]);
+
+    $response->assertStatus(422)->assertJsonValidationErrors(['request.method']);
+    Http::assertNothingSent();
+});
+
+test('runtime codex workers api forwards request_id as x-request-id correlation when missing', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_corr/requests' => Http::response([
+            'data' => ['worker_id' => 'codexw_corr', 'request_id' => 'req_corr_1', 'ok' => true],
+        ], 200),
+    ]);
+
+    $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_corr/requests', [
+        'request' => [
+            'request_id' => 'req_corr_1',
+            'method' => 'thread/start',
+            'params' => [],
+        ],
+    ])->assertOk();
+
+    Http::assertSent(function (HttpRequest $request): bool {
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_corr/requests'
+            && ($request->header('X-Request-Id')[0] ?? null) === 'req_corr_1';
+    });
+});
+
+test('runtime codex workers api rate limits control request lane', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_rate/requests' => Http::response([
+            'data' => ['worker_id' => 'codexw_rate', 'ok' => true],
+        ], 202),
+    ]);
+
+    $payload = [
+        'request' => [
+            'request_id' => 'req_rate',
+            'method' => 'thread/list',
+            'params' => [],
+        ],
+    ];
+
+    for ($attempt = 0; $attempt < 60; $attempt++) {
+        $payload['request']['request_id'] = 'req_rate_'.$attempt;
+        $this->actingAs($user)
+            ->postJson('/api/runtime/codex/workers/codexw_rate/requests', $payload)
+            ->assertStatus(202);
+    }
+
+    $payload['request']['request_id'] = 'req_rate_limited';
+    $limited = $this->actingAs($user)
+        ->postJson('/api/runtime/codex/workers/codexw_rate/requests', $payload);
+
+    $limited->assertStatus(429);
+});
+
 test('runtime codex workers api passes through runtime conflict for stopped worker mutation', function () {
     $user = User::factory()->create();
 
