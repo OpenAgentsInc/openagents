@@ -236,8 +236,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `.github/workflows/web-mixed-version-deploy-safety-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
 - [x] Rust-only terminal gate (`OA-WEBPARITY-068`)
   Harness/report: `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`, `.github/workflows/web-rust-only-terminal-gate.yml`, `apps/openagents.com/docs/20260222-oa-webparity-068-rust-only-terminal-gate.md`
-- [ ] Compatibility extension lane (`OA-WEBPARITY-069..082`)
-  Governance and rollout evidence: ADR-0008, mapping spec, fixture corpus, adapter tests, staging dual-run diff, cutover/steady-state reports, and retired-header cleanup closure.
+- [x] Compatibility extension lane (`OA-WEBPARITY-069..082`)
+  Governance and rollout evidence: ADR-0008, mapping spec, fixture corpus, adapter tests, staging dual-run diff, cutover/steady-state reports, and retired-header cleanup closure (`apps/openagents.com/docs/20260222-oa-webparity-080-production-stream-cutover.md`, `docs/audits/2026-02-22-openagents-web-compatibility-lane-steady-state-audit.md`, `apps/openagents.com/docs/20260222-oa-webparity-082-retired-chat-header-cleanup.md`).
 
 ## Checklist Freeze Rules
 

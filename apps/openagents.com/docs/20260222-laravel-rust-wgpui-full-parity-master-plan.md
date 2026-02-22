@@ -1,7 +1,7 @@
 # Laravel to Rust/WGPUI Full Parity Master Plan (openagents.com)
 
 Date: 2026-02-22  
-Status: Completed base program record (OA-WEBPARITY-001..068 closed); compatibility extension tracked by OA-WEBPARITY-069..082  
+Status: Completed program record (`OA-WEBPARITY-001..082` closed)  
 Owner: openagents.com platform
 
 Canonical execution checklist:
@@ -14,7 +14,7 @@ Completion note (2026-02-22):
 Compatibility addendum (2026-02-22):
 - ADR-0008 permits a bounded Vercel-compatible SSE lane as an adapter-only compatibility scope.
 - Codex app-server + Khala WS remain authority lanes; no second chat authority is allowed.
-- Execution tracking for this addendum is OA-WEBPARITY-069..082.
+- Execution tracking for this addendum closed with OA-WEBPARITY-069..082.
 
 ## 1) Goal
 
@@ -601,7 +601,7 @@ Mitigation: require route-shell tests that assert `pushState`/`popstate` wiring 
 
 Program is complete when:
 
-1. OA-WEBPARITY-001 through OA-WEBPARITY-068 are closed.
+1. OA-WEBPARITY-001 through OA-WEBPARITY-082 are closed.
 2. API manifest coverage reports 77/77 endpoints accounted for (ported, codex-consolidated, or explicitly retired with approved migration behavior).
 3. All active web routes/pages are Rust/WGPUI-owned and validated on desktop and mobile browsers (and iOS host app where applicable).
 4. Production traffic runs Rust-only with stable SLOs through post-cutover observation window.

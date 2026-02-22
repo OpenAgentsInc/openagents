@@ -10376,15 +10376,7 @@ fn normalized_conversation_id(
 }
 
 fn legacy_chat_data_response(payload: serde_json::Value, status: StatusCode) -> Response {
-    let mut response = (status, Json(serde_json::json!({ "data": payload }))).into_response();
-    response
-        .headers_mut()
-        .insert("x-oa-legacy-chat-retired", HeaderValue::from_static("true"));
-    response.headers_mut().insert(
-        "x-oa-legacy-chat-canonical",
-        HeaderValue::from_static("/api/runtime/threads"),
-    );
-    response
+    (status, Json(serde_json::json!({ "data": payload }))).into_response()
 }
 
 fn legacy_chat_stream_sse_response(config: &Config, wire: String) -> Response {
@@ -19147,20 +19139,8 @@ mod tests {
             .body(Body::empty())?;
         let response = app.clone().oneshot(request).await?;
         assert_eq!(response.status(), StatusCode::GONE);
-        assert_eq!(
-            response
-                .headers()
-                .get("x-oa-legacy-chat-retired")
-                .and_then(|value| value.to_str().ok()),
-            Some("true")
-        );
-        assert_eq!(
-            response
-                .headers()
-                .get("x-oa-legacy-chat-canonical")
-                .and_then(|value| value.to_str().ok()),
-            Some("/api/runtime/threads")
-        );
+        assert!(response.headers().get("x-oa-legacy-chat-retired").is_none());
+        assert!(response.headers().get("x-oa-legacy-chat-canonical").is_none());
         assert_eq!(
             response
                 .headers()
@@ -19189,20 +19169,8 @@ mod tests {
             .body(Body::from(r#"{"title":"Migration Chat"}"#))?;
         let create_response = app.clone().oneshot(create_request).await?;
         assert_eq!(create_response.status(), StatusCode::CREATED);
-        assert_eq!(
-            create_response
-                .headers()
-                .get("x-oa-legacy-chat-retired")
-                .and_then(|value| value.to_str().ok()),
-            Some("true")
-        );
-        assert_eq!(
-            create_response
-                .headers()
-                .get("x-oa-legacy-chat-canonical")
-                .and_then(|value| value.to_str().ok()),
-            Some("/api/runtime/threads")
-        );
+        assert!(create_response.headers().get("x-oa-legacy-chat-retired").is_none());
+        assert!(create_response.headers().get("x-oa-legacy-chat-canonical").is_none());
         let create_body = read_json(create_response).await?;
         let conversation_id = create_body["data"]["id"]
             .as_str()

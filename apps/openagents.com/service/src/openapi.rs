@@ -1870,14 +1870,20 @@ fn response_example(key: &str) -> Option<Value> {
         })),
         "legacy_chat_stream_response" => Some(json!({
             "data": {
-                "retired": true,
-                "stream_protocol": "disabled",
-                "canonical": "/api/runtime/codex/workers/:worker_id/requests",
+                "stream_protocol": "sse",
+                "content_type": "text/event-stream; charset=utf-8",
+                "terminal_event": "[DONE]",
                 "bridge": {
                     "method": "turn/start",
                     "worker_id": "desktopw:shared",
                     "request_id": "legacy_stream_req_123"
                 },
+                "sse_event_order": [
+                    "start",
+                    "start-step",
+                    "finish-step",
+                    "finish"
+                ],
                 "response": {
                     "thread_id": "thread_123",
                     "turn": {
