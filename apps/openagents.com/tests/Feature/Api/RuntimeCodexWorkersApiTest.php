@@ -165,6 +165,169 @@ test('runtime codex workers api passes through runtime conflict for stopped work
     $response->assertStatus(409)->assertJsonPath('error.code', 'conflict');
 });
 
+test('runtime codex workers api passes through control request conflict responses', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_conflict/requests' => Http::response([
+            'error' => [
+                'code' => 'conflict',
+                'message' => 'worker is stopped; create or reattach to resume',
+            ],
+        ], 409),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_conflict/requests', [
+        'request' => [
+            'request_id' => 'req_conflict',
+            'method' => 'turn/start',
+            'params' => ['thread_id' => 'thread_1', 'text' => 'continue'],
+        ],
+    ]);
+
+    $response
+        ->assertStatus(409)
+        ->assertJsonPath('error.code', 'conflict')
+        ->assertJsonPath('error.message', 'worker is stopped; create or reattach to resume');
+});
+
+test('runtime codex workers api preserves ownership denial for control request lane', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_forbidden/requests' => Http::response([
+            'error' => [
+                'code' => 'forbidden',
+                'message' => 'worker does not belong to authenticated principal',
+            ],
+        ], 403),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_forbidden/requests', [
+        'request' => [
+            'request_id' => 'req_forbidden',
+            'method' => 'thread/read',
+            'params' => ['thread_id' => 'thread_1'],
+        ],
+    ]);
+
+    $response
+        ->assertStatus(403)
+        ->assertJsonPath('error.code', 'forbidden')
+        ->assertJsonPath('error.message', 'worker does not belong to authenticated principal');
+});
+
+test('runtime codex workers api forwards idempotent replay semantics for duplicate control requests', function () {
+    $user = User::factory()->create();
+    $calls = 0;
+
+    Http::fake(function (HttpRequest $request) use (&$calls) {
+        if ($request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_replay/requests') {
+            $calls++;
+
+            return Http::response([
+                'data' => [
+                    'worker_id' => 'codexw_replay',
+                    'request_id' => 'req_replay',
+                    'ok' => true,
+                    'method' => 'turn/start',
+                    'idempotent_replay' => $calls > 1,
+                ],
+            ], 202);
+        }
+
+        return Http::response(['error' => ['code' => 'not_found']], 404);
+    });
+
+    $payload = [
+        'request' => [
+            'request_id' => 'req_replay',
+            'method' => 'turn/start',
+            'params' => [
+                'thread_id' => 'thread_replay',
+                'text' => 'continue',
+            ],
+        ],
+    ];
+
+    $first = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_replay/requests', $payload);
+    $second = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_replay/requests', $payload);
+
+    $first
+        ->assertStatus(202)
+        ->assertJsonPath('data.request_id', 'req_replay')
+        ->assertJsonPath('data.idempotent_replay', false);
+
+    $second
+        ->assertStatus(202)
+        ->assertJsonPath('data.request_id', 'req_replay')
+        ->assertJsonPath('data.idempotent_replay', true);
+
+    Http::assertSentCount(2);
+});
+
+test('runtime codex workers api keeps handshake ingest and control request lanes interoperable', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_interop/events' => Http::response([
+            'data' => ['worker_id' => 'codexw_interop', 'seq' => 12, 'event_type' => 'worker.event'],
+        ], 202),
+        'http://runtime.internal/internal/v1/codex/workers/codexw_interop/requests' => Http::response([
+            'data' => [
+                'worker_id' => 'codexw_interop',
+                'request_id' => 'req_interop',
+                'ok' => true,
+                'method' => 'turn/start',
+                'response' => ['status' => 'accepted'],
+            ],
+        ], 200),
+    ]);
+
+    $handshake = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_interop/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => [
+                'source' => 'autopilot-ios',
+                'method' => 'ios/handshake',
+                'handshake_id' => 'hs_interop',
+                'device_id' => 'device_interop',
+                'occurred_at' => '2026-02-22T00:00:00Z',
+            ],
+        ],
+    ]);
+
+    $control = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_interop/requests', [
+        'request' => [
+            'request_id' => 'req_interop',
+            'method' => 'turn/start',
+            'params' => [
+                'thread_id' => 'thread_interop',
+                'text' => 'continue',
+            ],
+        ],
+    ]);
+
+    $handshake->assertStatus(202)->assertJsonPath('data.seq', 12);
+    $control->assertOk()->assertJsonPath('data.request_id', 'req_interop');
+
+    Http::assertSent(function (HttpRequest $request) use ($user): bool {
+        $data = $request->data();
+
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_interop/events'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id
+            && ($data['event']['payload']['method'] ?? null) === 'ios/handshake';
+    });
+
+    Http::assertSent(function (HttpRequest $request) use ($user): bool {
+        $data = $request->data();
+
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_interop/requests'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id
+            && ($data['request']['method'] ?? null) === 'turn/start';
+    });
+});
+
 test('runtime codex workers api proxies ios handshake ingest payload shape', function () {
     $user = User::factory()->create();
     $handshakeId = 'hs_'.random_int(1000, 9999);
