@@ -32,6 +32,8 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     private var authEmailDraft: String = ""
     private var authCodeDraft: String = ""
     private var activeInputTarget: WgpuiInputTarget = .none
+    private var pendingInputTargetAfterForeground: WgpuiInputTarget?
+    private var configuredScale: CGFloat?
     private let keyboardProxyField = UITextField(frame: .zero)
 
     private var effectiveScale: CGFloat {
@@ -57,6 +59,7 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         addGestureRecognizer(tap)
         isUserInteractionEnabled = true
         configureKeyboardProxyField()
+        registerLifecycleObservers()
     }
 
     private func configureKeyboardProxyField() {
@@ -82,6 +85,60 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         ])
     }
 
+    private func registerLifecycleObservers() {
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(handleWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleWillResignActive() {
+        displayLink?.isPaused = true
+    }
+
+    @objc private func handleDidEnterBackground() {
+        displayLink?.isPaused = true
+        if activeInputTarget != .none {
+            pendingInputTargetAfterForeground = activeInputTarget
+        }
+        keyboardProxyField.resignFirstResponder()
+    }
+
+    @objc private func handleWillEnterForeground() {
+        setNeedsLayout()
+    }
+
+    @objc private func handleDidBecomeActive() {
+        displayLink?.isPaused = false
+        setNeedsLayout()
+        guard let target = pendingInputTargetAfterForeground else {
+            return
+        }
+        pendingInputTargetAfterForeground = nil
+        beginEditing(target: target)
+    }
+
     @objc private func handleTapGesture(_ recognizer: UITapGestureRecognizer) {
         guard let statePtr else { return }
         let location = recognizer.location(in: self)
@@ -104,26 +161,59 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         let logicalW = UInt32(max(1.0, bounds.width.rounded(.toNearestOrAwayFromZero)))
         let logicalH = UInt32(max(1.0, bounds.height.rounded(.toNearestOrAwayFromZero)))
 
-        if statePtr == nil {
-            guard WgpuiBackgroundBridge.isAvailable else {
-                os_log("[WGPUI] bridge unavailable", log: wgpuiLog, type: .error)
-                return
-            }
+        if statePtr != nil, configuredScale != scale {
+            teardownRenderer()
+        }
 
-            statePtr = WgpuiBackgroundBridge.create(
+        if statePtr == nil {
+            setupRenderer(
                 layerPtr: Unmanaged.passUnretained(metalLayer).toOpaque(),
                 width: logicalW,
                 height: logicalH,
                 scale: Float(scale)
             )
-
-            if statePtr != nil {
-                displayLink = CADisplayLink(target: self, selector: #selector(tick))
-                displayLink?.add(to: .main, forMode: .common)
-            }
         } else {
             WgpuiBackgroundBridge.resize(state: statePtr, width: logicalW, height: logicalH)
         }
+    }
+
+    private func setupRenderer(
+        layerPtr: UnsafeMutableRawPointer,
+        width: UInt32,
+        height: UInt32,
+        scale: Float
+    ) {
+        guard WgpuiBackgroundBridge.isAvailable else {
+            os_log("[WGPUI] bridge unavailable", log: wgpuiLog, type: .error)
+            return
+        }
+
+        statePtr = WgpuiBackgroundBridge.create(
+            layerPtr: layerPtr,
+            width: width,
+            height: height,
+            scale: scale
+        )
+        configuredScale = CGFloat(scale)
+
+        if statePtr != nil {
+            if displayLink == nil {
+                displayLink = CADisplayLink(target: self, selector: #selector(tick))
+                displayLink?.add(to: .main, forMode: .common)
+            }
+            displayLink?.isPaused = false
+        }
+    }
+
+    private func teardownRenderer() {
+        if let statePtr {
+            WgpuiBackgroundBridge.destroy(state: statePtr)
+            self.statePtr = nil
+        }
+        configuredScale = nil
+        renderTickCount = 0
+        displayLink?.invalidate()
+        displayLink = nil
     }
 
     func sync(model: CodexHandshakeViewModel) {
@@ -465,12 +555,9 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
 
     deinit {
         os_log("[WGPUI] WgpuiBackgroundUIView deinit", log: wgpuiLog, type: .default)
+        NotificationCenter.default.removeObserver(self)
         keyboardProxyField.delegate = nil
-        displayLink?.invalidate()
-        displayLink = nil
-        if let statePtr {
-            WgpuiBackgroundBridge.destroy(state: statePtr)
-        }
+        teardownRenderer()
     }
 }
 
@@ -513,18 +600,10 @@ struct WgpuiBackgroundView: View {
                 Task { await model.interruptActiveTurn() }
             }
             view.onModelCycleRequested = { [weak model] in
-                guard let model else { return }
-                model.selectedModelOverride = cycleSelection(
-                    current: model.selectedModelOverride,
-                    options: model.modelOverrideOptions
-                )
+                model?.cycleModelOverrideSelection()
             }
             view.onReasoningCycleRequested = { [weak model] in
-                guard let model else { return }
-                model.selectedReasoningEffort = cycleSelection(
-                    current: model.selectedReasoningEffort,
-                    options: model.reasoningEffortOptions
-                )
+                model?.cycleReasoningEffortSelection()
             }
             view.onComposerChanged = { [weak model] text in
                 model?.messageDraft = text
@@ -576,14 +655,5 @@ struct WgpuiBackgroundView: View {
             uiView.sync(model: model)
         }
 
-        private func cycleSelection(current: String, options: [String]) -> String {
-            guard !options.isEmpty else {
-                return current
-            }
-            guard let index = options.firstIndex(of: current) else {
-                return options[0]
-            }
-            return options[(index + 1) % options.count]
-        }
     }
 }

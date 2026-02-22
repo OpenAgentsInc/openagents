@@ -590,6 +590,20 @@ final class CodexHandshakeViewModel: ObservableObject {
         statusMessage = nil
     }
 
+    func cycleModelOverrideSelection() {
+        selectedModelOverride = cycleSelection(
+            current: selectedModelOverride,
+            options: modelOverrideOptions
+        )
+    }
+
+    func cycleReasoningEffortSelection() {
+        selectedReasoningEffort = cycleSelection(
+            current: selectedReasoningEffort,
+            options: reasoningEffortOptions
+        )
+    }
+
     @discardableResult
     func queueControlRequest(
         method: RuntimeCodexControlMethod,
@@ -906,6 +920,16 @@ final class CodexHandshakeViewModel: ObservableObject {
             return nil
         }
         return normalized
+    }
+
+    private func cycleSelection(current: String, options: [String]) -> String {
+        guard !options.isEmpty else {
+            return current
+        }
+        guard let index = options.firstIndex(of: current) else {
+            return options[0]
+        }
+        return options[(index + 1) % options.count]
     }
 
     private func normalizedReasoningEffortValue() -> String? {
