@@ -87,6 +87,7 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_RUNTIME_INTERNAL_KEY_ID` (default: `runtime-internal-v1`)
 - `OA_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS` (default: `60`)
 - `OA_CODEX_THREAD_STORE_PATH` (optional filesystem path for durable Codex thread/message projection store snapshots)
+- `OA_DOMAIN_STORE_PATH` (optional filesystem path for durable cross-domain persistence snapshots: autopilot/l402/integrations/comms/social)
 - `OA_MAINTENANCE_MODE_ENABLED` (`true|false`, default: `false`)
 - `OA_MAINTENANCE_BYPASS_TOKEN` (optional; required to enable operator bypass flow)
 - `OA_MAINTENANCE_BYPASS_COOKIE_NAME` (default: `oa_maintenance_bypass`)
@@ -216,6 +217,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 Auth persistence and token-domain storage notes:
 - `apps/openagents.com/service/docs/AUTH_PERSISTENCE.md`
 - `apps/openagents.com/service/docs/CODEX_THREAD_PERSISTENCE.md`
+- `apps/openagents.com/service/docs/DOMAIN_PERSISTENCE.md`
 
 ## Route split and rollback
 

@@ -31,6 +31,7 @@ pub mod api_envelope;
 pub mod auth;
 pub mod codex_threads;
 pub mod config;
+pub mod domain_store;
 pub mod observability;
 pub mod openapi;
 pub mod route_split;
@@ -46,6 +47,7 @@ use crate::auth::{
 };
 use crate::codex_threads::{CodexThreadStore, ThreadStoreError};
 use crate::config::Config;
+use crate::domain_store::DomainStore;
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_SESSION,
@@ -92,6 +94,7 @@ struct AppState {
     route_split: RouteSplitService,
     sync_token_issuer: SyncTokenIssuer,
     codex_thread_store: CodexThreadStore,
+    _domain_store: DomainStore,
     runtime_revocation_client: Option<RuntimeRevocationClient>,
     throttle_state: ThrottleState,
     runtime_internal_nonces: RuntimeInternalNonceState,
@@ -248,6 +251,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let route_split = RouteSplitService::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let codex_thread_store = CodexThreadStore::from_config(&config);
+    let domain_store = DomainStore::from_config(&config);
     let runtime_revocation_client = RuntimeRevocationClient::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
@@ -256,6 +260,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         route_split,
         sync_token_issuer,
         codex_thread_store,
+        _domain_store: domain_store,
         runtime_revocation_client,
         throttle_state: ThrottleState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
@@ -2533,6 +2538,7 @@ mod tests {
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
             codex_thread_store_path: None,
+            domain_store_path: None,
             maintenance_mode_enabled: false,
             maintenance_bypass_token: None,
             maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),
@@ -2581,6 +2587,7 @@ mod tests {
         let route_split = super::RouteSplitService::from_config(&config);
         let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
         let codex_thread_store = super::CodexThreadStore::from_config(&config);
+        let domain_store = super::DomainStore::from_config(&config);
         let runtime_revocation_client = super::RuntimeRevocationClient::from_config(&config);
         super::AppState {
             config: Arc::new(config),
@@ -2589,6 +2596,7 @@ mod tests {
             route_split,
             sync_token_issuer,
             codex_thread_store,
+            _domain_store: domain_store,
             runtime_revocation_client,
             throttle_state: super::ThrottleState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
