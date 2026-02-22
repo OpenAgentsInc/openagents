@@ -378,6 +378,154 @@ struct AutopilotTests {
         }
     }
 
+    @Test("control receipt decoder parses worker.response and worker.error envelopes")
+    func controlReceiptDecoderParsesTerminalEnvelopes() {
+        let successPayload: JSONValue = .object([
+            "eventType": .string("worker.response"),
+            "payload": .object([
+                "request_id": .string("iosreq-1"),
+                "method": .string("turn/start"),
+                "ok": .bool(true),
+                "response": .object([
+                    "turn": .object(["id": .string("turn-1")]),
+                ]),
+                "occurred_at": .string("2026-02-22T01:00:00Z"),
+            ]),
+        ])
+
+        let errorPayload: JSONValue = .object([
+            "eventType": .string("worker.error"),
+            "payload": .object([
+                "request_id": .string("iosreq-2"),
+                "method": .string("turn/start"),
+                "code": .string("conflict"),
+                "message": .string("stale thread mapping"),
+                "retryable": .bool(false),
+                "occurred_at": .string("2026-02-22T01:00:01Z"),
+            ]),
+        ])
+
+        let successReceipt = RuntimeCodexProto.decodeControlReceipt(from: successPayload)
+        let errorReceipt = RuntimeCodexProto.decodeControlReceipt(from: errorPayload)
+
+        #expect(successReceipt?.eventType == "worker.response")
+        #expect(successReceipt?.receipt.requestID == "iosreq-1")
+        #expect(successReceipt?.receipt.method == "turn/start")
+
+        switch successReceipt?.receipt.outcome {
+        case .success(let response):
+            #expect(response?.objectValue?["turn"]?.objectValue?["id"]?.stringValue == "turn-1")
+        default:
+            #expect(Bool(false), "expected success receipt outcome")
+        }
+
+        #expect(errorReceipt?.eventType == "worker.error")
+        #expect(errorReceipt?.receipt.requestID == "iosreq-2")
+
+        switch errorReceipt?.receipt.outcome {
+        case .error(let code, let message, let retryable, _):
+            #expect(code == "conflict")
+            #expect(message == "stale thread mapping")
+            #expect(!retryable)
+        default:
+            #expect(Bool(false), "expected error receipt outcome")
+        }
+    }
+
+    @Test("control coordinator transitions queued running success and ignores duplicate receipts")
+    func controlCoordinatorTransitionsAndDedupesReceipts() {
+        var coordinator = RuntimeCodexControlCoordinator()
+
+        let request = RuntimeCodexWorkerActionRequest(
+            requestID: "iosreq-control-1",
+            method: .turnStart,
+            params: [
+                "thread_id": .string("thread-123"),
+                "text": .string("continue"),
+            ],
+            sentAt: "2026-02-22T01:01:00Z"
+        )
+
+        let queued = coordinator.enqueue(
+            workerID: "desktopw:shared",
+            request: request,
+            occurredAt: "2026-02-22T01:01:00Z"
+        )
+        #expect(queued.state == .queued)
+        #expect(coordinator.queuedRequests.count == 1)
+
+        let running = coordinator.markRunning(
+            requestID: request.requestID,
+            occurredAt: "2026-02-22T01:01:01Z"
+        )
+        #expect(running?.state == .running)
+        #expect(coordinator.queuedRequests.isEmpty)
+
+        let successReceipt = RuntimeCodexControlReceipt(
+            requestID: request.requestID,
+            method: "turn/start",
+            occurredAt: "2026-02-22T01:01:02Z",
+            outcome: .success(response: .object(["ok": .bool(true)]))
+        )
+
+        let reconciled = coordinator.reconcile(
+            workerID: "desktopw:shared",
+            receipt: successReceipt
+        )
+        #expect(reconciled?.state == .success)
+        #expect(reconciled?.response?.objectValue?["ok"]?.boolValue == true)
+
+        let duplicate = coordinator.reconcile(
+            workerID: "desktopw:shared",
+            receipt: successReceipt
+        )
+        #expect(duplicate == nil)
+    }
+
+    @Test("control coordinator keeps pending requests across disconnect and reconciles replay receipt")
+    func controlCoordinatorReconcilesReplayAfterDisconnectBoundary() {
+        var coordinator = RuntimeCodexControlCoordinator()
+        let workerID = "desktopw:shared"
+        let request = RuntimeCodexWorkerActionRequest(
+            requestID: "iosreq-replay-1",
+            method: .turnInterrupt,
+            params: [
+                "thread_id": .string("thread-123"),
+                "turn_id": .string("turn-123"),
+            ],
+            sentAt: "2026-02-22T01:02:00Z"
+        )
+
+        _ = coordinator.enqueue(
+            workerID: workerID,
+            request: request,
+            occurredAt: "2026-02-22T01:02:00Z"
+        )
+        _ = coordinator.markRunning(
+            requestID: request.requestID,
+            occurredAt: "2026-02-22T01:02:01Z"
+        )
+
+        // Simulate a temporary disconnect window where no receipt is observed live,
+        // then the terminal receipt appears in replay.
+        let replayReceipt = RuntimeCodexControlReceipt(
+            requestID: request.requestID,
+            method: "turn/interrupt",
+            occurredAt: "2026-02-22T01:02:05Z",
+            outcome: .error(
+                code: "conflict",
+                message: "turn already completed",
+                retryable: false,
+                details: nil
+            )
+        )
+
+        let reconciled = coordinator.reconcile(workerID: workerID, receipt: replayReceipt)
+        #expect(reconciled?.state == .error)
+        #expect(reconciled?.errorCode == "conflict")
+        #expect(reconciled?.errorMessage == "turn already completed")
+    }
+
     @Test("runtime codex client request/stop APIs encode payloads and map error statuses")
     func runtimeCodexClientRequestStopApisEncodeAndMapErrors() async throws {
         let session = makeRuntimeCodexTestSession()

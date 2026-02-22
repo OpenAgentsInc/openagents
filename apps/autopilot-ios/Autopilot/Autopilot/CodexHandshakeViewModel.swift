@@ -32,6 +32,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var latestSnapshot: RuntimeCodexWorkerSnapshot?
     @Published var recentEvents: [RuntimeCodexStreamEvent] = []
     @Published var chatMessages: [CodexChatMessage] = []
+    @Published private(set) var controlRequests: [RuntimeCodexControlRequestTracker] = []
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
@@ -56,6 +57,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var lifecycleResumeState = CodexLifecycleResumeState()
     private var isBackgroundPaused = false
     private var resumeCheckpointStore: CodexResumeCheckpointStore
+    private var controlCoordinator = RuntimeCodexControlCoordinator()
+    private var controlDispatchInFlight: Set<String> = []
+    private var controlRequestTimeoutTasks: [String: Task<Void, Never>] = [:]
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -79,6 +83,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let reconnectPolicy = KhalaReconnectPolicy.default
     private static let maxReconnectEventHistory = 24
     private static let seqCacheLimit = 8_192
+    private static let controlRequestTimeoutNS: UInt64 = 90_000_000_000
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
         let withFractional = ISO8601DateFormatter()
         withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -238,6 +243,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     deinit {
         streamTask?.cancel()
         handshakeTimeoutTask?.cancel()
+        for (_, task) in controlRequestTimeoutTasks {
+            task.cancel()
+        }
+        controlRequestTimeoutTasks.removeAll()
     }
 
     func autoConnectOnLaunch() async {
@@ -393,6 +402,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeStreamWorkerID = nil
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
+        cancelAllControlTimeouts()
+        controlDispatchInFlight.removeAll()
+        controlCoordinator = RuntimeCodexControlCoordinator()
+        controlRequests = []
         resetReconnectTracking()
         let namespaceToRemove = currentResumeNamespace
 
@@ -532,6 +545,263 @@ final class CodexHandshakeViewModel: ObservableObject {
     func clearMessages() {
         errorMessage = nil
         statusMessage = nil
+    }
+
+    @discardableResult
+    func queueControlRequest(
+        method: RuntimeCodexControlMethod,
+        params: [String: JSONValue] = [:],
+        workerID explicitWorkerID: String? = nil,
+        threadID explicitThreadID: String? = nil
+    ) async -> String? {
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to queue a control request."
+            return nil
+        }
+
+        guard let client = makeClient() else {
+            errorMessage = "Sign in first to queue a control request."
+            return nil
+        }
+
+        if workers.isEmpty {
+            await refreshWorkers()
+        }
+
+        let normalizedExplicitWorkerID = explicitWorkerID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetWorkerID = normalizedExplicitWorkerID?.isEmpty == false
+            ? normalizedExplicitWorkerID
+            : preferredWorker(from: workers)?.workerID
+
+        guard let workerID = targetWorkerID else {
+            errorMessage = "No active desktop worker found."
+            return nil
+        }
+
+        if selectedWorkerID != workerID {
+            selectedWorkerID = workerID
+        }
+
+        if streamState == .idle {
+            restartStreamIfReady(resetCursor: false)
+        }
+
+        let occurredAt = iso8601(now())
+        var normalizedParams = params
+
+        let normalizedThreadID = explicitThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedThreadID, !normalizedThreadID.isEmpty {
+            if normalizedParams["thread_id"] == nil && normalizedParams["threadId"] == nil {
+                normalizedParams["thread_id"] = .string(normalizedThreadID)
+            }
+        }
+
+        let request = RuntimeCodexWorkerActionRequest(
+            requestID: "iosreq-\(UUID().uuidString.lowercased())",
+            method: method,
+            params: normalizedParams,
+            sentAt: occurredAt,
+            source: RuntimeCodexProto.iosSource,
+            sessionID: sessionID,
+            threadID: normalizedThreadID
+        )
+
+        let tracker = controlCoordinator.enqueue(
+            workerID: workerID,
+            request: request,
+            occurredAt: occurredAt
+        )
+        syncControlRequestSnapshots()
+
+        appendSystemMessage(
+            "Control \(method.rawValue) queued.",
+            threadID: controlRequestThreadID(request),
+            turnID: nil,
+            occurredAt: occurredAt
+        )
+        statusMessage = "Queued \(method.rawValue) for \(shortWorkerID(workerID))."
+        errorMessage = nil
+
+        await dispatchQueuedControlRequestsIfPossible(clientOverride: client)
+        return tracker.requestID
+    }
+
+    private func dispatchQueuedControlRequestsIfPossible(
+        clientOverride: RuntimeCodexClient? = nil
+    ) async {
+        guard streamState == .live else {
+            return
+        }
+
+        guard let client = clientOverride ?? makeClient() else {
+            return
+        }
+
+        let queuedRequests = controlCoordinator.queuedRequests
+        guard !queuedRequests.isEmpty else {
+            return
+        }
+
+        for tracker in queuedRequests {
+            let requestID = tracker.requestID
+            if controlDispatchInFlight.contains(requestID) {
+                continue
+            }
+            controlDispatchInFlight.insert(requestID)
+
+            defer {
+                controlDispatchInFlight.remove(requestID)
+            }
+
+            let request = tracker.request
+            do {
+                _ = try await client.requestWorkerAction(workerID: tracker.workerID, request: request)
+                let occurredAt = iso8601(now())
+                if let running = controlCoordinator.markRunning(requestID: requestID, occurredAt: occurredAt) {
+                    scheduleControlRequestTimeout(requestID: running.requestID)
+                    appendSystemMessage(
+                        "Control \(running.request.method.rawValue) running.",
+                        threadID: controlRequestThreadID(running.request),
+                        turnID: nil,
+                        occurredAt: occurredAt
+                    )
+                }
+                statusMessage = "Dispatched \(request.method.rawValue) to \(shortWorkerID(tracker.workerID))."
+                errorMessage = nil
+                syncControlRequestSnapshots()
+            } catch {
+                let occurredAt = iso8601(now())
+                let formattedError = formatError(error)
+                let runtimeError = error as? RuntimeCodexApiError
+                let isRetryable = runtimeError?.code == .network
+
+                if isRetryable {
+                    _ = controlCoordinator.requeue(
+                        requestID: requestID,
+                        message: formattedError,
+                        occurredAt: occurredAt
+                    )
+                    statusMessage = "Queued \(request.method.rawValue) for retry after reconnect."
+                } else {
+                    _ = controlCoordinator.markDispatchError(
+                        requestID: requestID,
+                        code: runtimeError?.code.rawValue ?? "dispatch_error",
+                        message: formattedError,
+                        retryable: false,
+                        occurredAt: occurredAt
+                    )
+                    appendErrorMessage(
+                        "Control \(request.method.rawValue) failed: \(formattedError)",
+                        threadID: controlRequestThreadID(request),
+                        turnID: nil,
+                        occurredAt: occurredAt
+                    )
+                    errorMessage = formattedError
+                }
+                syncControlRequestSnapshots()
+            }
+        }
+    }
+
+    private func applyControlReceipt(
+        workerID: String,
+        envelope: RuntimeCodexProto.ControlReceiptEnvelope
+    ) {
+        guard let tracker = controlCoordinator.reconcile(
+            workerID: workerID,
+            receipt: envelope.receipt
+        ) else {
+            return
+        }
+
+        cancelControlRequestTimeout(requestID: tracker.requestID)
+        syncControlRequestSnapshots()
+
+        switch envelope.receipt.outcome {
+        case .success:
+            appendSystemMessage(
+                "Control \(tracker.request.method.rawValue) succeeded.",
+                threadID: controlRequestThreadID(tracker.request),
+                turnID: nil,
+                occurredAt: envelope.receipt.occurredAt
+            )
+            statusMessage = "Control \(tracker.request.method.rawValue) completed."
+
+        case .error(let code, let message, _, _):
+            appendErrorMessage(
+                "Control \(tracker.request.method.rawValue) failed (\(code)): \(message)",
+                threadID: controlRequestThreadID(tracker.request),
+                turnID: nil,
+                occurredAt: envelope.receipt.occurredAt
+            )
+            errorMessage = message
+        }
+    }
+
+    private func scheduleControlRequestTimeout(requestID: String) {
+        cancelControlRequestTimeout(requestID: requestID)
+        controlRequestTimeoutTasks[requestID] = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.controlRequestTimeoutNS)
+            } catch {
+                return
+            }
+
+            self?.handleControlRequestTimeout(requestID: requestID)
+        }
+    }
+
+    private func handleControlRequestTimeout(requestID: String) {
+        controlRequestTimeoutTasks.removeValue(forKey: requestID)
+        let occurredAt = iso8601(now())
+        guard let tracker = controlCoordinator.markTimeout(
+            requestID: requestID,
+            occurredAt: occurredAt
+        ) else {
+            return
+        }
+        syncControlRequestSnapshots()
+        appendErrorMessage(
+            "Control \(tracker.request.method.rawValue) timed out.",
+            threadID: controlRequestThreadID(tracker.request),
+            turnID: nil,
+            occurredAt: occurredAt
+        )
+    }
+
+    private func cancelControlRequestTimeout(requestID: String) {
+        controlRequestTimeoutTasks[requestID]?.cancel()
+        controlRequestTimeoutTasks.removeValue(forKey: requestID)
+    }
+
+    private func cancelAllControlTimeouts() {
+        for (_, task) in controlRequestTimeoutTasks {
+            task.cancel()
+        }
+        controlRequestTimeoutTasks.removeAll()
+    }
+
+    private func syncControlRequestSnapshots() {
+        controlRequests = Array(controlCoordinator.snapshots.reversed())
+    }
+
+    private func controlRequestThreadID(_ request: RuntimeCodexWorkerActionRequest) -> String? {
+        if let threadID = request.threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        if let threadID = request.params["thread_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        if let threadID = request.params["threadId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        return nil
     }
 
     func sendUserMessage() async {
@@ -787,6 +1057,7 @@ final class CodexHandshakeViewModel: ObservableObject {
                     "stream_live worker=\(shortWorkerID(workerID)) reconnect_attempts=\(reconnectAttempt)"
                 )
                 resetReconnectTracking()
+                await dispatchQueuedControlRequestsIfPossible(clientOverride: client)
 
                 let heartbeatTask = Task { [weak self] in
                     await self?.runKhalaHeartbeatLoop(socket: socket, joinRef: joinRef)
@@ -1101,7 +1372,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
         }
 
-        handleIncoming(events: orderedEvents)
+        handleIncoming(events: orderedEvents, workerID: workerID)
 
         if case .waitingAck = handshakeState {
             return
@@ -1274,12 +1545,19 @@ final class CodexHandshakeViewModel: ObservableObject {
         return String(khalaRefCounter)
     }
 
-    private func handleIncoming(events: [RuntimeCodexStreamEvent]) {
+    private func handleIncoming(events: [RuntimeCodexStreamEvent], workerID: String) {
         guard !events.isEmpty else {
             return
         }
 
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
+
+        for streamEvent in events {
+            guard let receipt = RuntimeCodexProto.decodeControlReceipt(from: streamEvent.payload) else {
+                continue
+            }
+            applyControlReceipt(workerID: workerID, envelope: receipt)
+        }
 
         let codexEvents = events.compactMap { event -> RuntimeCodexProto.CodexEventEnvelope? in
             guard let codexEvent = RuntimeCodexProto.decodeCodexEventEnvelope(from: event.payload),

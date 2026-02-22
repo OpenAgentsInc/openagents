@@ -201,6 +201,222 @@ struct RuntimeCodexWorkerStopResult: Decodable {
     }
 }
 
+enum RuntimeCodexControlRequestState: String, Equatable {
+    case queued
+    case running
+    case success
+    case error
+}
+
+struct RuntimeCodexControlReceipt: Equatable {
+    enum Outcome: Equatable {
+        case success(response: JSONValue?)
+        case error(code: String, message: String, retryable: Bool, details: JSONValue?)
+    }
+
+    let requestID: String
+    let method: String
+    let occurredAt: String?
+    let outcome: Outcome
+}
+
+struct RuntimeCodexControlRequestTracker: Identifiable, Equatable {
+    let workerID: String
+    let request: RuntimeCodexWorkerActionRequest
+    let createdAt: String
+    var lastUpdatedAt: String
+    var state: RuntimeCodexControlRequestState
+    var sentAt: String?
+    var receiptAt: String?
+    var errorCode: String?
+    var errorMessage: String?
+    var retryable: Bool
+    var response: JSONValue?
+
+    var id: String { request.requestID }
+    var requestID: String { request.requestID }
+}
+
+struct RuntimeCodexControlCoordinator: Equatable {
+    private(set) var requestOrder: [String] = []
+    private(set) var trackedRequestsByID: [String: RuntimeCodexControlRequestTracker] = [:]
+    private(set) var queuedRequestIDs: [String] = []
+    private(set) var terminalReceiptDedupe: Set<String> = []
+
+    var snapshots: [RuntimeCodexControlRequestTracker] {
+        requestOrder.compactMap { trackedRequestsByID[$0] }
+    }
+
+    var queuedRequests: [RuntimeCodexControlRequestTracker] {
+        queuedRequestIDs.compactMap { trackedRequestsByID[$0] }.filter { $0.state == .queued }
+    }
+
+    mutating func enqueue(
+        workerID: String,
+        request: RuntimeCodexWorkerActionRequest,
+        occurredAt: String
+    ) -> RuntimeCodexControlRequestTracker {
+        if var existing = trackedRequestsByID[request.requestID] {
+            if existing.state == .error, existing.retryable {
+                existing.state = .queued
+                existing.errorCode = nil
+                existing.errorMessage = nil
+                existing.lastUpdatedAt = occurredAt
+                trackedRequestsByID[request.requestID] = existing
+                ensureQueued(requestID: request.requestID)
+                return existing
+            }
+
+            if existing.state == .queued {
+                ensureQueued(requestID: request.requestID)
+            }
+            return existing
+        }
+
+        let tracker = RuntimeCodexControlRequestTracker(
+            workerID: workerID,
+            request: request,
+            createdAt: occurredAt,
+            lastUpdatedAt: occurredAt,
+            state: .queued,
+            sentAt: nil,
+            receiptAt: nil,
+            errorCode: nil,
+            errorMessage: nil,
+            retryable: false,
+            response: nil
+        )
+        trackedRequestsByID[request.requestID] = tracker
+        requestOrder.append(request.requestID)
+        ensureQueued(requestID: request.requestID)
+        return tracker
+    }
+
+    mutating func markRunning(
+        requestID: String,
+        occurredAt: String
+    ) -> RuntimeCodexControlRequestTracker? {
+        guard var tracker = trackedRequestsByID[requestID] else {
+            return nil
+        }
+        tracker.state = .running
+        tracker.sentAt = tracker.sentAt ?? occurredAt
+        tracker.lastUpdatedAt = occurredAt
+        tracker.errorCode = nil
+        tracker.errorMessage = nil
+        tracker.retryable = false
+        trackedRequestsByID[requestID] = tracker
+        removeQueued(requestID: requestID)
+        return tracker
+    }
+
+    mutating func requeue(
+        requestID: String,
+        message: String?,
+        occurredAt: String
+    ) -> RuntimeCodexControlRequestTracker? {
+        guard var tracker = trackedRequestsByID[requestID] else {
+            return nil
+        }
+        tracker.state = .queued
+        tracker.lastUpdatedAt = occurredAt
+        tracker.errorMessage = message
+        tracker.retryable = true
+        trackedRequestsByID[requestID] = tracker
+        ensureQueued(requestID: requestID)
+        return tracker
+    }
+
+    mutating func markDispatchError(
+        requestID: String,
+        code: String,
+        message: String,
+        retryable: Bool,
+        occurredAt: String
+    ) -> RuntimeCodexControlRequestTracker? {
+        guard var tracker = trackedRequestsByID[requestID] else {
+            return nil
+        }
+
+        tracker.lastUpdatedAt = occurredAt
+        tracker.errorCode = code
+        tracker.errorMessage = message
+        tracker.retryable = retryable
+
+        if retryable {
+            tracker.state = .queued
+            trackedRequestsByID[requestID] = tracker
+            ensureQueued(requestID: requestID)
+        } else {
+            tracker.state = .error
+            trackedRequestsByID[requestID] = tracker
+            removeQueued(requestID: requestID)
+        }
+
+        return tracker
+    }
+
+    mutating func markTimeout(
+        requestID: String,
+        occurredAt: String
+    ) -> RuntimeCodexControlRequestTracker? {
+        markDispatchError(
+            requestID: requestID,
+            code: "timeout",
+            message: "Timed out waiting for worker receipt.",
+            retryable: false,
+            occurredAt: occurredAt
+        )
+    }
+
+    mutating func reconcile(
+        workerID: String,
+        receipt: RuntimeCodexControlReceipt
+    ) -> RuntimeCodexControlRequestTracker? {
+        let dedupeKey = "\(workerID)::terminal::\(receipt.requestID)"
+        guard terminalReceiptDedupe.insert(dedupeKey).inserted else {
+            return nil
+        }
+
+        guard var tracker = trackedRequestsByID[receipt.requestID],
+              tracker.workerID == workerID else {
+            return nil
+        }
+
+        tracker.lastUpdatedAt = receipt.occurredAt ?? tracker.lastUpdatedAt
+        tracker.receiptAt = receipt.occurredAt ?? tracker.receiptAt
+
+        switch receipt.outcome {
+        case .success(let response):
+            tracker.state = .success
+            tracker.retryable = false
+            tracker.errorCode = nil
+            tracker.errorMessage = nil
+            tracker.response = response
+
+        case .error(let code, let message, let retryable, _):
+            tracker.state = .error
+            tracker.errorCode = code
+            tracker.errorMessage = message
+            tracker.retryable = retryable
+        }
+
+        trackedRequestsByID[receipt.requestID] = tracker
+        removeQueued(requestID: receipt.requestID)
+        return tracker
+    }
+
+    private mutating func ensureQueued(requestID: String) {
+        if !queuedRequestIDs.contains(requestID) {
+            queuedRequestIDs.append(requestID)
+        }
+    }
+
+    private mutating func removeQueued(requestID: String) {
+        queuedRequestIDs.removeAll { $0 == requestID }
+    }
+}
+
 private extension KeyedDecodingContainer {
     func decodeLenientMetadata(forKey key: Key) -> [String: JSONValue]? {
         if let object = try? decodeIfPresent([String: JSONValue].self, forKey: key) {
@@ -285,6 +501,11 @@ enum RuntimeCodexProto {
         let handshakeID: String
     }
 
+    struct ControlReceiptEnvelope: Equatable {
+        let eventType: String
+        let receipt: RuntimeCodexControlReceipt
+    }
+
     static func decodeWorkerEvent(from payload: JSONValue) -> WorkerEventEnvelope? {
         guard let object = payload.objectValue else {
             return nil
@@ -352,6 +573,51 @@ enum RuntimeCodexProto {
         }
 
         return nil
+    }
+
+    static func decodeControlReceipt(from payload: JSONValue) -> ControlReceiptEnvelope? {
+        guard let object = payload.objectValue else {
+            return nil
+        }
+
+        guard let eventType = normalizedString(
+            object["eventType"]?.stringValue ?? object["event_type"]?.stringValue
+        ) else {
+            return nil
+        }
+
+        guard eventType == "worker.response" || eventType == "worker.error",
+              let workerPayload = object["payload"]?.objectValue,
+              let requestID = normalizedString(
+                  workerPayload["request_id"]?.stringValue ?? workerPayload["requestId"]?.stringValue
+              ),
+              let method = normalizedString(workerPayload["method"]?.stringValue) else {
+            return nil
+        }
+
+        let occurredAt = normalizedString(workerPayload["occurred_at"]?.stringValue)
+
+        if eventType == "worker.response" {
+            let receipt = RuntimeCodexControlReceipt(
+                requestID: requestID,
+                method: method,
+                occurredAt: occurredAt,
+                outcome: .success(response: workerPayload["response"])
+            )
+            return ControlReceiptEnvelope(eventType: eventType, receipt: receipt)
+        }
+
+        let code = normalizedString(workerPayload["code"]?.stringValue) ?? "internal_error"
+        let message = normalizedString(workerPayload["message"]?.stringValue) ?? "control request failed"
+        let retryable = workerPayload["retryable"]?.boolValue ?? false
+        let details = workerPayload["details"]
+        let receipt = RuntimeCodexControlReceipt(
+            requestID: requestID,
+            method: method,
+            occurredAt: occurredAt,
+            outcome: .error(code: code, message: message, retryable: retryable, details: details)
+        )
+        return ControlReceiptEnvelope(eventType: eventType, receipt: receipt)
     }
 
     static func decodeCodexEventEnvelope(from payload: JSONValue) -> CodexEventEnvelope? {
