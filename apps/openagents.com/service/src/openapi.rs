@@ -13,6 +13,7 @@ pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
+pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
 pub const ROUTE_V1_AUTH_SESSION: &str = "/api/v1/auth/session";
 pub const ROUTE_V1_AUTH_SESSIONS: &str = "/api/v1/auth/sessions";
@@ -181,6 +182,30 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("sync_token"),
         response_example: Some("sync_token"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_THREADS,
+        operation_id: "runtimeThreadsList",
+        summary: "List Codex thread projections for the current user.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_threads"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_THREAD_MESSAGES,
+        operation_id: "runtimeThreadMessagesList",
+        summary: "List projected messages for a Codex thread.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_thread_messages"),
     },
     OpenApiContract {
         method: "post",
@@ -619,6 +644,28 @@ fn response_example(key: &str) -> Option<Value> {
             "data": {
                 "status": "accepted",
                 "thread_id": "thread-1"
+            }
+        })),
+        "runtime_threads" => Some(json!({
+            "data": {
+                "threads": [
+                    {
+                        "thread_id": "thread-1",
+                        "message_count": 3
+                    }
+                ]
+            }
+        })),
+        "runtime_thread_messages" => Some(json!({
+            "data": {
+                "thread_id": "thread-1",
+                "messages": [
+                    {
+                        "message_id": "msg_1",
+                        "role": "user",
+                        "text": "hello"
+                    }
+                ]
             }
         })),
         "control_status" => Some(json!({

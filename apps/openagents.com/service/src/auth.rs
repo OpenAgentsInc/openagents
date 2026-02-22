@@ -1992,6 +1992,7 @@ mod tests {
             runtime_internal_shared_secret: None,
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
+            codex_thread_store_path: None,
             maintenance_mode_enabled: false,
             maintenance_bypass_token: None,
             maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),

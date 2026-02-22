@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::body::to_bytes;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -29,6 +29,7 @@ use tower_http::trace::TraceLayer;
 
 pub mod api_envelope;
 pub mod auth;
+pub mod codex_threads;
 pub mod config;
 pub mod observability;
 pub mod openapi;
@@ -43,14 +44,15 @@ use crate::auth::{
     AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
     SessionRevocationRequest, SessionRevocationTarget,
 };
+use crate::codex_threads::{CodexThreadStore, ThreadStoreError};
 use crate::config::Config;
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_SESSION,
     ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY, ROUTE_ME,
     ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
-    ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_SYNC_TOKEN, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
-    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS, ROUTE_SYNC_TOKEN, ROUTE_V1_AUTH_SESSION,
+    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
@@ -89,6 +91,7 @@ struct AppState {
     observability: Observability,
     route_split: RouteSplitService,
     sync_token_issuer: SyncTokenIssuer,
+    codex_thread_store: CodexThreadStore,
     runtime_revocation_client: Option<RuntimeRevocationClient>,
     throttle_state: ThrottleState,
     runtime_internal_nonces: RuntimeInternalNonceState,
@@ -244,6 +247,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let auth = AuthService::from_config(&config);
     let route_split = RouteSplitService::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
+    let codex_thread_store = CodexThreadStore::from_config(&config);
     let runtime_revocation_client = RuntimeRevocationClient::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
@@ -251,6 +255,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         observability,
         route_split,
         sync_token_issuer,
+        codex_thread_store,
         runtime_revocation_client,
         throttle_state: ThrottleState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
@@ -285,12 +290,15 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route(ROUTE_RUNTIME_THREADS, get(list_runtime_threads))
         .route(
             ROUTE_RUNTIME_THREAD_MESSAGES,
-            post(send_thread_message).route_layer(middleware::from_fn_with_state(
-                thread_message_throttle_state,
-                throttle_thread_message_gate,
-            )),
+            get(list_runtime_thread_messages)
+                .post(send_thread_message)
+                .route_layer(middleware::from_fn_with_state(
+                    thread_message_throttle_state,
+                    throttle_thread_message_gate,
+                )),
         )
         .route(ROUTE_V1_AUTH_SESSION, get(current_session))
         .route(ROUTE_V1_AUTH_SESSIONS, get(list_sessions))
@@ -551,6 +559,10 @@ async fn throttle_thread_message_gate(
     request: Request,
     next: Next,
 ) -> Response {
+    if request.method() != Method::POST {
+        return next.run(request).await;
+    }
+
     let key = format!(
         "runtime.thread.message:{}",
         request_identity_key(request.headers())
@@ -1681,6 +1693,59 @@ async fn sync_token(
     Ok(ok_data(issued))
 }
 
+async fn list_runtime_threads(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let threads = state
+        .codex_thread_store
+        .list_threads_for_user(&session.user.id, Some(&session.session.active_org_id))
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(ok_data(serde_json::json!({
+        "threads": threads,
+    })))
+}
+
+async fn list_runtime_thread_messages(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_thread_id = thread_id.trim().to_string();
+    if normalized_thread_id.is_empty() {
+        return Err(validation_error("thread_id", "Thread id is required."));
+    }
+
+    let messages = state
+        .codex_thread_store
+        .list_thread_messages_for_user(&session.user.id, &normalized_thread_id)
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(ok_data(serde_json::json!({
+        "thread_id": normalized_thread_id,
+        "messages": messages,
+    })))
+}
+
 async fn send_thread_message(
     State(state): State<AppState>,
     Path(thread_id): Path<String>,
@@ -1713,8 +1778,20 @@ async fn send_thread_message(
         ));
     }
 
-    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
-    let accepted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let appended = state
+        .codex_thread_store
+        .append_user_message(
+            &session.user.id,
+            &session.session.active_org_id,
+            &normalized_thread_id,
+            normalized_text,
+        )
+        .await
+        .map_err(map_thread_store_error)?;
+    let accepted_at = appended
+        .message
+        .created_at
+        .to_rfc3339_opts(SecondsFormat::Millis, true);
 
     state.observability.audit(
         AuditEvent::new("runtime.thread.message.accepted", request_id.clone())
@@ -1723,26 +1800,23 @@ async fn send_thread_message(
             .with_org_id(session.session.active_org_id.clone())
             .with_device_id(session.session.device_id.clone())
             .with_attribute("thread_id", normalized_thread_id.clone())
-            .with_attribute("message_id", message_id.clone()),
+            .with_attribute("message_id", appended.message.message_id.clone()),
     );
     state
         .observability
         .increment_counter("runtime.thread.message.accepted", &request_id);
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "data": {
-                "accepted": true,
-                "message": {
-                    "id": message_id,
-                    "thread_id": normalized_thread_id,
-                    "text": normalized_text,
-                    "accepted_at": accepted_at,
-                }
-            }
-        })),
-    ))
+    Ok(ok_data(serde_json::json!({
+        "accepted": true,
+        "thread": appended.thread,
+        "message": {
+            "id": appended.message.message_id,
+            "thread_id": appended.message.thread_id,
+            "role": appended.message.role,
+            "text": appended.message.text,
+            "accepted_at": accepted_at,
+        }
+    })))
 }
 
 async fn refresh_session(
@@ -1957,6 +2031,18 @@ fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>)
         SyncTokenError::Unavailable { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorCode::SyncTokenUnavailable,
+            message,
+        ),
+    }
+}
+
+fn map_thread_store_error(error: ThreadStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        ThreadStoreError::NotFound => not_found_error("Thread not found."),
+        ThreadStoreError::Forbidden => forbidden_error("Requested thread is not available."),
+        ThreadStoreError::Persistence { message } => error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
             message,
         ),
     }
@@ -2446,6 +2532,7 @@ mod tests {
             runtime_internal_shared_secret: None,
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
+            codex_thread_store_path: None,
             maintenance_mode_enabled: false,
             maintenance_bypass_token: None,
             maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),
@@ -2493,6 +2580,7 @@ mod tests {
         let auth = super::AuthService::from_config(&config);
         let route_split = super::RouteSplitService::from_config(&config);
         let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
+        let codex_thread_store = super::CodexThreadStore::from_config(&config);
         let runtime_revocation_client = super::RuntimeRevocationClient::from_config(&config);
         super::AppState {
             config: Arc::new(config),
@@ -2500,6 +2588,7 @@ mod tests {
             observability: Observability::default(),
             route_split,
             sync_token_issuer,
+            codex_thread_store,
             runtime_revocation_client,
             throttle_state: super::ThrottleState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
@@ -3963,6 +4052,81 @@ mod tests {
                 .unwrap_or_default()
                 .starts_with("msg_")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_thread_read_paths_return_projected_threads_and_messages() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "thread-read@openagents.com").await?;
+
+        for thread_id in ["thread-42", "thread-42", "thread-99"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(format!("/api/runtime/threads/{thread_id}/messages"))
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(r#"{"text":"hello"}"#))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let list_threads_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_threads_response = app.clone().oneshot(list_threads_request).await?;
+        assert_eq!(list_threads_response.status(), StatusCode::OK);
+        let list_threads_body = read_json(list_threads_response).await?;
+        assert_eq!(
+            list_threads_body["data"]["threads"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+
+        let list_messages_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads/thread-42/messages")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_messages_response = app.oneshot(list_messages_request).await?;
+        assert_eq!(list_messages_response.status(), StatusCode::OK);
+        let list_messages_body = read_json(list_messages_response).await?;
+        assert_eq!(
+            list_messages_body["data"]["messages"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_thread_message_read_path_enforces_owner_boundary() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let owner_token = authenticate_token(app.clone(), "thread-owner@openagents.com").await?;
+        let other_token = authenticate_token(app.clone(), "thread-other@openagents.com").await?;
+
+        let append_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/threads/thread-private/messages")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {owner_token}"))
+            .body(Body::from(r#"{"text":"private"}"#))?;
+        let append_response = app.clone().oneshot(append_request).await?;
+        assert_eq!(append_response.status(), StatusCode::OK);
+
+        let read_other_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads/thread-private/messages")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::empty())?;
+        let read_other_response = app.oneshot(read_other_request).await?;
+        assert_eq!(read_other_response.status(), StatusCode::FORBIDDEN);
 
         Ok(())
     }

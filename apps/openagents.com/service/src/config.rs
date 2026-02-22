@@ -84,6 +84,7 @@ pub struct Config {
     pub runtime_internal_shared_secret: Option<String>,
     pub runtime_internal_key_id: String,
     pub runtime_internal_signature_ttl_seconds: u64,
+    pub codex_thread_store_path: Option<PathBuf>,
     pub maintenance_mode_enabled: bool,
     pub maintenance_bypass_token: Option<String>,
     pub maintenance_bypass_cookie_name: String,
@@ -329,6 +330,12 @@ impl Config {
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS)
                 .max(1);
 
+        let codex_thread_store_path = env::var("OA_CODEX_THREAD_STORE_PATH")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+
         let maintenance_mode_enabled = env::var("OA_MAINTENANCE_MODE_ENABLED")
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
@@ -429,6 +436,7 @@ impl Config {
             runtime_internal_shared_secret,
             runtime_internal_key_id,
             runtime_internal_signature_ttl_seconds,
+            codex_thread_store_path,
             maintenance_mode_enabled,
             maintenance_bypass_token,
             maintenance_bypass_cookie_name,
