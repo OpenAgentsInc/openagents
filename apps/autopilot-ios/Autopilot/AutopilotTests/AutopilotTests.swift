@@ -254,6 +254,46 @@ struct AutopilotTests {
         }
     }
 
+    @Test("rust bridge worker selection keeps desktop/shared preference semantics when symbols are loaded")
+    func rustBridgeWorkerSelectionParity() throws {
+        let rawWorkers = """
+        [
+          {
+            "worker_id": "runtimew:alpha",
+            "status": "running",
+            "latest_seq": 88,
+            "adapter": "runtime",
+            "heartbeat_state": "fresh",
+            "last_heartbeat_at": "2026-02-22T05:00:00Z",
+            "started_at": "2026-02-22T04:00:00Z",
+            "metadata": {"source": "runtime"}
+          },
+          {
+            "worker_id": "desktopw:shared",
+            "status": "running",
+            "latest_seq": 22,
+            "adapter": "desktop_bridge",
+            "heartbeat_state": "stale",
+            "last_heartbeat_at": "2026-02-22T04:59:00Z",
+            "started_at": "2026-02-22T03:59:00Z",
+            "metadata": {"source": "autopilot-desktop"}
+          }
+        ]
+        """
+
+        let workers = try JSONDecoder().decode(
+            [RuntimeCodexWorkerSummary].self,
+            from: Data(rawWorkers.utf8)
+        )
+        let selected = RustClientCoreBridge.selectPreferredWorkerID(from: workers)
+
+        if RustClientCoreBridge.isAvailable {
+            #expect(selected == "desktopw:shared")
+        } else {
+            #expect(selected == nil)
+        }
+    }
+
     @Test("auth flow state keeps latest send-code challenge and drops stale completion")
     func authFlowStateDropsStaleSendCompletion() {
         var flow = CodexAuthFlowState()
@@ -585,6 +625,189 @@ struct AutopilotTests {
         let interruptReconciled = coordinator.reconcile(workerID: workerID, receipt: interruptReceipt)
         #expect(interruptReconciled?.state == .success)
         #expect(interruptReconciled?.response?.objectValue?["status"]?.stringValue == "interrupted")
+    }
+
+    @Test("runtime codex client auth/worker/sync APIs cover app-server contracts")
+    func runtimeCodexClientAuthWorkerAndSyncApisCoverAppServerContracts() async throws {
+        let session = makeRuntimeCodexTestSession()
+        defer {
+            RuntimeCodexClientURLProtocol.setHandler(nil)
+        }
+
+        let lock = NSLock()
+        var seenPaths: [String] = []
+
+        RuntimeCodexClientURLProtocol.setHandler { request in
+            let path = request.url?.path ?? ""
+            lock.lock()
+            seenPaths.append(path)
+            lock.unlock()
+
+            let responseBody: String
+            switch path {
+            case "/api/auth/email":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "X-Client") == "autopilot-ios")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+
+                let body = readRequestBodyData(request)
+                let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                #expect((json?["email"] as? String) == "person@openagents.com")
+
+                responseBody = """
+                {"ok":true,"status":"sent","email":"person@openagents.com","challengeId":"challenge-123"}
+                """
+            case "/api/auth/verify":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "X-Client") == "autopilot-ios")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+
+                let body = readRequestBodyData(request)
+                let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                #expect((json?["code"] as? String) == "123456")
+                #expect((json?["challenge_id"] as? String) == "challenge-123")
+
+                responseBody = """
+                {"ok":true,"userId":"user-1","tokenType":"Bearer","token":"tok-verified","refreshToken":"ref-verified","sessionId":"sess-1","user":{"id":"user-1","email":"person@openagents.com"}}
+                """
+            case "/api/auth/refresh":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                let body = readRequestBodyData(request)
+                let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                #expect((json?["refresh_token"] as? String) == "ref-verified")
+                #expect((json?["rotate_refresh_token"] as? Bool) == true)
+
+                responseBody = """
+                {"tokenType":"Bearer","token":"tok-refreshed","refreshToken":"ref-refreshed","sessionId":"sess-2","accessExpiresAt":"2026-02-22T06:00:00Z","refreshExpiresAt":"2026-02-23T06:00:00Z"}
+                """
+            case "/api/auth/session":
+                #expect(request.httpMethod == "GET")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                responseBody = """
+                {"data":{"session":{"sessionId":"sess-2","userId":"user-1","deviceId":"device-1","status":"active","reauthRequired":false,"activeOrgId":"org-1"}}}
+                """
+            case "/api/runtime/codex/workers":
+                #expect(request.httpMethod == "GET")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+                let queryItems = components?.queryItems ?? []
+                #expect(queryItems.first(where: { $0.name == "status" })?.value == "running")
+                #expect(queryItems.first(where: { $0.name == "limit" })?.value == "50")
+
+                responseBody = """
+                {"data":[{"worker_id":"desktopw:shared","status":"running","latest_seq":123,"workspace_ref":"ws-1","codex_home_ref":"home-1","adapter":"desktop_bridge","heartbeat_state":"fresh","last_heartbeat_at":"2026-02-22T05:00:00Z","started_at":"2026-02-22T04:00:00Z","metadata":{"source":"autopilot-desktop"}}]}
+                """
+            case "/api/runtime/codex/workers/desktopw%3Ashared":
+                #expect(request.httpMethod == "GET")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                responseBody = """
+                {"data":{"worker_id":"desktopw:shared","status":"running","latest_seq":124,"workspace_ref":"ws-1","codex_home_ref":"home-1","adapter":"desktop_bridge","metadata":{"source":"autopilot-desktop"}}}
+                """
+            case "/api/runtime/codex/workers/desktopw%3Ashared/events":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                let body = readRequestBodyData(request)
+                let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                let event = json?["event"] as? [String: Any]
+                #expect((event?["event_type"] as? String) == "worker.event")
+
+                responseBody = """
+                {"data":{"accepted":true}}
+                """
+            case "/api/sync/token":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "X-Client") == "autopilot-ios")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
+
+                let body = readRequestBodyData(request)
+                let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                let scopes = json?["scopes"] as? [String]
+                #expect(scopes == ["runtime.codex_worker_events", "runtime.codex_worker_summaries"])
+
+                responseBody = """
+                {"data":{"token":"sync-token-1","token_type":"Bearer","expires_in":1200,"expires_at":"2026-02-22T03:00:00Z","org_id":"org-1","scopes":["runtime.codex_worker_events","runtime.codex_worker_summaries"]}}
+                """
+            default:
+                #expect(Bool(false), "Unexpected request path \(path)")
+                throw URLError(.badURL)
+            }
+
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://openagents.com/fallback")!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(responseBody.utf8))
+        }
+
+        let authClient = RuntimeCodexClient(
+            baseURL: URL(string: "https://openagents.com")!,
+            session: session
+        )
+        let authedClient = RuntimeCodexClient(
+            baseURL: URL(string: "https://openagents.com")!,
+            authToken: "tok-verified",
+            session: session
+        )
+
+        let challenge = try await authClient.sendEmailCode(email: "person@openagents.com")
+        #expect(challenge.challengeID == "challenge-123")
+
+        let verified = try await authClient.verifyEmailCode(code: "123456", challengeID: challenge.challengeID)
+        #expect(verified.token == "tok-verified")
+        #expect(verified.refreshToken == "ref-verified")
+
+        let refreshed = try await authedClient.refreshSession(refreshToken: "ref-verified")
+        #expect(refreshed.token == "tok-refreshed")
+        #expect(refreshed.refreshToken == "ref-refreshed")
+        #expect(refreshed.sessionID == "sess-2")
+
+        let sessionSnapshot = try await authedClient.currentSession()
+        #expect(sessionSnapshot.userID == "user-1")
+        #expect(sessionSnapshot.status == "active")
+
+        let workers = try await authedClient.listWorkers(status: "running", limit: 50)
+        #expect(workers.count == 1)
+        #expect(workers.first?.workerID == "desktopw:shared")
+
+        let workerSnapshot = try await authedClient.workerSnapshot(workerID: "desktopw:shared")
+        #expect(workerSnapshot.workerID == "desktopw:shared")
+        #expect(workerSnapshot.latestSeq == 124)
+
+        try await authedClient.ingestWorkerEvent(
+            workerID: "desktopw:shared",
+            eventType: "worker.event",
+            payload: [
+                "source": .string("autopilot-ios"),
+                "method": .string("ios/handshake"),
+            ]
+        )
+
+        let syncToken = try await authedClient.mintSyncToken(
+            scopes: [
+                "runtime.codex_worker_summaries",
+                "runtime.codex_worker_events",
+                "runtime.codex_worker_events",
+            ]
+        )
+        #expect(syncToken.token == "sync-token-1")
+        #expect(syncToken.scopes == ["runtime.codex_worker_events", "runtime.codex_worker_summaries"])
+
+        #expect(seenPaths.contains("/api/auth/email"))
+        #expect(seenPaths.contains("/api/auth/verify"))
+        #expect(seenPaths.contains("/api/auth/refresh"))
+        #expect(seenPaths.contains("/api/auth/session"))
+        #expect(seenPaths.contains("/api/runtime/codex/workers"))
+        #expect(seenPaths.contains("/api/runtime/codex/workers/desktopw%3Ashared"))
+        #expect(seenPaths.contains("/api/runtime/codex/workers/desktopw%3Ashared/events"))
+        #expect(seenPaths.contains("/api/sync/token"))
     }
 
     @Test("runtime codex client request/stop APIs encode payloads and map error statuses")

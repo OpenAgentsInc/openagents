@@ -51,7 +51,11 @@ pub struct IosKhalaSession {
 }
 
 impl IosKhalaSession {
-    pub fn new(worker_id: impl Into<String>, worker_events_topic: impl Into<String>, resume_after: u64) -> Self {
+    pub fn new(
+        worker_id: impl Into<String>,
+        worker_events_topic: impl Into<String>,
+        resume_after: u64,
+    ) -> Self {
         Self {
             channel_topic: DEFAULT_CHANNEL_TOPIC.to_string(),
             worker_events_topic: worker_events_topic.into(),
@@ -343,8 +347,10 @@ mod tests {
     fn subscribe_reply_transitions_live() {
         let mut session = IosKhalaSession::new("worker-1", "runtime.codex_worker_events", 0);
         let _ = session.start();
-        let _ = session.handle_frame_raw(r#"[null,"1","sync:v1","phx_reply",{"status":"ok","response":{}}]"#);
-        let live = session.handle_frame_raw(r#"["1","2","sync:v1","phx_reply",{"status":"ok","response":{}}]"#);
+        let _ = session
+            .handle_frame_raw(r#"[null,"1","sync:v1","phx_reply",{"status":"ok","response":{}}]"#);
+        let live = session
+            .handle_frame_raw(r#"["1","2","sync:v1","phx_reply",{"status":"ok","response":{}}]"#);
         assert!(matches!(live, SessionStep::Live));
     }
 
@@ -379,7 +385,8 @@ mod tests {
                 ]
             }
         ]);
-        let step = session.handle_frame_raw(&serde_json::to_string(&frame).expect("serialize frame"));
+        let step =
+            session.handle_frame_raw(&serde_json::to_string(&frame).expect("serialize frame"));
         match step {
             SessionStep::Events { events, watermark } => {
                 assert_eq!(watermark, 12);

@@ -2963,6 +2963,11 @@ final class CodexHandshakeViewModel: ObservableObject {
             return nil
         }
 
+        if let preferredWorkerID = RustClientCoreBridge.selectPreferredWorkerID(from: workers),
+           let preferredWorker = workers.first(where: { $0.workerID == preferredWorkerID }) {
+            return preferredWorker
+        }
+
         let running = workers.filter { $0.status == "running" }
         let desktopRunning = running.filter { isDesktopWorker($0) }
         let pool = desktopRunning.isEmpty ? (running.isEmpty ? workers : running) : desktopRunning

@@ -30,3 +30,4 @@ Define the current iOS architecture for Codex administration with Rust control/r
 1. Auth flow smoke (real device).
 2. Worker list/snapshot load.
 3. Stream reconnect/resume with no duplicate side effects.
+4. Guardrails + parity lanes: `./scripts/local-ci.sh ios-codex-wgpui`.

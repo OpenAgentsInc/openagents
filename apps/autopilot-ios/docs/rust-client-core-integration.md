@@ -96,12 +96,15 @@ It must not:
 Local CI lane:
 
 - `./scripts/local-ci.sh ios-rust-core`
+- `./scripts/local-ci.sh ios-codex-wgpui`
 
 Lane checks:
 
 - deterministic package build
 - reproducibility verifier
 - Rust FFI contract tests (`cargo test -p openagents-client-core`)
+- iOS Codex guardrails (`apps/autopilot-ios/scripts/verify-codex-wgpui-guardrails.sh`)
+- iOS Codex parity harness (`apps/autopilot-ios/scripts/run-codex-parity-harness.sh`)
 
 Manual iOS smoke:
 
