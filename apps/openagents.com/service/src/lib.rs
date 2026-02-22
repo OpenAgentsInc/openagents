@@ -1230,6 +1230,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         )
         .route(ROUTE_L402_SETTLEMENTS, get(l402_settlements))
         .route(ROUTE_L402_DEPLOYMENTS, get(l402_deployments))
+        .route(
+            "/api/chat/guest-session",
+            get(legacy_chat_guest_session_retired),
+        )
         .route("/api/chat/stream", post(legacy_chat_stream))
         .route(
             "/api/chats",
@@ -2909,7 +2913,7 @@ async fn web_logout(
                     &state,
                     &request_id,
                     vec![revoked.session_id],
-                    Vec::new(),
+                    vec![revoked.device_id],
                     SessionRevocationReason::UserRequested,
                 )
                 .await?;
@@ -3388,7 +3392,7 @@ async fn revoke_sessions(
         &state,
         &request_id,
         result.revoked_session_ids.clone(),
-        Vec::new(),
+        result.revoked_device_ids.clone(),
         reason,
     )
     .await?;
@@ -3398,6 +3402,7 @@ async fn revoke_sessions(
         Json(serde_json::json!({
             "ok": true,
             "revokedSessionIds": result.revoked_session_ids,
+            "revokedDeviceIds": result.revoked_device_ids,
             "revokedRefreshTokenIds": result.revoked_refresh_token_ids,
             "reason": reason,
             "revokedAt": timestamp(result.revoked_at),
@@ -9921,6 +9926,52 @@ async fn legacy_chats_messages(
     ))
 }
 
+async fn legacy_chat_guest_session_retired(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let audit_request_id = request_id(&headers);
+    let access_token = access_token_from_headers(&headers).ok_or_else(|| {
+        unauthorized_error("Codex chat requires an authenticated ChatGPT account.")
+    })?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "legacy.chat.guest_session.retired",
+            audit_request_id.clone(),
+        )
+        .with_user_id(session.user.id.clone())
+        .with_session_id(session.session.session_id.clone())
+        .with_org_id(session.session.active_org_id.clone())
+        .with_device_id(session.session.device_id.clone())
+        .with_attribute("canonical", "/api/runtime/threads".to_string())
+        .with_attribute("auth_policy", "codex_auth_required".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("legacy.chat.guest_session.retired", &audit_request_id);
+
+    let mut response = legacy_chat_data_response(
+        serde_json::json!({
+            "retired": true,
+            "status": "codex_auth_required",
+            "canonical": "/api/runtime/threads",
+            "message": "Guest chat is retired. Authenticate with a ChatGPT account to use Codex threads."
+        }),
+        StatusCode::GONE,
+    );
+    response.headers_mut().insert(
+        "x-oa-chat-auth-policy",
+        HeaderValue::from_static("codex-auth-required"),
+    );
+    Ok(response)
+}
+
 async fn legacy_chat_stream(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -11707,7 +11758,7 @@ async fn logout_session(
         &state,
         &request_id,
         vec![revoked.session_id.clone()],
-        Vec::new(),
+        vec![revoked.device_id.clone()],
         SessionRevocationReason::UserRequested,
     )
     .await?;
@@ -16452,6 +16503,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_parallel_rotation_race_revokes_rotated_session() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"refresh-race@example.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-race-device")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::OK);
+        let verify_body = read_json(verify_response).await?;
+        let refresh_token = verify_body["refreshToken"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let refresh_payload = format!(
+            r#"{{"refresh_token":"{refresh_token}","rotate_refresh_token":true,"device_id":"ios-race-device"}}"#
+        );
+        let refresh_request_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/refresh")
+            .header("content-type", "application/json")
+            .header("x-device-id", "ios-race-device")
+            .body(Body::from(refresh_payload.clone()))?;
+        let refresh_request_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/refresh")
+            .header("content-type", "application/json")
+            .header("x-device-id", "ios-race-device")
+            .body(Body::from(refresh_payload))?;
+
+        let (refresh_a_result, refresh_b_result) = tokio::join!(
+            app.clone().oneshot(refresh_request_a),
+            app.clone().oneshot(refresh_request_b)
+        );
+        let refresh_a = refresh_a_result?;
+        let refresh_b = refresh_b_result?;
+
+        let mut status_codes = vec![refresh_a.status().as_u16(), refresh_b.status().as_u16()];
+        status_codes.sort();
+        assert_eq!(status_codes, vec![200, 401]);
+
+        let mut rotated_access_token = String::new();
+        for response in [refresh_a, refresh_b] {
+            let status = response.status();
+            let body = read_json(response).await?;
+            if status == StatusCode::OK {
+                rotated_access_token = body["token"].as_str().unwrap_or_default().to_string();
+            } else {
+                assert_eq!(status, StatusCode::UNAUTHORIZED);
+                assert_eq!(body["error"]["code"], json!("unauthorized"));
+            }
+        }
+
+        assert!(!rotated_access_token.is_empty());
+
+        let session_after_race = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {rotated_access_token}"))
+            .body(Body::empty())?;
+        let session_after_race_response = app.oneshot(session_after_race).await?;
+        assert_eq!(
+            session_after_race_response.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn session_listing_and_device_revocation_are_supported() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
 
@@ -16529,7 +16662,12 @@ mod tests {
             .as_array()
             .cloned()
             .unwrap_or_default();
+        let revoked_devices = revoke_body["revokedDeviceIds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert_eq!(revoked_sessions.len(), 1);
+        assert_eq!(revoked_devices, vec![json!("ios-device-b")]);
 
         let current_a = Request::builder()
             .uri("/api/auth/session")
@@ -16711,6 +16849,135 @@ mod tests {
                 .unwrap_or_default(),
             vec![Value::String(revoked_session_id)]
         );
+        assert_eq!(
+            records[0]["payload"]["device_ids"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+            vec![json!("ios-runtime-revoke")]
+        );
+
+        runtime_handle.abort();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn revoke_other_device_propagates_runtime_revocation_device_ids() -> Result<()> {
+        let captured = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let (runtime_addr, runtime_handle) =
+            start_runtime_revocation_stub(captured.clone()).await?;
+
+        let mut config = test_config(std::env::temp_dir());
+        config.runtime_sync_revoke_base_url = Some(format!("http://{runtime_addr}"));
+        config.runtime_sync_revoke_path = "/internal/v1/sync/sessions/revoke".to_string();
+        config.runtime_signature_secret = Some("runtime-signature-secret".to_string());
+        config.runtime_signature_ttl_seconds = 60;
+        let app = build_router(config);
+
+        let send_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"runtime-device-revoke@openagents.com"}"#,
+            ))?;
+        let send_a_response = app.clone().oneshot(send_a).await?;
+        let cookie_a = cookie_value(&send_a_response).unwrap_or_default();
+        let verify_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-runtime-a")
+            .header("cookie", cookie_a)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_a_response = app.clone().oneshot(verify_a).await?;
+        let verify_a_body = read_json(verify_a_response).await?;
+        let token_a = verify_a_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let send_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"runtime-device-revoke@openagents.com"}"#,
+            ))?;
+        let send_b_response = app.clone().oneshot(send_b).await?;
+        let cookie_b = cookie_value(&send_b_response).unwrap_or_default();
+        let verify_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-runtime-b")
+            .header("cookie", cookie_b)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_b_response = app.clone().oneshot(verify_b).await?;
+        let verify_b_body = read_json(verify_b_response).await?;
+        let token_b = verify_b_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let revoke_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sessions/revoke")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::from(
+                r#"{"device_id":"ios-runtime-b","reason":"user_requested","include_current":false}"#,
+            ))?;
+        let revoke_response = app.clone().oneshot(revoke_request).await?;
+        assert_eq!(revoke_response.status(), StatusCode::OK);
+        let revoke_body = read_json(revoke_response).await?;
+        let revoked_session_ids = revoke_body["revokedSessionIds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(revoked_session_ids.len(), 1);
+        assert_eq!(
+            revoke_body["revokedDeviceIds"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+            vec![json!("ios-runtime-b")]
+        );
+
+        let records = captured.lock().await.clone();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["payload"]["reason"], "user_requested");
+        assert_eq!(
+            records[0]["payload"]["device_ids"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+            vec![json!("ios-runtime-b")]
+        );
+        assert_eq!(
+            records[0]["payload"]["session_ids"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+            revoked_session_ids
+        );
+
+        let current_a = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::empty())?;
+        let current_a_response = app.clone().oneshot(current_a).await?;
+        assert_eq!(current_a_response.status(), StatusCode::OK);
+
+        let current_b = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_b}"))
+            .body(Body::empty())?;
+        let current_b_response = app.oneshot(current_b).await?;
+        assert_eq!(current_b_response.status(), StatusCode::UNAUTHORIZED);
 
         runtime_handle.abort();
 
@@ -18274,6 +18541,72 @@ mod tests {
             .body(Body::empty())?;
         let read_other_response = app.oneshot(read_other_request).await?;
         assert_eq!(read_other_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_guest_session_route_requires_authenticated_codex_account() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/chat/guest-session?conversationId=g-1234567890abcdef1234567890abcdef")
+            .body(Body::empty())?;
+        let response = app.clone().oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], json!("unauthorized"));
+        let message = body["message"].as_str().unwrap_or_default();
+        assert!(
+            matches!(
+                message,
+                "Codex chat requires an authenticated ChatGPT account." | "Unauthenticated."
+            ),
+            "unexpected unauthorized message: {message}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_guest_session_route_returns_retirement_contract_for_authenticated_user()
+    -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "legacy-guest-session@openagents.com").await?;
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/chat/guest-session?conversationId=g-1234567890abcdef1234567890abcdef")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let response = app.clone().oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::GONE);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-oa-legacy-chat-retired")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .and_then(|value| value.to_str().ok()),
+            Some("/api/runtime/threads")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-oa-chat-auth-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("codex-auth-required")
+        );
+        let body = read_json(response).await?;
+        assert_eq!(body["data"]["retired"], json!(true));
+        assert_eq!(body["data"]["status"], json!("codex_auth_required"));
+        assert_eq!(body["data"]["canonical"], json!("/api/runtime/threads"));
 
         Ok(())
     }

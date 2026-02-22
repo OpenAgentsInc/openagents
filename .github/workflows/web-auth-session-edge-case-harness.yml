@@ -1,0 +1,22 @@
+name: web-auth-session-edge-case-harness
+
+on:
+  workflow_dispatch:
+
+jobs:
+  auth-session-edge-cases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run auth/session edge-case harness
+        run: ./apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh
+
+      - name: Upload harness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-auth-session-edge-case-harness
+          path: apps/openagents.com/storage/app/auth-session-edge-cases/**
+          if-no-files-found: warn

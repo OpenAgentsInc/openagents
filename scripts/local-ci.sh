@@ -269,6 +269,14 @@ run_canary_rollback_drill() {
   )
 }
 
+run_auth_session_edge_cases() {
+  echo "==> auth/session edge-case harness lane"
+  (
+    cd "$ROOT_DIR"
+    ./apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh
+  )
+}
+
 run_cross_surface_harness() {
   echo "==> cross-surface contract harness"
   (
@@ -450,6 +458,9 @@ case "$MODE" in
   canary-drill)
     run_canary_rollback_drill
     ;;
+  auth-session-edge-cases)
+    run_auth_session_edge_cases
+    ;;
   workspace-compile)
     run_workspace_compile
     ;;
@@ -487,7 +498,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
     exit 2
     ;;
 esac

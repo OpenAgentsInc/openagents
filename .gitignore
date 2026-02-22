@@ -69,6 +69,7 @@ apps/openagents.com/storage/app/staging-dual-run/
 apps/openagents.com/storage/app/production-route-flip/
 apps/openagents.com/storage/app/legacy-serving-retirement/
 apps/openagents.com/storage/app/non-http-parity-harness/
+apps/openagents.com/storage/app/auth-session-edge-cases/
 
 *.log
 !docs/logs/runs/*.log

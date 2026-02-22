@@ -999,17 +999,21 @@ impl AuthService {
         };
 
         let revoked_at = Utc::now();
-        let _ = revoke_session(
+        let revoked = revoke_session(
             &mut state,
             &session_id,
             SessionRevocationReason::UserRequested,
             revoked_at,
-        );
+        )
+        .ok_or_else(|| AuthError::Unauthorized {
+            message: "Unauthenticated.".to_string(),
+        })?;
         let snapshot = state.clone();
         drop(state);
         self.persist_state_snapshot(snapshot).await?;
         Ok(RevocationResult {
             session_id,
+            device_id: revoked.device_id,
             revoked_at,
         })
     }
@@ -1092,6 +1096,7 @@ impl AuthService {
 
         let revoked_at = Utc::now();
         let mut revoked_session_ids = Vec::new();
+        let mut revoked_device_ids = Vec::new();
         let mut revoked_refresh_token_ids = Vec::new();
 
         for session_id in candidate_ids {
@@ -1099,11 +1104,14 @@ impl AuthService {
                 revoke_session(&mut state, &session_id, request.reason, revoked_at)
             {
                 revoked_session_ids.push(revoked.session_id);
+                revoked_device_ids.push(revoked.device_id);
                 revoked_refresh_token_ids.push(revoked.refresh_token_id);
             }
         }
 
         revoked_session_ids.sort();
+        revoked_device_ids.sort();
+        revoked_device_ids.dedup();
         revoked_refresh_token_ids.sort();
         let snapshot = state.clone();
         drop(state);
@@ -1111,6 +1119,7 @@ impl AuthService {
 
         Ok(SessionBatchRevocationResult {
             revoked_session_ids,
+            revoked_device_ids,
             revoked_refresh_token_ids,
             reason: request.reason,
             revoked_at,
@@ -1802,18 +1811,21 @@ pub struct SessionBundle {
 #[derive(Debug, Clone)]
 pub struct RevocationResult {
     pub session_id: String,
+    pub device_id: String,
     pub revoked_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
 struct SessionRevocationOutcome {
     session_id: String,
+    device_id: String,
     refresh_token_id: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct SessionBatchRevocationResult {
     pub revoked_session_ids: Vec<String>,
+    pub revoked_device_ids: Vec<String>,
     pub revoked_refresh_token_ids: Vec<String>,
     pub reason: SessionRevocationReason,
     pub revoked_at: DateTime<Utc>,
@@ -2150,6 +2162,7 @@ fn revoke_session(
 
     Some(SessionRevocationOutcome {
         session_id: existing.session_id,
+        device_id: existing.device_id,
         refresh_token_id: existing.refresh_token_id,
     })
 }

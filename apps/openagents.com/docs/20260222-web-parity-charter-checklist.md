@@ -214,6 +214,8 @@ Baseline and migration evidence targets:
   Audit report: `docs/audits/2026-02-22-openagents-web-post-cutover-architecture-audit.md`
 - [x] Non-HTTP parity harness report (`OA-WEBPARITY-062`)
   Harness/report: `apps/openagents.com/scripts/run-non-http-parity-harness.sh`, `.github/workflows/web-non-http-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-062-non-http-parity-harness.md`
+- [x] Auth/session edge-case matrix parity (`OA-WEBPARITY-063`)
+  Harness/report: `apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh`, `.github/workflows/web-auth-session-edge-case-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-063-auth-session-edge-case-matrix.md`
 
 ## Checklist Freeze Rules
 
