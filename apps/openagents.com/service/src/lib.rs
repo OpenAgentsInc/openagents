@@ -17060,9 +17060,27 @@ mod tests {
         let wallet_body = read_json(wallet_response).await?;
         assert_eq!(wallet_body["data"]["summary"]["totalAttempts"], json!(2));
         assert_eq!(wallet_body["data"]["summary"]["paidCount"], json!(1));
+        assert_eq!(wallet_body["data"]["summary"]["cachedCount"], json!(1));
+        assert_eq!(wallet_body["data"]["summary"]["blockedCount"], json!(0));
         assert_eq!(
             wallet_body["data"]["sparkWallet"]["walletId"],
             json!("wallet_123")
+        );
+        assert_eq!(
+            wallet_body["data"]["settings"]["invoicePayer"],
+            json!("fake")
+        );
+        assert_eq!(
+            wallet_body["data"]["settings"]["allowlistHosts"],
+            json!(vec!["sats4ai.com", "l402.openagents.com"])
+        );
+        assert_eq!(
+            wallet_body["data"]["settings"]["credentialTtlSeconds"],
+            json!(600)
+        );
+        assert_eq!(
+            wallet_body["data"]["settings"]["paymentTimeoutMs"],
+            json!(12_000)
         );
         assert_eq!(
             wallet_body["data"]["filter"]["autopilot"]["id"],
@@ -17127,6 +17145,7 @@ mod tests {
         let paywalls_response = app.clone().oneshot(paywalls_request).await?;
         assert_eq!(paywalls_response.status(), StatusCode::OK);
         let paywalls_body = read_json(paywalls_response).await?;
+        assert_eq!(paywalls_body["data"]["summary"]["uniqueTargets"], json!(2));
         assert_eq!(paywalls_body["data"]["summary"]["totalAttempts"], json!(3));
         assert_eq!(paywalls_body["data"]["summary"]["totalPaidCount"], json!(1));
 
@@ -17171,6 +17190,50 @@ mod tests {
             deployments_body["data"]["deployments"][0]["type"],
             json!("l402_gateway_event")
         );
+        assert_eq!(
+            deployments_body["data"]["configSnapshot"]["invoicePayer"],
+            json!("fake")
+        );
+        assert_eq!(
+            deployments_body["data"]["configSnapshot"]["allowlistHosts"],
+            json!(vec!["sats4ai.com", "l402.openagents.com"])
+        );
+        assert_eq!(
+            deployments_body["data"]["configSnapshot"]["demoPresets"],
+            json!(vec![
+                "sats4ai",
+                "ep212_openagents_premium",
+                "ep212_openagents_expensive",
+                "fake"
+            ])
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn l402_transaction_show_returns_not_found_for_missing_event() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let fixture = seed_l402_fixture(&config, "l402-detail-missing@openagents.com").await?;
+        let app = build_router(config);
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/l402/transactions/999999")
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], json!("not_found"));
 
         Ok(())
     }
