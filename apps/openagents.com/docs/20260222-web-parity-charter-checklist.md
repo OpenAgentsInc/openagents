@@ -194,6 +194,9 @@ Baseline and migration evidence targets:
 - [ ] Parity CI scoreboard and required checks (`OA-WEBPARITY-004`)
   Scoreboard command: `./apps/openagents.com/scripts/run-parity-scoreboard.sh`
   CI workflow check name: `web-parity-scoreboard / parity-scoreboard`
+- [x] Full parity regression lane (`OA-WEBPARITY-056`)
+  Regression command: `./apps/openagents.com/scripts/run-full-parity-regression.sh`
+  CI workflow check name: `web-parity-regression / parity-regression`
 - [ ] Rust compile baseline (`cargo check --workspace --all-targets`)
 - [ ] Rust/web changed-files gate (`./scripts/local-ci.sh changed`)
 - [ ] Web-shell lane (`./scripts/local-ci.sh web-shell`)
