@@ -64,6 +64,8 @@ crates/opencode-sdk/openapi.json
 
 docs/scratchpad/
 docs/autopilot/testing/reports/
+apps/openagents.com/service/deploy/reports/
+apps/openagents.com/storage/app/staging-dual-run/
 
 *.log
 !docs/logs/runs/*.log
