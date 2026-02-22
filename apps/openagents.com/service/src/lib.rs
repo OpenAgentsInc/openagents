@@ -6240,6 +6240,13 @@ async fn control_status(
             "authProvider": state.auth.provider_name(),
             "activeOrgId": bundle.session.active_org_id,
             "memberships": bundle.memberships,
+            "compatibility": {
+                "protocolVersion": state.config.compat_control_protocol_version,
+                "minClientBuildId": state.config.compat_control_min_client_build_id,
+                "maxClientBuildId": state.config.compat_control_max_client_build_id,
+                "minSchemaVersion": state.config.compat_control_min_schema_version,
+                "maxSchemaVersion": state.config.compat_control_max_schema_version,
+            },
             "routeSplit": route_split_status,
             "runtimeRouting": runtime_routing_status,
         }
@@ -11633,6 +11640,95 @@ mod tests {
                 .unwrap_or_default()
                 .starts_with("pat:")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sync_token_v1_alias_matches_primary_contract_shape() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "sync-v1-alias@openagents.com").await?;
+        let payload = r#"{"scopes":["runtime.codex_worker_events"]}"#;
+
+        let primary_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let primary_response = app.clone().oneshot(primary_request).await?;
+        assert_eq!(primary_response.status(), StatusCode::OK);
+        let primary_body = read_json(primary_response).await?;
+
+        let alias_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let alias_response = app.oneshot(alias_request).await?;
+        assert_eq!(alias_response.status(), StatusCode::OK);
+        let alias_body = read_json(alias_response).await?;
+
+        for key in [
+            "token_type",
+            "issuer",
+            "audience",
+            "claims_version",
+            "session_id",
+            "device_id",
+            "org_id",
+        ] {
+            assert_eq!(alias_body["data"][key], primary_body["data"][key]);
+        }
+        assert_eq!(alias_body["data"]["scopes"], primary_body["data"]["scopes"]);
+        assert_eq!(
+            alias_body["data"]["granted_topics"],
+            primary_body["data"]["granted_topics"]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sync_token_v1_alias_uses_compatibility_handshake_controls() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let missing_handshake_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/sync/token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+        let missing_handshake_response = app.clone().oneshot(missing_handshake_request).await?;
+        assert_eq!(
+            missing_handshake_response.status(),
+            StatusCode::UPGRADE_REQUIRED
+        );
+        let missing_body = read_json(missing_handshake_response).await?;
+        assert_eq!(missing_body["error"]["code"], json!("invalid_client_build"));
+
+        let handshake_without_auth = Request::builder()
+            .method("POST")
+            .uri("/api/v1/sync/token")
+            .header("content-type", "application/json")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1")
+            .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+        let handshake_without_auth_response = app.clone().oneshot(handshake_without_auth).await?;
+        assert_eq!(
+            handshake_without_auth_response.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let primary_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+        let primary_response = app.oneshot(primary_request).await?;
+        assert_eq!(primary_response.status(), StatusCode::UNAUTHORIZED);
 
         Ok(())
     }

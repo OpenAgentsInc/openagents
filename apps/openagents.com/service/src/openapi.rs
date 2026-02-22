@@ -1750,8 +1750,25 @@ fn response_example(key: &str) -> Option<Value> {
         })),
         "control_status" => Some(json!({
             "data": {
-                "status": "ok",
-                "service": "openagents-control-service"
+                "service": "openagents-control-service",
+                "authProvider": "mock",
+                "activeOrgId": "org:openagents",
+                "compatibility": {
+                    "protocolVersion": "openagents.control.v1",
+                    "minClientBuildId": "00000000T000000Z",
+                    "maxClientBuildId": null,
+                    "minSchemaVersion": 1,
+                    "maxSchemaVersion": 1
+                },
+                "routeSplit": {
+                    "mode": "cohort",
+                    "override_target": null
+                },
+                "runtimeRouting": {
+                    "default_driver": "legacy",
+                    "forced_driver": null,
+                    "force_legacy": false
+                }
             }
         })),
         "route_split_status" => Some(json!({
