@@ -181,6 +181,38 @@ final class RuntimeCodexClient {
         )
     }
 
+    func requestWorkerAction(
+        workerID: String,
+        request: RuntimeCodexWorkerActionRequest
+    ) async throws -> RuntimeCodexWorkerActionResult {
+        let response: DataResponse<RuntimeCodexWorkerActionResult> = try await requestJSON(
+            path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)/requests",
+            method: "POST",
+            body: WorkerActionRequestEnvelope(request: request)
+        )
+
+        guard let data = response.data else {
+            throw RuntimeCodexApiError(message: "worker_request_response_missing", code: .unknown, status: nil)
+        }
+
+        return data
+    }
+
+    func stopWorker(workerID: String, reason: String? = nil) async throws -> RuntimeCodexWorkerStopResult {
+        let normalizedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let response: DataResponse<RuntimeCodexWorkerStopResult> = try await requestJSON(
+            path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)/stop",
+            method: "POST",
+            body: WorkerStopRequest(reason: normalizedReason?.isEmpty == true ? nil : normalizedReason)
+        )
+
+        guard let data = response.data else {
+            throw RuntimeCodexApiError(message: "worker_stop_response_missing", code: .unknown, status: nil)
+        }
+
+        return data
+    }
+
     func mintSyncToken(scopes: [String] = ["runtime.codex_worker_summaries"]) async throws -> RuntimeCodexSyncToken {
         let normalizedScopes = Array(
             Set(
@@ -537,6 +569,14 @@ private struct LossyString: Decodable {
 
 private struct WorkerEventRequest: Encodable {
     let event: WorkerEventEnvelope
+}
+
+private struct WorkerActionRequestEnvelope: Encodable {
+    let request: RuntimeCodexWorkerActionRequest
+}
+
+private struct WorkerStopRequest: Encodable {
+    let reason: String?
 }
 
 private struct WorkerEventEnvelope: Encodable {
