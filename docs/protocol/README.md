@@ -10,6 +10,7 @@ This directory is the Rust-era protocol system-of-record.
 - `docs/protocol/control-auth-session-v1.md`
 - `docs/protocol/codex-worker-events-v1.md`
 - `docs/protocol/codex-worker-control-v1.md`
+- `docs/protocol/codex-khala-vercel-sse-mapping-v1.md`
 - `docs/protocol/client-telemetry-v1.md`
 - `docs/protocol/onyx-integration-contract-v1.md`
 - `docs/protocol/lightning-wallet-executor-receipt-v1.md`

@@ -9,6 +9,7 @@ Canonical source plan:
 
 Compatibility governance pointers:
 - `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+- `docs/protocol/codex-khala-vercel-sse-mapping-v1.md`
 - OA-WEBPARITY-069..082 issue lane (adapter-only compatibility scope)
 
 Baseline manifest artifacts:
