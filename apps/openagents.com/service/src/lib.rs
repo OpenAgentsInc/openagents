@@ -14,7 +14,7 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use chrono::{Duration, SecondsFormat, Utc};
+use chrono::{Duration, NaiveDate, SecondsFormat, Utc};
 use hmac::{Hmac, Mac};
 use openagents_client_core::compatibility::{
     ClientCompatibilityHandshake, CompatibilityFailure, CompatibilitySurface, CompatibilityWindow,
@@ -624,6 +624,16 @@ struct ShoutsIndexQuery {
     limit: Option<String>,
     #[serde(default, alias = "beforeId")]
     before_id: Option<String>,
+    #[serde(default)]
+    since: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FeedPageQuery {
+    #[serde(default)]
+    zone: Option<String>,
+    #[serde(default)]
+    limit: Option<String>,
     #[serde(default)]
     since: Option<String>,
 }
@@ -1327,6 +1337,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
 
     Router::new()
         .route("/", get(web_shell_entry))
+        .route("/feed", get(feed_page))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
         .merge(web_auth_router)
@@ -5795,6 +5806,62 @@ async fn shouts_index(
     ))
 }
 
+async fn feed_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    Query(query): Query<FeedPageQuery>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    if !headers.contains_key("x-inertia") {
+        return web_shell_entry(State(state), headers, uri)
+            .await
+            .map(IntoResponse::into_response);
+    }
+
+    let zone = normalize_shout_zone(query.zone.as_deref(), "zone").and_then(|zone| match zone {
+        Some(value) if value == "all" => Ok(None),
+        _ => Ok(zone),
+    })?;
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let since = parse_feed_since(query.since.as_deref())?;
+
+    let rows = state
+        ._domain_store
+        .list_shouts(zone.as_deref(), limit, None, since)
+        .await
+        .map_err(map_domain_store_error)?;
+    let zones = state
+        ._domain_store
+        .top_shout_zones(20)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut author_cache: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut items = Vec::with_capacity(rows.len());
+    for shout in &rows {
+        items.push(feed_item_payload(&state, shout, &mut author_cache).await);
+    }
+
+    let page = serde_json::json!({
+        "component": "feed",
+        "props": {
+            "feed": {
+                "zone": zone,
+                "limit": limit,
+                "items": items,
+                "zones": zones,
+            }
+        },
+        "url": uri
+            .path_and_query()
+            .map(|value| value.as_str().to_string())
+            .unwrap_or_else(|| "/feed".to_string()),
+        "version": serde_json::Value::Null,
+    });
+
+    Ok((StatusCode::OK, Json(page)).into_response())
+}
+
 async fn shouts_zones(
     State(state): State<AppState>,
     Query(query): Query<ShoutsZonesQuery>,
@@ -6158,6 +6225,27 @@ fn parse_shout_limit(
     Ok(parsed.min(max))
 }
 
+fn parse_feed_since(
+    raw: Option<&str>,
+) -> Result<Option<chrono::DateTime<Utc>>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if let Ok(parsed) = parse_rfc3339_utc(raw) {
+        return Ok(Some(parsed));
+    }
+    if let Ok(parsed_date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        if let Some(parsed_datetime) = parsed_date.and_hms_opt(0, 0, 0) {
+            return Ok(Some(parsed_datetime.and_utc()));
+        }
+    }
+
+    Err(validation_error(
+        "since",
+        "The since field must be a valid date.",
+    ))
+}
+
 fn parse_shout_optional_u64(
     raw: Option<&str>,
     field: &'static str,
@@ -6244,6 +6332,23 @@ async fn shout_payload(
         "createdAt": timestamp(shout.created_at),
         "updatedAt": timestamp(shout.updated_at),
     })
+}
+
+async fn feed_item_payload(
+    state: &AppState,
+    shout: &ShoutRecord,
+    author_cache: &mut HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    let mut item = shout_payload(state, shout, author_cache).await;
+    let zone = item
+        .get("zone")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "global".to_string());
+    item["zone"] = serde_json::Value::String(zone);
+    item
 }
 
 async fn whisper_user_payload(
@@ -20974,6 +21079,134 @@ mod tests {
             page_two_body["data"].as_array().map(|rows| rows.len()),
             Some(5)
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_page_supports_inertia_query_semantics_and_feed_payload_shape() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let author_token = seed_local_test_token(&config, "feed-author@openagents.com").await?;
+        let app = build_router(config.clone());
+
+        for payload in [
+            r#"{"body":"L402-only shout body","zone":"l402"}"#,
+            r#"{"body":"Dev-only shout body","zone":"dev"}"#,
+            r#"{"body":"Global shout body"}"#,
+        ] {
+            let create_request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {author_token}"))
+                .body(Body::from(payload.to_string()))?;
+            let create_response = app.clone().oneshot(create_request).await?;
+            assert_eq!(create_response.status(), StatusCode::CREATED);
+        }
+
+        let zone_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=l402")
+            .header("x-inertia", "true")
+            .body(Body::empty())?;
+        let zone_response = app.clone().oneshot(zone_request).await?;
+        assert_eq!(zone_response.status(), StatusCode::OK);
+        let zone_body = read_json(zone_response).await?;
+        assert_eq!(zone_body["component"], json!("feed"));
+        assert_eq!(zone_body["props"]["feed"]["zone"], json!("l402"));
+        assert_eq!(
+            zone_body["props"]["feed"]["items"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(
+            zone_body["props"]["feed"]["items"][0]["body"],
+            json!("L402-only shout body")
+        );
+
+        let all_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=all&limit=999")
+            .header("x-inertia", "true")
+            .body(Body::empty())?;
+        let all_response = app.clone().oneshot(all_request).await?;
+        assert_eq!(all_response.status(), StatusCode::OK);
+        let all_body = read_json(all_response).await?;
+        assert_eq!(all_body["props"]["feed"]["zone"], json!(null));
+        assert_eq!(all_body["props"]["feed"]["limit"], json!(200));
+        assert_eq!(
+            all_body["props"]["feed"]["items"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(3)
+        );
+        assert!(
+            all_body["props"]["feed"]["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|item| {
+                    item.get("body") == Some(&json!("Global shout body"))
+                        && item.get("zone") == Some(&json!("global"))
+                })
+        );
+        assert!(
+            all_body["props"]["feed"]["zones"]
+                .as_array()
+                .map(|rows| !rows.is_empty())
+                .unwrap_or(false)
+        );
+
+        let invalid_since_request = Request::builder()
+            .method("GET")
+            .uri("/feed?since=not-a-date")
+            .header("x-inertia", "true")
+            .body(Body::empty())?;
+        let invalid_since_response = app.oneshot(invalid_since_request).await?;
+        assert_eq!(
+            invalid_since_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_since_body = read_json(invalid_since_response).await?;
+        assert_eq!(
+            invalid_since_body["error"]["code"],
+            json!("invalid_request")
+        );
+        assert_eq!(
+            invalid_since_body["errors"]["since"],
+            json!(["The since field must be a valid date."])
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_page_without_inertia_header_serves_rust_shell() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let app = build_router(config);
+
+        let request = Request::builder().uri("/feed").body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await?.to_bytes();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("rust shell"));
 
         Ok(())
     }
