@@ -44,6 +44,13 @@ pub const ROUTE_L402_SETTLEMENTS: &str = "/api/l402/settlements";
 pub const ROUTE_L402_DEPLOYMENTS: &str = "/api/l402/deployments";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
+pub const ROUTE_SETTINGS_INTEGRATIONS_RESEND: &str = "/settings/integrations/resend";
+pub const ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST: &str = "/settings/integrations/resend/test";
+pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT: &str =
+    "/settings/integrations/google/redirect";
+pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK: &str =
+    "/settings/integrations/google/callback";
+pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE: &str = "/settings/integrations/google";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
@@ -394,6 +401,78 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("settings_autopilot_update"),
         response_example: Some("settings_autopilot_update"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_RESEND,
+        operation_id: "settingsIntegrationsResendUpsert",
+        summary: "Create or rotate Resend integration secret material.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("settings_integrations_resend_upsert"),
+        response_example: Some("settings_integration_status"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_RESEND,
+        operation_id: "settingsIntegrationsResendDisconnect",
+        summary: "Disconnect and revoke Resend integration secret material.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("settings_integration_status"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST,
+        operation_id: "settingsIntegrationsResendTest",
+        summary: "Record a Resend integration test request audit event.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("settings_integration_status"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT,
+        operation_id: "settingsIntegrationsGoogleRedirect",
+        summary: "Start Google OAuth authorization redirect.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "302",
+        request_example: None,
+        response_example: None,
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK,
+        operation_id: "settingsIntegrationsGoogleCallback",
+        summary: "Handle Google OAuth callback and persist integration credentials.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "302",
+        request_example: None,
+        response_example: None,
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
+        operation_id: "settingsIntegrationsGoogleDisconnect",
+        summary: "Disconnect and revoke Google integration credentials.",
+        tag: "integrations",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("settings_integration_status"),
     },
     OpenApiContract {
         method: "delete",
@@ -1399,6 +1478,11 @@ fn request_example(key: &str) -> Option<Value> {
             "autopilotVoice": "calm and direct",
             "principlesText": "Prefer verification over guessing\nAsk before irreversible actions"
         })),
+        "settings_integrations_resend_upsert" => Some(json!({
+            "resend_api_key": "re_live_1234567890",
+            "sender_email": "bot@openagents.com",
+            "sender_name": "OpenAgents Bot"
+        })),
         "settings_profile_delete" => Some(json!({
             "email": "user@openagents.com"
         })),
@@ -1924,6 +2008,24 @@ fn response_example(key: &str) -> Option<Value> {
                     },
                     "createdAt": "2026-02-22T00:00:00Z",
                     "updatedAt": "2026-02-22T00:00:00Z"
+                }
+            }
+        })),
+        "settings_integration_status" => Some(json!({
+            "data": {
+                "status": "resend-connected",
+                "action": "secret_created",
+                "integration": {
+                    "provider": "resend",
+                    "status": "active",
+                    "connected": true,
+                    "secretLast4": "7890",
+                    "connectedAt": "2026-02-22T00:00:00Z",
+                    "disconnectedAt": null,
+                    "metadata": {
+                        "sender_email": "bot@openagents.com",
+                        "sender_name": "OpenAgents Bot"
+                    }
                 }
             }
         })),

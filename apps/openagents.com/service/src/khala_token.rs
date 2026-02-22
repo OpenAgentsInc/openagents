@@ -313,6 +313,11 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            google_oauth_client_id: None,
+            google_oauth_client_secret: None,
+            google_oauth_redirect_uri: None,
+            google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
+            google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,

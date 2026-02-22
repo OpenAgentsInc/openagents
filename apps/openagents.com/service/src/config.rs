@@ -50,6 +50,8 @@ const DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS: u64 = 60;
 const DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
 const DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS: u64 = 60_000;
+const DEFAULT_GOOGLE_OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send";
+const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_RUNTIME_DRIVER: &str = "legacy";
 const DEFAULT_RUNTIME_FORCE_LEGACY: bool = false;
 const DEFAULT_RUNTIME_CANARY_USER_PERCENT: u8 = 0;
@@ -127,6 +129,11 @@ pub struct Config {
     pub runtime_internal_signature_ttl_seconds: u64,
     pub runtime_internal_secret_fetch_path: String,
     pub runtime_internal_secret_cache_ttl_ms: u64,
+    pub google_oauth_client_id: Option<String>,
+    pub google_oauth_client_secret: Option<String>,
+    pub google_oauth_redirect_uri: Option<String>,
+    pub google_oauth_scopes: String,
+    pub google_oauth_token_url: String,
     pub runtime_driver: String,
     pub runtime_force_driver: Option<String>,
     pub runtime_force_legacy: bool,
@@ -488,6 +495,33 @@ impl Config {
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS);
 
+        let google_oauth_client_id = env::var("GOOGLE_OAUTH_CLIENT_ID")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let google_oauth_client_secret = env::var("GOOGLE_OAUTH_CLIENT_SECRET")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let google_oauth_redirect_uri = env::var("GOOGLE_OAUTH_REDIRECT_URI")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let google_oauth_scopes = env::var("GOOGLE_OAUTH_SCOPES")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_GOOGLE_OAUTH_SCOPES.to_string());
+
+        let google_oauth_token_url = env::var("GOOGLE_OAUTH_TOKEN_URL")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_GOOGLE_OAUTH_TOKEN_URL.to_string());
+
         let runtime_driver = env::var("OA_RUNTIME_DRIVER")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -671,6 +705,11 @@ impl Config {
             runtime_internal_signature_ttl_seconds,
             runtime_internal_secret_fetch_path,
             runtime_internal_secret_cache_ttl_ms,
+            google_oauth_client_id,
+            google_oauth_client_secret,
+            google_oauth_redirect_uri,
+            google_oauth_scopes,
+            google_oauth_token_url,
             runtime_driver,
             runtime_force_driver,
             runtime_force_legacy,

@@ -14,7 +14,7 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use chrono::{SecondsFormat, Utc};
+use chrono::{Duration, SecondsFormat, Utc};
 use hmac::{Hmac, Mac};
 use openagents_client_core::compatibility::{
     ClientCompatibilityHandshake, CompatibilityFailure, CompatibilitySurface, CompatibilityWindow,
@@ -59,8 +59,8 @@ use crate::domain_store::{
     DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
     RecordL402GatewayEventInput, SendWhisperInput, ShoutRecord, UpdateAutopilotInput,
     UpdateL402PaywallInput, UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
-    UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput, UserSparkWalletRecord,
-    WhisperRecord,
+    UpsertGoogleIntegrationInput, UpsertResendIntegrationInput, UpsertRuntimeDriverOverrideInput,
+    UpsertUserSparkWalletInput, UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -81,14 +81,16 @@ use crate::openapi::{
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
     ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
     ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
-    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS,
-    ROUTE_SHOUTS_ZONES, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT,
-    ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
-    ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS,
-    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, ROUTE_WHISPERS, ROUTE_WHISPERS_READ,
-    openapi_document,
+    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
+    ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT,
+    ROUTE_SETTINGS_INTEGRATIONS_RESEND, ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST,
+    ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS, ROUTE_SHOUTS_ZONES, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
+    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
+    ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
+    ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
+    ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
@@ -180,6 +182,7 @@ struct AppState {
     runtime_workers: RuntimeWorkerState,
     lightning_ops_control_plane: LightningOpsControlPlaneState,
     runtime_internal_nonces: RuntimeInternalNonceState,
+    google_oauth_states: GoogleOauthStateStore,
     started_at: SystemTime,
 }
 
@@ -214,6 +217,11 @@ struct RuntimeSkillRegistryState {
 struct RuntimeWorkerState {
     workers: Arc<Mutex<HashMap<String, RuntimeWorkerRecord>>>,
     events: Arc<Mutex<HashMap<String, Vec<RuntimeWorkerEventRecord>>>>,
+}
+
+#[derive(Clone, Default)]
+struct GoogleOauthStateStore {
+    entries: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[derive(Clone, Default)]
@@ -651,6 +659,26 @@ struct WhisperStoreRequestPayload {
     body: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct UpsertResendIntegrationRequestPayload {
+    #[serde(default, alias = "resendApiKey")]
+    resend_api_key: Option<String>,
+    #[serde(default, alias = "senderEmail")]
+    sender_email: Option<String>,
+    #[serde(default, alias = "senderName")]
+    sender_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GoogleOauthCallbackQuery {
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CreateAutopilotRequestPayload {
     #[serde(default)]
@@ -989,6 +1017,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         runtime_workers: RuntimeWorkerState::default(),
         lightning_ops_control_plane: LightningOpsControlPlaneState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
+        google_oauth_states: GoogleOauthStateStore::default(),
         started_at: SystemTime::now(),
     };
     let compatibility_state = state.clone();
@@ -1098,6 +1127,27 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                 .delete(settings_profile_delete),
         )
         .route(ROUTE_SETTINGS_AUTOPILOT, patch(settings_autopilot_update))
+        .route(
+            ROUTE_SETTINGS_INTEGRATIONS_RESEND,
+            post(settings_integrations_resend_upsert)
+                .delete(settings_integrations_resend_disconnect),
+        )
+        .route(
+            ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST,
+            post(settings_integrations_resend_test),
+        )
+        .route(
+            ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT,
+            get(settings_integrations_google_redirect),
+        )
+        .route(
+            ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK,
+            get(settings_integrations_google_callback),
+        )
+        .route(
+            ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
+            delete(settings_integrations_google_disconnect),
+        )
         .route(
             ROUTE_TOKENS_CURRENT,
             delete(delete_current_personal_access_token),
@@ -3964,6 +4014,493 @@ async fn settings_autopilot_update(
         })),
     )
         .into_response())
+}
+
+async fn settings_integrations_resend_upsert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<UpsertResendIntegrationRequestPayload>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let api_key = payload.resend_api_key.and_then(non_empty).ok_or_else(|| {
+        validation_error("resend_api_key", "The resend_api_key field is required.")
+    })?;
+    let api_key_len = api_key.chars().count();
+    if api_key_len < 8 {
+        return Err(validation_error(
+            "resend_api_key",
+            "The resend_api_key field must be at least 8 characters.",
+        ));
+    }
+    if api_key_len > 4096 {
+        return Err(validation_error(
+            "resend_api_key",
+            "The resend_api_key field may not be greater than 4096 characters.",
+        ));
+    }
+    let sender_email = normalize_optional_email(payload.sender_email, "sender_email")?;
+    let sender_name =
+        normalize_optional_bounded_trimmed_string(payload.sender_name, "sender_name", 255)?;
+
+    let result = state
+        ._domain_store
+        .upsert_resend_integration(UpsertResendIntegrationInput {
+            user_id: bundle.user.id.clone(),
+            api_key,
+            sender_email,
+            sender_name,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+    let status = match result.action.as_str() {
+        "secret_created" => "resend-connected",
+        "secret_rotated" => "resend-rotated",
+        _ => "resend-updated",
+    };
+
+    state.observability.audit(
+        AuditEvent::new("settings.integrations.resend.upserted", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("action", result.action.clone())
+            .with_attribute("status", status.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.upserted", &request_id);
+
+    let integration = integration_payload(Some(&result.integration), "resend");
+    Ok(settings_integration_response(
+        &headers,
+        status,
+        Some(result.action),
+        integration,
+    ))
+}
+
+async fn settings_integrations_resend_disconnect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let revoked = state
+        ._domain_store
+        .revoke_integration(&bundle.user.id, "resend")
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.resend.disconnected",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("had_integration", revoked.is_some().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.disconnected", &request_id);
+
+    Ok(settings_integration_response(
+        &headers,
+        "resend-disconnected",
+        Some("secret_revoked".to_string()),
+        integration_payload(revoked.as_ref(), "resend"),
+    ))
+}
+
+async fn settings_integrations_resend_test(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let integration = state
+        ._domain_store
+        .find_active_integration_secret(&bundle.user.id, "resend")
+        .await
+        .map_err(map_domain_store_error)?
+        .ok_or_else(|| {
+            validation_error(
+                "resend",
+                "Connect an active Resend key before running a test.",
+            )
+        })?;
+
+    state
+        ._domain_store
+        .audit_integration_test_request(&bundle.user.id, "resend")
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.resend.test_requested",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("integration_id", integration.id.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.test_requested", &request_id);
+
+    Ok(settings_integration_response(
+        &headers,
+        "resend-test-queued",
+        Some("test_requested".to_string()),
+        integration_payload(Some(&integration), "resend"),
+    ))
+}
+
+async fn settings_integrations_google_redirect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let client_id = state
+        .config
+        .google_oauth_client_id
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let redirect_uri = state
+        .config
+        .google_oauth_redirect_uri
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let scopes = state.config.google_oauth_scopes.trim().to_string();
+    if client_id.is_none() || redirect_uri.is_none() || scopes.is_empty() {
+        return Err(validation_error(
+            "google",
+            "Google OAuth is not configured on this environment.",
+        ));
+    }
+
+    let oauth_state = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    {
+        let mut entries = state.google_oauth_states.entries.lock().await;
+        entries.insert(bundle.user.id.clone(), oauth_state.clone());
+    }
+
+    let mut redirect = reqwest::Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
+        .expect("hardcoded Google OAuth authorize URL must be valid");
+    redirect
+        .query_pairs_mut()
+        .append_pair("client_id", client_id.as_deref().unwrap_or_default())
+        .append_pair("redirect_uri", redirect_uri.as_deref().unwrap_or_default())
+        .append_pair("response_type", "code")
+        .append_pair("access_type", "offline")
+        .append_pair("prompt", "consent")
+        .append_pair("scope", &scopes)
+        .append_pair("state", &oauth_state);
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.google.redirected",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.google.redirected", &request_id);
+
+    Ok(Redirect::to(redirect.as_ref()).into_response())
+}
+
+async fn settings_integrations_google_callback(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<GoogleOauthCallbackQuery>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    if let Some(error) = query.error.and_then(non_empty) {
+        return Err(validation_error(
+            "google",
+            &format!("Google authorization failed: {error}"),
+        ));
+    }
+
+    let incoming_state = query.state.and_then(non_empty).ok_or_else(|| {
+        validation_error(
+            "google",
+            "OAuth state mismatch. Please retry connecting Google.",
+        )
+    })?;
+    let expected_state = {
+        let mut entries = state.google_oauth_states.entries.lock().await;
+        entries.remove(&bundle.user.id)
+    }
+    .unwrap_or_default();
+    if expected_state.is_empty() || expected_state != incoming_state {
+        return Err(validation_error(
+            "google",
+            "OAuth state mismatch. Please retry connecting Google.",
+        ));
+    }
+
+    let code = query.code.and_then(non_empty).ok_or_else(|| {
+        validation_error(
+            "google",
+            "Google callback did not include an authorization code.",
+        )
+    })?;
+
+    let client_id = state
+        .config
+        .google_oauth_client_id
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let client_secret = state
+        .config
+        .google_oauth_client_secret
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let redirect_uri = state
+        .config
+        .google_oauth_redirect_uri
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    if client_id.is_none() || client_secret.is_none() || redirect_uri.is_none() {
+        return Err(validation_error(
+            "google",
+            "Google OAuth is not configured on this environment.",
+        ));
+    }
+
+    let response = reqwest::Client::new()
+        .post(state.config.google_oauth_token_url.clone())
+        .header("accept", "application/json")
+        .form(&[
+            ("code", code.as_str()),
+            ("client_id", client_id.as_deref().unwrap_or_default()),
+            (
+                "client_secret",
+                client_secret.as_deref().unwrap_or_default(),
+            ),
+            ("redirect_uri", redirect_uri.as_deref().unwrap_or_default()),
+            ("grant_type", "authorization_code"),
+        ])
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|_| {
+            validation_error(
+                "google",
+                "Google token exchange failed. Please reconnect and try again.",
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(validation_error(
+            "google",
+            "Google token exchange failed. Please reconnect and try again.",
+        ));
+    }
+
+    let token_payload = response.json::<serde_json::Value>().await.map_err(|_| {
+        validation_error(
+            "google",
+            "Google token exchange returned an invalid payload.",
+        )
+    })?;
+    if !token_payload.is_object() {
+        return Err(validation_error(
+            "google",
+            "Google token exchange returned an invalid payload.",
+        ));
+    }
+
+    let result = state
+        ._domain_store
+        .upsert_google_integration(UpsertGoogleIntegrationInput {
+            user_id: bundle.user.id.clone(),
+            refresh_token: normalized_json_string(token_payload.get("refresh_token")),
+            access_token: normalized_json_string(token_payload.get("access_token")),
+            scope: normalized_json_string(token_payload.get("scope")),
+            token_type: normalized_json_string(token_payload.get("token_type")),
+            expires_at: resolve_google_token_expiry(&token_payload),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+    let status = match result.action.as_str() {
+        "secret_created" => "google-connected",
+        "secret_rotated" => "google-rotated",
+        _ => "google-updated",
+    };
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.google.callback.completed",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("action", result.action.clone())
+        .with_attribute("status", status.to_string()),
+    );
+    state.observability.increment_counter(
+        "settings.integrations.google.callback.completed",
+        &request_id,
+    );
+
+    if headers.contains_key("x-inertia") {
+        return Ok(
+            Redirect::to(&format!("/settings/integrations?status={status}")).into_response(),
+        );
+    }
+
+    Ok(Redirect::to(&format!("/settings/integrations?status={status}")).into_response())
+}
+
+async fn settings_integrations_google_disconnect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let revoked = state
+        ._domain_store
+        .revoke_integration(&bundle.user.id, "google")
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.google.disconnected",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("had_integration", revoked.is_some().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.google.disconnected", &request_id);
+
+    Ok(settings_integration_response(
+        &headers,
+        "google-disconnected",
+        Some("secret_revoked".to_string()),
+        integration_payload(revoked.as_ref(), "google"),
+    ))
+}
+
+fn settings_integration_response(
+    headers: &HeaderMap,
+    status: &str,
+    action: Option<String>,
+    integration: serde_json::Value,
+) -> Response {
+    if headers.contains_key("x-inertia") {
+        return Redirect::to(&format!("/settings/integrations?status={status}")).into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "status": status,
+                "action": action,
+                "integration": integration,
+            }
+        })),
+    )
+        .into_response()
+}
+
+fn integration_payload(
+    integration: Option<&UserIntegrationRecord>,
+    provider: &str,
+) -> serde_json::Value {
+    let Some(integration) = integration else {
+        return serde_json::json!({
+            "provider": provider,
+            "status": "inactive",
+            "connected": false,
+            "secretLast4": serde_json::Value::Null,
+            "connectedAt": serde_json::Value::Null,
+            "disconnectedAt": serde_json::Value::Null,
+            "metadata": serde_json::json!({}),
+        });
+    };
+
+    let has_secret = integration
+        .encrypted_secret
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some();
+    let connected = integration.status == "active" && has_secret;
+
+    serde_json::json!({
+        "provider": integration.provider,
+        "status": integration.status,
+        "connected": connected,
+        "secretLast4": integration.secret_last4,
+        "connectedAt": integration.connected_at.map(timestamp),
+        "disconnectedAt": integration.disconnected_at.map(timestamp),
+        "metadata": integration.metadata.clone().unwrap_or_else(|| serde_json::json!({})),
+    })
+}
+
+fn normalize_optional_email(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value.and_then(non_empty) else {
+        return Ok(None);
+    };
+    if value.chars().count() > 255 || !value.contains('@') {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field must be a valid email address."),
+        ));
+    }
+    Ok(Some(value.to_lowercase()))
+}
+
+fn resolve_google_token_expiry(payload: &serde_json::Value) -> Option<chrono::DateTime<Utc>> {
+    if let Some(seconds) = payload
+        .get("expires_in")
+        .and_then(|value| value.as_i64())
+        .filter(|value| *value > 0)
+    {
+        return Some(Utc::now() + Duration::seconds(seconds));
+    }
+
+    if let Some(seconds) = payload
+        .get("expires_in")
+        .and_then(|value| value.as_u64())
+        .filter(|value| *value > 0)
+    {
+        return Some(Utc::now() + Duration::seconds(seconds as i64));
+    }
+
+    payload
+        .get("expires_at")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| parse_rfc3339_utc(value).ok())
 }
 
 async fn settings_profile_delete(
@@ -12615,6 +13152,11 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            google_oauth_client_id: None,
+            google_oauth_client_secret: None,
+            google_oauth_redirect_uri: None,
+            google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
+            google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,
@@ -12697,6 +13239,7 @@ mod tests {
             runtime_workers: super::RuntimeWorkerState::default(),
             lightning_ops_control_plane: super::LightningOpsControlPlaneState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
+            google_oauth_states: super::GoogleOauthStateStore::default(),
             started_at: std::time::SystemTime::now(),
         }
     }
@@ -12934,6 +13477,42 @@ mod tests {
             axum::serve(listener, app.into_make_service())
                 .await
                 .expect("runtime revocation stub server failed");
+        });
+
+        Ok((addr, handle))
+    }
+
+    async fn start_google_oauth_token_stub(
+        captured_bodies: Arc<Mutex<Vec<String>>>,
+    ) -> Result<(SocketAddr, JoinHandle<()>)> {
+        let app = Router::new()
+            .route(
+                "/oauth2/token",
+                post(
+                    |State(captured_bodies): State<Arc<Mutex<Vec<String>>>>, body: String| async move {
+                        captured_bodies.lock().await.push(body);
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "refresh_token": "refresh_token_1234567890",
+                                "access_token": "access_token_abcdef",
+                                "scope": "https://www.googleapis.com/auth/gmail.readonly",
+                                "token_type": "Bearer",
+                                "expires_in": 3600,
+                            })),
+                        )
+                    },
+                ),
+            )
+            .with_state(captured_bodies);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .expect("google oauth token stub server failed");
         });
 
         Ok((addr, handle))
@@ -15588,6 +16167,169 @@ mod tests {
             json!(["Value may not be greater than 120 characters."])
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settings_integrations_resend_routes_support_lifecycle_and_validation() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "integrations-resend@openagents.com").await?;
+
+        let upsert_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"resend_api_key":"re_live_1234567890","sender_email":"bot@openagents.com","sender_name":"OpenAgents Bot"}"#,
+            ))?;
+        let upsert_response = app.clone().oneshot(upsert_request).await?;
+        assert_eq!(upsert_response.status(), StatusCode::OK);
+        let upsert_body = read_json(upsert_response).await?;
+        assert_eq!(upsert_body["data"]["status"], "resend-connected");
+        assert_eq!(upsert_body["data"]["action"], "secret_created");
+        assert_eq!(upsert_body["data"]["integration"]["provider"], "resend");
+        assert_eq!(upsert_body["data"]["integration"]["connected"], true);
+        assert_eq!(upsert_body["data"]["integration"]["secretLast4"], "7890");
+
+        let test_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend/test")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let test_response = app.clone().oneshot(test_request).await?;
+        assert_eq!(test_response.status(), StatusCode::OK);
+        let test_body = read_json(test_response).await?;
+        assert_eq!(test_body["data"]["status"], "resend-test-queued");
+        assert_eq!(test_body["data"]["action"], "test_requested");
+
+        let disconnect_request = Request::builder()
+            .method("DELETE")
+            .uri("/settings/integrations/resend")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let disconnect_response = app.clone().oneshot(disconnect_request).await?;
+        assert_eq!(disconnect_response.status(), StatusCode::OK);
+        let disconnect_body = read_json(disconnect_response).await?;
+        assert_eq!(disconnect_body["data"]["status"], "resend-disconnected");
+        assert_eq!(disconnect_body["data"]["action"], "secret_revoked");
+        assert_eq!(disconnect_body["data"]["integration"]["connected"], false);
+
+        let test_after_disconnect_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend/test")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let test_after_disconnect_response = app.oneshot(test_after_disconnect_request).await?;
+        assert_eq!(
+            test_after_disconnect_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let test_after_disconnect_body = read_json(test_after_disconnect_response).await?;
+        assert_eq!(
+            test_after_disconnect_body["error"]["code"],
+            "invalid_request"
+        );
+        assert_eq!(
+            test_after_disconnect_body["message"],
+            "Connect an active Resend key before running a test."
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settings_integrations_google_routes_support_redirect_callback_and_disconnect()
+    -> Result<()> {
+        let captured_bodies = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (token_stub_addr, token_stub_handle) =
+            start_google_oauth_token_stub(captured_bodies.clone()).await?;
+
+        let mut config = test_config(std::env::temp_dir());
+        config.google_oauth_client_id = Some("google-client-id".to_string());
+        config.google_oauth_client_secret = Some("google-client-secret".to_string());
+        config.google_oauth_redirect_uri =
+            Some("https://openagents.test/google/callback".to_string());
+        config.google_oauth_token_url = format!("http://{token_stub_addr}/oauth2/token");
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "integrations-google@openagents.com").await?;
+
+        let redirect_request = Request::builder()
+            .method("GET")
+            .uri("/settings/integrations/google/redirect")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let redirect_response = app.clone().oneshot(redirect_request).await?;
+        assert_eq!(redirect_response.status(), StatusCode::SEE_OTHER);
+
+        let location = redirect_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.starts_with("https://accounts.google.com/o/oauth2/v2/auth"));
+
+        let redirect_url = reqwest::Url::parse(&location)?;
+        let state = redirect_url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.to_string())
+            .unwrap_or_default();
+        assert!(!state.is_empty());
+
+        let callback_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/settings/integrations/google/callback?state={state}&code=google-auth-code-123"
+            ))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let callback_response = app.clone().oneshot(callback_request).await?;
+        assert_eq!(callback_response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            callback_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/settings/integrations?status=google-connected")
+        );
+
+        let captured = captured_bodies.lock().await.clone();
+        assert_eq!(captured.len(), 1);
+        assert!(captured[0].contains("grant_type=authorization_code"));
+        assert!(captured[0].contains("code=google-auth-code-123"));
+
+        let disconnect_request = Request::builder()
+            .method("DELETE")
+            .uri("/settings/integrations/google")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let disconnect_response = app.clone().oneshot(disconnect_request).await?;
+        assert_eq!(disconnect_response.status(), StatusCode::OK);
+        let disconnect_body = read_json(disconnect_response).await?;
+        assert_eq!(disconnect_body["data"]["status"], "google-disconnected");
+        assert_eq!(disconnect_body["data"]["action"], "secret_revoked");
+        assert_eq!(disconnect_body["data"]["integration"]["connected"], false);
+
+        let bad_state_request = Request::builder()
+            .method("GET")
+            .uri("/settings/integrations/google/callback?state=bad-state&code=another")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let bad_state_response = app.oneshot(bad_state_request).await?;
+        assert_eq!(
+            bad_state_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let bad_state_body = read_json(bad_state_response).await?;
+        assert_eq!(bad_state_body["error"]["code"], "invalid_request");
+        assert_eq!(
+            bad_state_body["message"],
+            "OAuth state mismatch. Please retry connecting Google."
+        );
+
+        token_stub_handle.abort();
         Ok(())
     }
 

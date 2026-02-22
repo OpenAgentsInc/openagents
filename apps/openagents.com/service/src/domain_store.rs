@@ -1763,6 +1763,36 @@ impl DomainStore {
         .await
     }
 
+    pub async fn audit_integration_test_request(
+        &self,
+        user_id: &str,
+        provider: &str,
+    ) -> Result<Option<UserIntegrationRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let provider = normalize_non_empty(provider, "provider")?.to_lowercase();
+
+        self.mutate(|state| {
+            let key = integration_key(&user_id, &provider);
+            let Some(integration) = state.user_integrations.get(&key).cloned() else {
+                return Ok(None);
+            };
+
+            append_integration_audit(
+                state,
+                &user_id,
+                Some(integration.id),
+                &provider,
+                "test_requested",
+                Some(serde_json::json!({
+                    "status": integration.status,
+                    "secret_last4": integration.secret_last4,
+                })),
+            );
+            Ok(Some(integration))
+        })
+        .await
+    }
+
     pub async fn find_active_integration_secret(
         &self,
         user_id: &str,
@@ -2637,6 +2667,11 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            google_oauth_client_id: None,
+            google_oauth_client_secret: None,
+            google_oauth_redirect_uri: None,
+            google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
+            google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,
