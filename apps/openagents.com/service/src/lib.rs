@@ -50,16 +50,20 @@ use crate::codex_threads::{
     CodexThreadStore, ThreadMessageProjection, ThreadProjection, ThreadStoreError,
 };
 use crate::config::Config;
-use crate::domain_store::{CreateAutopilotInput, DomainStore, DomainStoreError};
+use crate::domain_store::{
+    AutopilotAggregate, CreateAutopilotInput, DomainStore, DomainStoreError, UpdateAutopilotInput,
+    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
+};
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
-    ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
-    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
-    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON,
+    ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
+    ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
+    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
+    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
     ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
@@ -284,6 +288,86 @@ struct MeQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct AutopilotListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAutopilotRequestPayload {
+    #[serde(default)]
+    handle: Option<String>,
+    #[serde(default, alias = "displayName")]
+    display_name: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    tagline: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    visibility: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateAutopilotRequestPayload {
+    #[serde(default, alias = "displayName")]
+    display_name: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    visibility: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    tagline: Option<String>,
+    #[serde(default)]
+    profile: Option<UpdateAutopilotProfilePayload>,
+    #[serde(default)]
+    policy: Option<UpdateAutopilotPolicyPayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UpdateAutopilotProfilePayload {
+    #[serde(default, alias = "ownerDisplayName")]
+    owner_display_name: Option<String>,
+    #[serde(default, alias = "personaSummary")]
+    persona_summary: Option<String>,
+    #[serde(default, alias = "autopilotVoice")]
+    autopilot_voice: Option<String>,
+    #[serde(default)]
+    principles: Option<serde_json::Value>,
+    #[serde(default)]
+    preferences: Option<serde_json::Value>,
+    #[serde(default, alias = "onboardingAnswers")]
+    onboarding_answers: Option<serde_json::Value>,
+    #[serde(default, alias = "schemaVersion")]
+    schema_version: Option<u16>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UpdateAutopilotPolicyPayload {
+    #[serde(default, alias = "modelProvider")]
+    model_provider: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default, alias = "toolAllowlist")]
+    tool_allowlist: Option<Vec<String>>,
+    #[serde(default, alias = "toolDenylist")]
+    tool_denylist: Option<Vec<String>>,
+    #[serde(default, alias = "l402RequireApproval")]
+    l402_require_approval: Option<bool>,
+    #[serde(default, alias = "l402MaxSpendMsatsPerCall")]
+    l402_max_spend_msats_per_call: Option<u64>,
+    #[serde(default, alias = "l402MaxSpendMsatsPerDay")]
+    l402_max_spend_msats_per_day: Option<u64>,
+    #[serde(default, alias = "l402AllowedHosts")]
+    l402_allowed_hosts: Option<Vec<String>>,
+    #[serde(default, alias = "dataPolicy")]
+    data_policy: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CreateTokenRequestPayload {
     name: String,
     #[serde(default)]
@@ -475,6 +559,14 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_AUTH_SESSIONS_REVOKE, post(revoke_sessions))
         .route(ROUTE_AUTH_LOGOUT, post(logout_session))
         .route(ROUTE_ME, get(me))
+        .route(
+            ROUTE_AUTOPILOTS,
+            get(list_autopilots).post(create_autopilot),
+        )
+        .route(
+            ROUTE_AUTOPILOTS_BY_ID,
+            get(show_autopilot).patch(update_autopilot),
+        )
         .route(
             ROUTE_TOKENS,
             get(list_personal_access_tokens)
@@ -2382,6 +2474,221 @@ async fn me(
     });
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+async fn list_autopilots(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AutopilotListQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let limit = query.limit.unwrap_or(100).clamp(1, 200);
+    let autopilots = state
+        ._domain_store
+        .list_autopilots_for_owner(&bundle.user.id, limit)
+        .await
+        .map_err(map_domain_store_error)?;
+    let payload = autopilots
+        .iter()
+        .map(autopilot_aggregate_payload)
+        .collect::<Vec<_>>();
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.list_viewed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("limit", limit.to_string())
+            .with_attribute("count", payload.len().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.list_viewed", &request_id);
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": payload }))))
+}
+
+async fn create_autopilot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateAutopilotRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let handle_seed = normalize_autopilot_handle_seed(payload.handle)?;
+    let display_name = normalize_optional_display_name(payload.display_name, "displayName")?
+        .unwrap_or_else(|| "Autopilot".to_string());
+    let avatar = normalize_optional_bounded_string(payload.avatar, "avatar", 255)?;
+    let tagline = normalize_optional_bounded_string(payload.tagline, "tagline", 255)?;
+    let status = normalize_autopilot_enum(
+        payload.status,
+        "status",
+        &["active", "disabled", "archived"],
+    )?;
+    let visibility = normalize_autopilot_enum(
+        payload.visibility,
+        "visibility",
+        &["private", "discoverable", "public"],
+    )?;
+
+    let autopilot = state
+        ._domain_store
+        .create_autopilot(CreateAutopilotInput {
+            owner_user_id: bundle.user.id.clone(),
+            owner_display_name: bundle.user.name.clone(),
+            display_name,
+            handle_seed,
+            avatar,
+            status,
+            visibility,
+            tagline,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.created", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("handle", autopilot.autopilot.handle.clone())
+            .with_attribute("status", autopilot.autopilot.status.clone())
+            .with_attribute("visibility", autopilot.autopilot.visibility.clone()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.created", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "data": autopilot_aggregate_payload(&autopilot),
+        })),
+    ))
+}
+
+async fn show_autopilot(
+    State(state): State<AppState>,
+    Path(autopilot): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let reference = normalize_autopilot_reference(autopilot)?;
+
+    let autopilot = state
+        ._domain_store
+        .resolve_owned_autopilot(&bundle.user.id, &reference)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.viewed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("handle", autopilot.autopilot.handle.clone()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.viewed", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": autopilot_aggregate_payload(&autopilot),
+        })),
+    ))
+}
+
+async fn update_autopilot(
+    State(state): State<AppState>,
+    Path(autopilot): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<UpdateAutopilotRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let reference = normalize_autopilot_reference(autopilot)?;
+    let field_count = autopilot_update_field_count(
+        payload.display_name.is_some(),
+        payload.status.is_some(),
+        payload.visibility.is_some(),
+        payload.avatar.is_some(),
+        payload.tagline.is_some(),
+        payload.profile.is_some(),
+        payload.policy.is_some(),
+    );
+
+    let display_name = normalize_optional_display_name(payload.display_name, "displayName")?;
+    let status = normalize_autopilot_enum(
+        payload.status,
+        "status",
+        &["active", "disabled", "archived"],
+    )?;
+    let visibility = normalize_autopilot_enum(
+        payload.visibility,
+        "visibility",
+        &["private", "discoverable", "public"],
+    )?;
+    let avatar = normalize_optional_bounded_string(payload.avatar, "avatar", 255)?;
+    let tagline = normalize_optional_bounded_string(payload.tagline, "tagline", 255)?;
+    let profile = payload
+        .profile
+        .map(normalize_autopilot_profile_update)
+        .transpose()?;
+    let policy = payload
+        .policy
+        .map(normalize_autopilot_policy_update)
+        .transpose()?;
+
+    let updated = state
+        ._domain_store
+        .update_owned_autopilot(
+            &bundle.user.id,
+            &reference,
+            UpdateAutopilotInput {
+                display_name,
+                avatar,
+                status,
+                visibility,
+                tagline,
+                profile,
+                policy,
+            },
+        )
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.updated", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("autopilot_id", updated.autopilot.id.clone())
+            .with_attribute("field_count", field_count.to_string())
+            .with_attribute("status", updated.autopilot.status.clone())
+            .with_attribute("visibility", updated.autopilot.visibility.clone()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.updated", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": autopilot_aggregate_payload(&updated),
+        })),
+    ))
 }
 
 async fn settings_profile_show(
@@ -4704,6 +5011,264 @@ fn normalize_optional_display_name(
     Ok(normalized)
 }
 
+fn normalize_autopilot_handle_seed(
+    value: Option<String>,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = value.and_then(non_empty);
+    let Some(handle) = normalized.as_ref() else {
+        return Ok(None);
+    };
+
+    if handle.chars().count() > 64 {
+        return Err(validation_error(
+            "handle",
+            "Handle may not be greater than 64 characters.",
+        ));
+    }
+
+    let valid = handle
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-'));
+    if !valid {
+        return Err(validation_error("handle", "Handle format is invalid."));
+    }
+
+    Ok(normalized)
+}
+
+fn normalize_optional_bounded_string(
+    value: Option<String>,
+    field: &'static str,
+    max_chars: usize,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = value.and_then(non_empty);
+    if let Some(candidate) = normalized.as_deref() {
+        if candidate.chars().count() > max_chars {
+            return Err(validation_error(
+                field,
+                &format!("Value may not be greater than {max_chars} characters."),
+            ));
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_autopilot_enum(
+    value: Option<String>,
+    field: &'static str,
+    allowed: &[&str],
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = value.and_then(non_empty);
+    let Some(candidate) = normalized.as_deref() else {
+        return Ok(None);
+    };
+
+    if !allowed
+        .iter()
+        .any(|allowed_value| allowed_value == &candidate)
+    {
+        return Err(validation_error(
+            field,
+            &format!("Value must be one of: {}.", allowed.join(", ")),
+        ));
+    }
+
+    Ok(normalized)
+}
+
+fn validate_optional_json_array(
+    value: Option<serde_json::Value>,
+    field: &'static str,
+) -> Result<Option<serde_json::Value>, (StatusCode, Json<ApiErrorResponse>)> {
+    match value {
+        Some(value) if !value.is_array() => Err(validation_error(field, "Value must be an array.")),
+        Some(value) => Ok(Some(value)),
+        None => Ok(None),
+    }
+}
+
+fn validate_optional_string_list_max(
+    values: Option<Vec<String>>,
+    field: &'static str,
+    max_chars: usize,
+) -> Result<Option<Vec<String>>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(values) = values else {
+        return Ok(None);
+    };
+
+    for value in &values {
+        if value.chars().count() > max_chars {
+            return Err(validation_error(
+                field,
+                &format!("Array entries may not be greater than {max_chars} characters."),
+            ));
+        }
+    }
+
+    Ok(Some(values))
+}
+
+fn normalize_autopilot_profile_update(
+    payload: UpdateAutopilotProfilePayload,
+) -> Result<UpsertAutopilotProfileInput, (StatusCode, Json<ApiErrorResponse>)> {
+    let owner_display_name =
+        normalize_optional_display_name(payload.owner_display_name, "profile.ownerDisplayName")?;
+    let persona_summary = payload.persona_summary.and_then(non_empty);
+    let autopilot_voice =
+        normalize_optional_bounded_string(payload.autopilot_voice, "profile.autopilotVoice", 64)?;
+    let principles = validate_optional_json_array(payload.principles, "profile.principles")?;
+    let preferences = validate_optional_json_array(payload.preferences, "profile.preferences")?;
+    let onboarding_answers =
+        validate_optional_json_array(payload.onboarding_answers, "profile.onboardingAnswers")?;
+
+    if matches!(payload.schema_version, Some(0)) {
+        return Err(validation_error(
+            "profile.schemaVersion",
+            "Schema version must be greater than or equal to 1.",
+        ));
+    }
+
+    Ok(UpsertAutopilotProfileInput {
+        owner_display_name,
+        persona_summary,
+        autopilot_voice,
+        principles,
+        preferences,
+        onboarding_answers,
+        schema_version: payload.schema_version,
+    })
+}
+
+fn normalize_autopilot_policy_update(
+    payload: UpdateAutopilotPolicyPayload,
+) -> Result<UpsertAutopilotPolicyInput, (StatusCode, Json<ApiErrorResponse>)> {
+    let model_provider =
+        normalize_optional_bounded_string(payload.model_provider, "policy.modelProvider", 64)?;
+    let model = normalize_optional_bounded_string(payload.model, "policy.model", 128)?;
+    let tool_allowlist =
+        validate_optional_string_list_max(payload.tool_allowlist, "policy.toolAllowlist", 128)?;
+    let tool_denylist =
+        validate_optional_string_list_max(payload.tool_denylist, "policy.toolDenylist", 128)?;
+    let l402_allowed_hosts = validate_optional_string_list_max(
+        payload.l402_allowed_hosts,
+        "policy.l402AllowedHosts",
+        255,
+    )?;
+    let data_policy = validate_optional_json_array(payload.data_policy, "policy.dataPolicy")?;
+
+    if matches!(payload.l402_max_spend_msats_per_call, Some(0)) {
+        return Err(validation_error(
+            "policy.l402MaxSpendMsatsPerCall",
+            "Value must be greater than or equal to 1.",
+        ));
+    }
+    if matches!(payload.l402_max_spend_msats_per_day, Some(0)) {
+        return Err(validation_error(
+            "policy.l402MaxSpendMsatsPerDay",
+            "Value must be greater than or equal to 1.",
+        ));
+    }
+
+    Ok(UpsertAutopilotPolicyInput {
+        model_provider,
+        model,
+        tool_allowlist,
+        tool_denylist,
+        l402_require_approval: payload.l402_require_approval,
+        l402_max_spend_msats_per_call: payload.l402_max_spend_msats_per_call,
+        l402_max_spend_msats_per_day: payload.l402_max_spend_msats_per_day,
+        l402_allowed_hosts,
+        data_policy,
+    })
+}
+
+fn normalize_autopilot_reference(
+    autopilot: String,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let reference = autopilot.trim().to_string();
+    if reference.is_empty() {
+        return Err(validation_error(
+            "autopilot",
+            "Autopilot reference is required.",
+        ));
+    }
+    Ok(reference)
+}
+
+fn autopilot_update_field_count(
+    has_display_name: bool,
+    has_status: bool,
+    has_visibility: bool,
+    has_avatar: bool,
+    has_tagline: bool,
+    has_profile_update: bool,
+    has_policy_update: bool,
+) -> usize {
+    let mut count = 0usize;
+    if has_display_name {
+        count += 1;
+    }
+    if has_status {
+        count += 1;
+    }
+    if has_visibility {
+        count += 1;
+    }
+    if has_avatar {
+        count += 1;
+    }
+    if has_tagline {
+        count += 1;
+    }
+    if has_profile_update {
+        count += 1;
+    }
+    if has_policy_update {
+        count += 1;
+    }
+    count
+}
+
+fn autopilot_aggregate_payload(aggregate: &AutopilotAggregate) -> serde_json::Value {
+    serde_json::json!({
+        "id": aggregate.autopilot.id.clone(),
+        "handle": aggregate.autopilot.handle.clone(),
+        "displayName": aggregate.autopilot.display_name.clone(),
+        "status": aggregate.autopilot.status.clone(),
+        "visibility": aggregate.autopilot.visibility.clone(),
+        "ownerUserId": aggregate.autopilot.owner_user_id.clone(),
+        "avatar": aggregate.autopilot.avatar.clone(),
+        "tagline": aggregate.autopilot.tagline.clone(),
+        "configVersion": aggregate.autopilot.config_version,
+        "profile": {
+            "ownerDisplayName": aggregate.profile.owner_display_name.clone(),
+            "personaSummary": aggregate.profile.persona_summary.clone(),
+            "autopilotVoice": aggregate.profile.autopilot_voice.clone(),
+            "principles": aggregate.profile.principles.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+            "preferences": aggregate.profile.preferences.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+            "onboardingAnswers": if aggregate.profile.onboarding_answers.is_array() {
+                aggregate.profile.onboarding_answers.clone()
+            } else {
+                serde_json::Value::Array(Vec::new())
+            },
+            "schemaVersion": aggregate.profile.schema_version,
+        },
+        "policy": {
+            "modelProvider": aggregate.policy.model_provider.clone(),
+            "model": aggregate.policy.model.clone(),
+            "toolAllowlist": aggregate.policy.tool_allowlist.clone(),
+            "toolDenylist": aggregate.policy.tool_denylist.clone(),
+            "l402RequireApproval": aggregate.policy.l402_require_approval,
+            "l402MaxSpendMsatsPerCall": aggregate.policy.l402_max_spend_msats_per_call,
+            "l402MaxSpendMsatsPerDay": aggregate.policy.l402_max_spend_msats_per_day,
+            "l402AllowedHosts": aggregate.policy.l402_allowed_hosts.clone(),
+            "dataPolicy": aggregate.policy.data_policy.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+        },
+        "createdAt": timestamp(aggregate.autopilot.created_at),
+        "updatedAt": timestamp(aggregate.autopilot.updated_at),
+    })
+}
+
 fn user_handle_from_email(email: &str) -> String {
     let local = email.split('@').next().unwrap_or_default();
     let mut output = String::with_capacity(local.len().min(64));
@@ -6663,6 +7228,206 @@ mod tests {
             Some(1)
         );
         assert_eq!(me_body["data"]["chatThreads"][0]["id"], "thread-b");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn autopilot_crud_routes_support_create_list_show_and_update() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "autopilot-owner@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"handle":"ep212-bot","displayName":"EP212 Bot","status":"active","visibility":"private"}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let autopilot_id = create_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(autopilot_id.starts_with("ap_"));
+        assert_eq!(create_body["data"]["handle"], json!("ep212-bot"));
+        assert_eq!(create_body["data"]["displayName"], json!("EP212 Bot"));
+        assert_eq!(create_body["data"]["configVersion"], json!(1));
+
+        let list_request = Request::builder()
+            .method("GET")
+            .uri("/api/autopilots?limit=200")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_response = app.clone().oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = read_json(list_response).await?;
+        let listed = list_body["data"].as_array().cloned().unwrap_or_default();
+        assert!(!listed.is_empty());
+        assert!(
+            listed
+                .iter()
+                .any(|row| row["id"] == json!(autopilot_id.clone()))
+        );
+
+        let show_by_id_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_by_id_response = app.clone().oneshot(show_by_id_request).await?;
+        assert_eq!(show_by_id_response.status(), StatusCode::OK);
+        let show_by_id_body = read_json(show_by_id_response).await?;
+        assert_eq!(show_by_id_body["data"]["handle"], json!("ep212-bot"));
+
+        let show_by_handle_request = Request::builder()
+            .method("GET")
+            .uri("/api/autopilots/ep212-bot")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_by_handle_response = app.clone().oneshot(show_by_handle_request).await?;
+        assert_eq!(show_by_handle_response.status(), StatusCode::OK);
+        let show_by_handle_body = read_json(show_by_handle_response).await?;
+        assert_eq!(
+            show_by_handle_body["data"]["id"],
+            json!(autopilot_id.clone())
+        );
+
+        let update_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"displayName":"EP212 Bot Updated","profile":{"ownerDisplayName":"Chris","personaSummary":"Pragmatic and concise","autopilotVoice":"calm and direct"},"policy":{"toolAllowlist":["openagents_api"],"toolDenylist":["lightning_l402_fetch"],"l402RequireApproval":true,"l402MaxSpendMsatsPerCall":100000,"l402AllowedHosts":["sats4ai.com"]}}"#,
+            ))?;
+        let update_response = app.clone().oneshot(update_request).await?;
+        assert_eq!(update_response.status(), StatusCode::OK);
+        let update_body = read_json(update_response).await?;
+        assert_eq!(
+            update_body["data"]["displayName"],
+            json!("EP212 Bot Updated")
+        );
+        assert_eq!(update_body["data"]["configVersion"], json!(2));
+        assert_eq!(
+            update_body["data"]["profile"]["ownerDisplayName"],
+            json!("Chris")
+        );
+        assert_eq!(
+            update_body["data"]["policy"]["toolAllowlist"][0],
+            json!("openagents_api")
+        );
+        assert_eq!(
+            update_body["data"]["policy"]["l402MaxSpendMsatsPerCall"],
+            json!(100000)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn autopilot_routes_enforce_owner_boundary() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let owner_token =
+            authenticate_token(app.clone(), "autopilot-owner-a@openagents.com").await?;
+        let other_token =
+            authenticate_token(app.clone(), "autopilot-owner-b@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {owner_token}"))
+            .body(Body::from(
+                r#"{"handle":"owner-bot","displayName":"Owner Bot"}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let autopilot_id = create_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let other_show_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::empty())?;
+        let other_show_response = app.clone().oneshot(other_show_request).await?;
+        assert_eq!(other_show_response.status(), StatusCode::NOT_FOUND);
+
+        let other_update_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::from(r#"{"displayName":"Hacked"}"#))?;
+        let other_update_response = app.clone().oneshot(other_update_request).await?;
+        assert_eq!(other_update_response.status(), StatusCode::NOT_FOUND);
+
+        let other_show_handle_request = Request::builder()
+            .method("GET")
+            .uri("/api/autopilots/owner-bot")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::empty())?;
+        let other_show_handle_response = app.oneshot(other_show_handle_request).await?;
+        assert_eq!(other_show_handle_response.status(), StatusCode::NOT_FOUND);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn autopilot_routes_enforce_validation_semantics() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "autopilot-validation@openagents.com").await?;
+
+        let bad_create_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"handle":"invalid handle!"}"#))?;
+        let bad_create_response = app.clone().oneshot(bad_create_request).await?;
+        assert_eq!(
+            bad_create_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let bad_create_body = read_json(bad_create_response).await?;
+        assert_eq!(bad_create_body["error"]["code"], json!("invalid_request"));
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"handle":"valid-bot"}"#))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let autopilot_id = create_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let bad_update_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"status":"ACTIVE","profile":{"schemaVersion":0},"policy":{"l402MaxSpendMsatsPerCall":0}}"#,
+            ))?;
+        let bad_update_response = app.oneshot(bad_update_request).await?;
+        assert_eq!(
+            bad_update_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let bad_update_body = read_json(bad_update_response).await?;
+        assert_eq!(bad_update_body["error"]["code"], json!("invalid_request"));
 
         Ok(())
     }

@@ -10,6 +10,8 @@ pub const ROUTE_AUTH_SESSIONS: &str = "/api/auth/sessions";
 pub const ROUTE_AUTH_SESSIONS_REVOKE: &str = "/api/auth/sessions/revoke";
 pub const ROUTE_AUTH_LOGOUT: &str = "/api/auth/logout";
 pub const ROUTE_ME: &str = "/api/me";
+pub const ROUTE_AUTOPILOTS: &str = "/api/autopilots";
+pub const ROUTE_AUTOPILOTS_BY_ID: &str = "/api/autopilots/:autopilot";
 pub const ROUTE_TOKENS: &str = "/api/tokens";
 pub const ROUTE_TOKENS_CURRENT: &str = "/api/tokens/current";
 pub const ROUTE_TOKENS_BY_ID: &str = "/api/tokens/:token_id";
@@ -154,6 +156,54 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("me"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AUTOPILOTS,
+        operation_id: "autopilotsList",
+        summary: "List autopilots owned by the authenticated user.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("autopilot"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AUTOPILOTS,
+        operation_id: "autopilotsCreate",
+        summary: "Create an autopilot for the authenticated user.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("autopilot_create"),
+        response_example: Some("autopilot"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AUTOPILOTS_BY_ID,
+        operation_id: "autopilotsShow",
+        summary: "Read one owned autopilot by id or handle.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("autopilot"),
+    },
+    OpenApiContract {
+        method: "patch",
+        route_path: ROUTE_AUTOPILOTS_BY_ID,
+        operation_id: "autopilotsUpdate",
+        summary: "Update one owned autopilot.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("autopilot_update"),
+        response_example: Some("autopilot"),
     },
     OpenApiContract {
         method: "get",
@@ -731,6 +781,24 @@ fn request_example(key: &str) -> Option<Value> {
             "path": "/chat/thread-1",
             "cohort_key": "user:123"
         })),
+        "autopilot_create" => Some(json!({
+            "handle": "ep212-bot",
+            "displayName": "EP212 Bot",
+            "status": "active",
+            "visibility": "private"
+        })),
+        "autopilot_update" => Some(json!({
+            "displayName": "EP212 Bot Updated",
+            "profile": {
+                "ownerDisplayName": "Chris",
+                "personaSummary": "Pragmatic and concise",
+                "autopilotVoice": "calm and direct"
+            },
+            "policy": {
+                "toolAllowlist": ["openagents_api"],
+                "l402RequireApproval": true
+            }
+        })),
         _ => None,
     }
 }
@@ -829,6 +897,41 @@ fn response_example(key: &str) -> Option<Value> {
                         "updatedAt": "2026-02-22T00:00:00Z"
                     }
                 ]
+            }
+        })),
+        "autopilot" => Some(json!({
+            "data": {
+                "id": "ap_123",
+                "handle": "ep212-bot",
+                "displayName": "EP212 Bot",
+                "status": "active",
+                "visibility": "private",
+                "ownerUserId": "usr_123",
+                "avatar": null,
+                "tagline": null,
+                "configVersion": 2,
+                "profile": {
+                    "ownerDisplayName": "Chris",
+                    "personaSummary": "Pragmatic and concise",
+                    "autopilotVoice": "calm and direct",
+                    "principles": [],
+                    "preferences": [],
+                    "onboardingAnswers": [],
+                    "schemaVersion": 1
+                },
+                "policy": {
+                    "modelProvider": null,
+                    "model": null,
+                    "toolAllowlist": ["openagents_api"],
+                    "toolDenylist": [],
+                    "l402RequireApproval": true,
+                    "l402MaxSpendMsatsPerCall": null,
+                    "l402MaxSpendMsatsPerDay": null,
+                    "l402AllowedHosts": [],
+                    "dataPolicy": []
+                },
+                "createdAt": "2026-02-22T00:00:00Z",
+                "updatedAt": "2026-02-22T00:00:00Z"
             }
         })),
         "tokens_list" => Some(json!({
