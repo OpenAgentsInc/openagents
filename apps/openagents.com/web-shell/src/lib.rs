@@ -37,7 +37,9 @@ mod wasm {
     use wasm_bindgen::JsCast;
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_futures::spawn_local;
-    use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement};
+    use web_sys::{
+        HtmlAnchorElement, HtmlCanvasElement, HtmlElement, HtmlInputElement, MouseEvent,
+    };
     use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
     use crate::codex_thread::{CodexMessageRole, CodexThreadMessage, CodexThreadState};
@@ -63,6 +65,8 @@ mod wasm {
         static AUTH_VERIFY_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static AUTH_RESTORE_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static AUTH_LOGOUT_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
 
     const AUTH_STORAGE_KEY: &str = "openagents.web.auth.v1";
@@ -548,6 +552,12 @@ mod wasm {
     }
 
     #[wasm_bindgen]
+    pub fn navigate(path: String) {
+        let route = AppRoute::from_path(&path);
+        queue_intent(CommandIntent::Navigate { route });
+    }
+
+    #[wasm_bindgen]
     pub fn codex_send_message(text: String) {
         let Some(thread_id) = active_thread_id() else {
             CODEX_THREAD_STATE.with(|state| {
@@ -586,6 +596,7 @@ mod wasm {
 
         let canvas = ensure_shell_dom()?;
         ensure_codex_chat_dom()?;
+        install_browser_navigation_handlers();
 
         let current_path = current_pathname();
         let persisted_sync_state = restore_persisted_sync_state().await;
@@ -617,6 +628,7 @@ mod wasm {
             let pending_intents = state.intent_queue.len();
             update_diagnostics_from_state(route_path, pending_intents);
         });
+        APP_STATE.with(|state| replace_route_in_browser_history(&state.borrow().route));
         schedule_management_surface_refresh();
         render_codex_chat_dom();
 
@@ -844,16 +856,7 @@ mod wasm {
                 send_thread_message_flow(thread_id, text).await
             }
             CommandIntent::Navigate { route } => {
-                APP_STATE.with(|state| {
-                    let mut state = state.borrow_mut();
-                    let _ = apply_action(&mut state, AppAction::Navigate { route });
-                    update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
-                });
-                let state = snapshot_state();
-                sync_thread_route_from_state(&state);
-                schedule_codex_history_refresh();
-                schedule_management_surface_refresh();
-                render_codex_chat_dom();
+                apply_route_transition(route, true);
                 Ok(())
             }
         }
@@ -1510,10 +1513,195 @@ mod wasm {
         });
     }
 
+    fn apply_route_transition(route: AppRoute, push_history: bool) {
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let _ = apply_action(&mut state, AppAction::Navigate { route });
+            update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
+        });
+        let state = snapshot_state();
+        if push_history {
+            push_route_to_browser_history(&state.route);
+        }
+        sync_thread_route_from_state(&state);
+        schedule_codex_history_refresh();
+        schedule_management_surface_refresh();
+        render_codex_chat_dom();
+    }
+
+    fn install_browser_navigation_handlers() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+
+        ROUTE_POPSTATE_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                let route = AppRoute::from_path(&current_pathname());
+                apply_route_transition(route, false);
+            }));
+            let _ = window
+                .add_event_listener_with_callback("popstate", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ROUTE_LINK_CLICK_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |event| {
+                intercept_internal_link_click(event);
+            }));
+            let _ = document.add_event_listener_with_callback_and_bool(
+                "click",
+                callback.as_ref().unchecked_ref(),
+                true,
+            );
+            *slot.borrow_mut() = Some(callback);
+        });
+    }
+
+    fn intercept_internal_link_click(event: web_sys::Event) {
+        if event.default_prevented() {
+            return;
+        }
+        let Some(mouse_event) = event.dyn_ref::<MouseEvent>() else {
+            return;
+        };
+        if mouse_event.button() != 0
+            || mouse_event.meta_key()
+            || mouse_event.ctrl_key()
+            || mouse_event.shift_key()
+            || mouse_event.alt_key()
+        {
+            return;
+        }
+
+        let Some(anchor) = anchor_from_event(&event) else {
+            return;
+        };
+        let href_attribute = anchor.get_attribute("href").unwrap_or_default();
+        if href_attribute.trim().is_empty() || href_attribute.starts_with('#') {
+            return;
+        }
+        if anchor.has_attribute("download") {
+            return;
+        }
+        let target = anchor.target();
+        if !target.is_empty() && target != "_self" {
+            return;
+        }
+
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(origin) = window.location().origin() else {
+            return;
+        };
+
+        let href = anchor.href();
+        if href.is_empty() {
+            return;
+        }
+
+        let path_with_query_and_hash = if href.starts_with(&origin) {
+            href.strip_prefix(&origin).unwrap_or_default().to_string()
+        } else if href.starts_with('/') {
+            href
+        } else {
+            return;
+        };
+
+        let path_before_query = path_with_query_and_hash
+            .split('?')
+            .next()
+            .unwrap_or_default();
+        let path = path_before_query
+            .split('#')
+            .next()
+            .unwrap_or(path_before_query);
+        if path.is_empty() || !is_internal_shell_route_path(path) {
+            return;
+        }
+
+        event.prevent_default();
+        let route = AppRoute::from_path(path);
+        apply_route_transition(route, true);
+    }
+
+    fn anchor_from_event(event: &web_sys::Event) -> Option<HtmlAnchorElement> {
+        let composed_path = event.composed_path();
+        for index in 0..composed_path.length() {
+            let value = composed_path.get(index);
+            if let Ok(anchor) = value.dyn_into::<HtmlAnchorElement>() {
+                return Some(anchor);
+            }
+        }
+        None
+    }
+
+    fn is_internal_shell_route_path(path: &str) -> bool {
+        path == "/"
+            || path == "/feed"
+            || path == "/chat"
+            || path.starts_with("/chat/")
+            || path == "/login"
+            || path == "/register"
+            || path == "/authenticate"
+            || path == "/workers"
+            || path == "/debug"
+            || path == "/onboarding"
+            || path.starts_with("/onboarding/")
+            || path == "/account"
+            || path.starts_with("/account/")
+            || path == "/settings"
+            || path.starts_with("/settings/")
+            || path == "/l402"
+            || path.starts_with("/l402/")
+            || path == "/billing"
+            || path.starts_with("/billing/")
+            || path == "/admin"
+            || path.starts_with("/admin/")
+    }
+
+    fn push_route_to_browser_history(route: &AppRoute) {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(history) = window.history() else {
+            return;
+        };
+        let route_path = route.to_path();
+        if current_pathname() == route_path {
+            return;
+        }
+        let _ = history.push_state_with_url(&JsValue::NULL, "", Some(&route_path));
+    }
+
+    fn replace_route_in_browser_history(route: &AppRoute) {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(history) = window.history() else {
+            return;
+        };
+        let route_path = route.to_path();
+        if current_pathname() == route_path {
+            return;
+        }
+        let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&route_path));
+    }
+
     fn thread_id_from_route(route: &AppRoute) -> Option<String> {
         match route {
             AppRoute::Chat { thread_id } => thread_id.clone(),
             AppRoute::Home
+            | AppRoute::Feed
             | AppRoute::Login
             | AppRoute::Register
             | AppRoute::Authenticate
@@ -1538,7 +1726,10 @@ mod wasm {
     }
 
     fn route_is_codex_chat_surface(route: &AppRoute) -> bool {
-        matches!(route, AppRoute::Home | AppRoute::Chat { .. })
+        matches!(
+            route,
+            AppRoute::Home | AppRoute::Feed | AppRoute::Chat { .. }
+        )
     }
 
     fn route_is_auth_surface(route: &AppRoute) -> bool {
@@ -3804,6 +3995,7 @@ mod wasm {
             },
             AppRoute::Workers => "Workers".to_string(),
             AppRoute::Debug => "Debug".to_string(),
+            AppRoute::Feed => "Feed".to_string(),
             AppRoute::Home => "Codex".to_string(),
         }
     }

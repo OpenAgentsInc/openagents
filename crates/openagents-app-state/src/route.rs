@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppRoute {
     Home,
+    Feed,
     Chat {
         thread_id: Option<String>,
     },
@@ -49,6 +50,9 @@ impl AppRoute {
         if path == "/login" {
             return Self::Login;
         }
+        if path == "/feed" {
+            return Self::Feed;
+        }
         if path == "/register" {
             return Self::Register;
         }
@@ -92,6 +96,7 @@ impl AppRoute {
     pub fn to_path(&self) -> String {
         match self {
             Self::Home => "/".to_string(),
+            Self::Feed => "/feed".to_string(),
             Self::Login => "/login".to_string(),
             Self::Register => "/register".to_string(),
             Self::Authenticate => "/authenticate".to_string(),
@@ -161,6 +166,7 @@ mod tests {
             AppRoute::Account { section: None }
         );
         assert_eq!(AppRoute::from_path("/login"), AppRoute::Login);
+        assert_eq!(AppRoute::from_path("/feed"), AppRoute::Feed);
         assert_eq!(AppRoute::from_path("/register"), AppRoute::Register);
         assert_eq!(AppRoute::from_path("/authenticate"), AppRoute::Authenticate);
         assert_eq!(
@@ -209,6 +215,7 @@ mod tests {
     fn account_settings_and_admin_routes_round_trip() {
         let routes = vec![
             AppRoute::Login,
+            AppRoute::Feed,
             AppRoute::Register,
             AppRoute::Authenticate,
             AppRoute::Onboarding {
