@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use axum::body::Body;
 use axum::body::to_bytes;
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{Form, Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
@@ -64,6 +64,9 @@ use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
 const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
+const AUTH_ACCESS_COOKIE_NAME: &str = "oa_access_token";
+const AUTH_REFRESH_COOKIE_NAME: &str = "oa_refresh_token";
+const LOCAL_TEST_AUTH_COOKIE_NAME: &str = "oa_local_test_auth";
 const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
@@ -81,6 +84,10 @@ const MAINTENANCE_BYPASS_QUERY_PARAM: &str = "maintenance_bypass";
 const MAINTENANCE_CACHE_CONTROL: &str = "no-store, no-cache, must-revalidate";
 const THROTTLE_AUTH_EMAIL_LIMIT: usize = 30;
 const THROTTLE_AUTH_EMAIL_WINDOW_SECONDS: i64 = 60;
+const THROTTLE_LOGIN_EMAIL_LIMIT: usize = 6;
+const THROTTLE_LOGIN_EMAIL_WINDOW_SECONDS: i64 = 60;
+const THROTTLE_LOGIN_VERIFY_LIMIT: usize = 10;
+const THROTTLE_LOGIN_VERIFY_WINDOW_SECONDS: i64 = 60;
 const THROTTLE_THREAD_MESSAGE_LIMIT: usize = 60;
 const THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS: i64 = 60;
 const RUNTIME_INTERNAL_NONCE_GRACE_SECONDS: i64 = 5;
@@ -161,12 +168,24 @@ struct SendEmailCodeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct LoginEmailForm {
+    email: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct VerifyEmailCodeRequest {
     code: String,
     #[serde(default)]
     challenge_id: Option<String>,
     #[serde(default, alias = "deviceId")]
     device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginVerifyForm {
+    code: String,
+    #[serde(default, alias = "challengeId")]
+    challenge_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -260,6 +279,17 @@ struct SendThreadMessageRequest {
     text: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct LocalTestLoginQuery {
+    email: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    expires: Option<i64>,
+    #[serde(default)]
+    signature: Option<String>,
+}
+
 pub fn build_router(config: Config) -> Router {
     build_router_with_observability(config, Observability::default())
 }
@@ -287,10 +317,38 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let compatibility_state = state.clone();
     let maintenance_state = state.clone();
     let auth_email_throttle_state = state.clone();
+    let login_email_throttle_state = state.clone();
+    let login_verify_throttle_state = state.clone();
+    let local_test_login_throttle_state = state.clone();
     let thread_message_throttle_state = state.clone();
     let authenticated_routes_state = state.clone();
     let workos_session_state = state.clone();
     let admin_state = state.clone();
+
+    let web_auth_router = Router::new()
+        .route("/login", get(login_page))
+        .route(
+            "/login/email",
+            post(login_email).route_layer(middleware::from_fn_with_state(
+                login_email_throttle_state,
+                throttle_login_email_gate,
+            )),
+        )
+        .route(
+            "/login/verify",
+            post(login_verify).route_layer(middleware::from_fn_with_state(
+                login_verify_throttle_state,
+                throttle_login_verify_gate,
+            )),
+        )
+        .route("/logout", post(web_logout))
+        .route(
+            "/internal/test-login",
+            get(local_test_login).route_layer(middleware::from_fn_with_state(
+                local_test_login_throttle_state,
+                throttle_auth_email_gate,
+            )),
+        );
 
     let public_api_router = Router::new()
         .route(
@@ -360,6 +418,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/", get(web_shell_entry))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
+        .merge(web_auth_router)
         .merge(public_api_router)
         .merge(protected_api_router)
         .route(ROUTE_OPENAPI_JSON, get(openapi_spec))
@@ -584,6 +643,57 @@ async fn throttle_auth_email_gate(
     }
 }
 
+async fn throttle_login_email_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let key = format!("auth.web.email:{}", request_identity_key(request.headers()));
+    match consume_throttle_token(
+        &state.throttle_state,
+        &key,
+        THROTTLE_LOGIN_EMAIL_LIMIT,
+        THROTTLE_LOGIN_EMAIL_WINDOW_SECONDS,
+    )
+    .await
+    {
+        Ok(()) => next.run(request).await,
+        Err(retry_after_seconds) => error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            format!("Too many requests. Retry in {retry_after_seconds}s."),
+        )
+        .into_response(),
+    }
+}
+
+async fn throttle_login_verify_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let key = format!(
+        "auth.web.verify:{}",
+        request_identity_key(request.headers())
+    );
+    match consume_throttle_token(
+        &state.throttle_state,
+        &key,
+        THROTTLE_LOGIN_VERIFY_LIMIT,
+        THROTTLE_LOGIN_VERIFY_WINDOW_SECONDS,
+    )
+    .await
+    {
+        Ok(()) => next.run(request).await,
+        Err(retry_after_seconds) => error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            format!("Too many requests. Retry in {retry_after_seconds}s."),
+        )
+        .into_response(),
+    }
+}
+
 async fn throttle_thread_message_gate(
     State(state): State<AppState>,
     request: Request,
@@ -765,7 +875,7 @@ async fn session_bundle_from_headers(
     headers: &HeaderMap,
 ) -> Result<SessionBundle, (StatusCode, Json<ApiErrorResponse>)> {
     let access_token =
-        bearer_token(headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+        access_token_from_headers(headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
     state
         .auth
         .session_from_access_token(&access_token)
@@ -1342,6 +1452,231 @@ fn is_hashed_asset_path(path: &str) -> bool {
     };
 
     hash_part.len() >= 8 && hash_part.chars().all(|char| char.is_ascii_alphanumeric())
+}
+
+async fn login_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        return Ok(Redirect::temporary("/").into_response());
+    }
+
+    web_shell_entry(State(state), headers, uri)
+        .await
+        .map(IntoResponse::into_response)
+}
+
+async fn login_email(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<LoginEmailForm>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        return Ok(Redirect::temporary("/").into_response());
+    }
+
+    let request_id = request_id(&headers);
+    let challenge = state
+        .auth
+        .start_challenge(payload.email)
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.web.challenge.requested", request_id.clone())
+            .with_attribute("provider", state.auth.provider_name())
+            .with_attribute(
+                "email_domain",
+                email_domain(&challenge.email).unwrap_or_else(|| "unknown".to_string()),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("auth.web.challenge.requested", &request_id);
+
+    let cookie = challenge_cookie(
+        &challenge.challenge_id,
+        state.config.auth_challenge_ttl_seconds,
+    );
+
+    let mut response = Redirect::temporary("/login?status=code-sent").into_response();
+    append_set_cookie_header(&mut response, &cookie)?;
+    Ok(response)
+}
+
+async fn login_verify(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<LoginVerifyForm>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        return Ok(Redirect::temporary("/").into_response());
+    }
+
+    let request_id = request_id(&headers);
+    let challenge_id = payload
+        .challenge_id
+        .and_then(non_empty)
+        .or_else(|| extract_cookie_value(&headers, CHALLENGE_COOKIE_NAME));
+
+    let challenge_id = match challenge_id {
+        Some(value) => value,
+        None => {
+            return Err(validation_error(
+                "code",
+                "Your sign-in code expired. Request a new code.",
+            ));
+        }
+    };
+
+    let ip_address = header_string(&headers, HEADER_X_FORWARDED_FOR).unwrap_or_default();
+    let user_agent = header_string(&headers, "user-agent").unwrap_or_default();
+    let verified = state
+        .auth
+        .verify_challenge(
+            &challenge_id,
+            payload.code,
+            Some("openagents-web"),
+            header_string(&headers, "x-device-id").as_deref(),
+            &ip_address,
+            &user_agent,
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.web.verify.completed", request_id.clone())
+            .with_user_id(verified.user.id.clone())
+            .with_session_id(verified.session.session_id.clone())
+            .with_org_id(verified.session.active_org_id.clone())
+            .with_device_id(verified.session.device_id.clone())
+            .with_attribute("provider", state.auth.provider_name())
+            .with_attribute("new_user", verified.new_user.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("auth.web.verify.completed", &request_id);
+
+    let mut response = Redirect::temporary("/").into_response();
+    append_set_cookie_header(
+        &mut response,
+        &auth_access_cookie(&verified.access_token, state.config.auth_access_ttl_seconds),
+    )?;
+    append_set_cookie_header(
+        &mut response,
+        &auth_refresh_cookie(
+            &verified.refresh_token,
+            state.config.auth_refresh_ttl_seconds,
+        ),
+    )?;
+    append_set_cookie_header(&mut response, &clear_cookie(CHALLENGE_COOKIE_NAME))?;
+    Ok(response)
+}
+
+async fn web_logout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token = access_token_from_headers(&headers);
+
+    if let Some(token) = access_token {
+        match state.auth.revoke_session_by_access_token(&token).await {
+            Ok(revoked) => {
+                propagate_runtime_revocation(
+                    &state,
+                    &request_id,
+                    vec![revoked.session_id],
+                    Vec::new(),
+                    SessionRevocationReason::UserRequested,
+                )
+                .await?;
+            }
+            Err(AuthError::Unauthorized { .. }) => {}
+            Err(error) => return Err(map_auth_error(error)),
+        }
+    }
+
+    let mut response = Redirect::temporary("/").into_response();
+    append_set_cookie_header(&mut response, &clear_cookie(AUTH_ACCESS_COOKIE_NAME))?;
+    append_set_cookie_header(&mut response, &clear_cookie(AUTH_REFRESH_COOKIE_NAME))?;
+    append_set_cookie_header(&mut response, &clear_cookie(LOCAL_TEST_AUTH_COOKIE_NAME))?;
+    append_set_cookie_header(&mut response, &clear_cookie(CHALLENGE_COOKIE_NAME))?;
+    Ok(response)
+}
+
+async fn local_test_login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    Query(payload): Query<LocalTestLoginQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        return Ok(Redirect::temporary("/").into_response());
+    }
+
+    if !state.config.auth_local_test_login_enabled {
+        return Err(not_found_error("Not found."));
+    }
+
+    let signing_key = state
+        .config
+        .auth_local_test_login_signing_key
+        .as_deref()
+        .ok_or_else(|| not_found_error("Not found."))?;
+    let signature = payload
+        .signature
+        .and_then(non_empty)
+        .ok_or_else(|| forbidden_error("Invalid signature."))?;
+    if signature.is_empty() {
+        return Err(forbidden_error("Invalid signature."));
+    }
+    let expires = payload.expires.unwrap_or_default();
+    if expires <= Utc::now().timestamp() {
+        return Err(forbidden_error("Invalid signature."));
+    }
+
+    if !local_test_login_signature_is_valid(&uri, signing_key) {
+        return Err(forbidden_error("Invalid signature."));
+    }
+
+    let email = non_empty(payload.email)
+        .ok_or_else(|| validation_error("email", "Invalid email."))?
+        .to_lowercase();
+    if !local_test_login_email_allowed(&email, &state.config.auth_local_test_login_allowed_emails) {
+        return Err(forbidden_error("Forbidden."));
+    }
+
+    let verified = state
+        .auth
+        .local_test_sign_in(
+            email,
+            payload.name.and_then(non_empty),
+            Some("openagents-web"),
+            header_string(&headers, "x-device-id").as_deref(),
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    let mut response = Redirect::temporary("/").into_response();
+    append_set_cookie_header(
+        &mut response,
+        &auth_access_cookie(&verified.access_token, state.config.auth_access_ttl_seconds),
+    )?;
+    append_set_cookie_header(
+        &mut response,
+        &auth_refresh_cookie(
+            &verified.refresh_token,
+            state.config.auth_refresh_ttl_seconds,
+        ),
+    )?;
+    append_set_cookie_header(
+        &mut response,
+        &local_test_auth_cookie(state.config.auth_refresh_ttl_seconds),
+    )?;
+    Ok(response)
 }
 
 async fn send_email_code(
@@ -2470,6 +2805,58 @@ fn query_param_value(query: Option<&str>, key: &str) -> Option<String> {
     None
 }
 
+fn local_test_login_signature_is_valid(uri: &axum::http::Uri, signing_key: &str) -> bool {
+    let provided_signature = query_param_value(uri.query(), "signature")
+        .map(|value| value.to_lowercase())
+        .unwrap_or_default();
+    if provided_signature.is_empty() {
+        return false;
+    }
+
+    let unsigned_query = uri
+        .query()
+        .unwrap_or_default()
+        .split('&')
+        .filter(|segment| !segment.trim().is_empty())
+        .filter(|segment| {
+            let mut pieces = segment.splitn(2, '=');
+            pieces.next().unwrap_or_default().trim() != "signature"
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+
+    let canonical_payload = if unsigned_query.is_empty() {
+        uri.path().to_string()
+    } else {
+        format!("{}?{unsigned_query}", uri.path())
+    };
+
+    let mut mac = match HmacSha256::new_from_slice(signing_key.as_bytes()) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    mac.update(canonical_payload.as_bytes());
+    let expected = sha256_bytes_hex(&mac.finalize().into_bytes());
+
+    expected == provided_signature
+}
+
+fn local_test_login_email_allowed(email: &str, allowed_emails: &[String]) -> bool {
+    if allowed_emails.is_empty() {
+        return false;
+    }
+
+    let normalized_email = email.trim().to_lowercase();
+    if normalized_email.is_empty() {
+        return false;
+    }
+
+    allowed_emails.iter().any(|allowed| {
+        let candidate = allowed.trim().to_lowercase();
+        !candidate.is_empty() && candidate == normalized_email
+    })
+}
+
 fn maintenance_redirect_location(uri: &axum::http::Uri) -> String {
     let path = uri.path();
     let query = uri.query().unwrap_or_default();
@@ -2547,8 +2934,36 @@ fn challenge_cookie(challenge_id: &str, max_age_seconds: u64) -> String {
     )
 }
 
+fn auth_access_cookie(access_token: &str, max_age_seconds: u64) -> String {
+    format!(
+        "{AUTH_ACCESS_COOKIE_NAME}={access_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+    )
+}
+
+fn auth_refresh_cookie(refresh_token: &str, max_age_seconds: u64) -> String {
+    format!(
+        "{AUTH_REFRESH_COOKIE_NAME}={refresh_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+    )
+}
+
+fn local_test_auth_cookie(max_age_seconds: u64) -> String {
+    format!(
+        "{LOCAL_TEST_AUTH_COOKIE_NAME}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+    )
+}
+
 fn clear_cookie(name: &str) -> String {
     format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+}
+
+fn append_set_cookie_header(
+    response: &mut Response,
+    cookie: &str,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    response
+        .headers_mut()
+        .append(SET_COOKIE, header_value(cookie)?);
+    Ok(())
 }
 
 fn extract_cookie_value(headers: &HeaderMap, cookie_name: &str) -> Option<String> {
@@ -2647,6 +3062,10 @@ fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let authorization = headers.get(AUTHORIZATION)?.to_str().ok()?.trim();
     let token = authorization.strip_prefix("Bearer ")?.trim();
     non_empty(token.to_string())
+}
+
+fn access_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    bearer_token(headers).or_else(|| extract_cookie_value(headers, AUTH_ACCESS_COOKIE_NAME))
 }
 
 fn non_empty(value: String) -> Option<String> {
@@ -2844,6 +3263,8 @@ mod tests {
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
             auth_local_test_login_enabled: false,
+            auth_local_test_login_allowed_emails: vec![],
+            auth_local_test_login_signing_key: None,
             auth_api_signup_enabled: false,
             auth_api_signup_allowed_domains: vec![],
             auth_api_signup_default_token_name: "api-bootstrap".to_string(),
@@ -2973,6 +3394,55 @@ mod tests {
         let header = response.headers().get(SET_COOKIE)?;
         let raw = header.to_str().ok()?;
         raw.split(';').next().map(|value| value.to_string())
+    }
+
+    fn all_set_cookie_values(response: &axum::response::Response) -> Vec<String> {
+        response
+            .headers()
+            .get_all(SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    fn cookie_from_set_cookie_header(set_cookie: &str) -> Option<String> {
+        set_cookie.split(';').next().map(|value| value.to_string())
+    }
+
+    fn cookie_value_for_name(response: &axum::response::Response, name: &str) -> Option<String> {
+        all_set_cookie_values(response)
+            .into_iter()
+            .filter_map(|set_cookie| cookie_from_set_cookie_header(&set_cookie))
+            .find_map(|cookie| {
+                let mut parts = cookie.splitn(2, '=');
+                let key = parts.next().unwrap_or_default();
+                let value = parts.next().unwrap_or_default();
+                if key == name && !value.is_empty() {
+                    Some(value.to_string())
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn signed_test_login_url(
+        signing_key: &str,
+        email: &str,
+        expires: i64,
+        name: Option<&str>,
+    ) -> String {
+        let mut unsigned = format!("/internal/test-login?email={email}&expires={expires}");
+        if let Some(value) = name {
+            unsigned.push_str("&name=");
+            unsigned.push_str(value);
+        }
+
+        let mut mac =
+            super::HmacSha256::new_from_slice(signing_key.as_bytes()).expect("valid signing key");
+        mac.update(unsigned.as_bytes());
+        let signature = super::sha256_bytes_hex(&mac.finalize().into_bytes());
+        format!("{unsigned}&signature={signature}")
     }
 
     async fn start_runtime_revocation_stub(
@@ -3783,6 +4253,268 @@ mod tests {
             "Creator Agent"
         );
         assert!(allowed_body["data"]["autopilot"]["id"].as_str().is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_page_redirects_home_when_already_authenticated() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"already-authed@example.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let challenge_cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("cookie", challenge_cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let access_token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let login_request = Request::builder()
+            .uri("/login")
+            .header("authorization", format!("Bearer {access_token}"))
+            .body(Body::empty())?;
+        let login_response = app.oneshot(login_request).await?;
+        assert_eq!(login_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            login_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_login_email_and_verify_routes_set_auth_cookies() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=web-login%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            send_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/login?status=code-sent")
+        );
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=123456"))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            verify_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        let set_cookies = all_set_cookie_values(&verify_response);
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=", super::AUTH_ACCESS_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=", super::AUTH_REFRESH_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::CHALLENGE_COOKIE_NAME)))
+        );
+
+        let access_cookie = cookie_value_for_name(&verify_response, super::AUTH_ACCESS_COOKIE_NAME)
+            .expect("missing access cookie");
+        let login_request = Request::builder()
+            .uri("/login")
+            .header(
+                "cookie",
+                format!("{}={access_cookie}", super::AUTH_ACCESS_COOKIE_NAME),
+            )
+            .body(Body::empty())?;
+        let login_response = app.oneshot(login_request).await?;
+        assert_eq!(login_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            login_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_logout_clears_auth_cookies_and_redirects() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=logout-user%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=123456"))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let access_cookie = cookie_value_for_name(&verify_response, super::AUTH_ACCESS_COOKIE_NAME)
+            .expect("missing access cookie");
+        let refresh_cookie =
+            cookie_value_for_name(&verify_response, super::AUTH_REFRESH_COOKIE_NAME)
+                .expect("missing refresh cookie");
+
+        let logout_request = Request::builder()
+            .method("POST")
+            .uri("/logout")
+            .header(
+                "cookie",
+                format!(
+                    "{}={access_cookie}; {}={refresh_cookie}",
+                    super::AUTH_ACCESS_COOKIE_NAME,
+                    super::AUTH_REFRESH_COOKIE_NAME
+                ),
+            )
+            .body(Body::empty())?;
+        let logout_response = app.oneshot(logout_request).await?;
+        assert_eq!(logout_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            logout_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        let set_cookies = all_set_cookie_values(&logout_response);
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::AUTH_ACCESS_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::AUTH_REFRESH_COOKIE_NAME)))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn local_test_login_route_enforces_gates_and_accepts_valid_signature() -> Result<()> {
+        let mut config = test_config(std::env::temp_dir());
+        config.auth_local_test_login_enabled = true;
+        config.auth_local_test_login_allowed_emails = vec!["tester@openagents.com".to_string()];
+        config.auth_local_test_login_signing_key = Some("local-test-signing-key".to_string());
+        let app = build_router(config);
+
+        let unsigned_request = Request::builder()
+            .uri("/internal/test-login?email=tester@openagents.com&expires=4102444800")
+            .body(Body::empty())?;
+        let unsigned_response = app.clone().oneshot(unsigned_request).await?;
+        assert_eq!(unsigned_response.status(), StatusCode::FORBIDDEN);
+
+        let blocked_url = signed_test_login_url(
+            "local-test-signing-key",
+            "blocked@example.com",
+            4_102_444_800,
+            Some("MaintenanceTester"),
+        );
+        let blocked_request = Request::builder().uri(blocked_url).body(Body::empty())?;
+        let blocked_response = app.clone().oneshot(blocked_request).await?;
+        assert_eq!(blocked_response.status(), StatusCode::FORBIDDEN);
+
+        let allowed_url = signed_test_login_url(
+            "local-test-signing-key",
+            "tester@openagents.com",
+            4_102_444_800,
+            Some("MaintenanceTester"),
+        );
+        let allowed_request = Request::builder().uri(allowed_url).body(Body::empty())?;
+        let allowed_response = app.oneshot(allowed_request).await?;
+        assert_eq!(allowed_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            allowed_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+        let set_cookies = all_set_cookie_values(&allowed_response);
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=", super::AUTH_ACCESS_COOKIE_NAME)))
+        );
+        assert!(set_cookies.iter().any(|value| {
+            value.starts_with(&format!("{}=1", super::LOCAL_TEST_AUTH_COOKIE_NAME))
+        }));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn local_test_login_route_returns_not_found_when_disabled() -> Result<()> {
+        let mut config = test_config(std::env::temp_dir());
+        config.auth_local_test_login_enabled = false;
+        config.auth_local_test_login_allowed_emails = vec!["tester@openagents.com".to_string()];
+        config.auth_local_test_login_signing_key = Some("local-test-signing-key".to_string());
+        let app = build_router(config);
+
+        let request = Request::builder()
+            .uri(signed_test_login_url(
+                "local-test-signing-key",
+                "tester@openagents.com",
+                4_102_444_800,
+                Some("MaintenanceTester"),
+            ))
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }

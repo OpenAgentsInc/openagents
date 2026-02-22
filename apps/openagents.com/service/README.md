@@ -8,6 +8,11 @@ Rust control service scaffold for `apps/openagents.com`.
 - Baseline routes:
   - `GET /healthz`
   - `GET /readyz`
+  - `GET /login` (guest landing, redirects `/` when already authenticated)
+  - `POST /login/email` (web-form challenge bootstrap)
+  - `POST /login/verify` (web-form challenge verification + auth cookies)
+  - `POST /logout` (web auth cookie logout redirect)
+  - `GET /internal/test-login` (local/testing-only signed test-login URL)
   - `POST /api/auth/email`
   - `POST /api/auth/register`
   - `POST /api/auth/verify`
@@ -57,6 +62,8 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_WORKOS_API_BASE_URL` (default: `https://api.workos.com`)
 - `OA_AUTH_MOCK_MAGIC_CODE` (default: `123456`)
 - `OA_AUTH_LOCAL_TEST_LOGIN_ENABLED` (`true|false`, default: `false`; allows `test_local_*` WorkOS bypass lane in local testing)
+- `OA_AUTH_LOCAL_TEST_LOGIN_ALLOWED_EMAILS` (CSV allowlist for `/internal/test-login`; empty denies all)
+- `OA_AUTH_LOCAL_TEST_LOGIN_SIGNING_KEY` (required to validate signed `/internal/test-login` URLs)
 - `OA_AUTH_API_SIGNUP_ENABLED` (`true|false`, default: `false`; enables local/testing-only `POST /api/auth/register`)
 - `OA_AUTH_API_SIGNUP_ALLOWED_DOMAINS` (CSV email-domain allowlist for API signup, empty means allow all)
 - `OA_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME` (default: `api-bootstrap`)

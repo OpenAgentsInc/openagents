@@ -1129,6 +1129,169 @@ impl AuthService {
         })
     }
 
+    pub async fn local_test_sign_in(
+        &self,
+        email: String,
+        name: Option<String>,
+        client_name: Option<&str>,
+        requested_device_id: Option<&str>,
+    ) -> Result<VerifyResult, AuthError> {
+        let normalized_email = normalize_email(&email)?;
+        let requested_name = name.and_then(non_empty).map(|value| truncate_name(&value));
+        let local_workos_id = local_test_workos_id_for_email(&normalized_email);
+        let token_name = token_name_for_client(client_name);
+        let device_id = normalize_device_id(requested_device_id, &token_name)?;
+        let now = Utc::now();
+
+        let (result, snapshot) = {
+            let mut state = self.state.write().await;
+
+            let (user, new_user) = if let Some(existing_user_id) =
+                state.users_by_email.get(&normalized_email).cloned()
+            {
+                let (updated_user, user_id, previous_workos_id) = {
+                    let existing_user =
+                        state
+                            .users_by_id
+                            .get_mut(&existing_user_id)
+                            .ok_or_else(|| AuthError::Unauthorized {
+                                message: "Unauthenticated.".to_string(),
+                            })?;
+                    let previous_workos_id = existing_user.workos_user_id.clone();
+
+                    existing_user.email = normalized_email.clone();
+                    existing_user.name = requested_name
+                        .clone()
+                        .unwrap_or_else(|| default_name_from_email(&normalized_email));
+                    existing_user.workos_user_id = local_workos_id.clone();
+                    existing_user.memberships = ensure_default_memberships(
+                        &existing_user.id,
+                        &normalized_email,
+                        existing_user.memberships.clone(),
+                    );
+
+                    (
+                        existing_user.clone(),
+                        existing_user.id.clone(),
+                        previous_workos_id,
+                    )
+                };
+
+                if !previous_workos_id.trim().is_empty() && previous_workos_id != local_workos_id {
+                    state.users_by_workos_id.remove(&previous_workos_id);
+                }
+                state
+                    .users_by_workos_id
+                    .insert(local_workos_id.clone(), user_id.clone());
+                state
+                    .users_by_email
+                    .insert(normalized_email.clone(), user_id);
+
+                (updated_user, false)
+            } else {
+                let user_id = format!("user_{}", Uuid::new_v4().simple());
+                let created_user = UserRecord {
+                    id: user_id.clone(),
+                    email: normalized_email.clone(),
+                    name: requested_name
+                        .clone()
+                        .unwrap_or_else(|| default_name_from_email(&normalized_email)),
+                    workos_user_id: local_workos_id.clone(),
+                    memberships: ensure_default_memberships(
+                        &user_id,
+                        &normalized_email,
+                        Vec::new(),
+                    ),
+                };
+
+                state
+                    .users_by_email
+                    .insert(normalized_email.clone(), created_user.id.clone());
+                state
+                    .users_by_workos_id
+                    .insert(local_workos_id.clone(), created_user.id.clone());
+                state
+                    .users_by_id
+                    .insert(created_user.id.clone(), created_user.clone());
+
+                (created_user, true)
+            };
+
+            let active_org_id = user
+                .memberships
+                .iter()
+                .find(|membership| membership.default_org)
+                .map(|membership| membership.org_id.clone())
+                .or_else(|| {
+                    user.memberships
+                        .first()
+                        .map(|membership| membership.org_id.clone())
+                })
+                .unwrap_or_else(|| format!("user:{}", user.id));
+
+            revoke_existing_sessions_for_device(
+                &mut state,
+                &user.id,
+                &device_id,
+                SessionRevocationReason::DeviceReplaced,
+                now,
+            );
+
+            let session_id = format!("sess_{}", Uuid::new_v4().simple());
+            let access_token = format!("oa_at_{}", Uuid::new_v4().simple());
+            let refresh_token = format!("oa_rt_{}", Uuid::new_v4().simple());
+            let refresh_token_id = format!("rtid_{}", Uuid::new_v4().simple());
+
+            let session = SessionRecord {
+                session_id: session_id.clone(),
+                user_id: user.id.clone(),
+                email: user.email.clone(),
+                device_id: device_id.clone(),
+                token_name: token_name.clone(),
+                active_org_id,
+                access_token: access_token.clone(),
+                refresh_token: refresh_token.clone(),
+                refresh_token_id: refresh_token_id.clone(),
+                issued_at: now,
+                access_expires_at: now + self.access_ttl,
+                refresh_expires_at: now + self.refresh_ttl,
+                status: SessionStatus::Active,
+                reauth_required: false,
+                last_refreshed_at: None,
+                revoked_at: None,
+                revoked_reason: None,
+            };
+
+            state
+                .access_index
+                .insert(access_token.clone(), session_id.clone());
+            state
+                .refresh_index
+                .insert(refresh_token.clone(), session_id.clone());
+            state.sessions.insert(session_id.clone(), session.clone());
+
+            let result = VerifyResult {
+                user: AuthUser {
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    workos_user_id: user.workos_user_id,
+                },
+                token_type: "Bearer",
+                access_token,
+                refresh_token,
+                token_name,
+                session: SessionView::from_session(&session),
+                new_user,
+            };
+
+            (result, state.clone())
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(result)
+    }
+
     pub async fn list_personal_access_tokens(
         &self,
         user_id: &str,
@@ -1482,6 +1645,20 @@ fn bootstrap_workos_id_for_email(email: &str) -> String {
 
     let suffix: String = hex.chars().take(32).collect();
     format!("api_bootstrap_{suffix}")
+}
+
+fn local_test_workos_id_for_email(email: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(email.trim().to_lowercase().as_bytes());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+
+    let suffix: String = hex.chars().take(24).collect();
+    format!("test_local_{suffix}")
 }
 
 fn token_name_for_client(client_name: Option<&str>) -> String {
@@ -2103,6 +2280,8 @@ mod tests {
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
             auth_local_test_login_enabled: false,
+            auth_local_test_login_allowed_emails: vec![],
+            auth_local_test_login_signing_key: None,
             auth_api_signup_enabled: false,
             auth_api_signup_allowed_domains: vec![],
             auth_api_signup_default_token_name: "api-bootstrap".to_string(),
@@ -2272,5 +2451,39 @@ mod tests {
         assert!(!second.created);
         assert_eq!(second.user.id, first.user.id);
         assert_eq!(second.user.name, "Updated Name");
+    }
+
+    #[tokio::test]
+    async fn local_test_sign_in_creates_or_updates_local_test_user() {
+        let auth = AuthService::from_config(&test_config(None));
+
+        let first = auth
+            .local_test_sign_in(
+                "tester@openagents.com".to_string(),
+                Some("Maintenance Tester".to_string()),
+                Some("openagents-web"),
+                Some("browser:local-test"),
+            )
+            .await
+            .expect("first local test sign-in");
+        assert!(first.new_user);
+        assert_eq!(first.user.email, "tester@openagents.com");
+        assert!(first.user.workos_user_id.starts_with("test_local_"));
+        assert!(!first.access_token.is_empty());
+        assert!(!first.refresh_token.is_empty());
+
+        let second = auth
+            .local_test_sign_in(
+                "tester@openagents.com".to_string(),
+                Some("Updated Tester".to_string()),
+                Some("openagents-web"),
+                Some("browser:local-test"),
+            )
+            .await
+            .expect("second local test sign-in");
+        assert!(!second.new_user);
+        assert_eq!(second.user.id, first.user.id);
+        assert_eq!(second.user.name, "Updated Tester");
+        assert!(second.user.workos_user_id.starts_with("test_local_"));
     }
 }

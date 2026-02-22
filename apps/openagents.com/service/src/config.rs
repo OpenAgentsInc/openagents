@@ -14,6 +14,8 @@ const DEFAULT_AUTH_CHALLENGE_TTL_SECONDS: u64 = 600;
 const DEFAULT_AUTH_ACCESS_TTL_SECONDS: u64 = 3600;
 const DEFAULT_AUTH_REFRESH_TTL_SECONDS: u64 = 2_592_000;
 const DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED: bool = false;
+const DEFAULT_AUTH_LOCAL_TEST_LOGIN_ALLOWED_EMAILS: &str = "";
+const DEFAULT_AUTH_LOCAL_TEST_LOGIN_SIGNING_KEY: &str = "";
 const DEFAULT_AUTH_API_SIGNUP_ENABLED: bool = false;
 const DEFAULT_AUTH_API_SIGNUP_ALLOWED_DOMAINS: &str = "";
 const DEFAULT_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME: &str = "api-bootstrap";
@@ -57,6 +59,8 @@ pub struct Config {
     pub workos_api_base_url: String,
     pub mock_magic_code: String,
     pub auth_local_test_login_enabled: bool,
+    pub auth_local_test_login_allowed_emails: Vec<String>,
+    pub auth_local_test_login_signing_key: Option<String>,
     pub auth_api_signup_enabled: bool,
     pub auth_api_signup_allowed_domains: Vec<String>,
     pub auth_api_signup_default_token_name: String,
@@ -170,6 +174,28 @@ impl Config {
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
             .unwrap_or(DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED);
+
+        let auth_local_test_login_allowed_emails = parse_csv(
+            env::var("OA_AUTH_LOCAL_TEST_LOGIN_ALLOWED_EMAILS")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_AUTH_LOCAL_TEST_LOGIN_ALLOWED_EMAILS.to_string()),
+        )
+        .into_iter()
+        .map(|email| email.to_lowercase())
+        .collect();
+
+        let auth_local_test_login_signing_key = env::var("OA_AUTH_LOCAL_TEST_LOGIN_SIGNING_KEY")
+            .ok()
+            .or_else(|| {
+                let default = DEFAULT_AUTH_LOCAL_TEST_LOGIN_SIGNING_KEY.trim();
+                if default.is_empty() {
+                    None
+                } else {
+                    Some(default.to_string())
+                }
+            })
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         let auth_api_signup_enabled = env::var("OA_AUTH_API_SIGNUP_ENABLED")
             .ok()
@@ -438,6 +464,8 @@ impl Config {
             workos_api_base_url,
             mock_magic_code,
             auth_local_test_login_enabled,
+            auth_local_test_login_allowed_emails,
+            auth_local_test_login_signing_key,
             auth_api_signup_enabled,
             auth_api_signup_allowed_domains,
             auth_api_signup_default_token_name,

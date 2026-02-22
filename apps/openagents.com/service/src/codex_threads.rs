@@ -319,6 +319,8 @@ mod tests {
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
             auth_local_test_login_enabled: false,
+            auth_local_test_login_allowed_emails: vec![],
+            auth_local_test_login_signing_key: None,
             auth_api_signup_enabled: false,
             auth_api_signup_allowed_domains: vec![],
             auth_api_signup_default_token_name: "api-bootstrap".to_string(),
