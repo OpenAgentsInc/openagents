@@ -1,0 +1,53 @@
+name: web-parity-scoreboard
+
+on:
+  pull_request:
+    paths:
+      - 'apps/openagents.com/**'
+      - 'docs/protocol/fixtures/**'
+      - '.github/workflows/web-parity-scoreboard.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/openagents.com/**'
+      - 'docs/protocol/fixtures/**'
+      - '.github/workflows/web-parity-scoreboard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  parity-scoreboard:
+    runs-on: ubuntu-latest
+    name: parity-scoreboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --working-dir apps/openagents.com --no-interaction --prefer-dist --no-scripts
+
+      - name: Bootstrap Laravel env
+        run: |
+          cp apps/openagents.com/.env.example apps/openagents.com/.env
+          php apps/openagents.com/artisan key:generate --force
+
+      - name: Run parity scoreboard
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/web-parity-scoreboard
+        run: ./apps/openagents.com/scripts/run-parity-scoreboard.sh
+
+      - name: Upload scoreboard artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-parity-scoreboard
+          path: ${{ runner.temp }}/web-parity-scoreboard
+          if-no-files-found: ignore

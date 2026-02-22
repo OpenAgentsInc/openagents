@@ -192,6 +192,8 @@ Baseline and migration evidence targets:
   Capture command: `./apps/openagents.com/scripts/capture-parity-contract-fixtures.sh`
   Artifact path: `apps/openagents.com/docs/parity-fixtures/baseline/`
 - [ ] Parity CI scoreboard and required checks (`OA-WEBPARITY-004`)
+  Scoreboard command: `./apps/openagents.com/scripts/run-parity-scoreboard.sh`
+  CI workflow check name: `web-parity-scoreboard / parity-scoreboard`
 - [ ] Rust compile baseline (`cargo check --workspace --all-targets`)
 - [ ] Rust/web changed-files gate (`./scripts/local-ci.sh changed`)
 - [ ] Web-shell lane (`./scripts/local-ci.sh web-shell`)

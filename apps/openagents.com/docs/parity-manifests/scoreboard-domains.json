@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.webparity.scoreboard_domains.v1",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "domains": [
+    {
+      "id": "api-routes",
+      "owner": "rust-service",
+      "migrated": false,
+      "baseline_path": "docs/parity-manifests/baseline/api-routes.json",
+      "captured_path": "manifests/api-routes.json"
+    },
+    {
+      "id": "web-routes",
+      "owner": "rust-web-shell",
+      "migrated": false,
+      "baseline_path": "docs/parity-manifests/baseline/web-routes.json",
+      "captured_path": "manifests/web-routes.json"
+    },
+    {
+      "id": "page-entries",
+      "owner": "rust-web-shell",
+      "migrated": false,
+      "baseline_path": "docs/parity-manifests/baseline/page-entries.json",
+      "captured_path": "manifests/page-entries.json"
+    },
+    {
+      "id": "artisan-commands",
+      "owner": "platform-ops",
+      "migrated": false,
+      "baseline_path": "docs/parity-manifests/baseline/artisan-commands.json",
+      "captured_path": "manifests/artisan-commands.json"
+    },
+    {
+      "id": "http-json-golden",
+      "owner": "rust-service",
+      "migrated": false,
+      "baseline_path": "docs/parity-fixtures/baseline/http-json-golden.json",
+      "captured_path": "fixtures/http-json-golden.json"
+    },
+    {
+      "id": "khala-ws-golden",
+      "owner": "runtime-integration",
+      "migrated": false,
+      "baseline_path": "docs/parity-fixtures/baseline/khala-ws-golden.json",
+      "captured_path": "fixtures/khala-ws-golden.json"
+    }
+  ]
+}
