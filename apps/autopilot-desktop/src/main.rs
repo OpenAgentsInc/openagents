@@ -76,11 +76,12 @@ use runtime_auth::{
 };
 use runtime_codex_proto::{
     ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame,
+    build_success_receipt,
     extract_control_request,
     extract_desktop_handshake_ack_id,
     extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
-    request_dedupe_key, stream_event_seq,
+    request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
 };
 
 const WINDOW_TITLE: &str = "Autopilot";
@@ -167,6 +168,7 @@ struct RuntimeCodexSync {
     acked_handshakes: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    terminal_control_receipts: Arc<tokio::sync::Mutex<HashSet<String>>>,
     remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
 }
@@ -242,6 +244,7 @@ impl RuntimeCodexSync {
             acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            terminal_control_receipts: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             remote_control_tx,
             action_tx,
         })
@@ -884,12 +887,24 @@ impl RuntimeCodexSync {
                     thread_id: request.thread_id.clone(),
                 };
 
-                self.remote_control_tx.send(dispatch).await.map_err(|err| {
-                    format!(
-                        "runtime sync failed to enqueue remote control request {}: {}",
-                        request.request_id, err
+                if let Err(err) = self.remote_control_tx.send(dispatch).await {
+                    self.emit_control_error_receipt(
+                        worker_id,
+                        &request.request_id,
+                        request.method.as_str(),
+                        "internal_error",
+                        &format!(
+                            "failed to enqueue remote control request {}: {}",
+                            request.request_id, err
+                        ),
+                        Some(json!({
+                            "phase": "dispatch",
+                            "reason": "queue_send_failed",
+                        })),
                     )
-                })?;
+                    .await?;
+                    return Ok(());
+                }
 
                 tracing::info!(
                     worker_id = %worker_id,
@@ -1000,6 +1015,16 @@ impl RuntimeCodexSync {
         message: &str,
         details: Option<Value>,
     ) -> Result<(), String> {
+        if !self.mark_control_terminal_receipt(worker_id, request_id).await {
+            tracing::debug!(
+                worker_id = %worker_id,
+                request_id = %request_id,
+                method = %method,
+                "runtime sync skipped duplicate terminal error receipt"
+            );
+            return Ok(());
+        }
+
         let receipt = build_error_receipt(
             request_id,
             method,
@@ -1009,6 +1034,29 @@ impl RuntimeCodexSync {
             details,
             &Utc::now().to_rfc3339(),
         );
+        self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
+            .await
+    }
+
+    async fn emit_control_success_receipt(
+        &self,
+        worker_id: &str,
+        request_id: &str,
+        method: ControlMethod,
+        response: Value,
+    ) -> Result<(), String> {
+        if !self.mark_control_terminal_receipt(worker_id, request_id).await {
+            tracing::debug!(
+                worker_id = %worker_id,
+                request_id = %request_id,
+                method = method.as_str(),
+                "runtime sync skipped duplicate terminal success receipt"
+            );
+            return Ok(());
+        }
+
+        let receipt =
+            build_success_receipt(request_id, method, response, &Utc::now().to_rfc3339());
         self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
             .await
     }
@@ -1063,6 +1111,12 @@ impl RuntimeCodexSync {
     async fn mark_control_request_seen(&self, dedupe_key: String) {
         let mut guard = self.seen_control_requests.lock().await;
         guard.insert(dedupe_key);
+    }
+
+    async fn mark_control_terminal_receipt(&self, worker_id: &str, request_id: &str) -> bool {
+        let key = terminal_receipt_dedupe_key(worker_id, request_id);
+        let mut guard = self.terminal_control_receipts.lock().await;
+        guard.insert(key)
     }
 
     async fn resolve_worker_session_id(&self, worker_id: &str) -> Option<SessionId> {
@@ -3188,6 +3242,16 @@ fn spawn_event_bridge(
 
                     match outcome {
                         Ok(response_payload) => {
+                            if let Some(sync) = runtime_sync_remote_control.as_ref() {
+                                let _ = sync
+                                    .emit_control_success_receipt(
+                                        &request.worker_id,
+                                        &request.request_id,
+                                        request.method,
+                                        response_payload.clone(),
+                                    )
+                                    .await;
+                            }
                             tracing::info!(
                                 worker_id = %request.worker_id,
                                 request_id = %request.request_id,
