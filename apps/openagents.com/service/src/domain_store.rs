@@ -1457,6 +1457,21 @@ impl DomainStore {
         Ok(rows)
     }
 
+    pub async fn list_all_l402_paywalls(
+        &self,
+        include_deleted: bool,
+    ) -> Result<Vec<L402PaywallRecord>, DomainStoreError> {
+        let state = self.state.read().await;
+        let mut rows: Vec<L402PaywallRecord> = state
+            .l402_paywalls
+            .values()
+            .filter(|row| include_deleted || row.deleted_at.is_none())
+            .cloned()
+            .collect();
+        rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(rows)
+    }
+
     pub async fn upsert_user_spark_wallet(
         &self,
         input: UpsertUserSparkWalletInput,

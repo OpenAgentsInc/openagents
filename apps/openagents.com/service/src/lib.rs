@@ -71,7 +71,8 @@ use crate::openapi::{
     ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
     ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
     ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
-    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
+    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
+    ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
     ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE, ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
@@ -175,6 +176,7 @@ struct AppState {
     runtime_tool_receipts: RuntimeToolReceiptState,
     runtime_skill_registry: RuntimeSkillRegistryState,
     runtime_workers: RuntimeWorkerState,
+    lightning_ops_control_plane: LightningOpsControlPlaneState,
     runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
 }
@@ -210,6 +212,111 @@ struct RuntimeSkillRegistryState {
 struct RuntimeWorkerState {
     workers: Arc<Mutex<HashMap<String, RuntimeWorkerRecord>>>,
     events: Arc<Mutex<HashMap<String, Vec<RuntimeWorkerEventRecord>>>>,
+}
+
+#[derive(Clone, Default)]
+struct LightningOpsControlPlaneState {
+    store: Arc<Mutex<LightningOpsControlPlaneStore>>,
+}
+
+#[derive(Default)]
+struct LightningOpsControlPlaneStore {
+    deployments: HashMap<String, LightningOpsDeploymentRecord>,
+    gateway_events: Vec<LightningOpsGatewayEventRecord>,
+    invoices: HashMap<String, LightningOpsInvoiceRecord>,
+    settlements: HashMap<String, LightningOpsSettlementRecord>,
+    global_security: Option<LightningOpsGlobalSecurityRecord>,
+    owner_controls: HashMap<String, LightningOpsOwnerControlRecord>,
+    credential_roles: HashMap<String, LightningOpsCredentialRoleRecord>,
+}
+
+#[derive(Clone)]
+struct LightningOpsDeploymentRecord {
+    deployment_id: String,
+    paywall_id: Option<String>,
+    owner_id: Option<String>,
+    config_hash: String,
+    image_digest: Option<String>,
+    status: String,
+    diagnostics: Option<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
+    request_id: Option<String>,
+    applied_at_ms: Option<i64>,
+    rolled_back_from: Option<String>,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct LightningOpsGatewayEventRecord {
+    event_id: String,
+    paywall_id: String,
+    owner_id: String,
+    event_type: String,
+    level: String,
+    request_id: Option<String>,
+    metadata: Option<serde_json::Value>,
+    created_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct LightningOpsInvoiceRecord {
+    invoice_id: String,
+    paywall_id: String,
+    owner_id: String,
+    amount_msats: i64,
+    status: String,
+    payment_hash: Option<String>,
+    payment_request: Option<String>,
+    payment_proof_ref: Option<String>,
+    request_id: Option<String>,
+    settled_at_ms: Option<i64>,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct LightningOpsSettlementRecord {
+    settlement_id: String,
+    paywall_id: String,
+    owner_id: String,
+    invoice_id: Option<String>,
+    amount_msats: i64,
+    payment_proof_ref: String,
+    request_id: Option<String>,
+    metadata: Option<serde_json::Value>,
+    created_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct LightningOpsGlobalSecurityRecord {
+    global_pause: bool,
+    deny_reason_code: Option<String>,
+    deny_reason: Option<String>,
+    updated_by: Option<String>,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone)]
+struct LightningOpsOwnerControlRecord {
+    owner_id: String,
+    kill_switch: bool,
+    deny_reason_code: Option<String>,
+    deny_reason: Option<String>,
+    updated_by: Option<String>,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone)]
+struct LightningOpsCredentialRoleRecord {
+    role: String,
+    status: String,
+    version: i64,
+    fingerprint: Option<String>,
+    note: Option<String>,
+    updated_at_ms: i64,
+    last_rotated_at_ms: Option<i64>,
+    revoked_at_ms: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -815,6 +922,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         runtime_tool_receipts: RuntimeToolReceiptState::default(),
         runtime_skill_registry: RuntimeSkillRegistryState::default(),
         runtime_workers: RuntimeWorkerState::default(),
+        lightning_ops_control_plane: LightningOpsControlPlaneState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
@@ -859,6 +967,14 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         );
 
     let public_api_router = Router::new()
+        .route(
+            ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY,
+            post(lightning_ops_control_plane_query),
+        )
+        .route(
+            ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
+            post(lightning_ops_control_plane_mutation),
+        )
         .route(
             runtime_internal_secret_fetch_path.as_str(),
             post(runtime_internal_secret_fetch).route_layer(middleware::from_fn_with_state(
@@ -4954,6 +5070,19 @@ struct L402ReceiptView {
     raw_payload: serde_json::Value,
 }
 
+struct LightningOpsInvoiceLifecycleInput {
+    invoice_id: String,
+    paywall_id: String,
+    owner_id: String,
+    amount_msats: i64,
+    status: String,
+    payment_hash: Option<String>,
+    payment_request: Option<String>,
+    payment_proof_ref: Option<String>,
+    request_id: Option<String>,
+    settled_at_ms: Option<i64>,
+}
+
 async fn resolve_l402_autopilot_filter(
     state: &AppState,
     owner_user_id: &str,
@@ -4976,6 +5105,1066 @@ async fn resolve_l402_autopilot_filter(
         Err(DomainStoreError::Forbidden) => Err(forbidden_error("autopilot_forbidden")),
         Err(error) => Err(map_domain_store_error(error)),
     }
+}
+
+type LightningOpsControlPlaneResponse =
+    Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)>;
+
+async fn lightning_ops_control_plane_query(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> LightningOpsControlPlaneResponse {
+    let (function_name, mut args) = lightning_ops_payload(payload)?;
+    lightning_ops_assert_secret(&mut args)?;
+
+    match function_name.as_str() {
+        "lightning/ops:listPaywallControlPlaneState" => {
+            let statuses = lightning_ops_statuses(&args);
+            let mut rows = state
+                ._domain_store
+                .list_all_l402_paywalls(true)
+                .await
+                .map_err(lightning_ops_map_domain_store_error)?;
+            rows.sort_by(|left, right| left.created_at.cmp(&right.created_at));
+
+            let paywalls = rows
+                .iter()
+                .map(lightning_ops_paywall_payload)
+                .filter(|payload| {
+                    if statuses.is_empty() {
+                        return true;
+                    }
+                    payload
+                        .get("status")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|status| statuses.iter().any(|value| value == status))
+                        .unwrap_or(false)
+                })
+                .collect::<Vec<_>>();
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "paywalls": paywalls,
+                })),
+            ))
+        }
+        "lightning/security:getControlPlaneSecurityState" => {
+            let store = state.lightning_ops_control_plane.store.lock().await;
+
+            let global = store
+                .global_security
+                .as_ref()
+                .map(lightning_ops_global_security_payload)
+                .unwrap_or_else(|| {
+                    serde_json::json!({
+                        "stateId": "global",
+                        "globalPause": false,
+                        "updatedAtMs": 0,
+                    })
+                });
+
+            let mut owner_controls = store
+                .owner_controls
+                .values()
+                .cloned()
+                .collect::<Vec<LightningOpsOwnerControlRecord>>();
+            owner_controls.sort_by(|left, right| left.owner_id.cmp(&right.owner_id));
+
+            let mut credential_roles = store
+                .credential_roles
+                .values()
+                .cloned()
+                .collect::<Vec<LightningOpsCredentialRoleRecord>>();
+            credential_roles.sort_by(|left, right| left.role.cmp(&right.role));
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "global": global,
+                    "ownerControls": owner_controls
+                        .iter()
+                        .map(lightning_ops_owner_control_payload)
+                        .collect::<Vec<_>>(),
+                    "credentialRoles": credential_roles
+                        .iter()
+                        .map(lightning_ops_credential_role_payload)
+                        .collect::<Vec<_>>(),
+                })),
+            ))
+        }
+        _ => Err(lightning_ops_error(
+            StatusCode::NOT_FOUND,
+            "unsupported_function",
+            format!("unsupported function: {function_name}"),
+        )),
+    }
+}
+
+async fn lightning_ops_control_plane_mutation(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> LightningOpsControlPlaneResponse {
+    let (function_name, mut args) = lightning_ops_payload(payload)?;
+    lightning_ops_assert_secret(&mut args)?;
+
+    match function_name.as_str() {
+        "lightning/ops:recordGatewayCompileIntent" => {
+            let deployment_id = lightning_ops_optional_string(&args, "deploymentId")
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+            let config_hash = lightning_ops_required_string(&args, "configHash")?;
+            let status = lightning_ops_required_string(&args, "status")?;
+            let now = Utc::now();
+
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let entry = store
+                .deployments
+                .entry(deployment_id.clone())
+                .or_insert_with(|| LightningOpsDeploymentRecord {
+                    deployment_id: deployment_id.clone(),
+                    paywall_id: None,
+                    owner_id: None,
+                    config_hash: config_hash.clone(),
+                    image_digest: None,
+                    status: status.clone(),
+                    diagnostics: None,
+                    metadata: None,
+                    request_id: None,
+                    applied_at_ms: None,
+                    rolled_back_from: None,
+                    created_at: now,
+                    updated_at: now,
+                });
+
+            entry.paywall_id = lightning_ops_optional_string(&args, "paywallId");
+            entry.owner_id = lightning_ops_optional_string(&args, "ownerId");
+            entry.config_hash = config_hash;
+            entry.image_digest = lightning_ops_optional_string(&args, "imageDigest");
+            entry.status = status;
+            entry.diagnostics = lightning_ops_optional_json(&args, "diagnostics");
+            entry.metadata = lightning_ops_optional_json(&args, "metadata");
+            entry.request_id = lightning_ops_optional_string(&args, "requestId");
+            entry.applied_at_ms = lightning_ops_optional_i64(&args, "appliedAtMs");
+            entry.rolled_back_from = lightning_ops_optional_string(&args, "rolledBackFrom");
+            entry.updated_at = now;
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "deployment": lightning_ops_deployment_payload(entry),
+                })),
+            ))
+        }
+        "lightning/ops:recordGatewayDeploymentEvent" => {
+            let paywall_id = lightning_ops_required_string(&args, "paywallId")?;
+            let owner_id = lightning_ops_required_string(&args, "ownerId")?;
+            let event_type = lightning_ops_required_string(&args, "eventType")?;
+            let level = lightning_ops_required_string(&args, "level")?;
+            let now = Utc::now();
+            let event = LightningOpsGatewayEventRecord {
+                event_id: format!("evt_{}", Uuid::new_v4().simple()),
+                paywall_id,
+                owner_id,
+                event_type,
+                level,
+                request_id: lightning_ops_optional_string(&args, "requestId"),
+                metadata: lightning_ops_optional_json(&args, "metadata"),
+                created_at: now,
+            };
+
+            state
+                .lightning_ops_control_plane
+                .store
+                .lock()
+                .await
+                .gateway_events
+                .push(event.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "event": lightning_ops_gateway_event_payload(&event),
+                })),
+            ))
+        }
+        "lightning/settlements:ingestInvoiceLifecycle" => {
+            let input = lightning_ops_invoice_lifecycle_input(&args, None)?;
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let (changed, invoice) = lightning_ops_apply_invoice_lifecycle(&mut store, input)?;
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "changed": changed,
+                    "invoice": lightning_ops_invoice_payload(&invoice),
+                })),
+            ))
+        }
+        "lightning/settlements:ingestSettlement" => {
+            let settlement_id = lightning_ops_required_string(&args, "settlementId")?;
+            let invoice_id = lightning_ops_optional_string(&args, "invoiceId");
+            let now = Utc::now();
+
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let invoice_payload = if invoice_id.is_some() {
+                let input = lightning_ops_invoice_lifecycle_input(&args, Some("settled"))?;
+                let (_, invoice) = lightning_ops_apply_invoice_lifecycle(&mut store, input)?;
+                Some(invoice)
+            } else {
+                None
+            };
+
+            if let Some(existing) = store.settlements.get(&settlement_id).cloned() {
+                let mut payload = serde_json::json!({
+                    "ok": true,
+                    "existed": true,
+                    "settlement": lightning_ops_settlement_payload(&existing),
+                });
+                if let Some(invoice) = invoice_payload.as_ref() {
+                    payload["invoice"] = lightning_ops_invoice_payload(invoice);
+                }
+                return Ok((StatusCode::OK, Json(payload)));
+            }
+
+            let payment_proof_type = lightning_ops_required_string(&args, "paymentProofType")?;
+            if payment_proof_type != "lightning_preimage" {
+                return Err(lightning_ops_invalid_arguments(
+                    "invalid_payment_proof_type",
+                ));
+            }
+            let preimage = lightning_ops_required_string(&args, "paymentProofValue")?
+                .trim()
+                .to_lowercase();
+            if preimage.is_empty()
+                || !preimage
+                    .chars()
+                    .all(|value| value.is_ascii_hexdigit() && !value.is_ascii_uppercase())
+            {
+                return Err(lightning_ops_invalid_arguments("invalid_preimage"));
+            }
+
+            let settlement = LightningOpsSettlementRecord {
+                settlement_id,
+                paywall_id: lightning_ops_required_string(&args, "paywallId")?,
+                owner_id: lightning_ops_required_string(&args, "ownerId")?,
+                invoice_id,
+                amount_msats: lightning_ops_required_i64(&args, "amountMsats")?,
+                payment_proof_ref: format!(
+                    "lightning_preimage:{}",
+                    preimage.chars().take(24).collect::<String>()
+                ),
+                request_id: lightning_ops_optional_string(&args, "requestId"),
+                metadata: lightning_ops_optional_json(&args, "metadata"),
+                created_at: now,
+            };
+            store
+                .settlements
+                .insert(settlement.settlement_id.clone(), settlement.clone());
+
+            let mut payload = serde_json::json!({
+                "ok": true,
+                "existed": false,
+                "settlement": lightning_ops_settlement_payload(&settlement),
+            });
+            if let Some(invoice) = invoice_payload.as_ref() {
+                payload["invoice"] = lightning_ops_invoice_payload(invoice);
+            }
+            Ok((StatusCode::OK, Json(payload)))
+        }
+        "lightning/security:setGlobalPause" => {
+            let active = lightning_ops_bool(&args, "active");
+            let now = Utc::now();
+            let now_ms = now.timestamp_millis();
+            let global = LightningOpsGlobalSecurityRecord {
+                global_pause: active,
+                deny_reason_code: if active {
+                    Some("global_pause_active".to_string())
+                } else {
+                    None
+                },
+                deny_reason: if active {
+                    Some(
+                        lightning_ops_optional_string(&args, "reason")
+                            .unwrap_or_else(|| "Global paywall pause is active".to_string()),
+                    )
+                } else {
+                    None
+                },
+                updated_by: lightning_ops_optional_string(&args, "updatedBy"),
+                updated_at_ms: now_ms,
+            };
+
+            state
+                .lightning_ops_control_plane
+                .store
+                .lock()
+                .await
+                .global_security = Some(global.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "global": lightning_ops_global_security_payload(&global),
+                })),
+            ))
+        }
+        "lightning/security:setOwnerKillSwitch" => {
+            let owner_id = lightning_ops_required_string(&args, "ownerId")?;
+            let active = lightning_ops_bool(&args, "active");
+            let now = Utc::now();
+            let now_ms = now.timestamp_millis();
+            let owner_control = LightningOpsOwnerControlRecord {
+                owner_id: owner_id.clone(),
+                kill_switch: active,
+                deny_reason_code: if active {
+                    Some("owner_kill_switch_active".to_string())
+                } else {
+                    None
+                },
+                deny_reason: if active {
+                    Some(
+                        lightning_ops_optional_string(&args, "reason")
+                            .unwrap_or_else(|| "Owner kill switch is active".to_string()),
+                    )
+                } else {
+                    None
+                },
+                updated_by: lightning_ops_optional_string(&args, "updatedBy"),
+                updated_at_ms: now_ms,
+            };
+
+            state
+                .lightning_ops_control_plane
+                .store
+                .lock()
+                .await
+                .owner_controls
+                .insert(owner_id, owner_control.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "ownerControl": lightning_ops_owner_control_payload(&owner_control),
+                })),
+            ))
+        }
+        "lightning/security:rotateCredentialRole" => {
+            let role = lightning_ops_required_string(&args, "role")?;
+            let now = Utc::now();
+            let now_ms = now.timestamp_millis();
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let next_version = store
+                .credential_roles
+                .get(&role)
+                .map(|row| row.version.saturating_add(1).max(1))
+                .unwrap_or(1);
+
+            let record = LightningOpsCredentialRoleRecord {
+                role: role.clone(),
+                status: "rotating".to_string(),
+                version: next_version,
+                fingerprint: lightning_ops_optional_string(&args, "fingerprint"),
+                note: lightning_ops_optional_string(&args, "note"),
+                updated_at_ms: now_ms,
+                last_rotated_at_ms: Some(now_ms),
+                revoked_at_ms: None,
+            };
+            store.credential_roles.insert(role, record.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "role": lightning_ops_credential_role_payload(&record),
+                })),
+            ))
+        }
+        "lightning/security:activateCredentialRole" => {
+            let role = lightning_ops_required_string(&args, "role")?;
+            let now = Utc::now();
+            let now_ms = now.timestamp_millis();
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let next_version = if let Some(existing) = store.credential_roles.get(&role) {
+                if existing.status == "rotating" {
+                    existing.version.max(1)
+                } else {
+                    existing.version.saturating_add(1).max(1)
+                }
+            } else {
+                1
+            };
+
+            let record = LightningOpsCredentialRoleRecord {
+                role: role.clone(),
+                status: "active".to_string(),
+                version: next_version,
+                fingerprint: lightning_ops_optional_string(&args, "fingerprint"),
+                note: lightning_ops_optional_string(&args, "note"),
+                updated_at_ms: now_ms,
+                last_rotated_at_ms: Some(now_ms),
+                revoked_at_ms: None,
+            };
+            store.credential_roles.insert(role, record.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "role": lightning_ops_credential_role_payload(&record),
+                })),
+            ))
+        }
+        "lightning/security:revokeCredentialRole" => {
+            let role = lightning_ops_required_string(&args, "role")?;
+            let now = Utc::now();
+            let now_ms = now.timestamp_millis();
+            let mut store = state.lightning_ops_control_plane.store.lock().await;
+            let version = store
+                .credential_roles
+                .get(&role)
+                .map(|record| record.version.max(1))
+                .unwrap_or(1);
+
+            let record = LightningOpsCredentialRoleRecord {
+                role: role.clone(),
+                status: "revoked".to_string(),
+                version,
+                fingerprint: None,
+                note: lightning_ops_optional_string(&args, "note"),
+                updated_at_ms: now_ms,
+                last_rotated_at_ms: None,
+                revoked_at_ms: Some(now_ms),
+            };
+            store.credential_roles.insert(role, record.clone());
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "role": lightning_ops_credential_role_payload(&record),
+                })),
+            ))
+        }
+        _ => Err(lightning_ops_error(
+            StatusCode::NOT_FOUND,
+            "unsupported_function",
+            format!("unsupported function: {function_name}"),
+        )),
+    }
+}
+
+fn lightning_ops_payload(
+    payload: serde_json::Value,
+) -> Result<
+    (String, serde_json::Map<String, serde_json::Value>),
+    (StatusCode, Json<serde_json::Value>),
+> {
+    let object = payload
+        .as_object()
+        .ok_or_else(|| lightning_ops_invalid_arguments("invalid_payload"))?;
+    let function_name = object
+        .get("functionName")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| lightning_ops_invalid_arguments("missing_functionName"))?
+        .to_string();
+    if function_name.chars().count() > 180 {
+        return Err(lightning_ops_invalid_arguments("invalid_functionName"));
+    }
+
+    let args = object
+        .get("args")
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+        .ok_or_else(|| lightning_ops_invalid_arguments("missing_args"))?;
+
+    Ok((function_name, args))
+}
+
+fn lightning_ops_assert_secret(
+    args: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let expected = lightning_ops_expected_secret();
+    let Some(expected) = expected else {
+        return Err(lightning_ops_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ops_secret_unconfigured",
+            "lightning ops secret is not configured",
+        ));
+    };
+
+    let provided = args
+        .get("secret")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if provided.is_empty() || provided != expected {
+        return Err(lightning_ops_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_ops_secret",
+            "invalid lightning ops secret",
+        ));
+    }
+    args.remove("secret");
+    Ok(())
+}
+
+fn lightning_ops_expected_secret() -> Option<String> {
+    std::env::var("OA_LIGHTNING_OPS_SECRET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            if cfg!(test) {
+                Some("ops-secret-test".to_string())
+            } else {
+                None
+            }
+        })
+}
+
+fn lightning_ops_statuses(args: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
+    let Some(values) = args.get("statuses").and_then(serde_json::Value::as_array) else {
+        return vec!["active".to_string(), "paused".to_string()];
+    };
+    values
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn lightning_ops_paywall_payload(paywall: &L402PaywallRecord) -> serde_json::Value {
+    let status = if paywall.deleted_at.is_some() {
+        "archived"
+    } else if paywall.enabled {
+        "active"
+    } else {
+        "paused"
+    };
+    let paywall_id = paywall.id.clone();
+    let owner_id = format!("owner_{}", paywall.owner_user_id);
+    let created_at_ms = paywall.created_at.timestamp_millis();
+    let updated_at_ms = paywall.updated_at.timestamp_millis();
+    let protocol = if paywall.upstream.to_ascii_lowercase().starts_with("http://") {
+        "http"
+    } else {
+        "https"
+    };
+    let timeout_ms =
+        lightning_ops_meta_i64(paywall.meta.as_ref(), "timeoutMs").unwrap_or_else(|| {
+            std::env::var("OA_LIGHTNING_OPS_CONTROL_PLANE_TIMEOUT_MS")
+                .ok()
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(6000)
+        });
+    let priority = lightning_ops_meta_i64(paywall.meta.as_ref(), "priority").unwrap_or_else(|| {
+        std::env::var("OA_LIGHTNING_OPS_CONTROL_PLANE_PRIORITY")
+            .ok()
+            .and_then(|value| value.trim().parse::<i64>().ok())
+            .filter(|value| *value >= 0)
+            .unwrap_or(10)
+    });
+
+    let mut policy = serde_json::Map::new();
+    policy.insert("paywallId".to_string(), serde_json::json!(paywall_id));
+    policy.insert("ownerId".to_string(), serde_json::json!(owner_id));
+    policy.insert("pricingMode".to_string(), serde_json::json!("fixed"));
+    policy.insert(
+        "fixedAmountMsats".to_string(),
+        serde_json::json!(paywall.price_msats),
+    );
+    if let Some(value) = lightning_ops_meta_i64(paywall.meta.as_ref(), "maxPerRequestMsats") {
+        policy.insert("maxPerRequestMsats".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = lightning_ops_meta_string_list(paywall.meta.as_ref(), "allowedHosts") {
+        policy.insert("allowedHosts".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = lightning_ops_meta_string_list(paywall.meta.as_ref(), "blockedHosts") {
+        policy.insert("blockedHosts".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = lightning_ops_meta_i64(paywall.meta.as_ref(), "quotaPerMinute") {
+        policy.insert("quotaPerMinute".to_string(), serde_json::json!(value));
+    }
+    if let Some(value) = lightning_ops_meta_i64(paywall.meta.as_ref(), "quotaPerDay") {
+        policy.insert("quotaPerDay".to_string(), serde_json::json!(value));
+    }
+    policy.insert("killSwitch".to_string(), serde_json::json!(false));
+    policy.insert("createdAtMs".to_string(), serde_json::json!(created_at_ms));
+    policy.insert("updatedAtMs".to_string(), serde_json::json!(updated_at_ms));
+
+    serde_json::json!({
+        "paywallId": paywall.id,
+        "ownerId": format!("owner_{}", paywall.owner_user_id),
+        "name": paywall.name,
+        "status": status,
+        "createdAtMs": created_at_ms,
+        "updatedAtMs": updated_at_ms,
+        "policy": policy,
+        "routes": [
+            {
+                "routeId": format!("route_{}", paywall.id),
+                "paywallId": paywall.id,
+                "ownerId": format!("owner_{}", paywall.owner_user_id),
+                "hostPattern": paywall.host_regexp,
+                "pathPattern": paywall.path_regexp,
+                "upstreamUrl": paywall.upstream,
+                "protocol": protocol,
+                "timeoutMs": timeout_ms,
+                "priority": priority,
+                "createdAtMs": created_at_ms,
+                "updatedAtMs": updated_at_ms,
+            }
+        ]
+    })
+}
+
+fn lightning_ops_deployment_payload(record: &LightningOpsDeploymentRecord) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "deploymentId": record.deployment_id,
+        "configHash": record.config_hash,
+        "status": record.status,
+        "createdAtMs": record.created_at.timestamp_millis(),
+        "updatedAtMs": record.updated_at.timestamp_millis(),
+    });
+    if let Some(value) = record.paywall_id.as_ref() {
+        payload["paywallId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.owner_id.as_ref() {
+        payload["ownerId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.image_digest.as_ref() {
+        payload["imageDigest"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.diagnostics.as_ref() {
+        payload["diagnostics"] = value.clone();
+    }
+    if let Some(value) = record.applied_at_ms {
+        payload["appliedAtMs"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.rolled_back_from.as_ref() {
+        payload["rolledBackFrom"] = serde_json::json!(value);
+    }
+    payload
+}
+
+fn lightning_ops_gateway_event_payload(
+    record: &LightningOpsGatewayEventRecord,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "eventId": record.event_id,
+        "paywallId": record.paywall_id,
+        "ownerId": record.owner_id,
+        "eventType": record.event_type,
+        "level": record.level,
+        "createdAtMs": record.created_at.timestamp_millis(),
+    });
+    if let Some(value) = record.request_id.as_ref() {
+        payload["requestId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.metadata.as_ref() {
+        payload["metadata"] = value.clone();
+    }
+    payload
+}
+
+fn lightning_ops_invoice_payload(record: &LightningOpsInvoiceRecord) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "invoiceId": record.invoice_id,
+        "paywallId": record.paywall_id,
+        "ownerId": record.owner_id,
+        "amountMsats": record.amount_msats,
+        "status": record.status,
+        "createdAtMs": record.created_at.timestamp_millis(),
+        "updatedAtMs": record.updated_at.timestamp_millis(),
+    });
+    if let Some(value) = record.payment_hash.as_ref() {
+        payload["paymentHash"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.payment_request.as_ref() {
+        payload["paymentRequest"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.payment_proof_ref.as_ref() {
+        payload["paymentProofRef"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.request_id.as_ref() {
+        payload["requestId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.settled_at_ms {
+        payload["settledAtMs"] = serde_json::json!(value);
+    }
+    payload
+}
+
+fn lightning_ops_settlement_payload(record: &LightningOpsSettlementRecord) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "settlementId": record.settlement_id,
+        "paywallId": record.paywall_id,
+        "ownerId": record.owner_id,
+        "amountMsats": record.amount_msats,
+        "paymentProofRef": record.payment_proof_ref,
+        "createdAtMs": record.created_at.timestamp_millis(),
+    });
+    if let Some(value) = record.invoice_id.as_ref() {
+        payload["invoiceId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.request_id.as_ref() {
+        payload["requestId"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.metadata.as_ref() {
+        payload["metadata"] = value.clone();
+    }
+    payload
+}
+
+fn lightning_ops_global_security_payload(
+    record: &LightningOpsGlobalSecurityRecord,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "stateId": "global",
+        "globalPause": record.global_pause,
+        "updatedAtMs": record.updated_at_ms,
+    });
+    if let Some(value) = record.deny_reason_code.as_ref() {
+        payload["denyReasonCode"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.deny_reason.as_ref() {
+        payload["denyReason"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.updated_by.as_ref() {
+        payload["updatedBy"] = serde_json::json!(value);
+    }
+    payload
+}
+
+fn lightning_ops_owner_control_payload(
+    record: &LightningOpsOwnerControlRecord,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "ownerId": record.owner_id,
+        "killSwitch": record.kill_switch,
+        "updatedAtMs": record.updated_at_ms,
+    });
+    if let Some(value) = record.deny_reason_code.as_ref() {
+        payload["denyReasonCode"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.deny_reason.as_ref() {
+        payload["denyReason"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.updated_by.as_ref() {
+        payload["updatedBy"] = serde_json::json!(value);
+    }
+    payload
+}
+
+fn lightning_ops_credential_role_payload(
+    record: &LightningOpsCredentialRoleRecord,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "role": record.role,
+        "status": record.status,
+        "version": record.version,
+        "updatedAtMs": record.updated_at_ms,
+    });
+    if let Some(value) = record.fingerprint.as_ref() {
+        payload["fingerprint"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.note.as_ref() {
+        payload["note"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.last_rotated_at_ms {
+        payload["lastRotatedAtMs"] = serde_json::json!(value);
+    }
+    if let Some(value) = record.revoked_at_ms {
+        payload["revokedAtMs"] = serde_json::json!(value);
+    }
+    payload
+}
+
+fn lightning_ops_invoice_lifecycle_input(
+    args: &serde_json::Map<String, serde_json::Value>,
+    status_override: Option<&str>,
+) -> Result<LightningOpsInvoiceLifecycleInput, (StatusCode, Json<serde_json::Value>)> {
+    let status = match status_override {
+        Some(value) => value.to_string(),
+        None => lightning_ops_required_string(args, "status")?,
+    };
+    if lightning_ops_invoice_status_rank(&status).is_none() {
+        return Err(lightning_ops_invalid_arguments("invalid_invoice_status"));
+    }
+
+    Ok(LightningOpsInvoiceLifecycleInput {
+        invoice_id: lightning_ops_required_string(args, "invoiceId")?,
+        paywall_id: lightning_ops_required_string(args, "paywallId")?,
+        owner_id: lightning_ops_required_string(args, "ownerId")?,
+        amount_msats: lightning_ops_required_i64(args, "amountMsats")?,
+        status,
+        payment_hash: lightning_ops_optional_string(args, "paymentHash"),
+        payment_request: lightning_ops_optional_string(args, "paymentRequest"),
+        payment_proof_ref: lightning_ops_optional_string(args, "paymentProofRef"),
+        request_id: lightning_ops_optional_string(args, "requestId"),
+        settled_at_ms: lightning_ops_optional_i64(args, "settledAtMs"),
+    })
+}
+
+fn lightning_ops_apply_invoice_lifecycle(
+    store: &mut LightningOpsControlPlaneStore,
+    input: LightningOpsInvoiceLifecycleInput,
+) -> Result<(bool, LightningOpsInvoiceRecord), (StatusCode, Json<serde_json::Value>)> {
+    let now = Utc::now();
+    let now_ms = now.timestamp_millis();
+    if let Some(existing) = store.invoices.get(&input.invoice_id).cloned() {
+        let next_status = lightning_ops_choose_invoice_status(&existing.status, &input.status);
+        let next_payment_hash = existing.payment_hash.clone().or(input.payment_hash.clone());
+        let next_payment_request = existing
+            .payment_request
+            .clone()
+            .or(input.payment_request.clone());
+        let next_payment_proof_ref = existing
+            .payment_proof_ref
+            .clone()
+            .or(input.payment_proof_ref.clone());
+        let next_request_id = existing.request_id.clone().or(input.request_id.clone());
+        let next_settled_at_ms = if next_status == "settled" {
+            existing
+                .settled_at_ms
+                .or(input.settled_at_ms)
+                .or(Some(now_ms))
+        } else {
+            existing.settled_at_ms
+        };
+
+        let changed = next_status != existing.status
+            || input.amount_msats != existing.amount_msats
+            || next_payment_hash != existing.payment_hash
+            || next_payment_request != existing.payment_request
+            || next_payment_proof_ref != existing.payment_proof_ref
+            || next_request_id != existing.request_id
+            || next_settled_at_ms != existing.settled_at_ms
+            || input.paywall_id != existing.paywall_id
+            || input.owner_id != existing.owner_id;
+
+        let updated = LightningOpsInvoiceRecord {
+            invoice_id: input.invoice_id.clone(),
+            paywall_id: input.paywall_id,
+            owner_id: input.owner_id,
+            amount_msats: input.amount_msats,
+            status: next_status,
+            payment_hash: next_payment_hash,
+            payment_request: next_payment_request,
+            payment_proof_ref: next_payment_proof_ref,
+            request_id: next_request_id,
+            settled_at_ms: next_settled_at_ms,
+            created_at: existing.created_at,
+            updated_at: now,
+        };
+        store.invoices.insert(input.invoice_id, updated.clone());
+        return Ok((changed, updated));
+    }
+
+    let settled_at_ms = if input.status == "settled" {
+        input.settled_at_ms.or(Some(now_ms))
+    } else {
+        None
+    };
+
+    let created = LightningOpsInvoiceRecord {
+        invoice_id: input.invoice_id.clone(),
+        paywall_id: input.paywall_id,
+        owner_id: input.owner_id,
+        amount_msats: input.amount_msats,
+        status: input.status,
+        payment_hash: input.payment_hash,
+        payment_request: input.payment_request,
+        payment_proof_ref: input.payment_proof_ref,
+        request_id: input.request_id,
+        settled_at_ms,
+        created_at: now,
+        updated_at: now,
+    };
+    store.invoices.insert(input.invoice_id, created.clone());
+    Ok((true, created))
+}
+
+fn lightning_ops_choose_invoice_status(current: &str, incoming: &str) -> String {
+    let current_rank = lightning_ops_invoice_status_rank(current).unwrap_or(0);
+    let incoming_rank = lightning_ops_invoice_status_rank(incoming).unwrap_or(0);
+    if incoming_rank > current_rank {
+        incoming.to_string()
+    } else {
+        current.to_string()
+    }
+}
+
+fn lightning_ops_invoice_status_rank(status: &str) -> Option<i32> {
+    match status {
+        "open" => Some(0),
+        "canceled" | "expired" => Some(1),
+        "settled" => Some(2),
+        _ => None,
+    }
+}
+
+fn lightning_ops_required_string(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    lightning_ops_optional_string(args, field)
+        .ok_or_else(|| lightning_ops_invalid_arguments(format!("missing_{field}")))
+}
+
+fn lightning_ops_optional_string(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> Option<String> {
+    args.get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn lightning_ops_required_i64(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> Result<i64, (StatusCode, Json<serde_json::Value>)> {
+    lightning_ops_optional_i64(args, field)
+        .ok_or_else(|| lightning_ops_invalid_arguments(format!("missing_{field}")))
+}
+
+fn lightning_ops_optional_i64(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> Option<i64> {
+    let value = args.get(field)?;
+    match value {
+        serde_json::Value::Number(number) => number
+            .as_i64()
+            .or_else(|| number.as_u64().and_then(|raw| i64::try_from(raw).ok())),
+        serde_json::Value::String(raw) => raw.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+fn lightning_ops_optional_json(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> Option<serde_json::Value> {
+    args.get(field).and_then(|value| {
+        if value.is_object() || value.is_array() {
+            Some(value.clone())
+        } else {
+            None
+        }
+    })
+}
+
+fn lightning_ops_bool(
+    args: &serde_json::Map<String, serde_json::Value>,
+    field: &'static str,
+) -> bool {
+    args.get(field)
+        .and_then(|value| match value {
+            serde_json::Value::Bool(boolean) => Some(*boolean),
+            serde_json::Value::Number(number) => number
+                .as_i64()
+                .map(|value| value != 0)
+                .or_else(|| number.as_u64().map(|value| value != 0)),
+            serde_json::Value::String(raw) => {
+                let normalized = raw.trim().to_ascii_lowercase();
+                if normalized.is_empty() || normalized == "0" {
+                    Some(false)
+                } else if matches!(normalized.as_str(), "false" | "off" | "no") {
+                    Some(false)
+                } else {
+                    Some(true)
+                }
+            }
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+fn lightning_ops_meta_i64(meta: Option<&serde_json::Value>, key: &'static str) -> Option<i64> {
+    let object = meta.and_then(serde_json::Value::as_object)?;
+    match object.get(key) {
+        Some(serde_json::Value::Number(number)) => number
+            .as_i64()
+            .or_else(|| number.as_u64().and_then(|raw| i64::try_from(raw).ok())),
+        Some(serde_json::Value::String(raw)) => raw.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+fn lightning_ops_meta_string_list(
+    meta: Option<&serde_json::Value>,
+    key: &'static str,
+) -> Option<Vec<String>> {
+    let object = meta.and_then(serde_json::Value::as_object)?;
+    let values = object.get(key)?.as_array()?;
+    Some(
+        values
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn lightning_ops_map_domain_store_error(
+    error: DomainStoreError,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match error {
+        DomainStoreError::NotFound => lightning_ops_invalid_arguments("not_found"),
+        DomainStoreError::Forbidden => lightning_ops_invalid_arguments("forbidden"),
+        DomainStoreError::Validation { message, .. } => lightning_ops_invalid_arguments(message),
+        DomainStoreError::Conflict { message } => lightning_ops_invalid_arguments(message),
+        DomainStoreError::Persistence { message } => lightning_ops_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "service_unavailable",
+            message,
+        ),
+    }
+}
+
+fn lightning_ops_invalid_arguments(
+    message: impl Into<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    lightning_ops_error(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "invalid_arguments",
+        message.into(),
+    )
+}
+
+fn lightning_ops_error(
+    status: StatusCode,
+    code: &'static str,
+    message: impl Into<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        status,
+        Json(serde_json::json!({
+            "error": {
+                "code": code,
+                "message": message.into(),
+            }
+        })),
+    )
 }
 
 async fn l402_wallet(
@@ -10165,7 +11354,7 @@ mod tests {
     use crate::config::Config;
     use crate::domain_store::{
         AutopilotAggregate, AutopilotPolicyRecord, AutopilotProfileRecord, AutopilotRecord,
-        AutopilotRuntimeBindingRecord, CreateAutopilotInput, DomainStore,
+        AutopilotRuntimeBindingRecord, CreateAutopilotInput, CreateL402PaywallInput, DomainStore,
         RecordL402GatewayEventInput, RecordL402ReceiptInput, UpsertResendIntegrationInput,
         UpsertUserSparkWalletInput,
     };
@@ -10331,6 +11520,7 @@ mod tests {
             runtime_tool_receipts: super::RuntimeToolReceiptState::default(),
             runtime_skill_registry: super::RuntimeSkillRegistryState::default(),
             runtime_workers: super::RuntimeWorkerState::default(),
+            lightning_ops_control_plane: super::LightningOpsControlPlaneState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
@@ -15627,6 +16817,548 @@ mod tests {
         assert!(deployment_types.contains(&"l402_paywall_created".to_string()));
         assert!(deployment_types.contains(&"l402_paywall_updated".to_string()));
         assert!(deployment_types.contains(&"l402_paywall_deleted".to_string()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn lightning_ops_control_plane_query_and_mutation_contracts() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let store = DomainStore::from_config(&config);
+        let owner_user_id = "usr_ops".to_string();
+
+        let active_paywall = store
+            .create_l402_paywall(CreateL402PaywallInput {
+                owner_user_id: owner_user_id.clone(),
+                name: "Ops Active".to_string(),
+                host_regexp: "sats4ai\\.com".to_string(),
+                path_regexp: "^/v1/.*".to_string(),
+                price_msats: 1200,
+                upstream: "https://upstream.openagents.com".to_string(),
+                enabled: Some(true),
+                meta: Some(json!({
+                    "timeoutMs": 3000,
+                    "priority": 5,
+                    "allowedHosts": ["sats4ai.com"],
+                })),
+            })
+            .await
+            .expect("create active paywall");
+
+        let _paused_paywall = store
+            .create_l402_paywall(CreateL402PaywallInput {
+                owner_user_id: owner_user_id.clone(),
+                name: "Ops Paused".to_string(),
+                host_regexp: "api\\.openagents\\.com".to_string(),
+                path_regexp: "^/ops/.*".to_string(),
+                price_msats: 3000,
+                upstream: "http://localhost:8080".to_string(),
+                enabled: Some(false),
+                meta: None,
+            })
+            .await
+            .expect("create paused paywall");
+
+        let archived_paywall = store
+            .create_l402_paywall(CreateL402PaywallInput {
+                owner_user_id: owner_user_id.clone(),
+                name: "Ops Archived".to_string(),
+                host_regexp: "archive\\.example\\.com".to_string(),
+                path_regexp: "^/archive/.*".to_string(),
+                price_msats: 5000,
+                upstream: "https://archive.openagents.com".to_string(),
+                enabled: Some(true),
+                meta: None,
+            })
+            .await
+            .expect("create archived paywall");
+        let _ = store
+            .soft_delete_owned_l402_paywall(&owner_user_id, &archived_paywall.id)
+            .await
+            .expect("archive paywall");
+
+        let app = build_router(config);
+
+        let bad_secret_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/query")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:listPaywallControlPlaneState",
+                    "args": {
+                        "secret": "nope"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let bad_secret_response = app.clone().oneshot(bad_secret_request).await?;
+        assert_eq!(bad_secret_response.status(), StatusCode::UNAUTHORIZED);
+        let bad_secret_body = read_json(bad_secret_response).await?;
+        assert_eq!(
+            bad_secret_body["error"]["code"],
+            json!("invalid_ops_secret")
+        );
+
+        let query_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/query")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:listPaywallControlPlaneState",
+                    "args": {
+                        "secret": "ops-secret-test"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let query_response = app.clone().oneshot(query_request).await?;
+        assert_eq!(query_response.status(), StatusCode::OK);
+        let query_body = read_json(query_response).await?;
+        assert_eq!(query_body["ok"], json!(true));
+        let paywalls = query_body["paywalls"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(paywalls.len(), 2);
+        let statuses = paywalls
+            .iter()
+            .filter_map(|row| row["status"].as_str().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert!(statuses.contains(&"active".to_string()));
+        assert!(statuses.contains(&"paused".to_string()));
+        assert_eq!(paywalls[0]["routes"][0]["timeoutMs"], json!(3000));
+        assert_eq!(paywalls[0]["routes"][0]["priority"], json!(5));
+
+        let security_before_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/query")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:getControlPlaneSecurityState",
+                    "args": {
+                        "secret": "ops-secret-test"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let security_before_response = app.clone().oneshot(security_before_request).await?;
+        assert_eq!(security_before_response.status(), StatusCode::OK);
+        let security_before_body = read_json(security_before_response).await?;
+        assert_eq!(security_before_body["global"]["globalPause"], json!(false));
+        assert_eq!(security_before_body["ownerControls"], json!([]));
+        assert_eq!(security_before_body["credentialRoles"], json!([]));
+
+        let global_pause_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:setGlobalPause",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "active": true,
+                        "reason": "Emergency pause",
+                        "updatedBy": "ops@openagents.com"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let global_pause_response = app.clone().oneshot(global_pause_request).await?;
+        assert_eq!(global_pause_response.status(), StatusCode::OK);
+        let global_pause_body = read_json(global_pause_response).await?;
+        assert_eq!(global_pause_body["global"]["globalPause"], json!(true));
+        assert_eq!(
+            global_pause_body["global"]["denyReasonCode"],
+            json!("global_pause_active")
+        );
+
+        let owner_kill_switch_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:setOwnerKillSwitch",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "ownerId": "owner_usr_ops",
+                        "active": true,
+                        "reason": "Owner pause",
+                        "updatedBy": "ops@openagents.com"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let owner_kill_switch_response = app.clone().oneshot(owner_kill_switch_request).await?;
+        assert_eq!(owner_kill_switch_response.status(), StatusCode::OK);
+        let owner_kill_switch_body = read_json(owner_kill_switch_response).await?;
+        assert_eq!(
+            owner_kill_switch_body["ownerControl"]["ownerId"],
+            json!("owner_usr_ops")
+        );
+        assert_eq!(
+            owner_kill_switch_body["ownerControl"]["killSwitch"],
+            json!(true)
+        );
+
+        let role_rotate_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:rotateCredentialRole",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "role": "gateway_signer",
+                        "fingerprint": "fingerprint_v1",
+                        "note": "rotation start"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let role_rotate_response = app.clone().oneshot(role_rotate_request).await?;
+        assert_eq!(role_rotate_response.status(), StatusCode::OK);
+        let role_rotate_body = read_json(role_rotate_response).await?;
+        assert_eq!(role_rotate_body["role"]["status"], json!("rotating"));
+        assert_eq!(role_rotate_body["role"]["version"], json!(1));
+
+        let role_activate_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:activateCredentialRole",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "role": "gateway_signer",
+                        "fingerprint": "fingerprint_v1"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let role_activate_response = app.clone().oneshot(role_activate_request).await?;
+        assert_eq!(role_activate_response.status(), StatusCode::OK);
+        let role_activate_body = read_json(role_activate_response).await?;
+        assert_eq!(role_activate_body["role"]["status"], json!("active"));
+        assert_eq!(role_activate_body["role"]["version"], json!(1));
+
+        let role_revoke_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:revokeCredentialRole",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "role": "gateway_signer",
+                        "note": "revoke key"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let role_revoke_response = app.clone().oneshot(role_revoke_request).await?;
+        assert_eq!(role_revoke_response.status(), StatusCode::OK);
+        let role_revoke_body = read_json(role_revoke_response).await?;
+        assert_eq!(role_revoke_body["role"]["status"], json!("revoked"));
+        assert_eq!(role_revoke_body["role"]["version"], json!(1));
+
+        let security_after_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/query")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/security:getControlPlaneSecurityState",
+                    "args": {
+                        "secret": "ops-secret-test"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let security_after_response = app.clone().oneshot(security_after_request).await?;
+        assert_eq!(security_after_response.status(), StatusCode::OK);
+        let security_after_body = read_json(security_after_response).await?;
+        assert_eq!(security_after_body["global"]["globalPause"], json!(true));
+        assert_eq!(
+            security_after_body["ownerControls"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(
+            security_after_body["credentialRoles"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+
+        let compile_intent_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:recordGatewayCompileIntent",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "configHash": "cfg_hash_1",
+                        "imageDigest": "sha256:abc",
+                        "status": "queued",
+                        "diagnostics": {"queue":"ready"},
+                        "metadata": {"region":"us-central1"},
+                        "requestId": "req_1",
+                        "appliedAtMs": 12345
+                    }
+                })
+                .to_string(),
+            ))?;
+        let compile_intent_response = app.clone().oneshot(compile_intent_request).await?;
+        assert_eq!(compile_intent_response.status(), StatusCode::OK);
+        let compile_intent_body = read_json(compile_intent_response).await?;
+        assert_eq!(compile_intent_body["deployment"]["status"], json!("queued"));
+        let deployment_id = compile_intent_body["deployment"]["deploymentId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!deployment_id.is_empty());
+
+        let compile_intent_update_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:recordGatewayCompileIntent",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "deploymentId": deployment_id,
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "configHash": "cfg_hash_2",
+                        "status": "applied"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let compile_intent_update_response =
+            app.clone().oneshot(compile_intent_update_request).await?;
+        assert_eq!(compile_intent_update_response.status(), StatusCode::OK);
+        let compile_intent_update_body = read_json(compile_intent_update_response).await?;
+        assert_eq!(
+            compile_intent_update_body["deployment"]["status"],
+            json!("applied")
+        );
+
+        let deployment_event_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:recordGatewayDeploymentEvent",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "eventType": "deployment_applied",
+                        "level": "info",
+                        "requestId": "req_2",
+                        "metadata": {"target":"gateway"}
+                    }
+                })
+                .to_string(),
+            ))?;
+        let deployment_event_response = app.clone().oneshot(deployment_event_request).await?;
+        assert_eq!(deployment_event_response.status(), StatusCode::OK);
+        let deployment_event_body = read_json(deployment_event_response).await?;
+        assert!(
+            deployment_event_body["event"]["eventId"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("evt_")
+        );
+
+        let invoice_lifecycle_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/settlements:ingestInvoiceLifecycle",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "invoiceId": "inv_1",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "amountMsats": 2100,
+                        "status": "open",
+                        "requestId": "inv_req_1"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let invoice_lifecycle_response = app.clone().oneshot(invoice_lifecycle_request).await?;
+        assert_eq!(invoice_lifecycle_response.status(), StatusCode::OK);
+        let invoice_lifecycle_body = read_json(invoice_lifecycle_response).await?;
+        assert_eq!(invoice_lifecycle_body["changed"], json!(true));
+        assert_eq!(invoice_lifecycle_body["invoice"]["status"], json!("open"));
+
+        let invoice_settled_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/settlements:ingestInvoiceLifecycle",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "invoiceId": "inv_1",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "amountMsats": 2100,
+                        "status": "settled",
+                        "paymentHash": "hash_123",
+                        "settledAtMs": 33333
+                    }
+                })
+                .to_string(),
+            ))?;
+        let invoice_settled_response = app.clone().oneshot(invoice_settled_request).await?;
+        assert_eq!(invoice_settled_response.status(), StatusCode::OK);
+        let invoice_settled_body = read_json(invoice_settled_response).await?;
+        assert_eq!(invoice_settled_body["invoice"]["status"], json!("settled"));
+        assert_eq!(invoice_settled_body["invoice"]["settledAtMs"], json!(33333));
+
+        let settlement_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/settlements:ingestSettlement",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "settlementId": "settle_1",
+                        "invoiceId": "inv_1",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "amountMsats": 2100,
+                        "paymentProofType": "lightning_preimage",
+                        "paymentProofValue": "AABBCC11223344556677889900aabbcc",
+                        "metadata": {"source":"test"}
+                    }
+                })
+                .to_string(),
+            ))?;
+        let settlement_response = app.clone().oneshot(settlement_request).await?;
+        assert_eq!(settlement_response.status(), StatusCode::OK);
+        let settlement_body = read_json(settlement_response).await?;
+        assert_eq!(settlement_body["existed"], json!(false));
+        assert!(
+            settlement_body["settlement"]["paymentProofRef"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("lightning_preimage:")
+        );
+
+        let settlement_replay_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/settlements:ingestSettlement",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "settlementId": "settle_1",
+                        "invoiceId": "inv_1",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "amountMsats": 2100,
+                        "paymentProofType": "lightning_preimage",
+                        "paymentProofValue": "aabbcc11223344556677889900aabbcc"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let settlement_replay_response = app.clone().oneshot(settlement_replay_request).await?;
+        assert_eq!(settlement_replay_response.status(), StatusCode::OK);
+        let settlement_replay_body = read_json(settlement_replay_response).await?;
+        assert_eq!(settlement_replay_body["existed"], json!(true));
+
+        let invalid_invoice_status_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/mutation")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/settlements:ingestInvoiceLifecycle",
+                    "args": {
+                        "secret": "ops-secret-test",
+                        "invoiceId": "inv_invalid",
+                        "paywallId": active_paywall.id,
+                        "ownerId": "owner_usr_ops",
+                        "amountMsats": 1,
+                        "status": "bad_status"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let invalid_invoice_status_response =
+            app.clone().oneshot(invalid_invoice_status_request).await?;
+        assert_eq!(
+            invalid_invoice_status_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_invoice_status_body = read_json(invalid_invoice_status_response).await?;
+        assert_eq!(
+            invalid_invoice_status_body["error"]["code"],
+            json!("invalid_arguments")
+        );
+        assert_eq!(
+            invalid_invoice_status_body["error"]["message"],
+            json!("invalid_invoice_status")
+        );
+
+        let unsupported_function_request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/lightning-ops/control-plane/query")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "functionName": "lightning/ops:missing",
+                    "args": {
+                        "secret": "ops-secret-test"
+                    }
+                })
+                .to_string(),
+            ))?;
+        let unsupported_function_response = app.oneshot(unsupported_function_request).await?;
+        assert_eq!(
+            unsupported_function_response.status(),
+            StatusCode::NOT_FOUND
+        );
+        let unsupported_function_body = read_json(unsupported_function_response).await?;
+        assert_eq!(
+            unsupported_function_body["error"]["code"],
+            json!("unsupported_function")
+        );
 
         Ok(())
     }

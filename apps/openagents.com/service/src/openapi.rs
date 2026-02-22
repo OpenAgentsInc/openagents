@@ -43,6 +43,10 @@ pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
+pub const ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY: &str =
+    "/api/internal/lightning-ops/control-plane/query";
+pub const ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION: &str =
+    "/api/internal/lightning-ops/control-plane/mutation";
 pub const ROUTE_RUNTIME_TOOLS_EXECUTE: &str = "/api/runtime/tools/execute";
 pub const ROUTE_RUNTIME_SKILLS_TOOL_SPECS: &str = "/api/runtime/skills/tool-specs";
 pub const ROUTE_RUNTIME_SKILLS_SKILL_SPECS: &str = "/api/runtime/skills/skill-specs";
@@ -713,6 +717,30 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
     },
     OpenApiContract {
         method: "post",
+        route_path: ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY,
+        operation_id: "lightningOpsControlPlaneQuery",
+        summary: "Dispatch lightning ops query functions guarded by shared ops secret.",
+        tag: "l402",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("lightning_ops_control_plane_query"),
+        response_example: Some("lightning_ops_control_plane_query"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
+        operation_id: "lightningOpsControlPlaneMutation",
+        summary: "Dispatch lightning ops mutation functions guarded by shared ops secret.",
+        tag: "l402",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("lightning_ops_control_plane_mutation"),
+        response_example: Some("lightning_ops_control_plane_mutation"),
+    },
+    OpenApiContract {
+        method: "post",
         route_path: ROUTE_RUNTIME_TOOLS_EXECUTE,
         operation_id: "runtimeToolsExecute",
         summary: "Execute typed runtime tool-pack operations with policy/replay receipts.",
@@ -1353,6 +1381,22 @@ fn request_example(key: &str) -> Option<Value> {
             "run_id": "run_123",
             "tool_call_id": "tool_123",
             "org_id": "org_abc"
+        })),
+        "lightning_ops_control_plane_query" => Some(json!({
+            "functionName": "lightning/ops:listPaywallControlPlaneState",
+            "args": {
+                "secret": "ops-secret",
+                "statuses": ["active", "paused"]
+            }
+        })),
+        "lightning_ops_control_plane_mutation" => Some(json!({
+            "functionName": "lightning/security:setGlobalPause",
+            "args": {
+                "secret": "ops-secret",
+                "active": true,
+                "reason": "Emergency pause",
+                "updatedBy": "ops@openagents.com"
+            }
         })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
         "runtime_tools_execute" => Some(json!({
@@ -2194,6 +2238,54 @@ fn response_example(key: &str) -> Option<Value> {
                     "org_id": "org_abc"
                 },
                 "fetched_at": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "lightning_ops_control_plane_query" => Some(json!({
+            "ok": true,
+            "paywalls": [
+                {
+                    "paywallId": "pw_123",
+                    "ownerId": "owner_usr_123",
+                    "name": "Default",
+                    "status": "active",
+                    "createdAtMs": 1700000000000i64,
+                    "updatedAtMs": 1700000000000i64,
+                    "policy": {
+                        "paywallId": "pw_123",
+                        "ownerId": "owner_usr_123",
+                        "pricingMode": "fixed",
+                        "fixedAmountMsats": 1000,
+                        "killSwitch": false,
+                        "createdAtMs": 1700000000000i64,
+                        "updatedAtMs": 1700000000000i64
+                    },
+                    "routes": [
+                        {
+                            "routeId": "route_pw_123",
+                            "paywallId": "pw_123",
+                            "ownerId": "owner_usr_123",
+                            "hostPattern": "sats4ai\\.com",
+                            "pathPattern": "^/api/.*",
+                            "upstreamUrl": "https://upstream.openagents.com",
+                            "protocol": "https",
+                            "timeoutMs": 6000,
+                            "priority": 10,
+                            "createdAtMs": 1700000000000i64,
+                            "updatedAtMs": 1700000000000i64
+                        }
+                    ]
+                }
+            ]
+        })),
+        "lightning_ops_control_plane_mutation" => Some(json!({
+            "ok": true,
+            "global": {
+                "stateId": "global",
+                "globalPause": true,
+                "denyReasonCode": "global_pause_active",
+                "denyReason": "Emergency pause",
+                "updatedBy": "ops@openagents.com",
+                "updatedAtMs": 1700000000000i64
             }
         })),
         "thread_message" => Some(json!({
