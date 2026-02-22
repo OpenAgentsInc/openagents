@@ -22,6 +22,7 @@ pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
+pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
@@ -338,6 +339,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("settings_profile_update"),
         response_example: Some("settings_profile"),
+    },
+    OpenApiContract {
+        method: "patch",
+        route_path: ROUTE_SETTINGS_AUTOPILOT,
+        operation_id: "settingsAutopilotUpdate",
+        summary: "Update autopilot profile settings for the authenticated user.",
+        tag: "profile",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("settings_autopilot_update"),
+        response_example: Some("settings_autopilot_update"),
     },
     OpenApiContract {
         method: "delete",
@@ -783,6 +796,14 @@ fn request_example(key: &str) -> Option<Value> {
         "settings_profile_update" => Some(json!({
             "name": "Updated Name"
         })),
+        "settings_autopilot_update" => Some(json!({
+            "displayName": "Chris Autopilot",
+            "tagline": "Persistent and practical",
+            "ownerDisplayName": "Chris",
+            "personaSummary": "Keep it concise and engineering-minded.",
+            "autopilotVoice": "calm and direct",
+            "principlesText": "Prefer verification over guessing\nAsk before irreversible actions"
+        })),
         "settings_profile_delete" => Some(json!({
             "email": "user@openagents.com"
         })),
@@ -1123,6 +1144,44 @@ fn response_example(key: &str) -> Option<Value> {
                 "avatar": "",
                 "createdAt": null,
                 "updatedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "settings_autopilot_update" => Some(json!({
+            "data": {
+                "status": "autopilot-updated",
+                "autopilot": {
+                    "id": "ap_123",
+                    "handle": "ep212-bot",
+                    "displayName": "EP212 Bot",
+                    "status": "active",
+                    "visibility": "private",
+                    "ownerUserId": "usr_123",
+                    "avatar": null,
+                    "tagline": "Persistent and practical",
+                    "configVersion": 2,
+                    "profile": {
+                        "ownerDisplayName": "Chris",
+                        "personaSummary": "Pragmatic and concise",
+                        "autopilotVoice": "calm and direct",
+                        "principles": ["Prefer verification over guessing", "Ask before irreversible actions"],
+                        "preferences": [],
+                        "onboardingAnswers": [],
+                        "schemaVersion": 1
+                    },
+                    "policy": {
+                        "modelProvider": null,
+                        "model": null,
+                        "toolAllowlist": [],
+                        "toolDenylist": [],
+                        "l402RequireApproval": true,
+                        "l402MaxSpendMsatsPerCall": null,
+                        "l402MaxSpendMsatsPerDay": null,
+                        "l402AllowedHosts": [],
+                        "dataPolicy": []
+                    },
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                }
             }
         })),
         "profile_deleted" => Some(json!({

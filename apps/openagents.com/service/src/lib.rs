@@ -10,7 +10,7 @@ use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -63,9 +63,9 @@ use crate::openapi::{
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
-    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
-    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
-    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN,
+    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
+    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
@@ -436,6 +436,22 @@ struct DeleteProfileRequestPayload {
 }
 
 #[derive(Debug, Deserialize)]
+struct UpdateSettingsAutopilotRequestPayload {
+    #[serde(default, alias = "displayName")]
+    display_name: Option<String>,
+    #[serde(default)]
+    tagline: Option<String>,
+    #[serde(default, alias = "ownerDisplayName")]
+    owner_display_name: Option<String>,
+    #[serde(default, alias = "personaSummary")]
+    persona_summary: Option<String>,
+    #[serde(default, alias = "autopilotVoice")]
+    autopilot_voice: Option<String>,
+    #[serde(default, alias = "principlesText")]
+    principles_text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SyncTokenRequestPayload {
     #[serde(default)]
     scopes: Vec<String>,
@@ -623,6 +639,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                 .patch(settings_profile_update)
                 .delete(settings_profile_delete),
         )
+        .route(ROUTE_SETTINGS_AUTOPILOT, patch(settings_autopilot_update))
         .route(
             ROUTE_TOKENS_CURRENT,
             delete(delete_current_personal_access_token),
@@ -3083,6 +3100,129 @@ async fn settings_profile_update(
     ))
 }
 
+async fn settings_autopilot_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<UpdateSettingsAutopilotRequestPayload>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let display_name =
+        normalize_optional_bounded_trimmed_string(payload.display_name, "displayName", 120)?;
+    let tagline = normalize_optional_bounded_trimmed_string(payload.tagline, "tagline", 255)?;
+    let owner_display_name = normalize_optional_bounded_trimmed_string(
+        payload.owner_display_name,
+        "ownerDisplayName",
+        120,
+    )?;
+    let persona_summary = payload
+        .persona_summary
+        .map(|value| value.trim().to_string());
+    let autopilot_voice =
+        normalize_optional_bounded_trimmed_string(payload.autopilot_voice, "autopilotVoice", 64)?;
+    let principles = split_principles_text(payload.principles_text);
+
+    let autopilot = match state
+        ._domain_store
+        .list_autopilots_for_owner(&bundle.user.id, 1)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .next()
+    {
+        Some(existing) => existing,
+        None => {
+            let create_display_name = display_name.clone().unwrap_or_else(|| {
+                let owner_name = bundle.user.name.trim();
+                if owner_name.is_empty() {
+                    "Autopilot".to_string()
+                } else {
+                    format!("{owner_name} Autopilot")
+                }
+            });
+
+            state
+                ._domain_store
+                .create_autopilot(CreateAutopilotInput {
+                    owner_user_id: bundle.user.id.clone(),
+                    owner_display_name: bundle.user.name.clone(),
+                    display_name: create_display_name,
+                    handle_seed: None,
+                    avatar: None,
+                    status: Some("active".to_string()),
+                    visibility: Some("private".to_string()),
+                    tagline: None,
+                })
+                .await
+                .map_err(map_domain_store_error)?
+        }
+    };
+
+    let effective_display_name =
+        display_name.unwrap_or_else(|| autopilot.autopilot.display_name.clone());
+    let effective_tagline =
+        tagline.unwrap_or_else(|| autopilot.autopilot.tagline.clone().unwrap_or_default());
+    let effective_owner_display_name =
+        owner_display_name.unwrap_or_else(|| bundle.user.name.clone());
+    let effective_persona_summary = persona_summary.unwrap_or_default();
+    let effective_autopilot_voice = autopilot_voice.unwrap_or_default();
+
+    let updated = state
+        ._domain_store
+        .update_owned_autopilot(
+            &bundle.user.id,
+            &autopilot.autopilot.id,
+            UpdateAutopilotInput {
+                display_name: Some(effective_display_name),
+                tagline: Some(effective_tagline),
+                profile: Some(UpsertAutopilotProfileInput {
+                    owner_display_name: Some(effective_owner_display_name),
+                    persona_summary: Some(effective_persona_summary),
+                    autopilot_voice: Some(effective_autopilot_voice),
+                    principles: Some(serde_json::Value::Array(
+                        principles
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    )),
+                    ..UpsertAutopilotProfileInput::default()
+                }),
+                ..UpdateAutopilotInput::default()
+            },
+        )
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("settings.autopilot.updated", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("autopilot_id", updated.autopilot.id.clone())
+            .with_attribute("source", "settings_profile".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.autopilot.updated", &request_id);
+
+    if headers.contains_key("x-inertia") {
+        return Ok(Redirect::to("/settings/autopilot?status=autopilot-updated").into_response());
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "status": "autopilot-updated",
+                "autopilot": autopilot_aggregate_payload(&updated),
+            }
+        })),
+    )
+        .into_response())
+}
+
 async fn settings_profile_delete(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -5373,6 +5513,26 @@ fn normalize_optional_bounded_string(
     Ok(normalized)
 }
 
+fn normalize_optional_bounded_trimmed_string(
+    value: Option<String>,
+    field: &'static str,
+    max_chars: usize,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(candidate) = value else {
+        return Ok(None);
+    };
+
+    let trimmed = candidate.trim().to_string();
+    if trimmed.chars().count() > max_chars {
+        return Err(validation_error(
+            field,
+            &format!("Value may not be greater than {max_chars} characters."),
+        ));
+    }
+
+    Ok(Some(trimmed))
+}
+
 fn normalize_autopilot_enum(
     value: Option<String>,
     field: &'static str,
@@ -5426,6 +5586,16 @@ fn validate_optional_string_list_max(
     }
 
     Ok(Some(values))
+}
+
+fn split_principles_text(value: Option<String>) -> Vec<String> {
+    value
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn normalize_autopilot_profile_update(
@@ -8556,6 +8726,102 @@ mod tests {
         assert_eq!(
             show_after_delete_response.status(),
             StatusCode::UNAUTHORIZED
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settings_autopilot_route_supports_create_update_and_validation() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "autopilot-settings@openagents.com").await?;
+
+        let update_request = Request::builder()
+            .method("PATCH")
+            .uri("/settings/autopilot")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"displayName":"Chris Autopilot","tagline":"Persistent and practical","ownerDisplayName":"Chris","personaSummary":"Keep it concise and engineering-minded.","autopilotVoice":"calm and direct","principlesText":"Prefer verification over guessing\nAsk before irreversible actions"}"#,
+            ))?;
+        let update_response = app.clone().oneshot(update_request).await?;
+        assert_eq!(update_response.status(), StatusCode::OK);
+        let update_body = read_json(update_response).await?;
+        assert_eq!(update_body["data"]["status"], "autopilot-updated");
+        assert_eq!(
+            update_body["data"]["autopilot"]["displayName"],
+            "Chris Autopilot"
+        );
+        assert_eq!(
+            update_body["data"]["autopilot"]["tagline"],
+            "Persistent and practical"
+        );
+        assert_eq!(
+            update_body["data"]["autopilot"]["profile"]["ownerDisplayName"],
+            "Chris"
+        );
+        assert_eq!(
+            update_body["data"]["autopilot"]["profile"]["personaSummary"],
+            "Keep it concise and engineering-minded."
+        );
+        assert_eq!(
+            update_body["data"]["autopilot"]["profile"]["autopilotVoice"],
+            "calm and direct"
+        );
+        let principles = update_body["data"]["autopilot"]["profile"]["principles"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            principles
+                .iter()
+                .any(|value| value == "Prefer verification over guessing")
+        );
+        assert!(
+            principles
+                .iter()
+                .any(|value| value == "Ask before irreversible actions")
+        );
+        assert!(
+            update_body["data"]["autopilot"]["configVersion"]
+                .as_u64()
+                .unwrap_or_default()
+                > 1
+        );
+
+        let inertia_request = Request::builder()
+            .method("PATCH")
+            .uri("/settings/autopilot")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .header("x-inertia", "true")
+            .body(Body::from("{}"))?;
+        let inertia_response = app.clone().oneshot(inertia_request).await?;
+        assert_eq!(inertia_response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            inertia_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/settings/autopilot?status=autopilot-updated")
+        );
+
+        let too_long_display_name = "x".repeat(121);
+        let invalid_request = Request::builder()
+            .method("PATCH")
+            .uri("/settings/autopilot")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{"displayName":"{too_long_display_name}"}}"#
+            )))?;
+        let invalid_response = app.oneshot(invalid_request).await?;
+        assert_eq!(invalid_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let invalid_body = read_json(invalid_response).await?;
+        assert_eq!(invalid_body["error"]["code"], json!("invalid_request"));
+        assert_eq!(
+            invalid_body["errors"]["displayName"],
+            json!(["Value may not be greater than 120 characters."])
         );
 
         Ok(())
