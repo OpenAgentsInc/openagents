@@ -245,6 +245,14 @@ run_web_parity_regression() {
   )
 }
 
+run_staging_dual_run_diff() {
+  echo "==> staging dual-run shadow diff lane"
+  (
+    cd "$ROOT_DIR"
+    ./apps/openagents.com/service/scripts/run-staging-dual-run-shadow-diff.sh
+  )
+}
+
 run_cross_surface_harness() {
   echo "==> cross-surface contract harness"
   (
@@ -420,6 +428,9 @@ case "$MODE" in
   web-parity)
     run_web_parity_regression
     ;;
+  staging-dual-run-diff)
+    run_staging_dual_run_diff
+    ;;
   workspace-compile)
     run_workspace_compile
     ;;
@@ -457,7 +468,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
     exit 2
     ;;
 esac

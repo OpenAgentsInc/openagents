@@ -1,0 +1,33 @@
+name: web-staging-dual-run-diff
+
+on:
+  workflow_dispatch:
+    inputs:
+      rust_base_url:
+        description: 'Rust staging base URL (for example https://rust-staging.example.com)'
+        required: true
+        type: string
+      legacy_base_url:
+        description: 'Legacy staging base URL (for example https://legacy-staging.example.com)'
+        required: true
+        type: string
+      requests_file:
+        description: 'Optional request manifest path override'
+        required: false
+        default: 'apps/openagents.com/docs/parity-manifests/staging-dual-run-requests.json'
+        type: string
+
+jobs:
+  dual-run-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run staging dual-run shadow diff
+        env:
+          RUST_BASE_URL: ${{ inputs.rust_base_url }}
+          LEGACY_BASE_URL: ${{ inputs.legacy_base_url }}
+          REQUESTS_FILE: ${{ inputs.requests_file }}
+          AUTH_TOKEN: ${{ secrets.STAGING_DUAL_RUN_AUTH_TOKEN }}
+        run: ./apps/openagents.com/service/scripts/run-staging-dual-run-shadow-diff.sh

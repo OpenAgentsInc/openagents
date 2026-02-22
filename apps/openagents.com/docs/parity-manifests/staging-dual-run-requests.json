@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.webparity.staging_dual_run_requests.v1",
+  "generated_at": "2026-02-22T00:00:00Z",
+  "description": "Requests used by the staging dual-run shadow diff harness.",
+  "requests": [
+    {
+      "id": "openapi-json",
+      "method": "GET",
+      "path": "/openapi.json",
+      "response_kind": "json",
+      "critical": true,
+      "requires_auth": false
+    },
+    {
+      "id": "manifest-json",
+      "method": "GET",
+      "path": "/manifest.json",
+      "response_kind": "json",
+      "critical": true,
+      "requires_auth": false
+    },
+    {
+      "id": "web-root",
+      "method": "GET",
+      "path": "/",
+      "response_kind": "text",
+      "critical": false,
+      "requires_auth": false
+    },
+    {
+      "id": "feed-page",
+      "method": "GET",
+      "path": "/feed",
+      "response_kind": "text",
+      "critical": false,
+      "requires_auth": false
+    },
+    {
+      "id": "api-me",
+      "method": "GET",
+      "path": "/api/me",
+      "response_kind": "json",
+      "critical": true,
+      "requires_auth": true
+    },
+    {
+      "id": "runtime-threads",
+      "method": "GET",
+      "path": "/api/runtime/threads",
+      "response_kind": "json",
+      "critical": true,
+      "requires_auth": true
+    },
+    {
+      "id": "legacy-chats-index",
+      "method": "GET",
+      "path": "/api/chats",
+      "response_kind": "json",
+      "critical": true,
+      "requires_auth": true
+    }
+  ]
+}

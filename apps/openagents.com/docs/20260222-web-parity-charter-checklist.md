@@ -202,7 +202,8 @@ Baseline and migration evidence targets:
 - [ ] Web-shell lane (`./scripts/local-ci.sh web-shell`)
 - [ ] Runtime lane (`./scripts/local-ci.sh runtime`)
 - [ ] Cross-surface harness when stream/chat paths change (`./scripts/local-ci.sh cross-surface`)
-- [ ] Staging dual-run diff report (`OA-WEBPARITY-057`)
+- [x] Staging dual-run diff report (`OA-WEBPARITY-057`)
+  Harness/runbook: `apps/openagents.com/service/scripts/run-staging-dual-run-shadow-diff.sh`, `apps/openagents.com/service/docs/STAGING_DUAL_RUN_SHADOW_DIFF.md`
 - [ ] Production canary + rollback drill report (`OA-WEBPARITY-058`)
 
 ## Checklist Freeze Rules
