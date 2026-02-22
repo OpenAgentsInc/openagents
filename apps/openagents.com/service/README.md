@@ -145,6 +145,13 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`
   - `apps/openagents.com/web-shell/scripts/perf-budget-gate.sh`
 
+## API envelope and error matrix
+
+- Shared Rust API envelope helpers:
+  - `apps/openagents.com/service/src/api_envelope.rs`
+- Canonical error-code/status matrix:
+  - `apps/openagents.com/service/docs/API_ENVELOPE_ERROR_MATRIX.md`
+
 ## Compatibility negotiation policy
 
 - Canonical policy and failure-code matrix:

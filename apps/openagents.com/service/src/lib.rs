@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -26,11 +25,16 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
+pub mod api_envelope;
 pub mod config;
 pub mod observability;
 pub mod route_split;
 pub mod sync_token;
 
+use crate::api_envelope::{
+    ApiErrorCode, ApiErrorResponse, error_response_with_status, forbidden_error, not_found_error,
+    ok_data, unauthorized_error, validation_error,
+};
 use crate::auth::{
     AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
     SessionRevocationRequest, SessionRevocationTarget,
@@ -91,20 +95,6 @@ struct HealthResponse {
 struct ReadinessResponse {
     status: &'static str,
     static_dir: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ApiErrorDetail {
-    code: &'static str,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ApiErrorResponse {
-    message: String,
-    error: ApiErrorDetail,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    errors: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -639,16 +629,10 @@ async fn web_shell_entry(
                 .route_split
                 .legacy_redirect_url(path, uri.query())
                 .ok_or_else(|| {
-                    (
+                    error_response_with_status(
                         StatusCode::SERVICE_UNAVAILABLE,
-                        Json(ApiErrorResponse {
-                            message: "Legacy route target is not configured.".to_string(),
-                            error: ApiErrorDetail {
-                                code: "legacy_route_unavailable",
-                                message: "Legacy route target is not configured.".to_string(),
-                            },
-                            errors: None,
-                        }),
+                        ApiErrorCode::LegacyRouteUnavailable,
+                        "Legacy route target is not configured.".to_string(),
                     )
                 })?;
             Ok(Redirect::temporary(&redirect).into_response())
@@ -669,7 +653,7 @@ async fn route_split_status(
         .map_err(map_auth_error)?;
 
     let status = state.route_split.status().await;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "data": status }))))
+    Ok(ok_data(status))
 }
 
 async fn route_split_override(
@@ -714,7 +698,7 @@ async fn route_split_override(
         .observability
         .increment_counter("route.split.override.updated", &request_id);
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "data": status }))))
+    Ok(ok_data(status))
 }
 
 async fn route_split_evaluate(
@@ -740,10 +724,7 @@ async fn route_split_evaluate(
         .unwrap_or_else(|| resolve_route_cohort_key(&headers));
 
     let decision = state.route_split.evaluate(&payload.path, &cohort_key).await;
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "data": decision })),
-    ))
+    Ok(ok_data(decision))
 }
 
 async fn build_static_response(
@@ -789,32 +770,16 @@ enum StaticResponseError {
 fn map_static_error(error: StaticResponseError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         StaticResponseError::NotFound(message) => static_not_found(message),
-        StaticResponseError::Io(_) | StaticResponseError::InvalidHeader(_) => (
+        StaticResponseError::Io(_) | StaticResponseError::InvalidHeader(_) => error_response_with_status(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiErrorResponse {
-                message: "Failed to serve static asset.".to_string(),
-                error: ApiErrorDetail {
-                    code: "static_asset_error",
-                    message: "Failed to serve static asset.".to_string(),
-                },
-                errors: None,
-            }),
+            ApiErrorCode::StaticAssetError,
+            "Failed to serve static asset.".to_string(),
         ),
     }
 }
 
 fn static_not_found(message: String) -> (StatusCode, Json<ApiErrorResponse>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ApiErrorResponse {
-            message: message.clone(),
-            error: ApiErrorDetail {
-                code: "not_found",
-                message,
-            },
-            errors: None,
-        }),
-    )
+    not_found_error(message)
 }
 
 fn normalize_static_path(path: &str) -> Option<String> {
@@ -1223,10 +1188,7 @@ async fn policy_authorize(
         .await
         .map_err(map_auth_error)?;
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "data": decision })),
-    ))
+    Ok(ok_data(decision))
 }
 
 async fn sync_token(
@@ -1305,7 +1267,7 @@ async fn sync_token(
         .observability
         .increment_counter("sync.token.issued", &request_id);
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "data": issued }))))
+    Ok(ok_data(issued))
 }
 
 async fn send_thread_message(
@@ -1533,16 +1495,10 @@ async fn propagate_runtime_revocation(
         .revoke_sessions(session_ids.clone(), device_ids.clone(), reason)
         .await
         .map_err(|message| {
-            (
+            error_response_with_status(
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ApiErrorResponse {
-                    message: "Failed to propagate websocket session revocation.".to_string(),
-                    error: ApiErrorDetail {
-                        code: "service_unavailable",
-                        message,
-                    },
-                    errors: None,
-                }),
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to propagate websocket session revocation: {message}"),
             )
         })?;
 
@@ -1564,112 +1520,33 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
         AuthError::Validation { field, message } => validation_error(field, &message),
         AuthError::Unauthorized { message } => unauthorized_error(&message),
         AuthError::Forbidden { message } => forbidden_error(&message),
-        AuthError::Conflict { message } => (
-            StatusCode::CONFLICT,
-            Json(ApiErrorResponse {
-                message: message.clone(),
-                error: ApiErrorDetail {
-                    code: "conflict",
-                    message,
-                },
-                errors: None,
-            }),
-        ),
-        AuthError::Provider { message } => (
+        AuthError::Conflict { message } => {
+            error_response_with_status(StatusCode::CONFLICT, ApiErrorCode::Conflict, message)
+        }
+        AuthError::Provider { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ApiErrorResponse {
-                message: message.clone(),
-                error: ApiErrorDetail {
-                    code: "service_unavailable",
-                    message,
-                },
-                errors: None,
-            }),
+            ApiErrorCode::ServiceUnavailable,
+            message,
         ),
     }
 }
 
 fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
-        SyncTokenError::InvalidScope { message } => (
+        SyncTokenError::InvalidScope { message } => {
+            error_response_with_status(StatusCode::UNPROCESSABLE_ENTITY, ApiErrorCode::InvalidScope, message)
+        }
+        SyncTokenError::InvalidRequest { message } => error_response_with_status(
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ApiErrorResponse {
-                message: message.clone(),
-                error: ApiErrorDetail {
-                    code: "invalid_scope",
-                    message,
-                },
-                errors: None,
-            }),
+            ApiErrorCode::InvalidRequest,
+            message,
         ),
-        SyncTokenError::InvalidRequest { message } => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ApiErrorResponse {
-                message: message.clone(),
-                error: ApiErrorDetail {
-                    code: "invalid_request",
-                    message,
-                },
-                errors: None,
-            }),
-        ),
-        SyncTokenError::Unavailable { message } => (
+        SyncTokenError::Unavailable { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ApiErrorResponse {
-                message: message.clone(),
-                error: ApiErrorDetail {
-                    code: "sync_token_unavailable",
-                    message,
-                },
-                errors: None,
-            }),
+            ApiErrorCode::SyncTokenUnavailable,
+            message,
         ),
     }
-}
-
-fn validation_error(field: &'static str, message: &str) -> (StatusCode, Json<ApiErrorResponse>) {
-    let mut errors = HashMap::new();
-    errors.insert(field.to_string(), vec![message.to_string()]);
-
-    (
-        StatusCode::UNPROCESSABLE_ENTITY,
-        Json(ApiErrorResponse {
-            message: message.to_string(),
-            error: ApiErrorDetail {
-                code: "invalid_request",
-                message: message.to_string(),
-            },
-            errors: Some(errors),
-        }),
-    )
-}
-
-fn unauthorized_error(message: &str) -> (StatusCode, Json<ApiErrorResponse>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ApiErrorResponse {
-            message: message.to_string(),
-            error: ApiErrorDetail {
-                code: "unauthorized",
-                message: message.to_string(),
-            },
-            errors: None,
-        }),
-    )
-}
-
-fn forbidden_error(message: &str) -> (StatusCode, Json<ApiErrorResponse>) {
-    (
-        StatusCode::FORBIDDEN,
-        Json(ApiErrorResponse {
-            message: message.to_string(),
-            error: ApiErrorDetail {
-                code: "forbidden",
-                message: message.to_string(),
-            },
-            errors: None,
-        }),
-    )
 }
 
 fn session_payload(bundle: SessionBundle) -> serde_json::Value {
@@ -2058,16 +1935,10 @@ fn timestamp(value: chrono::DateTime<Utc>) -> String {
 
 fn header_value(raw: &str) -> Result<HeaderValue, (StatusCode, Json<ApiErrorResponse>)> {
     HeaderValue::from_str(raw).map_err(|_| {
-        (
+        error_response_with_status(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiErrorResponse {
-                message: "Failed to build response headers.".to_string(),
-                error: ApiErrorDetail {
-                    code: "internal_error",
-                    message: "Failed to build response headers.".to_string(),
-                },
-                errors: None,
-            }),
+            ApiErrorCode::InternalError,
+            "Failed to build response headers.".to_string(),
         )
     })
 }
