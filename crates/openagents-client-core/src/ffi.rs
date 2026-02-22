@@ -2,10 +2,10 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::auth::{normalize_email, normalize_verification_code};
-use crate::codex_control::{extract_control_request_json, ControlMethod};
+use crate::codex_control::{ControlMethod, extract_control_request_json};
 use crate::codex_worker::extract_desktop_handshake_ack_id;
 use crate::command::normalize_thread_message_text;
 use crate::ios_codex_state::{
@@ -14,6 +14,7 @@ use crate::ios_codex_state::{
     RuntimeCodexWorkerActionRequest,
 };
 use crate::ios_khala_session::{IosKhalaSession, SessionStep};
+use crate::ios_worker_selection::{RuntimeCodexWorkerCandidate, select_preferred_worker_id};
 use crate::khala_protocol::parse_phoenix_frame;
 
 pub const OA_CLIENT_CORE_FFI_CONTRACT_VERSION: u32 = 1;
@@ -70,6 +71,11 @@ pub fn extract_desktop_ack_id_json(payload_json: &str) -> Option<String> {
 
 pub fn extract_control_request_from_payload_json(payload_json: &str) -> Option<String> {
     extract_control_request_json(payload_json)
+}
+
+pub fn select_preferred_worker_json(payload_json: &str) -> Option<String> {
+    let workers = serde_json::from_str::<Vec<RuntimeCodexWorkerCandidate>>(payload_json).ok()?;
+    select_preferred_worker_id(&workers)
 }
 
 pub fn khala_session_step_json(step: &SessionStep) -> Option<String> {
@@ -567,6 +573,19 @@ pub unsafe extern "C" fn oa_client_core_extract_control_request(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_select_preferred_worker(
+    workers_json: *const c_char,
+) -> *mut c_char {
+    let Some(workers_json) = with_c_string_input(workers_json) else {
+        return std::ptr::null_mut();
+    };
+
+    select_preferred_worker_json(&workers_json)
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_parse_khala_frame(raw_frame: *const c_char) -> *mut c_char {
     let Some(raw_frame) = with_c_string_input(raw_frame) else {
         return std::ptr::null_mut();
@@ -667,8 +686,8 @@ pub unsafe extern "C" fn oa_client_core_khala_session_free(session: *mut IosKhal
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_control_coordinator_create(
-) -> *mut RuntimeCodexControlCoordinator {
+pub unsafe extern "C" fn oa_client_core_control_coordinator_create()
+-> *mut RuntimeCodexControlCoordinator {
     Box::into_raw(Box::new(RuntimeCodexControlCoordinator::default()))
 }
 
@@ -744,12 +763,12 @@ mod tests {
     use std::ptr;
 
     use super::{
+        OA_CLIENT_CORE_FFI_CONTRACT_VERSION, RuntimeCodexControlCoordinator,
         apply_control_coordinator_command_json, decode_control_receipt_json,
         extract_control_request_from_payload_json, extract_control_success_context_json,
         extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
         normalize_verification_code_string, oa_client_core_ffi_contract_version,
-        oa_client_core_normalize_email, parse_khala_frame_json, RuntimeCodexControlCoordinator,
-        OA_CLIENT_CORE_FFI_CONTRACT_VERSION,
+        oa_client_core_normalize_email, parse_khala_frame_json, select_preferred_worker_json,
     };
 
     #[test]
@@ -794,6 +813,37 @@ mod tests {
         let parsed = parse_khala_frame_json(raw).expect("frame should parse");
         assert!(parsed.contains("\"sync:v1\""));
         assert!(parsed.contains("\"sync:heartbeat\""));
+    }
+
+    #[test]
+    fn ffi_helpers_select_preferred_worker_json() {
+        let workers = r#"[
+          {
+            "worker_id":"runtimew:alpha",
+            "status":"running",
+            "adapter":"runtime",
+            "heartbeat_state":"fresh",
+            "last_heartbeat_at":"2026-02-22T05:00:00Z",
+            "started_at":"2026-02-22T04:00:00Z",
+            "latest_seq":90,
+            "metadata_source":"runtime"
+          },
+          {
+            "worker_id":"desktopw:shared",
+            "status":"running",
+            "adapter":"desktop_bridge",
+            "heartbeat_state":"stale",
+            "last_heartbeat_at":"2026-02-22T04:59:00Z",
+            "started_at":"2026-02-22T03:59:00Z",
+            "latest_seq":22,
+            "metadata_source":"autopilot-desktop"
+          }
+        ]"#;
+
+        assert_eq!(
+            select_preferred_worker_json(workers).as_deref(),
+            Some("desktopw:shared")
+        );
     }
 
     #[test]

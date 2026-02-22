@@ -70,6 +70,7 @@ enum RustClientCoreBridge {
         let normalizeVerificationCode: TransformFunction?
         let normalizeMessageText: TransformFunction?
         let extractDesktopHandshakeAckID: TransformFunction?
+        let selectPreferredWorker: TransformFunction?
         let parseKhalaFrame: TransformFunction?
         let decodeControlReceipt: TransformFunction?
         let extractControlSuccessContext: TransformFunction?
@@ -106,6 +107,10 @@ enum RustClientCoreBridge {
                 normalizeMessageText: loadSymbol("oa_client_core_normalize_message_text", as: TransformFunction.self),
                 extractDesktopHandshakeAckID: loadSymbol(
                     "oa_client_core_extract_desktop_handshake_ack_id",
+                    as: TransformFunction.self
+                ),
+                selectPreferredWorker: loadSymbol(
+                    "oa_client_core_select_preferred_worker",
                     as: TransformFunction.self
                 ),
                 parseKhalaFrame: loadSymbol("oa_client_core_parse_khala_frame", as: TransformFunction.self),
@@ -216,6 +221,32 @@ enum RustClientCoreBridge {
 
     static func extractDesktopHandshakeAckID(payloadJSON: String) -> String? {
         invoke(symbols.extractDesktopHandshakeAckID, with: payloadJSON)
+    }
+
+    static func selectPreferredWorkerID(from workers: [RuntimeCodexWorkerSummary]) -> String? {
+        guard symbols.selectPreferredWorker != nil else {
+            return nil
+        }
+
+        let payload = workers.map { worker in
+            WorkerSelectionCandidate(
+                workerID: worker.workerID,
+                status: worker.status,
+                adapter: worker.adapter,
+                heartbeatState: worker.heartbeatState,
+                lastHeartbeatAt: worker.lastHeartbeatAt,
+                startedAt: worker.startedAt,
+                latestSeq: worker.latestSeq,
+                metadataSource: worker.metadata?["source"]?.stringValue
+            )
+        }
+
+        guard let data = try? JSONEncoder().encode(payload),
+              let json = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return invoke(symbols.selectPreferredWorker, with: json)
     }
 
     static func parseKhalaFrame(raw: String) -> ParsedKhalaFrame? {
@@ -388,6 +419,28 @@ enum RustClientCoreBridge {
             case topic
             case event
             case payload
+        }
+    }
+
+    private struct WorkerSelectionCandidate: Encodable {
+        let workerID: String
+        let status: String
+        let adapter: String?
+        let heartbeatState: String?
+        let lastHeartbeatAt: String?
+        let startedAt: String?
+        let latestSeq: Int
+        let metadataSource: String?
+
+        enum CodingKeys: String, CodingKey {
+            case workerID = "worker_id"
+            case status
+            case adapter
+            case heartbeatState = "heartbeat_state"
+            case lastHeartbeatAt = "last_heartbeat_at"
+            case startedAt = "started_at"
+            case latestSeq = "latest_seq"
+            case metadataSource = "metadata_source"
         }
     }
 }
