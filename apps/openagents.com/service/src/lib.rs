@@ -6,7 +6,10 @@ use std::time::SystemTime;
 use axum::body::to_bytes;
 use axum::body::{Body, Bytes};
 use axum::extract::{Form, Path, Query, Request, State};
-use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
+use axum::http::header::{
+    ACCEPT_ENCODING, AUTHORIZATION, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_TYPE, COOKIE, ETAG,
+    IF_NONE_MATCH, SET_COOKIE, VARY,
+};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -2187,7 +2190,9 @@ fn compatibility_failure_response(failure: CompatibilityFailure) -> Response {
     response
 }
 
-async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+async fn openapi_spec(
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let document = openapi_document();
     let encoded = serde_json::to_vec(&document).map_err(|_| {
         error_response_with_status(
@@ -2196,6 +2201,26 @@ async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorR
             "Failed to generate OpenAPI document.".to_string(),
         )
     })?;
+    let etag = static_etag(&encoded);
+
+    if if_none_match_matches(Some(&headers), &etag) {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_MANIFEST));
+        response.headers_mut().insert(
+            ETAG,
+            HeaderValue::from_str(&etag).map_err(|_| {
+                error_response_with_status(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ApiErrorCode::InternalError,
+                    "Failed to build OpenAPI etag header.".to_string(),
+                )
+            })?,
+        );
+        return Ok(response);
+    }
 
     let mut response = Response::new(Body::from(encoded));
     *response.status_mut() = StatusCode::OK;
@@ -2205,6 +2230,16 @@ async fn openapi_spec() -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorR
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_MANIFEST));
+    response.headers_mut().insert(
+        ETAG,
+        HeaderValue::from_str(&etag).map_err(|_| {
+            error_response_with_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorCode::InternalError,
+                "Failed to build OpenAPI etag header.".to_string(),
+            )
+        })?,
+    );
 
     Ok(response)
 }
@@ -2259,9 +2294,10 @@ async fn smoke_stream(
 
 async fn static_manifest(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let manifest_path = state.config.static_dir.join("manifest.json");
-    let response = build_static_response(&manifest_path, CACHE_MANIFEST)
+    let response = build_static_response(&manifest_path, CACHE_MANIFEST, Some(&headers))
         .await
         .map_err(map_static_error)?;
     Ok(response)
@@ -2269,9 +2305,10 @@ async fn static_manifest(
 
 async fn static_service_worker(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let service_worker_path = state.config.static_dir.join("sw.js");
-    let response = build_static_response(&service_worker_path, CACHE_MANIFEST)
+    let response = build_static_response(&service_worker_path, CACHE_MANIFEST, Some(&headers))
         .await
         .map_err(map_static_error)?;
     Ok(response)
@@ -2280,6 +2317,7 @@ async fn static_service_worker(
 async fn static_asset(
     State(state): State<AppState>,
     Path(path): Path<String>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let relative_path = normalize_static_path(&path)
         .ok_or_else(|| static_not_found(format!("Asset '{}' was not found.", path)))?;
@@ -2305,7 +2343,7 @@ async fn static_asset(
         CACHE_SHORT_LIVED
     };
 
-    let response = build_static_response(&asset_path, cache_control)
+    let response = build_static_response(&asset_path, cache_control, Some(&headers))
         .await
         .map_err(map_static_error)?;
     Ok(response)
@@ -2352,7 +2390,7 @@ async fn web_shell_entry(
     match decision.target {
         RouteTarget::RustShell => {
             let entry_path = state.config.static_dir.join("index.html");
-            let response = build_static_response(&entry_path, CACHE_MANIFEST)
+            let response = build_static_response(&entry_path, CACHE_MANIFEST, Some(&headers))
                 .await
                 .map_err(map_static_error)?;
             Ok(response)
@@ -2687,17 +2725,42 @@ async fn runtime_routing_override(
 async fn build_static_response(
     file_path: &FsPath,
     cache_control: &'static str,
+    request_headers: Option<&HeaderMap>,
 ) -> Result<axum::response::Response, StaticResponseError> {
-    let bytes = tokio::fs::read(file_path).await.map_err(|source| {
+    let (served_path, content_encoding) = resolve_static_variant_path(file_path, request_headers);
+    let bytes = tokio::fs::read(&served_path).await.map_err(|source| {
         if source.kind() == std::io::ErrorKind::NotFound {
             StaticResponseError::NotFound(format!(
                 "Static file '{}' was not found.",
-                file_path.display()
+                served_path.display()
             ))
         } else {
             StaticResponseError::Io(source)
         }
     })?;
+    let etag = static_etag(&bytes);
+
+    if if_none_match_matches(request_headers, &etag) {
+        let mut response = axum::response::Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(cache_control));
+        response
+            .headers_mut()
+            .insert(VARY, HeaderValue::from_static("Accept-Encoding"));
+        if let Some(content_encoding) = content_encoding {
+            response
+                .headers_mut()
+                .insert(CONTENT_ENCODING, HeaderValue::from_static(content_encoding));
+        }
+        response.headers_mut().insert(
+            ETAG,
+            HeaderValue::from_str(&etag)
+                .map_err(|_| StaticResponseError::InvalidHeader(etag.clone()))?,
+        );
+        return Ok(response);
+    }
 
     let content_type = mime_guess::from_path(file_path).first_or_octet_stream();
     let mut response = axum::response::Response::new(Body::from(bytes));
@@ -2710,8 +2773,107 @@ async fn build_static_response(
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static(cache_control));
+    response
+        .headers_mut()
+        .insert(VARY, HeaderValue::from_static("Accept-Encoding"));
+    if let Some(content_encoding) = content_encoding {
+        response
+            .headers_mut()
+            .insert(CONTENT_ENCODING, HeaderValue::from_static(content_encoding));
+    }
+    response.headers_mut().insert(
+        ETAG,
+        HeaderValue::from_str(&etag).map_err(|_| StaticResponseError::InvalidHeader(etag))?,
+    );
 
     Ok(response)
+}
+
+fn resolve_static_variant_path(
+    file_path: &FsPath,
+    request_headers: Option<&HeaderMap>,
+) -> (std::path::PathBuf, Option<&'static str>) {
+    if accepts_static_encoding(request_headers, "br") {
+        let mut compressed = file_path.as_os_str().to_os_string();
+        compressed.push(".br");
+        let compressed_path = std::path::PathBuf::from(compressed);
+        if compressed_path.is_file() {
+            return (compressed_path, Some("br"));
+        }
+    }
+
+    if accepts_static_encoding(request_headers, "gzip") {
+        let mut compressed = file_path.as_os_str().to_os_string();
+        compressed.push(".gz");
+        let compressed_path = std::path::PathBuf::from(compressed);
+        if compressed_path.is_file() {
+            return (compressed_path, Some("gzip"));
+        }
+    }
+
+    (file_path.to_path_buf(), None)
+}
+
+fn accepts_static_encoding(request_headers: Option<&HeaderMap>, encoding: &str) -> bool {
+    let Some(header_value) = request_headers
+        .and_then(|headers| headers.get(ACCEPT_ENCODING))
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+
+    for token in header_value.split(',') {
+        let mut parts = token.trim().split(';');
+        let Some(name) = parts.next().map(|value| value.trim().to_ascii_lowercase()) else {
+            continue;
+        };
+        if name != encoding && name != "*" {
+            continue;
+        }
+
+        let mut quality = 1.0f32;
+        for part in parts {
+            let part = part.trim();
+            if let Some(value) = part.strip_prefix("q=") {
+                quality = value.trim().parse::<f32>().unwrap_or(0.0);
+            }
+        }
+
+        if quality > 0.0 {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn static_etag(bytes: &[u8]) -> String {
+    format!("\"{}\"", sha256_hex(bytes))
+}
+
+fn if_none_match_matches(request_headers: Option<&HeaderMap>, etag: &str) -> bool {
+    let Some(header_value) = request_headers
+        .and_then(|headers| headers.get(IF_NONE_MATCH))
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+
+    let expected = normalize_etag_token(etag);
+    for candidate in header_value.split(',') {
+        let normalized = normalize_etag_token(candidate);
+        if normalized == "*" || normalized == expected {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn normalize_etag_token(value: &str) -> String {
+    let trimmed = value.trim();
+    let without_weak = trimmed.strip_prefix("W/").unwrap_or(trimmed).trim();
+    without_weak.to_string()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -14155,7 +14317,10 @@ mod tests {
     use axum::body::{Body, Bytes};
     use axum::extract::State;
     use axum::http::HeaderMap;
-    use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
+    use axum::http::header::{
+        ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_TYPE, ETAG, IF_NONE_MATCH,
+        SET_COOKIE,
+    };
     use axum::http::{HeaderValue, Request, StatusCode};
     use axum::routing::post;
     use axum::{Json, Router};
@@ -15572,6 +15737,109 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn static_asset_prefers_brotli_then_gzip_when_variants_exist() -> Result<()> {
+        let static_dir = tempdir()?;
+        let assets_dir = static_dir.path().join("assets");
+        std::fs::create_dir_all(&assets_dir)?;
+        let asset_path = assets_dir.join("app-0a1b2c3d4e5f.js");
+        std::fs::write(&asset_path, "console.log('openagents');")?;
+
+        let mut br_path = asset_path.as_os_str().to_os_string();
+        br_path.push(".br");
+        std::fs::write(std::path::PathBuf::from(br_path), "brotli-bytes")?;
+
+        let mut gz_path = asset_path.as_os_str().to_os_string();
+        gz_path.push(".gz");
+        std::fs::write(std::path::PathBuf::from(gz_path), "gzip-bytes")?;
+
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let br_request = Request::builder()
+            .uri("/assets/app-0a1b2c3d4e5f.js")
+            .header(ACCEPT_ENCODING, "br, gzip")
+            .body(Body::empty())?;
+        let br_response = app.clone().oneshot(br_request).await?;
+        assert_eq!(br_response.status(), StatusCode::OK);
+        assert_eq!(
+            br_response
+                .headers()
+                .get(CONTENT_ENCODING)
+                .and_then(|value| value.to_str().ok()),
+            Some("br")
+        );
+        let br_body = br_response.into_body().collect().await?.to_bytes();
+        assert_eq!(br_body.as_ref(), b"brotli-bytes");
+
+        let gz_request = Request::builder()
+            .uri("/assets/app-0a1b2c3d4e5f.js")
+            .header(ACCEPT_ENCODING, "gzip")
+            .body(Body::empty())?;
+        let gz_response = app.oneshot(gz_request).await?;
+        assert_eq!(gz_response.status(), StatusCode::OK);
+        assert_eq!(
+            gz_response
+                .headers()
+                .get(CONTENT_ENCODING)
+                .and_then(|value| value.to_str().ok()),
+            Some("gzip")
+        );
+        let gz_body = gz_response.into_body().collect().await?.to_bytes();
+        assert_eq!(gz_body.as_ref(), b"gzip-bytes");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn static_asset_supports_etag_conditional_get() -> Result<()> {
+        let static_dir = tempdir()?;
+        let assets_dir = static_dir.path().join("assets");
+        std::fs::create_dir_all(&assets_dir)?;
+        std::fs::write(
+            assets_dir.join("app-0a1b2c3d4e5f.js"),
+            "console.log('openagents');",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let first_request = Request::builder()
+            .uri("/assets/app-0a1b2c3d4e5f.js")
+            .body(Body::empty())?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let etag = first_response
+            .headers()
+            .get(ETAG)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!etag.is_empty());
+
+        let conditional_request = Request::builder()
+            .uri("/assets/app-0a1b2c3d4e5f.js")
+            .header(IF_NONE_MATCH, etag.clone())
+            .body(Body::empty())?;
+        let conditional_response = app.oneshot(conditional_request).await?;
+        assert_eq!(conditional_response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok()),
+            Some(etag.as_str())
+        );
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_IMMUTABLE_ONE_YEAR)
+        );
+        let body = conditional_response.into_body().collect().await?.to_bytes();
+        assert_eq!(body.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn manifest_uses_no_store_cache_header() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
@@ -15654,6 +15922,47 @@ mod tests {
         assert_eq!(parsed["openapi"], "3.0.2");
         assert!(parsed["paths"]["/api/auth/email"].is_object());
         assert!(parsed["components"]["securitySchemes"]["bearerAuth"].is_object());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn openapi_route_supports_etag_conditional_get() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let first_request = Request::builder()
+            .uri(super::ROUTE_OPENAPI_JSON)
+            .body(Body::empty())?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let etag = first_response
+            .headers()
+            .get(ETAG)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!etag.is_empty());
+
+        let conditional_request = Request::builder()
+            .uri(super::ROUTE_OPENAPI_JSON)
+            .header(IF_NONE_MATCH, etag.clone())
+            .body(Body::empty())?;
+        let conditional_response = app.oneshot(conditional_request).await?;
+        assert_eq!(conditional_response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok()),
+            Some(etag.as_str())
+        );
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_MANIFEST)
+        );
 
         Ok(())
     }

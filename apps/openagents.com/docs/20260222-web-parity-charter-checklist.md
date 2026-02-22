@@ -218,6 +218,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh`, `.github/workflows/web-auth-session-edge-case-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-063-auth-session-edge-case-matrix.md`
 - [x] Webhook signature/idempotency/replay parity (`OA-WEBPARITY-064`)
   Harness/report: `apps/openagents.com/scripts/run-webhook-parity-harness.sh`, `.github/workflows/web-webhook-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-064-webhook-signature-idempotency-replay.md`
+- [x] Static asset host and service-worker delivery parity (`OA-WEBPARITY-065`)
+  Harness/report: `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`, `.github/workflows/web-static-asset-sw-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-065-static-asset-sw-parity.md`
 
 ## Checklist Freeze Rules
 
