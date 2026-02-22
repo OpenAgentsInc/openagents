@@ -76,6 +76,100 @@ private enum MissionRetentionProfile: String, CaseIterable {
     }
 }
 
+private struct MissionWatchLane: Codable, Hashable {
+    let workerID: String
+    let threadID: String
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+    }
+}
+
+private struct MissionAlertPreferenceSet: Codable, Equatable {
+    var errors: Bool
+    var stuckTurns: Bool
+    var reconnectStorms: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case errors
+        case stuckTurns = "stuck_turns"
+        case reconnectStorms = "reconnect_storms"
+    }
+
+    static let `default` = MissionAlertPreferenceSet(
+        errors: true,
+        stuckTurns: true,
+        reconnectStorms: true
+    )
+
+    var runtimeRules: RuntimeMissionControlAlertRules {
+        RuntimeMissionControlAlertRules(
+            errors: errors,
+            stuckTurns: stuckTurns,
+            reconnectStorms: reconnectStorms
+        )
+    }
+}
+
+private struct MissionControlPreferenceSnapshot: Codable, Equatable {
+    let schemaVersion: Int
+    let updatedAt: String
+    let watchlist: [MissionWatchLane]
+    let watchlistOnly: Bool
+    let newestFirst: Bool
+    let filterRaw: String
+    let pinCritical: Bool
+    let alertRules: MissionAlertPreferenceSet
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case updatedAt = "updated_at"
+        case watchlist
+        case watchlistOnly = "watchlist_only"
+        case newestFirst = "newest_first"
+        case filterRaw = "filter_raw"
+        case pinCritical = "pin_critical"
+        case alertRules = "alert_rules"
+    }
+
+    static let schema = 1
+
+    static func makeDefault(updatedAt: String) -> MissionControlPreferenceSnapshot {
+        MissionControlPreferenceSnapshot(
+            schemaVersion: schema,
+            updatedAt: updatedAt,
+            watchlist: [],
+            watchlistOnly: false,
+            newestFirst: true,
+            filterRaw: "all",
+            pinCritical: false,
+            alertRules: .default
+        )
+    }
+
+    func replacing(
+        updatedAt: String,
+        watchlist: [MissionWatchLane]? = nil,
+        watchlistOnly: Bool? = nil,
+        newestFirst: Bool? = nil,
+        filterRaw: String? = nil,
+        pinCritical: Bool? = nil,
+        alertRules: MissionAlertPreferenceSet? = nil
+    ) -> MissionControlPreferenceSnapshot {
+        MissionControlPreferenceSnapshot(
+            schemaVersion: MissionControlPreferenceSnapshot.schema,
+            updatedAt: updatedAt,
+            watchlist: watchlist ?? self.watchlist,
+            watchlistOnly: watchlistOnly ?? self.watchlistOnly,
+            newestFirst: newestFirst ?? self.newestFirst,
+            filterRaw: filterRaw ?? self.filterRaw,
+            pinCritical: pinCritical ?? self.pinCritical,
+            alertRules: alertRules ?? self.alertRules
+        )
+    }
+}
+
 @MainActor
 final class CodexHandshakeViewModel: ObservableObject {
     @Published var email: String
@@ -117,7 +211,11 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published private(set) var controlRequests: [RuntimeCodexControlRequestTracker] = []
     @Published private(set) var missionControlProjection: RuntimeMissionControlProjection = .empty
     @Published private(set) var missionControlReadOnlyMode: Bool = false
+    @Published private(set) var missionWatchlistOnly: Bool = false
+    @Published private(set) var missionOrderNewestFirst: Bool = true
+    private var missionAlertRules: MissionAlertPreferenceSet = .default
     private var missionRetentionProfile: MissionRetentionProfile = .fallback
+    private var missionPreferences = MissionControlPreferenceSnapshot.makeDefault(updatedAt: "1970-01-01T00:00:00Z")
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
@@ -149,6 +247,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var missionControlStore = RuntimeMissionControlStore()
     private var controlDispatchInFlight: Set<String> = []
     private var controlRequestTimeoutTasks: [String: Task<Void, Never>] = [:]
+    private var missionPreferenceSyncTask: Task<Void, Never>?
+    private var missionPreferenceSyncFingerprint: String?
+    private var latestRemoteMissionPreferenceUpdatedAt: String?
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -165,8 +266,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let khalaWorkerEventsWatermarkKey = "autopilot.ios.codex.khala.workerEventsWatermark"
     private let khalaResumeStoreKey = "autopilot.ios.codex.khala.resumeStore.v1"
     private let missionRetentionProfileKey = "autopilot.ios.codex.missionRetentionProfile"
+    private let missionPreferenceSnapshotKey = "autopilot.ios.codex.missionPreferenceSnapshot.v1"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
+    private static let missionPreferenceMetadataKey = "autopilot_ios_mission_control"
     private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
     private static let khalaWorkerSummariesTopic = "runtime.codex_worker_summaries"
     private static let khalaSubscribedTopics = [khalaWorkerEventsTopic, khalaWorkerSummariesTopic]
@@ -253,6 +356,34 @@ final class CodexHandshakeViewModel: ObservableObject {
         missionRetentionProfile.wgpuiValue
     }
 
+    var missionWatchlistOnlyEnabled: Bool {
+        missionWatchlistOnly
+    }
+
+    var missionOrderNewestFirstEnabled: Bool {
+        missionOrderNewestFirst
+    }
+
+    var missionAlertErrorsEnabled: Bool {
+        missionAlertRules.errors
+    }
+
+    var missionAlertStuckTurnsEnabled: Bool {
+        missionAlertRules.stuckTurns
+    }
+
+    var missionAlertReconnectStormsEnabled: Bool {
+        missionAlertRules.reconnectStorms
+    }
+
+    var missionFilterPreferenceRaw: String {
+        missionPreferences.filterRaw
+    }
+
+    var missionPinCriticalPreference: Bool {
+        missionPreferences.pinCritical
+    }
+
     var canInterruptTurn: Bool {
         guard isAuthenticated else {
             return false
@@ -316,6 +447,15 @@ final class CodexHandshakeViewModel: ObservableObject {
         let savedMissionRetentionProfile =
             MissionRetentionProfile(rawValue: savedMissionRetentionProfileRaw ?? "")
                 ?? .fallback
+        let savedMissionPreferenceSnapshot: MissionControlPreferenceSnapshot
+        if let data = defaults.data(forKey: missionPreferenceSnapshotKey),
+           let decoded = try? JSONDecoder().decode(MissionControlPreferenceSnapshot.self, from: data) {
+            savedMissionPreferenceSnapshot = decoded
+        } else {
+            savedMissionPreferenceSnapshot = MissionControlPreferenceSnapshot.makeDefault(
+                updatedAt: ISO8601DateFormatter().string(from: now())
+            )
+        }
 
         let loadedResumeStore: CodexResumeCheckpointStore
         if let data = defaults.data(forKey: "autopilot.ios.codex.khala.resumeStore.v1"),
@@ -363,6 +503,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         self.selectedWorkerID = savedSelectedWorkerID
         self.deviceID = resolvedDeviceID
         self.missionRetentionProfile = savedMissionRetentionProfile
+        self.missionPreferences = savedMissionPreferenceSnapshot
+        self.missionWatchlistOnly = savedMissionPreferenceSnapshot.watchlistOnly
+        self.missionOrderNewestFirst = savedMissionPreferenceSnapshot.newestFirst
+        self.missionAlertRules = savedMissionPreferenceSnapshot.alertRules
+        self.missionPreferenceSyncFingerprint =
+            missionPreferenceFingerprint(savedMissionPreferenceSnapshot)
 
         // Migrate any legacy single-watermark value into namespaced checkpoint storage.
         if initialWatermark > resumeWatermark, let workerID = savedSelectedWorkerID {
@@ -381,6 +527,10 @@ final class CodexHandshakeViewModel: ObservableObject {
             maxEvents: savedMissionRetentionProfile.maxEvents,
             maxTimelineEntries: savedMissionRetentionProfile.maxTimelineEntries
         )
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: false,
+            scheduleRemoteSync: false
+        )
     }
 
     deinit {
@@ -394,6 +544,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             task.cancel()
         }
         controlRequestTimeoutTasks.removeAll()
+        missionPreferenceSyncTask?.cancel()
     }
 
     func autoConnectOnLaunch() async {
@@ -559,6 +710,11 @@ final class CodexHandshakeViewModel: ObservableObject {
             maxEvents: missionRetentionProfile.maxEvents,
             maxTimelineEntries: missionRetentionProfile.maxTimelineEntries
         )
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: false,
+            scheduleRemoteSync: false
+        )
+        missionPreferenceSyncTask?.cancel()
         resetReconnectTracking()
         let namespaceToRemove = currentResumeNamespace
 
@@ -727,7 +883,143 @@ final class CodexHandshakeViewModel: ObservableObject {
             maxEvents: missionRetentionProfile.maxEvents,
             maxTimelineEntries: missionRetentionProfile.maxTimelineEntries
         )
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: false,
+            scheduleRemoteSync: false
+        )
         statusMessage = "Mission retention \(missionRetentionProfile.summaryLabel): \(missionRetentionProfile.maxEvents) events / \(missionRetentionProfile.maxTimelineEntries) timeline / \(Int((missionRetentionProfile.projectionCadenceSeconds * 1_000).rounded()))ms."
+    }
+
+    func toggleMissionWatchActiveLane() {
+        let workerID = missionTargetWorkerID()
+        guard let resolvedWorkerID = workerID,
+              let threadID = resolvedMissionThreadID(preferredWorkerID: resolvedWorkerID) else {
+            errorMessage = "No active lane available to watchlist."
+            return
+        }
+
+        let lane = MissionWatchLane(workerID: resolvedWorkerID, threadID: threadID)
+        var nextWatchlist = Set(missionPreferences.watchlist)
+        let added: Bool
+        if nextWatchlist.contains(lane) {
+            nextWatchlist.remove(lane)
+            added = false
+        } else {
+            nextWatchlist.insert(lane)
+            added = true
+        }
+
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            watchlist: normalizedMissionWatchlist(Array(nextWatchlist))
+        )
+        missionPreferences = next
+        statusMessage = added
+            ? "Watchlisted \(shortWorkerID(resolvedWorkerID)) / \(threadID)."
+            : "Removed \(shortWorkerID(resolvedWorkerID)) / \(threadID) from watchlist."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func toggleMissionWatchlistOnly() {
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            watchlistOnly: !missionPreferences.watchlistOnly
+        )
+        missionPreferences = next
+        statusMessage = next.watchlistOnly
+            ? "Mission Control showing watchlist lanes only."
+            : "Mission Control showing all lanes."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func toggleMissionOrderNewestFirst() {
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            newestFirst: !missionPreferences.newestFirst
+        )
+        missionPreferences = next
+        statusMessage = next.newestFirst
+            ? "Mission event order set to newest first."
+            : "Mission event order set to oldest first."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func toggleMissionAlertErrorsRule() {
+        var rules = missionPreferences.alertRules
+        rules.errors.toggle()
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            alertRules: rules
+        )
+        missionPreferences = next
+        statusMessage = rules.errors ? "Error alerts enabled." : "Error alerts muted."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func toggleMissionAlertStuckTurnsRule() {
+        var rules = missionPreferences.alertRules
+        rules.stuckTurns.toggle()
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            alertRules: rules
+        )
+        missionPreferences = next
+        statusMessage = rules.stuckTurns ? "Stuck-turn alerts enabled." : "Stuck-turn alerts muted."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func toggleMissionAlertReconnectStormsRule() {
+        var rules = missionPreferences.alertRules
+        rules.reconnectStorms.toggle()
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            alertRules: rules
+        )
+        missionPreferences = next
+        statusMessage = rules.reconnectStorms
+            ? "Reconnect-storm alerts enabled."
+            : "Reconnect-storm alerts muted."
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
+    }
+
+    func updateMissionVisualPreferences(filterRaw: String, pinCritical: Bool) {
+        let normalizedFilter = filterRaw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let resolvedFilter = normalizedFilter.isEmpty ? "all" : normalizedFilter
+        guard missionPreferences.filterRaw != resolvedFilter
+                || missionPreferences.pinCritical != pinCritical else {
+            return
+        }
+
+        let next = missionPreferences.replacing(
+            updatedAt: iso8601(now()),
+            filterRaw: resolvedFilter,
+            pinCritical: pinCritical
+        )
+        missionPreferences = next
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: true
+        )
     }
 
     @discardableResult
@@ -3558,7 +3850,227 @@ final class CodexHandshakeViewModel: ObservableObject {
         )
     }
 
+    private func normalizedMissionWatchlist(_ lanes: [MissionWatchLane]) -> [MissionWatchLane] {
+        let normalized = lanes.compactMap { lane -> MissionWatchLane? in
+            let workerID = lane.workerID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let threadID = lane.threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !workerID.isEmpty, !threadID.isEmpty else {
+                return nil
+            }
+            return MissionWatchLane(workerID: workerID, threadID: threadID)
+        }
+        return Array(Set(normalized)).sorted { lhs, rhs in
+            if lhs.workerID != rhs.workerID {
+                return lhs.workerID < rhs.workerID
+            }
+            return lhs.threadID < rhs.threadID
+        }
+    }
+
+    private func persistMissionPreferenceSnapshotToDefaults() {
+        guard let data = try? JSONEncoder().encode(missionPreferences) else {
+            return
+        }
+        defaults.set(data, forKey: missionPreferenceSnapshotKey)
+    }
+
+    private func applyMissionPreferenceSnapshotToStore(
+        persistToDefaults: Bool,
+        scheduleRemoteSync: Bool
+    ) {
+        let normalizedWatchlist = normalizedMissionWatchlist(missionPreferences.watchlist)
+        if normalizedWatchlist != missionPreferences.watchlist {
+            missionPreferences = missionPreferences.replacing(
+                updatedAt: missionPreferences.updatedAt,
+                watchlist: normalizedWatchlist
+            )
+        }
+
+        missionWatchlistOnly = missionPreferences.watchlistOnly
+        missionOrderNewestFirst = missionPreferences.newestFirst
+        missionAlertRules = missionPreferences.alertRules
+
+        let desiredWatchlist = Set(missionPreferences.watchlist)
+        let existingWatchlist = Set(missionControlProjection.watchlist.map { lane in
+            MissionWatchLane(workerID: lane.workerID, threadID: lane.threadID)
+        })
+        for lane in existingWatchlist.subtracting(desiredWatchlist) {
+            missionControlProjection = missionControlStore.setLaneWatchlisted(
+                workerID: lane.workerID,
+                threadID: lane.threadID,
+                watchlisted: false
+            )
+        }
+        for lane in desiredWatchlist {
+            missionControlProjection = missionControlStore.setLaneWatchlisted(
+                workerID: lane.workerID,
+                threadID: lane.threadID,
+                watchlisted: true
+            )
+        }
+        missionControlProjection = missionControlStore.setWatchlistOnly(missionPreferences.watchlistOnly)
+        missionControlProjection = missionControlStore.setOrderNewestFirst(missionPreferences.newestFirst)
+        missionControlProjection = missionControlStore.setAlertRule(
+            .errors,
+            enabled: missionPreferences.alertRules.errors
+        )
+        missionControlProjection = missionControlStore.setAlertRule(
+            .stuckTurns,
+            enabled: missionPreferences.alertRules.stuckTurns
+        )
+        missionControlProjection = missionControlStore.setAlertRule(
+            .reconnectStorms,
+            enabled: missionPreferences.alertRules.reconnectStorms
+        )
+
+        if persistToDefaults {
+            persistMissionPreferenceSnapshotToDefaults()
+        }
+        if scheduleRemoteSync {
+            scheduleMissionPreferenceMetadataSync()
+        }
+    }
+
+    private func missionPreferenceMetadataValue(_ snapshot: MissionControlPreferenceSnapshot) -> JSONValue {
+        .object([
+            "schema_version": .int(snapshot.schemaVersion),
+            "updated_at": .string(snapshot.updatedAt),
+            "watchlist": .array(
+                snapshot.watchlist.map { lane in
+                    .object([
+                        "worker_id": .string(lane.workerID),
+                        "thread_id": .string(lane.threadID),
+                    ])
+                }
+            ),
+            "watchlist_only": .bool(snapshot.watchlistOnly),
+            "newest_first": .bool(snapshot.newestFirst),
+            "filter_raw": .string(snapshot.filterRaw),
+            "pin_critical": .bool(snapshot.pinCritical),
+            "alert_rules": .object([
+                "errors": .bool(snapshot.alertRules.errors),
+                "stuck_turns": .bool(snapshot.alertRules.stuckTurns),
+                "reconnect_storms": .bool(snapshot.alertRules.reconnectStorms),
+            ]),
+        ])
+    }
+
+    private func missionPreferenceFingerprint(_ snapshot: MissionControlPreferenceSnapshot) -> String {
+        guard let data = try? JSONEncoder().encode(snapshot),
+              let raw = String(data: data, encoding: .utf8) else {
+            return snapshot.updatedAt
+        }
+        return raw
+    }
+
+    private func scheduleMissionPreferenceMetadataSync() {
+        guard isAuthenticated else {
+            return
+        }
+        missionPreferenceSyncTask?.cancel()
+        missionPreferenceSyncTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self, !Task.isCancelled else {
+                return
+            }
+            await self.persistMissionPreferenceSnapshotToRuntime()
+        }
+    }
+
+    private func preferredWorkerForMissionPreferenceSync() -> RuntimeCodexWorkerSummary? {
+        if let selectedWorkerID,
+           let selected = workers.first(where: { $0.workerID == selectedWorkerID }) {
+            return selected
+        }
+        return preferredWorker(from: workers) ?? workers.first
+    }
+
+    private func persistMissionPreferenceSnapshotToRuntime() async {
+        let snapshot = missionPreferences
+        let fingerprint = missionPreferenceFingerprint(snapshot)
+        if missionPreferenceSyncFingerprint == fingerprint {
+            return
+        }
+
+        guard let client = makeClient(),
+              let worker = preferredWorkerForMissionPreferenceSync() else {
+            return
+        }
+
+        var metadata = worker.metadata ?? [:]
+        metadata[Self.missionPreferenceMetadataKey] = missionPreferenceMetadataValue(snapshot)
+
+        do {
+            try await client.upsertWorkerMetadata(
+                workerID: worker.workerID,
+                workspaceRef: worker.workspaceRef,
+                codexHomeRef: worker.codexHomeRef,
+                adapter: worker.adapter,
+                metadata: metadata
+            )
+            missionPreferenceSyncFingerprint = fingerprint
+            latestRemoteMissionPreferenceUpdatedAt = snapshot.updatedAt
+        } catch {
+            recordLifecycleEvent("mission_preferences_sync_failed reason=\(formatError(error))")
+        }
+    }
+
+    private func decodeMissionPreferenceSnapshot(from metadata: [String: JSONValue]?) -> MissionControlPreferenceSnapshot? {
+        guard let metadata,
+              let object = metadata[Self.missionPreferenceMetadataKey]?.objectValue,
+              let data = try? JSONEncoder().encode(object),
+              let decoded = try? JSONDecoder().decode(MissionControlPreferenceSnapshot.self, from: data),
+              decoded.schemaVersion == MissionControlPreferenceSnapshot.schema else {
+            return nil
+        }
+        return decoded.replacing(
+            updatedAt: decoded.updatedAt,
+            watchlist: normalizedMissionWatchlist(decoded.watchlist)
+        )
+    }
+
+    private func missionPreferenceIsNewer(_ candidate: String, than baseline: String?) -> Bool {
+        guard let baseline else {
+            return true
+        }
+        let candidateTS = timestampFromISO8601(candidate)
+        let baselineTS = timestampFromISO8601(baseline)
+        if let candidateTS, let baselineTS {
+            return candidateTS > baselineTS
+        }
+        return candidate > baseline
+    }
+
+    private func adoptRemoteMissionPreferenceSnapshot(from workers: [RuntimeCodexWorkerSummary]) {
+        var latestSnapshot: MissionControlPreferenceSnapshot?
+        for worker in workers {
+            guard let candidate = decodeMissionPreferenceSnapshot(from: worker.metadata) else {
+                continue
+            }
+            if latestSnapshot == nil
+                || missionPreferenceIsNewer(candidate.updatedAt, than: latestSnapshot?.updatedAt) {
+                latestSnapshot = candidate
+            }
+        }
+
+        guard let latestSnapshot else {
+            return
+        }
+        guard missionPreferenceIsNewer(latestSnapshot.updatedAt, than: missionPreferences.updatedAt) else {
+            return
+        }
+
+        missionPreferences = latestSnapshot
+        latestRemoteMissionPreferenceUpdatedAt = latestSnapshot.updatedAt
+        missionPreferenceSyncFingerprint = missionPreferenceFingerprint(latestSnapshot)
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: true,
+            scheduleRemoteSync: false
+        )
+    }
+
     private func syncMissionControlWorkerSummaries(from workers: [RuntimeCodexWorkerSummary]) {
+        adoptRemoteMissionPreferenceSnapshot(from: workers)
         let reconnectState = streamReconnectStateLabel()
         for worker in workers {
             missionControlProjection = missionControlStore.ingestWorkerSummary(
@@ -3567,6 +4079,11 @@ final class CodexHandshakeViewModel: ObservableObject {
                 occurredAt: iso8601(now())
             )
         }
+
+        applyMissionPreferenceSnapshotToStore(
+            persistToDefaults: false,
+            scheduleRemoteSync: false
+        )
 
         if let workerID = selectedWorkerID ?? workers.first?.workerID {
             missionControlProjection = missionControlStore.setActiveLane(

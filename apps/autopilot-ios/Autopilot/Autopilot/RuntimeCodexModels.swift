@@ -547,6 +547,7 @@ struct RuntimeMissionControlThreadState: Decodable, Equatable {
     let freshnessSeq: Int?
     let unreadCount: Int
     let muted: Bool
+    let watchlisted: Bool
 
     enum CodingKeys: String, CodingKey {
         case workerID = "worker_id"
@@ -557,6 +558,7 @@ struct RuntimeMissionControlThreadState: Decodable, Equatable {
         case freshnessSeq = "freshness_seq"
         case unreadCount = "unread_count"
         case muted
+        case watchlisted
     }
 }
 
@@ -664,12 +666,50 @@ struct RuntimeMissionControlRequestState: Codable, Equatable, Identifiable {
     }
 }
 
+struct RuntimeMissionControlLaneKey: Codable, Equatable, Hashable {
+    let workerID: String
+    let threadID: String
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+    }
+}
+
+struct RuntimeMissionControlAlertRules: Codable, Equatable {
+    let errors: Bool
+    let stuckTurns: Bool
+    let reconnectStorms: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case errors
+        case stuckTurns = "stuck_turns"
+        case reconnectStorms = "reconnect_storms"
+    }
+
+    static let `default` = RuntimeMissionControlAlertRules(
+        errors: true,
+        stuckTurns: true,
+        reconnectStorms: true
+    )
+}
+
+enum RuntimeMissionAlertRule: String {
+    case errors
+    case stuckTurns = "stuck_turns"
+    case reconnectStorms = "reconnect_storms"
+}
+
 struct RuntimeMissionControlProjection: Decodable, Equatable {
     let workers: [RuntimeMissionControlWorkerState]
     let threads: [RuntimeMissionControlThreadState]
     let timelines: [RuntimeMissionControlThreadTimeline]
     let events: [RuntimeMissionControlEventRecord]
     let requests: [RuntimeMissionControlRequestState]
+    let watchlist: [RuntimeMissionControlLaneKey]
+    let watchlistOnly: Bool
+    let newestFirst: Bool
+    let alertRules: RuntimeMissionControlAlertRules
     let activeWorkerID: String?
     let activeThreadID: String?
     let activeTurnID: String?
@@ -681,6 +721,10 @@ struct RuntimeMissionControlProjection: Decodable, Equatable {
         case timelines
         case events
         case requests
+        case watchlist
+        case watchlistOnly = "watchlist_only"
+        case newestFirst = "newest_first"
+        case alertRules = "alert_rules"
         case activeWorkerID = "active_worker_id"
         case activeThreadID = "active_thread_id"
         case activeTurnID = "active_turn_id"
@@ -693,6 +737,10 @@ struct RuntimeMissionControlProjection: Decodable, Equatable {
         timelines: [],
         events: [],
         requests: [],
+        watchlist: [],
+        watchlistOnly: false,
+        newestFirst: true,
+        alertRules: .default,
         activeWorkerID: nil,
         activeThreadID: nil,
         activeTurnID: nil,
@@ -716,6 +764,11 @@ final class RuntimeMissionControlStore {
         let request: RuntimeMissionControlRequestState?
         let threadID: String?
         let muted: Bool?
+        let watchlisted: Bool?
+        let watchlistOnly: Bool?
+        let newestFirst: Bool?
+        let rule: String?
+        let enabled: Bool?
         let fromSeq: Int?
         let toSeq: Int?
         let maxEvents: Int?
@@ -736,6 +789,11 @@ final class RuntimeMissionControlStore {
             case request
             case threadID = "thread_id"
             case muted
+            case watchlisted
+            case watchlistOnly = "watchlist_only"
+            case newestFirst = "newest_first"
+            case rule
+            case enabled
             case fromSeq = "from_seq"
             case toSeq = "to_seq"
             case maxEvents = "max_events"
@@ -776,6 +834,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: maxEvents,
@@ -802,6 +865,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -836,6 +904,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -884,6 +957,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -928,6 +1006,11 @@ final class RuntimeMissionControlStore {
                 request: request,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -954,6 +1037,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: threadID,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -980,6 +1068,135 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: threadID,
                 muted: muted,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setLaneWatchlisted(workerID: String, threadID: String, watchlisted: Bool) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_lane_watchlisted",
+                topic: nil,
+                seq: nil,
+                workerID: workerID,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: threadID,
+                muted: nil,
+                watchlisted: watchlisted,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setWatchlistOnly(_ watchlistOnly: Bool) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_watchlist_only",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                watchlisted: nil,
+                watchlistOnly: watchlistOnly,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setOrderNewestFirst(_ newestFirst: Bool) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_order_newest_first",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: newestFirst,
+                rule: nil,
+                enabled: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setAlertRule(_ rule: RuntimeMissionAlertRule, enabled: Bool) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_alert_rule",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: rule.rawValue,
+                enabled: enabled,
                 fromSeq: nil,
                 toSeq: nil,
                 maxEvents: nil,
@@ -1006,6 +1223,11 @@ final class RuntimeMissionControlStore {
                 request: nil,
                 threadID: nil,
                 muted: nil,
+                watchlisted: nil,
+                watchlistOnly: nil,
+                newestFirst: nil,
+                rule: nil,
+                enabled: nil,
                 fromSeq: fromSeq,
                 toSeq: toSeq,
                 maxEvents: nil,

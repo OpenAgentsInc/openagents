@@ -257,6 +257,32 @@ private func wgpui_ios_background_set_mission_mutations_enabled(_ state: UnsafeM
 @_silgen_name("wgpui_ios_background_set_mission_retention_profile")
 private func wgpui_ios_background_set_mission_retention_profile(_ state: UnsafeMutableRawPointer?, _ profile: UInt8)
 
+@_silgen_name("wgpui_ios_background_set_mission_watchlist_only")
+private func wgpui_ios_background_set_mission_watchlist_only(_ state: UnsafeMutableRawPointer?, _ enabled: Int32)
+
+@_silgen_name("wgpui_ios_background_set_mission_order_newest_first")
+private func wgpui_ios_background_set_mission_order_newest_first(_ state: UnsafeMutableRawPointer?, _ enabled: Int32)
+
+@_silgen_name("wgpui_ios_background_set_mission_alert_rules")
+private func wgpui_ios_background_set_mission_alert_rules(
+    _ state: UnsafeMutableRawPointer?,
+    _ errorsEnabled: Int32,
+    _ stuckTurnsEnabled: Int32,
+    _ reconnectStormsEnabled: Int32
+)
+
+@_silgen_name("wgpui_ios_background_set_mission_filter")
+private func wgpui_ios_background_set_mission_filter(_ state: UnsafeMutableRawPointer?, _ filter: UInt8)
+
+@_silgen_name("wgpui_ios_background_mission_filter")
+private func wgpui_ios_background_mission_filter(_ state: UnsafeMutableRawPointer?) -> UInt8
+
+@_silgen_name("wgpui_ios_background_set_mission_pin_critical")
+private func wgpui_ios_background_set_mission_pin_critical(_ state: UnsafeMutableRawPointer?, _ enabled: Int32)
+
+@_silgen_name("wgpui_ios_background_mission_pin_critical")
+private func wgpui_ios_background_mission_pin_critical(_ state: UnsafeMutableRawPointer?) -> Int32
+
 @_silgen_name("wgpui_ios_background_consume_send_requested")
 private func wgpui_ios_background_consume_send_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
@@ -304,6 +330,24 @@ private func wgpui_ios_background_consume_refresh_snapshot_requested(_ state: Un
 
 @_silgen_name("wgpui_ios_background_consume_mission_retention_cycle_requested")
 private func wgpui_ios_background_consume_mission_retention_cycle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_watch_active_requested")
+private func wgpui_ios_background_consume_mission_watch_active_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_watchlist_only_toggle_requested")
+private func wgpui_ios_background_consume_mission_watchlist_only_toggle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_order_toggle_requested")
+private func wgpui_ios_background_consume_mission_order_toggle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_alert_errors_toggle_requested")
+private func wgpui_ios_background_consume_mission_alert_errors_toggle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_alert_stuck_turns_toggle_requested")
+private func wgpui_ios_background_consume_mission_alert_stuck_turns_toggle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_mission_alert_reconnect_storms_toggle_requested")
+private func wgpui_ios_background_consume_mission_alert_reconnect_storms_toggle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
 // Backward-compatible alias symbols.
 @_silgen_name("wgpui_ios_background_login_submit_requested")
@@ -782,6 +826,44 @@ enum WgpuiBackgroundBridge {
         wgpui_ios_background_set_mission_retention_profile(state, profile)
     }
 
+    static func setMissionWatchlistOnly(state: UnsafeMutableRawPointer?, enabled: Bool) {
+        wgpui_ios_background_set_mission_watchlist_only(state, enabled ? 1 : 0)
+    }
+
+    static func setMissionOrderNewestFirst(state: UnsafeMutableRawPointer?, enabled: Bool) {
+        wgpui_ios_background_set_mission_order_newest_first(state, enabled ? 1 : 0)
+    }
+
+    static func setMissionAlertRules(
+        state: UnsafeMutableRawPointer?,
+        errorsEnabled: Bool,
+        stuckTurnsEnabled: Bool,
+        reconnectStormsEnabled: Bool
+    ) {
+        wgpui_ios_background_set_mission_alert_rules(
+            state,
+            errorsEnabled ? 1 : 0,
+            stuckTurnsEnabled ? 1 : 0,
+            reconnectStormsEnabled ? 1 : 0
+        )
+    }
+
+    static func setMissionFilter(state: UnsafeMutableRawPointer?, filter: UInt8) {
+        wgpui_ios_background_set_mission_filter(state, filter)
+    }
+
+    static func missionFilter(state: UnsafeMutableRawPointer?) -> UInt8 {
+        wgpui_ios_background_mission_filter(state)
+    }
+
+    static func setMissionPinCritical(state: UnsafeMutableRawPointer?, enabled: Bool) {
+        wgpui_ios_background_set_mission_pin_critical(state, enabled ? 1 : 0)
+    }
+
+    static func missionPinCritical(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_mission_pin_critical(state) != 0
+    }
+
     static func consumeSendRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_send_requested(state) != 0
     }
@@ -844,6 +926,30 @@ enum WgpuiBackgroundBridge {
 
     static func consumeMissionRetentionCycleRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_mission_retention_cycle_requested(state) != 0
+    }
+
+    static func consumeMissionWatchActiveRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_watch_active_requested(state) != 0
+    }
+
+    static func consumeMissionWatchlistOnlyToggleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_watchlist_only_toggle_requested(state) != 0
+    }
+
+    static func consumeMissionOrderToggleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_order_toggle_requested(state) != 0
+    }
+
+    static func consumeMissionAlertErrorsToggleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_alert_errors_toggle_requested(state) != 0
+    }
+
+    static func consumeMissionAlertStuckTurnsToggleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_alert_stuck_turns_toggle_requested(state) != 0
+    }
+
+    static func consumeMissionAlertReconnectStormsToggleRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_mission_alert_reconnect_storms_toggle_requested(state) != 0
     }
 
     // Compatibility wrappers (legacy login naming).

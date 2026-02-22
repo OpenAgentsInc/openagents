@@ -29,6 +29,13 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     var onStopWorkerRequested: (() -> Void)?
     var onRefreshSnapshotRequested: (() -> Void)?
     var onMissionRetentionCycleRequested: (() -> Void)?
+    var onMissionWatchActiveRequested: (() -> Void)?
+    var onMissionWatchlistOnlyToggleRequested: (() -> Void)?
+    var onMissionOrderToggleRequested: (() -> Void)?
+    var onMissionAlertErrorsToggleRequested: (() -> Void)?
+    var onMissionAlertStuckTurnsToggleRequested: (() -> Void)?
+    var onMissionAlertReconnectStormsToggleRequested: (() -> Void)?
+    var onMissionVisualPreferencesChanged: ((String, Bool) -> Void)?
 
     private struct MissionBridgeSnapshot {
         let rows: [(role: CodexChatRole, text: String, streaming: Bool)]
@@ -50,6 +57,13 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         let control: String
         let missionMutationsEnabled: Bool
         let missionRetentionProfileValue: UInt8
+        let missionWatchlistOnlyEnabled: Bool
+        let missionOrderNewestFirstEnabled: Bool
+        let missionAlertErrorsEnabled: Bool
+        let missionAlertStuckTurnsEnabled: Bool
+        let missionAlertReconnectStormsEnabled: Bool
+        let missionFilterRaw: String
+        let missionPinCritical: Bool
         let projection: RuntimeMissionControlProjection
         let cadenceSeconds: TimeInterval
     }
@@ -65,6 +79,8 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     private var configuredScale: CGFloat?
     private var pendingMissionSnapshot: MissionBridgeSnapshot?
     private var lastMissionProjectionSyncAt: TimeInterval = 0
+    private var lastMissionFilterPreferenceRaw: String = "all"
+    private var lastMissionPinCriticalPreference: Bool = false
     private let keyboardProxyField = UITextField(frame: .zero)
 
     private var effectiveScale: CGFloat {
@@ -291,6 +307,13 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
             control: controlRequestSummary(model: model),
             missionMutationsEnabled: model.missionMutationsAllowed,
             missionRetentionProfileValue: model.missionRetentionProfileWgpuiValue,
+            missionWatchlistOnlyEnabled: model.missionWatchlistOnlyEnabled,
+            missionOrderNewestFirstEnabled: model.missionOrderNewestFirstEnabled,
+            missionAlertErrorsEnabled: model.missionAlertErrorsEnabled,
+            missionAlertStuckTurnsEnabled: model.missionAlertStuckTurnsEnabled,
+            missionAlertReconnectStormsEnabled: model.missionAlertReconnectStormsEnabled,
+            missionFilterRaw: model.missionFilterPreferenceRaw,
+            missionPinCritical: model.missionPinCriticalPreference,
             projection: projection,
             cadenceSeconds: model.missionProjectionCadenceSeconds
         )
@@ -357,6 +380,30 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
             state: statePtr,
             profile: snapshot.missionRetentionProfileValue
         )
+        WgpuiBackgroundBridge.setMissionWatchlistOnly(
+            state: statePtr,
+            enabled: snapshot.missionWatchlistOnlyEnabled
+        )
+        WgpuiBackgroundBridge.setMissionOrderNewestFirst(
+            state: statePtr,
+            enabled: snapshot.missionOrderNewestFirstEnabled
+        )
+        WgpuiBackgroundBridge.setMissionAlertRules(
+            state: statePtr,
+            errorsEnabled: snapshot.missionAlertErrorsEnabled,
+            stuckTurnsEnabled: snapshot.missionAlertStuckTurnsEnabled,
+            reconnectStormsEnabled: snapshot.missionAlertReconnectStormsEnabled
+        )
+        WgpuiBackgroundBridge.setMissionFilter(
+            state: statePtr,
+            filter: missionFilterValue(from: snapshot.missionFilterRaw)
+        )
+        WgpuiBackgroundBridge.setMissionPinCritical(
+            state: statePtr,
+            enabled: snapshot.missionPinCritical
+        )
+        lastMissionFilterPreferenceRaw = normalizedMissionFilterRaw(snapshot.missionFilterRaw)
+        lastMissionPinCriticalPreference = snapshot.missionPinCritical
         syncMissionControlProjection(state: statePtr, projection: snapshot.projection)
     }
 
@@ -477,6 +524,54 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
     }
 
+    private func normalizedMissionFilterRaw(_ raw: String) -> String {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "control", "turn", "tool", "errors", "handshake", "system":
+            return normalized
+        default:
+            return "all"
+        }
+    }
+
+    private func missionFilterValue(from raw: String) -> UInt8 {
+        switch normalizedMissionFilterRaw(raw) {
+        case "control":
+            return 1
+        case "turn":
+            return 2
+        case "tool":
+            return 3
+        case "errors":
+            return 4
+        case "handshake":
+            return 5
+        case "system":
+            return 6
+        default:
+            return 0
+        }
+    }
+
+    private func missionFilterRaw(from value: UInt8) -> String {
+        switch value {
+        case 1:
+            return "control"
+        case 2:
+            return "turn"
+        case 3:
+            return "tool"
+        case 4:
+            return "errors"
+        case 5:
+            return "handshake"
+        case 6:
+            return "system"
+        default:
+            return "all"
+        }
+    }
+
     private func jsonString(from value: JSONValue?) -> String? {
         guard let value else {
             return nil
@@ -540,6 +635,38 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         }
         if WgpuiBackgroundBridge.consumeMissionRetentionCycleRequested(state: statePtr) {
             onMissionRetentionCycleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionWatchActiveRequested(state: statePtr) {
+            onMissionWatchActiveRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionWatchlistOnlyToggleRequested(state: statePtr) {
+            onMissionWatchlistOnlyToggleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionOrderToggleRequested(state: statePtr) {
+            onMissionOrderToggleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionAlertErrorsToggleRequested(state: statePtr) {
+            onMissionAlertErrorsToggleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionAlertStuckTurnsToggleRequested(state: statePtr) {
+            onMissionAlertStuckTurnsToggleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeMissionAlertReconnectStormsToggleRequested(state: statePtr) {
+            onMissionAlertReconnectStormsToggleRequested?()
+        }
+
+        let observedMissionFilterRaw = missionFilterRaw(
+            from: WgpuiBackgroundBridge.missionFilter(state: statePtr)
+        )
+        let observedMissionPinCritical = WgpuiBackgroundBridge.missionPinCritical(state: statePtr)
+        if observedMissionFilterRaw != lastMissionFilterPreferenceRaw
+            || observedMissionPinCritical != lastMissionPinCriticalPreference {
+            lastMissionFilterPreferenceRaw = observedMissionFilterRaw
+            lastMissionPinCriticalPreference = observedMissionPinCritical
+            onMissionVisualPreferencesChanged?(
+                observedMissionFilterRaw,
+                observedMissionPinCritical
+            )
         }
 
         let target = WgpuiBackgroundBridge.activeInputTarget(state: statePtr)
@@ -944,6 +1071,30 @@ struct WgpuiBackgroundView: View {
             view.onMissionRetentionCycleRequested = { [weak model] in
                 model?.cycleMissionRetentionProfile()
             }
+            view.onMissionWatchActiveRequested = { [weak model] in
+                model?.toggleMissionWatchActiveLane()
+            }
+            view.onMissionWatchlistOnlyToggleRequested = { [weak model] in
+                model?.toggleMissionWatchlistOnly()
+            }
+            view.onMissionOrderToggleRequested = { [weak model] in
+                model?.toggleMissionOrderNewestFirst()
+            }
+            view.onMissionAlertErrorsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertErrorsRule()
+            }
+            view.onMissionAlertStuckTurnsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertStuckTurnsRule()
+            }
+            view.onMissionAlertReconnectStormsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertReconnectStormsRule()
+            }
+            view.onMissionVisualPreferencesChanged = { [weak model] filterRaw, pinCritical in
+                model?.updateMissionVisualPreferences(
+                    filterRaw: filterRaw,
+                    pinCritical: pinCritical
+                )
+            }
             return view
         }
 
@@ -971,6 +1122,30 @@ struct WgpuiBackgroundView: View {
             }
             uiView.onMissionRetentionCycleRequested = { [weak model] in
                 model?.cycleMissionRetentionProfile()
+            }
+            uiView.onMissionWatchActiveRequested = { [weak model] in
+                model?.toggleMissionWatchActiveLane()
+            }
+            uiView.onMissionWatchlistOnlyToggleRequested = { [weak model] in
+                model?.toggleMissionWatchlistOnly()
+            }
+            uiView.onMissionOrderToggleRequested = { [weak model] in
+                model?.toggleMissionOrderNewestFirst()
+            }
+            uiView.onMissionAlertErrorsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertErrorsRule()
+            }
+            uiView.onMissionAlertStuckTurnsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertStuckTurnsRule()
+            }
+            uiView.onMissionAlertReconnectStormsToggleRequested = { [weak model] in
+                model?.toggleMissionAlertReconnectStormsRule()
+            }
+            uiView.onMissionVisualPreferencesChanged = { [weak model] filterRaw, pinCritical in
+                model?.updateMissionVisualPreferences(
+                    filterRaw: filterRaw,
+                    pinCritical: pinCritical
+                )
             }
             uiView.sync(model: model)
         }

@@ -157,6 +157,33 @@ final class RuntimeCodexClient {
         return response.data ?? []
     }
 
+    func upsertWorkerMetadata(
+        workerID: String,
+        workspaceRef: String?,
+        codexHomeRef: String?,
+        adapter: String?,
+        metadata: [String: JSONValue]
+    ) async throws {
+        let normalizedWorkerID = workerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedWorkerID.isEmpty else {
+            throw RuntimeCodexApiError(message: "worker_id_missing", code: .invalid, status: nil)
+        }
+
+        let body = WorkerCreateRequest(
+            workerID: normalizedWorkerID,
+            workspaceRef: workspaceRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+            codexHomeRef: codexHomeRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+            adapter: adapter?.trimmingCharacters(in: .whitespacesAndNewlines),
+            metadata: metadata
+        )
+
+        let _: DataResponse<JSONValue> = try await requestJSON(
+            path: "/api/runtime/codex/workers",
+            method: "POST",
+            body: body
+        )
+    }
+
     func workerSnapshot(workerID: String) async throws -> RuntimeCodexWorkerSnapshot {
         let response: DataResponse<RuntimeCodexWorkerSnapshot> = try await requestJSON(
             path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)",
@@ -570,6 +597,22 @@ private struct LossyString: Decodable {
 
 private struct WorkerEventRequest: Encodable {
     let event: WorkerEventEnvelope
+}
+
+private struct WorkerCreateRequest: Encodable {
+    let workerID: String?
+    let workspaceRef: String?
+    let codexHomeRef: String?
+    let adapter: String?
+    let metadata: [String: JSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case workspaceRef = "workspace_ref"
+        case codexHomeRef = "codex_home_ref"
+        case adapter
+        case metadata
+    }
 }
 
 private struct WorkerActionRequestEnvelope: Encodable {

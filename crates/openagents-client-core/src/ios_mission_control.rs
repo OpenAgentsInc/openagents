@@ -5,6 +5,9 @@ use serde_json::Value;
 
 const DEFAULT_EVENT_RING_LIMIT: usize = 1_024;
 const DEFAULT_TIMELINE_LIMIT: usize = 512;
+const STUCK_TURN_EVENT_THRESHOLD: u64 = 40;
+const RECONNECT_STORM_WINDOW: usize = 6;
+const RECONNECT_STORM_THRESHOLD: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct WorkerThreadKey {
@@ -64,6 +67,7 @@ pub struct MissionThreadState {
     pub freshness_seq: Option<u64>,
     pub unread_count: u64,
     pub muted: bool,
+    pub watchlisted: bool,
 }
 
 impl MissionThreadState {
@@ -77,6 +81,7 @@ impl MissionThreadState {
             freshness_seq: None,
             unread_count: 0,
             muted: false,
+            watchlisted: false,
         }
     }
 }
@@ -167,6 +172,41 @@ pub struct MissionThreadTimeline {
     pub entries: Vec<MissionTimelineItem>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionAlertRules {
+    pub errors: bool,
+    pub stuck_turns: bool,
+    pub reconnect_storms: bool,
+}
+
+impl Default for MissionAlertRules {
+    fn default() -> Self {
+        Self {
+            errors: true,
+            stuck_turns: true,
+            reconnect_storms: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MissionAlertRuleKey {
+    Errors,
+    StuckTurns,
+    ReconnectStorms,
+}
+
+impl MissionAlertRuleKey {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "errors" => Some(Self::Errors),
+            "stuck_turns" => Some(Self::StuckTurns),
+            "reconnect_storms" => Some(Self::ReconnectStorms),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct MissionControlProjection {
     pub workers: Vec<MissionWorkerState>,
@@ -174,10 +214,27 @@ pub struct MissionControlProjection {
     pub timelines: Vec<MissionThreadTimeline>,
     pub events: Vec<MissionEventRecord>,
     pub requests: Vec<MissionRequestState>,
+    pub watchlist: Vec<WorkerThreadKey>,
+    pub watchlist_only: bool,
+    pub newest_first: bool,
+    pub alert_rules: MissionAlertRules,
     pub active_worker_id: Option<String>,
     pub active_thread_id: Option<String>,
     pub active_turn_id: Option<String>,
     pub compatibility_chat_messages: Vec<MissionTimelineItem>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ActiveTurnWatch {
+    turn_id: Option<String>,
+    events_since_start: u64,
+    alerted: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ReconnectStormState {
+    recent_non_live_samples: VecDeque<bool>,
+    storm_emitted: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +276,21 @@ pub enum MissionControlCommand {
         thread_id: String,
         muted: bool,
     },
+    SetLaneWatchlisted {
+        worker_id: String,
+        thread_id: String,
+        watchlisted: bool,
+    },
+    SetWatchlistOnly {
+        watchlist_only: bool,
+    },
+    SetOrderNewestFirst {
+        newest_first: bool,
+    },
+    SetAlertRule {
+        rule: String,
+        enabled: bool,
+    },
     MarkResynced {
         topic: String,
         from_seq: u64,
@@ -244,6 +316,12 @@ pub struct IosMissionControlStore {
     event_store: VecDeque<MissionEventRecord>,
     event_dedupe: HashSet<String>,
     request_store: HashMap<String, MissionRequestState>,
+    watchlist: HashSet<WorkerThreadKey>,
+    watchlist_only: bool,
+    newest_first: bool,
+    alert_rules: MissionAlertRules,
+    active_turn_watch: HashMap<WorkerThreadKey, ActiveTurnWatch>,
+    reconnect_storm_state: HashMap<String, ReconnectStormState>,
     active_lane: Option<WorkerThreadKey>,
     next_event_id: u64,
     max_events: usize,
@@ -259,6 +337,12 @@ impl IosMissionControlStore {
             event_store: VecDeque::new(),
             event_dedupe: HashSet::new(),
             request_store: HashMap::new(),
+            watchlist: HashSet::new(),
+            watchlist_only: false,
+            newest_first: true,
+            alert_rules: MissionAlertRules::default(),
+            active_turn_watch: HashMap::new(),
+            reconnect_storm_state: HashMap::new(),
             active_lane: None,
             next_event_id: 1,
             max_events: DEFAULT_EVENT_RING_LIMIT,
@@ -317,6 +401,22 @@ impl IosMissionControlStore {
             } => {
                 self.set_lane_muted(worker_id, thread_id, muted);
             }
+            MissionControlCommand::SetLaneWatchlisted {
+                worker_id,
+                thread_id,
+                watchlisted,
+            } => {
+                self.set_lane_watchlisted(worker_id, thread_id, watchlisted);
+            }
+            MissionControlCommand::SetWatchlistOnly { watchlist_only } => {
+                self.set_watchlist_only(watchlist_only);
+            }
+            MissionControlCommand::SetOrderNewestFirst { newest_first } => {
+                self.set_order_newest_first(newest_first);
+            }
+            MissionControlCommand::SetAlertRule { rule, enabled } => {
+                self.set_alert_rule(rule.as_str(), enabled);
+            }
             MissionControlCommand::MarkResynced {
                 topic,
                 from_seq,
@@ -350,9 +450,15 @@ impl IosMissionControlStore {
         workers.sort_by(|lhs, rhs| lhs.worker_id.cmp(&rhs.worker_id));
 
         let mut threads = self.thread_store.values().cloned().collect::<Vec<_>>();
+        for thread in &mut threads {
+            thread.watchlisted = WorkerThreadKey::new(&thread.worker_id, &thread.thread_id)
+                .map(|key| self.watchlist.contains(&key))
+                .unwrap_or(false);
+        }
         threads.sort_by(|lhs, rhs| {
-            lhs.worker_id
-                .cmp(&rhs.worker_id)
+            rhs.watchlisted
+                .cmp(&lhs.watchlisted)
+                .then(lhs.worker_id.cmp(&rhs.worker_id))
                 .then(lhs.thread_id.cmp(&rhs.thread_id))
         });
 
@@ -366,8 +472,15 @@ impl IosMissionControlStore {
             })
             .collect::<Vec<_>>();
         timelines.sort_by(|lhs, rhs| {
-            lhs.worker_id
-                .cmp(&rhs.worker_id)
+            let lhs_watchlisted = WorkerThreadKey::new(&lhs.worker_id, &lhs.thread_id)
+                .map(|key| self.watchlist.contains(&key))
+                .unwrap_or(false);
+            let rhs_watchlisted = WorkerThreadKey::new(&rhs.worker_id, &rhs.thread_id)
+                .map(|key| self.watchlist.contains(&key))
+                .unwrap_or(false);
+            rhs_watchlisted
+                .cmp(&lhs_watchlisted)
+                .then(lhs.worker_id.cmp(&rhs.worker_id))
                 .then(lhs.thread_id.cmp(&rhs.thread_id))
         });
 
@@ -377,16 +490,81 @@ impl IosMissionControlStore {
         let mut requests = self.request_store.values().cloned().collect::<Vec<_>>();
         requests.sort_by(|lhs, rhs| lhs.request_id.cmp(&rhs.request_id));
 
-        let active_worker_id = self.active_lane.as_ref().map(|key| key.worker_id.clone());
-        let active_thread_id = self.active_lane.as_ref().map(|key| key.thread_id.clone());
-        let active_turn_id = self
-            .active_lane
+        let mut watchlist = self.watchlist.iter().cloned().collect::<Vec<_>>();
+        watchlist.sort_by(|lhs, rhs| {
+            lhs.worker_id
+                .cmp(&rhs.worker_id)
+                .then(lhs.thread_id.cmp(&rhs.thread_id))
+        });
+
+        if self.watchlist_only && !watchlist.is_empty() {
+            let watchset = &self.watchlist;
+            threads.retain(|thread| {
+                WorkerThreadKey::new(&thread.worker_id, &thread.thread_id)
+                    .map(|key| watchset.contains(&key))
+                    .unwrap_or(false)
+            });
+            timelines.retain(|timeline| {
+                WorkerThreadKey::new(&timeline.worker_id, &timeline.thread_id)
+                    .map(|key| watchset.contains(&key))
+                    .unwrap_or(false)
+            });
+            workers.retain(|worker| {
+                threads
+                    .iter()
+                    .any(|thread| thread.worker_id == worker.worker_id)
+            });
+            events.retain(|event| {
+                match (event.worker_id.clone(), event.thread_id.clone()) {
+                    (Some(worker_id), Some(thread_id)) => WorkerThreadKey::new(worker_id, thread_id)
+                        .map(|lane_key| watchset.contains(&lane_key))
+                        .unwrap_or(false),
+                    _ => true,
+                }
+            });
+            requests.retain(|request| {
+                if let Some(thread_id) = normalized_owned(request.thread_id.clone()) {
+                    return WorkerThreadKey::new(request.worker_id.clone(), thread_id)
+                        .map(|key| watchset.contains(&key))
+                        .unwrap_or(false);
+                }
+                threads
+                    .iter()
+                    .any(|thread| thread.worker_id == request.worker_id)
+            });
+        }
+
+        let lane_visible = |lane: &WorkerThreadKey| -> bool {
+            threads
+                .iter()
+                .any(|thread| thread.worker_id == lane.worker_id && thread.thread_id == lane.thread_id)
+        };
+
+        let mut active_lane = self.active_lane.clone();
+        if active_lane
+            .as_ref()
+            .map(|lane| !lane_visible(lane))
+            .unwrap_or(false)
+        {
+            active_lane = None;
+        }
+        if active_lane.is_none() {
+            active_lane = watchlist.iter().find(|lane| lane_visible(lane)).cloned();
+        }
+        if active_lane.is_none() {
+            active_lane = threads
+                .first()
+                .and_then(|thread| WorkerThreadKey::new(&thread.worker_id, &thread.thread_id));
+        }
+
+        let active_worker_id = active_lane.as_ref().map(|key| key.worker_id.clone());
+        let active_thread_id = active_lane.as_ref().map(|key| key.thread_id.clone());
+        let active_turn_id = active_lane
             .as_ref()
             .and_then(|key| self.thread_store.get(key))
             .and_then(|thread| thread.active_turn_id.clone());
 
-        let compatibility_chat_messages = self
-            .active_lane
+        let compatibility_chat_messages = active_lane
             .as_ref()
             .and_then(|key| self.timeline_store.get(key))
             .map(|entries| entries.iter().cloned().collect::<Vec<_>>())
@@ -398,6 +576,10 @@ impl IosMissionControlStore {
             timelines,
             events,
             requests,
+            watchlist,
+            watchlist_only: self.watchlist_only,
+            newest_first: self.newest_first,
+            alert_rules: self.alert_rules.clone(),
             active_worker_id,
             active_thread_id,
             active_turn_id,
@@ -418,18 +600,32 @@ impl IosMissionControlStore {
         let Some(worker_id) = normalized_owned(Some(worker_id)) else {
             return;
         };
-        let worker = self
-            .worker_store
-            .entry(worker_id.clone())
-            .or_insert_with(|| MissionWorkerState::new(worker_id.clone()));
-        worker.status = normalized_owned(Some(status)).unwrap_or_else(|| "unknown".to_string());
-        worker.heartbeat_state = normalized_owned(heartbeat_state);
-        worker.latest_seq = latest_seq.or(worker.latest_seq);
-        worker.lag_events = lag_events.or(worker.lag_events);
-        worker.reconnect_state = normalized_owned(reconnect_state).or(worker.reconnect_state.clone());
-        worker.last_event_at = normalized_owned(occurred_at).or(worker.last_event_at.clone());
-        let worker_id = worker.worker_id.clone();
+        let normalized_reconnect_state = normalized_owned(reconnect_state);
+        let normalized_occurred_at = normalized_owned(occurred_at);
+        let (worker_id, reconnect_for_alert, occurred_for_alert) = {
+            let worker = self
+                .worker_store
+                .entry(worker_id.clone())
+                .or_insert_with(|| MissionWorkerState::new(worker_id.clone()));
+            worker.status = normalized_owned(Some(status)).unwrap_or_else(|| "unknown".to_string());
+            worker.heartbeat_state = normalized_owned(heartbeat_state);
+            worker.latest_seq = latest_seq.or(worker.latest_seq);
+            worker.lag_events = lag_events.or(worker.lag_events);
+            worker.reconnect_state =
+                normalized_reconnect_state.clone().or(worker.reconnect_state.clone());
+            worker.last_event_at = normalized_occurred_at.clone().or(worker.last_event_at.clone());
+            (
+                worker.worker_id.clone(),
+                worker.reconnect_state.clone(),
+                worker.last_event_at.clone(),
+            )
+        };
         self.refresh_worker_request_stats(worker_id.as_str());
+        self.evaluate_reconnect_storm(
+            worker_id.as_str(),
+            reconnect_for_alert.as_deref(),
+            occurred_for_alert.as_deref(),
+        );
     }
 
     fn ingest_stream_event(
@@ -477,6 +673,7 @@ impl IosMissionControlStore {
 
         let severity = classify_event_severity(event_type.as_deref(), method.as_deref());
         let summary = summarize_event(event_type.as_deref(), method.as_deref(), request_id.as_deref());
+        let mut lane_key_for_alert: Option<WorkerThreadKey> = None;
 
         let record = MissionEventRecord {
             id: self.next_event_id,
@@ -489,7 +686,7 @@ impl IosMissionControlStore {
             event_type: event_type.clone(),
             method: method.clone(),
             summary,
-            severity,
+            severity: severity.clone(),
             occurred_at: occurred_at.clone(),
             payload,
             resync_marker: false,
@@ -524,6 +721,7 @@ impl IosMissionControlStore {
                     .thread_store
                     .entry(key.clone())
                     .or_insert_with(|| MissionThreadState::new(&key));
+                thread.watchlisted = self.watchlist.contains(&key);
                 thread.last_event_at = occurred_at.clone().or(thread.last_event_at.clone());
                 thread.freshness_seq = seq.or(thread.freshness_seq);
                 thread.last_summary = summarize_event(
@@ -557,6 +755,7 @@ impl IosMissionControlStore {
                 if self.active_lane.is_none() {
                     self.active_lane = Some(key.clone());
                 }
+                lane_key_for_alert = Some(key.clone());
 
                 if let Some(timeline_item) = timeline_item_from_event(
                     self.next_event_id,
@@ -577,6 +776,13 @@ impl IosMissionControlStore {
             }
         }
 
+        self.evaluate_stuck_turn(
+            lane_key_for_alert.as_ref(),
+            turn_id.as_deref(),
+            method.as_deref(),
+            occurred_at.as_deref(),
+        );
+
         self.reconcile_request_from_event(
             resolved_worker_id.as_deref(),
             request_id.as_deref(),
@@ -589,6 +795,17 @@ impl IosMissionControlStore {
 
         self.event_store.push_back(record);
         self.enforce_event_bound();
+
+        self.evaluate_error_alert(
+            severity,
+            event_type.as_deref(),
+            method.as_deref(),
+            resolved_worker_id.as_deref(),
+            thread_id.as_deref(),
+            turn_id.as_deref(),
+            request_id.as_deref(),
+            occurred_at.as_deref(),
+        );
 
         if let Some(worker_id) = resolved_worker_id.as_deref() {
             self.refresh_worker_request_stats(worker_id);
@@ -680,6 +897,10 @@ impl IosMissionControlStore {
                         worker_id: request.worker_id.clone(),
                         thread_id: request.thread_id.clone().unwrap_or_default(),
                     }));
+                thread.watchlisted = self.watchlist.contains(&WorkerThreadKey {
+                    worker_id: thread.worker_id.clone(),
+                    thread_id: thread.thread_id.clone(),
+                });
                 thread.last_summary = format!("{} [{}]", request.method, request.state);
             }
         }
@@ -715,6 +936,276 @@ impl IosMissionControlStore {
             .entry(key.clone())
             .or_insert_with(|| MissionThreadState::new(&key));
         thread.muted = muted;
+        thread.watchlisted = self.watchlist.contains(&key);
+    }
+
+    fn set_lane_watchlisted(&mut self, worker_id: String, thread_id: String, watchlisted: bool) {
+        let Some(key) = WorkerThreadKey::new(worker_id, thread_id) else {
+            return;
+        };
+        let thread = self
+            .thread_store
+            .entry(key.clone())
+            .or_insert_with(|| MissionThreadState::new(&key));
+        thread.watchlisted = watchlisted;
+
+        if watchlisted {
+            self.watchlist.insert(key.clone());
+            if self.active_lane.is_none() {
+                self.active_lane = Some(key);
+            }
+        } else {
+            self.watchlist.remove(&key);
+            self.active_turn_watch.remove(&key);
+            if self
+                .active_lane
+                .as_ref()
+                .map(|lane| lane == &key)
+                .unwrap_or(false)
+                && self.watchlist_only
+            {
+                self.active_lane = self.watchlist.iter().next().cloned();
+            }
+        }
+    }
+
+    fn set_watchlist_only(&mut self, watchlist_only: bool) {
+        self.watchlist_only = watchlist_only;
+        if watchlist_only
+            && self
+                .active_lane
+                .as_ref()
+                .map(|lane| !self.watchlist.contains(lane))
+                .unwrap_or(false)
+        {
+            self.active_lane = self.watchlist.iter().next().cloned();
+        }
+    }
+
+    fn set_order_newest_first(&mut self, newest_first: bool) {
+        self.newest_first = newest_first;
+    }
+
+    fn set_alert_rule(&mut self, rule: &str, enabled: bool) {
+        let Some(rule_key) = MissionAlertRuleKey::parse(rule) else {
+            return;
+        };
+        match rule_key {
+            MissionAlertRuleKey::Errors => self.alert_rules.errors = enabled,
+            MissionAlertRuleKey::StuckTurns => self.alert_rules.stuck_turns = enabled,
+            MissionAlertRuleKey::ReconnectStorms => self.alert_rules.reconnect_storms = enabled,
+        }
+    }
+
+    fn push_alert_event(
+        &mut self,
+        method: &str,
+        summary: String,
+        severity: MissionEventSeverity,
+        worker_id: Option<String>,
+        thread_id: Option<String>,
+        turn_id: Option<String>,
+        request_id: Option<String>,
+        occurred_at: Option<String>,
+        payload: Value,
+    ) {
+        let event = MissionEventRecord {
+            id: self.next_event_id,
+            topic: "runtime.codex_worker_events".to_string(),
+            seq: None,
+            worker_id,
+            thread_id,
+            turn_id,
+            request_id,
+            event_type: Some("mission.alert".to_string()),
+            method: Some(method.to_string()),
+            summary,
+            severity,
+            occurred_at,
+            payload,
+            resync_marker: false,
+        };
+        self.next_event_id = self.next_event_id.saturating_add(1);
+        self.event_store.push_back(event);
+        self.enforce_event_bound();
+    }
+
+    fn evaluate_error_alert(
+        &mut self,
+        severity: MissionEventSeverity,
+        event_type: Option<&str>,
+        method: Option<&str>,
+        worker_id: Option<&str>,
+        thread_id: Option<&str>,
+        turn_id: Option<&str>,
+        request_id: Option<&str>,
+        occurred_at: Option<&str>,
+    ) {
+        if !self.alert_rules.errors || severity != MissionEventSeverity::Error {
+            return;
+        }
+
+        let method_label = method.unwrap_or("unknown");
+        let event_type_label = event_type.unwrap_or("worker.event");
+        let summary = format!("alert: error event ({method_label})");
+        let payload = serde_json::json!({
+            "predicate": "severity == error",
+            "event_type": event_type_label,
+            "method": method_label,
+        });
+        self.push_alert_event(
+            "mission/alert/error_event",
+            summary,
+            MissionEventSeverity::Error,
+            worker_id.map(ToString::to_string),
+            thread_id.map(ToString::to_string),
+            turn_id.map(ToString::to_string),
+            request_id.map(ToString::to_string),
+            occurred_at.map(ToString::to_string),
+            payload,
+        );
+    }
+
+    fn evaluate_stuck_turn(
+        &mut self,
+        lane_key: Option<&WorkerThreadKey>,
+        turn_id: Option<&str>,
+        method: Option<&str>,
+        occurred_at: Option<&str>,
+    ) {
+        let Some(lane_key) = lane_key else {
+            return;
+        };
+
+        let is_turn_started = matches!(method, Some("turn/started"));
+        let is_terminal = matches!(
+            method,
+            Some("turn/completed") | Some("turn/failed") | Some("turn/interrupted") | Some("turn/aborted")
+        );
+
+        if is_turn_started {
+            let entry = self
+                .active_turn_watch
+                .entry(lane_key.clone())
+                .or_insert_with(ActiveTurnWatch::default);
+            entry.turn_id = turn_id.map(ToString::to_string);
+            entry.events_since_start = 0;
+            entry.alerted = false;
+            return;
+        }
+
+        if is_terminal {
+            self.active_turn_watch.remove(lane_key);
+            return;
+        }
+
+        let mut observed_events = 0_u64;
+        let mut alert_turn_id: Option<String> = None;
+        let mut should_emit = false;
+        if let Some(entry) = self.active_turn_watch.get_mut(lane_key) {
+            entry.events_since_start = entry.events_since_start.saturating_add(1);
+            observed_events = entry.events_since_start;
+            if self.alert_rules.stuck_turns
+                && !entry.alerted
+                && entry.events_since_start >= STUCK_TURN_EVENT_THRESHOLD
+            {
+                entry.alerted = true;
+                alert_turn_id = entry.turn_id.clone();
+                should_emit = true;
+            }
+        }
+        if !should_emit {
+            return;
+        }
+
+        let summary = format!(
+            "alert: stuck turn on {} / {} ({} events)",
+            lane_key.worker_id, lane_key.thread_id, observed_events
+        );
+        let payload = serde_json::json!({
+            "predicate": format!("events_since_turn_started >= {}", STUCK_TURN_EVENT_THRESHOLD),
+            "observed": observed_events,
+            "worker_id": lane_key.worker_id,
+            "thread_id": lane_key.thread_id,
+            "turn_id": alert_turn_id,
+        });
+        self.push_alert_event(
+            "mission/alert/stuck_turn",
+            summary,
+            MissionEventSeverity::Warning,
+            Some(lane_key.worker_id.clone()),
+            Some(lane_key.thread_id.clone()),
+            alert_turn_id,
+            None,
+            occurred_at.map(ToString::to_string),
+            payload,
+        );
+    }
+
+    fn evaluate_reconnect_storm(
+        &mut self,
+        worker_id: &str,
+        reconnect_state: Option<&str>,
+        occurred_at: Option<&str>,
+    ) {
+        let Some(reconnect_state) = reconnect_state.map(|value| value.trim().to_ascii_lowercase()) else {
+            return;
+        };
+
+        let storm = self
+            .reconnect_storm_state
+            .entry(worker_id.to_string())
+            .or_insert_with(ReconnectStormState::default);
+        let non_live = reconnect_state != "live";
+
+        storm.recent_non_live_samples.push_back(non_live);
+        while storm.recent_non_live_samples.len() > RECONNECT_STORM_WINDOW {
+            storm.recent_non_live_samples.pop_front();
+        }
+
+        if !non_live {
+            storm.storm_emitted = false;
+            return;
+        }
+
+        let non_live_count = storm
+            .recent_non_live_samples
+            .iter()
+            .filter(|value| **value)
+            .count();
+        if !self.alert_rules.reconnect_storms
+            || storm.storm_emitted
+            || non_live_count < RECONNECT_STORM_THRESHOLD
+        {
+            return;
+        }
+
+        storm.storm_emitted = true;
+        let summary = format!(
+            "alert: reconnect storm on {} ({} of last {} summaries non-live)",
+            worker_id, non_live_count, RECONNECT_STORM_WINDOW
+        );
+        let payload = serde_json::json!({
+            "predicate": format!(
+                "non_live_reconnect_samples >= {} in last {} summaries",
+                RECONNECT_STORM_THRESHOLD,
+                RECONNECT_STORM_WINDOW
+            ),
+            "observed": non_live_count,
+            "window": RECONNECT_STORM_WINDOW,
+            "reconnect_state": reconnect_state,
+        });
+        self.push_alert_event(
+            "mission/alert/reconnect_storm",
+            summary,
+            MissionEventSeverity::Warning,
+            Some(worker_id.to_string()),
+            None,
+            None,
+            None,
+            occurred_at.map(ToString::to_string),
+            payload,
+        );
     }
 
     fn mark_resynced(
@@ -965,7 +1456,7 @@ fn timeline_item_from_event(
 mod tests {
     use super::{
         IosMissionControlStore, MissionControlCommand, MissionRequestState, MissionTimelineItem,
-        WorkerThreadKey,
+        WorkerThreadKey, STUCK_TURN_EVENT_THRESHOLD,
     };
 
     #[test]
@@ -1154,5 +1645,204 @@ mod tests {
         let decoded = serde_json::from_str::<MissionTimelineItem>(&encoded)
             .expect("timeline item should decode");
         assert_eq!(decoded, item);
+    }
+
+    #[test]
+    fn mission_store_watchlist_filtering_and_restore_are_deterministic() {
+        let mut store = IosMissionControlStore::new();
+        for (seq, thread_id) in [(1_u64, "thread-a"), (2_u64, "thread-b")] {
+            store.apply_command(MissionControlCommand::IngestStreamEvent {
+                topic: "runtime.codex_worker_events".to_string(),
+                seq: Some(seq),
+                worker_id: Some("desktopw:shared".to_string()),
+                payload: serde_json::json!({
+                    "workerId": "desktopw:shared",
+                    "eventType": "worker.event",
+                    "payload": {
+                        "method": "turn/started",
+                        "params": {
+                            "thread_id": thread_id,
+                            "turn_id": format!("turn-{seq}")
+                        }
+                    }
+                }),
+            });
+        }
+
+        store.apply_command(MissionControlCommand::SetLaneWatchlisted {
+            worker_id: "desktopw:shared".to_string(),
+            thread_id: "thread-b".to_string(),
+            watchlisted: true,
+        });
+        store.apply_command(MissionControlCommand::SetWatchlistOnly {
+            watchlist_only: true,
+        });
+        let projection = store.projection();
+        assert_eq!(projection.watchlist.len(), 1);
+        assert_eq!(projection.watchlist[0].thread_id, "thread-b");
+        assert!(projection.watchlist_only);
+        assert_eq!(projection.threads.len(), 1);
+        assert_eq!(projection.threads[0].thread_id, "thread-b");
+        assert!(projection.threads[0].watchlisted);
+        assert_eq!(projection.active_thread_id.as_deref(), Some("thread-b"));
+    }
+
+    #[test]
+    fn mission_store_error_alert_predicate_emits_alert_event() {
+        let mut store = IosMissionControlStore::new();
+        store.apply_command(MissionControlCommand::IngestStreamEvent {
+            topic: "runtime.codex_worker_events".to_string(),
+            seq: Some(9),
+            worker_id: Some("desktopw:shared".to_string()),
+            payload: serde_json::json!({
+                "workerId": "desktopw:shared",
+                "eventType": "worker.error",
+                "payload": {
+                    "request_id": "req-err-1",
+                    "method": "turn/failed",
+                    "params": {"thread_id": "thread-1", "turn_id": "turn-1"},
+                    "message": "boom"
+                }
+            }),
+        });
+
+        let projection = store.projection();
+        let alert = projection
+            .events
+            .iter()
+            .find(|event| event.method.as_deref() == Some("mission/alert/error_event"))
+            .expect("error alert should be emitted");
+        assert_eq!(alert.event_type.as_deref(), Some("mission.alert"));
+        assert_eq!(
+            alert
+                .payload
+                .get("predicate")
+                .and_then(|value| value.as_str()),
+            Some("severity == error")
+        );
+    }
+
+    #[test]
+    fn mission_store_stuck_turn_predicate_emits_after_threshold_once() {
+        let mut store = IosMissionControlStore::new();
+        store.apply_command(MissionControlCommand::IngestStreamEvent {
+            topic: "runtime.codex_worker_events".to_string(),
+            seq: Some(1),
+            worker_id: Some("desktopw:shared".to_string()),
+            payload: serde_json::json!({
+                "workerId": "desktopw:shared",
+                "eventType": "worker.event",
+                "payload": {
+                    "method": "turn/started",
+                    "params": {"thread_id": "thread-1", "turn_id": "turn-1"}
+                }
+            }),
+        });
+
+        for offset in 0..=STUCK_TURN_EVENT_THRESHOLD {
+            store.apply_command(MissionControlCommand::IngestStreamEvent {
+                topic: "runtime.codex_worker_events".to_string(),
+                seq: Some(2 + offset),
+                worker_id: Some("desktopw:shared".to_string()),
+                payload: serde_json::json!({
+                    "workerId": "desktopw:shared",
+                    "eventType": "worker.event",
+                    "payload": {
+                        "method": "item/agentMessage/delta",
+                        "params": {"thread_id": "thread-1", "turn_id": "turn-1", "delta": "x"}
+                    }
+                }),
+            });
+        }
+
+        let projection = store.projection();
+        let alerts = projection
+            .events
+            .iter()
+            .filter(|event| event.method.as_deref() == Some("mission/alert/stuck_turn"))
+            .count();
+        assert_eq!(alerts, 1);
+    }
+
+    #[test]
+    fn mission_store_reconnect_storm_predicate_emits_and_resets_on_live() {
+        let mut store = IosMissionControlStore::new();
+        for _ in 0..3 {
+            store.apply_command(MissionControlCommand::IngestWorkerSummary {
+                worker_id: "desktopw:shared".to_string(),
+                status: "running".to_string(),
+                heartbeat_state: Some("fresh".to_string()),
+                latest_seq: Some(1),
+                lag_events: Some(0),
+                reconnect_state: Some("reconnecting".to_string()),
+                occurred_at: Some("2026-02-22T10:00:00Z".to_string()),
+            });
+        }
+        let first_projection = store.projection();
+        let first_alerts = first_projection
+            .events
+            .iter()
+            .filter(|event| event.method.as_deref() == Some("mission/alert/reconnect_storm"))
+            .count();
+        assert_eq!(first_alerts, 1);
+
+        store.apply_command(MissionControlCommand::IngestWorkerSummary {
+            worker_id: "desktopw:shared".to_string(),
+            status: "running".to_string(),
+            heartbeat_state: Some("fresh".to_string()),
+            latest_seq: Some(2),
+            lag_events: Some(0),
+            reconnect_state: Some("live".to_string()),
+            occurred_at: Some("2026-02-22T10:00:10Z".to_string()),
+        });
+
+        for _ in 0..3 {
+            store.apply_command(MissionControlCommand::IngestWorkerSummary {
+                worker_id: "desktopw:shared".to_string(),
+                status: "running".to_string(),
+                heartbeat_state: Some("fresh".to_string()),
+                latest_seq: Some(3),
+                lag_events: Some(0),
+                reconnect_state: Some("reconnecting".to_string()),
+                occurred_at: Some("2026-02-22T10:00:20Z".to_string()),
+            });
+        }
+        let second_projection = store.projection();
+        let second_alerts = second_projection
+            .events
+            .iter()
+            .filter(|event| event.method.as_deref() == Some("mission/alert/reconnect_storm"))
+            .count();
+        assert_eq!(second_alerts, 2);
+    }
+
+    #[test]
+    fn mission_store_disabled_alert_rules_do_not_emit_events() {
+        let mut store = IosMissionControlStore::new();
+        store.apply_command(MissionControlCommand::SetAlertRule {
+            rule: "errors".to_string(),
+            enabled: false,
+        });
+        store.apply_command(MissionControlCommand::IngestStreamEvent {
+            topic: "runtime.codex_worker_events".to_string(),
+            seq: Some(77),
+            worker_id: Some("desktopw:shared".to_string()),
+            payload: serde_json::json!({
+                "workerId": "desktopw:shared",
+                "eventType": "worker.error",
+                "payload": {
+                    "request_id": "req-no-alert",
+                    "method": "turn/failed",
+                    "params": {"thread_id": "thread-1", "turn_id": "turn-1"},
+                    "message": "error"
+                }
+            }),
+        });
+
+        let projection = store.projection();
+        assert!(projection
+            .events
+            .iter()
+            .all(|event| event.method.as_deref() != Some("mission/alert/error_event")));
     }
 }

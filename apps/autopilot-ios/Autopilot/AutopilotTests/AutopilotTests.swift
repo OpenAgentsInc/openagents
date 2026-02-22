@@ -819,17 +819,30 @@ struct AutopilotTests {
                 {"data":{"session":{"sessionId":"sess-2","userId":"user-1","deviceId":"device-1","status":"active","reauthRequired":false,"activeOrgId":"org-1"}}}
                 """
             case "/api/runtime/codex/workers":
-                #expect(request.httpMethod == "GET")
                 #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
 
-                let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
-                let queryItems = components?.queryItems ?? []
-                #expect(queryItems.first(where: { $0.name == "status" })?.value == "running")
-                #expect(queryItems.first(where: { $0.name == "limit" })?.value == "50")
+                if request.httpMethod == "GET" {
+                    let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+                    let queryItems = components?.queryItems ?? []
+                    #expect(queryItems.first(where: { $0.name == "status" })?.value == "running")
+                    #expect(queryItems.first(where: { $0.name == "limit" })?.value == "50")
 
-                responseBody = """
-                {"data":[{"worker_id":"desktopw:shared","status":"running","latest_seq":123,"workspace_ref":"ws-1","codex_home_ref":"home-1","adapter":"desktop_bridge","heartbeat_state":"fresh","last_heartbeat_at":"2026-02-22T05:00:00Z","started_at":"2026-02-22T04:00:00Z","metadata":{"source":"autopilot-desktop"}}]}
-                """
+                    responseBody = """
+                    {"data":[{"worker_id":"desktopw:shared","status":"running","latest_seq":123,"workspace_ref":"ws-1","codex_home_ref":"home-1","adapter":"desktop_bridge","heartbeat_state":"fresh","last_heartbeat_at":"2026-02-22T05:00:00Z","started_at":"2026-02-22T04:00:00Z","metadata":{"source":"autopilot-desktop"}}]}
+                    """
+                } else {
+                    #expect(request.httpMethod == "POST")
+                    let body = readRequestBodyData(request)
+                    let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                    #expect((json?["worker_id"] as? String) == "desktopw:shared")
+                    let metadata = json?["metadata"] as? [String: Any]
+                    let mission = metadata?["autopilot_ios_mission_control"] as? [String: Any]
+                    #expect((mission?["schema_version"] as? Int) == 1)
+
+                    responseBody = """
+                    {"data":{"workerId":"desktopw:shared","status":"running","latestSeq":130}}
+                    """
+                }
             case "/api/runtime/codex/workers/desktopw%3Ashared":
                 #expect(request.httpMethod == "GET")
                 #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-verified")
@@ -916,6 +929,19 @@ struct AutopilotTests {
             payload: [
                 "source": .string("autopilot-ios"),
                 "method": .string("ios/handshake"),
+            ]
+        )
+        try await authedClient.upsertWorkerMetadata(
+            workerID: "desktopw:shared",
+            workspaceRef: "ws-1",
+            codexHomeRef: "home-1",
+            adapter: "desktop_bridge",
+            metadata: [
+                "autopilot_ios_mission_control": .object([
+                    "schema_version": .int(1),
+                    "updated_at": .string("2026-02-22T06:00:00Z"),
+                    "watchlist_only": .bool(true),
+                ])
             ]
         )
 

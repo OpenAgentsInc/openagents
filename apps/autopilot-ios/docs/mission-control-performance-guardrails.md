@@ -38,6 +38,39 @@ Profiles are selectable from the Mission header (`Compact` / `Balanced` / `Exten
 2. Larger rings preserve more local history, but can increase per-flush work.
 3. Payload previews in overview keep scanning fast; full payload expansion is deliberate and scoped to inspector workflow.
 
+## Operator Flows (Watchlists, Alerts, Continuity)
+
+1. Watchlist the active lane from Mission overview:
+  - `Watch active` toggles the current `(worker_id, thread_id)` in the watchlist.
+  - Lane watchlist state is deterministic (normalized, deduped, sorted by worker/thread id).
+2. Scope Mission overview to watchlist lanes:
+  - `WL on/off` toggles watchlist-only mode.
+  - If watchlist is empty, Mission falls back to showing all lanes (no empty-screen trap).
+3. Change timeline ordering:
+  - `New/Old` toggles newest-first vs oldest-first in the overview fold.
+4. Configure alert predicates:
+  - `Err on/off`: emits `mission/alert/error_event` when an ingested event has error severity.
+  - `Stk on/off`: emits `mission/alert/stuck_turn` when a turn crosses `events_since_turn_started >= 40`.
+  - `Rec on/off`: emits `mission/alert/reconnect_storm` when `>= 3` of the last `6` reconnect samples are non-live.
+5. Cross-device continuity:
+  - Preferences persist locally in iOS defaults and are also synced to worker metadata key `autopilot_ios_mission_control`.
+  - On worker summary sync, the newest valid remote snapshot (`updated_at`) is adopted and applied to the Rust mission store.
+  - Preferences include watchlist, watchlist-only, order, filter, pin-critical, and alert rules.
+
+## Failure Modes and Recovery Behavior
+
+1. No active lane for watch action:
+  - `Watch active` does not mutate state and surfaces `"No active lane available to watchlist."`.
+2. Remote sync failure:
+  - Local preference state still applies immediately and persists locally.
+  - Remote upsert failure records lifecycle event `mission_preferences_sync_failed ...`; stream/replay lane stays intact.
+3. Remote snapshot incompatibility:
+  - Snapshot is ignored when schema version does not match current `schema_version`.
+4. Concurrent device edits:
+  - Last-writer-wins by parsed `updated_at` timestamp (string fallback comparison if parsing fails).
+5. Replay/watermark safety:
+  - Preference sync is out-of-band metadata; it does not alter Khala resume checkpoints or mission replay dedupe.
+
 ## Verification
 
 Recommended checks:

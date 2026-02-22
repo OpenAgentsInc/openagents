@@ -770,6 +770,30 @@ pub mod ios {
             ]
         }
 
+        fn from_u8(value: u8) -> Self {
+            match value {
+                1 => Self::Control,
+                2 => Self::Turn,
+                3 => Self::Tool,
+                4 => Self::Errors,
+                5 => Self::Handshake,
+                6 => Self::System,
+                _ => Self::All,
+            }
+        }
+
+        fn to_u8(self) -> u8 {
+            match self {
+                Self::All => 0,
+                Self::Control => 1,
+                Self::Turn => 2,
+                Self::Tool => 3,
+                Self::Errors => 4,
+                Self::Handshake => 5,
+                Self::System => 6,
+            }
+        }
+
         fn label(self) -> &'static str {
             match self {
                 Self::All => "all",
@@ -910,6 +934,34 @@ pub mod ios {
         bounds: Bounds,
     }
 
+    #[derive(Clone, Debug)]
+    struct MissionWatchActiveTapRegion {
+        bounds: Bounds,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MissionWatchlistOnlyTapRegion {
+        bounds: Bounds,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MissionOrderTapRegion {
+        bounds: Bounds,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MissionAlertRuleToggle {
+        Errors,
+        StuckTurns,
+        ReconnectStorms,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MissionAlertRuleTapRegion {
+        bounds: Bounds,
+        rule: MissionAlertRuleToggle,
+    }
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum MissionQuickAction {
         Interrupt,
@@ -990,6 +1042,17 @@ pub mod ios {
         mission_mutations_enabled: bool,
         mission_retention_profile: MissionRetentionProfile,
         mission_retention_cycle_requested: bool,
+        mission_watch_active_requested: bool,
+        mission_watchlist_only_toggle_requested: bool,
+        mission_order_toggle_requested: bool,
+        mission_alert_errors_toggle_requested: bool,
+        mission_alert_stuck_turns_toggle_requested: bool,
+        mission_alert_reconnect_storms_toggle_requested: bool,
+        mission_watchlist_only: bool,
+        mission_order_newest_first: bool,
+        mission_alert_errors_enabled: bool,
+        mission_alert_stuck_turns_enabled: bool,
+        mission_alert_reconnect_storms_enabled: bool,
         mission_route: MissionRoute,
         mission_filter: MissionEventFilter,
         mission_pin_critical: bool,
@@ -1006,6 +1069,10 @@ pub mod ios {
         mission_event_tap_regions: Vec<MissionEventTapRegion>,
         mission_filter_tap_regions: Vec<MissionFilterTapRegion>,
         mission_retention_tap_regions: Vec<MissionRetentionTapRegion>,
+        mission_watch_active_tap_regions: Vec<MissionWatchActiveTapRegion>,
+        mission_watchlist_only_tap_regions: Vec<MissionWatchlistOnlyTapRegion>,
+        mission_order_tap_regions: Vec<MissionOrderTapRegion>,
+        mission_alert_rule_tap_regions: Vec<MissionAlertRuleTapRegion>,
         mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion>,
         mission_back_tap_region: Option<Bounds>,
         mission_pin_toggle_tap_region: Option<Bounds>,
@@ -1153,6 +1220,17 @@ pub mod ios {
                 mission_mutations_enabled: true,
                 mission_retention_profile: MissionRetentionProfile::default(),
                 mission_retention_cycle_requested: false,
+                mission_watch_active_requested: false,
+                mission_watchlist_only_toggle_requested: false,
+                mission_order_toggle_requested: false,
+                mission_alert_errors_toggle_requested: false,
+                mission_alert_stuck_turns_toggle_requested: false,
+                mission_alert_reconnect_storms_toggle_requested: false,
+                mission_watchlist_only: false,
+                mission_order_newest_first: true,
+                mission_alert_errors_enabled: true,
+                mission_alert_stuck_turns_enabled: true,
+                mission_alert_reconnect_storms_enabled: true,
                 mission_route: MissionRoute::Overview,
                 mission_filter: MissionEventFilter::All,
                 mission_pin_critical: false,
@@ -1169,6 +1247,10 @@ pub mod ios {
                 mission_event_tap_regions: Vec::new(),
                 mission_filter_tap_regions: Vec::new(),
                 mission_retention_tap_regions: Vec::new(),
+                mission_watch_active_tap_regions: Vec::new(),
+                mission_watchlist_only_tap_regions: Vec::new(),
+                mission_order_tap_regions: Vec::new(),
+                mission_alert_rule_tap_regions: Vec::new(),
                 mission_quick_action_tap_regions: Vec::new(),
                 mission_back_tap_region: None,
                 mission_pin_toggle_tap_region: None,
@@ -1697,6 +1779,60 @@ pub mod ios {
                     self.active_input_target = InputTarget::None;
                     return;
                 }
+                if self
+                    .mission_watch_active_tap_regions
+                    .iter()
+                    .any(|region| region.bounds.contains(p))
+                {
+                    self.mission_watch_active_requested = true;
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
+                if self
+                    .mission_watchlist_only_tap_regions
+                    .iter()
+                    .any(|region| region.bounds.contains(p))
+                {
+                    self.mission_watchlist_only = !self.mission_watchlist_only;
+                    self.mission_watchlist_only_toggle_requested = true;
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
+                if self
+                    .mission_order_tap_regions
+                    .iter()
+                    .any(|region| region.bounds.contains(p))
+                {
+                    self.mission_order_newest_first = !self.mission_order_newest_first;
+                    self.mission_order_toggle_requested = true;
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
+                if let Some(region) = self
+                    .mission_alert_rule_tap_regions
+                    .iter()
+                    .find(|region| region.bounds.contains(p))
+                {
+                    match region.rule {
+                        MissionAlertRuleToggle::Errors => {
+                            self.mission_alert_errors_enabled =
+                                !self.mission_alert_errors_enabled;
+                            self.mission_alert_errors_toggle_requested = true;
+                        }
+                        MissionAlertRuleToggle::StuckTurns => {
+                            self.mission_alert_stuck_turns_enabled =
+                                !self.mission_alert_stuck_turns_enabled;
+                            self.mission_alert_stuck_turns_toggle_requested = true;
+                        }
+                        MissionAlertRuleToggle::ReconnectStorms => {
+                            self.mission_alert_reconnect_storms_enabled =
+                                !self.mission_alert_reconnect_storms_enabled;
+                            self.mission_alert_reconnect_storms_toggle_requested = true;
+                        }
+                    }
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
                 if self.mission_mutations_enabled {
                     if let Some(region) = self
                         .mission_quick_action_tap_regions
@@ -1955,6 +2091,10 @@ pub mod ios {
             self.mission_event_tap_regions.clear();
             self.mission_filter_tap_regions.clear();
             self.mission_retention_tap_regions.clear();
+            self.mission_watch_active_tap_regions.clear();
+            self.mission_watchlist_only_tap_regions.clear();
+            self.mission_order_tap_regions.clear();
+            self.mission_alert_rule_tap_regions.clear();
             self.mission_quick_action_tap_regions.clear();
             self.mission_back_tap_region = None;
             self.mission_pin_toggle_tap_region = None;
@@ -1964,6 +2104,12 @@ pub mod ios {
             self.mission_inspector_payload_expanded = false;
             self.mission_inspector_cached_pretty_event_id = None;
             self.mission_inspector_cached_pretty_payload.clear();
+            self.mission_watch_active_requested = false;
+            self.mission_watchlist_only_toggle_requested = false;
+            self.mission_order_toggle_requested = false;
+            self.mission_alert_errors_toggle_requested = false;
+            self.mission_alert_stuck_turns_toggle_requested = false;
+            self.mission_alert_reconnect_storms_toggle_requested = false;
         }
 
         #[allow(clippy::too_many_arguments)]
@@ -2269,6 +2415,41 @@ pub mod ios {
             self.mission_retention_profile = MissionRetentionProfile::from_u8(value);
         }
 
+        fn set_mission_watchlist_only(&mut self, enabled: bool) {
+            self.mission_watchlist_only = enabled;
+        }
+
+        fn set_mission_order_newest_first(&mut self, enabled: bool) {
+            self.mission_order_newest_first = enabled;
+        }
+
+        fn set_mission_alert_rules(
+            &mut self,
+            errors_enabled: bool,
+            stuck_turns_enabled: bool,
+            reconnect_storms_enabled: bool,
+        ) {
+            self.mission_alert_errors_enabled = errors_enabled;
+            self.mission_alert_stuck_turns_enabled = stuck_turns_enabled;
+            self.mission_alert_reconnect_storms_enabled = reconnect_storms_enabled;
+        }
+
+        fn set_mission_filter(&mut self, value: u8) {
+            self.mission_filter = MissionEventFilter::from_u8(value);
+        }
+
+        fn mission_filter_u8(&self) -> u8 {
+            self.mission_filter.to_u8()
+        }
+
+        fn set_mission_pin_critical(&mut self, enabled: bool) {
+            self.mission_pin_critical = enabled;
+        }
+
+        fn mission_pin_critical_enabled(&self) -> bool {
+            self.mission_pin_critical
+        }
+
         pub fn consume_send_requested(&mut self) -> bool {
             let requested = self.send_requested;
             self.send_requested = false;
@@ -2362,6 +2543,42 @@ pub mod ios {
         pub fn consume_mission_retention_cycle_requested(&mut self) -> bool {
             let requested = self.mission_retention_cycle_requested;
             self.mission_retention_cycle_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_watch_active_requested(&mut self) -> bool {
+            let requested = self.mission_watch_active_requested;
+            self.mission_watch_active_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_watchlist_only_toggle_requested(&mut self) -> bool {
+            let requested = self.mission_watchlist_only_toggle_requested;
+            self.mission_watchlist_only_toggle_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_order_toggle_requested(&mut self) -> bool {
+            let requested = self.mission_order_toggle_requested;
+            self.mission_order_toggle_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_alert_errors_toggle_requested(&mut self) -> bool {
+            let requested = self.mission_alert_errors_toggle_requested;
+            self.mission_alert_errors_toggle_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_alert_stuck_turns_toggle_requested(&mut self) -> bool {
+            let requested = self.mission_alert_stuck_turns_toggle_requested;
+            self.mission_alert_stuck_turns_toggle_requested = false;
+            requested
+        }
+
+        pub fn consume_mission_alert_reconnect_storms_toggle_requested(&mut self) -> bool {
+            let requested = self.mission_alert_reconnect_storms_toggle_requested;
+            self.mission_alert_reconnect_storms_toggle_requested = false;
             requested
         }
 
@@ -2581,6 +2798,7 @@ pub mod ios {
             mission_filter: MissionEventFilter,
             muted_lanes: &HashSet<(String, String)>,
             pin_critical: bool,
+            newest_first: bool,
         ) -> Vec<MissionFoldedEventRow> {
             let mut events = mission_events.to_vec();
             events.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
@@ -2635,6 +2853,10 @@ pub mod ios {
             }
 
             if !pin_critical {
+                if newest_first {
+                    return folded;
+                }
+                folded.reverse();
                 return folded;
             }
 
@@ -2646,6 +2868,10 @@ pub mod ios {
                 } else {
                     normal.push(row);
                 }
+            }
+            if !newest_first {
+                pinned.reverse();
+                normal.reverse();
             }
             pinned.extend(normal);
             pinned
@@ -2689,6 +2915,12 @@ pub mod ios {
             let mission_control_mode = self.mission_control_mode;
             let mission_mutations_enabled = self.mission_mutations_enabled;
             let mission_retention_profile = self.mission_retention_profile;
+            let mission_watchlist_only = self.mission_watchlist_only;
+            let mission_order_newest_first = self.mission_order_newest_first;
+            let mission_alert_errors_enabled = self.mission_alert_errors_enabled;
+            let mission_alert_stuck_turns_enabled = self.mission_alert_stuck_turns_enabled;
+            let mission_alert_reconnect_storms_enabled =
+                self.mission_alert_reconnect_storms_enabled;
             let mission_route = self.mission_route.clone();
             let mission_filter = self.mission_filter;
             let mission_pin_critical = self.mission_pin_critical;
@@ -2775,6 +3007,11 @@ pub mod ios {
             let mut mission_event_tap_regions: Vec<MissionEventTapRegion> = Vec::new();
             let mut mission_filter_tap_regions: Vec<MissionFilterTapRegion> = Vec::new();
             let mut mission_retention_tap_regions: Vec<MissionRetentionTapRegion> = Vec::new();
+            let mut mission_watch_active_tap_regions: Vec<MissionWatchActiveTapRegion> = Vec::new();
+            let mut mission_watchlist_only_tap_regions: Vec<MissionWatchlistOnlyTapRegion> =
+                Vec::new();
+            let mut mission_order_tap_regions: Vec<MissionOrderTapRegion> = Vec::new();
+            let mut mission_alert_rule_tap_regions: Vec<MissionAlertRuleTapRegion> = Vec::new();
             let mut mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion> = Vec::new();
             let mut mission_back_tap_region: Option<Bounds> = None;
             let mut mission_pin_toggle_tap_region: Option<Bounds> = None;
@@ -2823,11 +3060,20 @@ pub mod ios {
 
                 let muted_count = mission_muted_lanes.len();
                 let mut summary_text = Text::new(format!(
-                    "events: {} | control: {} | muted={} | pin={} | ret={} {}ms e{} t{}",
+                    "events: {} | control: {} | muted={} | wl={} order={} pin={} | alerts e{} s{} r{} | ret={} {}ms e{} t{}",
                     events_text,
                     control_text,
                     muted_count,
+                    if mission_watchlist_only { "only" } else { "all" },
+                    if mission_order_newest_first { "new" } else { "old" },
                     if mission_pin_critical { "on" } else { "off" },
+                    if mission_alert_errors_enabled { "on" } else { "off" },
+                    if mission_alert_stuck_turns_enabled { "on" } else { "off" },
+                    if mission_alert_reconnect_storms_enabled {
+                        "on"
+                    } else {
+                        "off"
+                    },
                     mission_retention_profile.label(),
                     mission_retention_profile.cadence_ms(),
                     mission_retention_profile.max_events(),
@@ -3044,7 +3290,94 @@ pub mod ios {
                             action_x += action_width + action_gap;
                         }
 
-                        let mut worker_card_y = action_row_y + action_height + 8.0;
+                        let pref_row_y = action_row_y + action_height + 4.0;
+                        let pref_height = 22.0;
+                        let pref_gap = 4.0;
+                        let pref_width = ((transcript_bounds.width() - 16.0 - pref_gap * 5.0) / 6.0)
+                            .max(48.0);
+                        let mut pref_x = transcript_bounds.x() + 8.0;
+                        let pref_items = [
+                            ("Watch A".to_string(), 0_u8),
+                            (
+                                if mission_watchlist_only {
+                                    "WL On".to_string()
+                                } else {
+                                    "WL Off".to_string()
+                                },
+                                1_u8,
+                            ),
+                            (
+                                if mission_order_newest_first {
+                                    "New".to_string()
+                                } else {
+                                    "Old".to_string()
+                                },
+                                2_u8,
+                            ),
+                            (
+                                if mission_alert_errors_enabled {
+                                    "Err On".to_string()
+                                } else {
+                                    "Err Off".to_string()
+                                },
+                                3_u8,
+                            ),
+                            (
+                                if mission_alert_stuck_turns_enabled {
+                                    "Stk On".to_string()
+                                } else {
+                                    "Stk Off".to_string()
+                                },
+                                4_u8,
+                            ),
+                            (
+                                if mission_alert_reconnect_storms_enabled {
+                                    "Rec On".to_string()
+                                } else {
+                                    "Rec Off".to_string()
+                                },
+                                5_u8,
+                            ),
+                        ];
+                        for (label, kind) in pref_items {
+                            let bounds = Bounds::new(pref_x, pref_row_y, pref_width, pref_height);
+                            let mut button = Button::new(label).variant(ButtonVariant::Secondary);
+                            button.paint(bounds, &mut paint);
+                            match kind {
+                                0 => {
+                                    mission_watch_active_tap_regions
+                                        .push(MissionWatchActiveTapRegion { bounds });
+                                }
+                                1 => {
+                                    mission_watchlist_only_tap_regions
+                                        .push(MissionWatchlistOnlyTapRegion { bounds });
+                                }
+                                2 => {
+                                    mission_order_tap_regions.push(MissionOrderTapRegion { bounds });
+                                }
+                                3 => {
+                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
+                                        bounds,
+                                        rule: MissionAlertRuleToggle::Errors,
+                                    });
+                                }
+                                4 => {
+                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
+                                        bounds,
+                                        rule: MissionAlertRuleToggle::StuckTurns,
+                                    });
+                                }
+                                _ => {
+                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
+                                        bounds,
+                                        rule: MissionAlertRuleToggle::ReconnectStorms,
+                                    });
+                                }
+                            }
+                            pref_x += pref_width + pref_gap;
+                        }
+
+                        let mut worker_card_y = pref_row_y + pref_height + 8.0;
                         let worker_card_width = transcript_bounds.width() - 16.0;
                         let max_worker_cards = (((transcript_bounds.height() * 0.32)
                             / (MISSION_WORKER_CARD_HEIGHT + 6.0))
@@ -3137,6 +3470,7 @@ pub mod ios {
                             mission_filter,
                             &effective_muted_lanes,
                             mission_pin_critical,
+                            mission_order_newest_first,
                         );
 
                         if folded_rows.is_empty() {
@@ -3910,6 +4244,10 @@ pub mod ios {
                 self.mission_event_tap_regions = mission_event_tap_regions;
                 self.mission_filter_tap_regions = mission_filter_tap_regions;
                 self.mission_retention_tap_regions = mission_retention_tap_regions;
+                self.mission_watch_active_tap_regions = mission_watch_active_tap_regions;
+                self.mission_watchlist_only_tap_regions = mission_watchlist_only_tap_regions;
+                self.mission_order_tap_regions = mission_order_tap_regions;
+                self.mission_alert_rule_tap_regions = mission_alert_rule_tap_regions;
                 self.mission_quick_action_tap_regions = mission_quick_action_tap_regions;
                 self.mission_back_tap_region = mission_back_tap_region;
                 self.mission_pin_toggle_tap_region = mission_pin_toggle_tap_region;
@@ -3930,6 +4268,10 @@ pub mod ios {
                 self.mission_event_tap_regions.clear();
                 self.mission_filter_tap_regions.clear();
                 self.mission_retention_tap_regions.clear();
+                self.mission_watch_active_tap_regions.clear();
+                self.mission_watchlist_only_tap_regions.clear();
+                self.mission_order_tap_regions.clear();
+                self.mission_alert_rule_tap_regions.clear();
                 self.mission_quick_action_tap_regions.clear();
                 self.mission_back_tap_region = None;
                 self.mission_pin_toggle_tap_region = None;
@@ -4146,6 +4488,7 @@ pub mod ios {
                 MissionEventFilter::All,
                 &HashSet::new(),
                 false,
+                true,
             );
             assert_eq!(folded.len(), 1);
             assert_eq!(folded[0].count, 24);
@@ -4198,6 +4541,7 @@ pub mod ios {
                 MissionEventFilter::All,
                 &HashSet::new(),
                 true,
+                true,
             );
             assert!(folded.len() >= 4);
             assert_eq!(folded[0].anchor_event_id, 3);
@@ -4244,6 +4588,7 @@ pub mod ios {
                 MissionEventFilter::All,
                 &muted,
                 false,
+                true,
             );
             assert_eq!(folded.len(), 2);
             assert_eq!(folded[0].anchor_event_id, 2);
@@ -4290,6 +4635,7 @@ pub mod ios {
                 MissionEventFilter::All,
                 &HashSet::new(),
                 false,
+                true,
             );
             let elapsed = start.elapsed();
             eprintln!(
@@ -5085,6 +5431,98 @@ pub mod ios {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_watchlist_only(
+        state: *mut IosBackgroundState,
+        enabled: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_watchlist_only(enabled != 0);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_order_newest_first(
+        state: *mut IosBackgroundState,
+        enabled: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_order_newest_first(enabled != 0);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_alert_rules(
+        state: *mut IosBackgroundState,
+        errors_enabled: i32,
+        stuck_turns_enabled: i32,
+        reconnect_storms_enabled: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_alert_rules(
+            errors_enabled != 0,
+            stuck_turns_enabled != 0,
+            reconnect_storms_enabled != 0,
+        );
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_filter(
+        state: *mut IosBackgroundState,
+        filter: u8,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_filter(filter);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_mission_filter(
+        state: *mut IosBackgroundState,
+    ) -> u8 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        state.mission_filter_u8()
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_pin_critical(
+        state: *mut IosBackgroundState,
+        enabled: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_pin_critical(enabled != 0);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_mission_pin_critical(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        if state.mission_pin_critical_enabled() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_composer_focused(state: *mut IosBackgroundState) -> i32 {
         if state.is_null() {
             return 0;
@@ -5335,6 +5773,96 @@ pub mod ios {
         }
         let state = unsafe { &mut *state };
         if state.consume_mission_retention_cycle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_watch_active_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_watch_active_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_watchlist_only_toggle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_watchlist_only_toggle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_order_toggle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_order_toggle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_alert_errors_toggle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_alert_errors_toggle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_alert_stuck_turns_toggle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_alert_stuck_turns_toggle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_mission_alert_reconnect_storms_toggle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_mission_alert_reconnect_storms_toggle_requested() {
             1
         } else {
             0
