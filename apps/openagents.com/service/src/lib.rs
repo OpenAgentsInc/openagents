@@ -63,9 +63,10 @@ use crate::openapi::{
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
-    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN,
-    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
-    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_RUNTIME_THREADS, ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT,
+    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
+    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
@@ -152,6 +153,7 @@ struct AppState {
     runtime_revocation_client: Option<RuntimeRevocationClient>,
     throttle_state: ThrottleState,
     codex_control_receipts: CodexControlReceiptState,
+    runtime_tool_receipts: RuntimeToolReceiptState,
     runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
 }
@@ -168,6 +170,11 @@ struct RuntimeInternalNonceState {
 
 #[derive(Clone, Default)]
 struct CodexControlReceiptState {
+    entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+#[derive(Clone, Default)]
+struct RuntimeToolReceiptState {
     entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 
@@ -504,6 +511,27 @@ struct RuntimeCodexWorkerControlRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct RuntimeToolsExecuteRequestPayload {
+    #[serde(alias = "toolPack")]
+    tool_pack: String,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    manifest: Option<serde_json::Value>,
+    #[serde(default, alias = "manifestRef")]
+    manifest_ref: Option<serde_json::Value>,
+    request: serde_json::Value,
+    #[serde(default)]
+    policy: Option<serde_json::Value>,
+    #[serde(default, alias = "runId")]
+    run_id: Option<String>,
+    #[serde(default, alias = "threadId")]
+    thread_id: Option<String>,
+    #[serde(default, alias = "userId")]
+    user_id: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LegacyChatsListQuery {
     #[serde(default)]
     limit: Option<usize>,
@@ -550,6 +578,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         runtime_revocation_client,
         throttle_state: ThrottleState::default(),
         codex_control_receipts: CodexControlReceiptState::default(),
+        runtime_tool_receipts: RuntimeToolReceiptState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
@@ -669,6 +698,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             "/api/chats/:conversation_id/runs/:run_id/events",
             get(legacy_chats_run_events),
         )
+        .route(ROUTE_RUNTIME_TOOLS_EXECUTE, post(runtime_tools_execute))
         .route(ROUTE_RUNTIME_THREADS, get(list_runtime_threads))
         .route(
             ROUTE_RUNTIME_THREAD_MESSAGES,
@@ -4208,6 +4238,224 @@ fn legacy_chat_messages(messages: &[ThreadMessageProjection]) -> Vec<serde_json:
         .collect()
 }
 
+#[derive(Debug, Clone)]
+struct CodingToolInvocation {
+    integration_id: String,
+    operation: String,
+    repository: String,
+    issue_number: Option<u64>,
+    pull_number: Option<u64>,
+    body: Option<String>,
+    tool_call_id: Option<String>,
+}
+
+async fn runtime_tools_execute(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeToolsExecuteRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let tool_pack = payload.tool_pack.trim().to_string();
+    if tool_pack.is_empty() {
+        return Err(validation_error(
+            "tool_pack",
+            "The tool_pack field is required.",
+        ));
+    }
+    if tool_pack.chars().count() > 120 {
+        return Err(validation_error(
+            "tool_pack",
+            "The tool_pack field may not be greater than 120 characters.",
+        ));
+    }
+    if tool_pack != "coding.v1" {
+        return Err(validation_error(
+            "tool_pack",
+            "Only coding.v1 is currently supported.",
+        ));
+    }
+
+    let mode = payload
+        .mode
+        .and_then(non_empty)
+        .unwrap_or_else(|| "execute".to_string())
+        .to_lowercase();
+    if !matches!(mode.as_str(), "execute" | "replay") {
+        return Err(validation_error("mode", "The selected mode is invalid."));
+    }
+
+    let run_id = normalize_optional_bounded_string(payload.run_id, "run_id", 160)?;
+    let thread_id = normalize_optional_bounded_string(payload.thread_id, "thread_id", 160)?;
+    let requested_user_id = parse_optional_positive_u64(payload.user_id, "user_id")?;
+    let authenticated_user_id = runtime_tools_principal_user_id(&session.user.id);
+
+    if requested_user_id
+        .map(|requested| requested != authenticated_user_id)
+        .unwrap_or(false)
+    {
+        return Err(forbidden_error(
+            "user_id does not match authenticated principal",
+        ));
+    }
+
+    let manifest = validate_optional_json_object_or_array(payload.manifest, "manifest")?;
+    let manifest_ref =
+        validate_optional_json_object_or_array(payload.manifest_ref, "manifest_ref")?;
+    if manifest.is_none() && manifest_ref.is_none() {
+        return Err(error_response_with_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiErrorCode::InvalidRequest,
+            "manifest or manifest_ref is required",
+        ));
+    }
+
+    let mut request = payload.request;
+    if !request.is_object() {
+        return Err(validation_error(
+            "request",
+            "The request field must be an object.",
+        ));
+    }
+    let policy = validate_optional_json_object_or_array(payload.policy, "policy")?
+        .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+
+    let request_object = request
+        .as_object_mut()
+        .ok_or_else(|| validation_error("request", "The request field must be an object."))?;
+    request_object.insert(
+        "user_id".to_string(),
+        serde_json::json!(authenticated_user_id),
+    );
+    if let Some(run_id) = run_id.as_ref() {
+        if !request_object.contains_key("run_id") {
+            request_object.insert("run_id".to_string(), serde_json::json!(run_id));
+        }
+    }
+    if let Some(thread_id) = thread_id.as_ref() {
+        if !request_object.contains_key("thread_id") {
+            request_object.insert("thread_id".to_string(), serde_json::json!(thread_id));
+        }
+    }
+
+    let invocation = parse_coding_tool_invocation(request_object)?;
+    let evaluation = evaluate_coding_policy(&invocation, manifest.as_ref(), &policy);
+
+    let receipt_seed = serde_json::json!({
+        "tool_pack": tool_pack,
+        "manifest": manifest.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+        "manifest_ref": manifest_ref.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+        "request": request,
+        "policy": policy,
+        "run_id": run_id.clone(),
+        "thread_id": thread_id.clone(),
+        "user_id": authenticated_user_id,
+    });
+    let replay_hash_hex = runtime_tools_replay_hash_hex(&receipt_seed);
+    let replay_hash = format!("sha256:{replay_hash_hex}");
+    let replay_key = format!("{authenticated_user_id}:{replay_hash_hex}");
+
+    if let Some(replayed) = state
+        .runtime_tool_receipts
+        .entries
+        .lock()
+        .await
+        .get(&replay_key)
+        .cloned()
+    {
+        let replayed = mark_runtime_tools_replay(replayed);
+        state.observability.audit(
+            AuditEvent::new("runtime.tools.execute.accepted", request_id.clone())
+                .with_user_id(session.user.id.clone())
+                .with_session_id(session.session.session_id.clone())
+                .with_org_id(session.session.active_org_id.clone())
+                .with_device_id(session.session.device_id.clone())
+                .with_attribute("tool_pack", "coding.v1".to_string())
+                .with_attribute("operation", invocation.operation.clone())
+                .with_attribute("mode", mode.clone())
+                .with_attribute("idempotent_replay", "true".to_string())
+                .with_attribute("decision", evaluation.decision.to_string())
+                .with_attribute("reason_code", evaluation.reason_code.to_string()),
+        );
+        state
+            .observability
+            .increment_counter("runtime.tools.execute.accepted", &request_id);
+        return Ok(ok_data(replayed));
+    }
+
+    let execution_result =
+        build_coding_execution_result(&invocation, &evaluation, &replay_hash_hex);
+    let mut response_payload = serde_json::json!({
+        "state": evaluation.state,
+        "decision": evaluation.decision,
+        "reason_code": evaluation.reason_code,
+        "tool_pack": "coding.v1",
+        "mode": mode.clone(),
+        "idempotentReplay": false,
+        "receipt": {
+            "receipt_id": format!("coding_{}", &replay_hash_hex[..24]),
+            "replay_hash": replay_hash,
+        },
+        "policy": {
+            "writeApproved": evaluation.write_approved,
+            "writeOperationsMode": evaluation.write_operations_mode,
+            "maxPerCallSats": evaluation.max_per_call_sats,
+            "operationCostSats": evaluation.operation_cost_sats,
+        },
+        "request": {
+            "integration_id": invocation.integration_id.clone(),
+            "operation": invocation.operation.clone(),
+            "repository": invocation.repository.clone(),
+            "issue_number": invocation.issue_number,
+            "pull_number": invocation.pull_number,
+            "tool_call_id": invocation.tool_call_id.clone(),
+            "run_id": run_id,
+            "thread_id": thread_id,
+            "user_id": authenticated_user_id,
+        },
+        "result": execution_result,
+    });
+    if let Some(message) = evaluation.denial_message.clone() {
+        response_payload["error"] = serde_json::json!({
+            "code": "policy_denied",
+            "message": message,
+        });
+    }
+
+    state
+        .runtime_tool_receipts
+        .entries
+        .lock()
+        .await
+        .insert(replay_key, response_payload.clone());
+
+    state.observability.audit(
+        AuditEvent::new("runtime.tools.execute.accepted", request_id.clone())
+            .with_user_id(session.user.id.clone())
+            .with_session_id(session.session.session_id.clone())
+            .with_org_id(session.session.active_org_id.clone())
+            .with_device_id(session.session.device_id.clone())
+            .with_attribute("tool_pack", "coding.v1".to_string())
+            .with_attribute("operation", invocation.operation.clone())
+            .with_attribute("mode", mode)
+            .with_attribute("idempotent_replay", "false".to_string())
+            .with_attribute("decision", evaluation.decision.to_string())
+            .with_attribute("reason_code", evaluation.reason_code.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("runtime.tools.execute.accepted", &request_id);
+
+    Ok(ok_data(response_payload))
+}
+
 async fn list_runtime_threads(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -5598,6 +5846,397 @@ fn split_principles_text(value: Option<String>) -> Vec<String> {
         .collect()
 }
 
+#[derive(Debug, Clone)]
+struct CodingPolicyEvaluation {
+    state: &'static str,
+    decision: &'static str,
+    reason_code: &'static str,
+    denial_message: Option<String>,
+    write_approved: bool,
+    write_operations_mode: String,
+    max_per_call_sats: Option<u64>,
+    operation_cost_sats: u64,
+}
+
+fn validate_optional_json_object_or_array(
+    value: Option<serde_json::Value>,
+    field: &'static str,
+) -> Result<Option<serde_json::Value>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    if value.is_object() || value.is_array() {
+        return Ok(Some(value));
+    }
+
+    Err(validation_error(
+        field,
+        &format!("The {field} field must be an array."),
+    ))
+}
+
+fn parse_optional_positive_u64(
+    value: Option<serde_json::Value>,
+    field: &'static str,
+) -> Result<Option<u64>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    let parsed = positive_u64_from_value(&value).ok_or_else(|| {
+        validation_error(field, &format!("The {field} field must be an integer."))
+    })?;
+    if parsed < 1 {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field must be at least 1."),
+        ));
+    }
+    Ok(Some(parsed))
+}
+
+fn positive_u64_from_value(value: &serde_json::Value) -> Option<u64> {
+    if let Some(number) = value.as_u64() {
+        return Some(number);
+    }
+    let text = value.as_str()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    text.parse::<u64>().ok()
+}
+
+fn runtime_tools_principal_user_id(principal_id: &str) -> u64 {
+    let digest = Sha256::digest(principal_id.as_bytes());
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    u64::from_be_bytes(bytes).max(1)
+}
+
+fn parse_coding_tool_invocation(
+    request: &serde_json::Map<String, serde_json::Value>,
+) -> Result<CodingToolInvocation, (StatusCode, Json<ApiErrorResponse>)> {
+    let integration_id = normalized_json_string(request.get("integration_id"))
+        .or_else(|| normalized_json_string(request.get("integrationId")))
+        .ok_or_else(|| {
+            validation_error(
+                "request.integration_id",
+                "The request.integration_id field is required.",
+            )
+        })?;
+
+    let operation = normalized_json_string(request.get("operation"))
+        .map(|value| value.to_lowercase())
+        .ok_or_else(|| {
+            validation_error(
+                "request.operation",
+                "The request.operation field is required.",
+            )
+        })?;
+    if !matches!(
+        operation.as_str(),
+        "get_issue" | "get_pull_request" | "add_issue_comment"
+    ) {
+        return Err(validation_error(
+            "request.operation",
+            "The selected request.operation is invalid.",
+        ));
+    }
+
+    let repository = normalized_json_string(request.get("repository")).ok_or_else(|| {
+        validation_error(
+            "request.repository",
+            "The request.repository field is required.",
+        )
+    })?;
+    if !repository.contains('/') || repository.starts_with('/') || repository.ends_with('/') {
+        return Err(validation_error(
+            "request.repository",
+            "The request.repository field format is invalid.",
+        ));
+    }
+
+    let issue_number = positive_u64_from_value(
+        request
+            .get("issue_number")
+            .or_else(|| request.get("issueNumber"))
+            .unwrap_or(&serde_json::Value::Null),
+    );
+    let pull_number = positive_u64_from_value(
+        request
+            .get("pull_number")
+            .or_else(|| request.get("pullNumber"))
+            .unwrap_or(&serde_json::Value::Null),
+    );
+    let body = normalized_json_string(request.get("body"));
+    let tool_call_id = normalized_json_string(request.get("tool_call_id"))
+        .or_else(|| normalized_json_string(request.get("toolCallId")));
+
+    match operation.as_str() {
+        "get_issue" => {
+            if issue_number.is_none() {
+                return Err(validation_error(
+                    "request.issue_number",
+                    "The request.issue_number field is required for get_issue.",
+                ));
+            }
+        }
+        "get_pull_request" => {
+            if pull_number.is_none() {
+                return Err(validation_error(
+                    "request.pull_number",
+                    "The request.pull_number field is required for get_pull_request.",
+                ));
+            }
+        }
+        "add_issue_comment" => {
+            if issue_number.is_none() {
+                return Err(validation_error(
+                    "request.issue_number",
+                    "The request.issue_number field is required for add_issue_comment.",
+                ));
+            }
+            if body.is_none() {
+                return Err(validation_error(
+                    "request.body",
+                    "The request.body field is required for add_issue_comment.",
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    Ok(CodingToolInvocation {
+        integration_id,
+        operation,
+        repository,
+        issue_number,
+        pull_number,
+        body,
+        tool_call_id,
+    })
+}
+
+fn evaluate_coding_policy(
+    invocation: &CodingToolInvocation,
+    manifest: Option<&serde_json::Value>,
+    policy: &serde_json::Value,
+) -> CodingPolicyEvaluation {
+    let manifest_capabilities = manifest
+        .and_then(|manifest| manifest.get("capabilities"))
+        .and_then(serde_json::Value::as_array)
+        .map(|capabilities| {
+            capabilities
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(|value| value.trim().to_lowercase())
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let write_operations_mode = manifest
+        .and_then(|manifest| manifest.get("policy"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|policy| policy.get("write_operations_mode"))
+        .and_then(serde_json::Value::as_str)
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "open".to_string());
+
+    let write_approved = match policy {
+        serde_json::Value::Object(policy_object) => policy_object
+            .get("write_approved")
+            .and_then(|value| {
+                value.as_bool().or_else(|| {
+                    value
+                        .as_str()
+                        .map(|text| matches!(text.trim(), "1" | "true" | "yes"))
+                })
+            })
+            .unwrap_or(false),
+        _ => false,
+    };
+
+    let max_per_call_sats = match policy {
+        serde_json::Value::Object(policy_object) => policy_object
+            .get("budget")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|budget| budget.get("max_per_call_sats"))
+            .and_then(positive_u64_from_value),
+        _ => None,
+    };
+
+    let operation_cost_sats = match invocation.operation.as_str() {
+        "add_issue_comment" => 50,
+        "get_pull_request" => 10,
+        _ => 5,
+    };
+
+    if !manifest_capabilities.is_empty()
+        && !manifest_capabilities
+            .iter()
+            .any(|capability| capability == &invocation.operation)
+    {
+        return CodingPolicyEvaluation {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.capability_not_allowed",
+            denial_message: Some(
+                "Requested operation is not listed in manifest capabilities.".to_string(),
+            ),
+            write_approved,
+            write_operations_mode,
+            max_per_call_sats,
+            operation_cost_sats,
+        };
+    }
+
+    if invocation.operation == "add_issue_comment"
+        && write_operations_mode == "enforce"
+        && !write_approved
+    {
+        return CodingPolicyEvaluation {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.write_approval_required",
+            denial_message: Some(
+                "Write operation requires explicit policy.write_approved=true.".to_string(),
+            ),
+            write_approved,
+            write_operations_mode,
+            max_per_call_sats,
+            operation_cost_sats,
+        };
+    }
+
+    if max_per_call_sats
+        .map(|max| operation_cost_sats > max)
+        .unwrap_or(false)
+    {
+        return CodingPolicyEvaluation {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.max_per_call_budget_exceeded",
+            denial_message: Some("Policy budget max_per_call_sats was exceeded.".to_string()),
+            write_approved,
+            write_operations_mode,
+            max_per_call_sats,
+            operation_cost_sats,
+        };
+    }
+
+    CodingPolicyEvaluation {
+        state: "succeeded",
+        decision: "allowed",
+        reason_code: "policy_allowed.default",
+        denial_message: None,
+        write_approved,
+        write_operations_mode,
+        max_per_call_sats,
+        operation_cost_sats,
+    }
+}
+
+fn build_coding_execution_result(
+    invocation: &CodingToolInvocation,
+    evaluation: &CodingPolicyEvaluation,
+    replay_hash_hex: &str,
+) -> serde_json::Value {
+    if evaluation.decision != "allowed" {
+        return serde_json::json!({
+            "blocked": true,
+            "operation": invocation.operation.clone(),
+            "repository": invocation.repository.clone(),
+        });
+    }
+
+    match invocation.operation.as_str() {
+        "get_issue" => {
+            let issue_number = invocation.issue_number.unwrap_or_default();
+            serde_json::json!({
+                "integration_id": invocation.integration_id.clone(),
+                "operation": invocation.operation.clone(),
+                "repository": invocation.repository.clone(),
+                "issue_number": issue_number,
+                "issue": {
+                    "number": issue_number,
+                    "title": format!("Issue #{issue_number}"),
+                    "url": format!("https://github.com/{}/issues/{issue_number}", invocation.repository),
+                },
+            })
+        }
+        "get_pull_request" => {
+            let pull_number = invocation.pull_number.unwrap_or_default();
+            serde_json::json!({
+                "integration_id": invocation.integration_id.clone(),
+                "operation": invocation.operation.clone(),
+                "repository": invocation.repository.clone(),
+                "pull_number": pull_number,
+                "pull_request": {
+                    "number": pull_number,
+                    "title": format!("Pull request #{pull_number}"),
+                    "url": format!("https://github.com/{}/pull/{pull_number}", invocation.repository),
+                },
+            })
+        }
+        "add_issue_comment" => {
+            let issue_number = invocation.issue_number.unwrap_or_default();
+            serde_json::json!({
+                "integration_id": invocation.integration_id.clone(),
+                "operation": invocation.operation.clone(),
+                "repository": invocation.repository.clone(),
+                "issue_number": issue_number,
+                "comment": {
+                    "id": format!("comment_{}", &replay_hash_hex[..16]),
+                    "body": invocation.body.clone().unwrap_or_default(),
+                    "url": format!("https://github.com/{}/issues/{issue_number}#issuecomment-{}", invocation.repository, &replay_hash_hex[..12]),
+                },
+            })
+        }
+        _ => serde_json::json!({
+            "blocked": true,
+        }),
+    }
+}
+
+fn runtime_tools_replay_hash_hex(seed: &serde_json::Value) -> String {
+    let canonical = canonicalize_json(seed);
+    let encoded = serde_json::to_vec(&canonical).unwrap_or_else(|_| b"{}".to_vec());
+    sha256_hex(&encoded)
+}
+
+fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => {
+            let mut keys = object.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            let mut normalized = serde_json::Map::new();
+            for key in keys {
+                if let Some(entry) = object.get(&key) {
+                    normalized.insert(key, canonicalize_json(entry));
+                }
+            }
+            serde_json::Value::Object(normalized)
+        }
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(canonicalize_json).collect())
+        }
+        _ => value.clone(),
+    }
+}
+
+fn mark_runtime_tools_replay(mut payload: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("idempotentReplay".to_string(), serde_json::json!(true));
+    }
+    payload
+}
+
 fn normalize_autopilot_profile_update(
     payload: UpdateAutopilotProfilePayload,
 ) -> Result<UpsertAutopilotProfileInput, (StatusCode, Json<ApiErrorResponse>)> {
@@ -6345,6 +6984,7 @@ mod tests {
             runtime_revocation_client,
             throttle_state: super::ThrottleState::default(),
             codex_control_receipts: super::CodexControlReceiptState::default(),
+            runtime_tool_receipts: super::RuntimeToolReceiptState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
@@ -9687,6 +10327,201 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "invalid_request");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_tools_execute_returns_deterministic_receipts_and_replays() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "runtime-tools@openagents.com").await?;
+        let payload = r#"{
+            "tool_pack":"coding.v1",
+            "mode":"replay",
+            "run_id":"run_tools_1",
+            "thread_id":"thread_tools_1",
+            "manifest_ref":{"integration_id":"github.primary"},
+            "request":{
+                "integration_id":"github.primary",
+                "operation":"get_issue",
+                "repository":"OpenAgentsInc/openagents",
+                "issue_number":1747,
+                "tool_call_id":"tool_call_001"
+            },
+            "policy":{
+                "authorization_id":"auth_123",
+                "authorization_mode":"delegated_budget",
+                "budget":{"max_per_call_sats":100}
+            }
+        }"#;
+
+        let first_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let first_body = read_json(first_response).await?;
+        assert_eq!(first_body["data"]["state"], "succeeded");
+        assert_eq!(first_body["data"]["decision"], "allowed");
+        assert_eq!(first_body["data"]["reason_code"], "policy_allowed.default");
+        assert_eq!(first_body["data"]["idempotentReplay"], false);
+        assert!(
+            first_body["data"]["receipt"]["receipt_id"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("coding_")
+        );
+
+        let second_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let second_response = app.oneshot(second_request).await?;
+        assert_eq!(second_response.status(), StatusCode::OK);
+        let second_body = read_json(second_response).await?;
+        assert_eq!(second_body["data"]["idempotentReplay"], true);
+        assert_eq!(
+            second_body["data"]["receipt"]["replay_hash"],
+            first_body["data"]["receipt"]["replay_hash"]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_tools_execute_rejects_user_mismatch_and_missing_manifest() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "runtime-mismatch@openagents.com").await?;
+
+        let session_request = Request::builder()
+            .method("GET")
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let session_response = app.clone().oneshot(session_request).await?;
+        assert_eq!(session_response.status(), StatusCode::OK);
+        let session_body = read_json(session_response).await?;
+        let user_id = session_body["data"]["user"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let authenticated_user_id = crate::runtime_tools_principal_user_id(&user_id);
+
+        let mismatch_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{
+                    "tool_pack":"coding.v1",
+                    "manifest_ref":{{"integration_id":"github.primary"}},
+                    "request":{{"integration_id":"github.primary","operation":"get_issue","repository":"OpenAgentsInc/openagents","issue_number":1747}},
+                    "user_id":{}
+                }}"#,
+                authenticated_user_id.saturating_add(1)
+            )))?;
+        let mismatch_response = app.clone().oneshot(mismatch_request).await?;
+        assert_eq!(mismatch_response.status(), StatusCode::FORBIDDEN);
+        let mismatch_body = read_json(mismatch_response).await?;
+        assert_eq!(mismatch_body["error"]["code"], "forbidden");
+
+        let missing_manifest_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"tool_pack":"coding.v1","request":{"integration_id":"github.primary","operation":"get_issue","repository":"OpenAgentsInc/openagents","issue_number":1747}}"#,
+            ))?;
+        let missing_manifest_response = app.oneshot(missing_manifest_request).await?;
+        assert_eq!(
+            missing_manifest_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let missing_manifest_body = read_json(missing_manifest_response).await?;
+        assert_eq!(missing_manifest_body["error"]["code"], "invalid_request");
+        assert_eq!(
+            missing_manifest_body["message"],
+            "manifest or manifest_ref is required"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_tools_execute_enforces_write_approval_policy() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "runtime-write@openagents.com").await?;
+
+        let denied_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "tool_pack":"coding.v1",
+                    "manifest":{
+                        "capabilities":["add_issue_comment"],
+                        "policy":{"write_operations_mode":"enforce"}
+                    },
+                    "request":{
+                        "integration_id":"github.primary",
+                        "operation":"add_issue_comment",
+                        "repository":"OpenAgentsInc/openagents",
+                        "issue_number":1747,
+                        "body":"Ship it."
+                    },
+                    "policy":{"write_approved":false}
+                }"#,
+            ))?;
+        let denied_response = app.clone().oneshot(denied_request).await?;
+        assert_eq!(denied_response.status(), StatusCode::OK);
+        let denied_body = read_json(denied_response).await?;
+        assert_eq!(denied_body["data"]["decision"], "denied");
+        assert_eq!(denied_body["data"]["state"], "blocked");
+        assert_eq!(
+            denied_body["data"]["reason_code"],
+            "policy_denied.write_approval_required"
+        );
+
+        let allowed_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/tools/execute")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "tool_pack":"coding.v1",
+                    "manifest":{
+                        "capabilities":["add_issue_comment"],
+                        "policy":{"write_operations_mode":"enforce"}
+                    },
+                    "request":{
+                        "integration_id":"github.primary",
+                        "operation":"add_issue_comment",
+                        "repository":"OpenAgentsInc/openagents",
+                        "issue_number":1747,
+                        "body":"Ship it."
+                    },
+                    "policy":{"write_approved":true}
+                }"#,
+            ))?;
+        let allowed_response = app.oneshot(allowed_request).await?;
+        assert_eq!(allowed_response.status(), StatusCode::OK);
+        let allowed_body = read_json(allowed_response).await?;
+        assert_eq!(allowed_body["data"]["decision"], "allowed");
+        assert_eq!(allowed_body["data"]["state"], "succeeded");
+        assert_eq!(
+            allowed_body["data"]["result"]["comment"]["body"],
+            "Ship it."
+        );
 
         Ok(())
     }

@@ -24,6 +24,7 @@ pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
+pub const ROUTE_RUNTIME_TOOLS_EXECUTE: &str = "/api/runtime/tools/execute";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
 pub const ROUTE_RUNTIME_CODEX_WORKER_REQUESTS: &str =
@@ -411,6 +412,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("sync_token"),
         response_example: Some("sync_token"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_TOOLS_EXECUTE,
+        operation_id: "runtimeToolsExecute",
+        summary: "Execute typed runtime tool-pack operations with policy/replay receipts.",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("runtime_tools_execute"),
+        response_example: Some("runtime_tools_execute"),
     },
     OpenApiContract {
         method: "get",
@@ -820,6 +833,25 @@ fn request_example(key: &str) -> Option<Value> {
             "device_id": "ios:device"
         })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
+        "runtime_tools_execute" => Some(json!({
+            "tool_pack": "coding.v1",
+            "mode": "replay",
+            "run_id": "run_tools_1",
+            "thread_id": "thread_tools_1",
+            "manifest_ref": {"integration_id": "github.primary"},
+            "request": {
+                "integration_id": "github.primary",
+                "operation": "get_issue",
+                "repository": "OpenAgentsInc/openagents",
+                "issue_number": 1747,
+                "tool_call_id": "tool_call_001"
+            },
+            "policy": {
+                "authorization_id": "auth_123",
+                "authorization_mode": "delegated_budget",
+                "budget": {"max_per_call_sats": 100}
+            }
+        })),
         "runtime_codex_worker_request" => Some(json!({
             "request": {
                 "request_id": "req_turn_1",
@@ -1215,6 +1247,48 @@ fn response_example(key: &str) -> Option<Value> {
             "data": {
                 "status": "accepted",
                 "thread_id": "thread-1"
+            }
+        })),
+        "runtime_tools_execute" => Some(json!({
+            "data": {
+                "state": "succeeded",
+                "decision": "allowed",
+                "reason_code": "policy_allowed.default",
+                "tool_pack": "coding.v1",
+                "mode": "replay",
+                "idempotentReplay": false,
+                "receipt": {
+                    "receipt_id": "coding_8b5f2caa1122334455667788",
+                    "replay_hash": "sha256:8b5f2caa11223344556677889900aabbccddeeff00112233445566778899aabb"
+                },
+                "policy": {
+                    "writeApproved": false,
+                    "writeOperationsMode": "enforce",
+                    "maxPerCallSats": 100,
+                    "operationCostSats": 5
+                },
+                "request": {
+                    "integration_id": "github.primary",
+                    "operation": "get_issue",
+                    "repository": "OpenAgentsInc/openagents",
+                    "issue_number": 1747,
+                    "pull_number": null,
+                    "tool_call_id": "tool_call_001",
+                    "run_id": "run_tools_1",
+                    "thread_id": "thread_tools_1",
+                    "user_id": 42
+                },
+                "result": {
+                    "integration_id": "github.primary",
+                    "operation": "get_issue",
+                    "repository": "OpenAgentsInc/openagents",
+                    "issue_number": 1747,
+                    "issue": {
+                        "number": 1747,
+                        "title": "Issue #1747",
+                        "url": "https://github.com/OpenAgentsInc/openagents/issues/1747"
+                    }
+                }
             }
         })),
         "runtime_codex_worker_request" => Some(json!({
