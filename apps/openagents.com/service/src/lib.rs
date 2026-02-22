@@ -10280,20 +10280,22 @@ async fn legacy_stream_bridge(
         .observability
         .increment_counter("legacy.chat.stream.bridge.accepted", &audit_request_id);
 
-    Ok(legacy_chat_stream_data_response(
-        serde_json::json!({
-            "retired": true,
-            "stream_protocol": "disabled",
-            "canonical": "/api/runtime/codex/workers/:worker_id/requests",
-            "bridge": {
-                "method": "turn/start",
-                "worker_id": worker_id_for_response,
-                "request_id": bridge_request_id,
-            },
-            "response": bridge_response,
-        }),
-        StatusCode::OK,
-    ))
+    let wire = stream_preview.map(|preview| preview.wire).unwrap_or_else(|| {
+        vercel_sse_adapter::serialize_sse(&[
+            serde_json::json!({
+                "type": "error",
+                "code": "adapter_preview_unavailable",
+                "message": "stream preview unavailable",
+                "retryable": false
+            }),
+            serde_json::json!({
+                "type": "finish",
+                "status": "error"
+            }),
+        ])
+    });
+
+    Ok(legacy_chat_stream_sse_response(&state.config, wire))
 }
 
 async fn legacy_chats_runs(
@@ -10385,19 +10387,53 @@ fn legacy_chat_data_response(payload: serde_json::Value, status: StatusCode) -> 
     response
 }
 
-fn legacy_chat_stream_data_response(payload: serde_json::Value, status: StatusCode) -> Response {
-    let mut response = (status, Json(serde_json::json!({ "data": payload }))).into_response();
+fn legacy_chat_stream_sse_response(config: &Config, wire: String) -> Response {
+    let mut response = (StatusCode::OK, Body::from(wire)).into_response();
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("no-cache, no-transform"),
+    );
     response
         .headers_mut()
-        .insert("x-oa-legacy-chat-retired", HeaderValue::from_static("true"));
+        .insert("connection", HeaderValue::from_static("keep-alive"));
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
     response.headers_mut().insert(
-        "x-oa-legacy-chat-canonical",
-        HeaderValue::from_static("/api/runtime/codex/workers/:worker_id/requests"),
+        "x-vercel-ai-ui-message-stream",
+        HeaderValue::from_static("v1"),
     );
-    response.headers_mut().insert(
-        "x-oa-legacy-chat-stream-protocol",
-        HeaderValue::from_static("disabled"),
-    );
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_protocol_version) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_PROTOCOL_VERSION, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_min_client_build_id) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MIN_BUILD, value);
+    }
+    if let Some(max_build_id) = &config.compat_control_max_client_build_id
+        && let Ok(value) = HeaderValue::from_str(max_build_id)
+    {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MAX_BUILD, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_min_schema_version.to_string()) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MIN_SCHEMA, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_max_schema_version.to_string()) {
+        response
+            .headers_mut()
+            .insert(HEADER_OA_COMPAT_MAX_SCHEMA, value);
+    }
     response
 }
 
@@ -14701,6 +14737,11 @@ mod tests {
         let bytes = response.into_body().collect().await?.to_bytes();
         let value = serde_json::from_slice::<Value>(&bytes)?;
         Ok(value)
+    }
+
+    async fn read_text(response: axum::response::Response) -> Result<String> {
+        let bytes = response.into_body().collect().await?.to_bytes();
+        Ok(String::from_utf8(bytes.to_vec())?)
     }
 
     fn cookie_value(response: &axum::response::Response) -> Option<String> {
@@ -19271,31 +19312,32 @@ mod tests {
         assert_eq!(
             stream_response
                 .headers()
-                .get("x-oa-legacy-chat-retired")
+                .get(CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok()),
-            Some("true")
+            Some("text/event-stream; charset=utf-8")
         );
         assert_eq!(
             stream_response
                 .headers()
-                .get("x-oa-legacy-chat-canonical")
+                .get("x-vercel-ai-ui-message-stream")
                 .and_then(|value| value.to_str().ok()),
-            Some("/api/runtime/codex/workers/:worker_id/requests")
+            Some("v1")
         );
-        assert_eq!(
+        assert!(stream_response.headers().get("x-oa-legacy-chat-retired").is_none());
+        assert!(stream_response.headers().get("x-oa-legacy-chat-canonical").is_none());
+        assert!(
             stream_response
                 .headers()
                 .get("x-oa-legacy-chat-stream-protocol")
-                .and_then(|value| value.to_str().ok()),
-            Some("disabled")
+                .is_none()
         );
-        let stream_body = read_json(stream_response).await?;
-        assert_eq!(stream_body["data"]["retired"], json!(true));
-        assert_eq!(stream_body["data"]["stream_protocol"], json!("disabled"));
-        assert_eq!(
-            stream_body["data"]["response"]["thread_id"],
-            json!("thread-stream-alias")
-        );
+        let stream_body = read_text(stream_response).await?;
+        assert!(stream_body.contains("\"type\":\"start\""));
+        assert!(stream_body.contains("\"type\":\"start-step\""));
+        assert!(stream_body.contains("\"threadId\":\"thread-stream-alias\""));
+        assert!(stream_body.contains("\"type\":\"finish-step\""));
+        assert!(stream_body.contains("\"type\":\"finish\""));
+        assert!(stream_body.ends_with("data: [DONE]\n\n"));
 
         let messages_request = Request::builder()
             .method("GET")
@@ -19329,11 +19371,16 @@ mod tests {
             ))?;
         let stream_response = app.clone().oneshot(stream_request).await?;
         assert_eq!(stream_response.status(), StatusCode::OK);
-        let stream_body = read_json(stream_response).await?;
         assert_eq!(
-            stream_body["data"]["response"]["thread_id"],
-            json!("thread-stream-path")
+            stream_response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/event-stream; charset=utf-8")
         );
+        let stream_body = read_text(stream_response).await?;
+        assert!(stream_body.contains("\"threadId\":\"thread-stream-path\""));
+        assert!(stream_body.ends_with("data: [DONE]\n\n"));
 
         let messages_request = Request::builder()
             .method("GET")
