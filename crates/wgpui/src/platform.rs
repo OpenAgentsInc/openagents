@@ -515,6 +515,7 @@ pub mod desktop {
 /// Requires `ios` feature. Uses wgpu create_surface_unsafe(CoreAnimationLayer).
 #[cfg(feature = "ios")]
 pub mod ios {
+    use std::collections::HashSet;
     use std::ffi::{c_char, c_void};
     use std::time::Duration;
 
@@ -825,9 +826,31 @@ pub mod ios {
     }
 
     #[derive(Clone, Debug)]
+    struct MissionLaneMuteTapRegion {
+        bounds: Bounds,
+        worker_id: String,
+        thread_id: String,
+    }
+
+    #[derive(Clone, Debug)]
     struct MissionFilterTapRegion {
         bounds: Bounds,
         filter: MissionEventFilter,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MissionFoldedEventRow {
+        anchor_event_id: u64,
+        worker_id: String,
+        thread_id: String,
+        topic: String,
+        seq: Option<u64>,
+        request_id: String,
+        method: String,
+        summary: String,
+        severity: MissionEventSeverity,
+        count: usize,
+        critical: bool,
     }
 
     /// State for the iOS WGPUI Codex renderer.
@@ -876,7 +899,9 @@ pub mod ios {
         mission_control_mode: bool,
         mission_route: MissionRoute,
         mission_filter: MissionEventFilter,
+        mission_pin_critical: bool,
         mission_event_scroll: usize,
+        mission_muted_lanes: HashSet<(String, String)>,
         mission_workers: Vec<MissionWorkerState>,
         mission_threads: Vec<MissionThreadState>,
         mission_timeline_entries: Vec<MissionTimelineEntry>,
@@ -884,9 +909,11 @@ pub mod ios {
         mission_requests: Vec<MissionRequestState>,
         mission_worker_tap_regions: Vec<MissionWorkerTapRegion>,
         mission_thread_tap_regions: Vec<MissionThreadTapRegion>,
+        mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion>,
         mission_event_tap_regions: Vec<MissionEventTapRegion>,
         mission_filter_tap_regions: Vec<MissionFilterTapRegion>,
         mission_back_tap_region: Option<Bounds>,
+        mission_pin_toggle_tap_region: Option<Bounds>,
         mission_older_tap_region: Option<Bounds>,
         mission_newer_tap_region: Option<Bounds>,
         operator_panel_visible: bool,
@@ -1023,7 +1050,9 @@ pub mod ios {
                 mission_control_mode: true,
                 mission_route: MissionRoute::Overview,
                 mission_filter: MissionEventFilter::All,
+                mission_pin_critical: false,
                 mission_event_scroll: 0,
+                mission_muted_lanes: HashSet::new(),
                 mission_workers: Vec::new(),
                 mission_threads: Vec::new(),
                 mission_timeline_entries: Vec::new(),
@@ -1031,9 +1060,11 @@ pub mod ios {
                 mission_requests: Vec::new(),
                 mission_worker_tap_regions: Vec::new(),
                 mission_thread_tap_regions: Vec::new(),
+                mission_lane_mute_tap_regions: Vec::new(),
                 mission_event_tap_regions: Vec::new(),
                 mission_filter_tap_regions: Vec::new(),
                 mission_back_tap_region: None,
+                mission_pin_toggle_tap_region: None,
                 mission_older_tap_region: None,
                 mission_newer_tap_region: None,
                 operator_panel_visible: false,
@@ -1415,6 +1446,13 @@ pub mod ios {
                         return;
                     }
                 }
+                if let Some(bounds) = self.mission_pin_toggle_tap_region {
+                    if bounds.contains(p) {
+                        self.mission_pin_critical = !self.mission_pin_critical;
+                        self.active_input_target = InputTarget::None;
+                        return;
+                    }
+                }
                 if let Some(region) = self
                     .mission_filter_tap_regions
                     .iter()
@@ -1445,6 +1483,20 @@ pub mod ios {
                         worker_id: region.worker_id.clone(),
                         thread_id: region.thread_id.clone(),
                     };
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
+                if let Some(region) = self
+                    .mission_lane_mute_tap_regions
+                    .iter()
+                    .find(|region| region.bounds.contains(p))
+                {
+                    let key = (region.worker_id.clone(), region.thread_id.clone());
+                    if self.mission_muted_lanes.contains(&key) {
+                        self.mission_muted_lanes.remove(&key);
+                    } else {
+                        self.mission_muted_lanes.insert(key);
+                    }
                     self.active_input_target = InputTarget::None;
                     return;
                 }
@@ -1610,9 +1662,11 @@ pub mod ios {
             self.mission_requests.clear();
             self.mission_worker_tap_regions.clear();
             self.mission_thread_tap_regions.clear();
+            self.mission_lane_mute_tap_regions.clear();
             self.mission_event_tap_regions.clear();
             self.mission_filter_tap_regions.clear();
             self.mission_back_tap_region = None;
+            self.mission_pin_toggle_tap_region = None;
             self.mission_older_tap_region = None;
             self.mission_newer_tap_region = None;
         }
@@ -1885,12 +1939,6 @@ pub mod ios {
             self.mission_events
                 .iter()
                 .find(|event| event.id == event_id)
-        }
-
-        fn mission_request_by_id(&self, request_id: &str) -> Option<&MissionRequestState> {
-            self.mission_requests
-                .iter()
-                .find(|request| request.request_id == request_id)
         }
 
         pub fn composer_focused(&self) -> bool {
@@ -2174,6 +2222,96 @@ pub mod ios {
             }
         }
 
+        fn mission_event_is_critical(event: &MissionEventRecord) -> bool {
+            if matches!(event.severity, MissionEventSeverity::Error) {
+                return true;
+            }
+            let event_type = event.event_type.to_ascii_lowercase();
+            event_type.contains("response") || event_type.contains("error")
+        }
+
+        fn mission_event_is_foldable(event: &MissionEventRecord) -> bool {
+            let method = event.method.to_ascii_lowercase();
+            let summary = event.summary.to_ascii_lowercase();
+            method.contains("delta")
+                || summary.contains("stream")
+                || summary.contains("delta")
+                || method.contains("tool/")
+        }
+
+        fn fold_mission_events_for_overview(
+            mission_events: &[MissionEventRecord],
+            mission_filter: MissionEventFilter,
+            muted_lanes: &HashSet<(String, String)>,
+            pin_critical: bool,
+        ) -> Vec<MissionFoldedEventRow> {
+            let mut events = mission_events.to_vec();
+            events.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
+
+            let mut folded: Vec<MissionFoldedEventRow> = Vec::new();
+            for event in events
+                .into_iter()
+                .filter(|event| mission_filter.matches(event))
+            {
+                if !event.worker_id.is_empty()
+                    && !event.thread_id.is_empty()
+                    && muted_lanes.contains(&(event.worker_id.clone(), event.thread_id.clone()))
+                {
+                    continue;
+                }
+
+                let critical = Self::mission_event_is_critical(&event);
+                let foldable = Self::mission_event_is_foldable(&event);
+                if foldable {
+                    if let Some(previous) = folded.last_mut() {
+                        if previous.worker_id == event.worker_id
+                            && previous.thread_id == event.thread_id
+                            && previous.method == event.method
+                            && previous.summary == event.summary
+                            && previous.severity == event.severity
+                            && !previous.critical
+                            && !critical
+                        {
+                            previous.anchor_event_id = event.id;
+                            previous.seq = event.seq.or(previous.seq);
+                            previous.count = previous.count.saturating_add(1);
+                            continue;
+                        }
+                    }
+                }
+
+                folded.push(MissionFoldedEventRow {
+                    anchor_event_id: event.id,
+                    worker_id: event.worker_id.clone(),
+                    thread_id: event.thread_id.clone(),
+                    topic: event.topic.clone(),
+                    seq: event.seq,
+                    request_id: event.request_id.clone(),
+                    method: event.method.clone(),
+                    summary: event.summary.clone(),
+                    severity: event.severity,
+                    count: 1,
+                    critical,
+                });
+            }
+
+            if !pin_critical {
+                return folded;
+            }
+
+            let mut pinned = Vec::new();
+            let mut normal = Vec::new();
+            for row in folded {
+                if row.critical {
+                    pinned.push(row);
+                } else {
+                    normal.push(row);
+                }
+            }
+            pinned.extend(normal);
+            pinned
+        }
+
         /// Render one frame: black background + dots + codex transcript + controls.
         pub fn render(&mut self) -> Result<(), String> {
             self.normalize_mission_route();
@@ -2212,7 +2350,9 @@ pub mod ios {
             let mission_control_mode = self.mission_control_mode;
             let mission_route = self.mission_route.clone();
             let mission_filter = self.mission_filter;
+            let mission_pin_critical = self.mission_pin_critical;
             let mission_event_scroll = self.mission_event_scroll;
+            let mission_muted_lanes = self.mission_muted_lanes.clone();
             let mission_workers = self.mission_workers.clone();
             let mission_threads = self.mission_threads.clone();
             let mission_timeline_entries = self.mission_timeline_entries.clone();
@@ -2285,9 +2425,11 @@ pub mod ios {
 
             let mut mission_worker_tap_regions: Vec<MissionWorkerTapRegion> = Vec::new();
             let mut mission_thread_tap_regions: Vec<MissionThreadTapRegion> = Vec::new();
+            let mut mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion> = Vec::new();
             let mut mission_event_tap_regions: Vec<MissionEventTapRegion> = Vec::new();
             let mut mission_filter_tap_regions: Vec<MissionFilterTapRegion> = Vec::new();
             let mut mission_back_tap_region: Option<Bounds> = None;
+            let mut mission_pin_toggle_tap_region: Option<Bounds> = None;
             let mut mission_older_tap_region: Option<Bounds> = None;
             let mut mission_newer_tap_region: Option<Bounds> = None;
             let mut mission_event_scroll_updated = mission_event_scroll;
@@ -2325,9 +2467,13 @@ pub mod ios {
                     &mut paint,
                 );
 
+                let muted_count = mission_muted_lanes.len();
                 let mut summary_text = Text::new(format!(
-                    "events: {} | control: {}",
-                    events_text, control_text
+                    "events: {} | control: {} | muted={} | pin={}",
+                    events_text,
+                    control_text,
+                    muted_count,
+                    if mission_pin_critical { "on" } else { "off" }
                 ))
                 .font_size(MISSION_STATUS_FONT_SIZE)
                 .color(theme::text::MUTED)
@@ -2357,10 +2503,17 @@ pub mod ios {
                 let chip_y =
                     context_bounds.y() + context_bounds.height() - MISSION_FILTER_CHIP_HEIGHT - 6.0;
                 let mut chip_x = context_bounds.x() + 8.0;
+                let right_reserved = if matches!(mission_route, MissionRoute::Overview) {
+                    220.0
+                } else {
+                    104.0
+                };
                 for filter in MissionEventFilter::all() {
                     let label = filter.label();
                     let chip_width = (label.chars().count() as f32 * 7.2 + 20.0).max(54.0);
-                    if chip_x + chip_width > context_bounds.x() + context_bounds.width() - 132.0 {
+                    if chip_x + chip_width
+                        > context_bounds.x() + context_bounds.width() - right_reserved
+                    {
                         break;
                     }
                     let chip_bounds =
@@ -2398,6 +2551,30 @@ pub mod ios {
                     });
                     chip_x += chip_width + 6.0;
                 }
+
+                let pin_bounds = if matches!(mission_route, MissionRoute::Overview) {
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() - 212.0,
+                        chip_y,
+                        84.0,
+                        MISSION_FILTER_CHIP_HEIGHT,
+                    )
+                } else {
+                    Bounds::new(
+                        context_bounds.x() + context_bounds.width() - 92.0,
+                        chip_y,
+                        84.0,
+                        MISSION_FILTER_CHIP_HEIGHT,
+                    )
+                };
+                let mut pin_toggle = Button::new(if mission_pin_critical {
+                    "Pin On"
+                } else {
+                    "Pin Off"
+                })
+                .variant(ButtonVariant::Secondary);
+                pin_toggle.paint(pin_bounds, &mut paint);
+                mission_pin_toggle_tap_region = Some(pin_bounds);
 
                 if matches!(mission_route, MissionRoute::Overview) {
                     let newer_bounds = Bounds::new(
@@ -2507,14 +2684,19 @@ pub mod ios {
                                 - 12.0)
                                 .max(44.0),
                         );
-                        let mut filtered_events = mission_events
-                            .iter()
-                            .filter(|event| mission_filter.matches(event))
-                            .cloned()
-                            .collect::<Vec<_>>();
-                        filtered_events.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
+                        let mut effective_muted_lanes = mission_muted_lanes.clone();
+                        for thread in mission_threads.iter().filter(|thread| thread.muted) {
+                            effective_muted_lanes
+                                .insert((thread.worker_id.clone(), thread.thread_id.clone()));
+                        }
+                        let folded_rows = Self::fold_mission_events_for_overview(
+                            &mission_events,
+                            mission_filter,
+                            &effective_muted_lanes,
+                            mission_pin_critical,
+                        );
 
-                        if filtered_events.is_empty() {
+                        if folded_rows.is_empty() {
                             let mut empty = Text::new("No mission events for selected filter")
                                 .font_size(13.0)
                                 .color(theme::text::MUTED)
@@ -2533,13 +2715,13 @@ pub mod ios {
                             let rows_visible = ((event_bounds.height() / MISSION_EVENT_ROW_HEIGHT)
                                 .floor() as usize)
                                 .max(1);
-                            let max_scroll = filtered_events.len().saturating_sub(rows_visible);
+                            let max_scroll = folded_rows.len().saturating_sub(rows_visible);
                             mission_event_scroll_updated = mission_event_scroll.min(max_scroll);
-                            let end = filtered_events
+                            let end = folded_rows
                                 .len()
                                 .saturating_sub(mission_event_scroll_updated);
                             let start = end.saturating_sub(rows_visible);
-                            let visible_slice = &filtered_events[start..end];
+                            let visible_slice = &folded_rows[start..end];
 
                             for (index, event) in visible_slice.iter().rev().enumerate() {
                                 let row_bounds = Bounds::new(
@@ -2572,7 +2754,7 @@ pub mod ios {
                                     .unwrap_or_else(|| "n/a".to_string());
                                 let mut row_meta = Text::new(format!(
                                     "#{} {} | {} | seq={} | req={}",
-                                    event.id,
+                                    event.anchor_event_id,
                                     event.worker_id,
                                     event.topic,
                                     seq_label,
@@ -2591,10 +2773,18 @@ pub mod ios {
                                     &mut paint,
                                 );
 
+                                let summary_suffix = if event.count > 1 {
+                                    format!(" (x{})", event.count)
+                                } else {
+                                    String::new()
+                                };
+                                let pin_suffix = if event.critical { " pinned" } else { "" };
                                 let mut row_summary = Text::new(format!(
-                                    "{} [{}]",
+                                    "{}{} [{}{}]",
                                     event.summary,
-                                    event.severity.as_str()
+                                    summary_suffix,
+                                    event.severity.as_str(),
+                                    pin_suffix
                                 ))
                                 .font_size(12.4)
                                 .color(theme::text::PRIMARY)
@@ -2610,7 +2800,7 @@ pub mod ios {
                                 );
                                 mission_event_tap_regions.push(MissionEventTapRegion {
                                     bounds: row_bounds,
-                                    event_id: event.id,
+                                    event_id: event.anchor_event_id,
                                 });
                             }
                         }
@@ -2677,11 +2867,26 @@ pub mod ios {
                         thread_rows.sort_by(|lhs, rhs| lhs.thread_id.cmp(&rhs.thread_id));
 
                         for thread in thread_rows.iter().take(8) {
+                            let lane_key = (thread.worker_id.clone(), thread.thread_id.clone());
+                            let lane_muted =
+                                thread.muted || mission_muted_lanes.contains(&lane_key);
                             let row_bounds = Bounds::new(
                                 detail_bounds.x(),
                                 row_y,
                                 detail_bounds.width(),
                                 MISSION_DETAIL_ROW_HEIGHT,
+                            );
+                            let mute_bounds = Bounds::new(
+                                row_bounds.x() + row_bounds.width() - 70.0,
+                                row_bounds.y() + 5.0,
+                                62.0,
+                                MISSION_DETAIL_ROW_HEIGHT - 10.0,
+                            );
+                            let open_bounds = Bounds::new(
+                                row_bounds.x(),
+                                row_bounds.y(),
+                                row_bounds.width() - 76.0,
+                                row_bounds.height(),
                             );
                             paint.scene.draw_quad(
                                 Quad::new(row_bounds)
@@ -2690,11 +2895,16 @@ pub mod ios {
                                     .with_corner_radius(7.0),
                             );
                             let mut thread_line = Text::new(format!(
-                                "{} | turn={} unread={} muted={}",
+                                "{} | turn={} unread={} muted={} seq={} at={}",
                                 thread.thread_id,
                                 thread.active_turn_id,
                                 thread.unread_count,
-                                thread.muted
+                                lane_muted,
+                                thread
+                                    .freshness_seq
+                                    .map(|value| value.to_string())
+                                    .unwrap_or_else(|| "n/a".to_string()),
+                                thread.last_event_at
                             ))
                             .font_size(11.6)
                             .color(theme::text::PRIMARY)
@@ -2703,7 +2913,7 @@ pub mod ios {
                                 Bounds::new(
                                     row_bounds.x() + 8.0,
                                     row_bounds.y() + 4.0,
-                                    row_bounds.width() - 12.0,
+                                    row_bounds.width() - 86.0,
                                     14.0,
                                 ),
                                 &mut paint,
@@ -2716,13 +2926,23 @@ pub mod ios {
                                 Bounds::new(
                                     row_bounds.x() + 8.0,
                                     row_bounds.y() + 18.0,
-                                    row_bounds.width() - 12.0,
+                                    row_bounds.width() - 86.0,
                                     14.0,
                                 ),
                                 &mut paint,
                             );
+                            let mut mute_toggle =
+                                Button::new(if lane_muted { "Unmute" } else { "Mute" })
+                                    .variant(ButtonVariant::Secondary);
+                            mute_toggle.paint(mute_bounds, &mut paint);
+
                             mission_thread_tap_regions.push(MissionThreadTapRegion {
-                                bounds: row_bounds,
+                                bounds: open_bounds,
+                                worker_id: thread.worker_id.clone(),
+                                thread_id: thread.thread_id.clone(),
+                            });
+                            mission_lane_mute_tap_regions.push(MissionLaneMuteTapRegion {
+                                bounds: mute_bounds,
                                 worker_id: thread.worker_id.clone(),
                                 thread_id: thread.thread_id.clone(),
                             });
@@ -2752,9 +2972,18 @@ pub mod ios {
                             row_y += 20.0;
                         }
                         for request in request_lines.iter().take(6) {
+                            let response_suffix = if request.response_json == "n/a" {
+                                ""
+                            } else {
+                                " resp"
+                            };
                             let mut receipt = Text::new(format!(
-                                "{} {} [{}]",
-                                request.method, request.request_id, request.state
+                                "{} {} [{}] thread={}{}",
+                                request.method,
+                                request.request_id,
+                                request.state,
+                                request.thread_id,
+                                response_suffix
                             ))
                             .font_size(10.6)
                             .color(theme::text::MUTED)
@@ -2814,9 +3043,13 @@ pub mod ios {
                             let mut row_y = detail_bounds.y() + 20.0;
                             for entry in rows {
                                 let streaming = if entry.is_streaming { " streaming" } else { "" };
+                                let meta = format!(
+                                    " turn={} item={} at={}",
+                                    entry.turn_id, entry.item_id, entry.occurred_at
+                                );
                                 let mut row = Text::new(format!(
-                                    "[{}{}] {}",
-                                    entry.role, streaming, entry.text
+                                    "[{}{}] {}{}",
+                                    entry.role, streaming, entry.text, meta
                                 ))
                                 .font_size(11.4)
                                 .color(theme::text::MUTED);
@@ -3013,18 +3246,22 @@ pub mod ios {
             if mission_control_mode {
                 self.mission_worker_tap_regions = mission_worker_tap_regions;
                 self.mission_thread_tap_regions = mission_thread_tap_regions;
+                self.mission_lane_mute_tap_regions = mission_lane_mute_tap_regions;
                 self.mission_event_tap_regions = mission_event_tap_regions;
                 self.mission_filter_tap_regions = mission_filter_tap_regions;
                 self.mission_back_tap_region = mission_back_tap_region;
+                self.mission_pin_toggle_tap_region = mission_pin_toggle_tap_region;
                 self.mission_older_tap_region = mission_older_tap_region;
                 self.mission_newer_tap_region = mission_newer_tap_region;
                 self.mission_event_scroll = mission_event_scroll_updated;
             } else {
                 self.mission_worker_tap_regions.clear();
                 self.mission_thread_tap_regions.clear();
+                self.mission_lane_mute_tap_regions.clear();
                 self.mission_event_tap_regions.clear();
                 self.mission_filter_tap_regions.clear();
                 self.mission_back_tap_region = None;
+                self.mission_pin_toggle_tap_region = None;
                 self.mission_older_tap_region = None;
                 self.mission_newer_tap_region = None;
             }
@@ -3179,6 +3416,162 @@ pub mod ios {
             self.config.height = Self::logical_to_physical(logical_height, self.scale);
             self.surface.configure(&self.device, &self.config);
             self.size = Size::new(logical_width as f32, logical_height as f32);
+        }
+    }
+
+    #[cfg(test)]
+    mod mission_density_tests {
+        use super::*;
+
+        fn event(
+            id: u64,
+            worker_id: &str,
+            thread_id: &str,
+            method: &str,
+            event_type: &str,
+            summary: &str,
+            severity: MissionEventSeverity,
+        ) -> MissionEventRecord {
+            MissionEventRecord {
+                id,
+                topic: "runtime.codex_worker_events".to_string(),
+                seq: Some(id),
+                worker_id: worker_id.to_string(),
+                thread_id: thread_id.to_string(),
+                turn_id: "turn-1".to_string(),
+                request_id: format!("req-{}", id),
+                event_type: event_type.to_string(),
+                method: method.to_string(),
+                summary: summary.to_string(),
+                severity,
+                occurred_at: format!("2026-02-22T00:00:{:02}Z", id % 60),
+                payload_json: "{}".to_string(),
+                resync_marker: false,
+            }
+        }
+
+        #[test]
+        fn folds_high_rate_delta_streams_deterministically() {
+            let events = (1..=24)
+                .map(|id| {
+                    event(
+                        id,
+                        "worker-a",
+                        "thread-a",
+                        "turn/delta",
+                        "worker.event",
+                        "assistant streaming",
+                        MissionEventSeverity::Info,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let folded = IosBackgroundState::fold_mission_events_for_overview(
+                &events,
+                MissionEventFilter::All,
+                &HashSet::new(),
+                false,
+            );
+            assert_eq!(folded.len(), 1);
+            assert_eq!(folded[0].count, 24);
+            assert_eq!(folded[0].anchor_event_id, 24);
+            assert_eq!(folded[0].summary, "assistant streaming");
+        }
+
+        #[test]
+        fn pin_mode_prioritizes_critical_rows_stably() {
+            let events = vec![
+                event(
+                    1,
+                    "worker-a",
+                    "thread-a",
+                    "turn/delta",
+                    "worker.event",
+                    "assistant streaming",
+                    MissionEventSeverity::Info,
+                ),
+                event(
+                    2,
+                    "worker-a",
+                    "thread-a",
+                    "turn/start",
+                    "worker.request",
+                    "turn started",
+                    MissionEventSeverity::Info,
+                ),
+                event(
+                    3,
+                    "worker-a",
+                    "thread-a",
+                    "turn/fail",
+                    "worker.error",
+                    "turn failed",
+                    MissionEventSeverity::Error,
+                ),
+                event(
+                    4,
+                    "worker-a",
+                    "thread-a",
+                    "turn/complete",
+                    "worker.response",
+                    "turn completed",
+                    MissionEventSeverity::Info,
+                ),
+            ];
+            let folded = IosBackgroundState::fold_mission_events_for_overview(
+                &events,
+                MissionEventFilter::All,
+                &HashSet::new(),
+                true,
+            );
+            assert!(folded.len() >= 4);
+            assert_eq!(folded[0].anchor_event_id, 3);
+            assert_eq!(folded[1].anchor_event_id, 4);
+            assert_eq!(folded[2].anchor_event_id, 1);
+            assert_eq!(folded[3].anchor_event_id, 2);
+        }
+
+        #[test]
+        fn muted_lanes_are_hidden_but_order_for_visible_rows_is_preserved() {
+            let events = vec![
+                event(
+                    1,
+                    "worker-a",
+                    "thread-muted",
+                    "turn/delta",
+                    "worker.event",
+                    "muted delta",
+                    MissionEventSeverity::Info,
+                ),
+                event(
+                    2,
+                    "worker-b",
+                    "thread-live",
+                    "turn/delta",
+                    "worker.event",
+                    "visible delta",
+                    MissionEventSeverity::Info,
+                ),
+                event(
+                    3,
+                    "worker-b",
+                    "thread-live",
+                    "turn/error",
+                    "worker.error",
+                    "visible error",
+                    MissionEventSeverity::Error,
+                ),
+            ];
+            let mut muted = HashSet::new();
+            muted.insert(("worker-a".to_string(), "thread-muted".to_string()));
+            let folded = IosBackgroundState::fold_mission_events_for_overview(
+                &events,
+                MissionEventFilter::All,
+                &muted,
+                false,
+            );
+            assert_eq!(folded.len(), 2);
+            assert_eq!(folded[0].anchor_event_id, 2);
+            assert_eq!(folded[1].anchor_event_id, 3);
         }
     }
 
