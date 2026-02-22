@@ -1,0 +1,16 @@
+{
+    "generated_at": "2026-02-22T07:50:54.746713Z",
+    "artifacts": [
+        {
+            "name": "http-json-golden",
+            "path": "http-json-golden.json",
+            "fixture_count": 52
+        },
+        {
+            "name": "khala-ws-golden",
+            "path": "khala-ws-golden.json",
+            "frame_count": 3,
+            "event_count": 10
+        }
+    ]
+}

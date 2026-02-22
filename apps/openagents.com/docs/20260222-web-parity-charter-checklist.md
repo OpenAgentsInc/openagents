@@ -189,6 +189,8 @@ Baseline and migration evidence targets:
 
 - [ ] API route manifest coverage test remains authoritative (`tests/Feature/Api/V1/ApiRouteCoverageManifestTest.php`)
 - [ ] Contract capture harness evidence for JSON + Khala WS (`OA-WEBPARITY-003`)
+  Capture command: `./apps/openagents.com/scripts/capture-parity-contract-fixtures.sh`
+  Artifact path: `apps/openagents.com/docs/parity-fixtures/baseline/`
 - [ ] Parity CI scoreboard and required checks (`OA-WEBPARITY-004`)
 - [ ] Rust compile baseline (`cargo check --workspace --all-targets`)
 - [ ] Rust/web changed-files gate (`./scripts/local-ci.sh changed`)

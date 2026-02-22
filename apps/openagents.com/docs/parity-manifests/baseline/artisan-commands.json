@@ -1,6 +1,6 @@
 {
-    "generated_at": "2026-02-22T07:47:27.104130Z",
-    "count": 7,
+    "generated_at": "2026-02-22T07:51:45.472946Z",
+    "count": 8,
     "commands": [
         {
             "name": "demo:l402",
@@ -17,6 +17,12 @@
         {
             "name": "khala:import-chat",
             "description": "Import Khala users/threads/runs/messages/receipts + optional blueprints into Laravel chat/autopilot tables.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "ops:capture-parity-contract-fixtures",
+            "description": "Capture golden HTTP JSON fixtures and Khala WS transcript fixtures for Rust parity conformance.",
             "hidden": false,
             "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
         },

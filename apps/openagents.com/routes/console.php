@@ -468,3 +468,251 @@ Artisan::command('ops:export-parity-manifests {--output=docs/parity-manifests/ba
 
     return 0;
 })->purpose('Export baseline JSON manifests for API routes, web routes, page entries, and custom Artisan commands.');
+
+Artisan::command('ops:capture-parity-contract-fixtures {--output=docs/parity-fixtures/baseline : Output directory for golden fixtures (absolute or relative to project root)} {--openapi-temp=storage/app/openapi-parity-capture.json : Temporary OpenAPI output path (absolute or relative to project root)}', function () {
+    $outputOption = trim((string) $this->option('output'));
+    if ($outputOption === '') {
+        $this->error('--output cannot be empty.');
+
+        return 1;
+    }
+    $outputDir = str_starts_with($outputOption, DIRECTORY_SEPARATOR)
+        ? $outputOption
+        : base_path($outputOption);
+    $outputDir = rtrim($outputDir, DIRECTORY_SEPARATOR);
+    File::ensureDirectoryExists($outputDir);
+
+    $openapiOption = trim((string) $this->option('openapi-temp'));
+    if ($openapiOption === '') {
+        $this->error('--openapi-temp cannot be empty.');
+
+        return 1;
+    }
+    $openapiPath = str_starts_with($openapiOption, DIRECTORY_SEPARATOR)
+        ? $openapiOption
+        : base_path($openapiOption);
+    File::ensureDirectoryExists(dirname($openapiPath));
+
+    $status = Artisan::call('openapi:generate', ['--output' => $openapiPath]);
+    if ($status !== 0) {
+        $this->error('openapi:generate failed while capturing parity fixtures.');
+
+        return $status;
+    }
+
+    if (! File::exists($openapiPath)) {
+        $this->error('OpenAPI output was not created at '.$openapiPath);
+
+        return 1;
+    }
+
+    $openapiRaw = File::get($openapiPath);
+    $openapi = json_decode($openapiRaw, true);
+    if (! is_array($openapi)) {
+        $this->error('Failed to decode OpenAPI output as JSON.');
+
+        return 1;
+    }
+
+    $extractJsonExample = function (array $content): mixed {
+        if (! isset($content['application/json']) || ! is_array($content['application/json'])) {
+            return null;
+        }
+
+        $json = $content['application/json'];
+        if (array_key_exists('example', $json)) {
+            return $json['example'];
+        }
+
+        if (isset($json['examples']) && is_array($json['examples'])) {
+            $firstExample = reset($json['examples']);
+            if (is_array($firstExample) && array_key_exists('value', $firstExample)) {
+                return $firstExample['value'];
+            }
+        }
+
+        if (isset($json['schema']) && is_array($json['schema']) && array_key_exists('example', $json['schema'])) {
+            return $json['schema']['example'];
+        }
+
+        return null;
+    };
+
+    $methods = ['get', 'post', 'patch', 'delete', 'put'];
+    $httpFixtures = [];
+    $paths = $openapi['paths'] ?? [];
+    if (! is_array($paths)) {
+        $paths = [];
+    }
+
+    ksort($paths);
+    foreach ($paths as $path => $operations) {
+        if (! is_array($operations)) {
+            continue;
+        }
+
+        foreach ($methods as $method) {
+            $operation = $operations[$method] ?? null;
+            if (! is_array($operation)) {
+                continue;
+            }
+
+            $requestBody = $operation['requestBody'] ?? [];
+            if (! is_array($requestBody)) {
+                $requestBody = [];
+            }
+
+            $requestContent = $requestBody['content'] ?? [];
+            if (! is_array($requestContent)) {
+                $requestContent = [];
+            }
+
+            $responses = $operation['responses'] ?? [];
+            if (! is_array($responses)) {
+                $responses = [];
+            }
+
+            ksort($responses);
+            $responseFixtures = [];
+            foreach ($responses as $statusCode => $responseSpec) {
+                if (! is_array($responseSpec)) {
+                    continue;
+                }
+                $content = $responseSpec['content'] ?? [];
+                if (! is_array($content)) {
+                    $content = [];
+                }
+
+                $responseFixtures[] = [
+                    'status' => (string) $statusCode,
+                    'description' => $responseSpec['description'] ?? '',
+                    'json_example' => $extractJsonExample($content),
+                ];
+            }
+
+            $fixtureId = strtoupper($method).' '.$path;
+            $httpFixtures[] = [
+                'id' => $fixtureId,
+                'method' => strtoupper($method),
+                'path' => $path,
+                'summary' => $operation['summary'] ?? '',
+                'tags' => array_values(array_filter($operation['tags'] ?? [], fn (mixed $tag): bool => is_string($tag))),
+                'request_json_example' => $extractJsonExample($requestContent),
+                'responses' => $responseFixtures,
+            ];
+        }
+    }
+
+    $repoRoot = realpath(base_path('../..'));
+    if (! is_string($repoRoot) || $repoRoot === '') {
+        $this->error('Failed to resolve repository root for protocol fixtures.');
+
+        return 1;
+    }
+
+    $fixturePaths = [
+        'khala_frame' => $repoRoot.'/docs/protocol/fixtures/khala-frame-v1.json',
+        'codex_worker_events' => $repoRoot.'/docs/protocol/fixtures/codex-worker-events-v1.json',
+        'control_auth_session' => $repoRoot.'/docs/protocol/fixtures/control-auth-session-v1.json',
+    ];
+
+    $loadedFixtures = [];
+    foreach ($fixturePaths as $key => $path) {
+        if (! File::exists($path)) {
+            $this->error('Missing protocol fixture: '.$path);
+
+            return 1;
+        }
+        $decoded = json_decode((string) File::get($path), true);
+        if (! is_array($decoded)) {
+            $this->error('Failed to decode protocol fixture: '.$path);
+
+            return 1;
+        }
+        $loadedFixtures[$key] = $decoded;
+    }
+
+    $generatedAt = now()->toISOString();
+    $httpGolden = [
+        'schema' => 'openagents.webparity.http_golden.v1',
+        'generated_at' => $generatedAt,
+        'source' => [
+            'openapi' => str_replace(base_path().DIRECTORY_SEPARATOR, '', $openapiPath),
+            'capture_command' => 'ops:capture-parity-contract-fixtures',
+        ],
+        'fixture_count' => count($httpFixtures),
+        'fixtures' => $httpFixtures,
+        'auth_contract_samples' => $loadedFixtures['control_auth_session'],
+    ];
+
+    $khalaFrames = $loadedFixtures['khala_frame']['fixtures'] ?? [];
+    if (! is_array($khalaFrames)) {
+        $khalaFrames = [];
+    }
+
+    $workerEvents = $loadedFixtures['codex_worker_events']['notification_events'] ?? [];
+    if (! is_array($workerEvents)) {
+        $workerEvents = [];
+    }
+
+    $replayEvents = array_values(array_filter(
+        $workerEvents,
+        fn (mixed $event): bool => is_array($event) && (($event['replay']['replayed'] ?? false) === true)
+    ));
+
+    $khalaGolden = [
+        'schema' => 'openagents.webparity.khala_ws_golden.v1',
+        'generated_at' => $generatedAt,
+        'source' => [
+            'khala_frame_fixture' => 'docs/protocol/fixtures/khala-frame-v1.json',
+            'codex_worker_events_fixture' => 'docs/protocol/fixtures/codex-worker-events-v1.json',
+        ],
+        'frame_count' => count($khalaFrames),
+        'frames' => $khalaFrames,
+        'worker_summary' => $loadedFixtures['codex_worker_events']['worker_summary'] ?? null,
+        'worker_snapshot' => $loadedFixtures['codex_worker_events']['worker_snapshot'] ?? null,
+        'replay_event_count' => count($replayEvents),
+        'replay_events' => $replayEvents,
+        'live_event_count' => count($workerEvents) - count($replayEvents),
+        'all_events' => $workerEvents,
+    ];
+
+    $writeJson = function (string $fileName, array $payload) use ($outputDir): string {
+        $path = $outputDir.DIRECTORY_SEPARATOR.$fileName;
+        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! is_string($encoded)) {
+            throw new RuntimeException('Failed to encode '.$fileName.' as JSON.');
+        }
+        File::put($path, $encoded.PHP_EOL);
+
+        return $path;
+    };
+
+    $httpPath = $writeJson('http-json-golden.json', $httpGolden);
+    $khalaPath = $writeJson('khala-ws-golden.json', $khalaGolden);
+    $indexPath = $writeJson('capture-index.json', [
+        'generated_at' => $generatedAt,
+        'artifacts' => [
+            [
+                'name' => 'http-json-golden',
+                'path' => basename($httpPath),
+                'fixture_count' => count($httpFixtures),
+            ],
+            [
+                'name' => 'khala-ws-golden',
+                'path' => basename($khalaPath),
+                'frame_count' => count($khalaFrames),
+                'event_count' => count($workerEvents),
+            ],
+        ],
+    ]);
+
+    $this->info('Parity contract fixtures captured.');
+    $this->line('  output: '.$outputDir);
+    $this->line('  http fixtures: '.count($httpFixtures));
+    $this->line('  khala frames: '.count($khalaFrames));
+    $this->line('  khala events: '.count($workerEvents));
+    $this->line('  index: '.$indexPath);
+
+    return 0;
+})->purpose('Capture golden HTTP JSON fixtures and Khala WS transcript fixtures for Rust parity conformance.');
