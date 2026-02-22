@@ -2067,9 +2067,39 @@ impl DomainStore {
         .await
     }
 
+    pub async fn mark_webhook_event_retrying(
+        &self,
+        webhook_event_id: u64,
+        runtime_attempts: u32,
+        runtime_status_code: Option<u16>,
+        runtime_response: Option<Value>,
+        last_error: Option<String>,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        self.mutate(|state| {
+            let now = Utc::now();
+            let Some(row) = state
+                .comms_webhook_events
+                .values_mut()
+                .find(|row| row.id == webhook_event_id)
+            else {
+                return Ok(None);
+            };
+
+            row.status = "forward_retrying".to_string();
+            row.runtime_attempts = row.runtime_attempts.max(runtime_attempts.max(1));
+            row.runtime_status_code = runtime_status_code;
+            row.runtime_response = runtime_response.clone();
+            row.last_error = normalize_optional_string(last_error.as_deref());
+            row.updated_at = now;
+            Ok(Some(row.clone()))
+        })
+        .await
+    }
+
     pub async fn mark_webhook_event_forward_failed(
         &self,
         webhook_event_id: u64,
+        runtime_attempts: Option<u32>,
         runtime_status_code: Option<u16>,
         runtime_response: Option<Value>,
         last_error: Option<String>,
@@ -2085,6 +2115,9 @@ impl DomainStore {
             };
 
             row.status = "failed".to_string();
+            if let Some(runtime_attempts) = runtime_attempts {
+                row.runtime_attempts = row.runtime_attempts.max(runtime_attempts.max(1));
+            }
             row.runtime_status_code = runtime_status_code;
             row.runtime_response = runtime_response.clone();
             row.last_error = normalize_optional_string(last_error.as_deref());
@@ -2097,6 +2130,7 @@ impl DomainStore {
     pub async fn mark_webhook_event_forwarded(
         &self,
         webhook_event_id: u64,
+        runtime_attempts: Option<u32>,
         runtime_status_code: Option<u16>,
         runtime_response: Option<Value>,
     ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
@@ -2111,6 +2145,9 @@ impl DomainStore {
             };
 
             row.status = "forwarded".to_string();
+            if let Some(runtime_attempts) = runtime_attempts {
+                row.runtime_attempts = row.runtime_attempts.max(runtime_attempts.max(1));
+            }
             row.runtime_status_code = runtime_status_code;
             row.runtime_response = runtime_response.clone();
             row.forwarded_at = Some(now);

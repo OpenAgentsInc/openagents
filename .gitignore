@@ -70,6 +70,7 @@ apps/openagents.com/storage/app/production-route-flip/
 apps/openagents.com/storage/app/legacy-serving-retirement/
 apps/openagents.com/storage/app/non-http-parity-harness/
 apps/openagents.com/storage/app/auth-session-edge-cases/
+apps/openagents.com/storage/app/webhook-parity-harness/
 
 *.log
 !docs/logs/runs/*.log

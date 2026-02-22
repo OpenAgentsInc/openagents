@@ -5099,6 +5099,7 @@ struct ResendWebhookNormalizedPayload {
 #[derive(Debug, Default)]
 struct RuntimeDeliveryForwardResult {
     ok: bool,
+    attempts_made: u32,
     status: Option<u16>,
     body: Option<serde_json::Value>,
     error: Option<String>,
@@ -5615,6 +5616,7 @@ async fn forward_resend_webhook_to_runtime(
             ._domain_store
             .mark_webhook_event_forward_failed(
                 webhook_event_id,
+                Some(0),
                 None,
                 None,
                 Some("runtime_payload_decode_failed".to_string()),
@@ -5632,12 +5634,13 @@ async fn forward_resend_webhook_to_runtime(
         .await
         .map_err(|error| format!("failed to mark webhook event forwarding: {error}"))?;
 
-    let result = runtime_forward_delivery_payload(&state, &payload).await;
+    let result = runtime_forward_delivery_payload(&state, webhook_event_id, &payload).await;
     if !result.ok {
         state
             ._domain_store
             .mark_webhook_event_forward_failed(
                 webhook_event_id,
+                Some(result.attempts_made),
                 result.status,
                 result.body.clone(),
                 result
@@ -5654,7 +5657,12 @@ async fn forward_resend_webhook_to_runtime(
 
     state
         ._domain_store
-        .mark_webhook_event_forwarded(webhook_event_id, result.status, result.body.clone())
+        .mark_webhook_event_forwarded(
+            webhook_event_id,
+            Some(result.attempts_made),
+            result.status,
+            result.body.clone(),
+        )
         .await
         .map_err(|error| format!("failed to mark webhook event forwarded: {error}"))?;
 
@@ -5729,6 +5737,7 @@ fn webhook_projection_user_id(value: Option<&serde_json::Value>) -> Option<Strin
 
 async fn runtime_forward_delivery_payload(
     state: &AppState,
+    webhook_event_id: u64,
     payload: &serde_json::Value,
 ) -> RuntimeDeliveryForwardResult {
     let Some(base_url) = state
@@ -5739,6 +5748,7 @@ async fn runtime_forward_delivery_payload(
     else {
         return RuntimeDeliveryForwardResult {
             ok: false,
+            attempts_made: 0,
             status: None,
             body: None,
             error: Some("runtime_forward_misconfigured".to_string()),
@@ -5752,6 +5762,7 @@ async fn runtime_forward_delivery_payload(
     else {
         return RuntimeDeliveryForwardResult {
             ok: false,
+            attempts_made: 0,
             status: None,
             body: None,
             error: Some("runtime_forward_misconfigured".to_string()),
@@ -5774,8 +5785,10 @@ async fn runtime_forward_delivery_payload(
     let mut last_status = None;
     let mut last_body = None;
     let mut last_error: Option<String> = None;
+    let mut attempts_made = 0u32;
 
     for attempt in 1..=attempts {
+        attempts_made = attempt as u32;
         let signature = match runtime_forward_signature_token(
             signing_key.as_str(),
             state.config.runtime_signature_ttl_seconds.max(1),
@@ -5784,6 +5797,7 @@ async fn runtime_forward_delivery_payload(
             Err(error) => {
                 return RuntimeDeliveryForwardResult {
                     ok: false,
+                    attempts_made,
                     status: None,
                     body: None,
                     error: Some(format!("runtime_signature_failed:{error}")),
@@ -5825,6 +5839,7 @@ async fn runtime_forward_delivery_payload(
                 if status.is_success() {
                     return RuntimeDeliveryForwardResult {
                         ok: true,
+                        attempts_made,
                         status: Some(status_code),
                         body,
                         error: None,
@@ -5838,13 +5853,35 @@ async fn runtime_forward_delivery_payload(
             }
         }
 
-        if attempt < attempts && backoff_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+        if attempt < attempts {
+            if let Err(error) = state
+                ._domain_store
+                .mark_webhook_event_retrying(
+                    webhook_event_id,
+                    attempts_made,
+                    last_status,
+                    last_body.clone(),
+                    last_error.clone(),
+                )
+                .await
+            {
+                tracing::warn!(
+                    webhook_event_id,
+                    attempt = attempts_made,
+                    error = %error,
+                    "failed to persist webhook retry transition"
+                );
+            }
+
+            if backoff_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+            }
         }
     }
 
     RuntimeDeliveryForwardResult {
         ok: false,
+        attempts_made,
         status: last_status,
         body: last_body,
         error: last_error.or_else(|| Some("runtime_forward_failed".to_string())),
@@ -21447,6 +21484,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resend_webhook_rejects_stale_timestamp_signature() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let secret = format!(
+            "whsec_{}",
+            base64::engine::general_purpose::STANDARD.encode("resend-webhook-test-secret")
+        );
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.resend_webhook_secret = Some(secret.clone());
+        config.resend_webhook_tolerance_seconds = 60;
+        let app = build_router(config);
+
+        let payload = serde_json::json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_stale_timestamp",
+                "to": ["user@example.com"],
+                "tags": [{"name":"integration_id","value":"resend.primary"}]
+            }
+        })
+        .to_string();
+        let headers = signed_resend_webhook_headers(
+            &payload,
+            &secret,
+            "evt_stale_timestamp",
+            Utc::now().timestamp() - 600,
+        );
+
+        let mut request_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &headers {
+            request_builder = request_builder.header(name, value);
+        }
+        let request = request_builder.body(Body::from(payload))?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let response_body = read_json(response).await?;
+        assert_eq!(response_body["error"]["code"], json!("invalid_signature"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn resend_webhook_deduplicates_replays_and_detects_conflicts() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
@@ -21618,7 +21704,7 @@ mod tests {
             .await?
             .expect("webhook event");
         assert_eq!(event.status, "forwarded");
-        assert_eq!(event.runtime_attempts, 1);
+        assert_eq!(event.runtime_attempts, 2);
         assert_eq!(event.runtime_status_code, Some(202));
         assert!(event.forwarded_at.is_some());
 
@@ -21647,6 +21733,102 @@ mod tests {
 
         let captured = captured_payloads.lock().await.clone();
         assert_eq!(captured.len(), 2);
+
+        runtime_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resend_webhook_records_forward_retrying_state_before_success() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let secret = format!(
+            "whsec_{}",
+            base64::engine::general_purpose::STANDARD.encode("resend-webhook-test-secret")
+        );
+        let response_statuses = Arc::new(Mutex::new(vec![500u16, 202u16]));
+        let captured_payloads = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let (runtime_addr, runtime_handle) =
+            start_runtime_comms_delivery_stub(response_statuses.clone(), captured_payloads.clone())
+                .await?;
+
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.resend_webhook_secret = Some(secret.clone());
+        config.runtime_elixir_base_url = Some(format!("http://{runtime_addr}"));
+        config.runtime_signing_key = Some("runtime-signing-key".to_string());
+        config.runtime_signing_key_id = "runtime-v1".to_string();
+        config.runtime_comms_delivery_ingest_path =
+            "/internal/v1/comms/delivery-events".to_string();
+        config.runtime_comms_delivery_timeout_ms = 1000;
+        config.runtime_comms_delivery_max_retries = 1;
+        config.runtime_comms_delivery_retry_backoff_ms = 250;
+        let state = test_app_state(config);
+
+        state
+            ._domain_store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "456".to_string(),
+                api_key: "re_runtime_projection_9876543210".to_string(),
+                sender_email: Some("noreply@example.com".to_string()),
+                sender_name: Some("OpenAgents".to_string()),
+            })
+            .await
+            .expect("seed resend integration");
+
+        let payload = serde_json::json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_transition",
+                "to": ["user@example.com"],
+                "tags": [
+                    {"name":"integration_id","value":"resend.primary"},
+                    {"name":"user_id","value":"456"}
+                ]
+            }
+        })
+        .to_string();
+        let headers = signed_resend_webhook_headers(
+            &payload,
+            &secret,
+            "evt_retry_transition",
+            Utc::now().timestamp(),
+        );
+
+        let response =
+            super::webhooks_resend_store(State(state.clone()), headers, Bytes::from(payload)).await;
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let mut saw_retrying = false;
+        for _ in 0..80 {
+            if let Some(event) = state
+                ._domain_store
+                .webhook_event_by_idempotency_key("resend:evt_retry_transition")
+                .await?
+            {
+                if event.status == "forward_retrying" {
+                    saw_retrying = true;
+                    break;
+                }
+                if event.status == "forwarded" {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(saw_retrying);
+
+        wait_for_webhook_status(&state, "resend:evt_retry_transition", "forwarded").await?;
+        let event = state
+            ._domain_store
+            .webhook_event_by_idempotency_key("resend:evt_retry_transition")
+            .await?
+            .expect("webhook event");
+        assert_eq!(event.runtime_attempts, 2);
+        assert_eq!(event.status, "forwarded");
 
         runtime_handle.abort();
         Ok(())
