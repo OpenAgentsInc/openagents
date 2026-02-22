@@ -80,6 +80,9 @@ run_step "service-compile" "api" "Rust control service compile baseline" \
 run_step "web-shell-compile" "ui" "Rust/WGPUI web-shell wasm compile baseline" \
   "cargo check --target wasm32-unknown-unknown --manifest-path apps/openagents.com/web-shell/Cargo.toml"
 
+run_step "vercel-sse-fixture-drift" "stream" "Vercel compatibility fixture corpus drift check" \
+  "./apps/openagents.com/scripts/run-vercel-sse-fixture-harness.sh"
+
 run_step "legacy-chat-alias-authority" "api" "Legacy /api/chats aliases map to codex thread authority" \
   "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chats_aliases_map_to_codex_threads"
 

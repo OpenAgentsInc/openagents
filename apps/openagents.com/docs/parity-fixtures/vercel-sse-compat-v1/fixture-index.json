@@ -1,0 +1,35 @@
+{
+  "schema": "openagents.webparity.vercel_sse_fixture_index.v1",
+  "generated_at": "2026-02-22T00:00:00Z",
+  "sources": [
+    {
+      "type": "legacy_laravel_shape_reference",
+      "path": "apps/openagents.com/tests/Feature/ChatStreamingTest.php",
+      "notes": "Baseline Vercel stream shape assertions (`start`, `text-delta`, `finish`, `[DONE]`)."
+    },
+    {
+      "type": "codex_authority_fixture",
+      "path": "docs/protocol/fixtures/codex-worker-events-v1.json",
+      "notes": "Source-of-truth worker event semantics used to build mapping fixtures."
+    },
+    {
+      "type": "parity_manifest_reference",
+      "path": "apps/openagents.com/docs/parity-manifests/baseline/manifest-index.json",
+      "notes": "Program manifest baseline pointer for parity fixture discipline."
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "codex-event-scenarios",
+      "path": "apps/openagents.com/docs/parity-fixtures/vercel-sse-compat-v1/codex-event-scenarios.json"
+    },
+    {
+      "name": "golden-sse-transcripts",
+      "path": "apps/openagents.com/docs/parity-fixtures/vercel-sse-compat-v1/golden-sse-transcripts.json"
+    },
+    {
+      "name": "golden-error-fixtures",
+      "path": "apps/openagents.com/docs/parity-fixtures/vercel-sse-compat-v1/golden-error-fixtures.json"
+    }
+  ]
+}

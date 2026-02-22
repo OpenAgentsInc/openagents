@@ -23,6 +23,12 @@ Deterministic shared state seeding (Laravel + Rust):
 ./apps/openagents.com/scripts/archived-laravel/seed-parity-fixtures.sh
 ```
 
+Vercel SSE compatibility fixture drift harness:
+
+```bash
+./apps/openagents.com/scripts/run-vercel-sse-fixture-harness.sh
+```
+
 ## Artifacts
 
 - `baseline/http-json-golden.json`
@@ -37,3 +43,21 @@ Deterministic shared state seeding (Laravel + Rust):
     - Rust store seed command: `apps/openagents.com/service/scripts/seed-parity-fixtures.sh`
 
 These artifacts are inputs to Rust conformance checks and must be refreshed when Laravel contract behavior changes.
+
+## Vercel SSE Compatibility Fixture Corpus
+
+Directory:
+- `apps/openagents.com/docs/parity-fixtures/vercel-sse-compat-v1/`
+
+Artifacts:
+- `codex-event-scenarios.json`
+  - Normalized codex-event scenario inputs for compatibility mapping replay.
+- `golden-sse-transcripts.json`
+  - Golden Vercel-compatible transcript outputs (event objects + SSE wire payload).
+- `golden-error-fixtures.json`
+  - Pre-stream JSON and in-stream terminal error fixtures.
+- `fixture-index.json`
+  - Source lineage references (legacy Laravel streaming shape tests + codex event fixtures + parity manifest baseline).
+
+Drift policy:
+- The harness regenerates transcripts from scenario inputs using `apps/openagents.com/scripts/vercel-sse-fixture-map.jq` and fails on any diff versus `golden-sse-transcripts.json`.
