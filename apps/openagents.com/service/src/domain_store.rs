@@ -202,6 +202,56 @@ pub struct UpsertL402CredentialInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L402ReceiptRecord {
+    pub id: u64,
+    pub user_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub autopilot_id: Option<String>,
+    pub thread_title: Option<String>,
+    pub run_status: Option<String>,
+    pub run_started_at: Option<DateTime<Utc>>,
+    pub run_completed_at: Option<DateTime<Utc>>,
+    pub payload: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordL402ReceiptInput {
+    pub user_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub autopilot_id: Option<String>,
+    pub thread_title: Option<String>,
+    pub run_status: Option<String>,
+    pub run_started_at: Option<DateTime<Utc>>,
+    pub run_completed_at: Option<DateTime<Utc>>,
+    pub payload: Value,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L402GatewayEventRecord {
+    pub id: u64,
+    pub user_id: String,
+    pub autopilot_id: Option<String>,
+    pub event_type: String,
+    pub payload: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordL402GatewayEventInput {
+    pub user_id: String,
+    pub autopilot_id: Option<String>,
+    pub event_type: String,
+    pub payload: Value,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct L402PaywallRecord {
     pub id: String,
     pub owner_user_id: String,
@@ -463,6 +513,8 @@ struct DomainStoreState {
     autopilot_runtime_bindings: HashMap<String, AutopilotRuntimeBindingRecord>,
     runtime_driver_overrides: HashMap<String, RuntimeDriverOverrideRecord>,
     l402_credentials: HashMap<String, L402CredentialRecord>,
+    l402_receipts: Vec<L402ReceiptRecord>,
+    l402_gateway_events: Vec<L402GatewayEventRecord>,
     l402_paywalls: HashMap<String, L402PaywallRecord>,
     user_spark_wallets: HashMap<String, UserSparkWalletRecord>,
     user_integrations: HashMap<String, UserIntegrationRecord>,
@@ -475,6 +527,8 @@ struct DomainStoreState {
     next_user_integration_audit_id: u64,
     next_comms_webhook_event_id: u64,
     next_comms_delivery_projection_id: u64,
+    next_l402_receipt_id: u64,
+    next_l402_gateway_event_id: u64,
     next_shout_id: u64,
     next_whisper_id: u64,
 }
@@ -512,6 +566,24 @@ impl DomainStoreState {
             self.next_comms_delivery_projection_id = self
                 .comms_delivery_projections
                 .values()
+                .map(|row| row.id)
+                .max()
+                .unwrap_or(0)
+                + 1;
+        }
+        if self.next_l402_receipt_id == 0 {
+            self.next_l402_receipt_id = self
+                .l402_receipts
+                .iter()
+                .map(|row| row.id)
+                .max()
+                .unwrap_or(0)
+                + 1;
+        }
+        if self.next_l402_gateway_event_id == 0 {
+            self.next_l402_gateway_event_id = self
+                .l402_gateway_events
+                .iter()
                 .map(|row| row.id)
                 .max()
                 .unwrap_or(0)
@@ -649,6 +721,34 @@ impl DomainStore {
         let state = self.state.read().await;
         let autopilot = resolve_owned_autopilot_record(&state, &owner_user_id, &reference)?;
         Ok(build_autopilot_aggregate(&state, autopilot))
+    }
+
+    pub async fn resolve_autopilot_filter_for_owner(
+        &self,
+        owner_user_id: &str,
+        reference: &str,
+    ) -> Result<AutopilotRecord, DomainStoreError> {
+        let owner_user_id = normalize_non_empty(owner_user_id, "owner_user_id")?;
+        let reference = normalize_non_empty(reference, "reference")?;
+        let reference_normalized = reference.to_lowercase();
+
+        let state = self.state.read().await;
+        let autopilot = state
+            .autopilots
+            .values()
+            .find(|record| {
+                record.deleted_at.is_none()
+                    && (record.id == reference
+                        || record.handle.eq_ignore_ascii_case(&reference_normalized))
+            })
+            .cloned()
+            .ok_or(DomainStoreError::NotFound)?;
+
+        if autopilot.owner_user_id != owner_user_id {
+            return Err(DomainStoreError::Forbidden);
+        }
+
+        Ok(autopilot)
     }
 
     pub async fn update_owned_autopilot(
@@ -1025,6 +1125,191 @@ impl DomainStore {
         Ok(rows)
     }
 
+    pub async fn record_l402_receipt(
+        &self,
+        input: RecordL402ReceiptInput,
+    ) -> Result<L402ReceiptRecord, DomainStoreError> {
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let thread_id = normalize_non_empty(&input.thread_id, "thread_id")?;
+        let run_id = normalize_non_empty(&input.run_id, "run_id")?;
+        let autopilot_id = normalize_optional_string(input.autopilot_id.as_deref());
+        let thread_title = normalize_optional_string(input.thread_title.as_deref());
+        let run_status = normalize_optional_string(input.run_status.as_deref());
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let created_at = input.created_at.unwrap_or(now);
+            let id = state.next_l402_receipt_id.max(1);
+            state.next_l402_receipt_id = id.saturating_add(1);
+
+            let row = L402ReceiptRecord {
+                id,
+                user_id,
+                thread_id,
+                run_id,
+                autopilot_id,
+                thread_title,
+                run_status,
+                run_started_at: input.run_started_at,
+                run_completed_at: input.run_completed_at,
+                payload: input.payload,
+                created_at,
+                updated_at: now,
+            };
+
+            state.l402_receipts.push(row.clone());
+            Ok(row)
+        })
+        .await
+    }
+
+    pub async fn list_l402_receipts_for_user(
+        &self,
+        user_id: &str,
+        autopilot_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<L402ReceiptRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let autopilot_id = autopilot_id
+            .and_then(|value| normalize_optional_string(Some(value)))
+            .map(|value| value.to_lowercase());
+        let safe_limit = limit.clamp(1, 1000);
+
+        let state = self.state.read().await;
+        let mut rows: Vec<L402ReceiptRecord> = state
+            .l402_receipts
+            .iter()
+            .filter(|row| row.user_id == user_id)
+            .filter(|row| {
+                autopilot_id
+                    .as_deref()
+                    .map(|needle| {
+                        row.autopilot_id
+                            .as_deref()
+                            .map(|value| value.eq_ignore_ascii_case(needle))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|left, right| right.id.cmp(&left.id));
+
+        let start = offset.min(rows.len());
+        let end = start.saturating_add(safe_limit).min(rows.len());
+        Ok(rows[start..end].to_vec())
+    }
+
+    pub async fn count_l402_receipts_for_user(
+        &self,
+        user_id: &str,
+        autopilot_id: Option<&str>,
+    ) -> Result<u64, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let autopilot_id = autopilot_id
+            .and_then(|value| normalize_optional_string(Some(value)))
+            .map(|value| value.to_lowercase());
+
+        let state = self.state.read().await;
+        let count = state
+            .l402_receipts
+            .iter()
+            .filter(|row| row.user_id == user_id)
+            .filter(|row| {
+                autopilot_id
+                    .as_deref()
+                    .map(|needle| {
+                        row.autopilot_id
+                            .as_deref()
+                            .map(|value| value.eq_ignore_ascii_case(needle))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true)
+            })
+            .count() as u64;
+        Ok(count)
+    }
+
+    pub async fn find_l402_receipt_for_user(
+        &self,
+        user_id: &str,
+        event_id: u64,
+    ) -> Result<Option<L402ReceiptRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let state = self.state.read().await;
+        Ok(state
+            .l402_receipts
+            .iter()
+            .find(|row| row.user_id == user_id && row.id == event_id)
+            .cloned())
+    }
+
+    pub async fn record_l402_gateway_event(
+        &self,
+        input: RecordL402GatewayEventInput,
+    ) -> Result<L402GatewayEventRecord, DomainStoreError> {
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let autopilot_id = normalize_optional_string(input.autopilot_id.as_deref());
+        let event_type = normalize_non_empty(&input.event_type, "event_type")?;
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let created_at = input.created_at.unwrap_or(now);
+            let id = state.next_l402_gateway_event_id.max(1);
+            state.next_l402_gateway_event_id = id.saturating_add(1);
+
+            let row = L402GatewayEventRecord {
+                id,
+                user_id,
+                autopilot_id,
+                event_type,
+                payload: input.payload,
+                created_at,
+                updated_at: now,
+            };
+
+            state.l402_gateway_events.push(row.clone());
+            Ok(row)
+        })
+        .await
+    }
+
+    pub async fn list_l402_gateway_events_for_user(
+        &self,
+        user_id: &str,
+        autopilot_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<L402GatewayEventRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let autopilot_id = autopilot_id
+            .and_then(|value| normalize_optional_string(Some(value)))
+            .map(|value| value.to_lowercase());
+        let safe_limit = limit.clamp(1, 1000);
+
+        let state = self.state.read().await;
+        let mut rows: Vec<L402GatewayEventRecord> = state
+            .l402_gateway_events
+            .iter()
+            .filter(|row| row.user_id == user_id)
+            .filter(|row| {
+                autopilot_id
+                    .as_deref()
+                    .map(|needle| {
+                        row.autopilot_id
+                            .as_deref()
+                            .map(|value| value.eq_ignore_ascii_case(needle))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|left, right| right.id.cmp(&left.id));
+        rows.truncate(safe_limit);
+        Ok(rows)
+    }
+
     pub async fn create_l402_paywall(
         &self,
         input: CreateL402PaywallInput,
@@ -1233,6 +1518,15 @@ impl DomainStore {
             Ok(row.clone())
         })
         .await
+    }
+
+    pub async fn find_user_spark_wallet(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<UserSparkWalletRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let state = self.state.read().await;
+        Ok(state.user_spark_wallets.get(&user_id).cloned())
     }
 
     pub async fn upsert_resend_integration(
@@ -2616,5 +2910,233 @@ mod tests {
             .expect("list paywalls");
         assert_eq!(rows.len(), 1);
         assert!(rows[0].deleted_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn l402_receipts_gateway_events_and_autopilot_filter_parity() {
+        let store = DomainStore::from_config(&test_config(None));
+        let now = Utc::now();
+
+        let owned_autopilot = store
+            .create_autopilot(CreateAutopilotInput {
+                owner_user_id: "usr_7".to_string(),
+                owner_display_name: "Owner".to_string(),
+                display_name: "Payments Bot".to_string(),
+                handle_seed: None,
+                avatar: None,
+                status: None,
+                visibility: None,
+                tagline: None,
+            })
+            .await
+            .expect("create owned autopilot");
+
+        let foreign_autopilot = store
+            .create_autopilot(CreateAutopilotInput {
+                owner_user_id: "usr_9".to_string(),
+                owner_display_name: "Other".to_string(),
+                display_name: "Other Bot".to_string(),
+                handle_seed: None,
+                avatar: None,
+                status: None,
+                visibility: None,
+                tagline: None,
+            })
+            .await
+            .expect("create foreign autopilot");
+
+        let resolved = store
+            .resolve_autopilot_filter_for_owner("usr_7", "PAYMENTS-BOT")
+            .await
+            .expect("resolve owned filter");
+        assert_eq!(resolved.id, owned_autopilot.autopilot.id);
+
+        let forbidden = store
+            .resolve_autopilot_filter_for_owner("usr_7", &foreign_autopilot.autopilot.id)
+            .await
+            .expect_err("foreign autopilot should be forbidden");
+        assert!(matches!(forbidden, DomainStoreError::Forbidden));
+
+        let first_receipt = store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: "usr_7".to_string(),
+                thread_id: "thread_1".to_string(),
+                run_id: "run_1".to_string(),
+                autopilot_id: Some(owned_autopilot.autopilot.id.clone()),
+                thread_title: Some("Conversation 1".to_string()),
+                run_status: Some("completed".to_string()),
+                run_started_at: Some(now - Duration::minutes(5)),
+                run_completed_at: Some(now - Duration::minutes(4)),
+                payload: serde_json::json!({
+                    "status": "paid",
+                    "paid": true,
+                    "amountMsats": 2100
+                }),
+                created_at: Some(now - Duration::minutes(4)),
+            })
+            .await
+            .expect("record first receipt");
+
+        let second_receipt = store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: "usr_7".to_string(),
+                thread_id: "thread_2".to_string(),
+                run_id: "run_2".to_string(),
+                autopilot_id: Some(owned_autopilot.autopilot.id.clone()),
+                thread_title: Some("Conversation 2".to_string()),
+                run_status: Some("completed".to_string()),
+                run_started_at: Some(now - Duration::minutes(3)),
+                run_completed_at: Some(now - Duration::minutes(2)),
+                payload: serde_json::json!({
+                    "status": "cached",
+                    "cacheStatus": "hit",
+                    "paid": false
+                }),
+                created_at: Some(now - Duration::minutes(2)),
+            })
+            .await
+            .expect("record second receipt");
+
+        let _ = store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: "usr_7".to_string(),
+                thread_id: "thread_3".to_string(),
+                run_id: "run_3".to_string(),
+                autopilot_id: None,
+                thread_title: None,
+                run_status: None,
+                run_started_at: None,
+                run_completed_at: None,
+                payload: serde_json::json!({
+                    "status": "blocked",
+                    "denyCode": "policy_denied"
+                }),
+                created_at: Some(now - Duration::minutes(1)),
+            })
+            .await
+            .expect("record third receipt");
+
+        let _ = store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: "usr_8".to_string(),
+                thread_id: "thread_4".to_string(),
+                run_id: "run_4".to_string(),
+                autopilot_id: Some(owned_autopilot.autopilot.id.clone()),
+                thread_title: None,
+                run_status: None,
+                run_started_at: None,
+                run_completed_at: None,
+                payload: serde_json::json!({"status":"paid","paid":true,"amountMsats":500}),
+                created_at: Some(now),
+            })
+            .await
+            .expect("record receipt for another user");
+
+        let all_receipts = store
+            .list_l402_receipts_for_user("usr_7", None, 10, 0)
+            .await
+            .expect("list all receipts");
+        assert_eq!(all_receipts.len(), 3);
+        assert!(all_receipts[0].id > all_receipts[1].id);
+
+        let filtered_receipts = store
+            .list_l402_receipts_for_user("usr_7", Some(&owned_autopilot.autopilot.id), 10, 0)
+            .await
+            .expect("list filtered receipts");
+        assert_eq!(filtered_receipts.len(), 2);
+        assert_eq!(
+            store
+                .count_l402_receipts_for_user("usr_7", Some(&owned_autopilot.autopilot.id))
+                .await
+                .expect("count filtered receipts"),
+            2
+        );
+
+        let paged = store
+            .list_l402_receipts_for_user("usr_7", Some(&owned_autopilot.autopilot.id), 1, 1)
+            .await
+            .expect("page receipts");
+        assert_eq!(paged.len(), 1);
+        assert_eq!(paged[0].id, first_receipt.id);
+
+        let found = store
+            .find_l402_receipt_for_user("usr_7", second_receipt.id)
+            .await
+            .expect("find receipt")
+            .expect("receipt exists");
+        assert_eq!(found.run_id, "run_2");
+
+        let wallet = store
+            .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
+                user_id: "usr_7".to_string(),
+                wallet_id: "wallet_123".to_string(),
+                mnemonic: "mnemonic words".to_string(),
+                spark_address: Some("spark:abc".to_string()),
+                lightning_address: Some("ln@openagents.com".to_string()),
+                identity_pubkey: Some("pubkey_1".to_string()),
+                last_balance_sats: Some(4200),
+                status: Some("active".to_string()),
+                provider: Some("spark_executor".to_string()),
+                last_error: None,
+                meta: None,
+                last_synced_at: Some(now),
+            })
+            .await
+            .expect("upsert wallet");
+        assert_eq!(wallet.wallet_id, "wallet_123");
+
+        let wallet_lookup = store
+            .find_user_spark_wallet("usr_7")
+            .await
+            .expect("find wallet")
+            .expect("wallet exists");
+        assert_eq!(wallet_lookup.spark_address.as_deref(), Some("spark:abc"));
+
+        let first_event = store
+            .record_l402_gateway_event(RecordL402GatewayEventInput {
+                user_id: "usr_7".to_string(),
+                autopilot_id: Some(owned_autopilot.autopilot.id.clone()),
+                event_type: "l402_gateway_event".to_string(),
+                payload: serde_json::json!({"status":"ok"}),
+                created_at: Some(now - Duration::minutes(2)),
+            })
+            .await
+            .expect("record gateway event");
+
+        let second_event = store
+            .record_l402_gateway_event(RecordL402GatewayEventInput {
+                user_id: "usr_7".to_string(),
+                autopilot_id: None,
+                event_type: "l402_executor_heartbeat".to_string(),
+                payload: serde_json::json!({"healthy":true}),
+                created_at: Some(now - Duration::minutes(1)),
+            })
+            .await
+            .expect("record second gateway event");
+
+        let _ = store
+            .record_l402_gateway_event(RecordL402GatewayEventInput {
+                user_id: "usr_8".to_string(),
+                autopilot_id: Some(owned_autopilot.autopilot.id.clone()),
+                event_type: "l402_gateway_event".to_string(),
+                payload: serde_json::json!({"status":"ignored"}),
+                created_at: Some(now),
+            })
+            .await
+            .expect("record foreign gateway event");
+
+        let filtered_events = store
+            .list_l402_gateway_events_for_user("usr_7", Some(&owned_autopilot.autopilot.id), 10)
+            .await
+            .expect("list filtered gateway events");
+        assert_eq!(filtered_events.len(), 1);
+        assert_eq!(filtered_events[0].id, first_event.id);
+
+        let limited_events = store
+            .list_l402_gateway_events_for_user("usr_7", None, 1)
+            .await
+            .expect("list limited gateway events");
+        assert_eq!(limited_events.len(), 1);
+        assert_eq!(limited_events[0].id, second_event.id);
     }
 }

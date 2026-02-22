@@ -21,6 +21,12 @@ pub const ROUTE_KHALA_TOKEN: &str = "/api/khala/token";
 pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
+pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
+pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
+pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
+pub const ROUTE_L402_PAYWALLS: &str = "/api/l402/paywalls";
+pub const ROUTE_L402_SETTLEMENTS: &str = "/api/l402/settlements";
+pub const ROUTE_L402_DEPLOYMENTS: &str = "/api/l402/deployments";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
@@ -417,6 +423,78 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("policy_authorize"),
         response_example: Some("policy_authorize"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_WALLET,
+        operation_id: "l402Wallet",
+        summary: "Read L402 wallet summary, recent receipts, and spark wallet status.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_wallet"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_TRANSACTIONS,
+        operation_id: "l402Transactions",
+        summary: "List L402 transaction receipts with pagination.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_transactions"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_TRANSACTION_BY_ID,
+        operation_id: "l402TransactionShow",
+        summary: "Read one L402 transaction receipt by event id.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_transaction"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_PAYWALLS,
+        operation_id: "l402Paywalls",
+        summary: "Read paywall aggregates grouped by host/scope.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_paywalls"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_SETTLEMENTS,
+        operation_id: "l402Settlements",
+        summary: "Read paid settlement summaries and recent paid receipts.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_settlements"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_L402_DEPLOYMENTS,
+        operation_id: "l402Deployments",
+        summary: "Read L402 gateway/deployment operational events.",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_deployments"),
     },
     OpenApiContract {
         method: "post",
@@ -1512,6 +1590,185 @@ fn response_example(key: &str) -> Option<Value> {
                 "resolved_org_id": "org:openagents",
                 "granted_scopes": ["runtime.read"],
                 "denied_reasons": []
+            }
+        })),
+        "l402_wallet" => Some(json!({
+            "data": {
+                "summary": {
+                    "totalAttempts": 3,
+                    "paidCount": 1,
+                    "cachedCount": 1,
+                    "blockedCount": 1,
+                    "failedCount": 0,
+                    "totalPaidMsats": 2100,
+                    "totalPaidSats": 2.1
+                },
+                "lastPaid": {
+                    "eventId": 14,
+                    "threadId": "thread_1",
+                    "runId": "run_1",
+                    "status": "paid",
+                    "host": "sats4ai.com",
+                    "paid": true,
+                    "amountMsats": 2100,
+                    "amountSats": 2.1
+                },
+                "recent": [],
+                "sparkWallet": {
+                    "walletId": "wallet_123",
+                    "sparkAddress": "spark:abc",
+                    "lightningAddress": "ln@openagents.com",
+                    "identityPubkey": "pubkey_1",
+                    "balanceSats": 4200,
+                    "status": "active",
+                    "provider": "spark_executor",
+                    "lastError": null,
+                    "lastSyncedAt": "2026-02-22T00:00:00Z"
+                },
+                "settings": {
+                    "enforceHostAllowlist": false,
+                    "allowlistHosts": [],
+                    "invoicePayer": "unknown",
+                    "credentialTtlSeconds": 0,
+                    "paymentTimeoutMs": 0,
+                    "responseMaxBytes": 0,
+                    "responsePreviewBytes": 0
+                },
+                "filter": {
+                    "autopilot": {
+                        "id": "ap_123",
+                        "handle": "payments-bot"
+                    }
+                }
+            }
+        })),
+        "l402_transactions" => Some(json!({
+            "data": {
+                "transactions": [
+                    {
+                        "eventId": 14,
+                        "threadId": "thread_1",
+                        "threadTitle": "Conversation 1",
+                        "runId": "run_1",
+                        "runStatus": "completed",
+                        "createdAt": "2026-02-22T00:00:00Z",
+                        "status": "paid",
+                        "host": "sats4ai.com",
+                        "scope": "fetch",
+                        "paid": true,
+                        "cacheHit": false,
+                        "cacheStatus": null,
+                        "amountMsats": 2100,
+                        "amountSats": 2.1
+                    }
+                ],
+                "pagination": {
+                    "currentPage": 1,
+                    "lastPage": 1,
+                    "perPage": 30,
+                    "total": 1,
+                    "hasMorePages": false
+                },
+                "filter": {
+                    "autopilot": {
+                        "id": "ap_123",
+                        "handle": "payments-bot"
+                    }
+                }
+            }
+        })),
+        "l402_transaction" => Some(json!({
+            "data": {
+                "transaction": {
+                    "eventId": 14,
+                    "threadId": "thread_1",
+                    "threadTitle": "Conversation 1",
+                    "runId": "run_1",
+                    "runStatus": "completed",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "status": "paid",
+                    "host": "sats4ai.com",
+                    "scope": "fetch",
+                    "paid": true,
+                    "cacheHit": false,
+                    "cacheStatus": null,
+                    "amountMsats": 2100,
+                    "amountSats": 2.1
+                }
+            }
+        })),
+        "l402_paywalls" => Some(json!({
+            "data": {
+                "paywalls": [
+                    {
+                        "host": "sats4ai.com",
+                        "scope": "fetch",
+                        "attempts": 2,
+                        "paid": 1,
+                        "cached": 1,
+                        "blocked": 0,
+                        "failed": 0,
+                        "totalPaidMsats": 2100,
+                        "totalPaidSats": 2.1,
+                        "lastAttemptAt": "2026-02-22T00:00:00Z",
+                        "lastStatus": "cached"
+                    }
+                ],
+                "summary": {
+                    "uniqueTargets": 1,
+                    "totalAttempts": 2,
+                    "totalPaidCount": 1
+                },
+                "filter": {
+                    "autopilot": null
+                }
+            }
+        })),
+        "l402_settlements" => Some(json!({
+            "data": {
+                "summary": {
+                    "settledCount": 1,
+                    "totalMsats": 2100,
+                    "totalSats": 2.1,
+                    "latestSettlementAt": "2026-02-22T00:00:00Z"
+                },
+                "daily": [
+                    {
+                        "date": "2026-02-22",
+                        "count": 1,
+                        "totalMsats": 2100,
+                        "totalSats": 2.1
+                    }
+                ],
+                "settlements": [],
+                "filter": {
+                    "autopilot": null
+                }
+            }
+        })),
+        "l402_deployments" => Some(json!({
+            "data": {
+                "deployments": [
+                    {
+                        "eventId": 91,
+                        "type": "l402_gateway_event",
+                        "createdAt": "2026-02-22T00:00:00Z",
+                        "payload": {
+                            "status": "ok"
+                        }
+                    }
+                ],
+                "configSnapshot": {
+                    "enforceHostAllowlist": false,
+                    "allowlistHosts": [],
+                    "invoicePayer": "unknown",
+                    "credentialTtlSeconds": 0,
+                    "paymentTimeoutMs": 0,
+                    "demoPresets": []
+                },
+                "filter": {
+                    "autopilot": null
+                }
             }
         })),
         "sync_token" => Some(json!({

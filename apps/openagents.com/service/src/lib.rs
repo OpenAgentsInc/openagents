@@ -53,8 +53,9 @@ use crate::codex_threads::{
 };
 use crate::config::Config;
 use crate::domain_store::{
-    AutopilotAggregate, CreateAutopilotInput, DomainStore, DomainStoreError, UpdateAutopilotInput,
-    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
+    AutopilotAggregate, CreateAutopilotInput, DomainStore, DomainStoreError,
+    L402GatewayEventRecord, L402ReceiptRecord, UpdateAutopilotInput, UpsertAutopilotPolicyInput,
+    UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput, UserSparkWalletRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -62,8 +63,10 @@ use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
-    ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+    ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS,
+    ROUTE_L402_TRANSACTION_BY_ID, ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_ME,
+    ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
+    ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
     ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS,
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
@@ -380,6 +383,22 @@ struct AutopilotStreamQuery {
     conversation_id: Option<String>,
     #[serde(default, alias = "threadId")]
     thread_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct L402AutopilotQuery {
+    #[serde(default)]
+    autopilot: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct L402TransactionsQuery {
+    #[serde(default)]
+    autopilot: Option<String>,
+    #[serde(default, alias = "perPage")]
+    per_page: Option<usize>,
+    #[serde(default)]
+    page: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -828,6 +847,12 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route(ROUTE_L402_WALLET, get(l402_wallet))
+        .route(ROUTE_L402_TRANSACTIONS, get(l402_transactions))
+        .route(ROUTE_L402_TRANSACTION_BY_ID, get(l402_transaction_show))
+        .route(ROUTE_L402_PAYWALLS, get(l402_paywalls))
+        .route(ROUTE_L402_SETTLEMENTS, get(l402_settlements))
+        .route(ROUTE_L402_DEPLOYMENTS, get(l402_deployments))
         .route("/api/chat/stream", post(legacy_chat_stream))
         .route(
             "/api/chats",
@@ -4283,6 +4308,601 @@ async fn sync_token(
         .increment_counter("sync.token.issued", &request_id);
 
     Ok(ok_data(issued))
+}
+
+#[derive(Debug, Clone)]
+struct L402AutopilotFilterValue {
+    id: String,
+    handle: String,
+}
+
+#[derive(Debug, Clone)]
+struct L402ReceiptView {
+    event_id: u64,
+    thread_id: String,
+    thread_title: String,
+    run_id: String,
+    run_status: Option<String>,
+    run_started_at: Option<String>,
+    run_completed_at: Option<String>,
+    created_at: String,
+    status: String,
+    host: String,
+    scope: Option<String>,
+    paid: bool,
+    cache_hit: bool,
+    cache_status: Option<String>,
+    amount_msats: Option<i64>,
+    quoted_amount_msats: Option<i64>,
+    max_spend_msats: Option<i64>,
+    proof_reference: Option<String>,
+    deny_code: Option<String>,
+    task_id: Option<String>,
+    approval_required: bool,
+    response_status_code: Option<i64>,
+    response_body_sha256: Option<String>,
+    tool_call_id: Option<String>,
+    raw_payload: serde_json::Value,
+}
+
+async fn resolve_l402_autopilot_filter(
+    state: &AppState,
+    owner_user_id: &str,
+    candidate: Option<String>,
+) -> Result<Option<L402AutopilotFilterValue>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(reference) = candidate.and_then(non_empty) else {
+        return Ok(None);
+    };
+
+    match state
+        ._domain_store
+        .resolve_autopilot_filter_for_owner(owner_user_id, &reference)
+        .await
+    {
+        Ok(autopilot) => Ok(Some(L402AutopilotFilterValue {
+            id: autopilot.id,
+            handle: autopilot.handle,
+        })),
+        Err(DomainStoreError::NotFound) => Err(not_found_error("autopilot_not_found")),
+        Err(DomainStoreError::Forbidden) => Err(forbidden_error("autopilot_forbidden")),
+        Err(error) => Err(map_domain_store_error(error)),
+    }
+}
+
+async fn l402_wallet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<L402AutopilotQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let autopilot_filter =
+        resolve_l402_autopilot_filter(&state, &bundle.user.id, query.autopilot).await?;
+    let autopilot_id = autopilot_filter.as_ref().map(|value| value.id.as_str());
+
+    let receipts = state
+        ._domain_store
+        .list_l402_receipts_for_user(&bundle.user.id, autopilot_id, 200, 0)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(map_l402_receipt_row)
+        .collect::<Vec<_>>();
+
+    let total_paid_msats: i64 = receipts
+        .iter()
+        .filter(|receipt| receipt.paid)
+        .filter_map(|receipt| receipt.amount_msats)
+        .sum();
+
+    let summary = serde_json::json!({
+        "totalAttempts": receipts.len(),
+        "paidCount": receipts.iter().filter(|receipt| receipt.paid).count(),
+        "cachedCount": receipts
+            .iter()
+            .filter(|receipt| receipt.status == "cached" || receipt.cache_status.as_deref() == Some("hit"))
+            .count(),
+        "blockedCount": receipts.iter().filter(|receipt| receipt.status == "blocked").count(),
+        "failedCount": receipts.iter().filter(|receipt| receipt.status == "failed").count(),
+        "totalPaidMsats": total_paid_msats,
+        "totalPaidSats": l402_msats_to_sats(Some(total_paid_msats)).unwrap_or(0.0),
+    });
+
+    let last_paid = receipts
+        .iter()
+        .find(|receipt| receipt.paid)
+        .map(l402_receipt_payload)
+        .unwrap_or(serde_json::Value::Null);
+
+    let recent = receipts
+        .iter()
+        .take(20)
+        .map(l402_receipt_payload)
+        .collect::<Vec<_>>();
+
+    let spark_wallet = state
+        ._domain_store
+        .find_user_spark_wallet(&bundle.user.id)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    Ok(ok_data(serde_json::json!({
+        "summary": summary,
+        "lastPaid": last_paid,
+        "recent": recent,
+        "sparkWallet": l402_wallet_payload(spark_wallet.as_ref()),
+        "settings": l402_settings_payload(),
+        "filter": {
+            "autopilot": l402_filter_payload(autopilot_filter.as_ref())
+        }
+    })))
+}
+
+async fn l402_transactions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<L402TransactionsQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let autopilot_filter =
+        resolve_l402_autopilot_filter(&state, &bundle.user.id, query.autopilot).await?;
+    let autopilot_id = autopilot_filter.as_ref().map(|value| value.id.as_str());
+
+    let per_page = query.per_page.unwrap_or(30).clamp(1, 200);
+    let page = query.page.unwrap_or(1).max(1);
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
+
+    let total = state
+        ._domain_store
+        .count_l402_receipts_for_user(&bundle.user.id, autopilot_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let rows = state
+        ._domain_store
+        .list_l402_receipts_for_user(&bundle.user.id, autopilot_id, per_page, offset)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(map_l402_receipt_row)
+        .collect::<Vec<_>>();
+
+    let last_page = if total == 0 {
+        1
+    } else {
+        ((total - 1) / per_page as u64) + 1
+    };
+
+    Ok(ok_data(serde_json::json!({
+        "transactions": rows.iter().map(l402_receipt_payload).collect::<Vec<_>>(),
+        "pagination": {
+            "currentPage": page,
+            "lastPage": last_page,
+            "perPage": per_page,
+            "total": total,
+            "hasMorePages": (page as u64) < last_page,
+        },
+        "filter": {
+            "autopilot": l402_filter_payload(autopilot_filter.as_ref())
+        }
+    })))
+}
+
+async fn l402_transaction_show(
+    State(state): State<AppState>,
+    Path(event_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_event_id = event_id
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| not_found_error("Not found."))?;
+
+    let row = state
+        ._domain_store
+        .find_l402_receipt_for_user(&bundle.user.id, normalized_event_id)
+        .await
+        .map_err(map_domain_store_error)?
+        .ok_or_else(|| not_found_error("Not found."))?;
+
+    Ok(ok_data(serde_json::json!({
+        "transaction": l402_receipt_payload(&map_l402_receipt_row(row))
+    })))
+}
+
+async fn l402_paywalls(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<L402AutopilotQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let autopilot_filter =
+        resolve_l402_autopilot_filter(&state, &bundle.user.id, query.autopilot).await?;
+    let autopilot_id = autopilot_filter.as_ref().map(|value| value.id.as_str());
+
+    let receipts = state
+        ._domain_store
+        .list_l402_receipts_for_user(&bundle.user.id, autopilot_id, 500, 0)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(map_l402_receipt_row)
+        .collect::<Vec<_>>();
+
+    let mut grouped: HashMap<String, Vec<L402ReceiptView>> = HashMap::new();
+    for receipt in receipts.iter().cloned() {
+        let scope = receipt.scope.clone().unwrap_or_default();
+        let key = format!("{}|{}", receipt.host, scope);
+        grouped.entry(key).or_default().push(receipt);
+    }
+
+    let mut paywalls = grouped
+        .into_iter()
+        .map(|(key, mut items)| {
+            let mut parts = key.splitn(2, '|');
+            let host = parts.next().unwrap_or("unknown").to_string();
+            let scope = parts.next().unwrap_or_default().to_string();
+            items.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+            let total_paid_msats: i64 = items
+                .iter()
+                .filter(|receipt| receipt.paid)
+                .filter_map(|receipt| receipt.amount_msats)
+                .sum();
+
+            let last = items.first();
+            serde_json::json!({
+                "host": host,
+                "scope": scope,
+                "attempts": items.len(),
+                "paid": items.iter().filter(|receipt| receipt.paid).count(),
+                "cached": items
+                    .iter()
+                    .filter(|receipt| receipt.status == "cached" || receipt.cache_status.as_deref() == Some("hit"))
+                    .count(),
+                "blocked": items.iter().filter(|receipt| receipt.status == "blocked").count(),
+                "failed": items.iter().filter(|receipt| receipt.status == "failed").count(),
+                "totalPaidMsats": total_paid_msats,
+                "totalPaidSats": l402_msats_to_sats(Some(total_paid_msats)).unwrap_or(0.0),
+                "lastAttemptAt": last.map(|receipt| receipt.created_at.clone()),
+                "lastStatus": last
+                    .map(|receipt| receipt.status.clone())
+                    .unwrap_or_else(|| "unknown".to_string()),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    paywalls.sort_by(|left, right| {
+        let right_value = right
+            .get("lastAttemptAt")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let left_value = left
+            .get("lastAttemptAt")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        right_value.cmp(left_value)
+    });
+
+    Ok(ok_data(serde_json::json!({
+        "paywalls": paywalls,
+        "summary": {
+            "uniqueTargets": receipts
+                .iter()
+                .map(|receipt| format!("{}|{}", receipt.host, receipt.scope.clone().unwrap_or_default()))
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            "totalAttempts": receipts.len(),
+            "totalPaidCount": receipts.iter().filter(|receipt| receipt.paid).count(),
+        },
+        "filter": {
+            "autopilot": l402_filter_payload(autopilot_filter.as_ref())
+        }
+    })))
+}
+
+async fn l402_settlements(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<L402AutopilotQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let autopilot_filter =
+        resolve_l402_autopilot_filter(&state, &bundle.user.id, query.autopilot).await?;
+    let autopilot_id = autopilot_filter.as_ref().map(|value| value.id.as_str());
+
+    let receipts = state
+        ._domain_store
+        .list_l402_receipts_for_user(&bundle.user.id, autopilot_id, 500, 0)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(map_l402_receipt_row)
+        .collect::<Vec<_>>();
+
+    let settlements = receipts
+        .iter()
+        .filter(|receipt| receipt.paid)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let mut daily_map: HashMap<String, Vec<L402ReceiptView>> = HashMap::new();
+    for receipt in settlements.iter().cloned() {
+        let date = receipt.created_at.chars().take(10).collect::<String>();
+        daily_map.entry(date).or_default().push(receipt);
+    }
+
+    let mut daily = daily_map
+        .into_iter()
+        .map(|(date, items)| {
+            let total_msats: i64 = items
+                .iter()
+                .filter_map(|receipt| receipt.amount_msats)
+                .sum();
+            serde_json::json!({
+                "date": date,
+                "count": items.len(),
+                "totalMsats": total_msats,
+                "totalSats": l402_msats_to_sats(Some(total_msats)).unwrap_or(0.0),
+            })
+        })
+        .collect::<Vec<_>>();
+    daily.sort_by(|left, right| {
+        right
+            .get("date")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .cmp(
+                left.get("date")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            )
+    });
+
+    let total_msats: i64 = settlements
+        .iter()
+        .filter_map(|receipt| receipt.amount_msats)
+        .sum();
+
+    Ok(ok_data(serde_json::json!({
+        "summary": {
+            "settledCount": settlements.len(),
+            "totalMsats": total_msats,
+            "totalSats": l402_msats_to_sats(Some(total_msats)).unwrap_or(0.0),
+            "latestSettlementAt": settlements.first().map(|receipt| receipt.created_at.clone()),
+        },
+        "daily": daily,
+        "settlements": settlements.iter().take(100).map(l402_receipt_payload).collect::<Vec<_>>(),
+        "filter": {
+            "autopilot": l402_filter_payload(autopilot_filter.as_ref())
+        }
+    })))
+}
+
+async fn l402_deployments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<L402AutopilotQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let autopilot_filter =
+        resolve_l402_autopilot_filter(&state, &bundle.user.id, query.autopilot).await?;
+    let autopilot_id = autopilot_filter.as_ref().map(|value| value.id.as_str());
+
+    let allowed_types = [
+        "l402_gateway_deployment",
+        "l402_gateway_event",
+        "l402_executor_heartbeat",
+        "l402_paywall_created",
+        "l402_paywall_updated",
+        "l402_paywall_deleted",
+    ];
+
+    let deployments = state
+        ._domain_store
+        .list_l402_gateway_events_for_user(&bundle.user.id, autopilot_id, 100)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .filter(|event| allowed_types.contains(&event.event_type.as_str()))
+        .map(l402_gateway_event_payload)
+        .collect::<Vec<_>>();
+
+    Ok(ok_data(serde_json::json!({
+        "deployments": deployments,
+        "configSnapshot": l402_deployments_config_snapshot_payload(),
+        "filter": {
+            "autopilot": l402_filter_payload(autopilot_filter.as_ref())
+        }
+    })))
+}
+
+fn map_l402_receipt_row(row: L402ReceiptRecord) -> L402ReceiptView {
+    let payload = if row.payload.is_object() {
+        row.payload
+    } else {
+        serde_json::json!({})
+    };
+
+    let amount_msats = l402_optional_i64(payload.get("amountMsats"));
+    let quoted_amount_msats = l402_optional_i64(payload.get("quotedAmountMsats"));
+    let max_spend_msats = l402_optional_i64(payload.get("maxSpendMsats"));
+
+    L402ReceiptView {
+        event_id: row.id,
+        thread_id: row.thread_id,
+        thread_title: row
+            .thread_title
+            .unwrap_or_else(|| "Conversation".to_string()),
+        run_id: row.run_id,
+        run_status: row.run_status,
+        run_started_at: row.run_started_at.map(timestamp),
+        run_completed_at: row.run_completed_at.map(timestamp),
+        created_at: timestamp(row.created_at),
+        status: l402_optional_string(payload.get("status"))
+            .unwrap_or_else(|| "unknown".to_string()),
+        host: l402_optional_string(payload.get("host")).unwrap_or_else(|| "unknown".to_string()),
+        scope: l402_optional_string(payload.get("scope")),
+        paid: l402_optional_bool(payload.get("paid")).unwrap_or(false),
+        cache_hit: l402_optional_bool(payload.get("cacheHit")).unwrap_or(false),
+        cache_status: l402_optional_string(payload.get("cacheStatus")),
+        amount_msats,
+        quoted_amount_msats,
+        max_spend_msats,
+        proof_reference: l402_optional_string(payload.get("proofReference")),
+        deny_code: l402_optional_string(payload.get("denyCode")),
+        task_id: l402_optional_string(payload.get("taskId")),
+        approval_required: l402_optional_bool(payload.get("approvalRequired")).unwrap_or(false),
+        response_status_code: l402_optional_i64(payload.get("responseStatusCode")),
+        response_body_sha256: l402_optional_string(payload.get("responseBodySha256")),
+        tool_call_id: l402_optional_string(payload.get("tool_call_id"))
+            .or_else(|| l402_optional_string(payload.get("toolCallId"))),
+        raw_payload: payload,
+    }
+}
+
+fn l402_receipt_payload(receipt: &L402ReceiptView) -> serde_json::Value {
+    serde_json::json!({
+        "eventId": receipt.event_id,
+        "threadId": receipt.thread_id,
+        "threadTitle": receipt.thread_title,
+        "runId": receipt.run_id,
+        "runStatus": receipt.run_status,
+        "runStartedAt": receipt.run_started_at,
+        "runCompletedAt": receipt.run_completed_at,
+        "createdAt": receipt.created_at,
+        "status": receipt.status,
+        "host": receipt.host,
+        "scope": receipt.scope,
+        "paid": receipt.paid,
+        "cacheHit": receipt.cache_hit,
+        "cacheStatus": receipt.cache_status,
+        "amountMsats": receipt.amount_msats,
+        "amountSats": l402_msats_to_sats(receipt.amount_msats),
+        "quotedAmountMsats": receipt.quoted_amount_msats,
+        "quotedAmountSats": l402_msats_to_sats(receipt.quoted_amount_msats),
+        "maxSpendMsats": receipt.max_spend_msats,
+        "maxSpendSats": l402_msats_to_sats(receipt.max_spend_msats),
+        "proofReference": receipt.proof_reference,
+        "denyCode": receipt.deny_code,
+        "taskId": receipt.task_id,
+        "approvalRequired": receipt.approval_required,
+        "responseStatusCode": receipt.response_status_code,
+        "responseBodySha256": receipt.response_body_sha256,
+        "toolCallId": receipt.tool_call_id,
+        "rawPayload": receipt.raw_payload,
+    })
+}
+
+fn l402_gateway_event_payload(event: L402GatewayEventRecord) -> serde_json::Value {
+    let payload = if event.payload.is_object() {
+        event.payload
+    } else {
+        serde_json::json!({})
+    };
+
+    serde_json::json!({
+        "eventId": event.id,
+        "type": event.event_type,
+        "createdAt": timestamp(event.created_at),
+        "payload": payload,
+    })
+}
+
+fn l402_filter_payload(filter: Option<&L402AutopilotFilterValue>) -> serde_json::Value {
+    filter
+        .map(|value| {
+            serde_json::json!({
+                "id": value.id,
+                "handle": value.handle,
+            })
+        })
+        .unwrap_or(serde_json::Value::Null)
+}
+
+fn l402_wallet_payload(wallet: Option<&UserSparkWalletRecord>) -> serde_json::Value {
+    wallet
+        .map(|value| {
+            serde_json::json!({
+                "walletId": value.wallet_id,
+                "sparkAddress": value.spark_address,
+                "lightningAddress": value.lightning_address,
+                "identityPubkey": value.identity_pubkey,
+                "balanceSats": value.last_balance_sats,
+                "status": value.status,
+                "provider": value.provider,
+                "lastError": value.last_error,
+                "lastSyncedAt": value.last_synced_at.map(timestamp),
+            })
+        })
+        .unwrap_or(serde_json::Value::Null)
+}
+
+fn l402_settings_payload() -> serde_json::Value {
+    serde_json::json!({
+        "enforceHostAllowlist": false,
+        "allowlistHosts": Vec::<String>::new(),
+        "invoicePayer": "unknown",
+        "credentialTtlSeconds": 0,
+        "paymentTimeoutMs": 0,
+        "responseMaxBytes": 0,
+        "responsePreviewBytes": 0,
+    })
+}
+
+fn l402_deployments_config_snapshot_payload() -> serde_json::Value {
+    serde_json::json!({
+        "enforceHostAllowlist": false,
+        "allowlistHosts": Vec::<String>::new(),
+        "invoicePayer": "unknown",
+        "credentialTtlSeconds": 0,
+        "paymentTimeoutMs": 0,
+        "demoPresets": Vec::<String>::new(),
+    })
+}
+
+fn l402_optional_string(value: Option<&serde_json::Value>) -> Option<String> {
+    let value = value?.as_str()?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn l402_optional_i64(value: Option<&serde_json::Value>) -> Option<i64> {
+    let value = value?;
+    if let Some(int_value) = value.as_i64() {
+        return Some(int_value);
+    }
+    if let Some(uint_value) = value.as_u64() {
+        return i64::try_from(uint_value).ok();
+    }
+    value
+        .as_str()
+        .and_then(|raw| raw.trim().parse::<i64>().ok())
+}
+
+fn l402_optional_bool(value: Option<&serde_json::Value>) -> Option<bool> {
+    let value = value?;
+    if let Some(bool_value) = value.as_bool() {
+        return Some(bool_value);
+    }
+    if let Some(int_value) = value.as_i64() {
+        return match int_value {
+            1 => Some(true),
+            0 => Some(false),
+            _ => None,
+        };
+    }
+    value.as_str().and_then(|raw| match raw.trim() {
+        "1" | "true" | "TRUE" => Some(true),
+        "0" | "false" | "FALSE" => Some(false),
+        _ => None,
+    })
+}
+
+fn l402_msats_to_sats(msats: Option<i64>) -> Option<f64> {
+    msats.map(|value| (value as f64 / 1000.0 * 1000.0).round() / 1000.0)
 }
 
 async fn legacy_chats_index(
@@ -8572,7 +9192,9 @@ mod tests {
     use crate::config::Config;
     use crate::domain_store::{
         AutopilotAggregate, AutopilotPolicyRecord, AutopilotProfileRecord, AutopilotRecord,
-        AutopilotRuntimeBindingRecord, DomainStore, UpsertResendIntegrationInput,
+        AutopilotRuntimeBindingRecord, CreateAutopilotInput, DomainStore,
+        RecordL402GatewayEventInput, RecordL402ReceiptInput, UpsertResendIntegrationInput,
+        UpsertUserSparkWalletInput,
     };
     use crate::observability::{Observability, RecordingAuditSink};
     use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, MAINTENANCE_CACHE_CONTROL};
@@ -9016,6 +9638,151 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .to_string())
+    }
+
+    struct L402Fixture {
+        token: String,
+        autopilot_id: String,
+        autopilot_handle: String,
+        paid_receipt_event_id: u64,
+    }
+
+    async fn seed_l402_fixture(config: &Config, email: &str) -> Result<L402Fixture> {
+        let auth = super::AuthService::from_config(config);
+        let verify = auth
+            .local_test_sign_in(email.to_string(), None, Some("autopilot-ios"), None)
+            .await?;
+        let user_id = verify.user.id.clone();
+        let token = verify.access_token.clone();
+
+        let store = super::DomainStore::from_config(config);
+        let autopilot = store
+            .create_autopilot(CreateAutopilotInput {
+                owner_user_id: user_id.clone(),
+                owner_display_name: "Owner".to_string(),
+                display_name: "Payments Bot".to_string(),
+                handle_seed: None,
+                avatar: None,
+                status: None,
+                visibility: None,
+                tagline: None,
+            })
+            .await
+            .expect("create autopilot");
+
+        store
+            .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
+                user_id: user_id.clone(),
+                wallet_id: "wallet_123".to_string(),
+                mnemonic: "mnemonic words".to_string(),
+                spark_address: Some("spark:abc".to_string()),
+                lightning_address: Some("ln@openagents.com".to_string()),
+                identity_pubkey: Some("pubkey_1".to_string()),
+                last_balance_sats: Some(4200),
+                status: Some("active".to_string()),
+                provider: Some("spark_executor".to_string()),
+                last_error: None,
+                meta: None,
+                last_synced_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed wallet");
+
+        let paid_receipt = store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: user_id.clone(),
+                thread_id: "thread_1".to_string(),
+                run_id: "run_1".to_string(),
+                autopilot_id: Some(autopilot.autopilot.id.clone()),
+                thread_title: Some("Conversation 1".to_string()),
+                run_status: Some("completed".to_string()),
+                run_started_at: Some(Utc::now()),
+                run_completed_at: Some(Utc::now()),
+                payload: json!({
+                    "status": "paid",
+                    "host": "sats4ai.com",
+                    "scope": "fetch",
+                    "paid": true,
+                    "amountMsats": 2100,
+                    "cacheHit": false,
+                    "approvalRequired": false,
+                }),
+                created_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed paid receipt");
+
+        store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: user_id.clone(),
+                thread_id: "thread_2".to_string(),
+                run_id: "run_2".to_string(),
+                autopilot_id: Some(autopilot.autopilot.id.clone()),
+                thread_title: Some("Conversation 2".to_string()),
+                run_status: Some("completed".to_string()),
+                run_started_at: Some(Utc::now()),
+                run_completed_at: Some(Utc::now()),
+                payload: json!({
+                    "status": "cached",
+                    "host": "sats4ai.com",
+                    "scope": "fetch",
+                    "paid": false,
+                    "cacheStatus": "hit",
+                    "cacheHit": true,
+                }),
+                created_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed cached receipt");
+
+        store
+            .record_l402_receipt(RecordL402ReceiptInput {
+                user_id: user_id.clone(),
+                thread_id: "thread_3".to_string(),
+                run_id: "run_3".to_string(),
+                autopilot_id: None,
+                thread_title: Some("Conversation 3".to_string()),
+                run_status: Some("failed".to_string()),
+                run_started_at: Some(Utc::now()),
+                run_completed_at: Some(Utc::now()),
+                payload: json!({
+                    "status": "blocked",
+                    "paid": false,
+                    "denyCode": "policy_denied",
+                }),
+                created_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed blocked receipt");
+
+        store
+            .record_l402_gateway_event(RecordL402GatewayEventInput {
+                user_id: user_id.clone(),
+                autopilot_id: Some(autopilot.autopilot.id.clone()),
+                event_type: "l402_gateway_event".to_string(),
+                payload: json!({"status":"ok"}),
+                created_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed gateway event");
+
+        store
+            .record_l402_gateway_event(RecordL402GatewayEventInput {
+                user_id: user_id.clone(),
+                autopilot_id: None,
+                event_type: "unrelated_event".to_string(),
+                payload: json!({"ignored":true}),
+                created_at: Some(Utc::now()),
+            })
+            .await
+            .expect("seed non-l402 event");
+
+        Ok(L402Fixture {
+            token,
+            autopilot_id: autopilot.autopilot.id,
+            autopilot_handle: autopilot.autopilot.handle,
+            paid_receipt_event_id: paid_receipt.id,
+        })
     }
 
     #[tokio::test]
@@ -13516,6 +14283,213 @@ mod tests {
             body["data"]["domain_overrides"]["billing_l402"],
             json!("legacy")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn l402_read_routes_match_wallet_transactions_and_deployments_shape() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let fixture = seed_l402_fixture(&config, "l402-reader@openagents.com").await?;
+        let app = build_router(config);
+
+        let wallet_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/wallet?autopilot={}",
+                fixture.autopilot_handle
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let wallet_response = app.clone().oneshot(wallet_request).await?;
+        assert_eq!(wallet_response.status(), StatusCode::OK);
+        let wallet_body = read_json(wallet_response).await?;
+        assert_eq!(wallet_body["data"]["summary"]["totalAttempts"], json!(2));
+        assert_eq!(wallet_body["data"]["summary"]["paidCount"], json!(1));
+        assert_eq!(
+            wallet_body["data"]["sparkWallet"]["walletId"],
+            json!("wallet_123")
+        );
+        assert_eq!(
+            wallet_body["data"]["filter"]["autopilot"]["id"],
+            json!(fixture.autopilot_id.clone())
+        );
+
+        let transactions_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/transactions?autopilot={}&per_page=1&page=2",
+                fixture.autopilot_id
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let transactions_response = app.clone().oneshot(transactions_request).await?;
+        assert_eq!(transactions_response.status(), StatusCode::OK);
+        let transactions_body = read_json(transactions_response).await?;
+        assert_eq!(
+            transactions_body["data"]["transactions"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(
+            transactions_body["data"]["pagination"]["currentPage"],
+            json!(2)
+        );
+        assert_eq!(
+            transactions_body["data"]["pagination"]["lastPage"],
+            json!(2)
+        );
+        assert_eq!(
+            transactions_body["data"]["pagination"]["hasMorePages"],
+            json!(false)
+        );
+
+        let transaction_show_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/transactions/{}",
+                fixture.paid_receipt_event_id
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let transaction_show_response = app.clone().oneshot(transaction_show_request).await?;
+        assert_eq!(transaction_show_response.status(), StatusCode::OK);
+        let transaction_show_body = read_json(transaction_show_response).await?;
+        assert_eq!(
+            transaction_show_body["data"]["transaction"]["eventId"],
+            json!(fixture.paid_receipt_event_id)
+        );
+        assert_eq!(
+            transaction_show_body["data"]["transaction"]["status"],
+            json!("paid")
+        );
+
+        let paywalls_request = Request::builder()
+            .method("GET")
+            .uri("/api/l402/paywalls")
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let paywalls_response = app.clone().oneshot(paywalls_request).await?;
+        assert_eq!(paywalls_response.status(), StatusCode::OK);
+        let paywalls_body = read_json(paywalls_response).await?;
+        assert_eq!(paywalls_body["data"]["summary"]["totalAttempts"], json!(3));
+        assert_eq!(paywalls_body["data"]["summary"]["totalPaidCount"], json!(1));
+
+        let settlements_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/settlements?autopilot={}",
+                fixture.autopilot_id
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let settlements_response = app.clone().oneshot(settlements_request).await?;
+        assert_eq!(settlements_response.status(), StatusCode::OK);
+        let settlements_body = read_json(settlements_response).await?;
+        assert_eq!(
+            settlements_body["data"]["summary"]["settledCount"],
+            json!(1)
+        );
+        assert_eq!(
+            settlements_body["data"]["summary"]["totalMsats"],
+            json!(2100)
+        );
+
+        let deployments_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/deployments?autopilot={}",
+                fixture.autopilot_id
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let deployments_response = app.oneshot(deployments_request).await?;
+        assert_eq!(deployments_response.status(), StatusCode::OK);
+        let deployments_body = read_json(deployments_response).await?;
+        assert_eq!(
+            deployments_body["data"]["deployments"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(
+            deployments_body["data"]["deployments"][0]["type"],
+            json!("l402_gateway_event")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn l402_autopilot_filter_returns_not_found_and_forbidden() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let fixture = seed_l402_fixture(&config, "l402-access@openagents.com").await?;
+
+        let foreign_auth = super::AuthService::from_config(&config);
+        let foreign_verify = foreign_auth
+            .local_test_sign_in(
+                "l402-foreign@openagents.com".to_string(),
+                None,
+                Some("autopilot-ios"),
+                None,
+            )
+            .await?;
+        let store = super::DomainStore::from_config(&config);
+        let foreign_autopilot = store
+            .create_autopilot(CreateAutopilotInput {
+                owner_user_id: foreign_verify.user.id,
+                owner_display_name: "Other".to_string(),
+                display_name: "Foreign Pilot".to_string(),
+                handle_seed: None,
+                avatar: None,
+                status: None,
+                visibility: None,
+                tagline: None,
+            })
+            .await
+            .expect("seed foreign autopilot");
+
+        let app = build_router(config);
+
+        let missing_request = Request::builder()
+            .method("GET")
+            .uri("/api/l402/wallet?autopilot=missing-pilot")
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let missing_response = app.clone().oneshot(missing_request).await?;
+        assert_eq!(missing_response.status(), StatusCode::NOT_FOUND);
+        let missing_body = read_json(missing_response).await?;
+        assert_eq!(missing_body["message"], json!("autopilot_not_found"));
+
+        let forbidden_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/l402/wallet?autopilot={}",
+                foreign_autopilot.autopilot.id
+            ))
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let forbidden_response = app.oneshot(forbidden_request).await?;
+        assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
+        let forbidden_body = read_json(forbidden_response).await?;
+        assert_eq!(forbidden_body["message"], json!("autopilot_forbidden"));
 
         Ok(())
     }
