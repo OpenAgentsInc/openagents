@@ -45,7 +45,7 @@ Current Laravel chat surface still includes Vercel AI SDK frontend + Laravel AI 
 Parity is complete only when all conditions hold:
 
 1. All API routes in the Laravel API manifest are accounted for in Rust via either (a) parity-preserved implementation or (b) explicit retirement/deprecation with approved migration behavior; Vercel-style chat lanes are retired, not reimplemented.
-2. All active web routes/pages (`/`, `/aui`, `/feed`, `/login`, `/settings/*`, `/l402/*`, `/admin`, `/openapi.json`) are served by Rust and preserve user-visible behavior, deep-link redirects, and error-state UX.
+2. All active web routes/pages (`/`, `/feed`, `/login`, `/settings/*`, `/l402/*`, `/admin`, `/openapi.json`) are served by Rust and preserve user-visible behavior, deep-link redirects, and error-state UX; legacy `/aui` is deleted and not recreated.
 3. Khala WebSocket replay/live subscriptions preserve protocol semantics for chat/autopilot/codex worker delivery, including finish/error/tool events and replay/resume ordering guarantees.
 4. Data writes/reads are backed by Rust-owned persistence logic and schema migration paths.
 5. Internal and operations-critical endpoints (runtime secret fetch, lightning ops control plane, smoke validation lane, webhook ingestion, token issuance) are ported and verified.
@@ -57,6 +57,8 @@ Parity is complete only when all conditions hold:
 11. Static asset hosting parity is proven (content hashing, `Cache-Control`/ETag semantics, compression, and service-worker update behavior).
 12. Production chat code paths do not depend on Vercel AI SDK protocol semantics or Laravel AI package adapters; Codex app-server protocol is the single chat/thread authority lane.
 13. First-pass Codex chat access policy is explicit and enforced (ChatGPT account required).
+14. Final cleanup removes remaining PHP and TypeScript implementation code from active product paths so runtime/product implementation is Rust-only.
+15. Web routing parity is implemented as a single-shell architecture: non-API GET requests resolve to one Rust-hosted shell entry (`index.html`), and internal navigation is handled in-app via route state + browser history (`pushState`/`popstate`) without full-page reloads.
 
 ## 4) Program Strategy
 
@@ -72,6 +74,7 @@ Use domain-sliced migration with strict contract verification:
 8. Use expand/migrate/contract database rollout rules with explicit mixed-version support while Laravel and Rust run concurrently.
 9. Require data invariants/checksum validation after backfills and before route-group cutovers.
 10. Consolidate chat/thread behavior onto Codex app-server protocol and remove duplicate Vercel/Laravel-AI chat execution paths from production code.
+11. Final gate: eradicate remaining PHP and TypeScript implementation lanes from active product paths.
 
 Transport doctrine for this plan:
 1. Khala live delivery is WS-only per `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`.
@@ -177,8 +180,8 @@ Description: Mirror Laravel auth telemetry/audit behavior and align with control
 
 ### Phase 3 issues
 
-19. **OA-WEBPARITY-019 - Remove Vercel AI SDK web chat lane (`/`, `/aui`) and adopt Codex app-server client contract**
-Description: Replace Vercel AI SDK-driven chat wiring in web surfaces with Codex app-server contract handling and explicit authenticated-user gating.
+19. **OA-WEBPARITY-019 - Remove Vercel AI SDK web chat lane and adopt Codex app-server client contract**
+Description: Replace Vercel AI SDK-driven chat wiring for `/` with Codex app-server contract handling and explicit authenticated-user gating, and delete `/aui` route/page with no replacement.
 
 20. **OA-WEBPARITY-020 - Replace Laravel AI/Vercel protocol backend lane with Codex command bootstrap**
 Description: Remove Laravel AI protocol bridging and route chat command bootstrap through Codex worker control/app-server contract semantics with Khala WS delivery.
@@ -275,10 +278,18 @@ Description: Port `GET /feed` backend data shaping and pagination/filter semanti
 ### Phase 8 issues
 
 48. **OA-WEBPARITY-048 - WGPUI route shell parity for all web routes**
-Description: Implement Rust/WGPUI route handling for all current web surfaces with matching auth-gate and redirect behavior.
+Description: Implement Rust/WGPUI route handling for all current web surfaces with matching auth-gate and redirect behavior, using a single-shell route model (no per-page HTML responses for non-API routes).
+Acceptance criteria:
+- Rust service routes all non-API page GETs to shared shell entrypoint (`index.html`) while preserving API/static route behavior.
+- Web-shell runtime boots once per document load and internal route changes do not reinitialize the GPU/runtime singleton.
+- Internal link navigation intercepts same-origin app routes and dispatches app `Navigate` intent instead of triggering full document navigation.
+- App navigation updates browser history with `history.pushState(...)` so URL stays canonical for deep links/share links.
+- Browser `popstate` is handled and mapped back into app route state (`location.pathname` -> `Navigate`) for back/forward parity.
+- Hard refresh/direct URL load remains supported by server-side shell fallback + client-side route parse.
+- Route-shell parity tests assert no full reload on internal navigation (except explicit hard refresh or external-link transitions).
 
-49. **OA-WEBPARITY-049 - Port core chat UI pages (`/` and `/aui`) to WGPUI**
-Description: Rebuild home/chat and assistant UI flows in WGPUI on Codex app-server protocol only (no Vercel AI SDK lane), preserving quick prompts and login gating behavior.
+49. **OA-WEBPARITY-049 - Port core chat UI page (`/`) to WGPUI**
+Description: Rebuild the home/chat flow in WGPUI on Codex app-server protocol only (no Vercel AI SDK lane), preserving quick prompts and login gating behavior; do not recreate `/aui`.
 
 50. **OA-WEBPARITY-050 - Port settings UI pages (`/settings/profile`, `/settings/autopilot`, `/settings/integrations`)**
 Description: Recreate settings pages in WGPUI with form validation, async state handling, and integration action UX parity.
@@ -337,6 +348,9 @@ Description: Port queued jobs, scheduled tasks, event listeners, and notificatio
 
 67. **OA-WEBPARITY-067 - Mixed-version deploy safety, rollback, and backfill invariants**
 Description: Define mixed-version deploy rules, expand/migrate/contract rollback paths, and data invariant checksums/count checks required before and after each cutover.
+
+68. **OA-WEBPARITY-068 - Eradicate remaining PHP/TypeScript implementation lanes (Rust-only terminal gate)**
+Description: Remove or archive all remaining PHP and TypeScript implementation code in active product paths so shipped runtime/product implementation is Rust-only.
 
 ## 7) Endpoint Coverage Map (Laravel API manifest -> issue mapping)
 
@@ -446,7 +460,7 @@ Legacy Vercel chat endpoints (`/api/chat*`, `/api/chats*`) are migration/depreca
 
 - `GET /` -> OA-WEBPARITY-049
 - `GET /feed` -> OA-WEBPARITY-047 and OA-WEBPARITY-048
-- `GET /aui` -> OA-WEBPARITY-049
+- `GET /aui` -> retired (delete route/page; no Rust/WGPUI replacement)
 - `GET /openapi.json` -> OA-WEBPARITY-007 and OA-WEBPARITY-053
 - `GET /login` -> OA-WEBPARITY-015
 - `POST /login/email` -> OA-WEBPARITY-015
@@ -484,7 +498,34 @@ Primary table groups that must be Rust-owned by end state:
 - Social: `shouts`, `whispers` -> OA-WEBPARITY-010, OA-WEBPARITY-043..044
 - Integrations/comms: integration secrets/audits/webhook events/delivery projections -> OA-WEBPARITY-010, OA-WEBPARITY-045..046
 
-## 10) Verification Gates Per Issue
+## 10) Rust Web Routing Implementation Contract
+
+This section defines the required technical implementation for Rust-side web routing parity.
+
+Current code anchors (for issue execution context):
+- Non-API GET shell routing in control service: `apps/openagents.com/service/src/lib.rs:232`, `apps/openagents.com/service/src/lib.rs:272`, `apps/openagents.com/service/src/lib.rs:596`, `apps/openagents.com/service/src/lib.rs:630`.
+- Web-shell boot + singleton init + route render path: `apps/openagents.com/web-shell/src/lib.rs:542`, `apps/openagents.com/web-shell/src/lib.rs:598`, `apps/openagents.com/web-shell/src/lib.rs:798`, `apps/openagents.com/web-shell/src/lib.rs:2855`.
+- Immutable hashed asset-serving context for reload behavior: `apps/openagents.com/service/src/lib.rs:45`, `apps/openagents.com/service/src/lib.rs:584`.
+
+1. Service routing model:
+   - All non-API/non-static browser page routes resolve to the same shell entrypoint.
+   - API routes retain normal handler dispatch and must never be swallowed by shell fallback.
+2. Shell lifetime model:
+   - WASM/WGPUI runtime initializes once per document load.
+   - The app/runtime singleton remains alive across internal route transitions.
+3. In-app route transition model:
+   - Route changes are state transitions in Rust app state, followed by in-place rerender.
+   - Internal app links must be intercepted and translated to app-level `Navigate` intents.
+4. Browser history parity model:
+   - Programmatic navigation calls `history.pushState(...)`.
+   - Browser back/forward events (`popstate`) are translated into route state updates.
+5. Reload semantics:
+   - Full reload occurs only on hard refresh/direct initial load or explicit external navigation.
+   - Internal route transitions do not tear down and remount the shell.
+6. Known implementation gap at time of plan update:
+   - `pushState`/`popstate` wiring is not yet treated as complete and remains mandatory scope under OA-WEBPARITY-048.
+
+## 11) Verification Gates Per Issue
 
 Each implementation issue should include acceptance criteria with these minimum checks:
 
@@ -512,7 +553,7 @@ Each implementation issue should include acceptance criteria with these minimum 
 8. Rollout safety:
    - Route-split off-switch documented for domain issues that affect production traffic.
 
-## 11) Risks and Mitigations
+## 12) Risks and Mitigations
 
 1. Risk: hidden behavior in Laravel middleware/services causes silent regressions.
 Mitigation: freeze contract fixtures first and require parity tests before route flips.
@@ -538,11 +579,14 @@ Mitigation: enforce hashed asset + cache policy + SW update regression checks be
 8. Risk: split-brain chat behavior if Vercel-style lane remains partially active.
 Mitigation: codex-only chat authority gate, explicit deprecation of `/api/chat*` + `/api/chats*`, and CI checks that block Vercel/Laravel-AI chat path reintroduction.
 
-## 12) Exit Criteria for Full Program
+9. Risk: web navigation appears functional but silently reloads the full document, causing state loss and runtime churn.
+Mitigation: require route-shell tests that assert `pushState`/`popstate` wiring and verify no full-page reload on same-origin internal navigation.
+
+## 13) Exit Criteria for Full Program
 
 Program is complete when:
 
-1. OA-WEBPARITY-001 through OA-WEBPARITY-067 are closed.
+1. OA-WEBPARITY-001 through OA-WEBPARITY-068 are closed.
 2. API manifest coverage reports 77/77 endpoints accounted for (ported, codex-consolidated, or explicitly retired with approved migration behavior).
 3. All active web routes/pages are Rust/WGPUI-owned and validated on desktop and mobile browsers (and iOS host app where applicable).
 4. Production traffic runs Rust-only with stable SLOs through post-cutover observation window.
