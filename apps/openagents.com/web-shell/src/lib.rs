@@ -187,6 +187,9 @@ mod wasm {
         "turn/start",
         "turn/interrupt",
     ];
+    const WEB_SHELL_COMPAT_CLIENT_BUILD_ID: &str = "20260221T130000Z";
+    const WEB_SHELL_COMPAT_PROTOCOL_VERSION: &str = "openagents.control.v1";
+    const WEB_SHELL_COMPAT_SCHEMA_VERSION: &str = "1";
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
@@ -1260,12 +1263,7 @@ mod wasm {
             normalize_thread_message_text(&text).map_err(command_input_validation_error)?;
 
         let state = snapshot_state();
-        let intent = CommandIntent::SendThreadMessage {
-            thread_id,
-            text: normalized,
-        };
-        let request = plan_http_request(&intent, &state)?;
-        let response = send_json_request::<serde_json::Value>(&request, &state).await;
+        let response = send_legacy_chat_stream_request(&thread_id, &normalized, &state).await;
         if let Err(error) = &response {
             CODEX_THREAD_STATE.with(|chat| {
                 chat.borrow_mut()
@@ -1273,10 +1271,68 @@ mod wasm {
             });
             render_codex_chat_dom();
         }
-        response.map(|_| {
+        response.map(|wire| {
+            CODEX_THREAD_STATE.with(|chat| {
+                chat.borrow_mut().ingest_vercel_sse_wire(&wire);
+            });
+            render_codex_chat_dom();
             invalidate_codex_history_cache();
             schedule_codex_history_refresh();
         })
+    }
+
+    async fn send_legacy_chat_stream_request(
+        thread_id: &str,
+        text: &str,
+        state: &AppState,
+    ) -> Result<String, ControlApiError> {
+        let Some(access_token) = state.auth.access_token.as_ref() else {
+            return Err(ControlApiError::from_command_error(
+                CommandError::missing_credential(
+                    "Access token is required to send thread message.",
+                ),
+            ));
+        };
+
+        let encoded_thread_id = encode_path_component(thread_id);
+        let path = format!("/api/chats/{encoded_thread_id}/stream");
+        let body = serde_json::to_string(&serde_json::json!({
+            "messages": [
+                {
+                    "id": format!("web-msg-{}", now_unix_ms()),
+                    "role": "user",
+                    "content": text,
+                }
+            ]
+        }))
+        .map_err(|error| ControlApiError {
+            status_code: 500,
+            code: Some("request_body_serialize_failed".to_string()),
+            message: format!("failed to serialize request body: {error}"),
+            kind: CommandErrorKind::Decode,
+            retryable: false,
+        })?;
+
+        let authorization = format!("Bearer {access_token}");
+        let response = Request::post(&path)
+            .header("content-type", "application/json")
+            .header("authorization", &authorization)
+            .header("x-oa-client-build-id", WEB_SHELL_COMPAT_CLIENT_BUILD_ID)
+            .header("x-oa-protocol-version", WEB_SHELL_COMPAT_PROTOCOL_VERSION)
+            .header("x-oa-schema-version", WEB_SHELL_COMPAT_SCHEMA_VERSION)
+            .body(body)
+            .map_err(|error| ControlApiError {
+                status_code: 500,
+                code: Some("request_build_failed".to_string()),
+                message: format!("failed to build request body: {error}"),
+                kind: CommandErrorKind::Unknown,
+                retryable: false,
+            })?
+            .send()
+            .await
+            .map_err(map_network_error)?;
+
+        decode_sse_response(response).await
     }
 
     fn apply_auth_action(action: AppAction) {
@@ -3479,6 +3535,47 @@ mod wasm {
                 retryable: classified.retryable,
             }
         })
+    }
+
+    async fn decode_sse_response(
+        response: gloo_net::http::Response,
+    ) -> Result<String, ControlApiError> {
+        let status = response.status();
+        let raw = response.text().await.map_err(|error| ControlApiError {
+            status_code: status,
+            code: Some("response_read_failed".to_string()),
+            message: error.to_string(),
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
+        })?;
+
+        if !(200..=299).contains(&status) {
+            let parsed_error: Option<ApiErrorBody> = serde_json::from_str(&raw).ok();
+            let code = parsed_error
+                .as_ref()
+                .and_then(|error| error.error.as_ref())
+                .and_then(|detail| detail.code.clone());
+            let message = parsed_error
+                .as_ref()
+                .and_then(|error| error.message.clone())
+                .or_else(|| {
+                    parsed_error
+                        .as_ref()
+                        .and_then(|error| error.error.as_ref())
+                        .and_then(|detail| detail.message.clone())
+                })
+                .unwrap_or_else(|| format!("request failed with status {status}"));
+            let classified = classify_http_error(status, code.as_deref(), message);
+            return Err(ControlApiError {
+                status_code: status,
+                code,
+                message: classified.message,
+                kind: classified.kind,
+                retryable: classified.retryable,
+            });
+        }
+
+        Ok(raw)
     }
 
     fn storage_error(message: String) -> ControlApiError {
@@ -6562,7 +6659,7 @@ mod wasm {
         let mut cards = vec![
             ManagementCard {
                 title: "Codex Chat Lane".to_string(),
-                body: "Web chat is routed through the Codex app-server contract and Khala WebSocket event stream."
+                body: "Web chat requests stream through `/api/chats/{thread}/stream` (Vercel-compatible SSE) while Khala remains the runtime sync lane."
                     .to_string(),
                 tone: ManagementCardTone::Success,
             },

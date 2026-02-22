@@ -169,6 +169,111 @@ impl CodexThreadState {
         }
     }
 
+    pub fn ingest_vercel_sse_wire(&mut self, wire: &str) -> usize {
+        let mut changed = 0usize;
+        for line in wire.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Some(raw_event) = trimmed.strip_prefix("data:") else {
+                continue;
+            };
+            let raw_event = raw_event.trim();
+            if raw_event == "[DONE]" {
+                if self.mark_all_streaming_complete() {
+                    changed = changed.saturating_add(1);
+                }
+                continue;
+            }
+            let Ok(event) = serde_json::from_str::<Value>(raw_event) else {
+                continue;
+            };
+            if self.ingest_vercel_sse_event(&event) {
+                changed = changed.saturating_add(1);
+            }
+        }
+        changed
+    }
+
+    pub fn ingest_vercel_sse_event(&mut self, event: &Value) -> bool {
+        let Some(event_type) = normalized_string(event.get("type")) else {
+            return false;
+        };
+        match event_type.as_str() {
+            "start" => {
+                let incoming_thread = normalized_string(event.get("threadId"))
+                    .or_else(|| normalized_string(event.get("thread_id")));
+                if let Some(incoming_thread) = incoming_thread {
+                    let previous = self.thread_id.clone();
+                    let _ = self.accept_thread(Some(incoming_thread.as_str()));
+                    self.thread_id != previous
+                } else {
+                    false
+                }
+            }
+            "start-step" => self.append_system_once("Turn started."),
+            "text-start" => false,
+            "text-delta" => {
+                let Some(item_id) = normalized_string(event.get("id")) else {
+                    return false;
+                };
+                let Some(delta) = normalized_string(event.get("delta")) else {
+                    return false;
+                };
+                let role = match normalized_string(event.get("channel"))
+                    .unwrap_or_else(|| "assistant".to_string())
+                    .to_ascii_lowercase()
+                    .as_str()
+                {
+                    "reasoning" => CodexMessageRole::Reasoning,
+                    _ => CodexMessageRole::Assistant,
+                };
+                self.append_stream_delta(role, &item_id, &delta)
+            }
+            "tool-input" => {
+                let tool_name =
+                    normalized_string(event.get("toolName")).unwrap_or_else(|| "tool".to_string());
+                self.append_system_once(&format!("Tool started: {tool_name}"))
+            }
+            "tool-output" => {
+                if normalized_string(event.get("status"))
+                    .map(|status| status.eq_ignore_ascii_case("completed"))
+                    .unwrap_or(false)
+                {
+                    self.append_system_once("Tool completed.")
+                } else {
+                    false
+                }
+            }
+            "finish-step" => {
+                let mut changed = self.mark_all_streaming_complete();
+                if self.append_system_once("Turn completed.") {
+                    changed = true;
+                }
+                changed
+            }
+            "error" => {
+                let mut changed = self.mark_all_streaming_complete();
+                let message = normalized_string(event.get("message"))
+                    .unwrap_or_else(|| "Stream error.".to_string());
+                if self.append_system_once(&message) {
+                    changed = true;
+                }
+                changed
+            }
+            "finish" => {
+                let mut changed = self.mark_all_streaming_complete();
+                let status = normalized_string(event.get("status")).unwrap_or_default();
+                if status.eq_ignore_ascii_case("error") && self.append_system_once("Turn failed.") {
+                    changed = true;
+                }
+                changed
+            }
+            _ => false,
+        }
+    }
+
     pub fn hydrate_history_if_empty(
         &mut self,
         thread_id: Option<String>,
@@ -296,6 +401,21 @@ impl CodexThreadState {
             CodexMessageRole::System | CodexMessageRole::User => {}
         }
         true
+    }
+
+    fn mark_all_streaming_complete(&mut self) -> bool {
+        let mut changed = false;
+        for message in &mut self.messages {
+            if message.streaming {
+                message.streaming = false;
+                changed = true;
+            }
+        }
+        if changed {
+            self.assistant_message_index_by_item.clear();
+            self.reasoning_message_index_by_item.clear();
+        }
+        changed
     }
 
     fn mark_completed(&mut self, item_id: &str) -> bool {
@@ -623,5 +743,85 @@ mod tests {
         assert!(!changed);
         assert_eq!(state.messages.len(), 1);
         assert_eq!(state.messages[0].text, "pending local message");
+    }
+
+    #[test]
+    fn vercel_sse_wire_lifecycle_start_delta_finish() {
+        let mut state = CodexThreadState::default();
+        let changed = state.ingest_vercel_sse_wire(
+            "data: {\"type\":\"start\",\"threadId\":\"thread-1\"}\n\n\
+             data: {\"type\":\"start-step\"}\n\n\
+             data: {\"type\":\"text-delta\",\"id\":\"item-1\",\"channel\":\"assistant\",\"delta\":\"Hello\"}\n\n\
+             data: {\"type\":\"finish-step\"}\n\n\
+             data: {\"type\":\"finish\",\"status\":\"completed\"}\n\n\
+             data: [DONE]\n\n",
+        );
+
+        assert!(changed > 0);
+        assert_eq!(state.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(state.messages[0].text, "Turn started.");
+        assert_eq!(state.messages[1].role, CodexMessageRole::Assistant);
+        assert_eq!(state.messages[1].text, "Hello");
+        assert!(!state.messages[1].streaming);
+        assert_eq!(state.messages[2].text, "Turn completed.");
+    }
+
+    #[test]
+    fn vercel_sse_wire_lifecycle_tool_events() {
+        let mut state = CodexThreadState::default();
+        let changed = state.ingest_vercel_sse_wire(
+            "data: {\"type\":\"start\",\"threadId\":\"thread-2\"}\n\n\
+             data: {\"type\":\"start-step\"}\n\n\
+             data: {\"type\":\"tool-input\",\"toolName\":\"web.search\"}\n\n\
+             data: {\"type\":\"tool-output\",\"status\":\"completed\"}\n\n\
+             data: {\"type\":\"finish-step\"}\n\n\
+             data: {\"type\":\"finish\",\"status\":\"completed\"}\n\n\
+             data: [DONE]\n\n",
+        );
+
+        assert!(changed > 0);
+        let tool_started = state
+            .messages
+            .iter()
+            .any(|message| message.text == "Tool started: web.search");
+        let tool_completed = state
+            .messages
+            .iter()
+            .any(|message| message.text == "Tool completed.");
+        assert!(tool_started);
+        assert!(tool_completed);
+    }
+
+    #[test]
+    fn vercel_sse_wire_lifecycle_error() {
+        let mut state = CodexThreadState::default();
+        let changed = state.ingest_vercel_sse_wire(
+            "data: {\"type\":\"start\",\"threadId\":\"thread-3\"}\n\n\
+             data: {\"type\":\"start-step\"}\n\n\
+             data: {\"type\":\"text-delta\",\"id\":\"item-err\",\"channel\":\"assistant\",\"delta\":\"Partial\"}\n\n\
+             data: {\"type\":\"error\",\"message\":\"runtime unavailable\"}\n\n\
+             data: {\"type\":\"finish\",\"status\":\"error\"}\n\n\
+             data: [DONE]\n\n",
+        );
+
+        assert!(changed > 0);
+        assert!(
+            state
+                .messages
+                .iter()
+                .any(|message| message.text == "runtime unavailable")
+        );
+        assert!(
+            state
+                .messages
+                .iter()
+                .any(|message| message.text == "Turn failed.")
+        );
+        let assistant = state
+            .messages
+            .iter()
+            .find(|message| message.role == CodexMessageRole::Assistant)
+            .expect("assistant stream message");
+        assert!(!assistant.streaming);
     }
 }
