@@ -12,6 +12,13 @@ enum WgpuiCodexRole: UInt8 {
     case error = 5
 }
 
+enum WgpuiInputTarget: UInt8 {
+    case none = 0
+    case composer = 1
+    case authEmail = 2
+    case authCode = 3
+}
+
 // Direct symbol bindings to avoid runtime dlsym/dead-strip issues.
 @_silgen_name("wgpui_ios_background_create")
 private func wgpui_ios_background_create(
@@ -67,8 +74,52 @@ private func wgpui_ios_background_set_empty_state(
     _ detailLen: Int
 )
 
+@_silgen_name("wgpui_ios_background_set_auth_fields")
+private func wgpui_ios_background_set_auth_fields(
+    _ state: UnsafeMutableRawPointer?,
+    _ emailPtr: UnsafePointer<CChar>?,
+    _ emailLen: Int,
+    _ codePtr: UnsafePointer<CChar>?,
+    _ codeLen: Int,
+    _ authStatusPtr: UnsafePointer<CChar>?,
+    _ authStatusLen: Int
+)
+
+@_silgen_name("wgpui_ios_background_set_operator_status")
+private func wgpui_ios_background_set_operator_status(
+    _ state: UnsafeMutableRawPointer?,
+    _ workerStatusPtr: UnsafePointer<CChar>?,
+    _ workerStatusLen: Int,
+    _ streamStatusPtr: UnsafePointer<CChar>?,
+    _ streamStatusLen: Int,
+    _ handshakeStatusPtr: UnsafePointer<CChar>?,
+    _ handshakeStatusLen: Int,
+    _ deviceStatusPtr: UnsafePointer<CChar>?,
+    _ deviceStatusLen: Int,
+    _ telemetryPtr: UnsafePointer<CChar>?,
+    _ telemetryLen: Int,
+    _ eventsPtr: UnsafePointer<CChar>?,
+    _ eventsLen: Int,
+    _ controlPtr: UnsafePointer<CChar>?,
+    _ controlLen: Int
+)
+
 @_silgen_name("wgpui_ios_background_set_composer_text")
 private func wgpui_ios_background_set_composer_text(
+    _ state: UnsafeMutableRawPointer?,
+    _ string: UnsafePointer<CChar>?,
+    _ length: Int
+)
+
+@_silgen_name("wgpui_ios_background_set_auth_email")
+private func wgpui_ios_background_set_auth_email(
+    _ state: UnsafeMutableRawPointer?,
+    _ string: UnsafePointer<CChar>?,
+    _ length: Int
+)
+
+@_silgen_name("wgpui_ios_background_set_auth_code")
+private func wgpui_ios_background_set_auth_code(
     _ state: UnsafeMutableRawPointer?,
     _ string: UnsafePointer<CChar>?,
     _ length: Int
@@ -79,6 +130,12 @@ private func wgpui_ios_background_composer_focused(_ state: UnsafeMutableRawPoin
 
 @_silgen_name("wgpui_ios_background_set_composer_focused")
 private func wgpui_ios_background_set_composer_focused(_ state: UnsafeMutableRawPointer?, _ focused: Int32)
+
+@_silgen_name("wgpui_ios_background_active_input_target")
+private func wgpui_ios_background_active_input_target(_ state: UnsafeMutableRawPointer?) -> UInt8
+
+@_silgen_name("wgpui_ios_background_set_active_input_target")
+private func wgpui_ios_background_set_active_input_target(_ state: UnsafeMutableRawPointer?, _ target: UInt8)
 
 @_silgen_name("wgpui_ios_background_consume_send_requested")
 private func wgpui_ios_background_consume_send_requested(_ state: UnsafeMutableRawPointer?) -> Int32
@@ -94,6 +151,27 @@ private func wgpui_ios_background_consume_model_cycle_requested(_ state: UnsafeM
 
 @_silgen_name("wgpui_ios_background_consume_reasoning_cycle_requested")
 private func wgpui_ios_background_consume_reasoning_cycle_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_send_code_requested")
+private func wgpui_ios_background_consume_send_code_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_verify_code_requested")
+private func wgpui_ios_background_consume_verify_code_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_sign_out_requested")
+private func wgpui_ios_background_consume_sign_out_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_refresh_workers_requested")
+private func wgpui_ios_background_consume_refresh_workers_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_connect_stream_requested")
+private func wgpui_ios_background_consume_connect_stream_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_disconnect_stream_requested")
+private func wgpui_ios_background_consume_disconnect_stream_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_send_handshake_requested")
+private func wgpui_ios_background_consume_send_handshake_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
 // Backward-compatible alias symbols.
 @_silgen_name("wgpui_ios_background_login_submit_requested")
@@ -218,12 +296,98 @@ enum WgpuiBackgroundBridge {
         }
     }
 
+    static func setAuthFields(
+        state: UnsafeMutableRawPointer?,
+        email: String,
+        code: String,
+        authStatus: String
+    ) {
+        withCStringBytes(email) { emailPtr, emailLen in
+            withCStringBytes(code) { codePtr, codeLen in
+                withCStringBytes(authStatus) { authStatusPtr, authStatusLen in
+                    wgpui_ios_background_set_auth_fields(
+                        state,
+                        emailPtr,
+                        emailLen,
+                        codePtr,
+                        codeLen,
+                        authStatusPtr,
+                        authStatusLen
+                    )
+                }
+            }
+        }
+    }
+
+    static func setOperatorStatus(
+        state: UnsafeMutableRawPointer?,
+        workerStatus: String,
+        streamStatus: String,
+        handshakeStatus: String,
+        deviceStatus: String,
+        telemetry: String,
+        events: String,
+        control: String
+    ) {
+        withCStringBytes(workerStatus) { workerPtr, workerLen in
+            withCStringBytes(streamStatus) { streamPtr, streamLen in
+                withCStringBytes(handshakeStatus) { handshakePtr, handshakeLen in
+                    withCStringBytes(deviceStatus) { devicePtr, deviceLen in
+                        withCStringBytes(telemetry) { telemetryPtr, telemetryLen in
+                            withCStringBytes(events) { eventsPtr, eventsLen in
+                                withCStringBytes(control) { controlPtr, controlLen in
+                                    wgpui_ios_background_set_operator_status(
+                                        state,
+                                        workerPtr,
+                                        workerLen,
+                                        streamPtr,
+                                        streamLen,
+                                        handshakePtr,
+                                        handshakeLen,
+                                        devicePtr,
+                                        deviceLen,
+                                        telemetryPtr,
+                                        telemetryLen,
+                                        eventsPtr,
+                                        eventsLen,
+                                        controlPtr,
+                                        controlLen
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     static func composerFocused(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_composer_focused(state) != 0
     }
 
     static func setComposerFocused(state: UnsafeMutableRawPointer?, focused: Bool) {
         wgpui_ios_background_set_composer_focused(state, focused ? 1 : 0)
+    }
+
+    static func setAuthEmail(state: UnsafeMutableRawPointer?, _ text: String) {
+        withCStringBytes(text) { ptr, len in
+            wgpui_ios_background_set_auth_email(state, ptr, len)
+        }
+    }
+
+    static func setAuthCode(state: UnsafeMutableRawPointer?, _ text: String) {
+        withCStringBytes(text) { ptr, len in
+            wgpui_ios_background_set_auth_code(state, ptr, len)
+        }
+    }
+
+    static func activeInputTarget(state: UnsafeMutableRawPointer?) -> WgpuiInputTarget {
+        WgpuiInputTarget(rawValue: wgpui_ios_background_active_input_target(state)) ?? .none
+    }
+
+    static func setActiveInputTarget(state: UnsafeMutableRawPointer?, _ target: WgpuiInputTarget) {
+        wgpui_ios_background_set_active_input_target(state, target.rawValue)
     }
 
     static func consumeSendRequested(state: UnsafeMutableRawPointer?) -> Bool {
@@ -244,6 +408,34 @@ enum WgpuiBackgroundBridge {
 
     static func consumeReasoningCycleRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_reasoning_cycle_requested(state) != 0
+    }
+
+    static func consumeSendCodeRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_send_code_requested(state) != 0
+    }
+
+    static func consumeVerifyCodeRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_verify_code_requested(state) != 0
+    }
+
+    static func consumeSignOutRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_sign_out_requested(state) != 0
+    }
+
+    static func consumeRefreshWorkersRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_refresh_workers_requested(state) != 0
+    }
+
+    static func consumeConnectStreamRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_connect_stream_requested(state) != 0
+    }
+
+    static func consumeDisconnectStreamRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_disconnect_stream_requested(state) != 0
+    }
+
+    static func consumeSendHandshakeRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_send_handshake_requested(state) != 0
     }
 
     // Compatibility wrappers (legacy login naming).
