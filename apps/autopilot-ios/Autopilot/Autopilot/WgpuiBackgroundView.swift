@@ -258,12 +258,16 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         WgpuiBackgroundBridge.setOperatorStatus(
             state: statePtr,
             workerStatus: workerStatusText(model: model),
-            streamStatus: streamDescription(model.streamState),
+            streamStatus: model.missionControlStreamBadge,
             handshakeStatus: handshakeDescription(model.handshakeState),
             deviceStatus: "device: \(model.deviceID)",
             telemetry: telemetrySummary(model: model),
             events: eventsSummary(model: model),
             control: controlRequestSummary(model: model)
+        )
+        WgpuiBackgroundBridge.setMissionMutationsEnabled(
+            state: statePtr,
+            enabled: model.missionMutationsAllowed
         )
         syncMissionControlProjection(state: statePtr, projection: projection)
 

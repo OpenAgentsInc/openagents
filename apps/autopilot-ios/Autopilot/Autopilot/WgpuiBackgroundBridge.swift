@@ -251,6 +251,9 @@ private func wgpui_ios_background_active_input_target(_ state: UnsafeMutableRawP
 @_silgen_name("wgpui_ios_background_set_active_input_target")
 private func wgpui_ios_background_set_active_input_target(_ state: UnsafeMutableRawPointer?, _ target: UInt8)
 
+@_silgen_name("wgpui_ios_background_set_mission_mutations_enabled")
+private func wgpui_ios_background_set_mission_mutations_enabled(_ state: UnsafeMutableRawPointer?, _ enabled: Int32)
+
 @_silgen_name("wgpui_ios_background_consume_send_requested")
 private func wgpui_ios_background_consume_send_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
@@ -763,6 +766,10 @@ enum WgpuiBackgroundBridge {
 
     static func setActiveInputTarget(state: UnsafeMutableRawPointer?, _ target: WgpuiInputTarget) {
         wgpui_ios_background_set_active_input_target(state, target.rawValue)
+    }
+
+    static func setMissionMutationsEnabled(state: UnsafeMutableRawPointer?, enabled: Bool) {
+        wgpui_ios_background_set_mission_mutations_enabled(state, enabled ? 1 : 0)
     }
 
     static func consumeSendRequested(state: UnsafeMutableRawPointer?) -> Bool {

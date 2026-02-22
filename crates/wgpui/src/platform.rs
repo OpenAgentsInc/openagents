@@ -914,6 +914,7 @@ pub mod ios {
         stop_worker_requested: bool,
         refresh_snapshot_requested: bool,
         mission_control_mode: bool,
+        mission_mutations_enabled: bool,
         mission_route: MissionRoute,
         mission_filter: MissionEventFilter,
         mission_pin_critical: bool,
@@ -1069,6 +1070,7 @@ pub mod ios {
                 stop_worker_requested: false,
                 refresh_snapshot_requested: false,
                 mission_control_mode: true,
+                mission_mutations_enabled: true,
                 mission_route: MissionRoute::Overview,
                 mission_filter: MissionEventFilter::All,
                 mission_pin_critical: false,
@@ -1479,11 +1481,11 @@ pub mod ios {
 
             if self.mission_control_mode {
                 let mission_thread_detail = matches!(self.mission_route, MissionRoute::ThreadDetail { .. });
-                if mission_thread_detail && composer_bounds.contains(p) {
+                if self.mission_mutations_enabled && mission_thread_detail && composer_bounds.contains(p) {
                     self.active_input_target = InputTarget::Composer;
                     return;
                 }
-                if mission_thread_detail && send_bounds.contains(p) {
+                if self.mission_mutations_enabled && mission_thread_detail && send_bounds.contains(p) {
                     self.send_requested = true;
                     self.active_input_target = InputTarget::None;
                     return;
@@ -1518,27 +1520,29 @@ pub mod ios {
                         return;
                     }
                 }
-                if let Some(region) = self
-                    .mission_quick_action_tap_regions
-                    .iter()
-                    .find(|region| region.bounds.contains(p))
-                {
-                    match region.action {
-                        MissionQuickAction::Interrupt => {
-                            self.interrupt_requested = true;
+                if self.mission_mutations_enabled {
+                    if let Some(region) = self
+                        .mission_quick_action_tap_regions
+                        .iter()
+                        .find(|region| region.bounds.contains(p))
+                    {
+                        match region.action {
+                            MissionQuickAction::Interrupt => {
+                                self.interrupt_requested = true;
+                            }
+                            MissionQuickAction::ThreadRead => {
+                                self.thread_read_requested = true;
+                            }
+                            MissionQuickAction::StopWorker => {
+                                self.stop_worker_requested = true;
+                            }
+                            MissionQuickAction::RefreshSnapshot => {
+                                self.refresh_snapshot_requested = true;
+                            }
                         }
-                        MissionQuickAction::ThreadRead => {
-                            self.thread_read_requested = true;
-                        }
-                        MissionQuickAction::StopWorker => {
-                            self.stop_worker_requested = true;
-                        }
-                        MissionQuickAction::RefreshSnapshot => {
-                            self.refresh_snapshot_requested = true;
-                        }
+                        self.active_input_target = InputTarget::None;
+                        return;
                     }
-                    self.active_input_target = InputTarget::None;
-                    return;
                 }
                 if let Some(region) = self
                     .mission_filter_tap_regions
@@ -2049,6 +2053,13 @@ pub mod ios {
             self.active_input_target = target;
         }
 
+        fn set_mission_mutations_enabled(&mut self, enabled: bool) {
+            self.mission_mutations_enabled = enabled;
+            if !enabled && self.active_input_target == InputTarget::Composer {
+                self.active_input_target = InputTarget::None;
+            }
+        }
+
         pub fn consume_send_requested(&mut self) -> bool {
             let requested = self.send_requested;
             self.send_requested = false;
@@ -2454,6 +2465,7 @@ pub mod ios {
             let control_text = self.control_text.clone();
             let active_input_target = self.active_input_target;
             let mission_control_mode = self.mission_control_mode;
+            let mission_mutations_enabled = self.mission_mutations_enabled;
             let mission_route = self.mission_route.clone();
             let mission_filter = self.mission_filter;
             let mission_pin_critical = self.mission_pin_critical;
@@ -2596,6 +2608,44 @@ pub mod ios {
                     &mut paint,
                 );
 
+                let mut auxiliary_line_y = context_bounds.y() + 38.0;
+                if !mission_mutations_enabled {
+                    let mut ro_text = Text::new("read-only controls (auth degraded)")
+                        .font_size(MISSION_STATUS_FONT_SIZE)
+                        .color(theme::status::WARNING.with_alpha(0.9))
+                        .no_wrap();
+                    ro_text.paint(
+                        Bounds::new(
+                            context_bounds.x() + 8.0,
+                            auxiliary_line_y,
+                            context_bounds.width() - 16.0,
+                            14.0,
+                        ),
+                        &mut paint,
+                    );
+                    auxiliary_line_y += 14.0;
+                }
+
+                if let Some(marker) = mission_events.iter().rev().find(|event| event.resync_marker)
+                {
+                    let mut reconciled = Text::new(format!(
+                        "history reconciled: {}",
+                        marker.summary
+                    ))
+                    .font_size(MISSION_STATUS_FONT_SIZE)
+                    .color(theme::status::WARNING.with_alpha(0.9))
+                    .no_wrap();
+                    reconciled.paint(
+                        Bounds::new(
+                            context_bounds.x() + 8.0,
+                            auxiliary_line_y,
+                            context_bounds.width() - 16.0,
+                            14.0,
+                        ),
+                        &mut paint,
+                    );
+                }
+
                 if !matches!(mission_route, MissionRoute::Overview) {
                     let back_bounds = Bounds::new(
                         context_bounds.x() + context_bounds.width() - 76.0,
@@ -2728,8 +2778,10 @@ pub mod ios {
                                 Bounds::new(action_x, action_row_y, action_width, action_height);
                             let mut button = Button::new(label).variant(ButtonVariant::Secondary);
                             button.paint(bounds, &mut paint);
-                            mission_quick_action_tap_regions
-                                .push(MissionQuickActionTapRegion { bounds, action });
+                            if mission_mutations_enabled {
+                                mission_quick_action_tap_regions
+                                    .push(MissionQuickActionTapRegion { bounds, action });
+                            }
                             action_x += action_width + action_gap;
                         }
 
@@ -3013,8 +3065,10 @@ pub mod ios {
                                 Bounds::new(action_x, action_row_y, action_width, action_height);
                             let mut button = Button::new(label).variant(ButtonVariant::Secondary);
                             button.paint(bounds, &mut paint);
-                            mission_quick_action_tap_regions
-                                .push(MissionQuickActionTapRegion { bounds, action });
+                            if mission_mutations_enabled {
+                                mission_quick_action_tap_regions
+                                    .push(MissionQuickActionTapRegion { bounds, action });
+                            }
                             action_x += action_width + action_gap;
                         }
 
@@ -3213,8 +3267,10 @@ pub mod ios {
                                 Bounds::new(action_x, action_row_y, action_width, action_height);
                             let mut button = Button::new(label).variant(ButtonVariant::Secondary);
                             button.paint(bounds, &mut paint);
-                            mission_quick_action_tap_regions
-                                .push(MissionQuickActionTapRegion { bounds, action });
+                            if mission_mutations_enabled {
+                                mission_quick_action_tap_regions
+                                    .push(MissionQuickActionTapRegion { bounds, action });
+                            }
                             action_x += action_width + action_gap;
                         }
 
@@ -3417,13 +3473,37 @@ pub mod ios {
                 }
 
                 if matches!(mission_route, MissionRoute::ThreadDetail { .. }) {
-                    let mut composer = TextInput::new().placeholder("Message Codex");
-                    composer.set_value(&composer_text);
-                    composer.set_focused(active_input_target == InputTarget::Composer);
-                    composer.paint(composer_bounds, &mut paint);
+                    if mission_mutations_enabled {
+                        let mut composer = TextInput::new().placeholder("Message Codex");
+                        composer.set_value(&composer_text);
+                        composer.set_focused(active_input_target == InputTarget::Composer);
+                        composer.paint(composer_bounds, &mut paint);
 
-                    let mut send = Button::new("Send").variant(ButtonVariant::Primary);
-                    send.paint(send_bounds, &mut paint);
+                        let mut send = Button::new("Send").variant(ButtonVariant::Primary);
+                        send.paint(send_bounds, &mut paint);
+                    } else {
+                        paint.scene.draw_quad(
+                            Quad::new(composer_bounds)
+                                .with_background(theme::bg::SURFACE.with_alpha(0.75))
+                                .with_border(theme::border::DEFAULT.with_alpha(0.7), 1.0)
+                                .with_corner_radius(8.0),
+                        );
+                        let mut readonly = Text::new("Read-only mode: sign in to send controls")
+                            .font_size(11.0)
+                            .color(theme::text::MUTED)
+                            .no_wrap();
+                        readonly.paint(
+                            Bounds::new(
+                                composer_bounds.x() + 8.0,
+                                composer_bounds.y() + 10.0,
+                                composer_bounds.width() - 12.0,
+                                16.0,
+                            ),
+                            &mut paint,
+                        );
+                        let mut send = Button::new("Send").variant(ButtonVariant::Secondary);
+                        send.paint(send_bounds, &mut paint);
+                    }
                 }
             } else {
                 Self::render_messages(
@@ -4602,6 +4682,18 @@ pub mod ios {
         }
         let state = unsafe { &mut *state };
         state.set_active_input_target(InputTarget::from_u8(target));
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_mission_mutations_enabled(
+        state: *mut IosBackgroundState,
+        enabled: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_mission_mutations_enabled(enabled != 0);
     }
 
     #[unsafe(no_mangle)]

@@ -20,7 +20,11 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
     }
 
-    @Published var streamState: StreamState = .idle
+    @Published var streamState: StreamState = .idle {
+        didSet {
+            refreshMissionReconnectStateForKnownWorkers()
+        }
+    }
     @Published private(set) var streamLifecycle = KhalaLifecycleSnapshot()
     @Published var handshakeState: HandshakeState = .idle
     @Published var statusMessage: String?
@@ -38,6 +42,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var chatMessages: [CodexChatMessage] = []
     @Published private(set) var controlRequests: [RuntimeCodexControlRequestTracker] = []
     @Published private(set) var missionControlProjection: RuntimeMissionControlProjection = .empty
+    @Published private(set) var missionControlReadOnlyMode: Bool = false
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
@@ -46,6 +51,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var khalaWorkerEventsWatermark: Int
     private var pendingResyncFromByTopic: [String: Int] = [:]
+    private var awaitingReplayCatchup = false
     private var nextCodeSendAllowedAt: Date?
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
@@ -153,6 +159,14 @@ final class CodexHandshakeViewModel: ObservableObject {
             return false
         }
         return selectedWorkerID != nil || preferredWorker(from: workers) != nil
+    }
+
+    var missionMutationsAllowed: Bool {
+        isAuthenticated && !missionControlReadOnlyMode
+    }
+
+    var missionControlStreamBadge: String {
+        streamReconnectStateLabel()
     }
 
     var canInterruptTurn: Bool {
@@ -460,6 +474,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         persistResumeCheckpointStore()
         khalaWorkerEventsWatermark = 0
         pendingResyncFromByTopic.removeAll()
+        awaitingReplayCatchup = false
         defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
         isSendingCode = false
@@ -479,6 +494,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         resetChatTimeline()
         streamState = .idle
         handshakeState = .idle
+        missionControlReadOnlyMode = false
 
         authState = .signedOut
         statusMessage = "Signed out."
@@ -1377,6 +1393,9 @@ final class CodexHandshakeViewModel: ObservableObject {
             selectedWorkerID = worker.workerID
         }
 
+        if isAuthenticated {
+            missionControlReadOnlyMode = false
+        }
         isBackgroundPaused = false
         lifecycleResumeState.invalidate()
         restartStreamIfReady(resetCursor: false)
@@ -1391,6 +1410,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         clearActiveKhalaSession()
         activeStreamWorkerID = nil
         streamState = .idle
+        awaitingReplayCatchup = false
         resetReconnectTracking()
         isBackgroundPaused = false
         lifecycleResumeState.invalidate()
@@ -1408,6 +1428,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             clearActiveKhalaSession()
             activeStreamWorkerID = nil
             streamState = .idle
+            awaitingReplayCatchup = false
             resetReconnectTracking()
             return
         }
@@ -1429,6 +1450,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeKhalaSocket = nil
         clearActiveKhalaSession()
         activeStreamWorkerID = workerID
+        awaitingReplayCatchup = false
         resetReconnectTracking()
 
         if resetCursor {
@@ -1456,6 +1478,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         clearActiveKhalaSession()
         activeStreamWorkerID = nil
         streamState = .idle
+        awaitingReplayCatchup = false
         resetReconnectTracking()
         recordLifecycleEvent("stream_paused_background")
     }
@@ -1527,6 +1550,9 @@ final class CodexHandshakeViewModel: ObservableObject {
                 activeKhalaSocket = socket
 
                 let resumeAfterByTopic = khalaResumeAfterByTopic()
+                if resumeAfterByTopic.values.contains(where: { $0 > 0 }) && inReconnect {
+                    awaitingReplayCatchup = true
+                }
 
                 guard let khalaSession = RustClientCoreBridge.createKhalaSession(
                     topics: Self.khalaSubscribedTopics,
@@ -1606,6 +1632,9 @@ final class CodexHandshakeViewModel: ObservableObject {
                     recordLifecycleEvent("stream_unauthorized worker=\(shortWorkerID(workerID))")
                     streamState = .idle
                     activeStreamWorkerID = nil
+                    awaitingReplayCatchup = false
+                    missionControlReadOnlyMode = true
+                    refreshMissionReconnectStateForKnownWorkers()
                     errorMessage = "Khala stream unauthorized. Stay signed in, then reload workers."
                     statusMessage = nil
                     resetReconnectTracking()
@@ -1652,7 +1681,18 @@ final class CodexHandshakeViewModel: ObservableObject {
             try await socket.send(.string(frame))
 
         case "live":
+            if awaitingReplayCatchup || !pendingResyncFromByTopic.isEmpty {
+                streamState = .reconnecting
+                errorMessage = nil
+                statusMessage = "Stream transport live for \(shortWorkerID(workerID)); replay catch-up in progress..."
+                recordLifecycleEvent(
+                    "stream_transport_live_replay worker=\(shortWorkerID(workerID)) pending_resync=\(!pendingResyncFromByTopic.isEmpty)"
+                )
+                return
+            }
+
             streamState = .live
+            missionControlReadOnlyMode = false
             errorMessage = nil
             statusMessage = "Stream live for \(shortWorkerID(workerID))."
             streamLifecycle.successfulSessions += 1
@@ -1673,6 +1713,15 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         case "events":
             applyTopicWatermarks(step.topicWatermarks, fallbackWorkerID: workerID)
+
+            if awaitingReplayCatchup && pendingResyncFromByTopic.isEmpty {
+                awaitingReplayCatchup = false
+                streamState = .live
+                missionControlReadOnlyMode = false
+                errorMessage = nil
+                statusMessage = "Stream live for \(shortWorkerID(workerID))."
+                recordLifecycleEvent("stream_replay_catchup_complete worker=\(shortWorkerID(workerID))")
+            }
 
             let sessionEvents = (step.events ?? []).sorted { lhs, rhs in
                 let lhsSeq = lhs.seq ?? Int.min
@@ -1747,7 +1796,10 @@ final class CodexHandshakeViewModel: ObservableObject {
             }
             persistWatermark(0, topic: topic, workerID: workerID, allowDecrease: true)
         }
+        awaitingReplayCatchup = true
+        statusMessage = "Stale cursor recovery started. Replaying history..."
         recordLifecycleEvent("stale_cursor_reset reason=\(reason)")
+        refreshMissionReconnectStateForKnownWorkers()
     }
 
     private func khalaJoin(
@@ -3328,8 +3380,13 @@ final class CodexHandshakeViewModel: ObservableObject {
                     workerID: nil
                 )
                 pendingResyncFromByTopic.removeValue(forKey: topic)
+                statusMessage = "History reconciled (\(topic)) from seq \(fromSeq) to \(watermark)."
                 recordLifecycleEvent("resynced topic=\(topic) from=\(fromSeq) to=\(watermark)")
             }
+        }
+
+        if pendingResyncFromByTopic.isEmpty {
+            refreshMissionReconnectStateForKnownWorkers()
         }
     }
 
@@ -3416,7 +3473,31 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
     }
 
+    private func refreshMissionReconnectStateForKnownWorkers() {
+        guard !workers.isEmpty else {
+            return
+        }
+        let reconnectState = streamReconnectStateLabel()
+        for worker in workers {
+            missionControlProjection = missionControlStore.ingestWorkerSummary(
+                worker,
+                reconnectState: reconnectState,
+                occurredAt: iso8601(now())
+            )
+        }
+    }
+
     private func streamReconnectStateLabel() -> String {
+        if missionControlReadOnlyMode {
+            return "auth degraded"
+        }
+        if !pendingResyncFromByTopic.isEmpty {
+            return "stale cursor recovery"
+        }
+        if awaitingReplayCatchup {
+            return "replay catch-up"
+        }
+
         switch streamState {
         case .idle:
             return "idle"
@@ -3662,6 +3743,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         authState = .authenticated(email: email.isEmpty ? nil : email)
+        missionControlReadOnlyMode = false
+        refreshMissionReconnectStateForKnownWorkers()
     }
 
     private func clearSessionTokens() {
@@ -3697,6 +3780,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         } catch {
             clearSessionTokens()
             authState = .signedOut
+            missionControlReadOnlyMode = false
             return nil
         }
     }
