@@ -55,6 +55,7 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_AUTH_MOCK_MAGIC_CODE` (default: `123456`)
 - `OA_AUTH_LOCAL_TEST_LOGIN_ENABLED` (`true|false`, default: `false`; allows `test_local_*` WorkOS bypass lane in local testing)
 - `OA_ADMIN_EMAILS` (CSV admin allowlist for admin middleware parity routes)
+- `OA_AUTH_STORE_PATH` (optional filesystem path for durable auth/session/token store snapshots)
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)
 - `OA_AUTH_ACCESS_TTL_SECONDS` (default: `3600`)
 - `OA_AUTH_REFRESH_TTL_SECONDS` (default: `2592000`)
@@ -208,6 +209,9 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - Session records are device-scoped (`x-device-id` / `device_id`) and auditable via `GET /api/auth/sessions`.
 - Device-scoped and global revocation are supported via `POST /api/auth/sessions/revoke`.
 - When runtime revocation config is set, session invalidation signals are propagated to runtime (`/internal/v1/sync/sessions/revoke`) for live websocket eviction.
+
+Auth persistence and token-domain storage notes:
+- `apps/openagents.com/service/docs/AUTH_PERSISTENCE.md`
 
 ## Route split and rollback
 

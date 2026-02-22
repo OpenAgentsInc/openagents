@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,12 +17,14 @@ const DEFAULT_CLIENT_NAME: &str = "web";
 pub struct AuthService {
     provider: Arc<dyn IdentityProvider>,
     state: Arc<RwLock<AuthState>>,
+    store: AuthStateStore,
     challenge_ttl: Duration,
     access_ttl: Duration,
     refresh_ttl: Duration,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 struct AuthState {
     challenges: HashMap<String, PendingChallenge>,
     sessions: HashMap<String, SessionRecord>,
@@ -32,16 +35,17 @@ struct AuthState {
     users_by_id: HashMap<String, UserRecord>,
     users_by_email: HashMap<String, String>,
     users_by_workos_id: HashMap<String, String>,
+    personal_access_tokens: HashMap<String, PersonalAccessTokenRecord>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PendingChallenge {
     email: String,
     pending_workos_user_id: String,
     expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SessionRecord {
     session_id: String,
     user_id: String,
@@ -62,7 +66,7 @@ struct SessionRecord {
     revoked_reason: Option<SessionRevocationReason>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct RevokedRefreshTokenRecord {
     refresh_token_id: String,
     session_id: String,
@@ -72,7 +76,7 @@ struct RevokedRefreshTokenRecord {
     reason: RefreshTokenRevocationReason,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UserRecord {
     id: String,
     email: String,
@@ -81,7 +85,7 @@ struct UserRecord {
     memberships: Vec<OrgMembership>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
     Active,
@@ -112,7 +116,7 @@ impl SessionRevocationReason {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RefreshTokenRevocationReason {
     Rotated,
@@ -292,13 +296,126 @@ struct UnavailableIdentityProvider {
     message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersonalAccessTokenRecord {
+    token_id: String,
+    user_id: String,
+    name: String,
+    token: String,
+    scopes: Vec<String>,
+    created_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
+    revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PersonalAccessTokenView {
+    pub token_id: String,
+    pub name: String,
+    pub scopes: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersonalAccessTokenIssueResult {
+    pub token_id: String,
+    pub plain_text_token: String,
+    pub token: PersonalAccessTokenView,
+}
+
+#[derive(Debug, Clone)]
+struct AuthStateStore {
+    path: Option<PathBuf>,
+}
+
+impl AuthStateStore {
+    fn from_config(config: &Config) -> Self {
+        Self {
+            path: config.auth_store_path.clone(),
+        }
+    }
+
+    fn load_state(&self) -> AuthState {
+        let Some(path) = self.path.as_ref() else {
+            return AuthState::default();
+        };
+
+        let raw = match std::fs::read_to_string(path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return AuthState::default();
+            }
+            Err(error) => {
+                tracing::warn!(
+                    target: "openagents.auth",
+                    path = %path.display(),
+                    error = %error,
+                    "failed to read auth store; booting with empty auth state",
+                );
+                return AuthState::default();
+            }
+        };
+
+        match serde_json::from_str::<AuthState>(&raw) {
+            Ok(state) => state,
+            Err(error) => {
+                tracing::warn!(
+                    target: "openagents.auth",
+                    path = %path.display(),
+                    error = %error,
+                    "failed to parse auth store; booting with empty auth state",
+                );
+                AuthState::default()
+            }
+        }
+    }
+
+    async fn persist_state(&self, state: &AuthState) -> Result<(), AuthError> {
+        let Some(path) = self.path.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| AuthError::Provider {
+                    message: format!("failed to prepare auth store directory: {error}"),
+                })?;
+        }
+
+        let payload = serde_json::to_vec(state).map_err(|error| AuthError::Provider {
+            message: format!("failed to encode auth store payload: {error}"),
+        })?;
+        let temp_path = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
+
+        tokio::fs::write(&temp_path, payload)
+            .await
+            .map_err(|error| AuthError::Provider {
+                message: format!("failed to write auth store payload: {error}"),
+            })?;
+
+        tokio::fs::rename(&temp_path, path)
+            .await
+            .map_err(|error| AuthError::Provider {
+                message: format!("failed to finalize auth store payload: {error}"),
+            })?;
+
+        Ok(())
+    }
+}
+
 impl AuthService {
     pub fn from_config(config: &Config) -> Self {
         let provider = provider_from_config(config);
+        let store = AuthStateStore::from_config(config);
+        let loaded_state = store.load_state();
 
         Self {
             provider,
-            state: Arc::new(RwLock::new(AuthState::default())),
+            state: Arc::new(RwLock::new(loaded_state)),
+            store,
             challenge_ttl: Duration::seconds(config.auth_challenge_ttl_seconds as i64),
             access_ttl: Duration::seconds(config.auth_access_ttl_seconds as i64),
             refresh_ttl: Duration::seconds(config.auth_refresh_ttl_seconds as i64),
@@ -307,6 +424,10 @@ impl AuthService {
 
     pub fn provider_name(&self) -> &'static str {
         self.provider.name()
+    }
+
+    async fn persist_state_snapshot(&self, snapshot: AuthState) -> Result<(), AuthError> {
+        self.store.persist_state(&snapshot).await
     }
 
     pub async fn start_challenge(&self, email: String) -> Result<ChallengeResult, AuthError> {
@@ -324,8 +445,12 @@ impl AuthService {
             expires_at,
         };
 
-        let mut state = self.state.write().await;
-        state.challenges.insert(challenge_id.clone(), challenge);
+        let snapshot = {
+            let mut state = self.state.write().await;
+            state.challenges.insert(challenge_id.clone(), challenge);
+            state.clone()
+        };
+        self.persist_state_snapshot(snapshot).await?;
 
         Ok(ChallengeResult {
             challenge_id,
@@ -387,76 +512,83 @@ impl AuthService {
         let device_id = normalize_device_id(requested_device_id, &token_name)?;
         let now = Utc::now();
 
-        let mut state = self.state.write().await;
+        let (result, snapshot) = {
+            let mut state = self.state.write().await;
 
-        let (user, new_user) = upsert_user(&mut state, verified)?;
-        let active_org_id = user
-            .memberships
-            .iter()
-            .find(|membership| membership.default_org)
-            .map(|membership| membership.org_id.clone())
-            .or_else(|| {
-                user.memberships
-                    .first()
-                    .map(|membership| membership.org_id.clone())
-            })
-            .unwrap_or_else(|| format!("user:{}", user.id));
+            let (user, new_user) = upsert_user(&mut state, verified)?;
+            let active_org_id = user
+                .memberships
+                .iter()
+                .find(|membership| membership.default_org)
+                .map(|membership| membership.org_id.clone())
+                .or_else(|| {
+                    user.memberships
+                        .first()
+                        .map(|membership| membership.org_id.clone())
+                })
+                .unwrap_or_else(|| format!("user:{}", user.id));
 
-        revoke_existing_sessions_for_device(
-            &mut state,
-            &user.id,
-            &device_id,
-            SessionRevocationReason::DeviceReplaced,
-            now,
-        );
+            revoke_existing_sessions_for_device(
+                &mut state,
+                &user.id,
+                &device_id,
+                SessionRevocationReason::DeviceReplaced,
+                now,
+            );
 
-        let session_id = format!("sess_{}", Uuid::new_v4().simple());
-        let access_token = format!("oa_at_{}", Uuid::new_v4().simple());
-        let refresh_token = format!("oa_rt_{}", Uuid::new_v4().simple());
-        let refresh_token_id = format!("rtid_{}", Uuid::new_v4().simple());
+            let session_id = format!("sess_{}", Uuid::new_v4().simple());
+            let access_token = format!("oa_at_{}", Uuid::new_v4().simple());
+            let refresh_token = format!("oa_rt_{}", Uuid::new_v4().simple());
+            let refresh_token_id = format!("rtid_{}", Uuid::new_v4().simple());
 
-        let session = SessionRecord {
-            session_id: session_id.clone(),
-            user_id: user.id.clone(),
-            email: user.email.clone(),
-            device_id: device_id.clone(),
-            token_name: token_name.clone(),
-            active_org_id,
-            access_token: access_token.clone(),
-            refresh_token: refresh_token.clone(),
-            refresh_token_id: refresh_token_id.clone(),
-            issued_at: now,
-            access_expires_at: now + self.access_ttl,
-            refresh_expires_at: now + self.refresh_ttl,
-            status: SessionStatus::Active,
-            reauth_required: false,
-            last_refreshed_at: None,
-            revoked_at: None,
-            revoked_reason: None,
+            let session = SessionRecord {
+                session_id: session_id.clone(),
+                user_id: user.id.clone(),
+                email: user.email.clone(),
+                device_id: device_id.clone(),
+                token_name: token_name.clone(),
+                active_org_id,
+                access_token: access_token.clone(),
+                refresh_token: refresh_token.clone(),
+                refresh_token_id: refresh_token_id.clone(),
+                issued_at: now,
+                access_expires_at: now + self.access_ttl,
+                refresh_expires_at: now + self.refresh_ttl,
+                status: SessionStatus::Active,
+                reauth_required: false,
+                last_refreshed_at: None,
+                revoked_at: None,
+                revoked_reason: None,
+            };
+
+            state
+                .access_index
+                .insert(access_token.clone(), session_id.clone());
+            state
+                .refresh_index
+                .insert(refresh_token.clone(), session_id.clone());
+            state.sessions.insert(session_id.clone(), session.clone());
+
+            let result = VerifyResult {
+                user: AuthUser {
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    workos_user_id: user.workos_user_id,
+                },
+                token_type: "Bearer",
+                access_token,
+                refresh_token,
+                token_name,
+                session: SessionView::from_session(&session),
+                new_user,
+            };
+
+            (result, state.clone())
         };
 
-        state
-            .access_index
-            .insert(access_token.clone(), session_id.clone());
-        state
-            .refresh_index
-            .insert(refresh_token.clone(), session_id.clone());
-        state.sessions.insert(session_id.clone(), session.clone());
-
-        Ok(VerifyResult {
-            user: AuthUser {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                workos_user_id: user.workos_user_id,
-            },
-            token_type: "Bearer",
-            access_token,
-            refresh_token,
-            token_name,
-            session: SessionView::from_session(&session),
-            new_user,
-        })
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(result)
     }
 
     pub async fn session_from_access_token(
@@ -484,6 +616,9 @@ impl AuthService {
 
         if session.status != SessionStatus::Active {
             state.access_index.remove(access_token);
+            let snapshot = state.clone();
+            drop(state);
+            let _ = self.persist_state_snapshot(snapshot).await;
             return Err(AuthError::Unauthorized {
                 message: auth_denied_message(session.status),
             });
@@ -496,6 +631,9 @@ impl AuthService {
                 stale_session.revoked_at = None;
             }
             state.access_index.remove(access_token);
+            let snapshot = state.clone();
+            drop(state);
+            let _ = self.persist_state_snapshot(snapshot).await;
             return Err(AuthError::Unauthorized {
                 message: "Unauthenticated.".to_string(),
             });
@@ -564,6 +702,9 @@ impl AuthService {
                 );
             }
 
+            let snapshot = state.clone();
+            drop(state);
+            let _ = self.persist_state_snapshot(snapshot).await;
             return Err(AuthError::Unauthorized {
                 message: "Refresh token was already rotated or revoked.".to_string(),
             });
@@ -598,6 +739,9 @@ impl AuthService {
 
         if existing.status != SessionStatus::Active {
             state.refresh_index.remove(refresh_token);
+            let snapshot = state.clone();
+            drop(state);
+            let _ = self.persist_state_snapshot(snapshot).await;
             return Err(AuthError::Unauthorized {
                 message: auth_denied_message(existing.status),
             });
@@ -610,6 +754,9 @@ impl AuthService {
                 stale_session.revoked_at = None;
             }
             state.refresh_index.remove(refresh_token);
+            let snapshot = state.clone();
+            drop(state);
+            let _ = self.persist_state_snapshot(snapshot).await;
             return Err(AuthError::Unauthorized {
                 message: "Refresh session expired.".to_string(),
             });
@@ -655,6 +802,9 @@ impl AuthService {
         let refresh_token_id_out = existing.refresh_token_id.clone();
         let updated_view = SessionView::from_session(&existing);
         state.sessions.insert(session_id, existing);
+        let snapshot = state.clone();
+        drop(state);
+        self.persist_state_snapshot(snapshot).await?;
 
         Ok(RefreshResult {
             token_type: "Bearer",
@@ -693,6 +843,9 @@ impl AuthService {
             SessionRevocationReason::UserRequested,
             revoked_at,
         );
+        let snapshot = state.clone();
+        drop(state);
+        self.persist_state_snapshot(snapshot).await?;
         Ok(RevocationResult {
             session_id,
             revoked_at,
@@ -790,6 +943,9 @@ impl AuthService {
 
         revoked_session_ids.sort();
         revoked_refresh_token_ids.sort();
+        let snapshot = state.clone();
+        drop(state);
+        self.persist_state_snapshot(snapshot).await?;
 
         Ok(SessionBatchRevocationResult {
             revoked_session_ids,
@@ -857,6 +1013,9 @@ impl AuthService {
         let mut updated = existing;
         updated.active_org_id = org_id.to_string();
         state.sessions.insert(session_id, updated.clone());
+        let snapshot = state.clone();
+        drop(state);
+        self.persist_state_snapshot(snapshot).await?;
 
         Ok(SessionBundle {
             session: SessionView::from_session(&updated),
@@ -868,6 +1027,118 @@ impl AuthService {
             },
             memberships: user.memberships.clone(),
         })
+    }
+
+    pub async fn list_personal_access_tokens(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<PersonalAccessTokenView>, AuthError> {
+        let state = self.state.read().await;
+        if !state.users_by_id.contains_key(user_id) {
+            return Err(AuthError::Unauthorized {
+                message: "Unauthenticated.".to_string(),
+            });
+        }
+
+        let mut tokens: Vec<PersonalAccessTokenView> = state
+            .personal_access_tokens
+            .values()
+            .filter(|token| token.user_id == user_id)
+            .map(PersonalAccessTokenView::from_record)
+            .collect();
+        tokens.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        Ok(tokens)
+    }
+
+    pub async fn issue_personal_access_token(
+        &self,
+        user_id: &str,
+        name: String,
+        scopes: Vec<String>,
+        ttl_seconds: Option<u64>,
+    ) -> Result<PersonalAccessTokenIssueResult, AuthError> {
+        let normalized_name = non_empty(name).ok_or_else(|| AuthError::Validation {
+            field: "name",
+            message: "Token name is required.".to_string(),
+        })?;
+
+        let mut normalized_scopes: Vec<String> = scopes
+            .into_iter()
+            .filter_map(non_empty)
+            .collect::<HashSet<String>>()
+            .into_iter()
+            .collect();
+        normalized_scopes.sort();
+
+        let now = Utc::now();
+        let expires_at = ttl_seconds.map(|seconds| now + Duration::seconds(seconds as i64));
+        let token_id = format!("pat_{}", Uuid::new_v4().simple());
+        let plain_text_token = format!("oa_pat_{}", Uuid::new_v4().simple());
+        let record = PersonalAccessTokenRecord {
+            token_id: token_id.clone(),
+            user_id: user_id.to_string(),
+            name: normalized_name.clone(),
+            token: plain_text_token.clone(),
+            scopes: normalized_scopes.clone(),
+            created_at: now,
+            expires_at,
+            revoked_at: None,
+        };
+
+        let snapshot = {
+            let mut state = self.state.write().await;
+            if !state.users_by_id.contains_key(user_id) {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+
+            state
+                .personal_access_tokens
+                .insert(token_id.clone(), record.clone());
+            state.clone()
+        };
+        self.persist_state_snapshot(snapshot).await?;
+
+        Ok(PersonalAccessTokenIssueResult {
+            token_id,
+            plain_text_token,
+            token: PersonalAccessTokenView::from_record(&record),
+        })
+    }
+
+    pub async fn revoke_personal_access_token(
+        &self,
+        user_id: &str,
+        token_id: &str,
+    ) -> Result<bool, AuthError> {
+        let snapshot = {
+            let mut state = self.state.write().await;
+            if !state.users_by_id.contains_key(user_id) {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+
+            let Some(token) = state.personal_access_tokens.get_mut(token_id) else {
+                return Ok(false);
+            };
+
+            if token.user_id != user_id {
+                return Err(AuthError::Forbidden {
+                    message: "Requested token is not owned by current user.".to_string(),
+                });
+            }
+
+            if token.revoked_at.is_none() {
+                token.revoked_at = Some(Utc::now());
+            }
+
+            state.clone()
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(true)
     }
 
     pub async fn evaluate_policy_by_access_token(
@@ -989,6 +1260,19 @@ impl SessionView {
             last_refreshed_at: session.last_refreshed_at,
             revoked_at: session.revoked_at,
             revoked_reason: session.revoked_reason,
+        }
+    }
+}
+
+impl PersonalAccessTokenView {
+    fn from_record(record: &PersonalAccessTokenRecord) -> Self {
+        Self {
+            token_id: record.token_id.clone(),
+            name: record.name.clone(),
+            scopes: record.scopes.clone(),
+            created_at: record.created_at,
+            expires_at: record.expires_at,
+            revoked_at: record.revoked_at,
         }
     }
 }
@@ -1652,5 +1936,164 @@ fn empty_to_none(raw: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+    use std::path::PathBuf;
+
+    use super::AuthService;
+    use crate::config::Config;
+
+    fn test_config(store_path: Option<PathBuf>) -> Config {
+        Config {
+            bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+            log_filter: "debug".to_string(),
+            static_dir: std::env::temp_dir(),
+            auth_provider_mode: "mock".to_string(),
+            workos_client_id: None,
+            workos_api_key: None,
+            workos_api_base_url: "https://api.workos.com".to_string(),
+            mock_magic_code: "123456".to_string(),
+            auth_local_test_login_enabled: false,
+            admin_emails: vec![],
+            auth_store_path: store_path,
+            auth_challenge_ttl_seconds: 600,
+            auth_access_ttl_seconds: 3600,
+            auth_refresh_ttl_seconds: 86400,
+            sync_token_enabled: true,
+            sync_token_signing_key: Some("sync-test-signing-key".to_string()),
+            sync_token_issuer: "https://openagents.test".to_string(),
+            sync_token_audience: "openagents-sync-test".to_string(),
+            sync_token_key_id: "sync-auth-test-v1".to_string(),
+            sync_token_claims_version: "oa_sync_claims_v1".to_string(),
+            sync_token_ttl_seconds: 300,
+            sync_token_min_ttl_seconds: 60,
+            sync_token_max_ttl_seconds: 900,
+            sync_token_allowed_scopes: vec![
+                "runtime.codex_worker_events".to_string(),
+                "runtime.codex_worker_summaries".to_string(),
+                "runtime.run_summaries".to_string(),
+            ],
+            sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
+            route_split_enabled: false,
+            route_split_mode: "legacy".to_string(),
+            route_split_rust_routes: vec!["/".to_string()],
+            route_split_cohort_percentage: 0,
+            route_split_salt: "route-split-test-salt".to_string(),
+            route_split_force_legacy: false,
+            route_split_legacy_base_url: Some("https://legacy.openagents.test".to_string()),
+            runtime_sync_revoke_base_url: None,
+            runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
+            runtime_signature_secret: None,
+            runtime_signature_ttl_seconds: 60,
+            runtime_internal_shared_secret: None,
+            runtime_internal_key_id: "runtime-internal-v1".to_string(),
+            runtime_internal_signature_ttl_seconds: 60,
+            maintenance_mode_enabled: false,
+            maintenance_bypass_token: None,
+            maintenance_bypass_cookie_name: "oa_maintenance_bypass".to_string(),
+            maintenance_bypass_cookie_ttl_seconds: 900,
+            maintenance_allowed_paths: vec!["/healthz".to_string(), "/readyz".to_string()],
+            compat_control_enforced: false,
+            compat_control_protocol_version: "openagents.control.v1".to_string(),
+            compat_control_min_client_build_id: "00000000T000000Z".to_string(),
+            compat_control_max_client_build_id: None,
+            compat_control_min_schema_version: 1,
+            compat_control_max_schema_version: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn persists_session_state_when_store_path_configured() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store_path = temp.path().join("auth-store.json");
+        let config = test_config(Some(store_path.clone()));
+        let auth = AuthService::from_config(&config);
+
+        let challenge = auth
+            .start_challenge("persisted@openagents.com".to_string())
+            .await
+            .expect("start challenge");
+        let verified = auth
+            .verify_challenge(
+                &challenge.challenge_id,
+                "123456".to_string(),
+                Some("autopilot-ios"),
+                Some("ios:persisted"),
+                "127.0.0.1",
+                "test-agent",
+            )
+            .await
+            .expect("verify challenge");
+
+        let restored = AuthService::from_config(&config);
+        let restored_session = restored
+            .session_from_access_token(&verified.access_token)
+            .await
+            .expect("restored session");
+        assert_eq!(restored_session.user.email, "persisted@openagents.com");
+        assert_eq!(restored_session.session.device_id, "ios:persisted");
+        assert!(store_path.is_file());
+    }
+
+    #[tokio::test]
+    async fn personal_access_token_lifecycle_is_persisted() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store_path = temp.path().join("auth-store.json");
+        let config = test_config(Some(store_path.clone()));
+        let auth = AuthService::from_config(&config);
+
+        let challenge = auth
+            .start_challenge("token-owner@openagents.com".to_string())
+            .await
+            .expect("start challenge");
+        let verified = auth
+            .verify_challenge(
+                &challenge.challenge_id,
+                "123456".to_string(),
+                Some("autopilot-ios"),
+                Some("ios:token-owner"),
+                "127.0.0.1",
+                "test-agent",
+            )
+            .await
+            .expect("verify challenge");
+
+        let issued = auth
+            .issue_personal_access_token(
+                &verified.user.id,
+                "CI token".to_string(),
+                vec!["runtime.read".to_string(), "runtime.read".to_string()],
+                Some(600),
+            )
+            .await
+            .expect("issue personal token");
+        assert!(issued.plain_text_token.starts_with("oa_pat_"));
+
+        let listed = auth
+            .list_personal_access_tokens(&verified.user.id)
+            .await
+            .expect("list personal tokens");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].token_id, issued.token_id);
+        assert_eq!(listed[0].scopes, vec!["runtime.read".to_string()]);
+
+        let revoked = auth
+            .revoke_personal_access_token(&verified.user.id, &issued.token_id)
+            .await
+            .expect("revoke token");
+        assert!(revoked);
+
+        let restored = AuthService::from_config(&config);
+        let restored_tokens = restored
+            .list_personal_access_tokens(&verified.user.id)
+            .await
+            .expect("list restored tokens");
+        assert_eq!(restored_tokens.len(), 1);
+        assert!(restored_tokens[0].revoked_at.is_some());
+        assert!(store_path.is_file());
     }
 }

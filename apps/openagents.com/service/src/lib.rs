@@ -2401,6 +2401,7 @@ mod tests {
                 "chris@openagents.com".to_string(),
                 "routes@openagents.com".to_string(),
             ],
+            auth_store_path: None,
             auth_challenge_ttl_seconds: 600,
             auth_access_ttl_seconds: 3600,
             auth_refresh_ttl_seconds: 86400,

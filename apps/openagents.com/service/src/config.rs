@@ -55,6 +55,7 @@ pub struct Config {
     pub mock_magic_code: String,
     pub auth_local_test_login_enabled: bool,
     pub admin_emails: Vec<String>,
+    pub auth_store_path: Option<PathBuf>,
     pub auth_challenge_ttl_seconds: u64,
     pub auth_access_ttl_seconds: u64,
     pub auth_refresh_ttl_seconds: u64,
@@ -170,6 +171,12 @@ impl Config {
         .into_iter()
         .map(|email| email.to_lowercase())
         .collect();
+
+        let auth_store_path = env::var("OA_AUTH_STORE_PATH")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
 
         let auth_challenge_ttl_seconds = env::var("OA_AUTH_CHALLENGE_TTL_SECONDS")
             .ok()
@@ -393,6 +400,7 @@ impl Config {
             mock_magic_code,
             auth_local_test_login_enabled,
             admin_emails,
+            auth_store_path,
             auth_challenge_ttl_seconds,
             auth_access_ttl_seconds,
             auth_refresh_ttl_seconds,
