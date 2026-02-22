@@ -55,9 +55,10 @@ use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS, ROUTE_SYNC_TOKEN,
-    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
-    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
+    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
+    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
@@ -277,6 +278,16 @@ struct KhalaTokenRequestPayload {
 }
 
 #[derive(Debug, Deserialize)]
+struct UpdateProfileRequestPayload {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteProfileRequestPayload {
+    email: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SyncTokenRequestPayload {
     #[serde(default)]
     scopes: Vec<String>,
@@ -409,6 +420,12 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             get(list_personal_access_tokens)
                 .post(create_personal_access_token)
                 .delete(delete_all_personal_access_tokens),
+        )
+        .route(
+            ROUTE_SETTINGS_PROFILE,
+            get(settings_profile_show)
+                .patch(settings_profile_update)
+                .delete(settings_profile_delete),
         )
         .route(
             ROUTE_TOKENS_CURRENT,
@@ -2167,6 +2184,168 @@ async fn me(
     });
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+async fn settings_profile_show(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("profile.read", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("profile.read", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "id": bundle.user.id,
+                "name": bundle.user.name,
+                "email": bundle.user.email,
+                "avatar": "",
+                "createdAt": serde_json::Value::Null,
+                "updatedAt": serde_json::Value::Null,
+            }
+        })),
+    ))
+}
+
+async fn settings_profile_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<UpdateProfileRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_name = payload.name.trim().to_string();
+    if normalized_name.is_empty() {
+        return Err(validation_error("name", "The name field is required."));
+    }
+    if normalized_name.chars().count() > 255 {
+        return Err(validation_error(
+            "name",
+            "The name field may not be greater than 255 characters.",
+        ));
+    }
+
+    let updated_user = state
+        .auth
+        .update_profile_name(&bundle.user.id, normalized_name)
+        .await
+        .map_err(map_auth_error)?;
+
+    let updated_at = timestamp(Utc::now());
+    state.observability.audit(
+        AuditEvent::new("profile.updated", request_id.clone())
+            .with_user_id(updated_user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("field_updated", "name".to_string())
+            .with_attribute("source", "api".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("profile.updated", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "id": updated_user.id,
+                "name": updated_user.name,
+                "email": updated_user.email,
+                "avatar": "",
+                "updatedAt": updated_at,
+            }
+        })),
+    ))
+}
+
+async fn settings_profile_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<DeleteProfileRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_email = payload.email.trim().to_lowercase();
+    if normalized_email.is_empty() {
+        return Err(validation_error("email", "The email field is required."));
+    }
+    if !normalized_email.contains('@') || normalized_email.chars().count() > 255 {
+        return Err(validation_error(
+            "email",
+            "The email field must be a valid email address.",
+        ));
+    }
+
+    let user_email = bundle.user.email.trim().to_lowercase();
+    if normalized_email != user_email {
+        return Err(validation_error(
+            "email",
+            "Email confirmation does not match the authenticated user.",
+        ));
+    }
+
+    let deleted_user = state
+        .auth
+        .delete_profile(&bundle.user.id)
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("profile.deleted", request_id.clone())
+            .with_user_id(deleted_user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("source", "api".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("profile.deleted", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "deleted": true,
+            }
+        })),
+    ))
 }
 
 async fn list_personal_access_tokens(
@@ -5452,6 +5631,72 @@ mod tests {
             Some(1)
         );
         assert_eq!(me_body["data"]["chatThreads"][0]["id"], "thread-b");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settings_profile_routes_support_read_update_delete() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "profile-user@openagents.com").await?;
+
+        let show_request = Request::builder()
+            .uri("/api/settings/profile")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_response = app.clone().oneshot(show_request).await?;
+        assert_eq!(show_response.status(), StatusCode::OK);
+        let show_body = read_json(show_response).await?;
+        assert_eq!(show_body["data"]["email"], "profile-user@openagents.com");
+
+        let update_request = Request::builder()
+            .method("PATCH")
+            .uri("/api/settings/profile")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"name":"Updated Name"}"#))?;
+        let update_response = app.clone().oneshot(update_request).await?;
+        assert_eq!(update_response.status(), StatusCode::OK);
+        let update_body = read_json(update_response).await?;
+        assert_eq!(update_body["data"]["name"], "Updated Name");
+
+        let wrong_delete_request = Request::builder()
+            .method("DELETE")
+            .uri("/api/settings/profile")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"email":"wrong@openagents.com"}"#))?;
+        let wrong_delete_response = app.clone().oneshot(wrong_delete_request).await?;
+        assert_eq!(
+            wrong_delete_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let wrong_delete_body = read_json(wrong_delete_response).await?;
+        assert_eq!(
+            wrong_delete_body["message"],
+            "Email confirmation does not match the authenticated user."
+        );
+
+        let delete_request = Request::builder()
+            .method("DELETE")
+            .uri("/api/settings/profile")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"email":"profile-user@openagents.com"}"#))?;
+        let delete_response = app.clone().oneshot(delete_request).await?;
+        assert_eq!(delete_response.status(), StatusCode::OK);
+        let delete_body = read_json(delete_response).await?;
+        assert_eq!(delete_body["data"]["deleted"], true);
+
+        let show_after_delete_request = Request::builder()
+            .uri("/api/settings/profile")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_after_delete_response = app.oneshot(show_after_delete_request).await?;
+        assert_eq!(
+            show_after_delete_response.status(),
+            StatusCode::UNAUTHORIZED
+        );
 
         Ok(())
     }

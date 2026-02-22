@@ -28,6 +28,9 @@ Rust control service scaffold for `apps/openagents.com`.
   - `DELETE /api/tokens/:token_id`
   - `DELETE /api/tokens`
   - `POST /api/khala/token`
+  - `GET /api/settings/profile`
+  - `PATCH /api/settings/profile`
+  - `DELETE /api/settings/profile`
   - `GET /api/orgs/memberships`
   - `POST /api/orgs/active`
   - `POST /api/policy/authorize`

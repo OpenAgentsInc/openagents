@@ -17,6 +17,7 @@ pub const ROUTE_KHALA_TOKEN: &str = "/api/khala/token";
 pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
+pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
@@ -223,6 +224,42 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("khala_token"),
         response_example: Some("khala_token"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SETTINGS_PROFILE,
+        operation_id: "settingsProfileShow",
+        summary: "Read the authenticated user profile.",
+        tag: "profile",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("settings_profile"),
+    },
+    OpenApiContract {
+        method: "patch",
+        route_path: ROUTE_SETTINGS_PROFILE,
+        operation_id: "settingsProfileUpdate",
+        summary: "Update profile fields for the authenticated user.",
+        tag: "profile",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("settings_profile_update"),
+        response_example: Some("settings_profile"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_SETTINGS_PROFILE,
+        operation_id: "settingsProfileDelete",
+        summary: "Delete the authenticated user account.",
+        tag: "profile",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("settings_profile_delete"),
+        response_example: Some("profile_deleted"),
     },
     OpenApiContract {
         method: "get",
@@ -641,6 +678,12 @@ fn request_example(key: &str) -> Option<Value> {
             "workspace_id": "workspace_42",
             "role": "admin"
         })),
+        "settings_profile_update" => Some(json!({
+            "name": "Updated Name"
+        })),
+        "settings_profile_delete" => Some(json!({
+            "email": "user@openagents.com"
+        })),
         "orgs_active" => Some(json!({ "org_id": "org:openagents" })),
         "policy_authorize" => Some(json!({
             "org_id": "org:openagents",
@@ -814,6 +857,21 @@ fn response_example(key: &str) -> Option<Value> {
                 "workspace_id": "workspace_42",
                 "role": "admin",
                 "kid": "khala-auth-test-v1"
+            }
+        })),
+        "settings_profile" => Some(json!({
+            "data": {
+                "id": "usr_123",
+                "name": "OpenAgents User",
+                "email": "user@openagents.com",
+                "avatar": "",
+                "createdAt": null,
+                "updatedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "profile_deleted" => Some(json!({
+            "data": {
+                "deleted": true
             }
         })),
         "org_memberships" => Some(json!({

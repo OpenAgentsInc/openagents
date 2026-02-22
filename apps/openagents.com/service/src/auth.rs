@@ -1151,6 +1151,110 @@ impl AuthService {
         })
     }
 
+    pub async fn update_profile_name(
+        &self,
+        user_id: &str,
+        name: String,
+    ) -> Result<AuthUser, AuthError> {
+        let normalized_name = non_empty(name).ok_or_else(|| AuthError::Validation {
+            field: "name",
+            message: "The name field is required.".to_string(),
+        })?;
+
+        let (updated_user, snapshot) = {
+            let mut state = self.state.write().await;
+            let user =
+                state
+                    .users_by_id
+                    .get_mut(user_id)
+                    .ok_or_else(|| AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    })?;
+
+            user.name = normalized_name.clone();
+            let updated_user = AuthUser {
+                id: user.id.clone(),
+                email: user.email.clone(),
+                name: user.name.clone(),
+                workos_user_id: user.workos_user_id.clone(),
+            };
+
+            (updated_user, state.clone())
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(updated_user)
+    }
+
+    pub async fn delete_profile(&self, user_id: &str) -> Result<AuthUser, AuthError> {
+        let now = Utc::now();
+        let (deleted_user, snapshot) = {
+            let mut state = self.state.write().await;
+            let user =
+                state
+                    .users_by_id
+                    .remove(user_id)
+                    .ok_or_else(|| AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    })?;
+
+            state.users_by_email.remove(&user.email);
+            if !user.workos_user_id.trim().is_empty() {
+                state.users_by_workos_id.remove(&user.workos_user_id);
+            }
+
+            state
+                .challenges
+                .retain(|_, challenge| challenge.email != user.email);
+
+            let session_ids = state
+                .sessions
+                .values()
+                .filter(|session| session.user_id == user_id)
+                .map(|session| session.session_id.clone())
+                .collect::<Vec<_>>();
+
+            for session_id in session_ids {
+                if let Some(session) = state.sessions.remove(&session_id) {
+                    state.access_index.remove(&session.access_token);
+                    state.refresh_index.remove(&session.refresh_token);
+                    record_revoked_refresh_token(
+                        &mut state,
+                        session_id,
+                        session.user_id,
+                        session.device_id,
+                        session.refresh_token_id,
+                        session.refresh_token,
+                        now,
+                        RefreshTokenRevocationReason::SessionRevoked,
+                    );
+                }
+            }
+
+            state
+                .revoked_refresh_tokens
+                .retain(|_, revoked| revoked.user_id != user_id);
+            state
+                .revoked_refresh_token_ids
+                .retain(|_, revoked| revoked.user_id != user_id);
+            state
+                .personal_access_tokens
+                .retain(|_, token| token.user_id != user_id);
+
+            let deleted_user = AuthUser {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                workos_user_id: user.workos_user_id,
+            };
+
+            (deleted_user, state.clone())
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(deleted_user)
+    }
+
     pub async fn register_api_user(
         &self,
         email: String,
