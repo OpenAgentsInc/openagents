@@ -1,10 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use axum::body::Body;
 use axum::body::to_bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::{Form, Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
@@ -57,10 +57,11 @@ use crate::config::Config;
 use crate::domain_store::{
     AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, CreateShoutInput,
     DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
-    RecordL402GatewayEventInput, SendWhisperInput, ShoutRecord, UpdateAutopilotInput,
-    UpdateL402PaywallInput, UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
-    UpsertGoogleIntegrationInput, UpsertResendIntegrationInput, UpsertRuntimeDriverOverrideInput,
-    UpsertUserSparkWalletInput, UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord,
+    MarkWebhookEventVerifiedInput, RecordL402GatewayEventInput, RecordWebhookEventInput,
+    SendWhisperInput, ShoutRecord, UpdateAutopilotInput, UpdateL402PaywallInput,
+    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertGoogleIntegrationInput,
+    UpsertResendIntegrationInput, UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput,
+    UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -90,7 +91,7 @@ use crate::openapi::{
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
-    ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
+    ROUTE_WEBHOOKS_RESEND, ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
@@ -133,6 +134,10 @@ const THROTTLE_THREAD_MESSAGE_LIMIT: usize = 60;
 const THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS: i64 = 60;
 const THROTTLE_CODEX_CONTROL_REQUEST_LIMIT: usize = 60;
 const THROTTLE_CODEX_CONTROL_REQUEST_WINDOW_SECONDS: i64 = 60;
+const RESEND_WEBHOOK_PROVIDER: &str = "resend";
+const RESEND_SVIX_ID_HEADER: &str = "svix-id";
+const RESEND_SVIX_TIMESTAMP_HEADER: &str = "svix-timestamp";
+const RESEND_SVIX_SIGNATURE_HEADER: &str = "svix-signature";
 const RUNTIME_INTERNAL_NONCE_GRACE_SECONDS: i64 = 5;
 const RUNTIME_INTERNAL_MAX_BODY_BYTES: usize = 1024 * 1024;
 const CODEX_CONTROL_METHOD_ALLOWLIST: &[&str] = &[
@@ -1093,7 +1098,8 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_AUTH_VERIFY, post(verify_email_code))
         .route(ROUTE_AUTH_REFRESH, post(refresh_session))
         .route(ROUTE_SHOUTS, get(shouts_index))
-        .route(ROUTE_SHOUTS_ZONES, get(shouts_zones));
+        .route(ROUTE_SHOUTS_ZONES, get(shouts_zones))
+        .route(ROUTE_WEBHOOKS_RESEND, post(webhooks_resend_store));
 
     let protected_api_router = Router::new()
         .route(ROUTE_AUTH_SESSION, get(current_session))
@@ -4949,6 +4955,797 @@ async fn policy_authorize(
         .map_err(map_auth_error)?;
 
     Ok(ok_data(decision))
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ResendWebhookNormalizedPayload {
+    event_id: String,
+    provider: String,
+    event_type: String,
+    delivery_state: String,
+    message_id: Option<String>,
+    integration_id: Option<String>,
+    user_id: Option<String>,
+    recipient: Option<String>,
+    occurred_at: String,
+    reason: Option<String>,
+    payload: serde_json::Value,
+}
+
+#[derive(Debug, Default)]
+struct RuntimeDeliveryForwardResult {
+    ok: bool,
+    status: Option<u16>,
+    body: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+async fn webhooks_resend_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let raw_body = String::from_utf8_lossy(&body).to_string();
+    let raw_payload = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let svix_id = header_string(&headers, RESEND_SVIX_ID_HEADER).unwrap_or_default();
+    let svix_timestamp = header_string(&headers, RESEND_SVIX_TIMESTAMP_HEADER).unwrap_or_default();
+    let svix_signature = header_string(&headers, RESEND_SVIX_SIGNATURE_HEADER).unwrap_or_default();
+
+    let idempotency_key =
+        resend_webhook_idempotency_key(RESEND_WEBHOOK_PROVIDER, &svix_id, &raw_body);
+    let external_event_id = non_empty(svix_id.clone());
+    let signature_valid = verify_resend_webhook_signature(
+        &state.config,
+        &raw_body,
+        &svix_id,
+        &svix_timestamp,
+        &svix_signature,
+    );
+
+    if !signature_valid {
+        let invalid_event = match state
+            ._domain_store
+            .upsert_invalid_webhook_event(RecordWebhookEventInput {
+                provider: RESEND_WEBHOOK_PROVIDER.to_string(),
+                idempotency_key: idempotency_key.clone(),
+                external_event_id: external_event_id.clone(),
+                event_type: None,
+                delivery_state: None,
+                message_id: None,
+                integration_id: None,
+                user_id: None,
+                recipient: None,
+                signature_valid: false,
+                status: Some("invalid_signature".to_string()),
+                normalized_payload: None,
+                raw_payload: Some(raw_payload.clone()),
+            })
+            .await
+        {
+            Ok(row) => row,
+            Err(error) => return map_domain_store_error(error).into_response(),
+        };
+
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "invalid_signature",
+                    "message": "invalid webhook signature",
+                },
+                "audit": {
+                    "event_id": invalid_event.id,
+                },
+            })),
+        )
+            .into_response();
+    }
+
+    let normalized = normalize_resend_webhook_payload(&raw_payload, external_event_id.as_deref());
+    let normalized_value = normalized
+        .as_ref()
+        .and_then(|payload| serde_json::to_value(payload).ok());
+    let normalized_hash = normalized_value
+        .as_ref()
+        .map(resend_webhook_normalized_hash);
+    let status = if normalized.is_some() {
+        "received".to_string()
+    } else {
+        "ignored".to_string()
+    };
+    let event_type = raw_payload
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()));
+
+    let existing = match state
+        ._domain_store
+        .webhook_event_by_idempotency_key(&idempotency_key)
+        .await
+    {
+        Ok(row) => row,
+        Err(error) => return map_domain_store_error(error).into_response(),
+    };
+
+    if let Some(existing) = existing {
+        if !existing.signature_valid {
+            let verified = match state
+                ._domain_store
+                .mark_webhook_event_verified(MarkWebhookEventVerifiedInput {
+                    webhook_event_id: existing.id,
+                    status: status.clone(),
+                    event_type: event_type.clone(),
+                    delivery_state: normalized
+                        .as_ref()
+                        .map(|value| value.delivery_state.clone()),
+                    message_id: normalized
+                        .as_ref()
+                        .and_then(|value| value.message_id.clone()),
+                    integration_id: normalized
+                        .as_ref()
+                        .and_then(|value| value.integration_id.clone()),
+                    user_id: normalized.as_ref().and_then(|value| value.user_id.clone()),
+                    recipient: normalized
+                        .as_ref()
+                        .and_then(|value| value.recipient.clone()),
+                    normalized_hash: normalized_hash.clone(),
+                    normalized_payload: normalized_value.clone(),
+                    raw_payload: Some(raw_payload.clone()),
+                })
+                .await
+            {
+                Ok(Some(row)) => row,
+                Ok(None) => {
+                    return not_found_error("Webhook event not found after verification update.")
+                        .into_response();
+                }
+                Err(error) => return map_domain_store_error(error).into_response(),
+            };
+
+            if should_dispatch_resend_webhook(&verified.status, normalized.as_ref()) {
+                spawn_resend_webhook_forward_task(state.clone(), verified.id);
+            }
+
+            return (
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "data": {
+                        "event_id": verified.id,
+                        "status": verified.status,
+                        "idempotent_replay": false,
+                    }
+                })),
+            )
+                .into_response();
+        }
+
+        if existing
+            .normalized_hash
+            .as_deref()
+            .zip(normalized_hash.as_deref())
+            .map(|(saved, incoming)| saved != incoming)
+            .unwrap_or(false)
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "idempotency_conflict",
+                        "message": "webhook idempotency key conflicts with different normalized payload",
+                    }
+                })),
+            )
+                .into_response();
+        }
+
+        if should_dispatch_resend_webhook(&existing.status, normalized.as_ref()) {
+            spawn_resend_webhook_forward_task(state.clone(), existing.id);
+        }
+
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "data": {
+                    "event_id": existing.id,
+                    "status": existing.status,
+                    "idempotent_replay": true,
+                }
+            })),
+        )
+            .into_response();
+    }
+
+    let inserted = match state
+        ._domain_store
+        .record_webhook_event(RecordWebhookEventInput {
+            provider: RESEND_WEBHOOK_PROVIDER.to_string(),
+            idempotency_key,
+            external_event_id,
+            event_type,
+            delivery_state: normalized
+                .as_ref()
+                .map(|value| value.delivery_state.clone()),
+            message_id: normalized
+                .as_ref()
+                .and_then(|value| value.message_id.clone()),
+            integration_id: normalized
+                .as_ref()
+                .and_then(|value| value.integration_id.clone()),
+            user_id: normalized.as_ref().and_then(|value| value.user_id.clone()),
+            recipient: normalized
+                .as_ref()
+                .and_then(|value| value.recipient.clone()),
+            signature_valid: true,
+            status: Some(status.clone()),
+            normalized_payload: normalized_value,
+            raw_payload: Some(raw_payload),
+        })
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => return map_domain_store_error(error).into_response(),
+    };
+
+    if should_dispatch_resend_webhook(&status, normalized.as_ref()) {
+        spawn_resend_webhook_forward_task(state.clone(), inserted.event.id);
+    }
+
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "data": {
+                "event_id": inserted.event.id,
+                "status": status,
+                "idempotent_replay": false,
+            }
+        })),
+    )
+        .into_response()
+}
+
+fn should_dispatch_resend_webhook(
+    status: &str,
+    normalized: Option<&ResendWebhookNormalizedPayload>,
+) -> bool {
+    normalized.is_some() && matches!(status, "received" | "failed")
+}
+
+fn resend_webhook_idempotency_key(provider: &str, svix_id: &str, raw_body: &str) -> String {
+    let external_event_id = svix_id.trim();
+    if !external_event_id.is_empty() {
+        return format!("{provider}:{external_event_id}");
+    }
+    format!("{provider}:body:{}", sha256_hex(raw_body.as_bytes()))
+}
+
+fn resend_webhook_normalized_hash(payload: &serde_json::Value) -> String {
+    sha256_hex(payload.to_string().as_bytes())
+}
+
+fn verify_resend_webhook_signature(
+    config: &Config,
+    payload: &str,
+    svix_id: &str,
+    svix_timestamp: &str,
+    svix_signature: &str,
+) -> bool {
+    let Some(secret) = config
+        .resend_webhook_secret
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    else {
+        return false;
+    };
+
+    let svix_id = svix_id.trim();
+    let svix_timestamp = svix_timestamp.trim();
+    let svix_signature = svix_signature.trim();
+    if svix_id.is_empty() || svix_timestamp.is_empty() || svix_signature.is_empty() {
+        return false;
+    }
+
+    if !svix_timestamp.chars().all(|value| value.is_ascii_digit()) {
+        return false;
+    }
+
+    let Ok(timestamp) = svix_timestamp.parse::<i64>() else {
+        return false;
+    };
+    let tolerance = config.resend_webhook_tolerance_seconds.max(1) as i64;
+    let now = Utc::now().timestamp();
+    if (now - timestamp).abs() > tolerance {
+        return false;
+    }
+
+    let secret_bytes = resolve_resend_webhook_secret_bytes(&secret);
+    let signed_content = format!("{svix_id}.{svix_timestamp}.{payload}");
+    let Ok(mut mac) = HmacSha256::new_from_slice(secret_bytes.as_slice()) else {
+        return false;
+    };
+    mac.update(signed_content.as_bytes());
+    let expected = STANDARD.encode(mac.finalize().into_bytes());
+
+    extract_resend_svix_signatures(svix_signature)
+        .into_iter()
+        .any(|candidate| !candidate.is_empty() && candidate == expected)
+}
+
+fn resolve_resend_webhook_secret_bytes(secret: &str) -> Vec<u8> {
+    if let Some(encoded) = secret.strip_prefix("whsec_") {
+        if let Ok(decoded) = STANDARD.decode(encoded) {
+            if !decoded.is_empty() {
+                return decoded;
+            }
+        }
+        return encoded.as_bytes().to_vec();
+    }
+    secret.as_bytes().to_vec()
+}
+
+fn extract_resend_svix_signatures(header: &str) -> Vec<String> {
+    let mut signatures = Vec::new();
+    for token in header.split_whitespace() {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let (version, value) = if let Some((version, value)) = trimmed.split_once(',') {
+            (version, value)
+        } else if let Some((version, value)) = trimmed.split_once('=') {
+            (version, value)
+        } else {
+            continue;
+        };
+
+        if version.trim() != "v1" {
+            continue;
+        }
+        signatures.push(value.trim().to_string());
+    }
+    signatures
+}
+
+fn normalize_resend_webhook_payload(
+    raw_payload: &serde_json::Value,
+    external_event_id: Option<&str>,
+) -> Option<ResendWebhookNormalizedPayload> {
+    let event_type = raw_payload
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()))?;
+
+    let delivery_state = match event_type.as_str() {
+        "email.delivered" => "delivered",
+        "email.bounced" => "bounced",
+        "email.complained" => "complained",
+        "email.suppressed" | "email.unsubscribed" => "unsubscribed",
+        _ => return None,
+    }
+    .to_string();
+
+    let data = raw_payload
+        .get("data")
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let tags = normalize_resend_webhook_tags(data.get("tags"));
+
+    let recipient = data
+        .get("to")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|values| values.first())
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()))
+        .or_else(|| {
+            data.get("email")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()))
+        });
+
+    let occurred_at = raw_payload
+        .get("created_at")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()))
+        .or_else(|| {
+            data.get("created_at")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()))
+        })
+        .unwrap_or_else(|| timestamp(Utc::now()));
+
+    let reason = data
+        .get("reason")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()))
+        .or_else(|| {
+            data.get("bounce")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|bounce| bounce.get("reason"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()))
+        })
+        .or_else(|| {
+            data.get("suppression")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|suppression| suppression.get("reason"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()))
+        });
+
+    let message_id = data
+        .get("email_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty(value.to_string()))
+        .or_else(|| {
+            data.get("id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()))
+        });
+
+    let user_id = tags
+        .get("user_id")
+        .and_then(|value| non_empty(value.to_string()));
+    let integration_id = tags
+        .get("integration_id")
+        .and_then(|value| non_empty(value.to_string()));
+
+    let event_id = external_event_id
+        .and_then(|value| non_empty(value.to_string()))
+        .unwrap_or_else(|| format!("resend_{}", sha256_hex(raw_payload.to_string().as_bytes())));
+
+    Some(ResendWebhookNormalizedPayload {
+        event_id,
+        provider: RESEND_WEBHOOK_PROVIDER.to_string(),
+        event_type: event_type.clone(),
+        delivery_state,
+        message_id,
+        integration_id,
+        user_id,
+        recipient,
+        occurred_at,
+        reason,
+        payload: serde_json::json!({
+            "raw_type": event_type,
+            "tags": tags,
+            "raw": raw_payload,
+        }),
+    })
+}
+
+fn normalize_resend_webhook_tags(
+    tags_value: Option<&serde_json::Value>,
+) -> BTreeMap<String, String> {
+    let mut tags = BTreeMap::new();
+    let Some(values) = tags_value.and_then(serde_json::Value::as_array) else {
+        return tags;
+    };
+
+    for entry in values {
+        if let Some(entry_obj) = entry.as_object() {
+            let name = entry_obj
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| non_empty(value.to_string()));
+            let value = entry_obj.get("value").and_then(|value| match value {
+                serde_json::Value::String(value) => non_empty(value.to_string()),
+                serde_json::Value::Number(value) => non_empty(value.to_string()),
+                serde_json::Value::Bool(value) => Some(value.to_string()),
+                _ => None,
+            });
+            if let (Some(name), Some(value)) = (name, value) {
+                tags.insert(name, value);
+            }
+            continue;
+        }
+
+        if let Some(entry_text) = entry.as_str() {
+            if let Some((key, value)) = entry_text.split_once(':') {
+                if let (Some(key), Some(value)) = (
+                    non_empty(key.trim().to_string()),
+                    non_empty(value.trim().to_string()),
+                ) {
+                    tags.insert(key, value);
+                }
+            }
+        }
+    }
+
+    tags
+}
+
+fn spawn_resend_webhook_forward_task(state: AppState, webhook_event_id: u64) {
+    tokio::spawn(async move {
+        if let Err(error) = forward_resend_webhook_to_runtime(state, webhook_event_id).await {
+            tracing::warn!(webhook_event_id, error = %error, "resend webhook runtime forward failed");
+        }
+    });
+}
+
+async fn forward_resend_webhook_to_runtime(
+    state: AppState,
+    webhook_event_id: u64,
+) -> Result<(), String> {
+    let Some(event) = state
+        ._domain_store
+        .webhook_event_by_id(webhook_event_id)
+        .await
+        .map_err(|error| format!("failed to read webhook event: {error}"))?
+    else {
+        return Ok(());
+    };
+
+    if !event.signature_valid {
+        return Ok(());
+    }
+
+    let Some(payload) = event.normalized_payload.clone() else {
+        return Ok(());
+    };
+    if !payload.is_object() {
+        state
+            ._domain_store
+            .mark_webhook_event_forward_failed(
+                webhook_event_id,
+                None,
+                None,
+                Some("runtime_payload_decode_failed".to_string()),
+            )
+            .await
+            .map_err(|error| {
+                format!("failed to mark webhook event payload decode failure: {error}")
+            })?;
+        return Err("runtime payload decode failed".to_string());
+    }
+
+    state
+        ._domain_store
+        .mark_webhook_event_forwarding(webhook_event_id)
+        .await
+        .map_err(|error| format!("failed to mark webhook event forwarding: {error}"))?;
+
+    let result = runtime_forward_delivery_payload(&state, &payload).await;
+    if !result.ok {
+        state
+            ._domain_store
+            .mark_webhook_event_forward_failed(
+                webhook_event_id,
+                result.status,
+                result.body.clone(),
+                result
+                    .error
+                    .clone()
+                    .or_else(|| Some("runtime_forward_failed".to_string())),
+            )
+            .await
+            .map_err(|error| format!("failed to mark webhook event forward failure: {error}"))?;
+        return Err(result
+            .error
+            .unwrap_or_else(|| "runtime delivery forwarding failed".to_string()));
+    }
+
+    state
+        ._domain_store
+        .mark_webhook_event_forwarded(webhook_event_id, result.status, result.body.clone())
+        .await
+        .map_err(|error| format!("failed to mark webhook event forwarded: {error}"))?;
+
+    if let Some(user_id) = webhook_projection_user_id(payload.get("user_id")) {
+        let provider = payload
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| non_empty(value.to_string()))
+            .unwrap_or_else(|| RESEND_WEBHOOK_PROVIDER.to_string());
+        let integration_id = payload
+            .get("integration_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| non_empty(value.to_string()));
+        let occurred_at = payload
+            .get("occurred_at")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| parse_rfc3339_utc(value).ok())
+            .or_else(|| Some(Utc::now()));
+        let projection = state
+            ._domain_store
+            .upsert_delivery_projection(crate::domain_store::UpsertDeliveryProjectionInput {
+                user_id: user_id.clone(),
+                provider: provider.clone(),
+                integration_id: integration_id.clone(),
+                last_state: payload
+                    .get("delivery_state")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|value| non_empty(value.to_string())),
+                last_event_at: occurred_at,
+                last_message_id: payload
+                    .get("message_id")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|value| non_empty(value.to_string())),
+                last_recipient: payload
+                    .get("recipient")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|value| non_empty(value.to_string())),
+                runtime_event_id: payload
+                    .get("event_id")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|value| non_empty(value.to_string())),
+                source: Some("runtime_forwarder".to_string()),
+                last_webhook_event_id: Some(webhook_event_id),
+            })
+            .await
+            .map_err(|error| format!("failed to upsert delivery projection: {error}"))?;
+
+        state
+            ._domain_store
+            .audit_delivery_projection_updated(&user_id, &provider, &projection)
+            .await
+            .map_err(|error| format!("failed to audit delivery projection update: {error}"))?;
+    }
+
+    Ok(())
+}
+
+fn webhook_projection_user_id(value: Option<&serde_json::Value>) -> Option<String> {
+    let value = value?;
+    match value {
+        serde_json::Value::String(value) => non_empty(value.to_string()),
+        serde_json::Value::Number(value) => value.as_u64().and_then(|value| {
+            if value > 0 {
+                Some(value.to_string())
+            } else {
+                None
+            }
+        }),
+        _ => None,
+    }
+}
+
+async fn runtime_forward_delivery_payload(
+    state: &AppState,
+    payload: &serde_json::Value,
+) -> RuntimeDeliveryForwardResult {
+    let Some(base_url) = state
+        .config
+        .runtime_elixir_base_url
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    else {
+        return RuntimeDeliveryForwardResult {
+            ok: false,
+            status: None,
+            body: None,
+            error: Some("runtime_forward_misconfigured".to_string()),
+        };
+    };
+    let Some(signing_key) = state
+        .config
+        .runtime_signing_key
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    else {
+        return RuntimeDeliveryForwardResult {
+            ok: false,
+            status: None,
+            body: None,
+            error: Some("runtime_forward_misconfigured".to_string()),
+        };
+    };
+
+    let ingest_path = normalize_route_path(&state.config.runtime_comms_delivery_ingest_path);
+    let url = format!("{}{}", base_url.trim_end_matches('/'), ingest_path);
+    let attempts = state
+        .config
+        .runtime_comms_delivery_max_retries
+        .saturating_add(1)
+        .max(1);
+    let backoff_ms = state.config.runtime_comms_delivery_retry_backoff_ms;
+    let timeout_ms = state.config.runtime_comms_delivery_timeout_ms.max(500);
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    let payload_bytes = serde_json::to_vec(payload).unwrap_or_else(|_| b"{}".to_vec());
+    let payload_hash = sha256_hex(&payload_bytes);
+
+    let mut last_status = None;
+    let mut last_body = None;
+    let mut last_error: Option<String> = None;
+
+    for attempt in 1..=attempts {
+        let signature = match runtime_forward_signature_token(
+            signing_key.as_str(),
+            state.config.runtime_signature_ttl_seconds.max(1),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                return RuntimeDeliveryForwardResult {
+                    ok: false,
+                    status: None,
+                    body: None,
+                    error: Some(format!("runtime_signature_failed:{error}")),
+                };
+            }
+        };
+
+        let response = reqwest::Client::new()
+            .post(url.as_str())
+            .header("x-oa-runtime-signature", signature)
+            .header("x-oa-runtime-body-sha256", payload_hash.as_str())
+            .header(
+                "x-oa-runtime-key-id",
+                state.config.runtime_signing_key_id.as_str(),
+            )
+            .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
+            .header("content-type", "application/json")
+            .timeout(timeout)
+            .json(payload)
+            .send()
+            .await;
+
+        match response {
+            Ok(response) => {
+                let status = response.status();
+                let status_code = status.as_u16();
+                let body = match response.bytes().await {
+                    Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)
+                        .ok()
+                        .or_else(|| {
+                            non_empty(String::from_utf8_lossy(&bytes).to_string())
+                                .map(serde_json::Value::String)
+                        }),
+                    Err(_) => None,
+                };
+
+                last_status = Some(status_code);
+                last_body = body.clone();
+                if status.is_success() {
+                    return RuntimeDeliveryForwardResult {
+                        ok: true,
+                        status: Some(status_code),
+                        body,
+                        error: None,
+                    };
+                }
+
+                last_error = Some(format!("runtime_http_{status_code}"));
+            }
+            Err(error) => {
+                last_error = Some(error.to_string());
+            }
+        }
+
+        if attempt < attempts && backoff_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+        }
+    }
+
+    RuntimeDeliveryForwardResult {
+        ok: false,
+        status: last_status,
+        body: last_body,
+        error: last_error.or_else(|| Some("runtime_forward_failed".to_string())),
+    }
+}
+
+fn runtime_forward_signature_token(
+    secret: &str,
+    ttl_seconds: u64,
+) -> Result<String, anyhow::Error> {
+    let now = Utc::now().timestamp().max(0) as u64;
+    let payload = serde_json::json!({
+        "iat": now,
+        "exp": now + ttl_seconds.max(1),
+        "nonce": format!("nonce-{}", Uuid::new_v4().simple()),
+    });
+    let payload_bytes = serde_json::to_vec(&payload)?;
+    let payload_segment = URL_SAFE_NO_PAD.encode(payload_bytes);
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())?;
+    mac.update(payload_segment.as_bytes());
+    let signature = mac.finalize().into_bytes();
+    let signature_segment = URL_SAFE_NO_PAD.encode(signature);
+
+    Ok(format!("v1.{payload_segment}.{signature_segment}"))
 }
 
 async fn shouts_index(
@@ -13043,7 +13840,7 @@ mod tests {
     use std::sync::Arc;
 
     use anyhow::Result;
-    use axum::body::Body;
+    use axum::body::{Body, Bytes};
     use axum::extract::State;
     use axum::http::HeaderMap;
     use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
@@ -13152,6 +13949,15 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            runtime_elixir_base_url: None,
+            runtime_signing_key: None,
+            runtime_signing_key_id: "runtime-v1".to_string(),
+            runtime_comms_delivery_ingest_path: "/internal/v1/comms/delivery-events".to_string(),
+            runtime_comms_delivery_timeout_ms: 10_000,
+            runtime_comms_delivery_max_retries: 2,
+            runtime_comms_delivery_retry_backoff_ms: 200,
+            resend_webhook_secret: None,
+            resend_webhook_tolerance_seconds: 300,
             google_oauth_client_id: None,
             google_oauth_client_secret: None,
             google_oauth_redirect_uri: None,
@@ -13480,6 +14286,118 @@ mod tests {
         });
 
         Ok((addr, handle))
+    }
+
+    async fn start_runtime_comms_delivery_stub(
+        statuses: Arc<Mutex<Vec<u16>>>,
+        captured: Arc<Mutex<Vec<Value>>>,
+    ) -> Result<(SocketAddr, JoinHandle<()>)> {
+        #[derive(Clone)]
+        struct StubState {
+            statuses: Arc<Mutex<Vec<u16>>>,
+            captured: Arc<Mutex<Vec<Value>>>,
+        }
+
+        let stub_state = StubState { statuses, captured };
+        let app = Router::new()
+            .route(
+                "/internal/v1/comms/delivery-events",
+                post(
+                    |State(stub_state): State<StubState>, Json(payload): Json<Value>| async move {
+                        stub_state.captured.lock().await.push(payload);
+                        let status_code = {
+                            let mut statuses = stub_state.statuses.lock().await;
+                            if statuses.is_empty() {
+                                202
+                            } else {
+                                statuses.remove(0)
+                            }
+                        };
+                        if status_code < 300 {
+                            (
+                                StatusCode::from_u16(status_code).unwrap_or(StatusCode::ACCEPTED),
+                                Json(json!({
+                                    "eventId": "evt_runtime_projection",
+                                    "status": "accepted",
+                                    "idempotentReplay": false
+                                })),
+                            )
+                        } else {
+                            (
+                                StatusCode::from_u16(status_code)
+                                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                                Json(json!({
+                                    "error": "temporary"
+                                })),
+                            )
+                        }
+                    },
+                ),
+            )
+            .with_state(stub_state);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .expect("runtime comms delivery stub server failed");
+        });
+
+        Ok((addr, handle))
+    }
+
+    fn signed_resend_webhook_headers(
+        payload: &str,
+        webhook_secret: &str,
+        svix_id: &str,
+        svix_timestamp: i64,
+    ) -> HeaderMap {
+        let secret_bytes = super::resolve_resend_webhook_secret_bytes(webhook_secret);
+        let signed_content = format!("{svix_id}.{svix_timestamp}.{payload}");
+        let mut mac =
+            super::HmacSha256::new_from_slice(secret_bytes.as_slice()).expect("valid hmac key");
+        mac.update(signed_content.as_bytes());
+        let signature =
+            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "svix-id",
+            HeaderValue::from_str(svix_id).expect("svix id header"),
+        );
+        headers.insert(
+            "svix-timestamp",
+            HeaderValue::from_str(&svix_timestamp.to_string()).expect("svix timestamp header"),
+        );
+        headers.insert(
+            "svix-signature",
+            HeaderValue::from_str(&format!("v1,{signature}")).expect("svix signature header"),
+        );
+        headers
+    }
+
+    async fn wait_for_webhook_status(
+        state: &super::AppState,
+        idempotency_key: &str,
+        expected_status: &str,
+    ) -> Result<()> {
+        for _ in 0..100 {
+            let current = state
+                ._domain_store
+                .webhook_event_by_idempotency_key(idempotency_key)
+                .await?;
+            if current
+                .as_ref()
+                .map(|event| event.status.as_str() == expected_status)
+                .unwrap_or(false)
+            {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        anyhow::bail!("timed out waiting for webhook status {expected_status}");
     }
 
     async fn start_google_oauth_token_stub(
@@ -19629,6 +20547,277 @@ mod tests {
         let normalized_b64 =
             super::normalize_preimage_hex(&encoded).expect("base64 normalization to hex");
         assert_eq!(normalized_b64, super::bytes_to_hex(&bytes));
+    }
+
+    #[tokio::test]
+    async fn resend_webhook_rejects_invalid_signature_and_reuses_audit_event_id() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let secret = format!(
+            "whsec_{}",
+            base64::engine::general_purpose::STANDARD.encode("resend-webhook-test-secret")
+        );
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.resend_webhook_secret = Some(secret.clone());
+        let app = build_router(config);
+
+        let payload = serde_json::json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_invalid_signature",
+                "to": ["user@example.com"],
+                "tags": [{"name":"integration_id","value":"resend.primary"}]
+            }
+        })
+        .to_string();
+
+        let mut headers = signed_resend_webhook_headers(
+            &payload,
+            &secret,
+            "evt_invalid_signature",
+            Utc::now().timestamp(),
+        );
+        headers.insert("svix-signature", HeaderValue::from_static("v1,invalid"));
+
+        let mut request_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &headers {
+            request_builder = request_builder.header(name, value);
+        }
+        let first_request = request_builder.body(Body::from(payload.clone()))?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::UNAUTHORIZED);
+        let first_body = read_json(first_response).await?;
+        assert_eq!(first_body["error"]["code"], json!("invalid_signature"));
+        let first_event_id = first_body["audit"]["event_id"].as_u64().expect("event id");
+
+        let mut replay_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &headers {
+            replay_builder = replay_builder.header(name, value);
+        }
+        let replay_request = replay_builder.body(Body::from(payload))?;
+        let replay_response = app.oneshot(replay_request).await?;
+        assert_eq!(replay_response.status(), StatusCode::UNAUTHORIZED);
+        let replay_body = read_json(replay_response).await?;
+        assert_eq!(replay_body["error"]["code"], json!("invalid_signature"));
+        assert_eq!(replay_body["audit"]["event_id"], json!(first_event_id));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resend_webhook_deduplicates_replays_and_detects_conflicts() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let secret = format!(
+            "whsec_{}",
+            base64::engine::general_purpose::STANDARD.encode("resend-webhook-test-secret")
+        );
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.resend_webhook_secret = Some(secret.clone());
+        config.runtime_comms_delivery_max_retries = 0;
+        let app = build_router(config);
+
+        let delivered_payload = serde_json::json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_conflict_1",
+                "to": ["user@example.com"],
+                "tags": [{"name":"integration_id","value":"resend.primary"}]
+            }
+        })
+        .to_string();
+        let bounced_payload = serde_json::json!({
+            "type": "email.bounced",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_conflict_2",
+                "to": ["user@example.com"],
+                "reason": "mailbox_not_found",
+                "tags": [{"name":"integration_id","value":"resend.primary"}]
+            }
+        })
+        .to_string();
+        let headers = signed_resend_webhook_headers(
+            &delivered_payload,
+            &secret,
+            "evt_conflict",
+            Utc::now().timestamp(),
+        );
+
+        let mut first_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &headers {
+            first_builder = first_builder.header(name, value);
+        }
+        let first_request = first_builder.body(Body::from(delivered_payload.clone()))?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::ACCEPTED);
+        let first_body = read_json(first_response).await?;
+        assert_eq!(first_body["data"]["status"], json!("received"));
+        assert_eq!(first_body["data"]["idempotent_replay"], json!(false));
+        let event_id = first_body["data"]["event_id"].as_u64().expect("event id");
+
+        let mut replay_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &headers {
+            replay_builder = replay_builder.header(name, value);
+        }
+        let replay_request = replay_builder.body(Body::from(delivered_payload))?;
+        let replay_response = app.clone().oneshot(replay_request).await?;
+        assert_eq!(replay_response.status(), StatusCode::OK);
+        let replay_body = read_json(replay_response).await?;
+        assert_eq!(replay_body["data"]["idempotent_replay"], json!(true));
+        assert_eq!(replay_body["data"]["event_id"], json!(event_id));
+
+        let conflict_headers = signed_resend_webhook_headers(
+            &bounced_payload,
+            &secret,
+            "evt_conflict",
+            Utc::now().timestamp(),
+        );
+        let mut conflict_builder = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks/resend")
+            .header("content-type", "application/json");
+        for (name, value) in &conflict_headers {
+            conflict_builder = conflict_builder.header(name, value);
+        }
+        let conflict_request = conflict_builder.body(Body::from(bounced_payload))?;
+        let conflict_response = app.oneshot(conflict_request).await?;
+        assert_eq!(conflict_response.status(), StatusCode::CONFLICT);
+        let conflict_body = read_json(conflict_response).await?;
+        assert_eq!(
+            conflict_body["error"]["code"],
+            json!("idempotency_conflict")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resend_webhook_forwarding_retries_and_projects_delivery() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let secret = format!(
+            "whsec_{}",
+            base64::engine::general_purpose::STANDARD.encode("resend-webhook-test-secret")
+        );
+        let response_statuses = Arc::new(Mutex::new(vec![500u16, 202u16]));
+        let captured_payloads = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let (runtime_addr, runtime_handle) =
+            start_runtime_comms_delivery_stub(response_statuses.clone(), captured_payloads.clone())
+                .await?;
+
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.resend_webhook_secret = Some(secret.clone());
+        config.runtime_elixir_base_url = Some(format!("http://{runtime_addr}"));
+        config.runtime_signing_key = Some("runtime-signing-key".to_string());
+        config.runtime_signing_key_id = "runtime-v1".to_string();
+        config.runtime_comms_delivery_ingest_path =
+            "/internal/v1/comms/delivery-events".to_string();
+        config.runtime_comms_delivery_timeout_ms = 1000;
+        config.runtime_comms_delivery_max_retries = 1;
+        config.runtime_comms_delivery_retry_backoff_ms = 1;
+        let state = test_app_state(config);
+
+        state
+            ._domain_store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "123".to_string(),
+                api_key: "re_runtime_projection_1234567890".to_string(),
+                sender_email: Some("noreply@example.com".to_string()),
+                sender_name: Some("OpenAgents".to_string()),
+            })
+            .await
+            .expect("seed resend integration");
+
+        let payload = serde_json::json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_projection",
+                "to": ["user@example.com"],
+                "tags": [
+                    {"name":"integration_id","value":"resend.primary"},
+                    {"name":"user_id","value":"123"}
+                ]
+            }
+        })
+        .to_string();
+        let headers = signed_resend_webhook_headers(
+            &payload,
+            &secret,
+            "evt_projection",
+            Utc::now().timestamp(),
+        );
+
+        let response =
+            super::webhooks_resend_store(State(state.clone()), headers, Bytes::from(payload)).await;
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let response_body = read_json(response).await?;
+        assert_eq!(response_body["data"]["status"], json!("received"));
+
+        wait_for_webhook_status(&state, "resend:evt_projection", "forwarded").await?;
+
+        let event = state
+            ._domain_store
+            .webhook_event_by_idempotency_key("resend:evt_projection")
+            .await?
+            .expect("webhook event");
+        assert_eq!(event.status, "forwarded");
+        assert_eq!(event.runtime_attempts, 1);
+        assert_eq!(event.runtime_status_code, Some(202));
+        assert!(event.forwarded_at.is_some());
+
+        let projection = state
+            ._domain_store
+            .delivery_projection("123", "resend", Some("resend.primary"))
+            .await?
+            .expect("delivery projection");
+        assert_eq!(projection.last_state.as_deref(), Some("delivered"));
+        assert_eq!(
+            projection.last_message_id.as_deref(),
+            Some("email_projection")
+        );
+        assert_eq!(projection.source, "runtime_forwarder");
+        assert_eq!(projection.last_webhook_event_id, Some(event.id));
+
+        let audits = state
+            ._domain_store
+            .list_integration_audits_for_user("123")
+            .await?;
+        assert!(
+            audits
+                .iter()
+                .any(|audit| audit.action == "delivery_projection_updated")
+        );
+
+        let captured = captured_payloads.lock().await.clone();
+        assert_eq!(captured.len(), 2);
+
+        runtime_handle.abort();
+        Ok(())
     }
 
     #[tokio::test]

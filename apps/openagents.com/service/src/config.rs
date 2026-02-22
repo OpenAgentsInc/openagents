@@ -50,6 +50,12 @@ const DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS: u64 = 60;
 const DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
 const DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS: u64 = 60_000;
+const DEFAULT_RUNTIME_SIGNING_KEY_ID: &str = "runtime-v1";
+const DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH: &str = "/internal/v1/comms/delivery-events";
+const DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS: u64 = 10_000;
+const DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES: u32 = 2;
+const DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS: u64 = 200;
+const DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS: u64 = 300;
 const DEFAULT_GOOGLE_OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send";
 const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_RUNTIME_DRIVER: &str = "legacy";
@@ -129,6 +135,15 @@ pub struct Config {
     pub runtime_internal_signature_ttl_seconds: u64,
     pub runtime_internal_secret_fetch_path: String,
     pub runtime_internal_secret_cache_ttl_ms: u64,
+    pub runtime_elixir_base_url: Option<String>,
+    pub runtime_signing_key: Option<String>,
+    pub runtime_signing_key_id: String,
+    pub runtime_comms_delivery_ingest_path: String,
+    pub runtime_comms_delivery_timeout_ms: u64,
+    pub runtime_comms_delivery_max_retries: u32,
+    pub runtime_comms_delivery_retry_backoff_ms: u64,
+    pub resend_webhook_secret: Option<String>,
+    pub resend_webhook_tolerance_seconds: u64,
     pub google_oauth_client_id: Option<String>,
     pub google_oauth_client_secret: Option<String>,
     pub google_oauth_redirect_uri: Option<String>,
@@ -495,6 +510,60 @@ impl Config {
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS);
 
+        let runtime_elixir_base_url = env::var("OA_RUNTIME_ELIXIR_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty());
+
+        let runtime_signing_key = env::var("OA_RUNTIME_SIGNING_KEY")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| runtime_signature_secret.clone());
+
+        let runtime_signing_key_id = env::var("OA_RUNTIME_SIGNING_KEY_ID")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_SIGNING_KEY_ID.to_string());
+
+        let runtime_comms_delivery_ingest_path =
+            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_INGEST_PATH")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH.to_string());
+
+        let runtime_comms_delivery_timeout_ms =
+            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_TIMEOUT_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS)
+                .max(500);
+
+        let runtime_comms_delivery_max_retries =
+            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_MAX_RETRIES")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES);
+
+        let runtime_comms_delivery_retry_backoff_ms =
+            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_RETRY_BACKOFF_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS);
+
+        let resend_webhook_secret = env::var("OA_RESEND_WEBHOOK_SECRET")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let resend_webhook_tolerance_seconds = env::var("OA_RESEND_WEBHOOK_TOLERANCE_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS)
+            .max(1);
+
         let google_oauth_client_id = env::var("GOOGLE_OAUTH_CLIENT_ID")
             .ok()
             .map(|value| value.trim().to_string())
@@ -705,6 +774,15 @@ impl Config {
             runtime_internal_signature_ttl_seconds,
             runtime_internal_secret_fetch_path,
             runtime_internal_secret_cache_ttl_ms,
+            runtime_elixir_base_url,
+            runtime_signing_key,
+            runtime_signing_key_id,
+            runtime_comms_delivery_ingest_path,
+            runtime_comms_delivery_timeout_ms,
+            runtime_comms_delivery_max_retries,
+            runtime_comms_delivery_retry_backoff_ms,
+            resend_webhook_secret,
+            resend_webhook_tolerance_seconds,
             google_oauth_client_id,
             google_oauth_client_secret,
             google_oauth_redirect_uri,

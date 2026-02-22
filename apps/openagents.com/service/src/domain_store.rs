@@ -431,6 +431,21 @@ pub struct RecordWebhookEventResult {
     pub inserted: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct MarkWebhookEventVerifiedInput {
+    pub webhook_event_id: u64,
+    pub status: String,
+    pub event_type: Option<String>,
+    pub delivery_state: Option<String>,
+    pub message_id: Option<String>,
+    pub integration_id: Option<String>,
+    pub user_id: Option<String>,
+    pub recipient: Option<String>,
+    pub normalized_hash: Option<String>,
+    pub normalized_payload: Option<Value>,
+    pub raw_payload: Option<Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommsDeliveryProjectionRecord {
     pub id: u64,
@@ -1917,6 +1932,195 @@ impl DomainStore {
         .await
     }
 
+    pub async fn webhook_event_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        let idempotency_key = normalize_non_empty(idempotency_key, "idempotency_key")?;
+        let state = self.state.read().await;
+        Ok(state.comms_webhook_events.get(&idempotency_key).cloned())
+    }
+
+    pub async fn webhook_event_by_id(
+        &self,
+        webhook_event_id: u64,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        let state = self.state.read().await;
+        Ok(state
+            .comms_webhook_events
+            .values()
+            .find(|row| row.id == webhook_event_id)
+            .cloned())
+    }
+
+    pub async fn upsert_invalid_webhook_event(
+        &self,
+        input: RecordWebhookEventInput,
+    ) -> Result<CommsWebhookEventRecord, DomainStoreError> {
+        let provider = normalize_non_empty(&input.provider, "provider")?.to_lowercase();
+        let idempotency_key = normalize_non_empty(&input.idempotency_key, "idempotency_key")?;
+        let external_event_id = normalize_optional_string(input.external_event_id.as_deref());
+        let raw_payload = input.raw_payload.clone();
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            if let Some(existing) = state.comms_webhook_events.get_mut(&idempotency_key) {
+                existing.signature_valid = false;
+                existing.status = "invalid_signature".to_string();
+                existing.raw_payload = raw_payload.clone();
+                existing.last_error = Some("invalid_signature".to_string());
+                existing.updated_at = now;
+                return Ok(existing.clone());
+            }
+
+            let id = state.next_comms_webhook_event_id;
+            state.next_comms_webhook_event_id = state.next_comms_webhook_event_id.saturating_add(1);
+
+            let event = CommsWebhookEventRecord {
+                id,
+                provider,
+                idempotency_key: idempotency_key.clone(),
+                external_event_id,
+                event_type: None,
+                delivery_state: None,
+                message_id: None,
+                integration_id: None,
+                user_id: None,
+                recipient: None,
+                signature_valid: false,
+                status: "invalid_signature".to_string(),
+                normalized_hash: None,
+                runtime_attempts: 0,
+                runtime_status_code: None,
+                runtime_response: None,
+                normalized_payload: None,
+                raw_payload: raw_payload.clone(),
+                last_error: Some("invalid_signature".to_string()),
+                forwarded_at: None,
+                created_at: now,
+                updated_at: now,
+            };
+
+            state
+                .comms_webhook_events
+                .insert(idempotency_key, event.clone());
+
+            Ok(event)
+        })
+        .await
+    }
+
+    pub async fn mark_webhook_event_verified(
+        &self,
+        input: MarkWebhookEventVerifiedInput,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        let status = normalize_status_or_default(Some(input.status.as_str()), "received");
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let Some(row) = state
+                .comms_webhook_events
+                .values_mut()
+                .find(|row| row.id == input.webhook_event_id)
+            else {
+                return Ok(None);
+            };
+
+            row.signature_valid = true;
+            row.status = status.clone();
+            row.event_type = normalize_optional_string(input.event_type.as_deref());
+            row.delivery_state = normalize_optional_string(input.delivery_state.as_deref());
+            row.message_id = normalize_optional_string(input.message_id.as_deref());
+            row.integration_id = normalize_optional_string(input.integration_id.as_deref());
+            row.user_id = normalize_optional_string(input.user_id.as_deref());
+            row.recipient = normalize_optional_string(input.recipient.as_deref());
+            row.normalized_hash = normalize_optional_string(input.normalized_hash.as_deref());
+            row.normalized_payload = input.normalized_payload.clone();
+            row.raw_payload = input.raw_payload.clone();
+            row.last_error = None;
+            row.updated_at = now;
+
+            Ok(Some(row.clone()))
+        })
+        .await
+    }
+
+    pub async fn mark_webhook_event_forwarding(
+        &self,
+        webhook_event_id: u64,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        self.mutate(|state| {
+            let now = Utc::now();
+            let Some(row) = state
+                .comms_webhook_events
+                .values_mut()
+                .find(|row| row.id == webhook_event_id)
+            else {
+                return Ok(None);
+            };
+
+            row.runtime_attempts = row.runtime_attempts.saturating_add(1);
+            row.status = "forwarding".to_string();
+            row.updated_at = now;
+            Ok(Some(row.clone()))
+        })
+        .await
+    }
+
+    pub async fn mark_webhook_event_forward_failed(
+        &self,
+        webhook_event_id: u64,
+        runtime_status_code: Option<u16>,
+        runtime_response: Option<Value>,
+        last_error: Option<String>,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        self.mutate(|state| {
+            let now = Utc::now();
+            let Some(row) = state
+                .comms_webhook_events
+                .values_mut()
+                .find(|row| row.id == webhook_event_id)
+            else {
+                return Ok(None);
+            };
+
+            row.status = "failed".to_string();
+            row.runtime_status_code = runtime_status_code;
+            row.runtime_response = runtime_response.clone();
+            row.last_error = normalize_optional_string(last_error.as_deref());
+            row.updated_at = now;
+            Ok(Some(row.clone()))
+        })
+        .await
+    }
+
+    pub async fn mark_webhook_event_forwarded(
+        &self,
+        webhook_event_id: u64,
+        runtime_status_code: Option<u16>,
+        runtime_response: Option<Value>,
+    ) -> Result<Option<CommsWebhookEventRecord>, DomainStoreError> {
+        self.mutate(|state| {
+            let now = Utc::now();
+            let Some(row) = state
+                .comms_webhook_events
+                .values_mut()
+                .find(|row| row.id == webhook_event_id)
+            else {
+                return Ok(None);
+            };
+
+            row.status = "forwarded".to_string();
+            row.runtime_status_code = runtime_status_code;
+            row.runtime_response = runtime_response.clone();
+            row.forwarded_at = Some(now);
+            row.last_error = None;
+            row.updated_at = now;
+            Ok(Some(row.clone()))
+        })
+        .await
+    }
+
     pub async fn upsert_delivery_projection(
         &self,
         input: UpsertDeliveryProjectionInput,
@@ -1978,6 +2182,55 @@ impl DomainStore {
             row.updated_at = now;
 
             Ok(row.clone())
+        })
+        .await
+    }
+
+    pub async fn delivery_projection(
+        &self,
+        user_id: &str,
+        provider: &str,
+        integration_id: Option<&str>,
+    ) -> Result<Option<CommsDeliveryProjectionRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let provider = normalize_non_empty(provider, "provider")?.to_lowercase();
+        let integration_id =
+            normalize_optional_string(integration_id).unwrap_or_else(|| "unknown".to_string());
+        let key = delivery_projection_key(&user_id, &provider, &integration_id);
+
+        let state = self.state.read().await;
+        Ok(state.comms_delivery_projections.get(&key).cloned())
+    }
+
+    pub async fn audit_delivery_projection_updated(
+        &self,
+        user_id: &str,
+        provider: &str,
+        projection: &CommsDeliveryProjectionRecord,
+    ) -> Result<(), DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let provider = normalize_non_empty(provider, "provider")?.to_lowercase();
+
+        self.mutate(|state| {
+            let key = integration_key(&user_id, &provider);
+            let Some(integration) = state.user_integrations.get(&key).cloned() else {
+                return Ok(());
+            };
+
+            append_integration_audit(
+                state,
+                &user_id,
+                Some(integration.id),
+                &provider,
+                "delivery_projection_updated",
+                Some(serde_json::json!({
+                    "projection_id": projection.id,
+                    "delivery_state": projection.last_state,
+                    "message_id": projection.last_message_id,
+                    "source": projection.source,
+                })),
+            );
+            Ok(())
         })
         .await
     }
@@ -2667,6 +2920,15 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            runtime_elixir_base_url: None,
+            runtime_signing_key: None,
+            runtime_signing_key_id: "runtime-v1".to_string(),
+            runtime_comms_delivery_ingest_path: "/internal/v1/comms/delivery-events".to_string(),
+            runtime_comms_delivery_timeout_ms: 10_000,
+            runtime_comms_delivery_max_retries: 2,
+            runtime_comms_delivery_retry_backoff_ms: 200,
+            resend_webhook_secret: None,
+            resend_webhook_tolerance_seconds: 300,
             google_oauth_client_id: None,
             google_oauth_client_secret: None,
             google_oauth_redirect_uri: None,

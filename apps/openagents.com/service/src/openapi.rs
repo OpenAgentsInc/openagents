@@ -35,6 +35,7 @@ pub const ROUTE_SHOUTS: &str = "/api/shouts";
 pub const ROUTE_SHOUTS_ZONES: &str = "/api/shouts/zones";
 pub const ROUTE_WHISPERS: &str = "/api/whispers";
 pub const ROUTE_WHISPERS_READ: &str = "/api/whispers/:id/read";
+pub const ROUTE_WEBHOOKS_RESEND: &str = "/api/webhooks/resend";
 pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
@@ -701,6 +702,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("shouts_zones"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_WEBHOOKS_RESEND,
+        operation_id: "webhooksResendStore",
+        summary: "Ingest and verify Resend delivery webhooks with idempotency protection.",
+        tag: "integrations",
+        secured: false,
+        deprecated: false,
+        success_status: "202",
+        request_example: Some("webhook_resend"),
+        response_example: Some("webhook_resend_received"),
     },
     OpenApiContract {
         method: "get",
@@ -1518,6 +1531,18 @@ fn request_example(key: &str) -> Option<Value> {
             "recipientHandle": "openagents-user",
             "body": "hey"
         })),
+        "webhook_resend" => Some(json!({
+            "type": "email.delivered",
+            "created_at": "2026-02-22T00:00:00Z",
+            "data": {
+                "email_id": "email_123",
+                "to": ["user@example.com"],
+                "tags": [
+                    {"name": "integration_id", "value": "resend.primary"},
+                    {"name": "user_id", "value": "usr_123"}
+                ]
+            }
+        })),
         "l402_paywall_create" => Some(json!({
             "name": "Default",
             "hostRegexp": "sats4ai\\.com",
@@ -2181,6 +2206,13 @@ fn response_example(key: &str) -> Option<Value> {
                 {"zone": "global", "count24h": 12},
                 {"zone": "l402", "count24h": 4}
             ]
+        })),
+        "webhook_resend_received" => Some(json!({
+            "data": {
+                "event_id": 42,
+                "status": "received",
+                "idempotent_replay": false
+            }
         })),
         "whisper" => Some(json!({
             "data": {
