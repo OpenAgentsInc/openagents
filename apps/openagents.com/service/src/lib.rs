@@ -55,9 +55,9 @@ use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
-    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
-    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
+    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
+    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
     ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
@@ -100,8 +100,18 @@ const THROTTLE_LOGIN_VERIFY_LIMIT: usize = 10;
 const THROTTLE_LOGIN_VERIFY_WINDOW_SECONDS: i64 = 60;
 const THROTTLE_THREAD_MESSAGE_LIMIT: usize = 60;
 const THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS: i64 = 60;
+const THROTTLE_CODEX_CONTROL_REQUEST_LIMIT: usize = 60;
+const THROTTLE_CODEX_CONTROL_REQUEST_WINDOW_SECONDS: i64 = 60;
 const RUNTIME_INTERNAL_NONCE_GRACE_SECONDS: i64 = 5;
 const RUNTIME_INTERNAL_MAX_BODY_BYTES: usize = 1024 * 1024;
+const CODEX_CONTROL_METHOD_ALLOWLIST: &[&str] = &[
+    "thread/start",
+    "thread/resume",
+    "turn/start",
+    "turn/interrupt",
+    "thread/list",
+    "thread/read",
+];
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -116,6 +126,7 @@ struct AppState {
     _domain_store: DomainStore,
     runtime_revocation_client: Option<RuntimeRevocationClient>,
     throttle_state: ThrottleState,
+    codex_control_receipts: CodexControlReceiptState,
     runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
 }
@@ -128,6 +139,11 @@ struct ThrottleState {
 #[derive(Clone, Default)]
 struct RuntimeInternalNonceState {
     entries: Arc<Mutex<HashMap<String, i64>>>,
+}
+
+#[derive(Clone, Default)]
+struct CodexControlReceiptState {
+    entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 
 #[derive(Clone)]
@@ -326,6 +342,27 @@ struct SendThreadMessageRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerControlRequestEnvelope {
+    request: RuntimeCodexWorkerControlRequest,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerControlRequest {
+    request_id: String,
+    method: String,
+    #[serde(default)]
+    params: serde_json::Value,
+    #[serde(default)]
+    request_version: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    thread_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LocalTestLoginQuery {
     email: String,
     #[serde(default)]
@@ -359,6 +396,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         _domain_store: domain_store,
         runtime_revocation_client,
         throttle_state: ThrottleState::default(),
+        codex_control_receipts: CodexControlReceiptState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
@@ -369,6 +407,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let login_verify_throttle_state = state.clone();
     let local_test_login_throttle_state = state.clone();
     let thread_message_throttle_state = state.clone();
+    let codex_control_request_throttle_state = state.clone();
     let authenticated_routes_state = state.clone();
     let workos_session_state = state.clone();
     let admin_state = state.clone();
@@ -453,6 +492,13 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                     thread_message_throttle_state,
                     throttle_thread_message_gate,
                 )),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKER_REQUESTS,
+            post(runtime_codex_worker_request).route_layer(middleware::from_fn_with_state(
+                codex_control_request_throttle_state,
+                throttle_codex_control_request_gate,
+            )),
         )
         .route(ROUTE_V1_AUTH_SESSION, get(current_session))
         .route(ROUTE_V1_AUTH_SESSIONS, get(list_sessions))
@@ -778,6 +824,37 @@ async fn throttle_thread_message_gate(
         &key,
         THROTTLE_THREAD_MESSAGE_LIMIT,
         THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS,
+    )
+    .await
+    {
+        Ok(()) => next.run(request).await,
+        Err(retry_after_seconds) => error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            format!("Too many requests. Retry in {retry_after_seconds}s."),
+        )
+        .into_response(),
+    }
+}
+
+async fn throttle_codex_control_request_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request.method() != Method::POST {
+        return next.run(request).await;
+    }
+
+    let key = format!(
+        "runtime.codex.control.request:{}",
+        request_identity_key(request.headers())
+    );
+    match consume_throttle_token(
+        &state.throttle_state,
+        &key,
+        THROTTLE_CODEX_CONTROL_REQUEST_LIMIT,
+        THROTTLE_CODEX_CONTROL_REQUEST_WINDOW_SECONDS,
     )
     .await
     {
@@ -3029,6 +3106,318 @@ async fn send_thread_message(
     })))
 }
 
+async fn runtime_codex_worker_request(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeCodexWorkerControlRequestEnvelope>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_worker_id = worker_id.trim().to_string();
+    if normalized_worker_id.is_empty() {
+        return Err(validation_error("worker_id", "Worker id is required."));
+    }
+
+    let control_request = payload.request;
+    let normalized_control_request_id = control_request.request_id.trim().to_string();
+    if normalized_control_request_id.is_empty() {
+        return Err(validation_error(
+            "request.request_id",
+            "Request id is required.",
+        ));
+    }
+
+    let normalized_method = control_request.method.trim().to_lowercase();
+    if !is_codex_control_method_allowed(&normalized_method) {
+        return Err(validation_error(
+            "request.method",
+            "Control method is not allowlisted.",
+        ));
+    }
+
+    let replay_key = format!(
+        "{}:{}:{}",
+        session.user.id, normalized_worker_id, normalized_control_request_id
+    );
+    if let Some(replayed) = state
+        .codex_control_receipts
+        .entries
+        .lock()
+        .await
+        .get(&replay_key)
+        .cloned()
+    {
+        let replayed = mark_codex_control_replay(replayed);
+        state.observability.audit(
+            AuditEvent::new("runtime.codex.control.request.accepted", request_id.clone())
+                .with_user_id(session.user.id.clone())
+                .with_session_id(session.session.session_id.clone())
+                .with_org_id(session.session.active_org_id.clone())
+                .with_device_id(session.session.device_id.clone())
+                .with_attribute("worker_id", normalized_worker_id.clone())
+                .with_attribute("control_request_id", normalized_control_request_id.clone())
+                .with_attribute("method", normalized_method.clone())
+                .with_attribute("idempotent_replay", "true".to_string()),
+        );
+        state
+            .observability
+            .increment_counter("runtime.codex.control.request.accepted", &request_id);
+        return Ok(ok_data(replayed));
+    }
+
+    let response =
+        execute_codex_control_request(&state, &session, &normalized_method, &control_request)
+            .await?;
+
+    let mut envelope = serde_json::json!({
+        "worker_id": normalized_worker_id.clone(),
+        "request_id": normalized_control_request_id.clone(),
+        "ok": true,
+        "method": normalized_method.clone(),
+        "idempotent_replay": false,
+        "response": response,
+    });
+
+    if let Some(source) = control_request
+        .source
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    {
+        envelope["source"] = serde_json::json!(source);
+    }
+    if let Some(request_version) = control_request
+        .request_version
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    {
+        envelope["request_version"] = serde_json::json!(request_version);
+    }
+    if let Some(session_id) = control_request
+        .session_id
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+    {
+        envelope["session_id"] = serde_json::json!(session_id);
+    }
+
+    state
+        .codex_control_receipts
+        .entries
+        .lock()
+        .await
+        .insert(replay_key, envelope.clone());
+
+    state.observability.audit(
+        AuditEvent::new("runtime.codex.control.request.accepted", request_id.clone())
+            .with_user_id(session.user.id.clone())
+            .with_session_id(session.session.session_id.clone())
+            .with_org_id(session.session.active_org_id.clone())
+            .with_device_id(session.session.device_id.clone())
+            .with_attribute("worker_id", normalized_worker_id)
+            .with_attribute("control_request_id", normalized_control_request_id)
+            .with_attribute("method", normalized_method)
+            .with_attribute("idempotent_replay", "false".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("runtime.codex.control.request.accepted", &request_id);
+
+    Ok(ok_data(envelope))
+}
+
+async fn execute_codex_control_request(
+    state: &AppState,
+    session: &SessionBundle,
+    method: &str,
+    control_request: &RuntimeCodexWorkerControlRequest,
+) -> Result<serde_json::Value, (StatusCode, Json<ApiErrorResponse>)> {
+    match method {
+        "thread/start" => {
+            let thread_id = codex_request_thread_id(control_request)
+                .unwrap_or_else(|| format!("thread_{}", uuid::Uuid::new_v4().simple()));
+            let mut payload = serde_json::json!({
+                "thread_id": thread_id,
+            });
+            if let Some(text) = codex_request_text(control_request) {
+                validate_codex_turn_text(&text)?;
+                let appended = state
+                    .codex_thread_store
+                    .append_user_message(
+                        &session.user.id,
+                        &session.session.active_org_id,
+                        &thread_id,
+                        text,
+                    )
+                    .await
+                    .map_err(map_thread_store_error)?;
+                payload["message"] = serde_json::json!({
+                    "id": appended.message.message_id,
+                    "thread_id": appended.message.thread_id,
+                    "role": appended.message.role,
+                    "text": appended.message.text,
+                });
+            }
+            Ok(payload)
+        }
+        "thread/resume" => {
+            let thread_id = codex_request_thread_id(control_request).ok_or_else(|| {
+                validation_error("request.params.thread_id", "Thread id is required.")
+            })?;
+            let _ = state
+                .codex_thread_store
+                .list_thread_messages_for_user(&session.user.id, &thread_id)
+                .await
+                .map_err(map_thread_store_error)?;
+            Ok(serde_json::json!({
+                "thread_id": thread_id,
+            }))
+        }
+        "thread/list" => {
+            let threads = state
+                .codex_thread_store
+                .list_threads_for_user(&session.user.id, Some(&session.session.active_org_id))
+                .await
+                .map_err(map_thread_store_error)?;
+            Ok(serde_json::json!({
+                "threads": threads,
+            }))
+        }
+        "thread/read" => {
+            let thread_id = codex_request_thread_id(control_request).ok_or_else(|| {
+                validation_error("request.params.thread_id", "Thread id is required.")
+            })?;
+            let messages = state
+                .codex_thread_store
+                .list_thread_messages_for_user(&session.user.id, &thread_id)
+                .await
+                .map_err(map_thread_store_error)?;
+            Ok(serde_json::json!({
+                "thread_id": thread_id,
+                "messages": messages,
+            }))
+        }
+        "turn/start" => {
+            let thread_id = codex_request_thread_id(control_request).ok_or_else(|| {
+                validation_error("request.params.thread_id", "Thread id is required.")
+            })?;
+            let text = codex_request_text(control_request).ok_or_else(|| {
+                validation_error("request.params.text", "Message text is required.")
+            })?;
+            validate_codex_turn_text(&text)?;
+
+            let appended = state
+                .codex_thread_store
+                .append_user_message(
+                    &session.user.id,
+                    &session.session.active_org_id,
+                    &thread_id,
+                    text,
+                )
+                .await
+                .map_err(map_thread_store_error)?;
+
+            Ok(serde_json::json!({
+                "thread_id": thread_id,
+                "turn": {
+                    "id": format!("turn_{}", uuid::Uuid::new_v4().simple()),
+                },
+                "message": {
+                    "id": appended.message.message_id,
+                    "thread_id": appended.message.thread_id,
+                    "role": appended.message.role,
+                    "text": appended.message.text,
+                },
+            }))
+        }
+        "turn/interrupt" => Ok(serde_json::json!({
+            "thread_id": codex_request_thread_id(control_request),
+            "turn_id": normalized_json_string(control_request.params.get("turn_id"))
+                .or_else(|| normalized_json_string(control_request.params.get("turnId"))),
+            "status": "interrupted",
+        })),
+        _ => Err(validation_error(
+            "request.method",
+            "Control method is not allowlisted.",
+        )),
+    }
+}
+
+fn is_codex_control_method_allowed(method: &str) -> bool {
+    CODEX_CONTROL_METHOD_ALLOWLIST
+        .iter()
+        .any(|allowed| *allowed == method)
+}
+
+fn mark_codex_control_replay(mut payload: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("idempotent_replay".to_string(), serde_json::json!(true));
+    }
+    payload
+}
+
+fn codex_request_thread_id(request: &RuntimeCodexWorkerControlRequest) -> Option<String> {
+    request
+        .thread_id
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+        .or_else(|| normalized_json_string(request.params.get("thread_id")))
+        .or_else(|| normalized_json_string(request.params.get("threadId")))
+}
+
+fn codex_request_text(request: &RuntimeCodexWorkerControlRequest) -> Option<String> {
+    normalized_json_string(request.params.get("text"))
+        .or_else(|| normalized_json_string(request.params.get("message")))
+        .or_else(|| normalized_json_string(request.params.get("prompt")))
+        .or_else(|| {
+            request
+                .params
+                .get("input")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|parts| {
+                    parts.iter().find_map(|part| {
+                        let part_type =
+                            normalized_json_string(part.get("type")).unwrap_or_default();
+                        if part_type == "text" {
+                            normalized_json_string(part.get("text"))
+                        } else {
+                            None
+                        }
+                    })
+                })
+        })
+}
+
+fn normalized_json_string(value: Option<&serde_json::Value>) -> Option<String> {
+    value
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| non_empty(raw.to_string()))
+}
+
+fn validate_codex_turn_text(text: &str) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = text.trim();
+    if normalized.is_empty() {
+        return Err(validation_error(
+            "request.params.text",
+            "Message text is required.",
+        ));
+    }
+    if normalized.chars().count() > 20_000 {
+        return Err(validation_error(
+            "request.params.text",
+            "Message text exceeds 20000 characters.",
+        ));
+    }
+    Ok(())
+}
+
 async fn refresh_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4106,6 +4495,7 @@ mod tests {
             _domain_store: domain_store,
             runtime_revocation_client,
             throttle_state: super::ThrottleState::default(),
+            codex_control_receipts: super::CodexControlReceiptState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
@@ -6346,6 +6736,108 @@ mod tests {
             .body(Body::empty())?;
         let read_other_response = app.oneshot(read_other_request).await?;
         assert_eq!(read_other_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_control_request_accepts_turn_start_and_persists_message() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "codex-control@openagents.com").await?;
+
+        let control_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Ashared/requests")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"request":{"request_id":"req_turn_1","method":"turn/start","params":{"thread_id":"thread-control-1","text":"continue"}}}"#,
+            ))?;
+        let control_response = app.clone().oneshot(control_request).await?;
+        assert_eq!(control_response.status(), StatusCode::OK);
+        let control_body = read_json(control_response).await?;
+        assert_eq!(control_body["data"]["method"], "turn/start");
+        assert_eq!(control_body["data"]["request_id"], "req_turn_1");
+        assert_eq!(control_body["data"]["idempotent_replay"], false);
+        assert_eq!(
+            control_body["data"]["response"]["thread_id"],
+            "thread-control-1"
+        );
+        assert!(
+            control_body["data"]["response"]["turn"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("turn_")
+        );
+
+        let list_messages_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads/thread-control-1/messages")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_messages_response = app.oneshot(list_messages_request).await?;
+        assert_eq!(list_messages_response.status(), StatusCode::OK);
+        let list_messages_body = read_json(list_messages_response).await?;
+        assert_eq!(
+            list_messages_body["data"]["messages"][0]["text"],
+            serde_json::json!("continue")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_control_request_replays_duplicate_request_ids() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "codex-replay@openagents.com").await?;
+        let payload = r#"{"request":{"request_id":"req_replay_1","method":"thread/start","params":{"thread_id":"thread-replay-1"}}}"#;
+
+        let first_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Ashared/requests")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let first_body = read_json(first_response).await?;
+        assert_eq!(first_body["data"]["idempotent_replay"], false);
+
+        let second_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Ashared/requests")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(payload))?;
+        let second_response = app.oneshot(second_request).await?;
+        assert_eq!(second_response.status(), StatusCode::OK);
+        let second_body = read_json(second_response).await?;
+        assert_eq!(second_body["data"]["idempotent_replay"], true);
+        assert_eq!(
+            second_body["data"]["response"]["thread_id"],
+            serde_json::json!("thread-replay-1")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_control_request_rejects_non_allowlisted_methods() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "codex-invalid@openagents.com").await?;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Ashared/requests")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"request":{"request_id":"req_bad_1","method":"shell/exec","params":{}}}"#,
+            ))?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "invalid_request");
 
         Ok(())
     }

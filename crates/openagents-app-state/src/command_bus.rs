@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -210,11 +212,33 @@ pub fn map_intent_to_http(
                     "Access token is required to send thread message.",
                 ));
             }
+            let worker_id = state
+                .stream
+                .active_worker_id
+                .clone()
+                .unwrap_or_else(|| "desktopw:shared".to_string())
+                .replace(':', "%3A");
+            let request_id = format!(
+                "webreq_{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            );
             Ok(HttpCommandRequest {
                 method: HttpMethod::Post,
-                path: format!("/api/runtime/threads/{thread_id}/messages"),
+                path: format!("/api/runtime/codex/workers/{worker_id}/requests"),
                 body: Some(json!({
-                    "text": text,
+                    "request": {
+                        "request_id": request_id,
+                        "method": "turn/start",
+                        "params": {
+                            "thread_id": thread_id,
+                            "text": text,
+                        },
+                        "request_version": "v1",
+                        "source": "openagents-web-shell",
+                    }
                 })),
                 auth: AuthRequirement::AccessToken,
                 headers: Vec::new(),
@@ -324,6 +348,33 @@ mod tests {
             body["challenge_id"],
             Value::String("challenge_123".to_string())
         );
+    }
+
+    #[test]
+    fn map_send_thread_message_routes_to_codex_control_request_lane() {
+        let mut state = AppState::default();
+        state.auth.access_token = Some("oa_access".to_string());
+        state.stream.active_worker_id = Some("desktopw:shared".to_string());
+
+        let request = map_intent_to_http(
+            &CommandIntent::SendThreadMessage {
+                thread_id: "thread-123".to_string(),
+                text: "continue".to_string(),
+            },
+            &state,
+        )
+        .expect("send thread message should map");
+
+        assert_eq!(request.method, HttpMethod::Post);
+        assert_eq!(
+            request.path,
+            "/api/runtime/codex/workers/desktopw%3Ashared/requests"
+        );
+        let body = request.body.expect("request body");
+        assert_eq!(body["request"]["method"], json!("turn/start"));
+        assert_eq!(body["request"]["params"]["thread_id"], json!("thread-123"));
+        assert_eq!(body["request"]["params"]["text"], json!("continue"));
+        assert_eq!(body["request"]["source"], json!("openagents-web-shell"));
     }
 
     #[test]

@@ -21,6 +21,8 @@ pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
+pub const ROUTE_RUNTIME_CODEX_WORKER_REQUESTS: &str =
+    "/api/runtime/codex/workers/:worker_id/requests";
 pub const ROUTE_V1_AUTH_SESSION: &str = "/api/v1/auth/session";
 pub const ROUTE_V1_AUTH_SESSIONS: &str = "/api/v1/auth/sessions";
 pub const ROUTE_V1_AUTH_SESSIONS_REVOKE: &str = "/api/v1/auth/sessions/revoke";
@@ -344,6 +346,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("thread_message"),
         response_example: Some("thread_message"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_CODEX_WORKER_REQUESTS,
+        operation_id: "runtimeCodexWorkerRequest",
+        summary: "Dispatch an allowlisted Codex worker control request.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("runtime_codex_worker_request"),
+        response_example: Some("runtime_codex_worker_request"),
     },
     OpenApiContract {
         method: "get",
@@ -697,6 +711,18 @@ fn request_example(key: &str) -> Option<Value> {
             "device_id": "ios:device"
         })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
+        "runtime_codex_worker_request" => Some(json!({
+            "request": {
+                "request_id": "req_turn_1",
+                "method": "turn/start",
+                "params": {
+                    "thread_id": "thread_123",
+                    "text": "Continue from last checkpoint."
+                },
+                "request_version": "v1",
+                "source": "openagents-web-shell"
+            }
+        })),
         "route_split_override" => Some(json!({
             "target": "rollback",
             "domain": "billing_l402"
@@ -900,6 +926,19 @@ fn response_example(key: &str) -> Option<Value> {
             "data": {
                 "status": "accepted",
                 "thread_id": "thread-1"
+            }
+        })),
+        "runtime_codex_worker_request" => Some(json!({
+            "data": {
+                "worker_id": "desktopw:shared",
+                "request_id": "req_turn_1",
+                "ok": true,
+                "method": "turn/start",
+                "idempotent_replay": false,
+                "response": {
+                    "thread_id": "thread_123",
+                    "turn": { "id": "turn_456" }
+                }
             }
         })),
         "runtime_threads" => Some(json!({
