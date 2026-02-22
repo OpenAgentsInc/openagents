@@ -44,3 +44,11 @@ Runtime deploys must run migration job validation and drift checks.
 ## INV-10: Legacy removal ordering
 
 Legacy infra removal occurs only after parity gates and rollback evidence.
+
+## INV-11: iOS WGPUI-only product UI
+
+iOS product UI surfaces (Codex/chat/thread/admin flows) must run through Rust/WGPUI.
+
+- Swift/SwiftUI is limited to host/bootstrap and OS capability bridges only.
+- No new product UI/state logic is allowed in SwiftUI view code.
+- Existing SwiftUI product UI is migration debt and must be removed as WGPUI parity lands.
