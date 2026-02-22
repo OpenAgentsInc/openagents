@@ -74,6 +74,7 @@ apps/openagents.com/storage/app/webhook-parity-harness/
 apps/openagents.com/storage/app/static-asset-sw-parity-harness/
 apps/openagents.com/storage/app/async-lane-parity-harness/
 apps/openagents.com/storage/app/mixed-version-deploy-safety/
+apps/openagents.com/storage/app/rust-only-terminal-gate/
 
 *.log
 !docs/logs/runs/*.log

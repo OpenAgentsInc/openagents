@@ -27,7 +27,7 @@ Each domain controls:
 Run local parity scoreboard:
 
 ```bash
-./apps/openagents.com/scripts/run-parity-scoreboard.sh
+./apps/openagents.com/scripts/archived-laravel/run-parity-scoreboard.sh
 ```
 
 CI workflow:

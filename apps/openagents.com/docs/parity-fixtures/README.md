@@ -7,7 +7,7 @@ This directory stores machine-readable baseline fixtures used for Laravel -> Rus
 Run from repo root:
 
 ```bash
-./apps/openagents.com/scripts/capture-parity-contract-fixtures.sh
+./apps/openagents.com/scripts/archived-laravel/capture-parity-contract-fixtures.sh
 ```
 
 Equivalent Artisan command:
@@ -20,7 +20,7 @@ php artisan ops:capture-parity-contract-fixtures --output=docs/parity-fixtures/b
 Deterministic shared state seeding (Laravel + Rust):
 
 ```bash
-./apps/openagents.com/scripts/seed-parity-fixtures.sh
+./apps/openagents.com/scripts/archived-laravel/seed-parity-fixtures.sh
 ```
 
 ## Artifacts

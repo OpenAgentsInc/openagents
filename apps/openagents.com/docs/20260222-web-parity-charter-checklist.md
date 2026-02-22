@@ -189,10 +189,10 @@ Baseline and migration evidence targets:
 
 - [ ] API route manifest coverage test remains authoritative (`tests/Feature/Api/V1/ApiRouteCoverageManifestTest.php`)
 - [ ] Contract capture harness evidence for JSON + Khala WS (`OA-WEBPARITY-003`)
-  Capture command: `./apps/openagents.com/scripts/capture-parity-contract-fixtures.sh`
+  Capture command: `./apps/openagents.com/scripts/archived-laravel/capture-parity-contract-fixtures.sh`
   Artifact path: `apps/openagents.com/docs/parity-fixtures/baseline/`
 - [ ] Parity CI scoreboard and required checks (`OA-WEBPARITY-004`)
-  Scoreboard command: `./apps/openagents.com/scripts/run-parity-scoreboard.sh`
+  Scoreboard command: `./apps/openagents.com/scripts/archived-laravel/run-parity-scoreboard.sh`
   CI workflow check name: `web-parity-scoreboard / parity-scoreboard`
 - [x] Full parity regression lane (`OA-WEBPARITY-056`)
   Regression command: `./apps/openagents.com/scripts/run-full-parity-regression.sh`
@@ -224,6 +224,8 @@ Baseline and migration evidence targets:
   Harness/report: `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`, `.github/workflows/web-async-lane-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-066-queue-scheduler-listener-parity.md`
 - [x] Mixed-version deploy safety, rollback, and backfill invariants (`OA-WEBPARITY-067`)
   Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `.github/workflows/web-mixed-version-deploy-safety-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
+- [x] Rust-only terminal gate (`OA-WEBPARITY-068`)
+  Harness/report: `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`, `.github/workflows/web-rust-only-terminal-gate.yml`, `apps/openagents.com/docs/20260222-oa-webparity-068-rust-only-terminal-gate.md`
 
 ## Checklist Freeze Rules
 

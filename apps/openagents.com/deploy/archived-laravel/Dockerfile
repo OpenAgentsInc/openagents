@@ -45,7 +45,7 @@ RUN npm install --no-audit --no-fund --package-lock=false
 
 COPY . ./
 COPY --from=php_deps /app/vendor ./vendor
-RUN php scripts/patch-oooas.php
+RUN php scripts/archived-laravel/patch-oooas.php
 
 # The build context may include a stale discovery cache (e.g. generated with dev deps).
 # Regenerate it for the production vendor set before any artisan commands run.
@@ -57,7 +57,7 @@ RUN php -r 'file_put_contents(".env", "APP_KEY=base64:" . base64_encode(random_b
 
 RUN php artisan package:discover --ansi
 RUN APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" APP_ENV=production APP_DEBUG=0 APP_URL=https://openagents.com php artisan openapi:generate --output=public/openapi.json --ansi
-RUN php scripts/normalize-openapi.php public/openapi.json
+RUN php scripts/archived-laravel/normalize-openapi.php public/openapi.json
 RUN test -s public/openapi.json
 
 RUN npm run build
@@ -78,7 +78,7 @@ RUN apt-get update \
 
 COPY --chown=www-data:www-data . ./
 COPY --from=php_deps /app/vendor ./vendor
-RUN php scripts/patch-oooas.php
+RUN php scripts/archived-laravel/patch-oooas.php
 COPY --from=node_build /app/public/build ./public/build
 COPY --from=node_build /app/public/openapi.json ./public/openapi.json
 

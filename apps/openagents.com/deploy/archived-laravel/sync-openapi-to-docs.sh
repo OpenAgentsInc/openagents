@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+APP_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # shellcheck source=./phase-b-freeze-guard.sh
 source "${SCRIPT_DIR}/phase-b-freeze-guard.sh"
@@ -32,7 +32,7 @@ echo "[openapi-sync] forcing APP_URL=${OPENAPI_APP_URL}"
     php artisan openapi:generate --output="${TMP_OPENAPI}" --ansi >/dev/null
 )
 
-php "${APP_DIR}/scripts/normalize-openapi.php" "${TMP_OPENAPI}"
+php "${APP_DIR}/scripts/archived-laravel/normalize-openapi.php" "${TMP_OPENAPI}"
 
 TARGET="${DOCS_REPO}/${DOCS_OPENAPI_PATH}"
 mkdir -p "$(dirname "${TARGET}")"

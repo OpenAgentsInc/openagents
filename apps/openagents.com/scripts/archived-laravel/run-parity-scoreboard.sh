@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 APP_DIR="${ROOT_DIR}/apps/openagents.com"
 CONFIG_PATH="${APP_DIR}/docs/parity-manifests/scoreboard-domains.json"
 TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 if ($argc < 2 || ! is_string($argv[1]) || trim($argv[1]) === '') {
-    fwrite(STDERR, "usage: php scripts/normalize-openapi.php <path-to-openapi-json>\n");
+    fwrite(STDERR, "usage: php scripts/archived-laravel/normalize-openapi.php <path-to-openapi-json>\n");
     exit(1);
 }
 
