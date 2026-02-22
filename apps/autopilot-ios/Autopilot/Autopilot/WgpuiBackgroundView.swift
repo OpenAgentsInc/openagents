@@ -134,7 +134,6 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         if WgpuiBackgroundBridge.consumeSubmitRequested(state: statePtr) {
             DispatchQueue.main.async { [weak self] in
                 self?.keyboardProxyField.resignFirstResponder()
-                self?.showSubmitAlert()
             }
         }
         if WgpuiBackgroundBridge.emailFocused(state: statePtr) {
@@ -143,13 +142,6 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
                 self?.beginEmailEditing()
             }
         }
-    }
-
-    private func showSubmitAlert() {
-        guard let vc = window?.rootViewController else { return }
-        let alert = UIAlertController(title: "Log in", message: "Submit tapped.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        vc.present(alert, animated: true)
     }
 
     private func beginEmailEditing() {
