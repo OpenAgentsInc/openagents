@@ -4,6 +4,7 @@ use std::os::raw::c_char;
 use serde_json::{Value, json};
 
 use crate::auth::{normalize_email, normalize_verification_code};
+use crate::codex_control::extract_control_request_json;
 use crate::codex_worker::extract_desktop_handshake_ack_id;
 use crate::command::normalize_thread_message_text;
 use crate::khala_protocol::parse_phoenix_frame;
@@ -54,6 +55,10 @@ pub fn parse_khala_frame_json(raw_frame: &str) -> Option<String> {
 pub fn extract_desktop_ack_id_json(payload_json: &str) -> Option<String> {
     let payload = serde_json::from_str::<Value>(payload_json).ok()?;
     extract_desktop_handshake_ack_id(&payload)
+}
+
+pub fn extract_control_request_from_payload_json(payload_json: &str) -> Option<String> {
+    extract_control_request_json(payload_json)
 }
 
 #[unsafe(no_mangle)]
@@ -107,6 +112,19 @@ pub unsafe extern "C" fn oa_client_core_extract_desktop_handshake_ack_id(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_extract_control_request(
+    payload_json: *const c_char,
+) -> *mut c_char {
+    let Some(payload_json) = with_c_string_input(payload_json) else {
+        return std::ptr::null_mut();
+    };
+
+    extract_control_request_from_payload_json(&payload_json)
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_parse_khala_frame(raw_frame: *const c_char) -> *mut c_char {
     let Some(raw_frame) = with_c_string_input(raw_frame) else {
         return std::ptr::null_mut();
@@ -138,10 +156,10 @@ mod tests {
     use std::ptr;
 
     use super::{
-        OA_CLIENT_CORE_FFI_CONTRACT_VERSION, extract_desktop_ack_id_json, normalize_email_string,
-        normalize_message_text_string, normalize_verification_code_string,
-        oa_client_core_ffi_contract_version, oa_client_core_normalize_email,
-        parse_khala_frame_json,
+        OA_CLIENT_CORE_FFI_CONTRACT_VERSION, extract_control_request_from_payload_json,
+        extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
+        normalize_verification_code_string, oa_client_core_ffi_contract_version,
+        oa_client_core_normalize_email, parse_khala_frame_json,
     };
 
     #[test]
@@ -168,6 +186,16 @@ mod tests {
             extract_desktop_ack_id_json(payload).as_deref(),
             Some("hs-42")
         );
+    }
+
+    #[test]
+    fn ffi_helpers_extract_control_request() {
+        let payload = r#"{"eventType":"worker.request","payload":{"request_id":"req_42","method":"thread/list","params":{"limit":5}}}"#;
+        let parsed = extract_control_request_from_payload_json(payload);
+        assert!(parsed.is_some());
+        let parsed = parsed.unwrap_or_else(|| unreachable!());
+        assert!(parsed.contains("\"request_id\":\"req_42\""));
+        assert!(parsed.contains("\"method\":\"thread/list\""));
     }
 
     #[test]

@@ -1,9 +1,3 @@
-use serde::Deserialize;
-use serde_json::Value;
-
-pub use openagents_client_core::codex_worker::{
-    extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-};
 pub use openagents_client_core::khala_protocol::{
     RuntimeStreamEvent as RuntimeCodexStreamEvent, build_phoenix_frame as build_khala_frame,
     extract_runtime_stream_events as extract_runtime_events_from_khala_update, merge_retry_cursor,
@@ -11,108 +5,35 @@ pub use openagents_client_core::khala_protocol::{
     sync_error_code as khala_error_code,
 };
 
-const WORKER_EVENT_TYPE: &str = "worker.event";
-const IOS_HANDSHAKE_SOURCE: &str = "autopilot-ios";
-const IOS_USER_MESSAGE_METHOD: &str = "ios/user_message";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IosUserMessage {
-    pub message_id: String,
-    pub text: String,
-    pub model: Option<String>,
-    pub reasoning: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProtoWorkerEventEnvelope {
-    #[serde(rename = "eventType", alias = "event_type")]
-    event_type: String,
-    payload: Value,
-}
-
-pub fn extract_ios_user_message(payload: &Value) -> Option<IosUserMessage> {
-    let envelope = serde_json::from_value::<ProtoWorkerEventEnvelope>(payload.clone()).ok()?;
-    if envelope.event_type != WORKER_EVENT_TYPE {
-        return None;
-    }
-
-    let worker_payload = envelope.payload.as_object()?;
-    let source = non_empty(worker_payload.get("source")?.as_str()?)?;
-    let method = non_empty(worker_payload.get("method")?.as_str()?)?;
-    if source != IOS_HANDSHAKE_SOURCE || method != IOS_USER_MESSAGE_METHOD {
-        return None;
-    }
-
-    let params = worker_payload
-        .get("params")
-        .and_then(|value| value.as_object());
-
-    let message_id = first_non_empty_string(&[
-        worker_payload.get("message_id"),
-        worker_payload.get("messageId"),
-        params.and_then(|value| value.get("message_id")),
-        params.and_then(|value| value.get("messageId")),
-    ])?;
-
-    let text = first_non_empty_string(&[
-        worker_payload.get("text"),
-        worker_payload.get("message"),
-        params.and_then(|value| value.get("text")),
-        params.and_then(|value| value.get("message")),
-    ])?;
-
-    let model = first_non_empty_string(&[
-        worker_payload.get("model"),
-        params.and_then(|value| value.get("model")),
-    ]);
-
-    let reasoning = first_non_empty_string(&[
-        worker_payload.get("reasoning"),
-        worker_payload.get("reasoning_effort"),
-        params.and_then(|value| value.get("reasoning")),
-        params.and_then(|value| value.get("reasoning_effort")),
-    ]);
-
-    Some(IosUserMessage {
-        message_id,
-        text,
-        model,
-        reasoning,
-    })
-}
-
-pub fn handshake_dedupe_key(worker_id: &str, handshake_id: &str) -> String {
-    format!("{worker_id}::{handshake_id}")
-}
-
-fn non_empty(raw: &str) -> Option<&str> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
-
-fn first_non_empty_string(values: &[Option<&Value>]) -> Option<String> {
-    values
-        .iter()
-        .filter_map(|value| value.and_then(|raw| raw.as_str()))
-        .filter_map(non_empty)
-        .map(|value| value.to_string())
-        .next()
-}
+#[allow(unused_imports)]
+pub use openagents_codex_control::{
+    ControlMethod, ControlRequestEnvelope, ControlRequestParseError, IosUserMessage,
+    RequestReplayState, TargetResolutionInput, WorkerReceipt, error_receipt as build_error_receipt,
+    extract_control_request, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
+    extract_ios_user_message, handshake_dedupe_key, ios_message_dedupe_key, request_dedupe_key,
+    resolve_request_target, success_receipt as build_success_receipt, terminal_receipt_dedupe_key,
+};
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ProtoWorkerEventEnvelope, RuntimeCodexStreamEvent, WORKER_EVENT_TYPE, build_khala_frame,
+        RuntimeCodexStreamEvent, build_khala_frame, extract_control_request,
         extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
         extract_runtime_events_from_khala_update, handshake_dedupe_key, khala_error_code,
         merge_retry_cursor, parse_khala_frame, stream_event_seq,
     };
+    use serde::Deserialize;
     use serde_json::{Value, json};
     use std::collections::HashSet;
+
+    const WORKER_EVENT_TYPE: &str = "worker.event";
+
+    #[derive(Debug, Deserialize)]
+    struct ProtoWorkerEventEnvelope {
+        #[serde(rename = "eventType", alias = "event_type")]
+        event_type: String,
+        payload: Value,
+    }
 
     #[test]
     fn parse_khala_frame_roundtrips_phoenix_frame_shape() {
@@ -123,7 +44,9 @@ mod tests {
             "sync:update_batch",
             json!({"updates": []}),
         );
-        let frame = parse_khala_frame(&raw).expect("frame should parse");
+        let frame = parse_khala_frame(&raw);
+        assert!(frame.is_some());
+        let frame = frame.unwrap_or_else(|| unreachable!());
         assert_eq!(frame.reference.as_deref(), Some("42"));
         assert_eq!(frame.topic, "sync:v1");
         assert_eq!(frame.event, "sync:update_batch");
@@ -283,7 +206,6 @@ mod tests {
 
         let mut acked = HashSet::<String>::new();
 
-        // First processing pass emits ack but fails before persistence.
         let first_emit = process_handshake_event(worker_id, &handshake_payload, &mut acked, false);
         assert!(first_emit);
         assert!(acked.is_empty());
@@ -291,17 +213,14 @@ mod tests {
         let rewind_cursor = merge_retry_cursor(None, 200);
         assert_eq!(rewind_cursor, 199);
 
-        // Replay pass emits ack again and persists dedupe marker.
         let replay_emit = process_handshake_event(worker_id, &handshake_payload, &mut acked, true);
         assert!(replay_emit);
         assert_eq!(acked.len(), 1);
 
-        // When stream catches up with the emitted ack event, it is treated as observed and not re-emitted.
         let ack_emit = process_handshake_event(worker_id, &ack_payload, &mut acked, true);
         assert!(!ack_emit);
         assert_eq!(acked.len(), 1);
 
-        // Any further replay of the same iOS handshake must not emit again.
         let duplicate_emit =
             process_handshake_event(worker_id, &handshake_payload, &mut acked, true);
         assert!(!duplicate_emit);
@@ -360,7 +279,9 @@ mod tests {
             }
         });
 
-        let message = extract_ios_user_message(&payload).expect("expected ios message");
+        let message = extract_ios_user_message(&payload);
+        assert!(message.is_some());
+        let message = message.unwrap_or_else(|| unreachable!());
         assert_eq!(message.message_id, "iosmsg-1");
         assert_eq!(message.text, "hi from ios");
         assert_eq!(message.model.as_deref(), Some("gpt-5.2-codex"));
@@ -394,15 +315,35 @@ mod tests {
     }
 
     #[test]
+    fn extract_control_request_parses_runtime_request_envelope() {
+        let payload = json!({
+            "eventType": "worker.request",
+            "payload": {
+                "request_id": "req-1",
+                "method": "thread/list",
+                "params": {"limit": 10}
+            }
+        });
+
+        let request = extract_control_request(&payload);
+        assert!(request.is_ok());
+        let request = request.unwrap_or_else(|_| unreachable!());
+        assert!(request.is_some());
+        let request = request.unwrap_or_else(|| unreachable!());
+        assert_eq!(request.request_id, "req-1");
+    }
+
+    #[test]
     fn codex_contract_fixture_is_decodable_by_desktop_parser() {
-        let fixture: Value = serde_json::from_str(include_str!(
+        let fixture_result: Result<Value, _> = serde_json::from_str(include_str!(
             "../../../docs/protocol/fixtures/codex-worker-events-v1.json"
-        ))
-        .expect("codex fixture should be valid JSON");
+        ));
+        assert!(fixture_result.is_ok());
+        let fixture = fixture_result.unwrap_or_else(|_| unreachable!());
 
         let notifications = fixture["notification_events"]
             .as_array()
-            .expect("notification_events must be an array");
+            .unwrap_or_else(|| unreachable!());
 
         assert!(notifications.len() >= 10);
 
@@ -413,7 +354,7 @@ mod tests {
         for notification in notifications {
             let seq = notification["seq"]
                 .as_u64()
-                .expect("notification seq must be numeric");
+                .unwrap_or_else(|| unreachable!());
             let payload = notification["payload"].clone();
 
             let stream_payload = json!({
@@ -422,9 +363,11 @@ mod tests {
                 "payload": payload
             });
 
-            let parsed = serde_json::from_value::<ProtoWorkerEventEnvelope>(stream_payload.clone())
-                .expect("runtime stream payload should deserialize");
+            let parsed = serde_json::from_value::<ProtoWorkerEventEnvelope>(stream_payload.clone());
+            assert!(parsed.is_ok());
+            let parsed = parsed.unwrap_or_else(|_| unreachable!());
             assert_eq!(parsed.event_type, WORKER_EVENT_TYPE);
+            assert!(parsed.payload.is_object());
 
             if extract_ios_handshake_id(&stream_payload).is_some() {
                 saw_ios_handshake = true;

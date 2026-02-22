@@ -1,114 +1,23 @@
-use serde::Deserialize;
 use serde_json::Value;
 
-const WORKER_EVENT_TYPE: &str = "worker.event";
-const IOS_HANDSHAKE_SOURCE: &str = "autopilot-ios";
-const IOS_HANDSHAKE_METHOD: &str = "ios/handshake";
-const DESKTOP_ACK_SOURCE: &str = "autopilot-desktop";
-const DESKTOP_ACK_METHOD: &str = "desktop/handshake_ack";
+pub use openagents_codex_control::{extract_desktop_handshake_ack_id, extract_ios_handshake_id};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HandshakeKind {
-    IosHandshake,
-    DesktopHandshakeAck,
+pub fn extract_ios_handshake_id_json(payload_json: &str) -> Option<String> {
+    let payload = serde_json::from_str::<Value>(payload_json).ok()?;
+    extract_ios_handshake_id(&payload)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct HandshakeEnvelope {
-    kind: HandshakeKind,
-    handshake_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkerEventEnvelope {
-    #[serde(rename = "eventType", alias = "event_type")]
-    event_type: String,
-    payload: Value,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkerHandshakePayload {
-    source: String,
-    method: String,
-    #[serde(rename = "handshake_id", alias = "handshakeId")]
-    handshake_id: String,
-    #[serde(default)]
-    device_id: Option<String>,
-    #[serde(default)]
-    desktop_session_id: Option<String>,
-    #[serde(default)]
-    occurred_at: Option<String>,
-}
-
-pub fn extract_ios_handshake_id(payload: &Value) -> Option<String> {
-    let envelope = extract_handshake_envelope(payload)?;
-    if envelope.kind == HandshakeKind::IosHandshake {
-        Some(envelope.handshake_id)
-    } else {
-        None
-    }
-}
-
-pub fn extract_desktop_handshake_ack_id(payload: &Value) -> Option<String> {
-    let envelope = extract_handshake_envelope(payload)?;
-    if envelope.kind == HandshakeKind::DesktopHandshakeAck {
-        Some(envelope.handshake_id)
-    } else {
-        None
-    }
-}
-
-fn extract_handshake_envelope(payload: &Value) -> Option<HandshakeEnvelope> {
-    let envelope = serde_json::from_value::<WorkerEventEnvelope>(payload.clone()).ok()?;
-    if envelope.event_type != WORKER_EVENT_TYPE {
-        return None;
-    }
-
-    let worker_payload = serde_json::from_value::<WorkerHandshakePayload>(envelope.payload).ok()?;
-    let handshake_id = non_empty(worker_payload.handshake_id.as_str())?.to_string();
-
-    match (
-        worker_payload.source.as_str(),
-        worker_payload.method.as_str(),
-    ) {
-        (IOS_HANDSHAKE_SOURCE, IOS_HANDSHAKE_METHOD)
-            if required_value(worker_payload.device_id.as_deref())
-                && required_value(worker_payload.occurred_at.as_deref()) =>
-        {
-            Some(HandshakeEnvelope {
-                kind: HandshakeKind::IosHandshake,
-                handshake_id,
-            })
-        }
-        (DESKTOP_ACK_SOURCE, DESKTOP_ACK_METHOD)
-            if required_value(worker_payload.desktop_session_id.as_deref())
-                && required_value(worker_payload.occurred_at.as_deref()) =>
-        {
-            Some(HandshakeEnvelope {
-                kind: HandshakeKind::DesktopHandshakeAck,
-                handshake_id,
-            })
-        }
-        _ => None,
-    }
-}
-
-fn required_value(raw: Option<&str>) -> bool {
-    non_empty(raw.unwrap_or_default()).is_some()
-}
-
-fn non_empty(raw: &str) -> Option<&str> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
+pub fn extract_desktop_handshake_ack_id_json(payload_json: &str) -> Option<String> {
+    let payload = serde_json::from_str::<Value>(payload_json).ok()?;
+    extract_desktop_handshake_ack_id(&payload)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_desktop_handshake_ack_id, extract_ios_handshake_id};
+    use super::{
+        extract_desktop_handshake_ack_id, extract_desktop_handshake_ack_id_json,
+        extract_ios_handshake_id, extract_ios_handshake_id_json,
+    };
     use serde_json::json;
 
     #[test]
@@ -126,6 +35,12 @@ mod tests {
 
         assert_eq!(
             extract_ios_handshake_id(&payload).as_deref(),
+            Some("hs-123")
+        );
+
+        let encoded = payload.to_string();
+        assert_eq!(
+            extract_ios_handshake_id_json(&encoded).as_deref(),
             Some("hs-123")
         );
 
@@ -157,6 +72,12 @@ mod tests {
 
         assert_eq!(
             extract_desktop_handshake_ack_id(&payload).as_deref(),
+            Some("hs-123")
+        );
+
+        let encoded = payload.to_string();
+        assert_eq!(
+            extract_desktop_handshake_ack_id_json(&encoded).as_deref(),
             Some("hs-123")
         );
 

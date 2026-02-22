@@ -1081,6 +1081,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-client-core",
+ "openagents-codex-control",
  "openagents-spark",
  "pollster 0.4.0",
  "pylon",
@@ -7077,6 +7078,7 @@ dependencies = [
  "async-trait",
  "base64",
  "js-sys",
+ "openagents-codex-control",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -7084,6 +7086,14 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpui",
+]
+
+[[package]]
+name = "openagents-codex-control"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -4,6 +4,7 @@
 pub use wgpui::IosBackgroundState;
 
 pub mod auth;
+pub mod codex_control;
 pub mod codex_worker;
 pub mod command;
 pub mod compatibility;
