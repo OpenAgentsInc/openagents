@@ -64,6 +64,12 @@ enum RustClientCoreBridge {
         UnsafePointer<CChar>?
     ) -> UnsafeMutablePointer<CChar>?
     private typealias ControlCoordinatorFreeFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
+    private typealias MissionControlStoreCreateFunction = @convention(c) () -> UnsafeMutableRawPointer?
+    private typealias MissionControlStoreApplyFunction = @convention(c) (
+        UnsafeMutableRawPointer?,
+        UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
+    private typealias MissionControlStoreFreeFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
     private struct Symbols {
         let normalizeEmail: TransformFunction?
@@ -83,6 +89,9 @@ enum RustClientCoreBridge {
         let controlCoordinatorCreate: ControlCoordinatorCreateFunction?
         let controlCoordinatorApply: ControlCoordinatorApplyFunction?
         let controlCoordinatorFree: ControlCoordinatorFreeFunction?
+        let missionControlStoreCreate: MissionControlStoreCreateFunction?
+        let missionControlStoreApply: MissionControlStoreApplyFunction?
+        let missionControlStoreFree: MissionControlStoreFreeFunction?
         let freeString: FreeFunction?
         let ffiContractVersion: ContractVersionFunction?
 
@@ -158,6 +167,18 @@ enum RustClientCoreBridge {
                     "oa_client_core_control_coordinator_free",
                     as: ControlCoordinatorFreeFunction.self
                 ),
+                missionControlStoreCreate: loadSymbol(
+                    "oa_client_core_mission_control_store_create",
+                    as: MissionControlStoreCreateFunction.self
+                ),
+                missionControlStoreApply: loadSymbol(
+                    "oa_client_core_mission_control_store_apply",
+                    as: MissionControlStoreApplyFunction.self
+                ),
+                missionControlStoreFree: loadSymbol(
+                    "oa_client_core_mission_control_store_free",
+                    as: MissionControlStoreFreeFunction.self
+                ),
                 freeString: loadSymbol("oa_client_core_free_string", as: FreeFunction.self),
                 ffiContractVersion: loadSymbol(
                     "oa_client_core_ffi_contract_version",
@@ -204,6 +225,14 @@ enum RustClientCoreBridge {
             && symbols.controlCoordinatorFree != nil
             && symbols.freeString != nil
             && symbols.ffiContractVersion != nil
+            && isContractVersionCompatible
+    }
+
+    static var isMissionControlStoreAvailable: Bool {
+        symbols.missionControlStoreCreate != nil
+            && symbols.missionControlStoreApply != nil
+            && symbols.missionControlStoreFree != nil
+            && symbols.freeString != nil
             && isContractVersionCompatible
     }
 
@@ -353,6 +382,34 @@ enum RustClientCoreBridge {
 
     static func extractControlSuccessContext(inputJSON: String) -> String? {
         invoke(symbols.extractControlSuccessContext, with: inputJSON)
+    }
+
+    static func createMissionControlStore() -> UnsafeMutableRawPointer? {
+        symbols.missionControlStoreCreate?()
+    }
+
+    static func freeMissionControlStore(_ store: UnsafeMutableRawPointer?) {
+        symbols.missionControlStoreFree?(store)
+    }
+
+    static func applyMissionControlStore(
+        _ store: UnsafeMutableRawPointer?,
+        commandJSON: String
+    ) -> String? {
+        guard let apply = symbols.missionControlStoreApply,
+              let freeString = symbols.freeString else {
+            return nil
+        }
+
+        return commandJSON.withCString { commandPtr in
+            guard let rawOutput = apply(store, commandPtr) else {
+                return nil
+            }
+            defer {
+                freeString(rawOutput)
+            }
+            return String(cString: rawOutput)
+        }
     }
 
     private static func invokeSessionStep(

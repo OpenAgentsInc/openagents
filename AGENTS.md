@@ -80,6 +80,28 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 4. If status conflicts: active codebase + `docs/PROJECT_OVERVIEW.md` win.
 5. If sequencing conflicts: `docs/ROADMAP.md` wins.
 
+## Mandatory Pre-Coding Gate (Non-Negotiable)
+
+You must complete this gate before writing or modifying code.
+
+1. Identify touched surfaces and read the governing ADR(s), invariant gates, and ownership-boundary docs.
+2. Record in your first implementation update which docs were checked and which invariants/ADRs constrain the change.
+3. If proposed code violates those constraints, stop and redesign before editing files.
+4. If constraints still conflict with requested work, stop and ask the user how to proceed.
+
+iOS Codex/WGPUI-specific required reads before coding:
+- `docs/plans/active/rust-migration-invariant-gates.md` (minimum: `INV-03`, `INV-07`, `INV-11`)
+- `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
+- `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
+- `apps/autopilot-ios/docs/wgpui-codex-ownership-boundaries.md`
+- `apps/autopilot-ios/docs/codex-wgpui-parity-gates.md`
+- `apps/autopilot-ios/docs/rust-client-core-integration.md`
+
+Hard rule for iOS Codex lanes:
+- Product UI/state/business logic is Rust/WGPUI-authoritative.
+- Swift/SwiftUI is host/bootstrap/OS bridge code only.
+- Do not add new Swift-owned Codex product logic.
+
 ## Engineering Invariants
 
 - Verify before claiming completion.

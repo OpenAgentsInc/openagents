@@ -512,6 +512,525 @@ final class RuntimeCodexControlCoordinator {
     }
 }
 
+struct RuntimeMissionControlWorkerState: Decodable, Equatable {
+    let workerID: String
+    let status: String
+    let heartbeatState: String?
+    let latestSeq: Int?
+    let lagEvents: Int?
+    let reconnectState: String?
+    let lastEventAt: String?
+    let runningTurns: Int
+    let queuedRequests: Int
+    let failedRequests: Int
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case status
+        case heartbeatState = "heartbeat_state"
+        case latestSeq = "latest_seq"
+        case lagEvents = "lag_events"
+        case reconnectState = "reconnect_state"
+        case lastEventAt = "last_event_at"
+        case runningTurns = "running_turns"
+        case queuedRequests = "queued_requests"
+        case failedRequests = "failed_requests"
+    }
+}
+
+struct RuntimeMissionControlThreadState: Decodable, Equatable {
+    let workerID: String
+    let threadID: String
+    let activeTurnID: String?
+    let lastSummary: String
+    let lastEventAt: String?
+    let freshnessSeq: Int?
+    let unreadCount: Int
+    let muted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+        case activeTurnID = "active_turn_id"
+        case lastSummary = "last_summary"
+        case lastEventAt = "last_event_at"
+        case freshnessSeq = "freshness_seq"
+        case unreadCount = "unread_count"
+        case muted
+    }
+}
+
+struct RuntimeMissionControlTimelineItem: Decodable, Equatable, Identifiable {
+    let id: String
+    let role: String
+    let text: String
+    let isStreaming: Bool
+    let workerID: String
+    let threadID: String
+    let turnID: String?
+    let itemID: String?
+    let occurredAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case role
+        case text
+        case isStreaming = "is_streaming"
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+        case turnID = "turn_id"
+        case itemID = "item_id"
+        case occurredAt = "occurred_at"
+    }
+}
+
+struct RuntimeMissionControlThreadTimeline: Decodable, Equatable {
+    let workerID: String
+    let threadID: String
+    let entries: [RuntimeMissionControlTimelineItem]
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+        case entries
+    }
+}
+
+enum RuntimeMissionControlEventSeverity: String, Decodable, Equatable {
+    case info
+    case warning
+    case error
+}
+
+struct RuntimeMissionControlEventRecord: Decodable, Equatable, Identifiable {
+    let id: Int
+    let topic: String
+    let seq: Int?
+    let workerID: String?
+    let threadID: String?
+    let turnID: String?
+    let requestID: String?
+    let eventType: String?
+    let method: String?
+    let summary: String
+    let severity: RuntimeMissionControlEventSeverity
+    let occurredAt: String?
+    let payload: JSONValue
+    let resyncMarker: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case topic
+        case seq
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+        case turnID = "turn_id"
+        case requestID = "request_id"
+        case eventType = "event_type"
+        case method
+        case summary
+        case severity
+        case occurredAt = "occurred_at"
+        case payload
+        case resyncMarker = "resync_marker"
+    }
+}
+
+struct RuntimeMissionControlRequestState: Codable, Equatable, Identifiable {
+    let requestID: String
+    let workerID: String
+    let threadID: String?
+    let method: String
+    let state: String
+    let occurredAt: String?
+    let errorCode: String?
+    let errorMessage: String?
+    let retryable: Bool
+    let response: JSONValue?
+
+    var id: String { requestID }
+
+    enum CodingKeys: String, CodingKey {
+        case requestID = "request_id"
+        case workerID = "worker_id"
+        case threadID = "thread_id"
+        case method
+        case state
+        case occurredAt = "occurred_at"
+        case errorCode = "error_code"
+        case errorMessage = "error_message"
+        case retryable
+        case response
+    }
+}
+
+struct RuntimeMissionControlProjection: Decodable, Equatable {
+    let workers: [RuntimeMissionControlWorkerState]
+    let threads: [RuntimeMissionControlThreadState]
+    let timelines: [RuntimeMissionControlThreadTimeline]
+    let events: [RuntimeMissionControlEventRecord]
+    let requests: [RuntimeMissionControlRequestState]
+    let activeWorkerID: String?
+    let activeThreadID: String?
+    let activeTurnID: String?
+    let compatibilityChatMessages: [RuntimeMissionControlTimelineItem]
+
+    enum CodingKeys: String, CodingKey {
+        case workers
+        case threads
+        case timelines
+        case events
+        case requests
+        case activeWorkerID = "active_worker_id"
+        case activeThreadID = "active_thread_id"
+        case activeTurnID = "active_turn_id"
+        case compatibilityChatMessages = "compatibility_chat_messages"
+    }
+
+    static let empty = RuntimeMissionControlProjection(
+        workers: [],
+        threads: [],
+        timelines: [],
+        events: [],
+        requests: [],
+        activeWorkerID: nil,
+        activeThreadID: nil,
+        activeTurnID: nil,
+        compatibilityChatMessages: []
+    )
+}
+
+final class RuntimeMissionControlStore {
+    private struct Command: Encodable {
+        let op: String
+        let topic: String?
+        let seq: Int?
+        let workerID: String?
+        let payload: JSONValue?
+        let status: String?
+        let heartbeatState: String?
+        let latestSeq: Int?
+        let lagEvents: Int?
+        let reconnectState: String?
+        let occurredAt: String?
+        let request: RuntimeMissionControlRequestState?
+        let threadID: String?
+        let muted: Bool?
+        let fromSeq: Int?
+        let toSeq: Int?
+        let maxEvents: Int?
+        let maxTimelineEntries: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case op
+            case topic
+            case seq
+            case workerID = "worker_id"
+            case payload
+            case status
+            case heartbeatState = "heartbeat_state"
+            case latestSeq = "latest_seq"
+            case lagEvents = "lag_events"
+            case reconnectState = "reconnect_state"
+            case occurredAt = "occurred_at"
+            case request
+            case threadID = "thread_id"
+            case muted
+            case fromSeq = "from_seq"
+            case toSeq = "to_seq"
+            case maxEvents = "max_events"
+            case maxTimelineEntries = "max_timeline_entries"
+        }
+    }
+
+    private let rawStore: UnsafeMutableRawPointer?
+    private var projectionCache: RuntimeMissionControlProjection = .empty
+
+    init() {
+        rawStore = RustClientCoreBridge.createMissionControlStore()
+    }
+
+    deinit {
+        RustClientCoreBridge.freeMissionControlStore(rawStore)
+    }
+
+    var projection: RuntimeMissionControlProjection {
+        projectionCache
+    }
+
+    @discardableResult
+    func configure(maxEvents: Int?, maxTimelineEntries: Int?) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "configure",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: maxEvents,
+                maxTimelineEntries: maxTimelineEntries
+            )
+        )
+    }
+
+    @discardableResult
+    func reset() -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "reset",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func ingestWorkerSummary(
+        workerID: String,
+        status: String,
+        heartbeatState: String?,
+        latestSeq: Int?,
+        lagEvents: Int?,
+        reconnectState: String?,
+        occurredAt: String? = nil
+    ) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "ingest_worker_summary",
+                topic: nil,
+                seq: nil,
+                workerID: workerID,
+                payload: nil,
+                status: status,
+                heartbeatState: heartbeatState,
+                latestSeq: latestSeq,
+                lagEvents: lagEvents,
+                reconnectState: reconnectState,
+                occurredAt: occurredAt,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func ingestWorkerSummary(
+        _ worker: RuntimeCodexWorkerSummary,
+        reconnectState: String?,
+        occurredAt: String? = nil
+    ) -> RuntimeMissionControlProjection {
+        ingestWorkerSummary(
+            workerID: worker.workerID,
+            status: worker.status,
+            heartbeatState: worker.heartbeatState,
+            latestSeq: worker.latestSeq,
+            lagEvents: worker.khalaProjection?.lagEvents,
+            reconnectState: reconnectState,
+            occurredAt: occurredAt
+        )
+    }
+
+    @discardableResult
+    func ingestStreamEvent(
+        topic: String,
+        seq: Int?,
+        workerID: String?,
+        payload: JSONValue
+    ) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "ingest_stream_event",
+                topic: topic,
+                seq: seq,
+                workerID: workerID,
+                payload: payload,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func upsertRequest(_ tracker: RuntimeCodexControlRequestTracker) -> RuntimeMissionControlProjection {
+        let request = RuntimeMissionControlRequestState(
+            requestID: tracker.requestID,
+            workerID: tracker.workerID,
+            threadID: tracker.request.threadID,
+            method: tracker.request.method.rawValue,
+            state: tracker.state.rawValue,
+            occurredAt: tracker.lastUpdatedAt,
+            errorCode: tracker.errorCode,
+            errorMessage: tracker.errorMessage,
+            retryable: tracker.retryable,
+            response: tracker.response
+        )
+
+        return apply(
+            Command(
+                op: "upsert_request",
+                topic: nil,
+                seq: nil,
+                workerID: nil,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: request,
+                threadID: nil,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setActiveLane(workerID: String?, threadID: String?) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_active_lane",
+                topic: nil,
+                seq: nil,
+                workerID: workerID,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: threadID,
+                muted: nil,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func setLaneMuted(workerID: String, threadID: String, muted: Bool) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "set_lane_muted",
+                topic: nil,
+                seq: nil,
+                workerID: workerID,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: threadID,
+                muted: muted,
+                fromSeq: nil,
+                toSeq: nil,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    func markResynced(topic: String, fromSeq: Int, toSeq: Int, workerID: String?) -> RuntimeMissionControlProjection {
+        apply(
+            Command(
+                op: "mark_resynced",
+                topic: topic,
+                seq: nil,
+                workerID: workerID,
+                payload: nil,
+                status: nil,
+                heartbeatState: nil,
+                latestSeq: nil,
+                lagEvents: nil,
+                reconnectState: nil,
+                occurredAt: nil,
+                request: nil,
+                threadID: nil,
+                muted: nil,
+                fromSeq: fromSeq,
+                toSeq: toSeq,
+                maxEvents: nil,
+                maxTimelineEntries: nil
+            )
+        )
+    }
+
+    @discardableResult
+    private func apply(_ command: Command) -> RuntimeMissionControlProjection {
+        guard let rawStore,
+              let commandData = try? JSONEncoder().encode(command),
+              let commandJSON = String(data: commandData, encoding: .utf8),
+              let responseJSON = RustClientCoreBridge.applyMissionControlStore(
+                  rawStore,
+                  commandJSON: commandJSON
+              ),
+              let responseData = responseJSON.data(using: .utf8),
+              let projection = try? JSONDecoder().decode(
+                  RuntimeMissionControlProjection.self,
+                  from: responseData
+              ) else {
+            return projectionCache
+        }
+
+        projectionCache = projection
+        return projection
+    }
+}
+
 private extension KeyedDecodingContainer {
     func decodeLenientMetadata(forKey key: Key) -> [String: JSONValue]? {
         if let object = try? decodeIfPresent([String: JSONValue].self, forKey: key) {

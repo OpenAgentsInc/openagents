@@ -37,6 +37,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var recentEvents: [RuntimeCodexStreamEvent] = []
     @Published var chatMessages: [CodexChatMessage] = []
     @Published private(set) var controlRequests: [RuntimeCodexControlRequestTracker] = []
+    @Published private(set) var missionControlProjection: RuntimeMissionControlProjection = .empty
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
@@ -63,6 +64,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var isBackgroundPaused = false
     private var resumeCheckpointStore: CodexResumeCheckpointStore
     private var controlCoordinator = RuntimeCodexControlCoordinator()
+    private var missionControlStore = RuntimeMissionControlStore()
     private var controlDispatchInFlight: Set<String> = []
     private var controlRequestTimeoutTasks: [String: Task<Void, Never>] = [:]
 
@@ -274,6 +276,11 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
             persistResumeCheckpointStore()
         }
+
+        missionControlProjection = missionControlStore.configure(
+            maxEvents: 2_048,
+            maxTimelineEntries: 640
+        )
     }
 
     deinit {
@@ -447,6 +454,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         controlDispatchInFlight.removeAll()
         controlCoordinator = RuntimeCodexControlCoordinator()
         controlRequests = []
+        missionControlProjection = missionControlStore.reset()
         resetReconnectTracking()
         let namespaceToRemove = currentResumeNamespace
 
@@ -491,6 +499,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         do {
             let result = try await client.listWorkers(status: nil, limit: 100)
             workers = result
+            syncMissionControlWorkerSummaries(from: result)
             guard let worker = preferredWorker(from: result) else {
                 selectedWorkerID = nil
                 latestSnapshot = nil
@@ -893,6 +902,9 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private func syncControlRequestSnapshots() {
         controlRequests = Array(controlCoordinator.snapshots.reversed())
+        for tracker in controlRequests {
+            missionControlProjection = missionControlStore.upsertRequest(tracker)
+        }
     }
 
     private func controlRequestThreadID(_ request: RuntimeCodexWorkerActionRequest) -> String? {
@@ -1841,6 +1853,15 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
+        for event in events {
+            missionControlProjection = missionControlStore.ingestStreamEvent(
+                topic: Self.khalaWorkerEventsTopic,
+                seq: event.cursorHint,
+                workerID: workerID,
+                payload: event.payload
+            )
+        }
+
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
 
         for streamEvent in events {
@@ -2059,6 +2080,13 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         default:
             break
+        }
+
+        if let workerID = selectedWorkerID ?? activeStreamWorkerID {
+            missionControlProjection = missionControlStore.setActiveLane(
+                workerID: workerID,
+                threadID: activeThreadID
+            )
         }
     }
 
@@ -2952,6 +2980,35 @@ final class CodexHandshakeViewModel: ObservableObject {
             topic: Self.khalaWorkerEventsTopic,
             workerID: workerID
         )
+    }
+
+    private func syncMissionControlWorkerSummaries(from workers: [RuntimeCodexWorkerSummary]) {
+        let reconnectState: String = {
+            switch streamState {
+            case .idle:
+                return "idle"
+            case .connecting:
+                return "connecting"
+            case .live:
+                return "live"
+            case .reconnecting:
+                return "reconnecting"
+            }
+        }()
+        for worker in workers {
+            missionControlProjection = missionControlStore.ingestWorkerSummary(
+                worker,
+                reconnectState: reconnectState,
+                occurredAt: iso8601(now())
+            )
+        }
+
+        if let workerID = selectedWorkerID ?? workers.first?.workerID {
+            missionControlProjection = missionControlStore.setActiveLane(
+                workerID: workerID,
+                threadID: activeThreadID
+            )
+        }
     }
 
     private func selectedWorkerLatestSeq(workerID: String) -> Int {

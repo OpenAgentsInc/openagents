@@ -13,6 +13,7 @@ use crate::ios_codex_state::{
     RuntimeCodexControlRequestState, RuntimeCodexControlRequestTracker,
     RuntimeCodexWorkerActionRequest,
 };
+use crate::ios_mission_control::IosMissionControlStore;
 use crate::ios_khala_session::{IosKhalaSession, SessionStep};
 use crate::ios_worker_selection::{RuntimeCodexWorkerCandidate, select_preferred_worker_id};
 use crate::khala_protocol::parse_phoenix_frame;
@@ -367,6 +368,13 @@ fn apply_control_coordinator_command_json(
     })
 }
 
+fn apply_mission_control_command_json(
+    store: &mut IosMissionControlStore,
+    command_json: &str,
+) -> Option<String> {
+    store.apply_command_json(command_json)
+}
+
 fn normalized_owned(value: Option<&str>) -> Option<String> {
     let value = value?;
     let normalized = value.trim();
@@ -719,6 +727,38 @@ pub unsafe extern "C" fn oa_client_core_control_coordinator_free(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_mission_control_store_create() -> *mut IosMissionControlStore {
+    Box::into_raw(Box::new(IosMissionControlStore::new()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_mission_control_store_apply(
+    store: *mut IosMissionControlStore,
+    command_json: *const c_char,
+) -> *mut c_char {
+    if store.is_null() {
+        return std::ptr::null_mut();
+    }
+    let Some(command_json) = with_c_string_input(command_json) else {
+        return std::ptr::null_mut();
+    };
+    let store = unsafe { &mut *store };
+    apply_mission_control_command_json(store, &command_json)
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_mission_control_store_free(
+    store: *mut IosMissionControlStore,
+) {
+    if store.is_null() {
+        return;
+    }
+    let _ = unsafe { Box::from_raw(store) };
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_decode_control_receipt(
     payload_json: *const c_char,
 ) -> *mut c_char {
@@ -763,8 +803,10 @@ mod tests {
     use std::ptr;
 
     use super::{
-        OA_CLIENT_CORE_FFI_CONTRACT_VERSION, RuntimeCodexControlCoordinator,
-        apply_control_coordinator_command_json, decode_control_receipt_json,
+        IosMissionControlStore, OA_CLIENT_CORE_FFI_CONTRACT_VERSION,
+        RuntimeCodexControlCoordinator,
+        apply_control_coordinator_command_json, apply_mission_control_command_json,
+        decode_control_receipt_json,
         extract_control_request_from_payload_json, extract_control_success_context_json,
         extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
         normalize_verification_code_string, oa_client_core_ffi_contract_version,
@@ -897,6 +939,27 @@ mod tests {
         )
         .expect("duplicate reconcile should still return snapshots");
         assert!(duplicate.contains("\"tracker\":null"));
+    }
+
+    #[test]
+    fn ffi_helpers_mission_control_store_apply_commands() {
+        let mut store = IosMissionControlStore::new();
+        let first = apply_mission_control_command_json(
+            &mut store,
+            r#"{"op":"ingest_stream_event","topic":"runtime.codex_worker_events","seq":41,"worker_id":"desktopw:shared","payload":{"workerId":"desktopw:shared","eventType":"worker.event","payload":{"method":"codex/event/user_message","params":{"thread_id":"thread-1","msg":{"message":"hello"}}}}}"#,
+        )
+        .expect("mission control command should encode");
+        assert!(first.contains("\"workers\""));
+        assert!(first.contains("\"threads\""));
+        assert!(first.contains("\"events\""));
+
+        let second = apply_mission_control_command_json(
+            &mut store,
+            r#"{"op":"set_active_lane","worker_id":"desktopw:shared","thread_id":"thread-1"}"#,
+        )
+        .expect("active lane command should encode");
+        assert!(second.contains("\"active_thread_id\":\"thread-1\""));
+        assert!(second.contains("\"compatibility_chat_messages\""));
     }
 
     #[test]
