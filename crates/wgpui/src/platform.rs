@@ -515,10 +515,11 @@ pub mod desktop {
 /// Requires `ios` feature. Uses wgpu create_surface_unsafe(CoreAnimationLayer).
 #[cfg(feature = "ios")]
 pub mod ios {
-    use std::ffi::c_void;
+    use std::ffi::{c_char, c_void};
     use std::time::Duration;
 
     use crate::animation::AnimatorState;
+    use crate::color::Hsla;
     use crate::components::hud::{DotShape, DotsGrid, PuffsBackground};
     use crate::components::{Button, ButtonVariant, Component, Text, TextInput};
     use crate::geometry::{Bounds, Size};
@@ -531,16 +532,57 @@ pub mod ios {
     /// Distance between grid dots (matches desktop autopilot_ui GRID_DOT_DISTANCE).
     const GRID_DOT_DISTANCE: f32 = 32.0;
 
-    /// Login card layout (centered).
-    const CARD_WIDTH: f32 = 280.0;
-    const CARD_PADDING: f32 = 24.0;
-    const CARD_CORNER_RADIUS: f32 = 12.0;
-    const TITLE_FONT_SIZE: f32 = 20.0;
-    const INPUT_HEIGHT: f32 = 40.0;
-    const BUTTON_HEIGHT: f32 = 36.0;
-    const ELEMENT_GAP: f32 = 12.0;
+    const EDGE_PADDING: f32 = 14.0;
+    const PANEL_CORNER_RADIUS: f32 = 12.0;
+    const TITLE_HEIGHT: f32 = 28.0;
+    const TOP_CONTEXT_HEIGHT: f32 = 34.0;
+    const ACTION_ROW_HEIGHT: f32 = 34.0;
+    const COMPOSER_HEIGHT: f32 = 42.0;
+    const CONTROL_GAP: f32 = 8.0;
+    const BUTTON_WIDTH: f32 = 112.0;
+    const SEND_BUTTON_WIDTH: f32 = 86.0;
+    const MESSAGE_GAP: f32 = 8.0;
+    const BUBBLE_PADDING_X: f32 = 10.0;
+    const BUBBLE_PADDING_Y: f32 = 8.0;
+    const MESSAGE_FONT_SIZE: f32 = 14.0;
+    const SMALL_TEXT_SIZE: f32 = 12.0;
+    const STREAMING_LABEL_SIZE: f32 = 11.0;
+    const BUBBLE_MIN_HEIGHT: f32 = 30.0;
+    const BUBBLE_MAX_WIDTH_RATIO: f32 = 0.72;
+    const MAX_RENDERED_MESSAGES: usize = 42;
+    const MAX_STORED_MESSAGES: usize = 220;
 
-    /// State for the iOS WGPUI background renderer (black + puffs + dots grid + login card).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum CodexMessageRole {
+        User = 0,
+        Assistant = 1,
+        Reasoning = 2,
+        Tool = 3,
+        System = 4,
+        Error = 5,
+    }
+
+    impl CodexMessageRole {
+        fn from_u8(value: u8) -> Self {
+            match value {
+                0 => Self::User,
+                1 => Self::Assistant,
+                2 => Self::Reasoning,
+                3 => Self::Tool,
+                5 => Self::Error,
+                _ => Self::System,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct CodexMessage {
+        pub role: CodexMessageRole,
+        pub text: String,
+        pub is_streaming: bool,
+    }
+
+    /// State for the iOS WGPUI Codex renderer.
     pub struct IosBackgroundState {
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -553,12 +595,20 @@ pub mod ios {
         /// Puffs floating up along grid lines (Arwes-style).
         puffs: PuffsBackground,
         last_frame: Option<Instant>,
-        /// Email value for the login card (updated via FFI when user types in native field).
-        pub login_email: String,
-        /// Set when user taps the submit button; Swift reads and consumes.
-        login_submit_requested: bool,
-        /// True when user has tapped the email field (Swift can show native text input).
-        email_focused: bool,
+        pub codex_messages: Vec<CodexMessage>,
+        pub composer_text: String,
+        pub active_thread_label: String,
+        pub active_turn_label: String,
+        pub model_label: String,
+        pub reasoning_label: String,
+        pub empty_title: String,
+        pub empty_detail: String,
+        send_requested: bool,
+        new_thread_requested: bool,
+        interrupt_requested: bool,
+        model_cycle_requested: bool,
+        reasoning_cycle_requested: bool,
+        composer_focused: bool,
     }
 
     impl IosBackgroundState {
@@ -658,82 +708,431 @@ pub mod ios {
                 scale,
                 puffs,
                 last_frame: None,
-                login_email: String::new(),
-                login_submit_requested: false,
-                email_focused: false,
+                codex_messages: Vec::new(),
+                composer_text: String::new(),
+                active_thread_label: "thread: none".to_string(),
+                active_turn_label: "turn: none".to_string(),
+                model_label: "model:auto".to_string(),
+                reasoning_label: "reasoning:auto".to_string(),
+                empty_title: "No Codex Messages Yet".to_string(),
+                empty_detail: "Waiting for Codex events from desktop.".to_string(),
+                send_requested: false,
+                new_thread_requested: false,
+                interrupt_requested: false,
+                model_cycle_requested: false,
+                reasoning_cycle_requested: false,
+                composer_focused: false,
             }))
         }
 
-        /// Compute login card and control bounds (same layout as render). All in logical pixels.
-        fn login_card_bounds(&self) -> (Bounds, Bounds, Bounds) {
-            let card_height = CARD_PADDING
-                + TITLE_FONT_SIZE
-                + ELEMENT_GAP
-                + INPUT_HEIGHT
-                + ELEMENT_GAP
-                + BUTTON_HEIGHT
-                + CARD_PADDING;
-            let card_x = (self.size.width - CARD_WIDTH) / 2.0;
-            let card_y = (self.size.height - card_height) / 2.0;
-            let content_x = card_x + CARD_PADDING;
-            let content_width = CARD_WIDTH - CARD_PADDING * 2.0;
-            let mut y = card_y + CARD_PADDING + TITLE_FONT_SIZE * 1.4 + ELEMENT_GAP;
-            let input_bounds = Bounds::new(content_x, y, content_width, INPUT_HEIGHT);
-            y += INPUT_HEIGHT + ELEMENT_GAP;
-            let button_bounds = Bounds::new(content_x, y, content_width, BUTTON_HEIGHT);
-            let card_bounds = Bounds::new(card_x, card_y, CARD_WIDTH, card_height);
-            (card_bounds, input_bounds, button_bounds)
+        fn set_utf8_string(target: &mut String, ptr: *const u8, len: usize) {
+            if ptr.is_null() || len == 0 {
+                target.clear();
+                return;
+            }
+            let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+            if let Ok(value) = std::str::from_utf8(slice) {
+                target.clear();
+                target.push_str(value);
+            } else {
+                target.clear();
+            }
+        }
+
+        fn primary_panel_bounds(&self) -> Bounds {
+            Bounds::new(
+                EDGE_PADDING,
+                EDGE_PADDING + 6.0,
+                (self.size.width - EDGE_PADDING * 2.0).max(120.0),
+                (self.size.height - EDGE_PADDING * 2.0 - 12.0).max(120.0),
+            )
+        }
+
+        fn controls_layout(&self) -> (Bounds, Bounds, Bounds, Bounds, Bounds, Bounds) {
+            let panel = self.primary_panel_bounds();
+            let control_y_start = panel.y() + panel.height()
+                - (TOP_CONTEXT_HEIGHT
+                    + CONTROL_GAP
+                    + ACTION_ROW_HEIGHT
+                    + CONTROL_GAP
+                    + COMPOSER_HEIGHT
+                    + 14.0);
+            let context_bounds = Bounds::new(
+                panel.x() + 10.0,
+                control_y_start,
+                panel.width() - 20.0,
+                TOP_CONTEXT_HEIGHT,
+            );
+            let action_y = context_bounds.y() + context_bounds.height() + CONTROL_GAP;
+            let new_thread_bounds = Bounds::new(
+                context_bounds.x(),
+                action_y,
+                BUTTON_WIDTH,
+                ACTION_ROW_HEIGHT,
+            );
+            let interrupt_bounds = Bounds::new(
+                new_thread_bounds.x() + new_thread_bounds.width() + CONTROL_GAP,
+                action_y,
+                BUTTON_WIDTH,
+                ACTION_ROW_HEIGHT,
+            );
+            let composer_y = action_y + ACTION_ROW_HEIGHT + CONTROL_GAP;
+            let send_bounds = Bounds::new(
+                context_bounds.x() + context_bounds.width() - SEND_BUTTON_WIDTH,
+                composer_y,
+                SEND_BUTTON_WIDTH,
+                COMPOSER_HEIGHT,
+            );
+            let composer_bounds = Bounds::new(
+                context_bounds.x(),
+                composer_y,
+                (context_bounds.width() - SEND_BUTTON_WIDTH - CONTROL_GAP).max(80.0),
+                COMPOSER_HEIGHT,
+            );
+            let transcript_bounds = Bounds::new(
+                panel.x() + 10.0,
+                panel.y() + 8.0 + TITLE_HEIGHT + 6.0,
+                panel.width() - 20.0,
+                (control_y_start - (panel.y() + TITLE_HEIGHT + 14.0)).max(80.0),
+            );
+
+            (
+                transcript_bounds,
+                context_bounds,
+                new_thread_bounds,
+                interrupt_bounds,
+                composer_bounds,
+                send_bounds,
+            )
+        }
+
+        fn context_chip_bounds(&self, context_bounds: Bounds) -> (Bounds, Bounds) {
+            let chip_width = (context_bounds.width() * 0.55).max(140.0);
+            let chip_height = (TOP_CONTEXT_HEIGHT - 4.0) * 0.5;
+            let model_bounds = Bounds::new(
+                context_bounds.x(),
+                context_bounds.y(),
+                chip_width,
+                chip_height,
+            );
+            let reasoning_bounds = Bounds::new(
+                context_bounds.x(),
+                context_bounds.y() + chip_height + 4.0,
+                chip_width,
+                chip_height,
+            );
+            (model_bounds, reasoning_bounds)
         }
 
         /// Handle tap at logical coordinates (same as render: origin top-left, units = pixels).
         pub fn handle_tap(&mut self, x: f32, y: f32) {
             use crate::geometry::Point;
-            let (_card, input_bounds, button_bounds) = self.login_card_bounds();
+            let (
+                _transcript_bounds,
+                context_bounds,
+                new_thread_bounds,
+                interrupt_bounds,
+                composer_bounds,
+                send_bounds,
+            ) = self.controls_layout();
+            let (model_bounds, reasoning_bounds) = self.context_chip_bounds(context_bounds);
             let p = Point::new(x, y);
-            if input_bounds.contains(p) {
-                self.email_focused = true;
-            }
-            if button_bounds.contains(p) {
-                self.login_submit_requested = true;
-            }
-        }
-
-        pub fn login_submit_requested(&self) -> bool {
-            self.login_submit_requested
-        }
-
-        pub fn consume_submit_requested(&mut self) -> bool {
-            let v = self.login_submit_requested;
-            self.login_submit_requested = false;
-            v
-        }
-
-        pub fn email_focused(&self) -> bool {
-            self.email_focused
-        }
-
-        pub fn set_email_focused(&mut self, focused: bool) {
-            self.email_focused = focused;
-        }
-
-        /// Set login email from UTF-8 bytes (e.g. from native text field). Copies into state.
-        pub fn set_login_email_utf8(&mut self, ptr: *const u8, len: usize) {
-            if ptr.is_null() || len == 0 {
-                self.login_email.clear();
+            if model_bounds.contains(p) {
+                self.model_cycle_requested = true;
                 return;
             }
-            let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-            if let Ok(s) = std::str::from_utf8(slice) {
-                self.login_email = s.to_string();
+            if reasoning_bounds.contains(p) {
+                self.reasoning_cycle_requested = true;
+                return;
+            }
+            if composer_bounds.contains(p) {
+                self.composer_focused = true;
+                return;
+            }
+            if send_bounds.contains(p) {
+                self.send_requested = true;
+                return;
+            }
+            if new_thread_bounds.contains(p) {
+                self.new_thread_requested = true;
+                return;
+            }
+            if interrupt_bounds.contains(p) {
+                self.interrupt_requested = true;
+                return;
+            }
+            self.composer_focused = false;
+        }
+
+        pub fn clear_codex_messages(&mut self) {
+            self.codex_messages.clear();
+        }
+
+        pub fn push_codex_message(
+            &mut self,
+            role: u8,
+            text: *const u8,
+            len: usize,
+            is_streaming: bool,
+        ) {
+            if self.codex_messages.len() >= MAX_STORED_MESSAGES {
+                let overflow = self.codex_messages.len() - MAX_STORED_MESSAGES + 1;
+                self.codex_messages.drain(0..overflow);
+            }
+            let mut payload = String::new();
+            Self::set_utf8_string(&mut payload, text, len);
+            self.codex_messages.push(CodexMessage {
+                role: CodexMessageRole::from_u8(role),
+                text: payload,
+                is_streaming,
+            });
+        }
+
+        pub fn set_composer_text_utf8(&mut self, ptr: *const u8, len: usize) {
+            Self::set_utf8_string(&mut self.composer_text, ptr, len);
+        }
+
+        pub fn set_codex_context_utf8(
+            &mut self,
+            thread_ptr: *const u8,
+            thread_len: usize,
+            turn_ptr: *const u8,
+            turn_len: usize,
+            model_ptr: *const u8,
+            model_len: usize,
+            reasoning_ptr: *const u8,
+            reasoning_len: usize,
+        ) {
+            Self::set_utf8_string(&mut self.active_thread_label, thread_ptr, thread_len);
+            Self::set_utf8_string(&mut self.active_turn_label, turn_ptr, turn_len);
+            Self::set_utf8_string(&mut self.model_label, model_ptr, model_len);
+            Self::set_utf8_string(&mut self.reasoning_label, reasoning_ptr, reasoning_len);
+        }
+
+        pub fn set_empty_state_utf8(
+            &mut self,
+            title_ptr: *const u8,
+            title_len: usize,
+            detail_ptr: *const u8,
+            detail_len: usize,
+        ) {
+            Self::set_utf8_string(&mut self.empty_title, title_ptr, title_len);
+            Self::set_utf8_string(&mut self.empty_detail, detail_ptr, detail_len);
+        }
+
+        pub fn composer_focused(&self) -> bool {
+            self.composer_focused
+        }
+
+        pub fn set_composer_focused(&mut self, focused: bool) {
+            self.composer_focused = focused;
+        }
+
+        pub fn consume_send_requested(&mut self) -> bool {
+            let requested = self.send_requested;
+            self.send_requested = false;
+            requested
+        }
+
+        pub fn consume_new_thread_requested(&mut self) -> bool {
+            let requested = self.new_thread_requested;
+            self.new_thread_requested = false;
+            requested
+        }
+
+        pub fn consume_interrupt_requested(&mut self) -> bool {
+            let requested = self.interrupt_requested;
+            self.interrupt_requested = false;
+            requested
+        }
+
+        pub fn consume_model_cycle_requested(&mut self) -> bool {
+            let requested = self.model_cycle_requested;
+            self.model_cycle_requested = false;
+            requested
+        }
+
+        pub fn consume_reasoning_cycle_requested(&mut self) -> bool {
+            let requested = self.reasoning_cycle_requested;
+            self.reasoning_cycle_requested = false;
+            requested
+        }
+
+        fn bubble_colors(role: CodexMessageRole) -> (Hsla, Hsla) {
+            match role {
+                CodexMessageRole::User => (theme::accent::PRIMARY, Hsla::white()),
+                CodexMessageRole::Assistant => (theme::bg::SURFACE, theme::text::PRIMARY),
+                CodexMessageRole::Reasoning => (theme::bg::MUTED, theme::text::PRIMARY),
+                CodexMessageRole::Tool => (theme::bg::CODE, theme::text::PRIMARY),
+                CodexMessageRole::System => (theme::bg::SURFACE, theme::text::MUTED),
+                CodexMessageRole::Error => {
+                    (theme::status::ERROR.with_alpha(0.22), theme::status::ERROR)
+                }
             }
         }
 
-        /// Render one frame: black background + dots grid + centered login card.
+        fn estimated_lines(text: &str, max_width: f32, font_size: f32) -> u32 {
+            let chars_per_line = (max_width / (font_size * 0.62)).max(12.0) as usize;
+            let mut lines: u32 = 0;
+            for line in text.lines() {
+                let length = line.chars().count();
+                if length == 0 {
+                    lines += 1;
+                } else {
+                    lines += ((length + chars_per_line.saturating_sub(1)) / chars_per_line) as u32;
+                }
+            }
+            lines.max(1)
+        }
+
+        fn render_messages(
+            messages: &[CodexMessage],
+            empty_title: &str,
+            empty_detail: &str,
+            transcript_bounds: Bounds,
+            paint: &mut PaintContext<'_>,
+        ) {
+            if messages.is_empty() {
+                let title_text = if empty_title.trim().is_empty() {
+                    "No Codex Messages Yet"
+                } else {
+                    empty_title
+                };
+                let detail_text = if empty_detail.trim().is_empty() {
+                    "Waiting for Codex events from desktop."
+                } else {
+                    empty_detail
+                };
+
+                let mut title = Text::new(title_text)
+                    .font_size(22.0)
+                    .color(theme::text::PRIMARY)
+                    .no_wrap();
+                title.paint(
+                    Bounds::new(
+                        transcript_bounds.x() + 14.0,
+                        transcript_bounds.y() + 52.0,
+                        transcript_bounds.width() - 28.0,
+                        32.0,
+                    ),
+                    paint,
+                );
+                let mut sub = Text::new(detail_text)
+                    .font_size(15.0)
+                    .color(theme::text::MUTED)
+                    .no_wrap();
+                sub.paint(
+                    Bounds::new(
+                        transcript_bounds.x() + 14.0,
+                        transcript_bounds.y() + 82.0,
+                        transcript_bounds.width() - 28.0,
+                        20.0,
+                    ),
+                    paint,
+                );
+                return;
+            }
+
+            let start_index = messages.len().saturating_sub(MAX_RENDERED_MESSAGES);
+            let visible = &messages[start_index..];
+
+            let mut cursor_y = transcript_bounds.y() + transcript_bounds.height() - 8.0;
+            for message in visible.iter().rev() {
+                let max_bubble_width = transcript_bounds.width() * BUBBLE_MAX_WIDTH_RATIO;
+                let text = if message.text.trim().is_empty() {
+                    "…"
+                } else {
+                    message.text.as_str()
+                };
+                let lines = Self::estimated_lines(
+                    text,
+                    max_bubble_width - BUBBLE_PADDING_X * 2.0,
+                    MESSAGE_FONT_SIZE,
+                );
+                let mut bubble_height =
+                    BUBBLE_PADDING_Y * 2.0 + MESSAGE_FONT_SIZE * 1.35 * lines as f32;
+                if message.is_streaming {
+                    bubble_height += STREAMING_LABEL_SIZE * 1.5;
+                }
+                bubble_height = bubble_height.max(BUBBLE_MIN_HEIGHT);
+
+                let bubble_width = max_bubble_width;
+                cursor_y -= bubble_height;
+                if cursor_y < transcript_bounds.y() + 4.0 {
+                    break;
+                }
+
+                let bubble_x = if matches!(message.role, CodexMessageRole::User) {
+                    transcript_bounds.x() + transcript_bounds.width() - bubble_width - 6.0
+                } else {
+                    transcript_bounds.x() + 6.0
+                };
+                let bubble_bounds = Bounds::new(bubble_x, cursor_y, bubble_width, bubble_height);
+                let (bubble_bg, bubble_fg) = Self::bubble_colors(message.role);
+                paint.scene.draw_quad(
+                    Quad::new(bubble_bounds)
+                        .with_background(bubble_bg)
+                        .with_corner_radius(12.0),
+                );
+
+                let mut msg_text = Text::new(text)
+                    .font_size(MESSAGE_FONT_SIZE)
+                    .color(bubble_fg);
+                msg_text.paint(
+                    Bounds::new(
+                        bubble_bounds.x() + BUBBLE_PADDING_X,
+                        bubble_bounds.y() + BUBBLE_PADDING_Y,
+                        bubble_bounds.width() - BUBBLE_PADDING_X * 2.0,
+                        bubble_bounds.height() - BUBBLE_PADDING_Y * 2.0,
+                    ),
+                    paint,
+                );
+
+                if message.is_streaming {
+                    let mut label = Text::new("streaming")
+                        .font_size(STREAMING_LABEL_SIZE)
+                        .color(theme::text::MUTED)
+                        .no_wrap();
+                    label.paint(
+                        Bounds::new(
+                            bubble_bounds.x() + BUBBLE_PADDING_X,
+                            bubble_bounds.y() + bubble_bounds.height() - STREAMING_LABEL_SIZE - 5.0,
+                            bubble_bounds.width() - BUBBLE_PADDING_X * 2.0,
+                            STREAMING_LABEL_SIZE + 2.0,
+                        ),
+                        paint,
+                    );
+                }
+
+                cursor_y -= MESSAGE_GAP;
+            }
+        }
+
+        /// Render one frame: black background + dots + codex transcript + controls.
         pub fn render(&mut self) -> Result<(), String> {
+            let panel_bounds = self.primary_panel_bounds();
+            let (
+                transcript_bounds,
+                context_bounds,
+                new_thread_bounds,
+                interrupt_bounds,
+                composer_bounds,
+                send_bounds,
+            ) = self.controls_layout();
+            let (model_bounds, reasoning_bounds) = self.context_chip_bounds(context_bounds);
+
+            let message_snapshot = self.codex_messages.clone();
+            let empty_title = self.empty_title.clone();
+            let empty_detail = self.empty_detail.clone();
+            let model_label = self.model_label.clone();
+            let reasoning_label = self.reasoning_label.clone();
+            let active_thread_label = self.active_thread_label.clone();
+            let active_turn_label = self.active_turn_label.clone();
+            let composer_text = self.composer_text.clone();
+
             let mut scene = Scene::new();
             let mut paint = PaintContext::new(&mut scene, &mut self.text_system, self.scale);
 
-            // Black background (matches desktop)
             paint.scene.draw_quad(
                 Quad::new(Bounds::new(0.0, 0.0, self.size.width, self.size.height))
                     .with_background(crate::color::Hsla::black()),
@@ -759,51 +1158,120 @@ pub mod ios {
                 .size(1.5);
             dots_grid.paint(grid_bounds, &mut paint);
 
-            // Centered login card: "Log in" title, email input, submit button
-            let card_height = CARD_PADDING
-                + TITLE_FONT_SIZE
-                + ELEMENT_GAP
-                + INPUT_HEIGHT
-                + ELEMENT_GAP
-                + BUTTON_HEIGHT
-                + CARD_PADDING;
-            let card_x = (self.size.width - CARD_WIDTH) / 2.0;
-            let card_y = (self.size.height - card_height) / 2.0;
-            let card_bounds = Bounds::new(card_x, card_y, CARD_WIDTH, card_height);
             paint.scene.draw_quad(
-                Quad::new(card_bounds)
-                    .with_background(theme::bg::ELEVATED)
+                Quad::new(panel_bounds)
+                    .with_background(theme::bg::APP.with_alpha(0.88))
                     .with_border(theme::border::DEFAULT, 1.0)
-                    .with_corner_radius(CARD_CORNER_RADIUS),
+                    .with_corner_radius(PANEL_CORNER_RADIUS),
             );
-            let mut y = card_y + CARD_PADDING;
-            let content_x = card_x + CARD_PADDING;
-            let content_width = CARD_WIDTH - CARD_PADDING * 2.0;
 
-            let mut title = Text::new("Log in")
-                .font_size(TITLE_FONT_SIZE)
+            let mut title = Text::new("Codex")
+                .font_size(24.0)
                 .color(theme::text::PRIMARY)
                 .no_wrap();
             title.paint(
-                Bounds::new(content_x, y, content_width, TITLE_FONT_SIZE * 1.4),
+                Bounds::new(
+                    panel_bounds.x() + 12.0,
+                    panel_bounds.y() + 10.0,
+                    panel_bounds.width() - 24.0,
+                    TITLE_HEIGHT,
+                ),
                 &mut paint,
             );
-            y += TITLE_FONT_SIZE * 1.4 + ELEMENT_GAP;
 
-            let mut email_input = TextInput::new().placeholder("Email");
-            email_input.set_value(&self.login_email);
-            email_input.set_focused(self.email_focused);
-            email_input.paint(
-                Bounds::new(content_x, y, content_width, INPUT_HEIGHT),
+            paint.scene.draw_quad(
+                Quad::new(transcript_bounds)
+                    .with_background(theme::bg::SURFACE.with_alpha(0.92))
+                    .with_border(theme::border::DEFAULT.with_alpha(0.8), 1.0)
+                    .with_corner_radius(10.0),
+            );
+            Self::render_messages(
+                &message_snapshot,
+                &empty_title,
+                &empty_detail,
+                transcript_bounds,
                 &mut paint,
             );
-            y += INPUT_HEIGHT + ELEMENT_GAP;
 
-            let mut submit_btn = Button::new("Log in").variant(ButtonVariant::Primary);
-            submit_btn.paint(
-                Bounds::new(content_x, y, content_width, BUTTON_HEIGHT),
+            paint.scene.draw_quad(
+                Quad::new(model_bounds)
+                    .with_background(theme::bg::SURFACE.with_alpha(0.9))
+                    .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
+                    .with_corner_radius(8.0),
+            );
+            paint.scene.draw_quad(
+                Quad::new(reasoning_bounds)
+                    .with_background(theme::bg::SURFACE.with_alpha(0.9))
+                    .with_border(theme::border::DEFAULT.with_alpha(0.85), 1.0)
+                    .with_corner_radius(8.0),
+            );
+
+            let mut model = Text::new(&model_label)
+                .font_size(SMALL_TEXT_SIZE)
+                .color(theme::text::PRIMARY)
+                .no_wrap();
+            model.paint(
+                Bounds::new(
+                    model_bounds.x() + 8.0,
+                    model_bounds.y() + 3.0,
+                    model_bounds.width() - 12.0,
+                    model_bounds.height() - 6.0,
+                ),
                 &mut paint,
             );
+            let mut reasoning = Text::new(&reasoning_label)
+                .font_size(SMALL_TEXT_SIZE)
+                .color(theme::text::PRIMARY)
+                .no_wrap();
+            reasoning.paint(
+                Bounds::new(
+                    reasoning_bounds.x() + 8.0,
+                    reasoning_bounds.y() + 3.0,
+                    reasoning_bounds.width() - 12.0,
+                    reasoning_bounds.height() - 6.0,
+                ),
+                &mut paint,
+            );
+
+            let mut thread_text = Text::new(&active_thread_label)
+                .font_size(SMALL_TEXT_SIZE)
+                .color(theme::text::MUTED)
+                .no_wrap();
+            thread_text.paint(
+                Bounds::new(
+                    context_bounds.x() + context_bounds.width() * 0.58,
+                    context_bounds.y(),
+                    context_bounds.width() * 0.42,
+                    SMALL_TEXT_SIZE + 3.0,
+                ),
+                &mut paint,
+            );
+            let mut turn_text = Text::new(&active_turn_label)
+                .font_size(SMALL_TEXT_SIZE)
+                .color(theme::text::MUTED)
+                .no_wrap();
+            turn_text.paint(
+                Bounds::new(
+                    context_bounds.x() + context_bounds.width() * 0.58,
+                    context_bounds.y() + SMALL_TEXT_SIZE + 4.0,
+                    context_bounds.width() * 0.42,
+                    SMALL_TEXT_SIZE + 3.0,
+                ),
+                &mut paint,
+            );
+
+            let mut new_thread = Button::new("New Thread").variant(ButtonVariant::Secondary);
+            new_thread.paint(new_thread_bounds, &mut paint);
+            let mut interrupt = Button::new("Interrupt").variant(ButtonVariant::Secondary);
+            interrupt.paint(interrupt_bounds, &mut paint);
+
+            let mut composer = TextInput::new().placeholder("Message Codex");
+            composer.set_value(&composer_text);
+            composer.set_focused(self.composer_focused);
+            composer.paint(composer_bounds, &mut paint);
+
+            let mut send = Button::new("Send").variant(ButtonVariant::Primary);
+            send.paint(send_bounds, &mut paint);
 
             self.renderer.resize(&self.queue, self.size, self.scale);
 
@@ -938,7 +1406,219 @@ pub mod ios {
         state.handle_tap(x, y);
     }
 
-    /// C FFI: returns 1 if user tapped submit and it has not been consumed yet, else 0.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_clear_codex_messages(state: *mut IosBackgroundState) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.clear_codex_messages();
+    }
+
+    /// role: user=0 assistant=1 reasoning=2 tool=3 system=4 error=5
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_push_codex_message(
+        state: *mut IosBackgroundState,
+        role: u8,
+        text_ptr: *const c_char,
+        text_len: usize,
+        streaming: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        let ptr_u8 = if text_ptr.is_null() {
+            std::ptr::null()
+        } else {
+            text_ptr as *const u8
+        };
+        state.push_codex_message(role, ptr_u8, text_len, streaming != 0);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_codex_context(
+        state: *mut IosBackgroundState,
+        thread_ptr: *const c_char,
+        thread_len: usize,
+        turn_ptr: *const c_char,
+        turn_len: usize,
+        model_ptr: *const c_char,
+        model_len: usize,
+        reasoning_ptr: *const c_char,
+        reasoning_len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_codex_context_utf8(
+            if thread_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                thread_ptr as *const u8
+            },
+            thread_len,
+            if turn_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                turn_ptr as *const u8
+            },
+            turn_len,
+            if model_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                model_ptr as *const u8
+            },
+            model_len,
+            if reasoning_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                reasoning_ptr as *const u8
+            },
+            reasoning_len,
+        );
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_empty_state(
+        state: *mut IosBackgroundState,
+        title_ptr: *const c_char,
+        title_len: usize,
+        detail_ptr: *const c_char,
+        detail_len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_empty_state_utf8(
+            if title_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                title_ptr as *const u8
+            },
+            title_len,
+            if detail_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                detail_ptr as *const u8
+            },
+            detail_len,
+        );
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_composer_text(
+        state: *mut IosBackgroundState,
+        ptr: *const c_char,
+        len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        let ptr_u8 = if ptr.is_null() {
+            std::ptr::null()
+        } else {
+            ptr as *const u8
+        };
+        state.set_composer_text_utf8(ptr_u8, len);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_composer_focused(state: *mut IosBackgroundState) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        if state.composer_focused() { 1 } else { 0 }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_composer_focused(
+        state: *mut IosBackgroundState,
+        focused: i32,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_composer_focused(focused != 0);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_send_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_send_requested() { 1 } else { 0 }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_new_thread_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_new_thread_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_interrupt_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_interrupt_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_model_cycle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_model_cycle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_reasoning_cycle_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_reasoning_cycle_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_login_submit_requested(
         state: *mut IosBackgroundState,
@@ -946,11 +1626,11 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
-        if state.login_submit_requested() { 1 } else { 0 }
+        let state = unsafe { &mut *state };
+        if state.send_requested { 1 } else { 0 }
     }
 
-    /// C FFI: consume submit-requested flag. Returns 1 if it was set, 0 otherwise.
+    /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_consume_submit_requested(
         state: *mut IosBackgroundState,
@@ -959,24 +1639,20 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &mut *state };
-        if state.consume_submit_requested() {
-            1
-        } else {
-            0
-        }
+        if state.consume_send_requested() { 1 } else { 0 }
     }
 
-    /// C FFI: returns 1 if email field is focused (user tapped it), else 0.
+    /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_email_focused(state: *mut IosBackgroundState) -> i32 {
         if state.is_null() {
             return 0;
         }
         let state = unsafe { &*state };
-        if state.email_focused() { 1 } else { 0 }
+        if state.composer_focused() { 1 } else { 0 }
     }
 
-    /// C FFI: set email field focused state (e.g. 0 after dismissing native keyboard).
+    /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_set_email_focused(
         state: *mut IosBackgroundState,
@@ -986,14 +1662,14 @@ pub mod ios {
             return;
         }
         let state = unsafe { &mut *state };
-        state.set_email_focused(focused != 0);
+        state.set_composer_focused(focused != 0);
     }
 
-    /// C FFI: set login email from UTF-8 bytes. ptr may be null (clears email); len is byte length.
+    /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_set_login_email(
         state: *mut IosBackgroundState,
-        ptr: *const std::ffi::c_char,
+        ptr: *const c_char,
         len: usize,
     ) {
         if state.is_null() {
@@ -1001,10 +1677,10 @@ pub mod ios {
         }
         let state = unsafe { &mut *state };
         if ptr.is_null() || len == 0 {
-            state.set_login_email_utf8(std::ptr::null(), 0);
+            state.set_composer_text_utf8(std::ptr::null(), 0);
             return;
         }
         let ptr_u8 = ptr as *const u8;
-        state.set_login_email_utf8(ptr_u8, len);
+        state.set_composer_text_utf8(ptr_u8, len);
     }
 }
