@@ -10,6 +10,7 @@ Define the current iOS architecture for Codex administration with Rust control/r
 2. iOS never calls runtime internal `/internal/v1/*` endpoints directly.
 3. Live updates come from Khala websocket subscriptions.
 4. Authority writes happen through authenticated HTTP APIs.
+5. Product UI is Rust/WGPUI-only; Swift/SwiftUI is host bridge code only (no product chat/thread UI logic in Swift views).
 
 ## Modules
 
