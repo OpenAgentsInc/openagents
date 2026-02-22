@@ -1,0 +1,100 @@
+name: web-production-stream-cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      stable_revision:
+        description: 'Stable Cloud Run revision name'
+        required: true
+        type: string
+      canary_revision:
+        description: 'Canary Cloud Run revision name'
+        required: true
+        type: string
+      base_url:
+        description: 'Control service base URL'
+        required: true
+        default: 'https://openagents.com'
+        type: string
+      project:
+        description: 'GCP project id'
+        required: true
+        default: 'openagentsgemini'
+        type: string
+      region:
+        description: 'Cloud Run region'
+        required: true
+        default: 'us-central1'
+        type: string
+      service:
+        description: 'Cloud Run service name'
+        required: true
+        default: 'openagents-control-service'
+        type: string
+      dry_run:
+        description: 'Run non-destructive rehearsal only'
+        required: true
+        default: true
+        type: boolean
+      apply_route_flip:
+        description: 'Apply route flip overrides during cutover'
+        required: true
+        default: false
+        type: boolean
+      run_dual_run:
+        description: 'Run rust-vs-legacy dual-run diff gate'
+        required: true
+        default: false
+        type: boolean
+      legacy_base_url:
+        description: 'Legacy base URL (required when run_dual_run=true)'
+        required: false
+        default: ''
+        type: string
+      observed_error_budget_percent:
+        description: 'Observed error budget consumed percent for gate'
+        required: true
+        default: '0'
+        type: string
+
+jobs:
+  production-stream-cutover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        if: ${{ inputs.dry_run != true }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud SDK
+        if: ${{ inputs.dry_run != true }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run production stream cutover
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          PROJECT: ${{ inputs.project }}
+          REGION: ${{ inputs.region }}
+          SERVICE: ${{ inputs.service }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          APPLY_ROUTE_FLIP: ${{ inputs.apply_route_flip && '1' || '0' }}
+          RUN_DUAL_RUN: ${{ inputs.run_dual_run && '1' || '0' }}
+          LEGACY_BASE_URL: ${{ inputs.legacy_base_url }}
+          SLO_ERROR_BUDGET_CONSUMED_PERCENT: ${{ inputs.observed_error_budget_percent }}
+          CONTROL_ACCESS_TOKEN: ${{ secrets.OPENAGENTS_CONTROL_ACCESS_TOKEN }}
+          AUTH_TOKEN: ${{ secrets.OPENAGENTS_STREAM_AUTH_TOKEN }}
+        run: |
+          apps/openagents.com/service/scripts/run-production-stream-cutover.sh \
+            "${{ inputs.stable_revision }}" "${{ inputs.canary_revision }}"
+
+      - name: Upload cutover artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-production-stream-cutover
+          path: apps/openagents.com/storage/app/production-stream-cutover/**
+          if-no-files-found: warn
