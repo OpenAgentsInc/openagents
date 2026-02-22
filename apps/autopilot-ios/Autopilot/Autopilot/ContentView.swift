@@ -6,290 +6,29 @@ struct ContentView: View {
     @State private var showDebugSurface = false
 
     var body: some View {
-        NavigationStack {
-            CodexChatView(model: model)
-                .navigationTitle("Codex")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(OATheme.background, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-                .overlay(alignment: .topTrailing) {
-                    Color.clear
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                        .onLongPressGesture(minimumDuration: 1.2) {
-                            showDebugSurface = true
-                        }
-                        .accessibilityHidden(true)
-                }
-        }
-        .sheet(isPresented: $showDebugSurface) {
-            CodexDebugView(model: model)
-        }
-        .onAppear {
-            model.handleScenePhaseChange(scenePhase)
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            model.handleScenePhaseChange(newPhase)
-        }
-        .background(OATheme.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
-    }
-}
-
-private struct CodexChatView: View {
-    @ObservedObject var model: CodexHandshakeViewModel
-    @FocusState private var isComposerFocused: Bool
-
-    var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            composer
-        }
+        WgpuiBackgroundView(model: model)
+            .overlay(alignment: .topTrailing) {
+                Color.clear
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 1.2) {
+                        showDebugSurface = true
+                    }
+                    .accessibilityHidden(true)
+            }
+            .sheet(isPresented: $showDebugSurface) {
+                CodexDebugView(model: model)
+            }
             .task {
                 await model.autoConnectOnLaunch()
             }
-    }
-
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    if model.chatMessages.isEmpty {
-                        let emptyDescription: String = {
-                            if !model.isAuthenticated {
-                                return "Sign in from the hidden debug surface."
-                            }
-
-                            switch model.streamState {
-                            case .connecting, .reconnecting:
-                                return "Connecting to your desktop Codex stream..."
-                            default:
-                                return "Waiting for Codex events from desktop."
-                            }
-                        }()
-
-                        ContentUnavailableView(
-                            "No Codex Messages Yet",
-                            systemImage: "message",
-                            description: Text(emptyDescription)
-                        )
-                        .padding(.top, 60)
-                    } else {
-                        ForEach(model.chatMessages) { message in
-                            CodexMessageBubble(message: message)
-                                .id(message.id)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+            .onAppear {
+                model.handleScenePhaseChange(scenePhase)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                dismissKeyboard()
+            .onChange(of: scenePhase) { _, newPhase in
+                model.handleScenePhaseChange(newPhase)
             }
-            .background(OATheme.background)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: model.chatMessages.count) { _, _ in
-                guard let last = model.chatMessages.last else {
-                    return
-                }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
-            }
-        }
-    }
-
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            controlAffordances
-
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Codex", text: $model.messageDraft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .textInputAutocapitalization(.sentences)
-                    .autocorrectionDisabled(false)
-                    .focused($isComposerFocused)
-                    .submitLabel(.send)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(OATheme.input)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(OATheme.border, lineWidth: 1)
-                    )
-                    .foregroundStyle(OATheme.foreground)
-                    .tint(OATheme.ring)
-                    .onSubmit {
-                        Task {
-                            await model.sendUserMessage()
-                        }
-                    }
-
-                Button {
-                    Task {
-                        await model.sendUserMessage()
-                    }
-                } label: {
-                    if model.isSendingMessage {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                    } else {
-                        Text("Send")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(OATheme.primary)
-                .disabled(!model.canSendMessage)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-        .background(OATheme.background)
-    }
-
-    private var controlAffordances: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Picker("Model", selection: $model.selectedModelOverride) {
-                    ForEach(model.modelOverrideOptions, id: \.self) { option in
-                        Text(option == "default" ? "model:auto" : option)
-                            .tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Reasoning", selection: $model.selectedReasoningEffort) {
-                    ForEach(model.reasoningEffortOptions, id: \.self) { option in
-                        Text(option == "default" ? "reasoning:auto" : option)
-                            .tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-
-            HStack(spacing: 8) {
-                Button("New Thread") {
-                    Task {
-                        await model.startThread()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.canStartThread)
-
-                Button("Interrupt") {
-                    Task {
-                        await model.interruptActiveTurn()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.canInterruptTurn)
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("thread: \(model.activeThreadID ?? "none")")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text("turn: \(model.activeTurnID ?? "none")")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .font(.caption2)
-                .foregroundStyle(OATheme.mutedForeground)
-            }
-        }
-    }
-
-    private func dismissKeyboard() {
-        isComposerFocused = false
-    }
-}
-
-private struct CodexMessageBubble: View {
-    let message: CodexChatMessage
-
-    var body: some View {
-        HStack(alignment: .bottom) {
-            if isUser {
-                Spacer(minLength: 40)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                if showRoleLabel {
-                    Text(roleLabel(for: message.role))
-                        .font(.caption2)
-                        .foregroundStyle(OATheme.mutedForeground)
-                        .textCase(.uppercase)
-                }
-
-                Text(displayText)
-                    .font(.body)
-                    .textSelection(.enabled)
-
-                if message.isStreaming {
-                    Text("streaming")
-                        .font(.caption2)
-                        .foregroundStyle(OATheme.mutedForeground)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(bubbleBackground)
-            .foregroundStyle(bubbleForeground)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            if !isUser {
-                Spacer(minLength: 40)
-            }
-        }
-    }
-
-    private var isUser: Bool {
-        message.role == .user
-    }
-
-    private var showRoleLabel: Bool {
-        message.role != .user && message.role != .assistant
-    }
-
-    private var displayText: String {
-        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "…" : message.text
-    }
-
-    private var bubbleBackground: Color {
-        switch message.role {
-        case .user:
-            return OATheme.primary
-        case .assistant:
-            return OATheme.card
-        case .reasoning:
-            return OATheme.muted
-        case .tool:
-            return OATheme.accent
-        case .system:
-            return OATheme.card
-        case .error:
-            return OATheme.destructive.opacity(0.25)
-        }
-    }
-
-    private var bubbleForeground: Color {
-        switch message.role {
-        case .user:
-            return .white
-        case .error:
-            return OATheme.destructive
-        default:
-            return OATheme.foreground
-        }
+            .preferredColorScheme(.dark)
     }
 }
 
@@ -552,23 +291,6 @@ private func handshakeDescription(_ state: HandshakeState) -> String {
     }
 }
 
-private func roleLabel(for role: CodexChatRole) -> String {
-    switch role {
-    case .user:
-        return "User"
-    case .assistant:
-        return "Assistant"
-    case .reasoning:
-        return "Reasoning"
-    case .tool:
-        return "Tool"
-    case .system:
-        return "System"
-    case .error:
-        return "Error"
-    }
-}
-
 #Preview {
     ContentView()
 }
@@ -576,13 +298,7 @@ private func roleLabel(for role: CodexChatRole) -> String {
 private enum OATheme {
     static let background = Color(red: 16 / 255, green: 16 / 255, blue: 17 / 255)
     static let foreground = Color(red: 216 / 255, green: 222 / 255, blue: 233 / 255)
-    static let card = Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255)
-    static let muted = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
     static let mutedForeground = Color(red: 153 / 255, green: 153 / 255, blue: 153 / 255)
-    static let accent = Color(red: 80 / 255, green: 80 / 255, blue: 80 / 255)
-    static let primary = Color(red: 79 / 255, green: 79 / 255, blue: 85 / 255)
     static let destructive = Color(red: 191 / 255, green: 97 / 255, blue: 106 / 255)
-    static let border = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
-    static let input = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
     static let ring = Color(red: 136 / 255, green: 192 / 255, blue: 208 / 255)
 }

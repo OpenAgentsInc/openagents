@@ -5,15 +5,21 @@ import os.log
 
 private let wgpuiLog = OSLog(subsystem: "com.openagents.Autopilot", category: "WGPUI")
 
-/// UIView that uses a CAMetalLayer so WGPUI can render the dots grid into it.
+/// UIView that hosts the WGPUI Codex renderer on a CAMetalLayer.
 private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
+    var onSendRequested: (() -> Void)?
+    var onNewThreadRequested: (() -> Void)?
+    var onInterruptRequested: (() -> Void)?
+    var onModelCycleRequested: (() -> Void)?
+    var onReasoningCycleRequested: (() -> Void)?
+    var onComposerChanged: ((String) -> Void)?
+
     private var statePtr: UnsafeMutableRawPointer?
     private var displayLink: CADisplayLink?
-    private var lastBounds: CGRect = .zero
     private var renderTickCount: Int = 0
-    private var emailDraft: String = ""
+    private var composerDraft: String = ""
     private let keyboardProxyField = UITextField(frame: .zero)
 
     private var effectiveScale: CGFloat {
@@ -43,12 +49,12 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
 
     private func configureKeyboardProxyField() {
         keyboardProxyField.translatesAutoresizingMaskIntoConstraints = false
-        keyboardProxyField.autocapitalizationType = .none
-        keyboardProxyField.autocorrectionType = .no
-        keyboardProxyField.spellCheckingType = .no
-        keyboardProxyField.keyboardType = .emailAddress
-        keyboardProxyField.returnKeyType = .done
-        keyboardProxyField.textContentType = .username
+        keyboardProxyField.autocapitalizationType = .sentences
+        keyboardProxyField.autocorrectionType = .yes
+        keyboardProxyField.spellCheckingType = .yes
+        keyboardProxyField.keyboardType = .default
+        keyboardProxyField.returnKeyType = .send
+        keyboardProxyField.textContentType = .none
         keyboardProxyField.textColor = .clear
         keyboardProxyField.tintColor = .clear
         keyboardProxyField.backgroundColor = .clear
@@ -67,10 +73,7 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     @objc private func handleTapGesture(_ recognizer: UITapGestureRecognizer) {
         guard let statePtr else { return }
         let location = recognizer.location(in: self)
-        // Rust iOS bridge now consumes logical points for interaction coordinates.
-        let x = Float(location.x)
-        let y = Float(location.y)
-        WgpuiBackgroundBridge.handleTap(state: statePtr, x: x, y: y)
+        WgpuiBackgroundBridge.handleTap(state: statePtr, x: Float(location.x), y: Float(location.y))
     }
 
     override func layoutSubviews() {
@@ -78,92 +81,159 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         let bounds = self.bounds
         let scale = effectiveScale
         guard let metalLayer = layer as? CAMetalLayer else {
-            print("[WGPUI] layoutSubviews layer is not CAMetalLayer (got \(type(of: layer)))")
             os_log("[WGPUI] layoutSubviews layer is not CAMetalLayer", log: wgpuiLog, type: .error)
             return
         }
-        // Make CAMetalLayer explicit about HiDPI backing to avoid implicit 1x drawables.
+
         contentScaleFactor = scale
         metalLayer.contentsScale = scale
-        metalLayer.drawableSize = CGSize(
-            width: bounds.width * scale,
-            height: bounds.height * scale
-        )
+        metalLayer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
 
         let logicalW = UInt32(max(1.0, bounds.width.rounded(.toNearestOrAwayFromZero)))
         let logicalH = UInt32(max(1.0, bounds.height.rounded(.toNearestOrAwayFromZero)))
-        if logicalW == 0 || logicalH == 0 {
-            print("[WGPUI] layoutSubviews skip zero size bounds=\(bounds) logicalW=\(logicalW) logicalH=\(logicalH)")
-            return
-        }
 
         if statePtr == nil {
-            if !WgpuiBackgroundBridge.isAvailable {
-                print("[WGPUI] layoutSubviews bridge not available")
-                os_log("[WGPUI] layoutSubviews bridge not available", log: wgpuiLog, type: .error)
+            guard WgpuiBackgroundBridge.isAvailable else {
+                os_log("[WGPUI] bridge unavailable", log: wgpuiLog, type: .error)
                 return
             }
-            print("[WGPUI] layoutSubviews creating state bounds=\(bounds) scale=\(scale) logicalW=\(logicalW) logicalH=\(logicalH)")
+
             statePtr = WgpuiBackgroundBridge.create(
                 layerPtr: Unmanaged.passUnretained(metalLayer).toOpaque(),
                 width: logicalW,
                 height: logicalH,
                 scale: Float(scale)
             )
+
             if statePtr != nil {
                 displayLink = CADisplayLink(target: self, selector: #selector(tick))
                 displayLink?.add(to: .main, forMode: .common)
-                print("[WGPUI] layoutSubviews state created, displayLink started")
-            } else {
-                print("[WGPUI] layoutSubviews create returned nil (Rust wgpui_ios_background_create failed)")
             }
         } else {
             WgpuiBackgroundBridge.resize(state: statePtr, width: logicalW, height: logicalH)
         }
-        lastBounds = bounds
+    }
+
+    func sync(model: CodexHandshakeViewModel) {
+        guard let statePtr else { return }
+
+        WgpuiBackgroundBridge.clearCodexMessages(state: statePtr)
+        for message in model.chatMessages.suffix(220) {
+            WgpuiBackgroundBridge.pushCodexMessage(
+                state: statePtr,
+                role: mapRole(message.role),
+                text: message.text,
+                streaming: message.isStreaming
+            )
+        }
+
+        let modelLabel = model.selectedModelOverride == "default" ? "model:auto" : model.selectedModelOverride
+        let reasoningLabel = model.selectedReasoningEffort == "default" ? "reasoning:auto" : model.selectedReasoningEffort
+        WgpuiBackgroundBridge.setCodexContext(
+            state: statePtr,
+            thread: "thread: \(model.activeThreadID ?? "none")",
+            turn: "turn: \(model.activeTurnID ?? "none")",
+            model: modelLabel,
+            reasoning: reasoningLabel
+        )
+        let emptyState = resolveEmptyState(model: model)
+        WgpuiBackgroundBridge.setEmptyState(
+            state: statePtr,
+            title: emptyState.title,
+            detail: emptyState.detail
+        )
+
+        composerDraft = model.messageDraft
+        WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
+        if keyboardProxyField.text != composerDraft {
+            keyboardProxyField.text = composerDraft
+        }
     }
 
     @objc private func tick() {
         guard let statePtr else { return }
-        let isFirst = (renderTickCount == 0)
-        _ = WgpuiBackgroundBridge.render(state: statePtr, logFirstFrame: isFirst)
+        _ = WgpuiBackgroundBridge.render(state: statePtr, logFirstFrame: renderTickCount == 0)
         renderTickCount += 1
-        if renderTickCount == 1 || renderTickCount == 60 {
-            print("[WGPUI] tick count=\(renderTickCount)")
+
+        if WgpuiBackgroundBridge.consumeSendRequested(state: statePtr) {
+            onSendRequested?()
         }
-        if WgpuiBackgroundBridge.consumeSubmitRequested(state: statePtr) {
-            DispatchQueue.main.async { [weak self] in
-                self?.keyboardProxyField.resignFirstResponder()
-            }
+        if WgpuiBackgroundBridge.consumeNewThreadRequested(state: statePtr) {
+            onNewThreadRequested?()
         }
-        if WgpuiBackgroundBridge.emailFocused(state: statePtr) {
-            WgpuiBackgroundBridge.setEmailFocused(state: statePtr, focused: false)
+        if WgpuiBackgroundBridge.consumeInterruptRequested(state: statePtr) {
+            onInterruptRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeModelCycleRequested(state: statePtr) {
+            onModelCycleRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeReasoningCycleRequested(state: statePtr) {
+            onReasoningCycleRequested?()
+        }
+
+        if WgpuiBackgroundBridge.composerFocused(state: statePtr) {
+            WgpuiBackgroundBridge.setComposerFocused(state: statePtr, focused: false)
             DispatchQueue.main.async { [weak self] in
-                self?.beginEmailEditing()
+                self?.beginComposerEditing()
             }
         }
     }
 
-    private func beginEmailEditing() {
+    private func beginComposerEditing() {
         guard statePtr != nil else { return }
-        keyboardProxyField.text = emailDraft
+        keyboardProxyField.text = composerDraft
         if !keyboardProxyField.isFirstResponder {
             keyboardProxyField.becomeFirstResponder()
         }
     }
 
     @objc private func keyboardProxyChanged(_ textField: UITextField) {
-        emailDraft = textField.text ?? ""
-        WgpuiBackgroundBridge.setLoginEmail(state: statePtr, emailDraft)
+        composerDraft = textField.text ?? ""
+        WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
+        onComposerChanged?(composerDraft)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
+        onSendRequested?()
         return false
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
-        WgpuiBackgroundBridge.setEmailFocused(state: statePtr, focused: false)
+        WgpuiBackgroundBridge.setComposerFocused(state: statePtr, focused: false)
+    }
+
+    private func mapRole(_ role: CodexChatRole) -> WgpuiCodexRole {
+        switch role {
+        case .user:
+            return .user
+        case .assistant:
+            return .assistant
+        case .reasoning:
+            return .reasoning
+        case .tool:
+            return .tool
+        case .system:
+            return .system
+        case .error:
+            return .error
+        }
+    }
+
+    private func resolveEmptyState(model: CodexHandshakeViewModel) -> (title: String, detail: String) {
+        if let error = model.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+            return ("Codex Error", error)
+        }
+        if !model.isAuthenticated {
+            return ("Sign In Required", "Open the hidden debug panel to sign in.")
+        }
+        switch model.streamState {
+        case .connecting:
+            return ("Connecting", "Connecting to your desktop Codex stream...")
+        case .reconnecting:
+            return ("Reconnecting", "Recovering your desktop Codex stream...")
+        default:
+            return ("No Codex Messages Yet", "Waiting for Codex events from desktop.")
+        }
     }
 
     deinit {
@@ -177,16 +247,17 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     }
 }
 
-/// SwiftUI view that shows the WGPUI dots grid background. Falls back to solid black if WGPUI symbols are unavailable.
+/// SwiftUI wrapper around the WGPUI iOS Codex surface.
 struct WgpuiBackgroundView: View {
+    @ObservedObject var model: CodexHandshakeViewModel
+
     var body: some View {
         Group {
             if WgpuiBackgroundBridge.isAvailable {
-                Representable()
+                Representable(model: model)
                     .ignoresSafeArea()
             } else {
-                Color.black
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
             }
         }
         .onAppear {
@@ -198,11 +269,57 @@ struct WgpuiBackgroundView: View {
     }
 
     private struct Representable: UIViewRepresentable {
+        @ObservedObject var model: CodexHandshakeViewModel
+
         func makeUIView(context: Context) -> WgpuiBackgroundUIView {
-            print("[WGPUI] Representable makeUIView")
-            return WgpuiBackgroundUIView()
+            let view = WgpuiBackgroundUIView()
+            view.onSendRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.sendUserMessage() }
+            }
+            view.onNewThreadRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.startThread() }
+            }
+            view.onInterruptRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.interruptActiveTurn() }
+            }
+            view.onModelCycleRequested = { [weak model] in
+                guard let model else { return }
+                model.selectedModelOverride = cycleSelection(
+                    current: model.selectedModelOverride,
+                    options: model.modelOverrideOptions
+                )
+            }
+            view.onReasoningCycleRequested = { [weak model] in
+                guard let model else { return }
+                model.selectedReasoningEffort = cycleSelection(
+                    current: model.selectedReasoningEffort,
+                    options: model.reasoningEffortOptions
+                )
+            }
+            view.onComposerChanged = { [weak model] text in
+                model?.messageDraft = text
+            }
+            return view
         }
 
-        func updateUIView(_ uiView: WgpuiBackgroundUIView, context: Context) {}
+        func updateUIView(_ uiView: WgpuiBackgroundUIView, context: Context) {
+            uiView.onComposerChanged = { [weak model] text in
+                model?.messageDraft = text
+            }
+            uiView.sync(model: model)
+        }
+
+        private func cycleSelection(current: String, options: [String]) -> String {
+            guard !options.isEmpty else {
+                return current
+            }
+            guard let index = options.firstIndex(of: current) else {
+                return options[0]
+            }
+            return options[(index + 1) % options.count]
+        }
     }
 }
