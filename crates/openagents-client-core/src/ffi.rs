@@ -7,6 +7,7 @@ use crate::auth::{normalize_email, normalize_verification_code};
 use crate::codex_control::extract_control_request_json;
 use crate::codex_worker::extract_desktop_handshake_ack_id;
 use crate::command::normalize_thread_message_text;
+use crate::ios_khala_session::{IosKhalaSession, SessionStep};
 use crate::khala_protocol::parse_phoenix_frame;
 
 pub const OA_CLIENT_CORE_FFI_CONTRACT_VERSION: u32 = 1;
@@ -25,6 +26,10 @@ fn into_raw_c_string(output: String) -> *mut c_char {
     CString::new(output)
         .map(CString::into_raw)
         .unwrap_or(std::ptr::null_mut())
+}
+
+fn encode_json<T: serde::Serialize>(value: &T) -> Option<String> {
+    serde_json::to_string(value).ok()
 }
 
 pub fn normalize_email_string(input: &str) -> Option<String> {
@@ -59,6 +64,10 @@ pub fn extract_desktop_ack_id_json(payload_json: &str) -> Option<String> {
 
 pub fn extract_control_request_from_payload_json(payload_json: &str) -> Option<String> {
     extract_control_request_json(payload_json)
+}
+
+pub fn khala_session_step_json(step: &SessionStep) -> Option<String> {
+    encode_json(step)
 }
 
 #[unsafe(no_mangle)]
@@ -133,6 +142,93 @@ pub unsafe extern "C" fn oa_client_core_parse_khala_frame(raw_frame: *const c_ch
     parse_khala_frame_json(&raw_frame)
         .map(into_raw_c_string)
         .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_create(
+    worker_id: *const c_char,
+    worker_events_topic: *const c_char,
+    resume_after: u64,
+) -> *mut IosKhalaSession {
+    let Some(worker_id) = with_c_string_input(worker_id) else {
+        return std::ptr::null_mut();
+    };
+    let Some(worker_events_topic) = with_c_string_input(worker_events_topic) else {
+        return std::ptr::null_mut();
+    };
+
+    Box::into_raw(Box::new(IosKhalaSession::new(
+        worker_id,
+        worker_events_topic,
+        resume_after,
+    )))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_start(
+    session: *mut IosKhalaSession,
+) -> *mut c_char {
+    if session.is_null() {
+        return std::ptr::null_mut();
+    }
+    let session = unsafe { &mut *session };
+    let step = session.start();
+    khala_session_step_json(&step)
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_on_frame(
+    session: *mut IosKhalaSession,
+    raw_frame: *const c_char,
+) -> *mut c_char {
+    if session.is_null() {
+        return std::ptr::null_mut();
+    }
+    let Some(raw_frame) = with_c_string_input(raw_frame) else {
+        return std::ptr::null_mut();
+    };
+    let session = unsafe { &mut *session };
+    let step = session.handle_frame_raw(&raw_frame);
+    khala_session_step_json(&step)
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_heartbeat(
+    session: *mut IosKhalaSession,
+) -> *mut c_char {
+    if session.is_null() {
+        return std::ptr::null_mut();
+    }
+    let session = unsafe { &mut *session };
+    match session.heartbeat_frame() {
+        Some(frame) => encode_json(&json!({ "frame": frame, "watermark": session.latest_watermark() }))
+            .map(into_raw_c_string)
+            .unwrap_or(std::ptr::null_mut()),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_latest_watermark(
+    session: *const IosKhalaSession,
+) -> u64 {
+    if session.is_null() {
+        return 0;
+    }
+    let session = unsafe { &*session };
+    session.latest_watermark()
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_free(session: *mut IosKhalaSession) {
+    if session.is_null() {
+        return;
+    }
+    let _ = unsafe { Box::from_raw(session) };
 }
 
 #[unsafe(no_mangle)]

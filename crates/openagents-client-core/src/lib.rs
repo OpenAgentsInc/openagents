@@ -9,6 +9,7 @@ pub mod codex_worker;
 pub mod command;
 pub mod compatibility;
 pub mod ffi;
+pub mod ios_khala_session;
 pub mod ios_codex_state;
 pub mod khala_protocol;
 pub mod sync_persistence;
