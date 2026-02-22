@@ -6,7 +6,6 @@ use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_ma
 use frlm::policy::{BudgetPolicy, Quorum, VerificationTier};
 use frlm::types::{Fragment, SubQueryResult, Venue};
 use frlm::verification::Verifier;
-use rand::Rng;
 use std::time::Instant;
 
 // ============================================================================
@@ -33,25 +32,6 @@ fn make_result(query_id: &str, content: &str, duration_ms: u64, cost_sats: u64) 
 fn make_agreeing_results(count: usize, content: &str) -> Vec<SubQueryResult> {
     (0..count)
         .map(|i| make_result(&format!("q-{}", i), content, 100, 10))
-        .collect()
-}
-
-/// Generate N disagreeing results (for detection tests)
-fn make_disagreeing_results(count: usize) -> Vec<SubQueryResult> {
-    let answers = [
-        "the sky is blue",
-        "water is wet",
-        "fire is hot",
-        "ice is cold",
-        "grass is green",
-        "snow is white",
-        "coal is black",
-        "gold is yellow",
-        "silver is gray",
-        "copper is orange",
-    ];
-    (0..count)
-        .map(|i| make_result(&format!("q-{}", i), answers[i % answers.len()], 100, 10))
         .collect()
 }
 
@@ -303,6 +283,7 @@ fn bench_similarity(c: &mut Criterion) {
 // ============================================================================
 
 /// Run multiple iterations and collect statistics for paper tables
+#[allow(dead_code)]
 fn collect_statistics() {
     println!("\n=== FRLM Benchmark Statistics for Paper ===\n");
 
@@ -447,14 +428,3 @@ criterion_group!(table3, bench_quorum_check);
 criterion_group!(table4, bench_detection_rate, bench_similarity);
 
 criterion_main!(table1, table2, table3, table4);
-
-// Run statistics collection when called directly
-#[cfg(test)]
-mod stats {
-    use super::*;
-
-    #[test]
-    fn print_paper_statistics() {
-        collect_statistics();
-    }
-}

@@ -87,7 +87,7 @@ trap cleanup EXIT
 OA_AUTH_PROVIDER_MODE=mock \
 OA_CONTROL_STATIC_DIR="${DIST_DIR}" \
 OA_CONTROL_BIND_ADDR="${BIND_ADDR}" \
-cargo run --manifest-path "${SERVICE_MANIFEST}" >"${SERVICE_LOG}" 2>&1 &
+cargo run --manifest-path "${SERVICE_MANIFEST}" --bin openagents-control-service >"${SERVICE_LOG}" 2>&1 &
 SERVICE_PID=$!
 
 for _ in $(seq 1 120); do
