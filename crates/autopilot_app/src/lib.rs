@@ -217,22 +217,22 @@ pub enum UserAction {
         relays: Vec<String>,
         provider: Option<String>,
     },
-    MoltbookRefresh,
-    MoltbookLoadComments {
+    CommunityFeedRefresh,
+    CommunityFeedLoadComments {
         post_id: String,
     },
-    MoltbookReply {
+    CommunityFeedReply {
         post_id: String,
     },
-    MoltbookSay {
+    CommunityFeedSay {
         text: String,
         submolt: Option<String>,
     },
-    MoltbookComment {
+    CommunityFeedComment {
         post_id: String,
         text: String,
     },
-    MoltbookUpvote {
+    CommunityFeedUpvote {
         post_id: String,
     },
     ThreadsRefresh,
@@ -357,9 +357,9 @@ pub struct RuntimeAuthStateView {
     pub updated_at: Option<String>,
 }
 
-/// Summary of a Moltbook post for the UI feed.
+/// Summary of a CommunityFeed post for the UI feed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MoltbookPostSummary {
+pub struct CommunityFeedPostSummary {
     pub id: String,
     pub title: Option<String>,
     pub content_preview: Option<String>,
@@ -372,9 +372,9 @@ pub struct MoltbookPostSummary {
     pub submolt: Option<String>,
 }
 
-/// Summary of a Moltbook comment for UI rendering.
+/// Summary of a CommunityFeed comment for UI rendering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MoltbookCommentSummary {
+pub struct CommunityFeedCommentSummary {
     pub id: String,
     pub post_id: Option<String>,
     pub parent_id: Option<String>,
@@ -384,9 +384,9 @@ pub struct MoltbookCommentSummary {
     pub created_at: Option<String>,
 }
 
-/// Summary of the current Moltbook agent profile (stats for engagement UI).
+/// Summary of the current CommunityFeed agent profile (stats for engagement UI).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct MoltbookProfileSummary {
+pub struct CommunityFeedProfileSummary {
     pub agent_name: String,
     pub posts_count: u64,
     pub comments_count: u64,
@@ -508,18 +508,18 @@ pub enum AppEvent {
     Nip90Log {
         message: String,
     },
-    MoltbookFeedUpdated {
-        posts: Vec<MoltbookPostSummary>,
+    CommunityFeedFeedUpdated {
+        posts: Vec<CommunityFeedPostSummary>,
     },
-    MoltbookCommentsLoaded {
+    CommunityFeedCommentsLoaded {
         post_id: String,
-        comments: Vec<MoltbookCommentSummary>,
+        comments: Vec<CommunityFeedCommentSummary>,
     },
-    MoltbookLog {
+    CommunityFeedLog {
         message: String,
     },
-    MoltbookProfileLoaded {
-        profile: MoltbookProfileSummary,
+    CommunityFeedProfileLoaded {
+        profile: CommunityFeedProfileSummary,
     },
     ThreadsUpdated {
         threads: Vec<ThreadSummary>,

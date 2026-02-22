@@ -1074,10 +1074,10 @@ dependencies = [
  "chrono",
  "clap",
  "codex-client",
+ "communityfeed",
  "dirs 5.0.1",
  "dsrs",
  "futures",
- "moltbook",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-client-core",
@@ -2136,6 +2136,18 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "communityfeed"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -6134,18 +6146,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moltbook"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7059,8 +7059,8 @@ dependencies = [
  "bip39",
  "bitcoin",
  "clap",
+ "communityfeed",
  "hex",
- "moltbook",
  "nostr 0.1.0",
  "openagents-citrea",
  "openagents-spark",

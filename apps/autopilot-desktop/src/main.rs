@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
-    MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary, PylonStatus,
+    CommunityFeedCommentSummary, CommunityFeedPostSummary, CommunityFeedProfileSummary, PylonStatus,
     RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
@@ -38,7 +38,7 @@ use full_auto::{
     run_full_auto_decision,
 };
 use futures::{SinkExt, StreamExt};
-use moltbook::{CommentSort, CreateCommentRequest, MoltbookClient, MoltbookError, PostSort};
+use communityfeed::{CommentSort, CreateCommentRequest, CommunityFeedClient, CommunityFeedError, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
@@ -91,14 +91,14 @@ const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
-const ENV_MOLTBOOK_PROXY_BASE: &str = "OPENAGENTS_MOLTBOOK_API_BASE";
-const ENV_MOLTBOOK_LIVE_BASE: &str = "MOLTBOOK_API_BASE";
+const ENV_COMMUNITYFEED_PROXY_BASE: &str = "OPENAGENTS_COMMUNITYFEED_API_BASE";
+const ENV_COMMUNITYFEED_LIVE_BASE: &str = "COMMUNITYFEED_API_BASE";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";
-const DEFAULT_MOLTBOOK_PROXY_BASE: &str = "https://openagents.com/api/moltbook/api";
-const DEFAULT_MOLTBOOK_LIVE_BASE: &str = "https://www.moltbook.com/api/v1";
-const MOLTBOOK_CACHE_LIMIT: usize = 200;
-const MOLTBOOK_CACHE_DB: &str = "moltbook.db";
+const DEFAULT_COMMUNITYFEED_PROXY_BASE: &str = "https://openagents.com/api/communityfeed/api";
+const DEFAULT_COMMUNITYFEED_LIVE_BASE: &str = "https://www.communityfeed.com/api/v1";
+const COMMUNITYFEED_CACHE_LIMIT: usize = 200;
+const COMMUNITYFEED_CACHE_DB: &str = "communityfeed.db";
 const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
@@ -1898,7 +1898,7 @@ impl SessionRuntime {
 }
 
 #[derive(Clone)]
-struct MoltbookReplyTarget {
+struct CommunityFeedReplyTarget {
     post_id: String,
 }
 
@@ -2515,11 +2515,11 @@ fn spawn_event_bridge(
                 event_buffer: EVENT_BUFFER,
             });
 
-            if let Ok(cached) = load_moltbook_cache(MOLTBOOK_CACHE_LIMIT) {
+            if let Ok(cached) = load_communityfeed_cache(COMMUNITYFEED_CACHE_LIMIT) {
                 if !cached.is_empty() {
-                    let _ = proxy.send_event(AppEvent::MoltbookFeedUpdated { posts: cached.clone() });
-                    let _ = proxy.send_event(AppEvent::MoltbookLog {
-                        message: format!("Loaded {} cached Moltbook posts.", cached.len()),
+                    let _ = proxy.send_event(AppEvent::CommunityFeedFeedUpdated { posts: cached.clone() });
+                    let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                        message: format!("Loaded {} cached CommunityFeed posts.", cached.len()),
                     });
                 }
             }
@@ -2559,8 +2559,8 @@ fn spawn_event_bridge(
             >::new()));
             let thread_to_session =
                 Arc::new(tokio::sync::Mutex::new(HashMap::<String, SessionId>::new()));
-            let moltbook_reply_targets =
-                Arc::new(tokio::sync::Mutex::new(HashMap::<String, MoltbookReplyTarget>::new()));
+            let communityfeed_reply_targets =
+                Arc::new(tokio::sync::Mutex::new(HashMap::<String, CommunityFeedReplyTarget>::new()));
 
             let bootstrap_session = workspace.start_session(Some("Bootstrap".to_string()));
             let bootstrap_id = bootstrap_session.session_id();
@@ -2687,7 +2687,7 @@ fn spawn_event_bridge(
             let cwd_full_auto = cwd_string.clone();
             let workspace_id_full_auto = workspace_id.clone();
             let runtime_sync_notifications = runtime_sync.clone();
-            let reply_targets_notifications = moltbook_reply_targets.clone();
+            let reply_targets_notifications = communityfeed_reply_targets.clone();
             let proxy_reply = proxy.clone();
             let client_reply = client.clone();
             tokio::spawn(async move {
@@ -2828,7 +2828,7 @@ fn spawn_event_bridge(
                                 tokio::spawn(async move {
                                     let mut reply_text = None;
                                     for _ in 0..5 {
-                                        match fetch_moltbook_reply_text(client.as_ref(), &thread_id)
+                                        match fetch_communityfeed_reply_text(client.as_ref(), &thread_id)
                                             .await
                                         {
                                             Ok(Some(text)) => {
@@ -2837,9 +2837,9 @@ fn spawn_event_bridge(
                                             }
                                             Ok(None) => {}
                                             Err(err) => {
-                                                let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                                     message: format!(
-                                                        "Moltbook reply fetch failed: {err}"
+                                                        "CommunityFeed reply fetch failed: {err}"
                                                     ),
                                                 });
                                                 break;
@@ -2850,30 +2850,30 @@ fn spawn_event_bridge(
                                     }
 
                                     if let Some(text) = reply_text {
-                                        let reply_body = extract_moltbook_reply_body(&text)
-                                            .unwrap_or_else(|| sanitize_moltbook_reply(&text));
+                                        let reply_body = extract_communityfeed_reply_body(&text)
+                                            .unwrap_or_else(|| sanitize_communityfeed_reply(&text));
                                         if looks_like_refusal(&reply_body) {
-                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                                message: "Moltbook reply was not posted (assistant refused).".to_string(),
+                                            let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                                                message: "CommunityFeed reply was not posted (assistant refused).".to_string(),
                                             });
                                         } else if !reply_body.trim().is_empty() {
-                                            if let Err(err) = post_moltbook_reply_comment(
+                                            if let Err(err) = post_communityfeed_reply_comment(
                                                 proxy.clone(),
                                                 &target.post_id,
                                                 &reply_body,
                                             )
                                             .await
                                             {
-                                                let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                                     message: format!(
-                                                        "Moltbook reply post failed: {err}"
+                                                        "CommunityFeed reply post failed: {err}"
                                                     ),
                                                 });
                                             }
                                         }
                                     }
 
-                                    let _ = load_moltbook_comments(proxy.clone(), &target.post_id)
+                                    let _ = load_communityfeed_comments(proxy.clone(), &target.post_id)
                                         .await;
                                 });
                             }
@@ -4445,40 +4445,40 @@ fn spawn_event_bridge(
                                 }
                             });
                         }
-                        UserAction::MoltbookRefresh => {
+                        UserAction::CommunityFeedRefresh => {
                             let proxy = proxy_actions.clone();
                             handle.spawn(async move {
                                 let log = |msg: String| {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
+                                    let _ = proxy.send_event(AppEvent::CommunityFeedLog { message: msg });
                                 };
-                                let Some(api_key) = moltbook_api_key() else {
-                                    log("Moltbook: no API key. Set MOLTBOOK_API_KEY or ~/.config/moltbook/credentials.json (or ~/.config/moltbook)".to_string());
+                                let Some(api_key) = communityfeed_api_key() else {
+                                    log("CommunityFeed: no API key. Set COMMUNITYFEED_API_KEY or ~/.config/communityfeed/credentials.json (or ~/.config/communityfeed)".to_string());
                                     return;
                                 };
-                                let proxy_base = moltbook_proxy_base();
-                                let live_base = moltbook_live_base();
-                                let proxy_client = match MoltbookClient::with_base_url(
+                                let proxy_base = communityfeed_proxy_base();
+                                let live_base = communityfeed_live_base();
+                                let proxy_client = match CommunityFeedClient::with_base_url(
                                     proxy_base.clone(),
                                     Some(api_key.clone()),
                                 ) {
                                     Ok(c) => Some(c),
                                     Err(e) => {
-                                        log(format!("Moltbook proxy client error: {e}"));
+                                        log(format!("CommunityFeed proxy client error: {e}"));
                                         None
                                     }
                                 };
-                                let live_client = match MoltbookClient::with_base_url(
+                                let live_client = match CommunityFeedClient::with_base_url(
                                     live_base.clone(),
                                     Some(api_key.clone()),
                                 ) {
                                     Ok(c) => Some(c),
                                     Err(e) => {
-                                        log(format!("Moltbook live client error: {e}"));
+                                        log(format!("CommunityFeed live client error: {e}"));
                                         None
                                     }
                                 };
                                 if proxy_client.is_none() && live_client.is_none() {
-                                    log("Moltbook: no usable client configured.".to_string());
+                                    log("CommunityFeed: no usable client configured.".to_string());
                                     return;
                                 }
                                 log("Fetching feed and profile…".to_string());
@@ -4492,8 +4492,8 @@ fn spawn_event_bridge(
                                         Err(e) => {
                                             log(format!("Proxy feed error: {e}"));
                                             if let Some(live) = live_client.as_ref() {
-                                                _feed_source = "moltbook_live";
-                                                log("Falling back to live Moltbook API for feed…".to_string());
+                                                _feed_source = "communityfeed_live";
+                                                log("Falling back to live CommunityFeed API for feed…".to_string());
                                                 live.posts_feed(PostSort::New, Some(25), None).await
                                             } else {
                                                 _feed_source = "openagents_proxy";
@@ -4502,21 +4502,21 @@ fn spawn_event_bridge(
                                         }
                                     }
                                 } else if let Some(live) = live_client.as_ref() {
-                                    _feed_source = "moltbook_live";
+                                    _feed_source = "communityfeed_live";
                                     live.posts_feed(PostSort::New, Some(25), None).await
                                 } else {
-                                    unreachable!("moltbook clients checked above");
+                                    unreachable!("communityfeed clients checked above");
                                 };
                                 match posts_result {
                                     Ok(posts) => {
-                                        let summaries: Vec<MoltbookPostSummary> = posts
+                                        let summaries: Vec<CommunityFeedPostSummary> = posts
                                             .into_iter()
                                             .map(|p| {
                                                 let content = p.content;
                                                 let content_preview = content
                                                     .as_deref()
                                                     .map(|c| c.chars().take(120).collect());
-                                                MoltbookPostSummary {
+                                                CommunityFeedPostSummary {
                                                     id: p.id,
                                                     title: p.title,
                                                     content_preview,
@@ -4530,15 +4530,15 @@ fn spawn_event_bridge(
                                             })
                                             .collect();
                                         let new_count = summaries.len();
-                                        let cached = load_moltbook_cache(MOLTBOOK_CACHE_LIMIT)
+                                        let cached = load_communityfeed_cache(COMMUNITYFEED_CACHE_LIMIT)
                                             .unwrap_or_default();
-                                        let merged = merge_moltbook_posts(summaries, cached);
+                                        let merged = merge_communityfeed_posts(summaries, cached);
                                         let total = merged.len();
-                                        if let Err(err) = store_moltbook_cache(&merged) {
-                                            log(format!("Moltbook cache error: {err}"));
+                                        if let Err(err) = store_communityfeed_cache(&merged) {
+                                            log(format!("CommunityFeed cache error: {err}"));
                                         }
                                         let _ = proxy
-                                            .send_event(AppEvent::MoltbookFeedUpdated { posts: merged });
+                                            .send_event(AppEvent::CommunityFeedFeedUpdated { posts: merged });
                                         log(format!("Loaded {new_count} posts (total {total})"));
                                     }
                                     Err(e) => log(format!("Feed error: {e}")),
@@ -4549,7 +4549,7 @@ fn spawn_event_bridge(
                                         Err(e) => {
                                             log(format!("Proxy profile error: {e}"));
                                             if let Some(live) = live_client.as_ref() {
-                                                log("Falling back to live Moltbook API for profile…".to_string());
+                                                log("Falling back to live CommunityFeed API for profile…".to_string());
                                                 live.agents_me().await
                                             } else {
                                                 Err(e)
@@ -4559,22 +4559,22 @@ fn spawn_event_bridge(
                                 } else if let Some(live) = live_client.as_ref() {
                                     live.agents_me().await
                                 } else {
-                                    unreachable!("moltbook clients checked above");
+                                    unreachable!("communityfeed clients checked above");
                                 };
                                 match profile_result {
                                     Ok(agent) => {
                                         let posts_count = agent.stats.as_ref().and_then(|s| s.posts).unwrap_or(0);
                                         let comments_count = agent.stats.as_ref().and_then(|s| s.comments).unwrap_or(0);
-                                        let profile = MoltbookProfileSummary {
+                                        let profile = CommunityFeedProfileSummary {
                                             agent_name: agent.name,
                                             posts_count,
                                             comments_count,
                                         };
-                                        let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded { profile });
+                                        let _ = proxy.send_event(AppEvent::CommunityFeedProfileLoaded { profile });
                                     }
                                     Err(_) => {
-                                        let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded {
-                                            profile: MoltbookProfileSummary {
+                                        let _ = proxy.send_event(AppEvent::CommunityFeedProfileLoaded {
+                                            profile: CommunityFeedProfileSummary {
                                                 agent_name: "?".to_string(),
                                                 posts_count: 0,
                                                 comments_count: 0,
@@ -4584,19 +4584,19 @@ fn spawn_event_bridge(
                                 };
                             });
                         }
-                        UserAction::MoltbookLoadComments { post_id } => {
+                        UserAction::CommunityFeedLoadComments { post_id } => {
                             let proxy = proxy_actions.clone();
                             handle.spawn(async move {
                                 if let Err(err) =
-                                    load_moltbook_comments(proxy.clone(), &post_id).await
+                                    load_communityfeed_comments(proxy.clone(), &post_id).await
                                 {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                        message: format!("Moltbook comments error: {err}"),
+                                    let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                                        message: format!("CommunityFeed comments error: {err}"),
                                     });
                                 }
                             });
                         }
-                        UserAction::MoltbookReply { post_id } => {
+                        UserAction::CommunityFeedReply { post_id } => {
                             let client = client_for_actions.clone();
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
@@ -4604,10 +4604,10 @@ fn spawn_event_bridge(
                             let session_states = session_states_for_actions.clone();
                             let thread_to_session = thread_to_session_for_actions.clone();
                             let runtime_sync = runtime_sync_actions.clone();
-                            let reply_targets = moltbook_reply_targets.clone();
+                            let reply_targets = communityfeed_reply_targets.clone();
                             handle.spawn(async move {
                                 let session_handle =
-                                    workspace.start_session(Some("Moltbook Reply".to_string()));
+                                    workspace.start_session(Some("CommunityFeed Reply".to_string()));
                                 let session_id = session_handle.session_id();
                                 let session_state = SessionRuntime::new();
                                 {
@@ -4668,9 +4668,9 @@ fn spawn_event_bridge(
                                         response.thread.id
                                     }
                                     Err(err) => {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                        let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                             message: format!(
-                                                "Moltbook reply session error: {err}"
+                                                "CommunityFeed reply session error: {err}"
                                             ),
                                         });
                                         return;
@@ -4681,25 +4681,25 @@ fn spawn_event_bridge(
                                     let mut guard = reply_targets.lock().await;
                                     guard.insert(
                                         thread_id.clone(),
-                                        MoltbookReplyTarget {
+                                        CommunityFeedReplyTarget {
                                             post_id: post_id.clone(),
                                         },
                                     );
                                 }
 
-                                let api_key = moltbook_api_key();
-                                let proxy_client = MoltbookClient::with_base_url(
-                                    moltbook_proxy_base(),
+                                let api_key = communityfeed_api_key();
+                                let proxy_client = CommunityFeedClient::with_base_url(
+                                    communityfeed_proxy_base(),
                                     api_key.clone(),
                                 )
                                 .ok();
-                                let live_client = MoltbookClient::with_base_url(
-                                    moltbook_live_base(),
+                                let live_client = CommunityFeedClient::with_base_url(
+                                    communityfeed_live_base(),
                                     api_key.clone(),
                                 )
                                 .ok();
 
-                                let mut post = load_moltbook_post(&post_id).ok().flatten();
+                                let mut post = load_communityfeed_post(&post_id).ok().flatten();
                                 let needs_content = post
                                     .as_ref()
                                     .and_then(|p| p.content.as_deref())
@@ -4722,7 +4722,7 @@ fn spawn_event_bridge(
                                         }
                                     };
                                     if let Some(fetched) = fetched {
-                                        let summary = MoltbookPostSummary {
+                                        let summary = CommunityFeedPostSummary {
                                             id: fetched.id,
                                             title: fetched.title,
                                             content_preview: fetched
@@ -4736,10 +4736,10 @@ fn spawn_event_bridge(
                                             created_at: fetched.created_at,
                                             submolt: fetched.submolt,
                                         };
-                                        if let Err(err) = store_moltbook_cache(&[summary.clone()]) {
-                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                        if let Err(err) = store_communityfeed_cache(&[summary.clone()]) {
+                                            let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                                 message: format!(
-                                                    "Moltbook cache error: {err}"
+                                                    "CommunityFeed cache error: {err}"
                                                 ),
                                             });
                                         }
@@ -4752,9 +4752,9 @@ fn spawn_event_bridge(
                                         .comments_list(&post_id, CommentSort::Top, Some(200))
                                         .await
                                 } else {
-                                    Err(MoltbookError::Api {
+                                    Err(CommunityFeedError::Api {
                                         status: 0,
-                                        error: "Missing Moltbook proxy client".to_string(),
+                                        error: "Missing CommunityFeed proxy client".to_string(),
                                         hint: None,
                                     })
                                 };
@@ -4770,9 +4770,9 @@ fn spawn_event_bridge(
                                                 )
                                                 .await
                                         } else {
-                                            Err(MoltbookError::Api {
+                                            Err(CommunityFeedError::Api {
                                                 status: 0,
-                                                error: "No Moltbook client".to_string(),
+                                                error: "No CommunityFeed client".to_string(),
                                                 hint: None,
                                             })
                                         }
@@ -4782,27 +4782,27 @@ fn spawn_event_bridge(
                                 let comment_summaries = match comments {
                                     Ok(list) => list
                                         .into_iter()
-                                        .map(moltbook_comment_summary)
+                                        .map(communityfeed_comment_summary)
                                         .collect::<Vec<_>>(),
                                     Err(_) => Vec::new(),
                                 };
 
                                 if !comment_summaries.is_empty() {
                                     let _ = proxy.send_event(
-                                        AppEvent::MoltbookCommentsLoaded {
+                                        AppEvent::CommunityFeedCommentsLoaded {
                                             post_id: post_id.clone(),
                                             comments: comment_summaries.clone(),
                                         },
                                     );
                                 }
 
-                                let prompt = build_moltbook_reply_prompt(
+                                let prompt = build_communityfeed_reply_prompt(
                                     &post_id,
                                     post.as_ref(),
                                     &comment_summaries,
                                 );
-                                let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                    message: "Generating Moltbook reply via Codex...".to_string(),
+                                let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                                    message: "Generating CommunityFeed reply via Codex...".to_string(),
                                 });
 
                                 let thread_id_for_turn = thread_id.clone();
@@ -4817,9 +4817,9 @@ fn spawn_event_bridge(
                                     cwd: Some(cwd),
                                 };
                                 if let Err(err) = client.turn_start(params).await {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                    let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                         message: format!(
-                                            "Moltbook reply start failed: {err}"
+                                            "CommunityFeed reply start failed: {err}"
                                         ),
                                     });
                                     let mut guard = reply_targets.lock().await;
@@ -4829,23 +4829,23 @@ fn spawn_event_bridge(
 
                             });
                         }
-                        UserAction::MoltbookComment { post_id, text } => {
+                        UserAction::CommunityFeedComment { post_id, text } => {
                             let proxy = proxy_actions.clone();
                             handle.spawn(async move {
-                                let Some(api_key) = moltbook_api_key() else {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                        message: "Moltbook comment failed: missing API key."
+                                let Some(api_key) = communityfeed_api_key() else {
+                                    let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                                        message: "CommunityFeed comment failed: missing API key."
                                             .to_string(),
                                     });
                                     return;
                                 };
-                                let proxy_client = MoltbookClient::with_base_url(
-                                    moltbook_proxy_base(),
+                                let proxy_client = CommunityFeedClient::with_base_url(
+                                    communityfeed_proxy_base(),
                                     Some(api_key.clone()),
                                 )
                                 .ok();
-                                let live_client = MoltbookClient::with_base_url(
-                                    moltbook_live_base(),
+                                let live_client = CommunityFeedClient::with_base_url(
+                                    communityfeed_live_base(),
                                     Some(api_key.clone()),
                                 )
                                 .ok();
@@ -4858,34 +4858,34 @@ fn spawn_event_bridge(
                                 } else if let Some(client) = live_client.as_ref() {
                                     client.comments_create(&post_id, request.clone()).await
                                 } else {
-                                    Err(MoltbookError::Api {
+                                    Err(CommunityFeedError::Api {
                                         status: 0,
-                                        error: "No Moltbook client".to_string(),
+                                        error: "No CommunityFeed client".to_string(),
                                         hint: None,
                                     })
                                 };
                                 match result {
                                     Ok(comment) => {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                        let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                             message: format!(
-                                                "Posted Moltbook comment ({}).",
+                                                "Posted CommunityFeed comment ({}).",
                                                 comment.id
                                             ),
                                         });
                                     }
                                     Err(err) => {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                        let _ = proxy.send_event(AppEvent::CommunityFeedLog {
                                             message: format!(
-                                                "Moltbook comment error: {err}"
+                                                "CommunityFeed comment error: {err}"
                                             ),
                                         });
                                     }
                                 }
                             });
                         }
-                        UserAction::MoltbookSay { .. } => {
-                            let _ = proxy_actions.send_event(AppEvent::MoltbookLog {
-                                message: "Moltbook post creation is disabled in this build."
+                        UserAction::CommunityFeedSay { .. } => {
+                            let _ = proxy_actions.send_event(AppEvent::CommunityFeedLog {
+                                message: "CommunityFeed post creation is disabled in this build."
                                     .to_string(),
                             });
                         }
@@ -4946,7 +4946,7 @@ fn unix_timestamp() -> i64 {
         .unwrap_or(0)
 }
 
-fn moltbook_cache_path() -> Result<PathBuf> {
+fn communityfeed_cache_path() -> Result<PathBuf> {
     let config_root = dirs::config_dir().or_else(|| {
         env::var("HOME")
             .ok()
@@ -4954,15 +4954,15 @@ fn moltbook_cache_path() -> Result<PathBuf> {
     });
     let config_root = config_root.context("missing config dir")?;
     let dir = config_root.join("openagents").join("autopilot-desktop");
-    fs::create_dir_all(&dir).context("create moltbook cache dir")?;
-    Ok(dir.join(MOLTBOOK_CACHE_DB))
+    fs::create_dir_all(&dir).context("create communityfeed cache dir")?;
+    Ok(dir.join(COMMUNITYFEED_CACHE_DB))
 }
 
-fn moltbook_cache_connection() -> Result<Connection> {
-    let path = moltbook_cache_path()?;
-    let conn = Connection::open(path).context("open moltbook cache db")?;
+fn communityfeed_cache_connection() -> Result<Connection> {
+    let path = communityfeed_cache_path()?;
+    let conn = Connection::open(path).context("open communityfeed cache db")?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS moltbook_posts (
+        "CREATE TABLE IF NOT EXISTS communityfeed_posts (
             id TEXT PRIMARY KEY,
             title TEXT,
             content_preview TEXT,
@@ -4974,16 +4974,16 @@ fn moltbook_cache_connection() -> Result<Connection> {
             submolt TEXT,
             ingested_at INTEGER
         );
-        CREATE INDEX IF NOT EXISTS idx_moltbook_posts_created ON moltbook_posts(created_at);
-        CREATE INDEX IF NOT EXISTS idx_moltbook_posts_ingested ON moltbook_posts(ingested_at);",
+        CREATE INDEX IF NOT EXISTS idx_communityfeed_posts_created ON communityfeed_posts(created_at);
+        CREATE INDEX IF NOT EXISTS idx_communityfeed_posts_ingested ON communityfeed_posts(ingested_at);",
     )
-    .context("init moltbook cache schema")?;
-    ensure_moltbook_cache_column(&conn, "content", "TEXT")?;
+    .context("init communityfeed cache schema")?;
+    ensure_communityfeed_cache_column(&conn, "content", "TEXT")?;
     Ok(conn)
 }
 
-fn ensure_moltbook_cache_column(conn: &Connection, name: &str, definition: &str) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(moltbook_posts)")?;
+fn ensure_communityfeed_cache_column(conn: &Connection, name: &str, definition: &str) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(communityfeed_posts)")?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
         let column: String = row.get(1)?;
@@ -4991,17 +4991,17 @@ fn ensure_moltbook_cache_column(conn: &Connection, name: &str, definition: &str)
             return Ok(());
         }
     }
-    let ddl = format!("ALTER TABLE moltbook_posts ADD COLUMN {name} {definition}");
+    let ddl = format!("ALTER TABLE communityfeed_posts ADD COLUMN {name} {definition}");
     conn.execute(&ddl, [])
-        .context("alter moltbook cache schema")?;
+        .context("alter communityfeed cache schema")?;
     Ok(())
 }
 
-fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
-    let conn = moltbook_cache_connection()?;
+fn load_communityfeed_cache(limit: usize) -> Result<Vec<CommunityFeedPostSummary>> {
+    let conn = communityfeed_cache_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, title, content_preview, content, author_name, score, comment_count, created_at, submolt
-         FROM moltbook_posts
+         FROM communityfeed_posts
          ORDER BY
            CASE WHEN created_at IS NULL OR created_at = '' THEN 1 ELSE 0 END,
            created_at DESC,
@@ -5009,7 +5009,7 @@ fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
          LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |row| {
-        Ok(MoltbookPostSummary {
+        Ok(CommunityFeedPostSummary {
             id: row.get(0)?,
             title: row.get(1)?,
             content_preview: row.get(2)?,
@@ -5028,17 +5028,17 @@ fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
     Ok(results)
 }
 
-fn load_moltbook_post(post_id: &str) -> Result<Option<MoltbookPostSummary>> {
-    let conn = moltbook_cache_connection()?;
+fn load_communityfeed_post(post_id: &str) -> Result<Option<CommunityFeedPostSummary>> {
+    let conn = communityfeed_cache_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, title, content_preview, content, author_name, score, comment_count, created_at, submolt
-         FROM moltbook_posts
+         FROM communityfeed_posts
          WHERE id = ?1
          LIMIT 1",
     )?;
     let mut rows = stmt.query(params![post_id])?;
     if let Some(row) = rows.next()? {
-        return Ok(Some(MoltbookPostSummary {
+        return Ok(Some(CommunityFeedPostSummary {
             id: row.get(0)?,
             title: row.get(1)?,
             content_preview: row.get(2)?,
@@ -5053,16 +5053,16 @@ fn load_moltbook_post(post_id: &str) -> Result<Option<MoltbookPostSummary>> {
     Ok(None)
 }
 
-fn store_moltbook_cache(posts: &[MoltbookPostSummary]) -> Result<()> {
+fn store_communityfeed_cache(posts: &[CommunityFeedPostSummary]) -> Result<()> {
     if posts.is_empty() {
         return Ok(());
     }
-    let mut conn = moltbook_cache_connection()?;
+    let mut conn = communityfeed_cache_connection()?;
     let tx = conn.transaction()?;
     let now = unix_timestamp();
     {
         let mut stmt = tx.prepare(
-            "INSERT INTO moltbook_posts
+            "INSERT INTO communityfeed_posts
                 (id, title, content_preview, content, author_name, score, comment_count, created_at, submolt, ingested_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id) DO UPDATE SET
@@ -5095,22 +5095,22 @@ fn store_moltbook_cache(posts: &[MoltbookPostSummary]) -> Result<()> {
     Ok(())
 }
 
-fn merge_moltbook_posts(
-    mut fresh: Vec<MoltbookPostSummary>,
-    cached: Vec<MoltbookPostSummary>,
-) -> Vec<MoltbookPostSummary> {
-    let mut map: HashMap<String, MoltbookPostSummary> = HashMap::new();
+fn merge_communityfeed_posts(
+    mut fresh: Vec<CommunityFeedPostSummary>,
+    cached: Vec<CommunityFeedPostSummary>,
+) -> Vec<CommunityFeedPostSummary> {
+    let mut map: HashMap<String, CommunityFeedPostSummary> = HashMap::new();
     for post in cached {
         map.entry(post.id.clone()).or_insert(post);
     }
     for post in fresh.drain(..) {
         if let Some(existing) = map.remove(&post.id) {
-            map.insert(post.id.clone(), merge_moltbook_post(existing, post));
+            map.insert(post.id.clone(), merge_communityfeed_post(existing, post));
         } else {
             map.insert(post.id.clone(), post);
         }
     }
-    let mut merged: Vec<MoltbookPostSummary> = map.into_values().collect();
+    let mut merged: Vec<CommunityFeedPostSummary> = map.into_values().collect();
     merged.sort_by(|a, b| {
         let a_key = (
             a.created_at.is_none(),
@@ -5122,17 +5122,17 @@ fn merge_moltbook_posts(
         );
         b_key.cmp(&a_key)
     });
-    if merged.len() > MOLTBOOK_CACHE_LIMIT {
-        merged.truncate(MOLTBOOK_CACHE_LIMIT);
+    if merged.len() > COMMUNITYFEED_CACHE_LIMIT {
+        merged.truncate(COMMUNITYFEED_CACHE_LIMIT);
     }
     merged
 }
 
-fn merge_moltbook_post(
-    existing: MoltbookPostSummary,
-    incoming: MoltbookPostSummary,
-) -> MoltbookPostSummary {
-    MoltbookPostSummary {
+fn merge_communityfeed_post(
+    existing: CommunityFeedPostSummary,
+    incoming: CommunityFeedPostSummary,
+) -> CommunityFeedPostSummary {
+    CommunityFeedPostSummary {
         id: incoming.id,
         title: incoming.title.or(existing.title),
         content_preview: incoming.content_preview.or(existing.content_preview),
@@ -5145,8 +5145,8 @@ fn merge_moltbook_post(
     }
 }
 
-fn moltbook_comment_summary(comment: moltbook::Comment) -> MoltbookCommentSummary {
-    MoltbookCommentSummary {
+fn communityfeed_comment_summary(comment: communityfeed::Comment) -> CommunityFeedCommentSummary {
+    CommunityFeedCommentSummary {
         id: comment.id,
         post_id: comment.post_id,
         parent_id: comment.parent_id,
@@ -5195,7 +5195,7 @@ fn extract_assistant_reply(thread: &codex_client::ThreadSnapshot) -> Option<Stri
     None
 }
 
-fn sanitize_moltbook_reply(text: &str) -> String {
+fn sanitize_communityfeed_reply(text: &str) -> String {
     let mut trimmed = text.trim().to_string();
     if trimmed.starts_with("```") {
         trimmed = trimmed.trim_matches('`').trim().to_string();
@@ -5203,7 +5203,7 @@ fn sanitize_moltbook_reply(text: &str) -> String {
     trimmed
 }
 
-fn extract_moltbook_reply_body(text: &str) -> Option<String> {
+fn extract_communityfeed_reply_body(text: &str) -> Option<String> {
     let markers = [
         "CONTENT:",
         "Draft comment content I attempted to post:",
@@ -5237,7 +5237,7 @@ fn looks_like_refusal(text: &str) -> bool {
         || lower.contains("cannot retrieve")
 }
 
-async fn fetch_moltbook_reply_text(
+async fn fetch_communityfeed_reply_text(
     client: &AppServerClient,
     thread_id: &str,
 ) -> Result<Option<String>> {
@@ -5250,10 +5250,10 @@ async fn fetch_moltbook_reply_text(
     Ok(extract_assistant_reply(&response.thread))
 }
 
-async fn resolve_moltbook_post_url(
+async fn resolve_communityfeed_post_url(
     post_id: &str,
-    proxy_client: Option<&MoltbookClient>,
-    live_client: Option<&MoltbookClient>,
+    proxy_client: Option<&CommunityFeedClient>,
+    live_client: Option<&CommunityFeedClient>,
 ) -> Option<String> {
     if let Some(client) = proxy_client {
         if let Ok(post) = client.posts_get(post_id).await {
@@ -5272,21 +5272,21 @@ async fn resolve_moltbook_post_url(
     None
 }
 
-async fn post_moltbook_reply_comment(
+async fn post_communityfeed_reply_comment(
     proxy: EventLoopProxy<AppEvent>,
     post_id: &str,
     reply_text: &str,
 ) -> Result<()> {
-    let Some(api_key) = moltbook_api_key() else {
-        let _ = proxy.send_event(AppEvent::MoltbookLog {
-            message: "Moltbook reply failed: missing API key.".to_string(),
+    let Some(api_key) = communityfeed_api_key() else {
+        let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+            message: "CommunityFeed reply failed: missing API key.".to_string(),
         });
         return Ok(());
     };
     let proxy_client =
-        MoltbookClient::with_base_url(moltbook_proxy_base(), Some(api_key.clone())).ok();
+        CommunityFeedClient::with_base_url(communityfeed_proxy_base(), Some(api_key.clone())).ok();
     let live_client =
-        MoltbookClient::with_base_url(moltbook_live_base(), Some(api_key.clone())).ok();
+        CommunityFeedClient::with_base_url(communityfeed_live_base(), Some(api_key.clone())).ok();
 
     let request = CreateCommentRequest {
         content: reply_text.to_string(),
@@ -5297,50 +5297,50 @@ async fn post_moltbook_reply_comment(
     } else if let Some(client) = live_client.as_ref() {
         client.comments_create(post_id, request.clone()).await
     } else {
-        Err(MoltbookError::Api {
+        Err(CommunityFeedError::Api {
             status: 0,
-            error: "No Moltbook client".to_string(),
+            error: "No CommunityFeed client".to_string(),
             hint: None,
         })
     }?;
 
-    let post_url = resolve_moltbook_post_url(post_id, proxy_client.as_ref(), live_client.as_ref())
+    let post_url = resolve_communityfeed_post_url(post_id, proxy_client.as_ref(), live_client.as_ref())
         .await
-        .unwrap_or_else(|| format!("https://www.moltbook.com/posts/{post_id}"));
+        .unwrap_or_else(|| format!("https://www.communityfeed.com/posts/{post_id}"));
 
-    let _ = proxy.send_event(AppEvent::MoltbookLog {
+    let _ = proxy.send_event(AppEvent::CommunityFeedLog {
         message: format!(
-            "Posted reply on Moltbook: {post_url} (comment {}).",
+            "Posted reply on CommunityFeed: {post_url} (comment {}).",
             comment.id
         ),
     });
 
-    let _ = load_moltbook_comments(proxy, post_id).await;
+    let _ = load_communityfeed_comments(proxy, post_id).await;
 
     Ok(())
 }
 
-async fn load_moltbook_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) -> Result<()> {
-    let api_key = moltbook_api_key();
-    let proxy_client = MoltbookClient::with_base_url(moltbook_proxy_base(), api_key.clone()).ok();
-    let live_client = MoltbookClient::with_base_url(moltbook_live_base(), api_key.clone()).ok();
+async fn load_communityfeed_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) -> Result<()> {
+    let api_key = communityfeed_api_key();
+    let proxy_client = CommunityFeedClient::with_base_url(communityfeed_proxy_base(), api_key.clone()).ok();
+    let live_client = CommunityFeedClient::with_base_url(communityfeed_live_base(), api_key.clone()).ok();
 
     let comments = if let Some(client) = proxy_client.as_ref() {
         client
             .comments_list(post_id, CommentSort::Top, Some(200))
             .await
     } else {
-        Err(MoltbookError::Api {
+        Err(CommunityFeedError::Api {
             status: 0,
-            error: "Missing Moltbook proxy client".to_string(),
+            error: "Missing CommunityFeed proxy client".to_string(),
             hint: None,
         })
     };
     let comments = match comments {
         Ok(list) => Ok(list),
         Err(err) => {
-            let _ = proxy.send_event(AppEvent::MoltbookLog {
-                message: format!("Moltbook comments proxy error: {err}"),
+            let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                message: format!("CommunityFeed comments proxy error: {err}"),
             });
             if let Some(client) = live_client.as_ref() {
                 client
@@ -5356,16 +5356,16 @@ async fn load_moltbook_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) 
         Ok(list) => {
             let summaries = list
                 .into_iter()
-                .map(moltbook_comment_summary)
+                .map(communityfeed_comment_summary)
                 .collect::<Vec<_>>();
-            let _ = proxy.send_event(AppEvent::MoltbookCommentsLoaded {
+            let _ = proxy.send_event(AppEvent::CommunityFeedCommentsLoaded {
                 post_id: post_id.to_string(),
                 comments: summaries,
             });
         }
         Err(err) => {
-            let _ = proxy.send_event(AppEvent::MoltbookLog {
-                message: format!("Moltbook comments error: {err}"),
+            let _ = proxy.send_event(AppEvent::CommunityFeedLog {
+                message: format!("CommunityFeed comments error: {err}"),
             });
         }
     }
@@ -5373,15 +5373,15 @@ async fn load_moltbook_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) 
     Ok(())
 }
 
-fn build_moltbook_reply_prompt(
+fn build_communityfeed_reply_prompt(
     post_id: &str,
-    post: Option<&MoltbookPostSummary>,
-    comments: &[MoltbookCommentSummary],
+    post: Option<&CommunityFeedPostSummary>,
+    comments: &[CommunityFeedCommentSummary],
 ) -> String {
     let mut prompt = String::new();
-    prompt.push_str("You are drafting a public Moltbook reply.\n");
+    prompt.push_str("You are drafting a public CommunityFeed reply.\n");
     prompt.push_str("Use at most ONE tool call, only for this:\n");
-    prompt.push_str("curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
+    prompt.push_str("curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/COMMUNITYFEED.md\n");
     prompt.push_str("Do not run any other commands.\n");
     prompt.push_str("After reading, output ONLY the reply text (no extra commentary).\n");
     prompt.push_str("Do not mention tools, keys, or APIs.\n");
@@ -5451,30 +5451,30 @@ fn trimmed_env_url(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn moltbook_proxy_base() -> String {
-    if let Some(value) = trimmed_env_url(ENV_MOLTBOOK_PROXY_BASE) {
+fn communityfeed_proxy_base() -> String {
+    if let Some(value) = trimmed_env_url(ENV_COMMUNITYFEED_PROXY_BASE) {
         return value;
     }
     if let Some(oa_api) = trimmed_env_url("OA_API") {
-        return format!("{oa_api}/moltbook/api");
+        return format!("{oa_api}/communityfeed/api");
     }
-    DEFAULT_MOLTBOOK_PROXY_BASE.to_string()
+    DEFAULT_COMMUNITYFEED_PROXY_BASE.to_string()
 }
 
-fn moltbook_live_base() -> String {
-    trimmed_env_url(ENV_MOLTBOOK_LIVE_BASE)
-        .unwrap_or_else(|| DEFAULT_MOLTBOOK_LIVE_BASE.to_string())
+fn communityfeed_live_base() -> String {
+    trimmed_env_url(ENV_COMMUNITYFEED_LIVE_BASE)
+        .unwrap_or_else(|| DEFAULT_COMMUNITYFEED_LIVE_BASE.to_string())
 }
 
-fn moltbook_api_key() -> Option<String> {
-    if let Ok(key) = env::var("MOLTBOOK_API_KEY") {
+fn communityfeed_api_key() -> Option<String> {
+    if let Ok(key) = env::var("COMMUNITYFEED_API_KEY") {
         let key = key.trim().to_string();
         if !key.is_empty() {
             return Some(key);
         }
     }
     let home = env::var("HOME").ok()?;
-    let config_dir = Path::new(&home).join(".config/moltbook");
+    let config_dir = Path::new(&home).join(".config/communityfeed");
     let json: Value = match fs::read_to_string(config_dir.join("credentials.json"))
         .or_else(|_| fs::read_to_string(&config_dir))
     {

@@ -9,7 +9,7 @@ PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/history_compat/|apps/runtime/Cargo\.toml$|Cargo\.lock$)'
 LEGACY_COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
-LEGACY_OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
+LEGACY_LEGACYPARITY_TRIGGER_PATTERN='^(docs/plans/active/legacyparity-intake/|apps/runtime/test/fixtures/legacyparity/|scripts/legacyparity-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
 IOS_RUST_CORE_TRIGGER_PATTERN='^(apps/autopilot-ios/|crates/openagents-client-core/|apps/autopilot-ios/scripts/build-rust-client-core\.sh$|apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility\.sh$)'
@@ -164,8 +164,8 @@ run_trigger_tests() {
   assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "docs/protocol/comms/README.md" "true"
   assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "false"
 
-  assert_trigger "legacy-openclaw" "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "scripts/openclaw-drift-report.sh" "true"
-  assert_trigger "legacy-openclaw" "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
+  assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/legacyparity-drift-report.sh" "true"
+  assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/web-shell/src/lib.rs" "true"
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
@@ -214,11 +214,11 @@ run_legacy_comms_matrix() {
   )
 }
 
-run_legacy_openclaw_drift() {
-  echo "==> legacy openclaw drift strict gate"
+run_legacy_legacyparity_drift() {
+  echo "==> legacy legacyparity drift strict gate"
   (
     cd "$ROOT_DIR"
-    OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/openclaw-drift-report.sh
+    LEGACYPARITY_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/legacyparity-drift-report.sh
   )
 }
 
@@ -295,9 +295,9 @@ run_all() {
   run_all_rust
   if legacy_lanes_enabled; then
     run_legacy_comms_matrix
-    run_legacy_openclaw_drift
+    run_legacy_legacyparity_drift
   else
-    echo "==> skipping legacy compatibility lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run legacy-comms/legacy-openclaw)"
+    echo "==> skipping legacy compatibility lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run legacy-comms/legacy-legacyparity)"
   fi
 }
 
@@ -331,9 +331,9 @@ run_changed() {
     fi
   fi
 
-  if has_match "$LEGACY_OPENCLAW_TRIGGER_PATTERN" "$changed_files"; then
+  if has_match "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "$changed_files"; then
     if legacy_lanes_enabled; then
-      run_legacy_openclaw_drift
+      run_legacy_legacyparity_drift
     else
       legacy_lanes_detected=1
     fi
@@ -385,8 +385,8 @@ case "$MODE" in
   legacy-comms)
     run_legacy_comms_matrix
     ;;
-  legacy-openclaw)
-    run_legacy_openclaw_drift
+  legacy-legacyparity)
+    run_legacy_legacyparity_drift
     ;;
   web-shell)
     run_web_shell_checks
@@ -417,15 +417,15 @@ case "$MODE" in
     echo "lane 'comms' has been renamed to 'legacy-comms'" >&2
     run_legacy_comms_matrix
     ;;
-  openclaw)
-    echo "lane 'openclaw' has been renamed to 'legacy-openclaw'" >&2
-    run_legacy_openclaw_drift
+  legacyparity)
+    echo "lane 'legacyparity' has been renamed to 'legacy-legacyparity'" >&2
+    run_legacy_legacyparity_drift
     ;;
   changed)
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-openclaw|web-shell|workspace-compile|cross-surface|ios-rust-core|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|workspace-compile|cross-surface|ios-rust-core|runtime-codex-workers-php|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -1,6 +1,6 @@
 ---
 name: worker-logs
-description: Tail and inspect Cloudflare Worker logs from the CLI. Use when debugging API 401/500, openclaw auth, or web app errors. Covers both the homepage worker (apps/web) and the API worker (apps/api).
+description: Tail and inspect Cloudflare Worker logs from the CLI. Use when debugging API 401/500, legacyparity auth, or web app errors. Covers both the homepage worker (apps/web) and the API worker (apps/api).
 ---
 
 # Check Cloudflare Worker logs
@@ -18,7 +18,7 @@ Use this skill when you need to see what is happening inside the deployed Worker
 
 | Worker | Config | Routes | Purpose |
 |--------|--------|--------|---------|
-| **openagents-api** | `apps/api/wrangler.toml` | `openagents.com/api/*` | Rust API: openclaw, control, D1, R2, etc. |
+| **openagents-api** | `apps/api/wrangler.toml` | `openagents.com/api/*` | Rust API: legacyparity, control, D1, R2, etc. |
 | **openagents-web-app** | `apps/web/wrangler.jsonc` | `openagents.com` (main site) | TanStack/React app (Node compat). |
 
 Run `wrangler tail` from the **app directory** that contains that worker's config (or use `--config` / `--cwd`).
@@ -50,7 +50,7 @@ Leave the command running, then reproduce the issue in the browser. You'll see e
 | `--status ok` | Only successful requests. |
 | `--status error` | Only errors/failures. |
 | `--method GET` | Filter by HTTP method. |
-| `--search "openclaw"` | Filter by text in console.log messages. |
+| `--search "legacyparity"` | Filter by text in console.log messages. |
 | `--header "x-oa-internal-key"` | Filter by presence of header. |
 | `--sampling-rate 1` | Log 100% of requests (default can sample). |
 
@@ -63,7 +63,7 @@ npx wrangler tail --status error --format pretty
 
 # API worker: JSON and filter by URL path with jq
 cd apps/api
-npx wrangler tail --format json | jq 'select(.url | contains("openclaw"))'
+npx wrangler tail --format json | jq 'select(.url | contains("legacyparity"))'
 
 # Web worker: tail while reproducing a page error
 cd apps/web
@@ -89,10 +89,10 @@ Then reproduce; watch for the request to the API worker and any `console.log` / 
 
 ## Diagnostic logging (this repo)
 
-For openclaw auth, the API worker logs:
+For legacyparity auth, the API worker logs:
 
-- **`openclaw auth: no internal key header path=...`** — request reached the worker but the `X-OA-Internal-Key` header was missing (e.g. stripped or not sent by Khala).
-- **`openclaw auth 401: path=... provided_len=... expected_len=...`** — header was present but value didn’t match the worker secret (compare lengths; if equal, values differ).
-- **`openclaw auth ok path=... key_len=...`** — internal key matched; request was authorized.
+- **`legacyparity auth: no internal key header path=...`** — request reached the worker but the `X-OA-Internal-Key` header was missing (e.g. stripped or not sent by Khala).
+- **`legacyparity auth 401: path=... provided_len=... expected_len=...`** — header was present but value didn’t match the worker secret (compare lengths; if equal, values differ).
+- **`legacyparity auth ok path=... key_len=...`** — internal key matched; request was authorized.
 
-Use `wrangler tail` from `apps/api` while reproducing 401 to see which line appears. Khala actions log `[openclawApi <label>] fetch key_len=<n> url=...` before each request; correlate with worker logs to confirm what Khala sent vs what the worker received.
+Use `wrangler tail` from `apps/api` while reproducing 401 to see which line appears. Khala actions log `[legacyparityApi <label>] fetch key_len=<n> url=...` before each request; correlate with worker logs to confirm what Khala sent vs what the worker received.

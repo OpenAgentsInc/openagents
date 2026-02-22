@@ -202,7 +202,7 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
      - `network` -> guarded network block telemetry (`tools.network`)
      - `manifest` -> `tools.extensions.manifest_validation` outcomes
      - `workflow` -> DS structured workflow receipts + step receipts
-  3. If class spike follows upstream parity import, run OpenClaw drift report and open ingestion follow-up issue.
+  3. If class spike follows upstream parity import, run LegacyParity drift report and open ingestion follow-up issue.
 
 ## Restart/Reconnect Chaos Rehearsal Gate
 

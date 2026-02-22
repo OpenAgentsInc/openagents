@@ -6,8 +6,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
     AppEvent, DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane,
-    InboxSnapshot, InboxThreadSummary, MoltbookCommentSummary, MoltbookPostSummary,
-    MoltbookProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary,
+    InboxSnapshot, InboxThreadSummary, CommunityFeedCommentSummary, CommunityFeedPostSummary,
+    CommunityFeedProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary,
     UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
@@ -115,10 +115,10 @@ const INBOX_APPROVALS_PANE_WIDTH: f32 = 560.0;
 const INBOX_APPROVALS_PANE_HEIGHT: f32 = 520.0;
 const INBOX_AUDIT_PANE_WIDTH: f32 = 680.0;
 const INBOX_AUDIT_PANE_HEIGHT: f32 = 560.0;
-const MOLTBOOK_PANE_WIDTH: f32 = 560.0;
-const MOLTBOOK_PANE_HEIGHT: f32 = 520.0;
-const MOLTBOOK_POST_PANE_WIDTH: f32 = 640.0;
-const MOLTBOOK_POST_PANE_HEIGHT: f32 = 560.0;
+const COMMUNITYFEED_PANE_WIDTH: f32 = 560.0;
+const COMMUNITYFEED_PANE_HEIGHT: f32 = 520.0;
+const COMMUNITYFEED_POST_PANE_WIDTH: f32 = 640.0;
+const COMMUNITYFEED_POST_PANE_HEIGHT: f32 = 560.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -130,7 +130,7 @@ const HOTBAR_SLOT_IDENTITY: u8 = 2;
 const HOTBAR_SLOT_WALLET: u8 = 3;
 const HOTBAR_SLOT_THREADS: u8 = 4;
 const AGENT_DELTA_ALIAS_CACHE_LIMIT: usize = 2048;
-const HOTBAR_SLOT_MOLTBOOK: u8 = 5;
+const HOTBAR_SLOT_COMMUNITYFEED: u8 = 5;
 const HOTBAR_SLOT_AUTH: u8 = 6;
 const HOTBAR_SLOT_INBOX: u8 = 7;
 const HOTBAR_CHAT_SLOT_START: u8 = 8;
@@ -200,10 +200,10 @@ impl AppViewModel {
             AppEvent::DvmHistory { .. } => {}
             AppEvent::RuntimeAuthState { .. } => {}
             AppEvent::Nip90Log { .. } => {}
-            AppEvent::MoltbookFeedUpdated { .. } => {}
-            AppEvent::MoltbookCommentsLoaded { .. } => {}
-            AppEvent::MoltbookLog { .. } => {}
-            AppEvent::MoltbookProfileLoaded { .. } => {}
+            AppEvent::CommunityFeedFeedUpdated { .. } => {}
+            AppEvent::CommunityFeedCommentsLoaded { .. } => {}
+            AppEvent::CommunityFeedLog { .. } => {}
+            AppEvent::CommunityFeedProfileLoaded { .. } => {}
             AppEvent::ThreadsUpdated { .. } => {}
             AppEvent::ThreadLoaded { .. } => {}
             AppEvent::InboxUpdated { .. } => {}
@@ -452,7 +452,7 @@ fn new_markdown_stream() -> StreamingMarkdown {
     stream
 }
 
-fn moltbook_markdown_config(font_size: f32) -> MarkdownConfig {
+fn communityfeed_markdown_config(font_size: f32) -> MarkdownConfig {
     let mut markdown_config = MarkdownConfig::default();
     markdown_config.base_font_size = font_size;
     markdown_config.header_sizes = [1.0; 6];
@@ -514,8 +514,8 @@ enum PaneKind {
     SellCompute,
     DvmHistory,
     Nip90,
-    Moltbook,
-    MoltbookPost,
+    CommunityFeed,
+    CommunityFeedPost,
 }
 
 #[derive(Clone, Debug)]
@@ -533,7 +533,7 @@ enum HotbarAction {
     ToggleSellCompute,
     ToggleDvmHistory,
     ToggleNip90,
-    ToggleMoltbook,
+    ToggleCommunityFeed,
     NewChat,
 }
 
@@ -883,18 +883,18 @@ pub struct MinimalRoot {
     nip90_submit_bounds: Bounds,
     pending_nip90_submit: Rc<RefCell<bool>>,
     nip90_log: Vec<String>,
-    moltbook_feed: Vec<MoltbookPostSummary>,
-    moltbook_log: Vec<String>,
-    moltbook_profile: Option<MoltbookProfileSummary>,
-    moltbook_refresh_button: Button,
-    moltbook_refresh_bounds: Bounds,
+    communityfeed_feed: Vec<CommunityFeedPostSummary>,
+    communityfeed_log: Vec<String>,
+    communityfeed_profile: Option<CommunityFeedProfileSummary>,
+    communityfeed_refresh_button: Button,
+    communityfeed_refresh_bounds: Bounds,
     #[allow(dead_code)]
-    moltbook_feed_scroll: ScrollView,
-    moltbook_feed_scroll_bounds: Bounds,
-    moltbook_post_panes: HashMap<String, MoltbookPostPane>,
-    pending_moltbook_refresh: Rc<RefCell<bool>>,
-    pending_moltbook_replies: Rc<RefCell<Vec<String>>>,
-    moltbook_reply_feedback: HashMap<String, Instant>,
+    communityfeed_feed_scroll: ScrollView,
+    communityfeed_feed_scroll_bounds: Bounds,
+    communityfeed_post_panes: HashMap<String, CommunityFeedPostPane>,
+    pending_communityfeed_refresh: Rc<RefCell<bool>>,
+    pending_communityfeed_replies: Rc<RefCell<Vec<String>>>,
+    communityfeed_reply_feedback: HashMap<String, Instant>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -3165,19 +3165,19 @@ impl MinimalRoot {
                 *pending_nip90_submit_click.borrow_mut() = true;
             });
 
-        let pending_moltbook_refresh = Rc::new(RefCell::new(false));
-        let pending_moltbook_refresh_click = pending_moltbook_refresh.clone();
-        let moltbook_refresh_button = Button::new("Refresh")
+        let pending_communityfeed_refresh = Rc::new(RefCell::new(false));
+        let pending_communityfeed_refresh_click = pending_communityfeed_refresh.clone();
+        let communityfeed_refresh_button = Button::new("Refresh")
             .variant(ButtonVariant::Secondary)
             .font_size(theme::font_size::XS)
             .padding(8.0, 4.0)
             .corner_radius(6.0)
             .on_click(move || {
-                *pending_moltbook_refresh_click.borrow_mut() = true;
+                *pending_communityfeed_refresh_click.borrow_mut() = true;
             });
-        let pending_moltbook_replies = Rc::new(RefCell::new(Vec::new()));
+        let pending_communityfeed_replies = Rc::new(RefCell::new(Vec::new()));
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
-        let moltbook_feed_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
+        let communityfeed_feed_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
             .padding(HOTBAR_PADDING)
@@ -3311,17 +3311,17 @@ impl MinimalRoot {
             nip90_submit_bounds: Bounds::ZERO,
             pending_nip90_submit,
             nip90_log: Vec::new(),
-            moltbook_feed: Vec::new(),
-            moltbook_log: Vec::new(),
-            moltbook_profile: None,
-            moltbook_refresh_button,
-            moltbook_refresh_bounds: Bounds::ZERO,
-            moltbook_feed_scroll,
-            moltbook_feed_scroll_bounds: Bounds::ZERO,
-            moltbook_post_panes: HashMap::new(),
-            pending_moltbook_refresh,
-            pending_moltbook_replies,
-            moltbook_reply_feedback: HashMap::new(),
+            communityfeed_feed: Vec::new(),
+            communityfeed_log: Vec::new(),
+            communityfeed_profile: None,
+            communityfeed_refresh_button,
+            communityfeed_refresh_bounds: Bounds::ZERO,
+            communityfeed_feed_scroll,
+            communityfeed_feed_scroll_bounds: Bounds::ZERO,
+            communityfeed_post_panes: HashMap::new(),
+            pending_communityfeed_refresh,
+            pending_communityfeed_replies,
+            communityfeed_reply_feedback: HashMap::new(),
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -3471,27 +3471,27 @@ impl MinimalRoot {
                     self.nip90_log.drain(0..drain);
                 }
             }
-            AppEvent::MoltbookFeedUpdated { posts } => {
-                self.moltbook_feed = posts;
-                self.moltbook_feed_scroll.scroll_to(Point::new(0.0, 0.0));
-                self.refresh_moltbook_post_panes();
+            AppEvent::CommunityFeedFeedUpdated { posts } => {
+                self.communityfeed_feed = posts;
+                self.communityfeed_feed_scroll.scroll_to(Point::new(0.0, 0.0));
+                self.refresh_communityfeed_post_panes();
             }
-            AppEvent::MoltbookCommentsLoaded { post_id, comments } => {
-                for pane in self.moltbook_post_panes.values_mut() {
+            AppEvent::CommunityFeedCommentsLoaded { post_id, comments } => {
+                for pane in self.communityfeed_post_panes.values_mut() {
                     if pane.post_id == post_id {
                         pane.set_comments(comments.clone());
                     }
                 }
             }
-            AppEvent::MoltbookLog { message } => {
-                self.moltbook_log.push(message);
-                if self.moltbook_log.len() > 100 {
-                    let drain = self.moltbook_log.len() - 100;
-                    self.moltbook_log.drain(0..drain);
+            AppEvent::CommunityFeedLog { message } => {
+                self.communityfeed_log.push(message);
+                if self.communityfeed_log.len() > 100 {
+                    let drain = self.communityfeed_log.len() - 100;
+                    self.communityfeed_log.drain(0..drain);
                 }
             }
-            AppEvent::MoltbookProfileLoaded { profile } => {
-                self.moltbook_profile = Some(profile);
+            AppEvent::CommunityFeedProfileLoaded { profile } => {
+                self.communityfeed_profile = Some(profile);
             }
             AppEvent::ThreadsUpdated {
                 threads,
@@ -4221,9 +4221,9 @@ impl MinimalRoot {
         });
     }
 
-    fn toggle_moltbook_pane(&mut self, screen: Size) {
+    fn toggle_communityfeed_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
-        self.pane_store.toggle_pane("moltbook", screen, |snapshot| {
+        self.pane_store.toggle_pane("communityfeed", screen, |snapshot| {
             let rect = snapshot
                 .as_ref()
                 .map(|snapshot| snapshot.rect)
@@ -4231,35 +4231,35 @@ impl MinimalRoot {
                     calculate_new_pane_position(
                         last_position,
                         screen,
-                        MOLTBOOK_PANE_WIDTH,
-                        MOLTBOOK_PANE_HEIGHT,
+                        COMMUNITYFEED_PANE_WIDTH,
+                        COMMUNITYFEED_PANE_HEIGHT,
                     )
                 });
             Pane {
-                id: "moltbook".to_string(),
-                kind: PaneKind::Moltbook,
-                title: "Moltbook".to_string(),
+                id: "communityfeed".to_string(),
+                kind: PaneKind::CommunityFeed,
+                title: "CommunityFeed".to_string(),
                 rect,
                 dismissable: true,
             }
         });
-        if self.pane_store.is_active("moltbook") {
+        if self.pane_store.is_active("communityfeed") {
             if let Some(handler) = self.send_handler.as_mut() {
-                handler(UserAction::MoltbookRefresh);
+                handler(UserAction::CommunityFeedRefresh);
             }
         }
     }
 
-    fn open_moltbook_post_pane(&mut self, post: MoltbookPostSummary) {
-        let pane_id = format!("moltbook-post-{}", post.id);
-        let title = moltbook_post_title(&post);
+    fn open_communityfeed_post_pane(&mut self, post: CommunityFeedPostSummary) {
+        let pane_id = format!("communityfeed-post-{}", post.id);
+        let title = communityfeed_post_title(&post);
         if self.pane_store.pane(&pane_id).is_some() {
-            if let Some(existing) = self.moltbook_post_panes.get_mut(&pane_id) {
+            if let Some(existing) = self.communityfeed_post_panes.get_mut(&pane_id) {
                 existing.update_from(&post);
                 self.pane_store.set_title(&pane_id, existing.title.clone());
                 if existing.comments.is_empty() {
                     if let Some(handler) = self.send_handler.as_mut() {
-                        handler(UserAction::MoltbookLoadComments {
+                        handler(UserAction::CommunityFeedLoadComments {
                             post_id: post.id.clone(),
                         });
                     }
@@ -4272,35 +4272,35 @@ impl MinimalRoot {
         let rect = calculate_new_pane_position(
             self.pane_store.last_pane_position,
             self.screen_size(),
-            MOLTBOOK_POST_PANE_WIDTH,
-            MOLTBOOK_POST_PANE_HEIGHT,
+            COMMUNITYFEED_POST_PANE_WIDTH,
+            COMMUNITYFEED_POST_PANE_HEIGHT,
         );
         let pane = Pane {
             id: pane_id.clone(),
-            kind: PaneKind::MoltbookPost,
+            kind: PaneKind::CommunityFeedPost,
             title: title.clone(),
             rect: normalize_pane_rect(rect),
             dismissable: true,
         };
         self.pane_store.add_pane(pane);
-        let pane_state = MoltbookPostPane::new(&post, title, self.pending_moltbook_replies.clone());
-        self.moltbook_post_panes.insert(pane_id, pane_state);
+        let pane_state = CommunityFeedPostPane::new(&post, title, self.pending_communityfeed_replies.clone());
+        self.communityfeed_post_panes.insert(pane_id, pane_state);
         if let Some(handler) = self.send_handler.as_mut() {
-            handler(UserAction::MoltbookLoadComments {
+            handler(UserAction::CommunityFeedLoadComments {
                 post_id: post.id.clone(),
             });
         }
     }
 
-    fn refresh_moltbook_post_panes(&mut self) {
-        if self.moltbook_post_panes.is_empty() {
+    fn refresh_communityfeed_post_panes(&mut self) {
+        if self.communityfeed_post_panes.is_empty() {
             return;
         }
-        let mut by_id: HashMap<String, MoltbookPostSummary> = HashMap::new();
-        for post in &self.moltbook_feed {
+        let mut by_id: HashMap<String, CommunityFeedPostSummary> = HashMap::new();
+        for post in &self.communityfeed_feed {
             by_id.insert(post.id.clone(), post.clone());
         }
-        for (pane_id, pane) in self.moltbook_post_panes.iter_mut() {
+        for (pane_id, pane) in self.communityfeed_post_panes.iter_mut() {
             if let Some(post) = by_id.get(&pane.post_id) {
                 pane.update_from(post);
                 self.pane_store.set_title(pane_id, pane.title.clone());
@@ -4308,20 +4308,20 @@ impl MinimalRoot {
         }
     }
 
-    fn moltbook_card_index_at(&self, point: Point) -> Option<usize> {
-        if self.moltbook_feed.is_empty() {
+    fn communityfeed_card_index_at(&self, point: Point) -> Option<usize> {
+        if self.communityfeed_feed.is_empty() {
             return None;
         }
-        let bounds = self.moltbook_feed_scroll_bounds;
+        let bounds = self.communityfeed_feed_scroll_bounds;
         if !bounds.contains(point) {
             return None;
         }
         let card_gap = 12.0;
         let min_card = 220.0;
         let max_card = 320.0;
-        let (card_size, mut content_height) = moltbook_card_layout(
+        let (card_size, mut content_height) = communityfeed_card_layout(
             bounds.size.width,
-            self.moltbook_feed.len(),
+            self.communityfeed_feed.len(),
             min_card,
             max_card,
             card_gap,
@@ -4329,11 +4329,11 @@ impl MinimalRoot {
         if card_size <= 0.0 {
             return None;
         }
-        if self.moltbook_feed.is_empty() {
+        if self.communityfeed_feed.is_empty() {
             content_height = 20.0;
         }
         let content_height = content_height.max(bounds.size.height);
-        let scroll_offset = self.moltbook_feed_scroll.scroll_offset();
+        let scroll_offset = self.communityfeed_feed_scroll.scroll_offset();
         let content_bounds = Bounds::new(
             bounds.origin.x - scroll_offset.x,
             bounds.origin.y - scroll_offset.y,
@@ -4343,7 +4343,7 @@ impl MinimalRoot {
         let cards = grid_bounds(
             content_bounds,
             Size::new(card_size, card_size),
-            self.moltbook_feed.len(),
+            self.communityfeed_feed.len(),
             card_gap,
         );
         for (index, card) in cards.iter().enumerate() {
@@ -4369,7 +4369,7 @@ impl MinimalRoot {
                 self.thread_to_pane.remove(&thread_id);
             }
         }
-        self.moltbook_post_panes.remove(id);
+        self.communityfeed_post_panes.remove(id);
         self.chat_slot_assignments.remove(id);
         self.chat_slot_labels.remove(id);
     }
@@ -4475,8 +4475,8 @@ impl MinimalRoot {
                 self.toggle_nip90_pane(screen);
                 true
             }
-            HotbarAction::ToggleMoltbook => {
-                self.toggle_moltbook_pane(screen);
+            HotbarAction::ToggleCommunityFeed => {
+                self.toggle_communityfeed_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -4827,8 +4827,8 @@ impl MinimalRoot {
                     {
                         let mut allow_drag = true;
                         if let Some(pane) = self.pane_store.pane(&pane_id) {
-                            if pane.kind == PaneKind::MoltbookPost {
-                                if let Some(post_pane) = self.moltbook_post_panes.get(&pane_id) {
+                            if pane.kind == PaneKind::CommunityFeedPost {
+                                if let Some(post_pane) = self.communityfeed_post_panes.get(&pane_id) {
                                     if post_pane.reply_bounds.contains(self.cursor_position) {
                                         allow_drag = false;
                                     }
@@ -5444,22 +5444,22 @@ impl MinimalRoot {
                                 || prompt_handled
                                 || submit_handled;
                         }
-                        PaneKind::Moltbook => {
+                        PaneKind::CommunityFeed => {
                             let refresh_handled = matches!(
-                                self.moltbook_refresh_button.event(
+                                self.communityfeed_refresh_button.event(
                                     event,
-                                    self.moltbook_refresh_bounds,
+                                    self.communityfeed_refresh_bounds,
                                     &mut self.event_context
                                 ),
                                 EventResult::Handled
                             );
                             let scroll_handled = self
-                                .moltbook_feed_scroll_bounds
+                                .communityfeed_feed_scroll_bounds
                                 .contains(self.cursor_position)
                                 && matches!(
-                                    self.moltbook_feed_scroll.event(
+                                    self.communityfeed_feed_scroll.event(
                                         event,
-                                        self.moltbook_feed_scroll_bounds,
+                                        self.communityfeed_feed_scroll_bounds,
                                         &mut self.event_context
                                     ),
                                     EventResult::Handled
@@ -5472,10 +5472,10 @@ impl MinimalRoot {
                                 } = event
                                 {
                                     if let Some(index) =
-                                        self.moltbook_card_index_at(self.cursor_position)
+                                        self.communityfeed_card_index_at(self.cursor_position)
                                     {
-                                        if let Some(post) = self.moltbook_feed.get(index).cloned() {
-                                            self.open_moltbook_post_pane(post);
+                                        if let Some(post) = self.communityfeed_feed.get(index).cloned() {
+                                            self.open_communityfeed_post_pane(post);
                                             opened = true;
                                         }
                                     }
@@ -5483,8 +5483,8 @@ impl MinimalRoot {
                             }
                             handled |= refresh_handled || scroll_handled || opened;
                         }
-                        PaneKind::MoltbookPost => {
-                            if let Some(post_pane) = self.moltbook_post_panes.get_mut(&pane_id) {
+                        PaneKind::CommunityFeedPost => {
+                            if let Some(post_pane) = self.communityfeed_post_panes.get_mut(&pane_id) {
                                 let reply_handled = matches!(
                                     post_pane.reply_button.event(
                                         event,
@@ -5753,28 +5753,28 @@ impl MinimalRoot {
             }
         }
 
-        let should_moltbook_refresh = {
-            let mut pending = self.pending_moltbook_refresh.borrow_mut();
+        let should_communityfeed_refresh = {
+            let mut pending = self.pending_communityfeed_refresh.borrow_mut();
             let value = *pending;
             *pending = false;
             value
         };
-        if should_moltbook_refresh {
+        if should_communityfeed_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
-                handler(UserAction::MoltbookRefresh);
+                handler(UserAction::CommunityFeedRefresh);
             }
         }
 
         let pending_replies = {
-            let mut pending = self.pending_moltbook_replies.borrow_mut();
+            let mut pending = self.pending_communityfeed_replies.borrow_mut();
             std::mem::take(&mut *pending)
         };
         if !pending_replies.is_empty() {
             if let Some(handler) = self.send_handler.as_mut() {
                 for post_id in pending_replies {
-                    self.moltbook_reply_feedback
+                    self.communityfeed_reply_feedback
                         .insert(post_id.clone(), Instant::now());
-                    handler(UserAction::MoltbookReply { post_id });
+                    handler(UserAction::CommunityFeedReply { post_id });
                 }
             }
         }
@@ -6123,7 +6123,7 @@ impl MinimalRoot {
         {
             Cursor::Pointer
         } else if self
-            .moltbook_post_panes
+            .communityfeed_post_panes
             .values()
             .any(|pane| pane.reply_button.is_hovered() && !pane.reply_button.is_disabled())
         {
@@ -6272,8 +6272,8 @@ impl Component for MinimalRoot {
         self.inbox.list_row_bounds.clear();
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
-        self.moltbook_refresh_bounds = Bounds::ZERO;
-        self.moltbook_feed_scroll_bounds = Bounds::ZERO;
+        self.communityfeed_refresh_bounds = Bounds::ZERO;
+        self.communityfeed_feed_scroll_bounds = Bounds::ZERO;
         self.file_editor.path_bounds = Bounds::ZERO;
         self.file_editor.open_bounds = Bounds::ZERO;
         self.file_editor.reload_bounds = Bounds::ZERO;
@@ -6337,11 +6337,11 @@ impl Component for MinimalRoot {
                 )
             };
 
-            if let PaneKind::Moltbook = pane.kind {
-                paint_moltbook_header(self, &pane.title, title_bounds, close_bounds, cx);
+            if let PaneKind::CommunityFeed = pane.kind {
+                paint_communityfeed_header(self, &pane.title, title_bounds, close_bounds, cx);
             }
-            if let PaneKind::MoltbookPost = pane.kind {
-                paint_moltbook_post_header(self, &pane.id, title_bounds, close_bounds, cx);
+            if let PaneKind::CommunityFeedPost = pane.kind {
+                paint_communityfeed_post_header(self, &pane.id, title_bounds, close_bounds, cx);
             }
             match pane.kind {
                 PaneKind::Chat => {
@@ -6363,9 +6363,9 @@ impl Component for MinimalRoot {
                 PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
                 PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
-                PaneKind::Moltbook => paint_moltbook_pane(self, content_bounds, cx),
-                PaneKind::MoltbookPost => {
-                    paint_moltbook_post_pane(self, &pane.id, content_bounds, cx)
+                PaneKind::CommunityFeed => paint_communityfeed_pane(self, content_bounds, cx),
+                PaneKind::CommunityFeedPost => {
+                    paint_communityfeed_post_pane(self, &pane.id, content_bounds, cx)
                 }
             }
             cx.scene.pop_clip();
@@ -6428,11 +6428,11 @@ impl Component for MinimalRoot {
         // self.hotbar_bindings
         //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
         items.push(
-            HotbarSlot::new(HOTBAR_SLOT_MOLTBOOK, "MB", "Moltbook")
-                .active(self.pane_store.is_active("moltbook")),
+            HotbarSlot::new(HOTBAR_SLOT_COMMUNITYFEED, "MB", "CommunityFeed")
+                .active(self.pane_store.is_active("communityfeed")),
         );
         self.hotbar_bindings
-            .insert(HOTBAR_SLOT_MOLTBOOK, HotbarAction::ToggleMoltbook);
+            .insert(HOTBAR_SLOT_COMMUNITYFEED, HotbarAction::ToggleCommunityFeed);
 
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_AUTH, "AU", "Auth")
@@ -8011,14 +8011,14 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 }
 
 #[derive(Clone, Debug)]
-struct MoltbookFeedRow {
+struct CommunityFeedFeedRow {
     title: String,
     meta: String,
     preview_markdown: MarkdownDocument,
 }
 
-struct MoltbookFeedView {
-    rows: Vec<MoltbookFeedRow>,
+struct CommunityFeedFeedView {
+    rows: Vec<CommunityFeedFeedRow>,
     card_size: f32,
     gap: f32,
     font_size: f32,
@@ -8026,9 +8026,9 @@ struct MoltbookFeedView {
     markdown: MarkdownRenderer,
 }
 
-impl MoltbookFeedView {
+impl CommunityFeedFeedView {
     fn new(
-        rows: Vec<MoltbookFeedRow>,
+        rows: Vec<CommunityFeedFeedRow>,
         card_size: f32,
         gap: f32,
         font_size: f32,
@@ -8045,7 +8045,7 @@ impl MoltbookFeedView {
     }
 }
 
-impl Component for MoltbookFeedView {
+impl Component for CommunityFeedFeedView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         if self.rows.is_empty() {
             Text::new(self.empty_message.as_str())
@@ -8121,22 +8121,22 @@ impl Component for MoltbookFeedView {
     }
 }
 
-struct MoltbookPostView {
+struct CommunityFeedPostView {
     title: String,
     meta: String,
     markdown: MarkdownDocument,
     markdown_config: MarkdownConfig,
-    comments: Vec<MoltbookCommentSummary>,
+    comments: Vec<CommunityFeedCommentSummary>,
     comment_docs: Vec<MarkdownDocument>,
 }
 
-impl MoltbookPostView {
+impl CommunityFeedPostView {
     fn new(
         title: String,
         meta: String,
         markdown: MarkdownDocument,
         markdown_config: MarkdownConfig,
-        comments: Vec<MoltbookCommentSummary>,
+        comments: Vec<CommunityFeedCommentSummary>,
         comment_docs: Vec<MarkdownDocument>,
     ) -> Self {
         Self {
@@ -8150,7 +8150,7 @@ impl MoltbookPostView {
     }
 }
 
-impl Component for MoltbookPostView {
+impl Component for CommunityFeedPostView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let padding = 16.0;
         let title_gap = 6.0;
@@ -8215,7 +8215,7 @@ impl Component for MoltbookPostView {
             y += header_h + comment_header_gap;
 
             for (index, comment) in self.comments.iter().enumerate() {
-                let comment_header = moltbook_comment_header(comment);
+                let comment_header = communityfeed_comment_header(comment);
                 let mut comment_header_text = Text::new(comment_header.as_str())
                     .font_size(meta_size)
                     .color(theme::text::MUTED);
@@ -8243,7 +8243,7 @@ impl Component for MoltbookPostView {
     }
 }
 
-fn moltbook_card_layout(
+fn communityfeed_card_layout(
     available_width: f32,
     count: usize,
     min_size: f32,
@@ -8275,8 +8275,8 @@ fn moltbook_card_layout(
     (card_size.max(0.0), height)
 }
 
-fn moltbook_profile_line(root: &MinimalRoot) -> String {
-    root.moltbook_profile
+fn communityfeed_profile_line(root: &MinimalRoot) -> String {
+    root.communityfeed_profile
         .as_ref()
         .map(|p| {
             format!(
@@ -8284,25 +8284,25 @@ fn moltbook_profile_line(root: &MinimalRoot) -> String {
                 p.agent_name, p.posts_count, p.comments_count
             )
         })
-        .unwrap_or_else(|| "Moltbook · 2 posts/hr · 50 comments/hr (strategy)".to_string())
+        .unwrap_or_else(|| "CommunityFeed · 2 posts/hr · 50 comments/hr (strategy)".to_string())
 }
 
-fn moltbook_activity_line(root: &MinimalRoot) -> String {
-    root.moltbook_log
+fn communityfeed_activity_line(root: &MinimalRoot) -> String {
+    root.communityfeed_log
         .last()
         .cloned()
-        .unwrap_or_else(|| "No Moltbook activity yet.".to_string())
+        .unwrap_or_else(|| "No CommunityFeed activity yet.".to_string())
 }
 
-fn moltbook_post_title(post: &MoltbookPostSummary) -> String {
+fn communityfeed_post_title(post: &CommunityFeedPostSummary) -> String {
     post.title
         .as_deref()
         .filter(|title| !title.trim().is_empty())
-        .unwrap_or("Moltbook Post")
+        .unwrap_or("CommunityFeed Post")
         .to_string()
 }
 
-fn moltbook_post_meta(post: &MoltbookPostSummary) -> String {
+fn communityfeed_post_meta(post: &CommunityFeedPostSummary) -> String {
     let mut parts = Vec::new();
     if let Some(author) = post.author_name.as_deref() {
         if !author.trim().is_empty() {
@@ -8320,13 +8320,13 @@ fn moltbook_post_meta(post: &MoltbookPostSummary) -> String {
         }
     }
     if parts.is_empty() {
-        "Moltbook".to_string()
+        "CommunityFeed".to_string()
     } else {
         parts.join(" · ")
     }
 }
 
-fn moltbook_post_content(post: &MoltbookPostSummary) -> String {
+fn communityfeed_post_content(post: &CommunityFeedPostSummary) -> String {
     let content = post
         .content
         .as_deref()
@@ -8340,13 +8340,13 @@ fn moltbook_post_content(post: &MoltbookPostSummary) -> String {
     }
 }
 
-fn moltbook_post_document(post: &MoltbookPostSummary, config: &MarkdownConfig) -> MarkdownDocument {
+fn communityfeed_post_document(post: &CommunityFeedPostSummary, config: &MarkdownConfig) -> MarkdownDocument {
     let parser = MarkdownParser::with_config(config.clone());
-    let content = moltbook_post_content(post);
+    let content = communityfeed_post_content(post);
     parser.parse(&content)
 }
 
-fn moltbook_comment_header(comment: &MoltbookCommentSummary) -> String {
+fn communityfeed_comment_header(comment: &CommunityFeedCommentSummary) -> String {
     let mut parts = Vec::new();
     if let Some(author) = comment.author_name.as_deref() {
         if !author.trim().is_empty() {
@@ -8368,13 +8368,13 @@ fn moltbook_comment_header(comment: &MoltbookCommentSummary) -> String {
     }
 }
 
-struct MoltbookPostPane {
+struct CommunityFeedPostPane {
     post_id: String,
     title: String,
     meta: String,
     markdown: MarkdownDocument,
     markdown_config: MarkdownConfig,
-    comments: Vec<MoltbookCommentSummary>,
+    comments: Vec<CommunityFeedCommentSummary>,
     comment_docs: Vec<MarkdownDocument>,
     reply_button: Button,
     reply_bounds: Bounds,
@@ -8382,14 +8382,14 @@ struct MoltbookPostPane {
     scroll_bounds: Bounds,
 }
 
-impl MoltbookPostPane {
+impl CommunityFeedPostPane {
     fn new(
-        post: &MoltbookPostSummary,
+        post: &CommunityFeedPostSummary,
         title: String,
         pending_replies: Rc<RefCell<Vec<String>>>,
     ) -> Self {
-        let markdown_config = moltbook_markdown_config(theme::font_size::SM);
-        let markdown = moltbook_post_document(post, &markdown_config);
+        let markdown_config = communityfeed_markdown_config(theme::font_size::SM);
+        let markdown = communityfeed_post_document(post, &markdown_config);
         let post_id = post.id.clone();
         let pending_reply_click = pending_replies.clone();
         let reply_button = Button::new("[+Reply]")
@@ -8403,7 +8403,7 @@ impl MoltbookPostPane {
         Self {
             post_id: post.id.clone(),
             title,
-            meta: moltbook_post_meta(post),
+            meta: communityfeed_post_meta(post),
             markdown,
             markdown_config,
             comments: Vec::new(),
@@ -8415,13 +8415,13 @@ impl MoltbookPostPane {
         }
     }
 
-    fn update_from(&mut self, post: &MoltbookPostSummary) {
-        self.title = moltbook_post_title(post);
-        self.meta = moltbook_post_meta(post);
-        self.markdown = moltbook_post_document(post, &self.markdown_config);
+    fn update_from(&mut self, post: &CommunityFeedPostSummary) {
+        self.title = communityfeed_post_title(post);
+        self.meta = communityfeed_post_meta(post);
+        self.markdown = communityfeed_post_document(post, &self.markdown_config);
     }
 
-    fn set_comments(&mut self, comments: Vec<MoltbookCommentSummary>) {
+    fn set_comments(&mut self, comments: Vec<CommunityFeedCommentSummary>) {
         let parser = MarkdownParser::with_config(self.markdown_config.clone());
         self.comment_docs = comments
             .iter()
@@ -8438,7 +8438,7 @@ impl MoltbookPostPane {
     }
 }
 
-fn paint_moltbook_header(
+fn paint_communityfeed_header(
     root: &mut MinimalRoot,
     pane_title: &str,
     title_bounds: Bounds,
@@ -8458,7 +8458,7 @@ fn paint_moltbook_header(
         right = close_bounds.origin.x - gap;
     }
     if right <= left + 8.0 {
-        root.moltbook_refresh_bounds = Bounds::ZERO;
+        root.communityfeed_refresh_bounds = Bounds::ZERO;
         return;
     }
 
@@ -8472,7 +8472,7 @@ fn paint_moltbook_header(
     let baseline_y = title_bounds.origin.y + title_bounds.size.height * 0.5 - text_size * 0.55;
 
     let refresh_padding_x = 8.0;
-    let refresh_label = root.moltbook_refresh_button.label();
+    let refresh_label = root.communityfeed_refresh_button.label();
     let refresh_width =
         (cx.text
             .measure_styled_mono(refresh_label, text_size, FontStyle::default())
@@ -8497,7 +8497,7 @@ fn paint_moltbook_header(
     let refresh_bounds = *row_bounds.get(2).unwrap_or(&Bounds::ZERO);
 
     cx.scene.push_clip(header_bounds);
-    let profile_line = moltbook_profile_line(root);
+    let profile_line = communityfeed_profile_line(root);
     cx.scene.push_clip(profile_bounds);
     let profile_run = cx.text.layout_styled_mono(
         profile_line.as_str(),
@@ -8509,7 +8509,7 @@ fn paint_moltbook_header(
     cx.scene.draw_text(profile_run);
     cx.scene.pop_clip();
 
-    let activity_line = moltbook_activity_line(root);
+    let activity_line = communityfeed_activity_line(root);
     cx.scene.push_clip(activity_bounds);
     let activity_run = cx.text.layout_styled_mono(
         activity_line.as_str(),
@@ -8529,22 +8529,22 @@ fn paint_moltbook_header(
             refresh_bounds.size.width,
             button_height,
         );
-        root.moltbook_refresh_bounds = button_bounds;
-        root.moltbook_refresh_button.paint(button_bounds, cx);
+        root.communityfeed_refresh_bounds = button_bounds;
+        root.communityfeed_refresh_button.paint(button_bounds, cx);
     } else {
-        root.moltbook_refresh_bounds = Bounds::ZERO;
+        root.communityfeed_refresh_bounds = Bounds::ZERO;
     }
     cx.scene.pop_clip();
 }
 
-fn paint_moltbook_post_header(
+fn paint_communityfeed_post_header(
     root: &mut MinimalRoot,
     pane_id: &str,
     title_bounds: Bounds,
     close_bounds: Bounds,
     cx: &mut PaintContext,
 ) {
-    let Some(post_pane) = root.moltbook_post_panes.get_mut(pane_id) else {
+    let Some(post_pane) = root.communityfeed_post_panes.get_mut(pane_id) else {
         return;
     };
 
@@ -8559,12 +8559,12 @@ fn paint_moltbook_post_header(
     }
 
     let is_pending = root
-        .moltbook_reply_feedback
+        .communityfeed_reply_feedback
         .get(&post_pane.post_id)
         .map(|stamp| stamp.elapsed() < feedback_duration)
         .unwrap_or(false);
     if !is_pending {
-        root.moltbook_reply_feedback.remove(&post_pane.post_id);
+        root.communityfeed_reply_feedback.remove(&post_pane.post_id);
     }
 
     let label = if is_pending { "[Queued]" } else { "[+Reply]" };
@@ -8583,7 +8583,7 @@ fn paint_moltbook_post_header(
     post_pane.reply_button.paint(button_bounds, cx);
 }
 
-fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+fn paint_communityfeed_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 16.0;
     let padding_top = 10.0;
     let text_size = theme::font_size::XS;
@@ -8597,11 +8597,11 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         (bounds.size.height - padding_top - 1.0).max(0.0),
     );
 
-    let markdown_config = moltbook_markdown_config(text_size);
+    let markdown_config = communityfeed_markdown_config(text_size);
     let parser = MarkdownParser::with_config(markdown_config.clone());
 
     let feed_rows = root
-        .moltbook_feed
+        .communityfeed_feed
         .iter()
         .map(|post| {
             let title = post.title.as_deref().unwrap_or("(no title)");
@@ -8626,7 +8626,7 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
             } else {
                 parser.parse(preview_source)
             };
-            MoltbookFeedRow {
+            CommunityFeedFeedRow {
                 title: header,
                 meta,
                 preview_markdown,
@@ -8634,11 +8634,11 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         })
         .collect::<Vec<_>>();
 
-    root.moltbook_feed_scroll_bounds = content_bounds;
+    root.communityfeed_feed_scroll_bounds = content_bounds;
     let card_gap = 12.0;
     let min_card = 220.0;
     let max_card = 320.0;
-    let (card_size, mut content_height) = moltbook_card_layout(
+    let (card_size, mut content_height) = communityfeed_card_layout(
         content_bounds.size.width,
         feed_rows.len(),
         min_card,
@@ -8649,25 +8649,25 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         content_height = row_height;
     }
     let content_height = content_height.max(content_bounds.size.height);
-    root.moltbook_feed_scroll
+    root.communityfeed_feed_scroll
         .set_content_size(Size::new(content_bounds.size.width, content_height));
-    root.moltbook_feed_scroll.set_content(MoltbookFeedView::new(
+    root.communityfeed_feed_scroll.set_content(CommunityFeedFeedView::new(
         feed_rows.clone(),
         card_size,
         card_gap,
         text_size,
         markdown_config,
     ));
-    root.moltbook_feed_scroll.paint(content_bounds, cx);
+    root.communityfeed_feed_scroll.paint(content_bounds, cx);
 }
 
-fn paint_moltbook_post_pane(
+fn paint_communityfeed_post_pane(
     root: &mut MinimalRoot,
     pane_id: &str,
     bounds: Bounds,
     cx: &mut PaintContext,
 ) {
-    let Some(post_pane) = root.moltbook_post_panes.get_mut(pane_id) else {
+    let Some(post_pane) = root.communityfeed_post_panes.get_mut(pane_id) else {
         return;
     };
 
@@ -8713,7 +8713,7 @@ fn paint_moltbook_post_pane(
         comments_height += section_gap + header_h + comment_header_gap;
 
         for (index, comment) in post_pane.comments.iter().enumerate() {
-            let comment_header = moltbook_comment_header(comment);
+            let comment_header = communityfeed_comment_header(comment);
             let mut comment_header_text = Text::new(comment_header.as_str())
                 .font_size(meta_size)
                 .color(theme::text::MUTED);
@@ -8742,7 +8742,7 @@ fn paint_moltbook_post_pane(
     post_pane
         .scroll
         .set_content_size(Size::new(bounds.size.width, content_height));
-    post_pane.scroll.set_content(MoltbookPostView::new(
+    post_pane.scroll.set_content(CommunityFeedPostView::new(
         post_pane.title.clone(),
         post_pane.meta.clone(),
         post_pane.markdown.clone(),
@@ -11354,14 +11354,14 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
-            UserAction::MoltbookRefresh => "MoltbookRefresh".to_string(),
-            UserAction::MoltbookLoadComments { post_id } => {
-                format!("MoltbookLoadComments ({post_id})")
+            UserAction::CommunityFeedRefresh => "CommunityFeedRefresh".to_string(),
+            UserAction::CommunityFeedLoadComments { post_id } => {
+                format!("CommunityFeedLoadComments ({post_id})")
             }
-            UserAction::MoltbookReply { post_id } => format!("MoltbookReply ({post_id})"),
-            UserAction::MoltbookSay { .. } => "MoltbookSay".to_string(),
-            UserAction::MoltbookComment { post_id, .. } => format!("MoltbookComment ({post_id})"),
-            UserAction::MoltbookUpvote { post_id } => format!("MoltbookUpvote ({post_id})"),
+            UserAction::CommunityFeedReply { post_id } => format!("CommunityFeedReply ({post_id})"),
+            UserAction::CommunityFeedSay { .. } => "CommunityFeedSay".to_string(),
+            UserAction::CommunityFeedComment { post_id, .. } => format!("CommunityFeedComment ({post_id})"),
+            UserAction::CommunityFeedUpvote { post_id } => format!("CommunityFeedUpvote ({post_id})"),
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
             UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
@@ -11422,18 +11422,18 @@ fn format_event(event: &AppEvent) -> String {
             format!("RuntimeAuthState ({token}, {email})")
         }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
-        AppEvent::MoltbookFeedUpdated { posts } => {
-            format!("MoltbookFeedUpdated ({} posts)", posts.len())
+        AppEvent::CommunityFeedFeedUpdated { posts } => {
+            format!("CommunityFeedFeedUpdated ({} posts)", posts.len())
         }
-        AppEvent::MoltbookCommentsLoaded { post_id, comments } => {
+        AppEvent::CommunityFeedCommentsLoaded { post_id, comments } => {
             format!(
-                "MoltbookCommentsLoaded ({post_id}, {} comments)",
+                "CommunityFeedCommentsLoaded ({post_id}, {} comments)",
                 comments.len()
             )
         }
-        AppEvent::MoltbookLog { message } => format!("MoltbookLog ({message})"),
-        AppEvent::MoltbookProfileLoaded { profile } => {
-            format!("MoltbookProfileLoaded ({})", profile.agent_name)
+        AppEvent::CommunityFeedLog { message } => format!("CommunityFeedLog ({message})"),
+        AppEvent::CommunityFeedProfileLoaded { profile } => {
+            format!("CommunityFeedProfileLoaded ({})", profile.agent_name)
         }
         AppEvent::ThreadsUpdated {
             threads, append, ..
