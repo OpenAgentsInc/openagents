@@ -1,7 +1,7 @@
 # ADR Index (Rust Era)
 
 Status: Active
-Last updated: 2026-02-21
+Last updated: 2026-02-22
 
 ## Numbering Policy
 
@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0008**
+Next available ADR: **ADR-0009**
 
 ## Lifecycle Statuses
 
@@ -57,6 +57,11 @@ Next available ADR: **ADR-0008**
    - Date: 2026-02-21  
    - File: `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`  
    - Source issue: `OA-RUST-096` (`#1931`)
+8. `ADR-0008` — Bounded Vercel SSE compatibility lane  
+   - Status: `Accepted`  
+   - Date: 2026-02-22  
+   - File: `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`  
+   - Source issue: `OA-WEBPARITY-069` (`#2039`)
 
 ## Legacy Archive
 
