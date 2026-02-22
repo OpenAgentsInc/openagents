@@ -916,95 +916,61 @@ final class CodexHandshakeViewModel: ObservableObject {
         return normalized
     }
 
+    private struct ControlSuccessContextBridgeInput: Encodable {
+        let method: String
+        let response: JSONValue?
+        let fallbackThreadID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case method
+            case response
+            case fallbackThreadID = "fallback_thread_id"
+        }
+    }
+
+    private struct ControlSuccessContextBridgeOutput: Decodable {
+        let threadID: String?
+        let turnID: String?
+        let clearTurn: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case threadID = "thread_id"
+            case turnID = "turn_id"
+            case clearTurn = "clear_turn"
+        }
+    }
+
     private func applyControlSuccessContext(
         method: RuntimeCodexControlMethod,
         response: JSONValue?,
         fallbackThreadID: String?
     ) {
-        switch method {
-        case .threadStart, .threadResume:
-            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
-                activeThreadID = threadID
-            }
+        let input = ControlSuccessContextBridgeInput(
+            method: method.rawValue,
+            response: response,
+            fallbackThreadID: fallbackThreadID
+        )
 
-        case .turnStart:
-            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
-                activeThreadID = threadID
-            }
-            if let turnID = extractTurnID(fromControlResponse: response) {
-                activeTurnID = turnID
-            }
+        guard let encoded = try? JSONEncoder().encode(input),
+              let inputJSON = String(data: encoded, encoding: .utf8),
+              let contextJSON = RustClientCoreBridge.extractControlSuccessContext(inputJSON: inputJSON),
+              let contextData = contextJSON.data(using: .utf8),
+              let context = try? JSONDecoder().decode(
+                  ControlSuccessContextBridgeOutput.self,
+                  from: contextData
+              ) else {
+            return
+        }
 
-        case .turnInterrupt:
+        if context.clearTurn {
             activeTurnID = nil
-            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
-                activeThreadID = threadID
-            }
-
-        case .threadList, .threadRead:
-            if let threadID = extractThreadID(fromControlResponse: response) {
-                activeThreadID = threadID
-            }
         }
-    }
-
-    private func extractThreadID(fromControlResponse response: JSONValue?) -> String? {
-        guard let object = response?.objectValue else {
-            return nil
+        if let threadID = context.threadID {
+            activeThreadID = threadID
         }
-
-        if let threadID = object["thread_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !threadID.isEmpty {
-            return threadID
+        if let turnID = context.turnID {
+            activeTurnID = turnID
         }
-
-        if let threadID = object["threadId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !threadID.isEmpty {
-            return threadID
-        }
-
-        if let thread = object["thread"]?.objectValue,
-           let threadID = thread["id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !threadID.isEmpty {
-            return threadID
-        }
-
-        if let turn = object["turn"]?.objectValue {
-            if let threadID = turn["thread_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !threadID.isEmpty {
-                return threadID
-            }
-            if let threadID = turn["threadId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !threadID.isEmpty {
-                return threadID
-            }
-        }
-
-        return nil
-    }
-
-    private func extractTurnID(fromControlResponse response: JSONValue?) -> String? {
-        guard let object = response?.objectValue else {
-            return nil
-        }
-
-        if let turnID = object["turn_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !turnID.isEmpty {
-            return turnID
-        }
-
-        if let turnID = object["turnId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !turnID.isEmpty {
-            return turnID
-        }
-
-        if let turn = object["turn"]?.objectValue,
-           let turnID = turn["id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !turnID.isEmpty {
-            return turnID
-        }
-
-        return nil
     }
 
     func sendUserMessage() async {

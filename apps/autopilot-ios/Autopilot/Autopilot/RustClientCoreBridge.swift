@@ -58,6 +58,12 @@ enum RustClientCoreBridge {
     ) -> UnsafeMutablePointer<CChar>?
     private typealias KhalaSessionLatestWatermarkFunction = @convention(c) (UnsafeMutableRawPointer?) -> UInt64
     private typealias KhalaSessionFreeFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
+    private typealias ControlCoordinatorCreateFunction = @convention(c) () -> UnsafeMutableRawPointer?
+    private typealias ControlCoordinatorApplyFunction = @convention(c) (
+        UnsafeMutableRawPointer?,
+        UnsafePointer<CChar>?
+    ) -> UnsafeMutablePointer<CChar>?
+    private typealias ControlCoordinatorFreeFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
     private struct Symbols {
         let normalizeEmail: TransformFunction?
@@ -65,12 +71,17 @@ enum RustClientCoreBridge {
         let normalizeMessageText: TransformFunction?
         let extractDesktopHandshakeAckID: TransformFunction?
         let parseKhalaFrame: TransformFunction?
+        let decodeControlReceipt: TransformFunction?
+        let extractControlSuccessContext: TransformFunction?
         let khalaSessionCreate: KhalaSessionCreateFunction?
         let khalaSessionStart: KhalaSessionStepFunction?
         let khalaSessionOnFrame: KhalaSessionOnFrameFunction?
         let khalaSessionHeartbeat: KhalaSessionStepFunction?
         let khalaSessionLatestWatermark: KhalaSessionLatestWatermarkFunction?
         let khalaSessionFree: KhalaSessionFreeFunction?
+        let controlCoordinatorCreate: ControlCoordinatorCreateFunction?
+        let controlCoordinatorApply: ControlCoordinatorApplyFunction?
+        let controlCoordinatorFree: ControlCoordinatorFreeFunction?
         let freeString: FreeFunction?
         let ffiContractVersion: ContractVersionFunction?
 
@@ -98,6 +109,14 @@ enum RustClientCoreBridge {
                     as: TransformFunction.self
                 ),
                 parseKhalaFrame: loadSymbol("oa_client_core_parse_khala_frame", as: TransformFunction.self),
+                decodeControlReceipt: loadSymbol(
+                    "oa_client_core_decode_control_receipt",
+                    as: TransformFunction.self
+                ),
+                extractControlSuccessContext: loadSymbol(
+                    "oa_client_core_extract_control_success_context",
+                    as: TransformFunction.self
+                ),
                 khalaSessionCreate: loadSymbol(
                     "oa_client_core_khala_session_create",
                     as: KhalaSessionCreateFunction.self
@@ -121,6 +140,18 @@ enum RustClientCoreBridge {
                 khalaSessionFree: loadSymbol(
                     "oa_client_core_khala_session_free",
                     as: KhalaSessionFreeFunction.self
+                ),
+                controlCoordinatorCreate: loadSymbol(
+                    "oa_client_core_control_coordinator_create",
+                    as: ControlCoordinatorCreateFunction.self
+                ),
+                controlCoordinatorApply: loadSymbol(
+                    "oa_client_core_control_coordinator_apply",
+                    as: ControlCoordinatorApplyFunction.self
+                ),
+                controlCoordinatorFree: loadSymbol(
+                    "oa_client_core_control_coordinator_free",
+                    as: ControlCoordinatorFreeFunction.self
                 ),
                 freeString: loadSymbol("oa_client_core_free_string", as: FreeFunction.self),
                 ffiContractVersion: loadSymbol(
@@ -155,12 +186,17 @@ enum RustClientCoreBridge {
             && symbols.normalizeMessageText != nil
             && symbols.extractDesktopHandshakeAckID != nil
             && symbols.parseKhalaFrame != nil
+            && symbols.decodeControlReceipt != nil
+            && symbols.extractControlSuccessContext != nil
             && symbols.khalaSessionCreate != nil
             && symbols.khalaSessionStart != nil
             && symbols.khalaSessionOnFrame != nil
             && symbols.khalaSessionHeartbeat != nil
             && symbols.khalaSessionLatestWatermark != nil
             && symbols.khalaSessionFree != nil
+            && symbols.controlCoordinatorCreate != nil
+            && symbols.controlCoordinatorApply != nil
+            && symbols.controlCoordinatorFree != nil
             && symbols.freeString != nil
             && symbols.ffiContractVersion != nil
             && isContractVersionCompatible
@@ -250,6 +286,42 @@ enum RustClientCoreBridge {
 
     static func khalaSessionLatestWatermark(_ session: UnsafeMutableRawPointer?) -> Int {
         Int(symbols.khalaSessionLatestWatermark?(session) ?? 0)
+    }
+
+    static func createControlCoordinator() -> UnsafeMutableRawPointer? {
+        symbols.controlCoordinatorCreate?()
+    }
+
+    static func freeControlCoordinator(_ coordinator: UnsafeMutableRawPointer?) {
+        symbols.controlCoordinatorFree?(coordinator)
+    }
+
+    static func applyControlCoordinator(
+        _ coordinator: UnsafeMutableRawPointer?,
+        commandJSON: String
+    ) -> String? {
+        guard let apply = symbols.controlCoordinatorApply,
+              let freeString = symbols.freeString else {
+            return nil
+        }
+
+        return commandJSON.withCString { commandPtr in
+            guard let rawOutput = apply(coordinator, commandPtr) else {
+                return nil
+            }
+            defer {
+                freeString(rawOutput)
+            }
+            return String(cString: rawOutput)
+        }
+    }
+
+    static func decodeControlReceipt(payloadJSON: String) -> String? {
+        invoke(symbols.decodeControlReceipt, with: payloadJSON)
+    }
+
+    static func extractControlSuccessContext(inputJSON: String) -> String? {
+        invoke(symbols.extractControlSuccessContext, with: inputJSON)
     }
 
     private static func invokeSessionStep(

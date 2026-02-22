@@ -445,8 +445,21 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         if model.controlRequests.isEmpty {
             return "none"
         }
-        return model.controlRequests.prefix(4).map {
-            "\($0.request.method.rawValue)[\($0.state.rawValue)]"
+        return model.controlRequests.prefix(6).map { tracker in
+            let shortID = String(tracker.requestID.suffix(6))
+            switch tracker.state {
+            case .queued:
+                return "\(tracker.request.method.rawValue)#\(shortID)[queued]"
+            case .running:
+                return "\(tracker.request.method.rawValue)#\(shortID)[running]"
+            case .success:
+                return "\(tracker.request.method.rawValue)#\(shortID)[success]"
+            case .error:
+                if let code = tracker.errorCode, !code.isEmpty {
+                    return "\(tracker.request.method.rawValue)#\(shortID)[error:\(code)]"
+                }
+                return "\(tracker.request.method.rawValue)#\(shortID)[error]"
+            }
         }.joined(separator: " | ")
     }
 
