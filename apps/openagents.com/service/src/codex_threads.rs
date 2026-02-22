@@ -27,6 +27,10 @@ struct ThreadProjectionRecord {
     thread_id: String,
     user_id: String,
     org_id: String,
+    #[serde(default)]
+    autopilot_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     message_count: u32,
@@ -61,6 +65,15 @@ pub struct ThreadMessageProjection {
     pub role: String,
     pub text: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AutopilotThreadProjection {
+    pub id: String,
+    pub autopilot_id: String,
+    pub title: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,6 +128,8 @@ impl CodexThreadStore {
                         thread_id: thread_id.to_string(),
                         user_id: user_id.to_string(),
                         org_id: org_id.to_string(),
+                        autopilot_id: None,
+                        title: None,
                         created_at: now,
                         updated_at: now,
                         message_count: 0,
@@ -184,6 +199,8 @@ impl CodexThreadStore {
                         thread_id: thread_id.to_string(),
                         user_id: user_id.to_string(),
                         org_id: org_id.to_string(),
+                        autopilot_id: None,
+                        title: None,
                         created_at: now,
                         updated_at: now,
                         message_count: 0,
@@ -265,6 +282,119 @@ impl CodexThreadStore {
             .collect();
         messages.sort_by(|left, right| left.created_at.cmp(&right.created_at));
         Ok(messages)
+    }
+
+    pub async fn create_autopilot_thread_for_user(
+        &self,
+        user_id: &str,
+        org_id: &str,
+        thread_id: &str,
+        autopilot_id: &str,
+        title: &str,
+    ) -> Result<AutopilotThreadProjection, ThreadStoreError> {
+        let now = Utc::now();
+        let normalized_title = title.trim().to_string();
+        let (projection, snapshot) = {
+            let mut state = self.state.write().await;
+
+            match state.threads.get_mut(thread_id) {
+                Some(existing) => {
+                    if existing.user_id != user_id {
+                        return Err(ThreadStoreError::Forbidden);
+                    }
+
+                    let existing_autopilot = existing.autopilot_id.clone();
+                    if let Some(existing_autopilot) = existing_autopilot {
+                        if existing_autopilot != autopilot_id {
+                            return Err(ThreadStoreError::Forbidden);
+                        }
+                    }
+
+                    let mut did_change = false;
+                    if existing.org_id != org_id {
+                        existing.org_id = org_id.to_string();
+                        did_change = true;
+                    }
+                    if existing.autopilot_id.as_deref() != Some(autopilot_id) {
+                        existing.autopilot_id = Some(autopilot_id.to_string());
+                        did_change = true;
+                    }
+                    if existing
+                        .title
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .is_empty()
+                    {
+                        existing.title = Some(normalized_title.clone());
+                        did_change = true;
+                    }
+                    if did_change {
+                        existing.updated_at = now;
+                        (
+                            AutopilotThreadProjection::from_record(existing)
+                                .ok_or(ThreadStoreError::NotFound)?,
+                            Some(state.clone()),
+                        )
+                    } else {
+                        (
+                            AutopilotThreadProjection::from_record(existing)
+                                .ok_or(ThreadStoreError::NotFound)?,
+                            None,
+                        )
+                    }
+                }
+                None => {
+                    let record = ThreadProjectionRecord {
+                        thread_id: thread_id.to_string(),
+                        user_id: user_id.to_string(),
+                        org_id: org_id.to_string(),
+                        autopilot_id: Some(autopilot_id.to_string()),
+                        title: Some(normalized_title),
+                        created_at: now,
+                        updated_at: now,
+                        message_count: 0,
+                        last_message_at: None,
+                    };
+                    state.threads.insert(thread_id.to_string(), record.clone());
+                    (
+                        AutopilotThreadProjection::from_record(&record)
+                            .ok_or(ThreadStoreError::NotFound)?,
+                        Some(state.clone()),
+                    )
+                }
+            }
+        };
+
+        if let Some(snapshot) = snapshot {
+            self.persist_state(&snapshot).await?;
+        }
+
+        Ok(projection)
+    }
+
+    pub async fn list_autopilot_threads_for_user(
+        &self,
+        user_id: &str,
+        org_id: Option<&str>,
+        autopilot_id: &str,
+    ) -> Result<Vec<AutopilotThreadProjection>, ThreadStoreError> {
+        let state = self.state.read().await;
+        let mut threads: Vec<AutopilotThreadProjection> = state
+            .threads
+            .values()
+            .filter(|thread| thread.user_id == user_id)
+            .filter(|thread| {
+                org_id
+                    .map(|expected| thread.org_id == expected)
+                    .unwrap_or(true)
+            })
+            .filter(|thread| thread.autopilot_id.as_deref() == Some(autopilot_id))
+            .filter_map(AutopilotThreadProjection::from_record)
+            .collect();
+
+        threads.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(threads)
     }
 
     fn load_state(path: Option<&PathBuf>) -> ThreadStoreState {
@@ -360,6 +490,26 @@ impl ThreadMessageProjection {
             text: record.text.clone(),
             created_at: record.created_at,
         }
+    }
+}
+
+impl AutopilotThreadProjection {
+    fn from_record(record: &ThreadProjectionRecord) -> Option<Self> {
+        let autopilot_id = record.autopilot_id.clone()?;
+        let title = record
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "New conversation".to_string());
+        Some(Self {
+            id: record.thread_id.clone(),
+            autopilot_id,
+            title,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+        })
     }
 }
 
@@ -527,5 +677,55 @@ mod tests {
             forbidden,
             crate::codex_threads::ThreadStoreError::Forbidden
         ));
+    }
+
+    #[tokio::test]
+    async fn autopilot_thread_projection_scopes_by_autopilot() {
+        let store = CodexThreadStore::from_config(&test_config(None));
+
+        let created = store
+            .create_autopilot_thread_for_user(
+                "usr_owner",
+                "org:openagents",
+                "thread-ap-1",
+                "ap_1",
+                "Autopilot One",
+            )
+            .await
+            .expect("create autopilot thread");
+        assert_eq!(created.id, "thread-ap-1");
+        assert_eq!(created.autopilot_id, "ap_1");
+        assert_eq!(created.title, "Autopilot One");
+
+        store
+            .create_autopilot_thread_for_user(
+                "usr_owner",
+                "org:openagents",
+                "thread-ap-2",
+                "ap_2",
+                "Autopilot Two",
+            )
+            .await
+            .expect("create second autopilot thread");
+
+        let ap_1_threads = store
+            .list_autopilot_threads_for_user("usr_owner", Some("org:openagents"), "ap_1")
+            .await
+            .expect("list autopilot threads");
+        assert_eq!(ap_1_threads.len(), 1);
+        assert_eq!(ap_1_threads[0].id, "thread-ap-1");
+
+        let ap_2_threads = store
+            .list_autopilot_threads_for_user("usr_owner", Some("org:openagents"), "ap_2")
+            .await
+            .expect("list autopilot threads");
+        assert_eq!(ap_2_threads.len(), 1);
+        assert_eq!(ap_2_threads[0].id, "thread-ap-2");
+
+        let none = store
+            .list_autopilot_threads_for_user("usr_owner", Some("org:openagents"), "ap_3")
+            .await
+            .expect("list autopilot threads");
+        assert!(none.is_empty());
     }
 }

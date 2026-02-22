@@ -47,7 +47,8 @@ use crate::auth::{
     SessionRevocationRequest, SessionRevocationTarget,
 };
 use crate::codex_threads::{
-    CodexThreadStore, ThreadMessageProjection, ThreadProjection, ThreadStoreError,
+    AutopilotThreadProjection, CodexThreadStore, ThreadMessageProjection, ThreadProjection,
+    ThreadStoreError,
 };
 use crate::config::Config;
 use crate::domain_store::{
@@ -59,11 +60,11 @@ use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
-    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON,
-    ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
-    ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
-    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
-    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN,
+    ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
+    ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
+    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
     ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
@@ -294,6 +295,12 @@ struct AutopilotListQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct AutopilotThreadListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CreateAutopilotRequestPayload {
     #[serde(default)]
     handle: Option<String>,
@@ -307,6 +314,12 @@ struct CreateAutopilotRequestPayload {
     status: Option<String>,
     #[serde(default)]
     visibility: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAutopilotThreadRequestPayload {
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -566,6 +579,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(
             ROUTE_AUTOPILOTS_BY_ID,
             get(show_autopilot).patch(update_autopilot),
+        )
+        .route(
+            ROUTE_AUTOPILOTS_THREADS,
+            get(list_autopilot_threads).post(create_autopilot_thread),
         )
         .route(
             ROUTE_TOKENS,
@@ -2687,6 +2704,111 @@ async fn update_autopilot(
         StatusCode::OK,
         Json(serde_json::json!({
             "data": autopilot_aggregate_payload(&updated),
+        })),
+    ))
+}
+
+async fn create_autopilot_thread(
+    State(state): State<AppState>,
+    Path(autopilot): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateAutopilotThreadRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let reference = normalize_autopilot_reference(autopilot)?;
+    let title = normalize_optional_bounded_string(payload.title, "title", 200)?
+        .unwrap_or_else(|| "New conversation".to_string());
+
+    let autopilot = state
+        ._domain_store
+        .resolve_owned_autopilot(&bundle.user.id, &reference)
+        .await
+        .map_err(map_domain_store_error)?;
+    let thread_id = format!("thread_{}", uuid::Uuid::new_v4().simple());
+    let thread = state
+        .codex_thread_store
+        .create_autopilot_thread_for_user(
+            &bundle.user.id,
+            &bundle.session.active_org_id,
+            &thread_id,
+            &autopilot.autopilot.id,
+            &title,
+        )
+        .await
+        .map_err(map_thread_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.thread_created", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("thread_id", thread.id.clone())
+            .with_attribute("title_length", thread.title.chars().count().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.thread_created", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "data": autopilot_thread_payload(&thread),
+        })),
+    ))
+}
+
+async fn list_autopilot_threads(
+    State(state): State<AppState>,
+    Path(autopilot): Path<String>,
+    headers: HeaderMap,
+    Query(query): Query<AutopilotThreadListQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let reference = normalize_autopilot_reference(autopilot)?;
+
+    let autopilot = state
+        ._domain_store
+        .resolve_owned_autopilot(&bundle.user.id, &reference)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let mut threads = state
+        .codex_thread_store
+        .list_autopilot_threads_for_user(
+            &bundle.user.id,
+            Some(&bundle.session.active_org_id),
+            &autopilot.autopilot.id,
+        )
+        .await
+        .map_err(map_thread_store_error)?;
+    threads.truncate(limit);
+
+    state.observability.audit(
+        AuditEvent::new("autopilot.threads_viewed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("limit", limit.to_string())
+            .with_attribute("count", threads.len().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.threads_viewed", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": threads
+                .iter()
+                .map(autopilot_thread_payload)
+                .collect::<Vec<_>>(),
         })),
     ))
 }
@@ -5269,6 +5391,16 @@ fn autopilot_aggregate_payload(aggregate: &AutopilotAggregate) -> serde_json::Va
     })
 }
 
+fn autopilot_thread_payload(thread: &AutopilotThreadProjection) -> serde_json::Value {
+    serde_json::json!({
+        "id": thread.id,
+        "autopilotId": thread.autopilot_id,
+        "title": thread.title,
+        "createdAt": timestamp(thread.created_at),
+        "updatedAt": timestamp(thread.updated_at),
+    })
+}
+
 fn user_handle_from_email(email: &str) -> String {
     let local = email.split('@').next().unwrap_or_default();
     let mut output = String::with_capacity(local.len().min(64));
@@ -7329,6 +7461,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn autopilot_thread_routes_support_create_and_list() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "autopilot-threads@openagents.com").await?;
+
+        let create_autopilot_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"handle":"thread-bot","displayName":"Thread Bot"}"#,
+            ))?;
+        let create_autopilot_response = app.clone().oneshot(create_autopilot_request).await?;
+        assert_eq!(create_autopilot_response.status(), StatusCode::CREATED);
+        let create_autopilot_body = read_json(create_autopilot_response).await?;
+        let autopilot_id = create_autopilot_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(autopilot_id.starts_with("ap_"));
+
+        let create_thread_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"title":"Autopilot test thread"}"#))?;
+        let create_thread_response = app.clone().oneshot(create_thread_request).await?;
+        assert_eq!(create_thread_response.status(), StatusCode::CREATED);
+        let create_thread_body = read_json(create_thread_response).await?;
+        let thread_id = create_thread_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(thread_id.starts_with("thread_"));
+        assert_eq!(
+            create_thread_body["data"]["autopilotId"],
+            json!(autopilot_id.clone())
+        );
+        assert_eq!(
+            create_thread_body["data"]["title"],
+            json!("Autopilot test thread")
+        );
+
+        let create_default_title_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{}"#))?;
+        let create_default_title_response =
+            app.clone().oneshot(create_default_title_request).await?;
+        assert_eq!(create_default_title_response.status(), StatusCode::CREATED);
+        let create_default_title_body = read_json(create_default_title_response).await?;
+        assert_eq!(
+            create_default_title_body["data"]["title"],
+            json!("New conversation")
+        );
+
+        let list_threads_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads?limit=200"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_threads_response = app.clone().oneshot(list_threads_request).await?;
+        assert_eq!(list_threads_response.status(), StatusCode::OK);
+        let list_threads_body = read_json(list_threads_response).await?;
+        let listed_threads = list_threads_body["data"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(listed_threads.len() >= 2);
+        assert!(listed_threads.iter().all(|row| {
+            row["autopilotId"] == json!(autopilot_id.clone()) && row["id"].is_string()
+        }));
+        assert!(
+            listed_threads
+                .iter()
+                .any(|row| row["id"] == json!(thread_id.clone()))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn autopilot_routes_enforce_owner_boundary() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
         let owner_token =
@@ -7374,8 +7591,25 @@ mod tests {
             .uri("/api/autopilots/owner-bot")
             .header("authorization", format!("Bearer {other_token}"))
             .body(Body::empty())?;
-        let other_show_handle_response = app.oneshot(other_show_handle_request).await?;
+        let other_show_handle_response = app.clone().oneshot(other_show_handle_request).await?;
         assert_eq!(other_show_handle_response.status(), StatusCode::NOT_FOUND);
+
+        let other_threads_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::empty())?;
+        let other_threads_response = app.clone().oneshot(other_threads_request).await?;
+        assert_eq!(other_threads_response.status(), StatusCode::NOT_FOUND);
+
+        let other_create_thread_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::from(r#"{"title":"intruder thread"}"#))?;
+        let other_create_thread_response = app.oneshot(other_create_thread_request).await?;
+        assert_eq!(other_create_thread_response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }
@@ -7421,13 +7655,28 @@ mod tests {
             .body(Body::from(
                 r#"{"status":"ACTIVE","profile":{"schemaVersion":0},"policy":{"l402MaxSpendMsatsPerCall":0}}"#,
             ))?;
-        let bad_update_response = app.oneshot(bad_update_request).await?;
+        let bad_update_response = app.clone().oneshot(bad_update_request).await?;
         assert_eq!(
             bad_update_response.status(),
             StatusCode::UNPROCESSABLE_ENTITY
         );
         let bad_update_body = read_json(bad_update_response).await?;
         assert_eq!(bad_update_body["error"]["code"], json!("invalid_request"));
+
+        let oversized_title = "x".repeat(201);
+        let bad_thread_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(r#"{{"title":"{oversized_title}"}}"#)))?;
+        let bad_thread_response = app.oneshot(bad_thread_request).await?;
+        assert_eq!(
+            bad_thread_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let bad_thread_body = read_json(bad_thread_response).await?;
+        assert_eq!(bad_thread_body["error"]["code"], json!("invalid_request"));
 
         Ok(())
     }

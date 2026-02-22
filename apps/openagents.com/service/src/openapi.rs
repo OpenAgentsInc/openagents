@@ -12,6 +12,7 @@ pub const ROUTE_AUTH_LOGOUT: &str = "/api/auth/logout";
 pub const ROUTE_ME: &str = "/api/me";
 pub const ROUTE_AUTOPILOTS: &str = "/api/autopilots";
 pub const ROUTE_AUTOPILOTS_BY_ID: &str = "/api/autopilots/:autopilot";
+pub const ROUTE_AUTOPILOTS_THREADS: &str = "/api/autopilots/:autopilot/threads";
 pub const ROUTE_TOKENS: &str = "/api/tokens";
 pub const ROUTE_TOKENS_CURRENT: &str = "/api/tokens/current";
 pub const ROUTE_TOKENS_BY_ID: &str = "/api/tokens/:token_id";
@@ -204,6 +205,30 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("autopilot_update"),
         response_example: Some("autopilot"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AUTOPILOTS_THREADS,
+        operation_id: "autopilotThreadsList",
+        summary: "List threads for one owned autopilot.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("autopilot_threads"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AUTOPILOTS_THREADS,
+        operation_id: "autopilotThreadsCreate",
+        summary: "Create a thread for one owned autopilot.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("autopilot_thread_create"),
+        response_example: Some("autopilot_thread"),
     },
     OpenApiContract {
         method: "get",
@@ -799,6 +824,9 @@ fn request_example(key: &str) -> Option<Value> {
                 "l402RequireApproval": true
             }
         })),
+        "autopilot_thread_create" => Some(json!({
+            "title": "Autopilot test thread"
+        })),
         _ => None,
     }
 }
@@ -933,6 +961,26 @@ fn response_example(key: &str) -> Option<Value> {
                 "createdAt": "2026-02-22T00:00:00Z",
                 "updatedAt": "2026-02-22T00:00:00Z"
             }
+        })),
+        "autopilot_thread" => Some(json!({
+            "data": {
+                "id": "thread_123",
+                "autopilotId": "ap_123",
+                "title": "Autopilot test thread",
+                "createdAt": "2026-02-22T00:00:00Z",
+                "updatedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "autopilot_threads" => Some(json!({
+            "data": [
+                {
+                    "id": "thread_123",
+                    "autopilotId": "ap_123",
+                    "title": "Autopilot test thread",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                }
+            ]
         })),
         "tokens_list" => Some(json!({
             "data": [
