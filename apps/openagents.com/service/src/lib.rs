@@ -10,7 +10,7 @@ use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -32,6 +32,7 @@ pub mod auth;
 pub mod codex_threads;
 pub mod config;
 pub mod domain_store;
+pub mod khala_token;
 pub mod observability;
 pub mod openapi;
 pub mod route_split;
@@ -48,16 +49,17 @@ use crate::auth::{
 use crate::codex_threads::{CodexThreadStore, ThreadStoreError};
 use crate::config::Config;
 use crate::domain_store::{CreateAutopilotInput, DomainStore, DomainStoreError};
+use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
-    ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS, ROUTE_SYNC_TOKEN,
-    ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
-    openapi_document,
+    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
+    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
+    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
@@ -100,6 +102,7 @@ struct AppState {
     auth: AuthService,
     observability: Observability,
     route_split: RouteSplitService,
+    khala_token_issuer: KhalaTokenIssuer,
     sync_token_issuer: SyncTokenIssuer,
     codex_thread_store: CodexThreadStore,
     _domain_store: DomainStore,
@@ -249,6 +252,31 @@ struct PolicyAuthorizeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct MeQuery {
+    #[serde(default)]
+    chat_limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateTokenRequestPayload {
+    name: String,
+    #[serde(default)]
+    abilities: Option<Vec<String>>,
+    #[serde(default, alias = "expiresAt")]
+    expires_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KhalaTokenRequestPayload {
+    #[serde(default)]
+    scope: Vec<String>,
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SyncTokenRequestPayload {
     #[serde(default)]
     scopes: Vec<String>,
@@ -297,6 +325,7 @@ pub fn build_router(config: Config) -> Router {
 pub fn build_router_with_observability(config: Config, observability: Observability) -> Router {
     let auth = AuthService::from_config(&config);
     let route_split = RouteSplitService::from_config(&config);
+    let khala_token_issuer = KhalaTokenIssuer::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let codex_thread_store = CodexThreadStore::from_config(&config);
     let domain_store = DomainStore::from_config(&config);
@@ -306,6 +335,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         auth,
         observability,
         route_split,
+        khala_token_issuer,
         sync_token_issuer,
         codex_thread_store,
         _domain_store: domain_store,
@@ -374,6 +404,18 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_AUTH_SESSIONS_REVOKE, post(revoke_sessions))
         .route(ROUTE_AUTH_LOGOUT, post(logout_session))
         .route(ROUTE_ME, get(me))
+        .route(
+            ROUTE_TOKENS,
+            get(list_personal_access_tokens)
+                .post(create_personal_access_token)
+                .delete(delete_all_personal_access_tokens),
+        )
+        .route(
+            ROUTE_TOKENS_CURRENT,
+            delete(delete_current_personal_access_token),
+        )
+        .route(ROUTE_TOKENS_BY_ID, delete(delete_personal_access_token))
+        .route(ROUTE_KHALA_TOKEN, post(khala_token))
         .route(ROUTE_ORGS_MEMBERSHIPS, get(org_memberships))
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
@@ -878,7 +920,7 @@ async fn session_bundle_from_headers(
         access_token_from_headers(headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
     state
         .auth
-        .session_from_access_token(&access_token)
+        .session_or_pat_from_access_token(&access_token)
         .await
         .map_err(map_auth_error)
 }
@@ -2080,15 +2122,33 @@ async fn revoke_sessions(
 async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Query(query): Query<MeQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let access_token =
-        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
     let bundle = state
         .auth
-        .session_from_access_token(&access_token)
+        .session_or_pat_from_access_token(&access_token)
         .await
         .map_err(map_auth_error)?;
+
+    let chat_limit = query.chat_limit.unwrap_or(50).clamp(1, 200);
+    let chat_threads = state
+        .codex_thread_store
+        .list_threads_for_user(&bundle.user.id, None)
+        .await
+        .map_err(map_thread_store_error)?
+        .into_iter()
+        .take(chat_limit)
+        .map(|thread| {
+            serde_json::json!({
+                "id": thread.thread_id,
+                "title": thread_title(&thread.thread_id, thread.message_count),
+                "updatedAt": timestamp(thread.updated_at),
+            })
+        })
+        .collect::<Vec<_>>();
 
     let response = serde_json::json!({
         "data": {
@@ -2096,24 +2156,328 @@ async fn me(
                 "id": bundle.user.id,
                 "email": bundle.user.email,
                 "name": bundle.user.name,
+                "handle": user_handle_from_email(&bundle.user.email),
+                "avatar": "",
+                "createdAt": serde_json::Value::Null,
+                "updatedAt": serde_json::Value::Null,
                 "workosId": bundle.user.workos_user_id,
-            }
+            },
+            "chatThreads": chat_threads,
         }
     });
 
     Ok((StatusCode::OK, Json(response)))
 }
 
+async fn list_personal_access_tokens(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let current_token_id = state
+        .auth
+        .current_personal_access_token_id(&bundle.user.id, &access_token)
+        .await;
+
+    let tokens = state
+        .auth
+        .list_personal_access_tokens(&bundle.user.id)
+        .await
+        .map_err(map_auth_error)?
+        .into_iter()
+        .filter(|token| token.revoked_at.is_none())
+        .map(|token| {
+            serde_json::json!({
+                "id": token.token_id,
+                "name": token.name,
+                "abilities": token.scopes,
+                "lastUsedAt": token.last_used_at.map(timestamp),
+                "expiresAt": token.expires_at.map(timestamp),
+                "createdAt": timestamp(token.created_at),
+                "isCurrent": current_token_id
+                    .as_ref()
+                    .map(|current| current == &token.token_id)
+                    .unwrap_or(false),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": tokens }))))
+}
+
+async fn create_personal_access_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateTokenRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let name = payload.name.trim().to_string();
+    if name.is_empty() {
+        return Err(validation_error("name", "Token name is required."));
+    }
+    if name.chars().count() > 100 {
+        return Err(validation_error(
+            "name",
+            "Token name may not be greater than 100 characters.",
+        ));
+    }
+
+    let abilities = match payload.abilities {
+        Some(values) if !values.is_empty() => {
+            let mut normalized = Vec::new();
+            for value in values {
+                let trimmed = value.trim();
+                if trimmed.chars().count() > 100 {
+                    return Err(validation_error(
+                        "abilities",
+                        "Token abilities may not be greater than 100 characters.",
+                    ));
+                }
+
+                if !trimmed.is_empty() {
+                    normalized.push(trimmed.to_string());
+                }
+            }
+
+            if normalized.is_empty() {
+                vec!["*".to_string()]
+            } else {
+                normalized
+            }
+        }
+        _ => vec!["*".to_string()],
+    };
+
+    let now = Utc::now();
+    let expires_at = payload
+        .expires_at
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(parse_rfc3339_utc)
+        .transpose()
+        .map_err(|_| validation_error("expires_at", "The expires_at is not a valid date."))?;
+    let ttl_seconds =
+        expires_at.map(|value| value.signed_duration_since(now).num_seconds().max(0) as u64);
+
+    let issued = state
+        .auth
+        .issue_personal_access_token(
+            &bundle.user.id,
+            name.clone(),
+            abilities.clone(),
+            ttl_seconds,
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    let response = serde_json::json!({
+        "data": {
+            "token": issued.plain_text_token,
+            "tokenableId": bundle.user.id,
+            "name": name,
+            "abilities": abilities,
+            "expiresAt": issued.token.expires_at.map(timestamp),
+        }
+    });
+
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn delete_current_personal_access_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let token_id = state
+        .auth
+        .current_personal_access_token_id(&bundle.user.id, &access_token)
+        .await;
+
+    let deleted = match token_id {
+        Some(token_id) => state
+            .auth
+            .revoke_personal_access_token(&bundle.user.id, &token_id)
+            .await
+            .map_err(map_auth_error)?,
+        None => false,
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": { "deleted": deleted } })),
+    ))
+}
+
+async fn delete_personal_access_token(
+    State(state): State<AppState>,
+    Path(token_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_token_id = token_id.trim().to_string();
+    if normalized_token_id.is_empty() {
+        return Err(not_found_error("Not found."));
+    }
+
+    let deleted = state
+        .auth
+        .revoke_personal_access_token(&bundle.user.id, &normalized_token_id)
+        .await
+        .map_err(map_auth_error)?;
+    if !deleted {
+        return Err(not_found_error("Not found."));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": { "deleted": true } })),
+    ))
+}
+
+async fn delete_all_personal_access_tokens(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let deleted_count = state
+        .auth
+        .revoke_all_personal_access_tokens(&bundle.user.id)
+        .await
+        .map_err(map_auth_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": { "deletedCount": deleted_count } })),
+    ))
+}
+
+async fn khala_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<KhalaTokenRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let session = state
+        .auth
+        .session_or_pat_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let mut scope = Vec::new();
+    for entry in payload.scope {
+        let value = entry.trim();
+        if value.chars().count() > 120 {
+            return Err(validation_error(
+                "scope",
+                "Scope entries may not be greater than 120 characters.",
+            ));
+        }
+
+        if !value.is_empty() {
+            scope.push(value.to_string());
+        }
+    }
+
+    let workspace_id = payload
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    if workspace_id
+        .as_ref()
+        .map(|value| value.chars().count() > 120)
+        .unwrap_or(false)
+    {
+        return Err(validation_error(
+            "workspace_id",
+            "Workspace id may not be greater than 120 characters.",
+        ));
+    }
+
+    let role = payload
+        .role
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    if role
+        .as_deref()
+        .map(|value| !matches!(value, "member" | "admin" | "owner"))
+        .unwrap_or(false)
+    {
+        return Err(validation_error(
+            "role",
+            "Role must be one of member, admin, owner.",
+        ));
+    }
+
+    let issued = state
+        .khala_token_issuer
+        .issue(KhalaTokenIssueRequest {
+            user_id: session.user.id.clone(),
+            scope,
+            workspace_id,
+            role,
+        })
+        .map_err(map_khala_error)?;
+
+    Ok(ok_data(issued))
+}
+
 async fn org_memberships(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let access_token =
-        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
     let bundle = state
         .auth
-        .session_from_access_token(&access_token)
+        .session_or_pat_from_access_token(&access_token)
         .await
         .map_err(map_auth_error)?;
 
@@ -2133,8 +2497,8 @@ async fn set_active_org(
     Json(payload): Json<SetActiveOrgRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let request_id = request_id(&headers);
-    let access_token =
-        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
     let normalized_org_id = payload.org_id.trim().to_string();
     if normalized_org_id.is_empty() {
@@ -2172,8 +2536,8 @@ async fn policy_authorize(
     headers: HeaderMap,
     Json(payload): Json<PolicyAuthorizeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let access_token =
-        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
     let decision = state
         .auth
@@ -2197,21 +2561,23 @@ async fn sync_token(
     Json(payload): Json<SyncTokenRequestPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let request_id = request_id(&headers);
-    let access_token =
-        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let access_token = access_token_from_headers(&headers)
+        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
     let session = state
         .auth
-        .session_from_access_token(&access_token)
+        .session_or_pat_from_access_token(&access_token)
         .await
         .map_err(map_auth_error)?;
+
+    let is_pat_session = session.session.session_id.starts_with("pat:");
 
     let device_id = payload
         .device_id
         .and_then(non_empty)
         .unwrap_or_else(|| session.session.device_id.clone());
 
-    if device_id != session.session.device_id {
+    if !is_pat_session && device_id != session.session.device_id {
         return Err(forbidden_error(
             "Requested device does not match active authenticated session device.",
         ));
@@ -2608,6 +2974,21 @@ fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>)
         SyncTokenError::Unavailable { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorCode::SyncTokenUnavailable,
+            message,
+        ),
+    }
+}
+
+fn map_khala_error(error: KhalaTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        KhalaTokenError::InvalidRequest { message } => error_response_with_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiErrorCode::InvalidRequest,
+            message,
+        ),
+        KhalaTokenError::Unavailable { message } => error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::KhalaTokenUnavailable,
             message,
         ),
     }
@@ -3169,6 +3550,23 @@ fn user_handle_from_email(email: &str) -> String {
     }
 }
 
+fn thread_title(thread_id: &str, message_count: u32) -> String {
+    if message_count == 0 {
+        return "New Chat".to_string();
+    }
+
+    let normalized = thread_id.trim();
+    if normalized.is_empty() {
+        "Chat".to_string()
+    } else {
+        format!("Thread {normalized}")
+    }
+}
+
+fn parse_rfc3339_utc(value: &str) -> Result<chrono::DateTime<Utc>, chrono::ParseError> {
+    chrono::DateTime::parse_from_rfc3339(value).map(|parsed| parsed.with_timezone(&Utc))
+}
+
 fn resolve_session_revocation_target(
     payload: &RevokeSessionsRequest,
 ) -> Result<SessionRevocationTarget, (StatusCode, Json<ApiErrorResponse>)> {
@@ -3272,6 +3670,16 @@ mod tests {
                 "chris@openagents.com".to_string(),
                 "routes@openagents.com".to_string(),
             ],
+            khala_token_enabled: true,
+            khala_token_signing_key: Some("khala-test-signing-key".to_string()),
+            khala_token_issuer: "https://openagents.test".to_string(),
+            khala_token_audience: "openagents-khala-test".to_string(),
+            khala_token_subject_prefix: "user".to_string(),
+            khala_token_key_id: "khala-auth-test-v1".to_string(),
+            khala_token_claims_version: "oa_khala_claims_v1".to_string(),
+            khala_token_ttl_seconds: 300,
+            khala_token_min_ttl_seconds: 60,
+            khala_token_max_ttl_seconds: 900,
             auth_store_path: None,
             auth_challenge_ttl_seconds: 600,
             auth_access_ttl_seconds: 3600,
@@ -3365,6 +3773,7 @@ mod tests {
     fn test_app_state(config: Config) -> super::AppState {
         let auth = super::AuthService::from_config(&config);
         let route_split = super::RouteSplitService::from_config(&config);
+        let khala_token_issuer = super::KhalaTokenIssuer::from_config(&config);
         let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
         let codex_thread_store = super::CodexThreadStore::from_config(&config);
         let domain_store = super::DomainStore::from_config(&config);
@@ -3374,6 +3783,7 @@ mod tests {
             auth,
             observability: Observability::default(),
             route_split,
+            khala_token_issuer,
             sync_token_issuer,
             codex_thread_store,
             _domain_store: domain_store,
@@ -5009,6 +5419,205 @@ mod tests {
         assert_eq!(deny_topic_response.status(), StatusCode::OK);
         let deny_topic_body = read_json(deny_topic_response).await?;
         assert_eq!(deny_topic_body["data"]["allowed"], false);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn me_route_returns_user_profile_and_thread_summaries() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "me-route@openagents.com").await?;
+
+        for thread_id in ["thread-a", "thread-b"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(format!("/api/runtime/threads/{thread_id}/messages"))
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(r#"{"text":"hello"}"#))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let me_request = Request::builder()
+            .uri("/api/me?chat_limit=1")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let me_response = app.oneshot(me_request).await?;
+        assert_eq!(me_response.status(), StatusCode::OK);
+        let me_body = read_json(me_response).await?;
+        assert_eq!(me_body["data"]["user"]["email"], "me-route@openagents.com");
+        assert_eq!(
+            me_body["data"]["chatThreads"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(me_body["data"]["chatThreads"][0]["id"], "thread-b");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn personal_access_token_routes_support_current_and_bulk_revocation() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let session_token =
+            authenticate_token(app.clone(), "token-lifecycle@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/tokens")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {session_token}"))
+            .body(Body::from(
+                r#"{"name":"api-cli","abilities":["chat:read","chat:write"]}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let pat_token = create_body["data"]["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(pat_token.starts_with("oa_pat_"));
+
+        let list_by_pat_request = Request::builder()
+            .uri("/api/tokens")
+            .header("authorization", format!("Bearer {pat_token}"))
+            .body(Body::empty())?;
+        let list_by_pat_response = app.clone().oneshot(list_by_pat_request).await?;
+        assert_eq!(list_by_pat_response.status(), StatusCode::OK);
+        let list_by_pat_body = read_json(list_by_pat_response).await?;
+        let tokens = list_by_pat_body["data"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(tokens.iter().any(|token| token["isCurrent"] == true));
+
+        let delete_current_request = Request::builder()
+            .method("DELETE")
+            .uri("/api/tokens/current")
+            .header("authorization", format!("Bearer {pat_token}"))
+            .body(Body::empty())?;
+        let delete_current_response = app.clone().oneshot(delete_current_request).await?;
+        assert_eq!(delete_current_response.status(), StatusCode::OK);
+        let delete_current_body = read_json(delete_current_response).await?;
+        assert_eq!(delete_current_body["data"]["deleted"], true);
+
+        for name in ["bulk-a", "bulk-b"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/tokens")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {session_token}"))
+                .body(Body::from(format!(r#"{{"name":"{name}"}}"#)))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
+
+        let delete_all_request = Request::builder()
+            .method("DELETE")
+            .uri("/api/tokens")
+            .header("authorization", format!("Bearer {session_token}"))
+            .body(Body::empty())?;
+        let delete_all_response = app.clone().oneshot(delete_all_request).await?;
+        assert_eq!(delete_all_response.status(), StatusCode::OK);
+        let delete_all_body = read_json(delete_all_response).await?;
+        assert_eq!(delete_all_body["data"]["deletedCount"], 2);
+
+        let final_list_request = Request::builder()
+            .uri("/api/tokens")
+            .header("authorization", format!("Bearer {session_token}"))
+            .body(Body::empty())?;
+        let final_list_response = app.oneshot(final_list_request).await?;
+        assert_eq!(final_list_response.status(), StatusCode::OK);
+        let final_list_body = read_json(final_list_response).await?;
+        assert_eq!(final_list_body["data"].as_array().map(Vec::len), Some(0));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_token_route_mints_and_surfaces_configuration_errors() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "khala-route@openagents.com").await?;
+
+        let mint_request = Request::builder()
+            .method("POST")
+            .uri("/api/khala/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"scope":["codex:read","codex:write"],"workspace_id":"workspace_42","role":"admin"}"#,
+            ))?;
+        let mint_response = app.clone().oneshot(mint_request).await?;
+        assert_eq!(mint_response.status(), StatusCode::OK);
+        let mint_body = read_json(mint_response).await?;
+        assert_eq!(mint_body["data"]["token_type"], "Bearer");
+        assert_eq!(mint_body["data"]["issuer"], "https://openagents.test");
+        assert_eq!(mint_body["data"]["audience"], "openagents-khala-test");
+        assert_eq!(mint_body["data"]["claims_version"], "oa_khala_claims_v1");
+
+        let mut config = test_config(std::env::temp_dir());
+        config.khala_token_signing_key = None;
+        let misconfigured_app = build_router(config);
+        let misconfigured_token = authenticate_token(
+            misconfigured_app.clone(),
+            "khala-misconfigured@openagents.com",
+        )
+        .await?;
+        let unavailable_request = Request::builder()
+            .method("POST")
+            .uri("/api/khala/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {misconfigured_token}"))
+            .body(Body::from("{}"))?;
+        let unavailable_response = misconfigured_app.oneshot(unavailable_request).await?;
+        assert_eq!(
+            unavailable_response.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        let unavailable_body = read_json(unavailable_response).await?;
+        assert_eq!(unavailable_body["error"]["code"], "khala_token_unavailable");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sync_token_route_accepts_personal_access_token_auth() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let session_token = authenticate_token(app.clone(), "sync-pat@openagents.com").await?;
+
+        let create_pat_request = Request::builder()
+            .method("POST")
+            .uri("/api/tokens")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {session_token}"))
+            .body(Body::from(r#"{"name":"sync-pat"}"#))?;
+        let create_pat_response = app.clone().oneshot(create_pat_request).await?;
+        assert_eq!(create_pat_response.status(), StatusCode::CREATED);
+        let create_pat_body = read_json(create_pat_response).await?;
+        let pat_token = create_pat_body["data"]["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let sync_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {pat_token}"))
+            .body(Body::from(
+                r#"{"scopes":["runtime.codex_worker_events"],"device_id":"mobile:custom"}"#,
+            ))?;
+        let sync_response = app.oneshot(sync_request).await?;
+        assert_eq!(sync_response.status(), StatusCode::OK);
+        let sync_body = read_json(sync_response).await?;
+        assert_eq!(sync_body["data"]["token_type"], "Bearer");
+        assert!(
+            sync_body["data"]["session_id"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("pat:")
+        );
 
         Ok(())
     }

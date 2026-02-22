@@ -10,6 +10,10 @@ pub const ROUTE_AUTH_SESSIONS: &str = "/api/auth/sessions";
 pub const ROUTE_AUTH_SESSIONS_REVOKE: &str = "/api/auth/sessions/revoke";
 pub const ROUTE_AUTH_LOGOUT: &str = "/api/auth/logout";
 pub const ROUTE_ME: &str = "/api/me";
+pub const ROUTE_TOKENS: &str = "/api/tokens";
+pub const ROUTE_TOKENS_CURRENT: &str = "/api/tokens/current";
+pub const ROUTE_TOKENS_BY_ID: &str = "/api/tokens/:token_id";
+pub const ROUTE_KHALA_TOKEN: &str = "/api/khala/token";
 pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
@@ -140,13 +144,85 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         method: "get",
         route_path: ROUTE_ME,
         operation_id: "me",
-        summary: "Read authenticated user profile and memberships.",
+        summary: "Read authenticated user profile and chat thread summaries.",
         tag: "identity",
         secured: true,
         deprecated: false,
         success_status: "200",
         request_example: None,
         response_example: Some("me"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_TOKENS,
+        operation_id: "tokensList",
+        summary: "List personal access tokens for the authenticated user.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("tokens_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_TOKENS,
+        operation_id: "tokensCreate",
+        summary: "Create a personal access token and return the plaintext token once.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("tokens_create"),
+        response_example: Some("tokens_create"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_TOKENS_CURRENT,
+        operation_id: "tokensDestroyCurrent",
+        summary: "Revoke the current bearer personal access token.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("tokens_delete_current"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_TOKENS_BY_ID,
+        operation_id: "tokensDestroy",
+        summary: "Revoke a specific personal access token by id.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("tokens_delete"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_TOKENS,
+        operation_id: "tokensDestroyAll",
+        summary: "Revoke all personal access tokens for the authenticated user.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("tokens_delete_all"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_KHALA_TOKEN,
+        operation_id: "khalaToken",
+        summary: "Issue a short-lived Khala identity token.",
+        tag: "auth",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("khala_token"),
+        response_example: Some("khala_token"),
     },
     OpenApiContract {
         method: "get",
@@ -555,6 +631,16 @@ fn request_example(key: &str) -> Option<Value> {
             "include_current": false,
             "reason": "security_policy"
         })),
+        "tokens_create" => Some(json!({
+            "name": "api-cli",
+            "abilities": ["chat:read", "chat:write"],
+            "expires_at": "2026-03-01T00:00:00Z"
+        })),
+        "khala_token" => Some(json!({
+            "scope": ["codex:read", "codex:write"],
+            "workspace_id": "workspace_42",
+            "role": "admin"
+        })),
         "orgs_active" => Some(json!({ "org_id": "org:openagents" })),
         "policy_authorize" => Some(json!({
             "org_id": "org:openagents",
@@ -659,9 +745,75 @@ fn response_example(key: &str) -> Option<Value> {
         })),
         "me" => Some(json!({
             "data": {
-                "id": "usr_123",
-                "email": "user@openagents.com",
-                "memberships": []
+                "user": {
+                    "id": "usr_123",
+                    "name": "OpenAgents User",
+                    "email": "user@openagents.com",
+                    "avatar": "",
+                    "createdAt": null,
+                    "updatedAt": null
+                },
+                "chatThreads": [
+                    {
+                        "id": "thread-1",
+                        "title": "Thread thread-1",
+                        "updatedAt": "2026-02-22T00:00:00Z"
+                    }
+                ]
+            }
+        })),
+        "tokens_list" => Some(json!({
+            "data": [
+                {
+                    "id": "pat_123",
+                    "name": "api-cli",
+                    "abilities": ["chat:read", "chat:write"],
+                    "lastUsedAt": "2026-02-22T00:00:00Z",
+                    "expiresAt": "2026-03-01T00:00:00Z",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "isCurrent": true
+                }
+            ]
+        })),
+        "tokens_create" => Some(json!({
+            "data": {
+                "token": "oa_pat_123",
+                "tokenableId": "user_123",
+                "name": "api-cli",
+                "abilities": ["chat:read", "chat:write"],
+                "expiresAt": "2026-03-01T00:00:00Z"
+            }
+        })),
+        "tokens_delete_current" => Some(json!({
+            "data": {
+                "deleted": true
+            }
+        })),
+        "tokens_delete" => Some(json!({
+            "data": {
+                "deleted": true
+            }
+        })),
+        "tokens_delete_all" => Some(json!({
+            "data": {
+                "deletedCount": 2
+            }
+        })),
+        "khala_token" => Some(json!({
+            "data": {
+                "token": "eyJ...",
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "issued_at": "2026-02-22T00:00:00Z",
+                "expires_at": "2026-02-22T00:05:00Z",
+                "issuer": "https://openagents.test",
+                "audience": "openagents-khala-test",
+                "subject": "user:user_123",
+                "claims_version": "oa_khala_claims_v1",
+                "scope": ["codex:read", "codex:write"],
+                "workspace_id": "workspace_42",
+                "role": "admin",
+                "kid": "khala-auth-test-v1"
             }
         })),
         "org_memberships" => Some(json!({
@@ -682,8 +834,8 @@ fn response_example(key: &str) -> Option<Value> {
         "sync_token" => Some(json!({
             "data": {
                 "token": "eyJ...",
-                "tokenType": "Bearer",
-                "expiresAt": "2026-02-22T00:00:00Z"
+                "token_type": "Bearer",
+                "expires_at": "2026-02-22T00:00:00Z"
             }
         })),
         "thread_message" => Some(json!({

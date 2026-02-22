@@ -20,6 +20,15 @@ const DEFAULT_AUTH_API_SIGNUP_ENABLED: bool = false;
 const DEFAULT_AUTH_API_SIGNUP_ALLOWED_DOMAINS: &str = "";
 const DEFAULT_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME: &str = "api-bootstrap";
 const DEFAULT_ADMIN_EMAILS: &str = "";
+const DEFAULT_KHALA_TOKEN_ENABLED: bool = true;
+const DEFAULT_KHALA_TOKEN_ISSUER: &str = "https://openagents.com";
+const DEFAULT_KHALA_TOKEN_AUDIENCE: &str = "openagents-khala";
+const DEFAULT_KHALA_TOKEN_SUBJECT_PREFIX: &str = "user";
+const DEFAULT_KHALA_TOKEN_KEY_ID: &str = "khala-auth-v1";
+const DEFAULT_KHALA_TOKEN_CLAIMS_VERSION: &str = "oa_khala_claims_v1";
+const DEFAULT_KHALA_TOKEN_TTL_SECONDS: u32 = 300;
+const DEFAULT_KHALA_TOKEN_MIN_TTL_SECONDS: u32 = 60;
+const DEFAULT_KHALA_TOKEN_MAX_TTL_SECONDS: u32 = 900;
 const DEFAULT_SYNC_TOKEN_ISSUER: &str = "https://openagents.com";
 const DEFAULT_SYNC_TOKEN_AUDIENCE: &str = "openagents-sync";
 const DEFAULT_SYNC_TOKEN_KEY_ID: &str = "sync-auth-v1";
@@ -65,6 +74,16 @@ pub struct Config {
     pub auth_api_signup_allowed_domains: Vec<String>,
     pub auth_api_signup_default_token_name: String,
     pub admin_emails: Vec<String>,
+    pub khala_token_enabled: bool,
+    pub khala_token_signing_key: Option<String>,
+    pub khala_token_issuer: String,
+    pub khala_token_audience: String,
+    pub khala_token_subject_prefix: String,
+    pub khala_token_key_id: String,
+    pub khala_token_claims_version: String,
+    pub khala_token_ttl_seconds: u32,
+    pub khala_token_min_ttl_seconds: u32,
+    pub khala_token_max_ttl_seconds: u32,
     pub auth_store_path: Option<PathBuf>,
     pub auth_challenge_ttl_seconds: u64,
     pub auth_access_ttl_seconds: u64,
@@ -224,6 +243,57 @@ impl Config {
         .into_iter()
         .map(|email| email.to_lowercase())
         .collect();
+
+        let khala_token_enabled = env::var("OA_KHALA_TOKEN_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_KHALA_TOKEN_ENABLED);
+
+        let khala_token_signing_key = env::var("OA_KHALA_TOKEN_SIGNING_KEY")
+            .ok()
+            .or_else(|| env::var("KHALA_TOKEN_SIGNING_KEY").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let khala_token_issuer = env::var("OA_KHALA_TOKEN_ISSUER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_KHALA_TOKEN_ISSUER.to_string());
+
+        let khala_token_audience = env::var("OA_KHALA_TOKEN_AUDIENCE")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_KHALA_TOKEN_AUDIENCE.to_string());
+
+        let khala_token_subject_prefix = env::var("OA_KHALA_TOKEN_SUBJECT_PREFIX")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_KHALA_TOKEN_SUBJECT_PREFIX.to_string());
+
+        let khala_token_key_id = env::var("OA_KHALA_TOKEN_KEY_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_KHALA_TOKEN_KEY_ID.to_string());
+
+        let khala_token_claims_version = env::var("OA_KHALA_TOKEN_CLAIMS_VERSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_KHALA_TOKEN_CLAIMS_VERSION.to_string());
+
+        let khala_token_ttl_seconds = env::var("OA_KHALA_TOKEN_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_KHALA_TOKEN_TTL_SECONDS);
+
+        let khala_token_min_ttl_seconds = env::var("OA_KHALA_TOKEN_MIN_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_KHALA_TOKEN_MIN_TTL_SECONDS);
+
+        let khala_token_max_ttl_seconds = env::var("OA_KHALA_TOKEN_MAX_TTL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_KHALA_TOKEN_MAX_TTL_SECONDS);
 
         let auth_store_path = env::var("OA_AUTH_STORE_PATH")
             .ok()
@@ -470,6 +540,16 @@ impl Config {
             auth_api_signup_allowed_domains,
             auth_api_signup_default_token_name,
             admin_emails,
+            khala_token_enabled,
+            khala_token_signing_key,
+            khala_token_issuer,
+            khala_token_audience,
+            khala_token_subject_prefix,
+            khala_token_key_id,
+            khala_token_claims_version,
+            khala_token_ttl_seconds,
+            khala_token_min_ttl_seconds,
+            khala_token_max_ttl_seconds,
             auth_store_path,
             auth_challenge_ttl_seconds,
             auth_access_ttl_seconds,

@@ -311,6 +311,7 @@ struct PersonalAccessTokenRecord {
     token: String,
     scopes: Vec<String>,
     created_at: DateTime<Utc>,
+    last_used_at: Option<DateTime<Utc>>,
     expires_at: Option<DateTime<Utc>>,
     revoked_at: Option<DateTime<Utc>>,
 }
@@ -321,6 +322,7 @@ pub struct PersonalAccessTokenView {
     pub name: String,
     pub scopes: Vec<String>,
     pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
@@ -665,6 +667,119 @@ impl AuthService {
             },
             memberships: user.memberships,
         })
+    }
+
+    pub async fn session_or_pat_from_access_token(
+        &self,
+        access_token: &str,
+    ) -> Result<SessionBundle, AuthError> {
+        if let Ok(session_bundle) = self.session_from_access_token(access_token).await {
+            return Ok(session_bundle);
+        }
+
+        let (bundle, snapshot) = {
+            let mut state = self.state.write().await;
+            let now = Utc::now();
+
+            let (token_id, token_name, token_created_at, token_expires_at, user_id) = {
+                let token = state
+                    .personal_access_tokens
+                    .values_mut()
+                    .find(|record| record.token == access_token)
+                    .ok_or_else(|| AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    })?;
+
+                if token.revoked_at.is_some() {
+                    return Err(AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    });
+                }
+
+                if token
+                    .expires_at
+                    .map(|expires_at| expires_at <= now)
+                    .unwrap_or(false)
+                {
+                    return Err(AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    });
+                }
+
+                token.last_used_at = Some(now);
+
+                (
+                    token.token_id.clone(),
+                    token.name.clone(),
+                    token.created_at,
+                    token.expires_at.unwrap_or(now + self.refresh_ttl),
+                    token.user_id.clone(),
+                )
+            };
+
+            let (user, memberships) = {
+                let existing = state.users_by_id.get(&user_id).cloned().ok_or_else(|| {
+                    AuthError::Unauthorized {
+                        message: "Unauthenticated.".to_string(),
+                    }
+                })?;
+
+                let memberships = ensure_default_memberships(
+                    &existing.id,
+                    &existing.email,
+                    existing.memberships.clone(),
+                );
+                if memberships != existing.memberships {
+                    if let Some(record) = state.users_by_id.get_mut(&user_id) {
+                        record.memberships = memberships.clone();
+                    }
+                }
+
+                (existing, memberships)
+            };
+
+            let active_org_id = memberships
+                .iter()
+                .find(|membership| membership.default_org)
+                .map(|membership| membership.org_id.clone())
+                .or_else(|| {
+                    memberships
+                        .first()
+                        .map(|membership| membership.org_id.clone())
+                })
+                .unwrap_or_else(|| format!("user:{}", user.id));
+
+            let bundle = SessionBundle {
+                session: SessionView {
+                    session_id: format!("pat:{token_id}"),
+                    user_id: user.id.clone(),
+                    email: user.email.clone(),
+                    device_id: format!("pat:{token_id}"),
+                    token_name,
+                    active_org_id,
+                    issued_at: token_created_at,
+                    access_expires_at: token_expires_at,
+                    refresh_expires_at: token_expires_at,
+                    status: SessionStatus::Active,
+                    reauth_required: false,
+                    last_refreshed_at: None,
+                    revoked_at: None,
+                    revoked_reason: None,
+                },
+                user: AuthUser {
+                    id: user.id.clone(),
+                    email: user.email.clone(),
+                    name: user.name.clone(),
+                    workos_user_id: user.workos_user_id.clone(),
+                },
+                memberships,
+            };
+
+            (bundle, state.clone())
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(bundle)
     }
 
     pub async fn refresh_session(
@@ -1344,6 +1459,7 @@ impl AuthService {
             token: plain_text_token.clone(),
             scopes: normalized_scopes.clone(),
             created_at: now,
+            last_used_at: None,
             expires_at,
             revoked_at: None,
         };
@@ -1404,12 +1520,63 @@ impl AuthService {
         Ok(true)
     }
 
+    pub async fn revoke_all_personal_access_tokens(
+        &self,
+        user_id: &str,
+    ) -> Result<usize, AuthError> {
+        let now = Utc::now();
+        let (deleted_count, snapshot) = {
+            let mut state = self.state.write().await;
+            if !state.users_by_id.contains_key(user_id) {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+
+            let mut deleted_count = 0usize;
+            for token in state.personal_access_tokens.values_mut() {
+                if token.user_id == user_id && token.revoked_at.is_none() {
+                    token.revoked_at = Some(now);
+                    deleted_count = deleted_count.saturating_add(1);
+                }
+            }
+
+            (deleted_count, state.clone())
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+        Ok(deleted_count)
+    }
+
+    pub async fn current_personal_access_token_id(
+        &self,
+        user_id: &str,
+        plain_text_token: &str,
+    ) -> Option<String> {
+        let now = Utc::now();
+        let state = self.state.read().await;
+
+        state
+            .personal_access_tokens
+            .values()
+            .find(|record| {
+                record.user_id == user_id
+                    && record.token == plain_text_token
+                    && record.revoked_at.is_none()
+                    && record
+                        .expires_at
+                        .map(|expires_at| expires_at > now)
+                        .unwrap_or(true)
+            })
+            .map(|record| record.token_id.clone())
+    }
+
     pub async fn evaluate_policy_by_access_token(
         &self,
         access_token: &str,
         request: PolicyCheckRequest,
     ) -> Result<PolicyDecision, AuthError> {
-        let bundle = self.session_from_access_token(access_token).await?;
+        let bundle = self.session_or_pat_from_access_token(access_token).await?;
         let resolved_org_id = request
             .org_id
             .and_then(|value| non_empty(value.trim().to_string()))
@@ -1534,6 +1701,7 @@ impl PersonalAccessTokenView {
             name: record.name.clone(),
             scopes: record.scopes.clone(),
             created_at: record.created_at,
+            last_used_at: record.last_used_at,
             expires_at: record.expires_at,
             revoked_at: record.revoked_at,
         }
@@ -2286,6 +2454,16 @@ mod tests {
             auth_api_signup_allowed_domains: vec![],
             auth_api_signup_default_token_name: "api-bootstrap".to_string(),
             admin_emails: vec![],
+            khala_token_enabled: true,
+            khala_token_signing_key: Some("khala-test-signing-key".to_string()),
+            khala_token_issuer: "https://openagents.test".to_string(),
+            khala_token_audience: "openagents-khala-test".to_string(),
+            khala_token_subject_prefix: "user".to_string(),
+            khala_token_key_id: "khala-auth-test-v1".to_string(),
+            khala_token_claims_version: "oa_khala_claims_v1".to_string(),
+            khala_token_ttl_seconds: 300,
+            khala_token_min_ttl_seconds: 60,
+            khala_token_max_ttl_seconds: 900,
             auth_store_path: store_path,
             auth_challenge_ttl_seconds: 600,
             auth_access_ttl_seconds: 3600,

@@ -17,6 +17,7 @@ pub enum ApiErrorCode {
     InvalidScope,
     ServiceUnavailable,
     SyncTokenUnavailable,
+    KhalaTokenUnavailable,
     StaticAssetError,
     LegacyRouteUnavailable,
     InternalError,
@@ -34,6 +35,7 @@ impl ApiErrorCode {
             Self::InvalidScope => "invalid_scope",
             Self::ServiceUnavailable => "service_unavailable",
             Self::SyncTokenUnavailable => "sync_token_unavailable",
+            Self::KhalaTokenUnavailable => "khala_token_unavailable",
             Self::StaticAssetError => "static_asset_error",
             Self::LegacyRouteUnavailable => "legacy_route_unavailable",
             Self::InternalError => "internal_error",
@@ -51,6 +53,7 @@ impl ApiErrorCode {
             Self::InvalidScope => StatusCode::UNPROCESSABLE_ENTITY,
             Self::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::SyncTokenUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Self::KhalaTokenUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::StaticAssetError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::LegacyRouteUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
@@ -152,7 +155,7 @@ pub struct ApiErrorMatrixEntry {
     pub laravel_equivalent: &'static str,
 }
 
-const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 12] = [
+const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 13] = [
     ApiErrorMatrixEntry {
         code: "invalid_request",
         status: 422,
@@ -197,6 +200,11 @@ const API_ERROR_MATRIX: [ApiErrorMatrixEntry; 12] = [
         code: "sync_token_unavailable",
         status: 503,
         laravel_equivalent: "sync_token_service_unavailable",
+    },
+    ApiErrorMatrixEntry {
+        code: "khala_token_unavailable",
+        status: 503,
+        laravel_equivalent: "khala_token_service_unavailable",
     },
     ApiErrorMatrixEntry {
         code: "static_asset_error",
