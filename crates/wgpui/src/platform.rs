@@ -838,6 +838,20 @@ pub mod ios {
         filter: MissionEventFilter,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MissionQuickAction {
+        Interrupt,
+        ThreadRead,
+        StopWorker,
+        RefreshSnapshot,
+    }
+
+    #[derive(Clone, Debug)]
+    struct MissionQuickActionTapRegion {
+        bounds: Bounds,
+        action: MissionQuickAction,
+    }
+
     #[derive(Clone, Debug)]
     struct MissionFoldedEventRow {
         anchor_event_id: u64,
@@ -896,6 +910,9 @@ pub mod ios {
         connect_stream_requested: bool,
         disconnect_stream_requested: bool,
         send_handshake_requested: bool,
+        thread_read_requested: bool,
+        stop_worker_requested: bool,
+        refresh_snapshot_requested: bool,
         mission_control_mode: bool,
         mission_route: MissionRoute,
         mission_filter: MissionEventFilter,
@@ -912,6 +929,7 @@ pub mod ios {
         mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion>,
         mission_event_tap_regions: Vec<MissionEventTapRegion>,
         mission_filter_tap_regions: Vec<MissionFilterTapRegion>,
+        mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion>,
         mission_back_tap_region: Option<Bounds>,
         mission_pin_toggle_tap_region: Option<Bounds>,
         mission_older_tap_region: Option<Bounds>,
@@ -1047,6 +1065,9 @@ pub mod ios {
                 connect_stream_requested: false,
                 disconnect_stream_requested: false,
                 send_handshake_requested: false,
+                thread_read_requested: false,
+                stop_worker_requested: false,
+                refresh_snapshot_requested: false,
                 mission_control_mode: true,
                 mission_route: MissionRoute::Overview,
                 mission_filter: MissionEventFilter::All,
@@ -1063,6 +1084,7 @@ pub mod ios {
                 mission_lane_mute_tap_regions: Vec::new(),
                 mission_event_tap_regions: Vec::new(),
                 mission_filter_tap_regions: Vec::new(),
+                mission_quick_action_tap_regions: Vec::new(),
                 mission_back_tap_region: None,
                 mission_pin_toggle_tap_region: None,
                 mission_older_tap_region: None,
@@ -1141,16 +1163,49 @@ pub mod ios {
                     panel.width() - 20.0,
                     status_height,
                 );
+                let mission_thread_detail = matches!(
+                    self.mission_route,
+                    MissionRoute::ThreadDetail { .. }
+                );
+                let mission_composer_reserved = if mission_thread_detail {
+                    COMPOSER_HEIGHT + CONTROL_GAP + 8.0
+                } else {
+                    0.0
+                };
+                let composer_y = panel.y() + panel.height() - COMPOSER_HEIGHT - 8.0;
+                let send_bounds = Bounds::new(
+                    status_bounds.x() + status_bounds.width() - SEND_BUTTON_WIDTH,
+                    composer_y,
+                    SEND_BUTTON_WIDTH,
+                    COMPOSER_HEIGHT,
+                );
+                let composer_bounds = Bounds::new(
+                    status_bounds.x(),
+                    composer_y,
+                    (status_bounds.width() - SEND_BUTTON_WIDTH - CONTROL_GAP).max(80.0),
+                    COMPOSER_HEIGHT,
+                );
                 let transcript_bounds = Bounds::new(
                     panel.x() + 10.0,
                     status_bounds.y() + status_bounds.height() + 8.0,
                     panel.width() - 20.0,
                     (panel.y() + panel.height()
                         - (status_bounds.y() + status_bounds.height())
+                        - mission_composer_reserved
                         - 18.0)
                         .max(80.0),
                 );
                 let zero = Bounds::new(0.0, 0.0, 0.0, 0.0);
+                if mission_thread_detail {
+                    return (
+                        transcript_bounds,
+                        status_bounds,
+                        zero,
+                        zero,
+                        composer_bounds,
+                        send_bounds,
+                    );
+                }
                 return (transcript_bounds, status_bounds, zero, zero, zero, zero);
             }
 
@@ -1423,6 +1478,16 @@ pub mod ios {
             }
 
             if self.mission_control_mode {
+                let mission_thread_detail = matches!(self.mission_route, MissionRoute::ThreadDetail { .. });
+                if mission_thread_detail && composer_bounds.contains(p) {
+                    self.active_input_target = InputTarget::Composer;
+                    return;
+                }
+                if mission_thread_detail && send_bounds.contains(p) {
+                    self.send_requested = true;
+                    self.active_input_target = InputTarget::None;
+                    return;
+                }
                 if let Some(bounds) = self.mission_back_tap_region {
                     if bounds.contains(p) {
                         self.mission_route = MissionRoute::Overview;
@@ -1452,6 +1517,28 @@ pub mod ios {
                         self.active_input_target = InputTarget::None;
                         return;
                     }
+                }
+                if let Some(region) = self
+                    .mission_quick_action_tap_regions
+                    .iter()
+                    .find(|region| region.bounds.contains(p))
+                {
+                    match region.action {
+                        MissionQuickAction::Interrupt => {
+                            self.interrupt_requested = true;
+                        }
+                        MissionQuickAction::ThreadRead => {
+                            self.thread_read_requested = true;
+                        }
+                        MissionQuickAction::StopWorker => {
+                            self.stop_worker_requested = true;
+                        }
+                        MissionQuickAction::RefreshSnapshot => {
+                            self.refresh_snapshot_requested = true;
+                        }
+                    }
+                    self.active_input_target = InputTarget::None;
+                    return;
                 }
                 if let Some(region) = self
                     .mission_filter_tap_regions
@@ -1665,6 +1752,7 @@ pub mod ios {
             self.mission_lane_mute_tap_regions.clear();
             self.mission_event_tap_regions.clear();
             self.mission_filter_tap_regions.clear();
+            self.mission_quick_action_tap_regions.clear();
             self.mission_back_tap_region = None;
             self.mission_pin_toggle_tap_region = None;
             self.mission_older_tap_region = None;
@@ -2030,6 +2118,24 @@ pub mod ios {
         pub fn consume_send_handshake_requested(&mut self) -> bool {
             let requested = self.send_handshake_requested;
             self.send_handshake_requested = false;
+            requested
+        }
+
+        pub fn consume_thread_read_requested(&mut self) -> bool {
+            let requested = self.thread_read_requested;
+            self.thread_read_requested = false;
+            requested
+        }
+
+        pub fn consume_stop_worker_requested(&mut self) -> bool {
+            let requested = self.stop_worker_requested;
+            self.stop_worker_requested = false;
+            requested
+        }
+
+        pub fn consume_refresh_snapshot_requested(&mut self) -> bool {
+            let requested = self.refresh_snapshot_requested;
+            self.refresh_snapshot_requested = false;
             requested
         }
 
@@ -2428,6 +2534,8 @@ pub mod ios {
             let mut mission_lane_mute_tap_regions: Vec<MissionLaneMuteTapRegion> = Vec::new();
             let mut mission_event_tap_regions: Vec<MissionEventTapRegion> = Vec::new();
             let mut mission_filter_tap_regions: Vec<MissionFilterTapRegion> = Vec::new();
+            let mut mission_quick_action_tap_regions: Vec<MissionQuickActionTapRegion> =
+                Vec::new();
             let mut mission_back_tap_region: Option<Bounds> = None;
             let mut mission_pin_toggle_tap_region: Option<Bounds> = None;
             let mut mission_older_tap_region: Option<Bounds> = None;
@@ -2597,11 +2705,35 @@ pub mod ios {
                     mission_older_tap_region = Some(older_bounds);
                 }
 
-                match mission_route {
+                match &mission_route {
                     MissionRoute::Overview => {
                         let mut workers = mission_workers.clone();
                         workers.sort_by(|lhs, rhs| lhs.worker_id.cmp(&rhs.worker_id));
-                        let mut worker_card_y = transcript_bounds.y() + 8.0;
+                        let action_row_y = transcript_bounds.y() + 8.0;
+                        let action_height = 24.0;
+                        let action_gap = 6.0;
+                        let action_width = ((transcript_bounds.width() - 16.0
+                            - action_gap * 3.0)
+                            / 4.0)
+                            .max(66.0);
+                        let mut action_x = transcript_bounds.x() + 8.0;
+                        let overview_actions = [
+                            ("Interrupt", MissionQuickAction::Interrupt),
+                            ("Thread Read", MissionQuickAction::ThreadRead),
+                            ("Stop Worker", MissionQuickAction::StopWorker),
+                            ("Refresh", MissionQuickAction::RefreshSnapshot),
+                        ];
+                        for (label, action) in overview_actions {
+                            let bounds =
+                                Bounds::new(action_x, action_row_y, action_width, action_height);
+                            let mut button = Button::new(label).variant(ButtonVariant::Secondary);
+                            button.paint(bounds, &mut paint);
+                            mission_quick_action_tap_regions
+                                .push(MissionQuickActionTapRegion { bounds, action });
+                            action_x += action_width + action_gap;
+                        }
+
+                        let mut worker_card_y = action_row_y + action_height + 8.0;
                         let worker_card_width = transcript_bounds.width() - 16.0;
                         let max_worker_cards = (((transcript_bounds.height() * 0.32)
                             / (MISSION_WORKER_CARD_HEIGHT + 6.0))
@@ -2752,13 +2884,19 @@ pub mod ios {
                                     .seq
                                     .map(|seq| seq.to_string())
                                     .unwrap_or_else(|| "n/a".to_string());
+                                let request_state = mission_requests
+                                    .iter()
+                                    .find(|request| request.request_id == event.request_id)
+                                    .map(|request| request.state.clone())
+                                    .unwrap_or_else(|| "n/a".to_string());
                                 let mut row_meta = Text::new(format!(
-                                    "#{} {} | {} | seq={} | req={}",
+                                    "#{} {} | {} | seq={} | req={} [{}]",
                                     event.anchor_event_id,
                                     event.worker_id,
                                     event.topic,
                                     seq_label,
-                                    event.request_id
+                                    event.request_id,
+                                    request_state
                                 ))
                                 .font_size(10.8)
                                 .color(theme::text::MUTED)
@@ -2808,7 +2946,7 @@ pub mod ios {
                     MissionRoute::WorkerDetail { worker_id } => {
                         let worker = mission_workers
                             .iter()
-                            .find(|candidate| candidate.worker_id == worker_id);
+                            .find(|candidate| candidate.worker_id == *worker_id);
                         let detail_bounds = transcript_bounds.inset(8.0);
                         let mut worker_header = Text::new(format!(
                             "{} | status={} hb={} rec={} last={}",
@@ -2858,10 +2996,32 @@ pub mod ios {
                             &mut paint,
                         );
 
-                        let mut row_y = detail_bounds.y() + 38.0;
+                        let action_row_y = detail_bounds.y() + 34.0;
+                        let action_height = 24.0;
+                        let action_gap = 6.0;
+                        let action_width = ((detail_bounds.width() - action_gap * 3.0) / 4.0)
+                            .max(66.0);
+                        let mut action_x = detail_bounds.x();
+                        let worker_actions = [
+                            ("Interrupt", MissionQuickAction::Interrupt),
+                            ("Thread Read", MissionQuickAction::ThreadRead),
+                            ("Stop Worker", MissionQuickAction::StopWorker),
+                            ("Refresh", MissionQuickAction::RefreshSnapshot),
+                        ];
+                        for (label, action) in worker_actions {
+                            let bounds =
+                                Bounds::new(action_x, action_row_y, action_width, action_height);
+                            let mut button = Button::new(label).variant(ButtonVariant::Secondary);
+                            button.paint(bounds, &mut paint);
+                            mission_quick_action_tap_regions
+                                .push(MissionQuickActionTapRegion { bounds, action });
+                            action_x += action_width + action_gap;
+                        }
+
+                        let mut row_y = action_row_y + action_height + 8.0;
                         let mut thread_rows = mission_threads
                             .iter()
-                            .filter(|thread| thread.worker_id == worker_id)
+                            .filter(|thread| thread.worker_id == *worker_id)
                             .cloned()
                             .collect::<Vec<_>>();
                         thread_rows.sort_by(|lhs, rhs| lhs.thread_id.cmp(&rhs.thread_id));
@@ -2951,7 +3111,7 @@ pub mod ios {
 
                         let mut request_lines = mission_requests
                             .iter()
-                            .filter(|request| request.worker_id == worker_id)
+                            .filter(|request| request.worker_id == *worker_id)
                             .cloned()
                             .collect::<Vec<_>>();
                         request_lines.sort_by(|lhs, rhs| rhs.occurred_at.cmp(&lhs.occurred_at));
@@ -2977,6 +3137,11 @@ pub mod ios {
                             } else {
                                 " resp"
                             };
+                            let receipt_color = if request.state == "error" {
+                                theme::status::ERROR.with_alpha(0.9)
+                            } else {
+                                theme::text::MUTED
+                            };
                             let mut receipt = Text::new(format!(
                                 "{} {} [{}] thread={}{}",
                                 request.method,
@@ -2986,13 +3151,31 @@ pub mod ios {
                                 response_suffix
                             ))
                             .font_size(10.6)
-                            .color(theme::text::MUTED)
+                            .color(receipt_color)
                             .no_wrap();
                             receipt.paint(
                                 Bounds::new(detail_bounds.x(), row_y, detail_bounds.width(), 13.0),
                                 &mut paint,
                             );
                             row_y += 13.0;
+                            if request.state == "error" {
+                                let mut error_line = Text::new(format!(
+                                    "code={} retryable={} {}",
+                                    request.error_code, request.retryable, request.error_message
+                                ))
+                                .font_size(10.2)
+                                .color(theme::status::ERROR.with_alpha(0.85));
+                                error_line.paint(
+                                    Bounds::new(
+                                        detail_bounds.x(),
+                                        row_y,
+                                        detail_bounds.width(),
+                                        12.0,
+                                    ),
+                                    &mut paint,
+                                );
+                                row_y += 12.0;
+                            }
                         }
                     }
                     MissionRoute::ThreadDetail {
@@ -3014,10 +3197,84 @@ pub mod ios {
                             &mut paint,
                         );
 
+                        let action_row_y = detail_bounds.y() + 20.0;
+                        let action_height = 24.0;
+                        let action_gap = 6.0;
+                        let action_width =
+                            ((detail_bounds.width() - action_gap * 2.0) / 3.0).max(74.0);
+                        let mut action_x = detail_bounds.x();
+                        let thread_actions = [
+                            ("Interrupt", MissionQuickAction::Interrupt),
+                            ("Thread Read", MissionQuickAction::ThreadRead),
+                            ("Refresh", MissionQuickAction::RefreshSnapshot),
+                        ];
+                        for (label, action) in thread_actions {
+                            let bounds =
+                                Bounds::new(action_x, action_row_y, action_width, action_height);
+                            let mut button = Button::new(label).variant(ButtonVariant::Secondary);
+                            button.paint(bounds, &mut paint);
+                            mission_quick_action_tap_regions
+                                .push(MissionQuickActionTapRegion { bounds, action });
+                            action_x += action_width + action_gap;
+                        }
+
+                        let mut timeline_top_y = action_row_y + action_height + 8.0;
+                        let mut thread_requests = mission_requests
+                            .iter()
+                            .filter(|request| {
+                                request.worker_id == *worker_id
+                                    && request.thread_id == *thread_id
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        thread_requests
+                            .sort_by(|lhs, rhs| rhs.occurred_at.cmp(&lhs.occurred_at));
+                        if !thread_requests.is_empty() {
+                            let mut chip_x = detail_bounds.x();
+                            for request in thread_requests.iter().take(3) {
+                                let chip_width = (request.method.chars().count() as f32 * 6.6
+                                    + request.state.chars().count() as f32 * 6.0
+                                    + 40.0)
+                                    .clamp(90.0, detail_bounds.width() * 0.46);
+                                let chip_bounds =
+                                    Bounds::new(chip_x, timeline_top_y, chip_width, 18.0);
+                                let chip_bg = if request.state == "error" {
+                                    theme::status::ERROR.with_alpha(0.24)
+                                } else {
+                                    theme::bg::MUTED.with_alpha(0.42)
+                                };
+                                paint.scene.draw_quad(
+                                    Quad::new(chip_bounds)
+                                        .with_background(chip_bg)
+                                        .with_border(theme::border::DEFAULT.with_alpha(0.65), 1.0)
+                                        .with_corner_radius(8.0),
+                                );
+                                let mut chip_text =
+                                    Text::new(format!("{} [{}]", request.method, request.state))
+                                        .font_size(10.2)
+                                        .color(theme::text::PRIMARY)
+                                        .no_wrap();
+                                chip_text.paint(
+                                    Bounds::new(
+                                        chip_bounds.x() + 6.0,
+                                        chip_bounds.y() + 2.5,
+                                        chip_bounds.width() - 10.0,
+                                        14.0,
+                                    ),
+                                    &mut paint,
+                                );
+                                chip_x += chip_width + 6.0;
+                                if chip_x > detail_bounds.x() + detail_bounds.width() - 96.0 {
+                                    break;
+                                }
+                            }
+                            timeline_top_y += 22.0;
+                        }
+
                         let mut rows = mission_timeline_entries
                             .iter()
                             .filter(|entry| {
-                                entry.worker_id == worker_id && entry.thread_id == thread_id
+                                entry.worker_id == *worker_id && entry.thread_id == *thread_id
                             })
                             .cloned()
                             .collect::<Vec<_>>();
@@ -3029,18 +3286,20 @@ pub mod ios {
                             empty.paint(
                                 Bounds::new(
                                     detail_bounds.x(),
-                                    detail_bounds.y() + 20.0,
+                                    timeline_top_y,
                                     detail_bounds.width(),
                                     15.0,
                                 ),
                                 &mut paint,
                             );
                         } else {
-                            let max_rows =
-                                ((detail_bounds.height() - 24.0) / 24.0).floor() as usize;
+                            let available_height =
+                                (detail_bounds.y() + detail_bounds.height() - timeline_top_y)
+                                    .max(24.0);
+                            let max_rows = (available_height / 24.0).floor() as usize;
                             let start = rows.len().saturating_sub(max_rows.max(1));
                             rows = rows[start..].to_vec();
-                            let mut row_y = detail_bounds.y() + 20.0;
+                            let mut row_y = timeline_top_y;
                             for entry in rows {
                                 let streaming = if entry.is_streaming { " streaming" } else { "" };
                                 let meta = format!(
@@ -3068,7 +3327,9 @@ pub mod ios {
                     }
                     MissionRoute::EventInspector { event_id } => {
                         let detail_bounds = transcript_bounds.inset(8.0);
-                        if let Some(event) = mission_events.iter().find(|item| item.id == event_id)
+                        if let Some(event) = mission_events
+                            .iter()
+                            .find(|item| item.id == *event_id)
                         {
                             let seq_label = event
                                 .seq
@@ -3153,6 +3414,16 @@ pub mod ios {
                             );
                         }
                     }
+                }
+
+                if matches!(mission_route, MissionRoute::ThreadDetail { .. }) {
+                    let mut composer = TextInput::new().placeholder("Message Codex");
+                    composer.set_value(&composer_text);
+                    composer.set_focused(active_input_target == InputTarget::Composer);
+                    composer.paint(composer_bounds, &mut paint);
+
+                    let mut send = Button::new("Send").variant(ButtonVariant::Primary);
+                    send.paint(send_bounds, &mut paint);
                 }
             } else {
                 Self::render_messages(
@@ -3249,6 +3520,7 @@ pub mod ios {
                 self.mission_lane_mute_tap_regions = mission_lane_mute_tap_regions;
                 self.mission_event_tap_regions = mission_event_tap_regions;
                 self.mission_filter_tap_regions = mission_filter_tap_regions;
+                self.mission_quick_action_tap_regions = mission_quick_action_tap_regions;
                 self.mission_back_tap_region = mission_back_tap_region;
                 self.mission_pin_toggle_tap_region = mission_pin_toggle_tap_region;
                 self.mission_older_tap_region = mission_older_tap_region;
@@ -3260,6 +3532,7 @@ pub mod ios {
                 self.mission_lane_mute_tap_regions.clear();
                 self.mission_event_tap_regions.clear();
                 self.mission_filter_tap_regions.clear();
+                self.mission_quick_action_tap_regions.clear();
                 self.mission_back_tap_region = None;
                 self.mission_pin_toggle_tap_region = None;
                 self.mission_older_tap_region = None;
@@ -4530,6 +4803,51 @@ pub mod ios {
         }
         let state = unsafe { &mut *state };
         if state.consume_send_handshake_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_thread_read_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_thread_read_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_stop_worker_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_stop_worker_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_refresh_snapshot_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_refresh_snapshot_requested() {
             1
         } else {
             0

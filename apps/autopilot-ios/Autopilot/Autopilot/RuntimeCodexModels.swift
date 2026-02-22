@@ -907,6 +907,11 @@ final class RuntimeMissionControlStore {
             response: tracker.response
         )
 
+        return upsertRequestState(request)
+    }
+
+    @discardableResult
+    func upsertRequestState(_ request: RuntimeMissionControlRequestState) -> RuntimeMissionControlProjection {
         return apply(
             Command(
                 op: "upsert_request",

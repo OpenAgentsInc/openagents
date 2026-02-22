@@ -25,6 +25,9 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     var onConnectStreamRequested: (() -> Void)?
     var onDisconnectStreamRequested: (() -> Void)?
     var onSendHandshakeRequested: (() -> Void)?
+    var onThreadReadRequested: (() -> Void)?
+    var onStopWorkerRequested: (() -> Void)?
+    var onRefreshSnapshotRequested: (() -> Void)?
 
     private var statePtr: UnsafeMutableRawPointer?
     private var displayLink: CADisplayLink?
@@ -441,6 +444,15 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         if WgpuiBackgroundBridge.consumeSendHandshakeRequested(state: statePtr) {
             onSendHandshakeRequested?()
         }
+        if WgpuiBackgroundBridge.consumeThreadReadRequested(state: statePtr) {
+            onThreadReadRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeStopWorkerRequested(state: statePtr) {
+            onStopWorkerRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeRefreshSnapshotRequested(state: statePtr) {
+            onRefreshSnapshotRequested?()
+        }
 
         let target = WgpuiBackgroundBridge.activeInputTarget(state: statePtr)
         if target == .none {
@@ -829,6 +841,18 @@ struct WgpuiBackgroundView: View {
                 guard let model else { return }
                 Task { await model.sendHandshake() }
             }
+            view.onThreadReadRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.readActiveThread() }
+            }
+            view.onStopWorkerRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.stopSelectedWorker() }
+            }
+            view.onRefreshSnapshotRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.refreshSelectedWorkerSnapshot() }
+            }
             return view
         }
 
@@ -841,6 +865,18 @@ struct WgpuiBackgroundView: View {
             }
             uiView.onAuthCodeChanged = { [weak model] text in
                 model?.verificationCode = text
+            }
+            uiView.onThreadReadRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.readActiveThread() }
+            }
+            uiView.onStopWorkerRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.stopSelectedWorker() }
+            }
+            uiView.onRefreshSnapshotRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.refreshSelectedWorkerSnapshot() }
             }
             uiView.sync(model: model)
         }

@@ -287,6 +287,15 @@ private func wgpui_ios_background_consume_disconnect_stream_requested(_ state: U
 @_silgen_name("wgpui_ios_background_consume_send_handshake_requested")
 private func wgpui_ios_background_consume_send_handshake_requested(_ state: UnsafeMutableRawPointer?) -> Int32
 
+@_silgen_name("wgpui_ios_background_consume_thread_read_requested")
+private func wgpui_ios_background_consume_thread_read_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_stop_worker_requested")
+private func wgpui_ios_background_consume_stop_worker_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("wgpui_ios_background_consume_refresh_snapshot_requested")
+private func wgpui_ios_background_consume_refresh_snapshot_requested(_ state: UnsafeMutableRawPointer?) -> Int32
+
 // Backward-compatible alias symbols.
 @_silgen_name("wgpui_ios_background_login_submit_requested")
 private func wgpui_ios_background_login_submit_requested(_ state: UnsafeMutableRawPointer?) -> Int32
@@ -802,6 +811,18 @@ enum WgpuiBackgroundBridge {
 
     static func consumeSendHandshakeRequested(state: UnsafeMutableRawPointer?) -> Bool {
         wgpui_ios_background_consume_send_handshake_requested(state) != 0
+    }
+
+    static func consumeThreadReadRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_thread_read_requested(state) != 0
+    }
+
+    static func consumeStopWorkerRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_stop_worker_requested(state) != 0
+    }
+
+    static func consumeRefreshSnapshotRequested(state: UnsafeMutableRawPointer?) -> Bool {
+        wgpui_ios_background_consume_refresh_snapshot_requested(state) != 0
     }
 
     // Compatibility wrappers (legacy login naming).

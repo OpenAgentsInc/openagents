@@ -712,14 +712,18 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func interruptActiveTurn() async {
-        guard let threadID = activeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !threadID.isEmpty else {
+        let targetWorkerID = missionTargetWorkerID()
+        let resolvedThreadID = resolvedMissionThreadID(preferredWorkerID: targetWorkerID)
+        guard let threadID = resolvedThreadID else {
             errorMessage = "No active thread selected."
             return
         }
 
-        guard let turnID = activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !turnID.isEmpty else {
+        let resolvedTurnID = resolvedMissionTurnID(
+            workerID: targetWorkerID,
+            threadID: threadID
+        )
+        guard let turnID = resolvedTurnID else {
             errorMessage = "No active turn to interrupt."
             return
         }
@@ -730,11 +734,212 @@ final class CodexHandshakeViewModel: ObservableObject {
                 "thread_id": .string(threadID),
                 "turn_id": .string(turnID),
             ],
+            workerID: targetWorkerID,
             threadID: threadID
         )
         if requestID != nil {
             statusMessage = "Queued turn/interrupt request."
             errorMessage = nil
+        }
+    }
+
+    func readActiveThread() async {
+        let targetWorkerID = missionTargetWorkerID()
+        guard let threadID = resolvedMissionThreadID(preferredWorkerID: targetWorkerID) else {
+            errorMessage = "No active thread selected."
+            return
+        }
+
+        let requestID = await queueControlRequest(
+            method: .threadRead,
+            params: [
+                "thread_id": .string(threadID)
+            ],
+            workerID: targetWorkerID,
+            threadID: threadID
+        )
+        if requestID != nil {
+            statusMessage = "Queued thread/read request."
+            errorMessage = nil
+        }
+    }
+
+    func stopSelectedWorker() async {
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to stop a worker."
+            return
+        }
+        guard let workerID = missionTargetWorkerID() else {
+            errorMessage = "No active desktop worker found."
+            return
+        }
+        guard let client = makeClient() else {
+            errorMessage = "Sign in first to stop a worker."
+            return
+        }
+
+        let requestID = "iosutil-\(UUID().uuidString.lowercased())"
+        let occurredAt = iso8601(now())
+        upsertMissionUtilityRequest(
+            requestID: requestID,
+            workerID: workerID,
+            threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+            method: "worker/stop",
+            state: "queued",
+            occurredAt: occurredAt,
+            errorCode: nil,
+            errorMessage: nil,
+            retryable: false,
+            response: nil
+        )
+        upsertMissionUtilityRequest(
+            requestID: requestID,
+            workerID: workerID,
+            threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+            method: "worker/stop",
+            state: "running",
+            occurredAt: occurredAt,
+            errorCode: nil,
+            errorMessage: nil,
+            retryable: false,
+            response: nil
+        )
+
+        do {
+            let result = try await client.stopWorker(
+                workerID: workerID,
+                reason: "autopilot-ios mission control"
+            )
+            let response: JSONValue = .object([
+                "status": .string(result.status ?? "unknown"),
+                "idempotent_replay": .bool(result.idempotentReplay ?? false)
+            ])
+            let finishedAt = iso8601(now())
+            upsertMissionUtilityRequest(
+                requestID: requestID,
+                workerID: workerID,
+                threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+                method: "worker/stop",
+                state: "success",
+                occurredAt: finishedAt,
+                errorCode: nil,
+                errorMessage: nil,
+                retryable: false,
+                response: response
+            )
+            statusMessage = "Stopped worker \(shortWorkerID(workerID))."
+            errorMessage = nil
+            await refreshWorkers()
+        } catch {
+            let runtimeError = error as? RuntimeCodexApiError
+            let message = formatError(error)
+            let finishedAt = iso8601(now())
+            upsertMissionUtilityRequest(
+                requestID: requestID,
+                workerID: workerID,
+                threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+                method: "worker/stop",
+                state: "error",
+                occurredAt: finishedAt,
+                errorCode: runtimeError?.code.rawValue ?? "worker_stop_failed",
+                errorMessage: message,
+                retryable: runtimeError?.code == .network,
+                response: nil
+            )
+            errorMessage = message
+            statusMessage = nil
+        }
+    }
+
+    func refreshSelectedWorkerSnapshot() async {
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to refresh snapshot."
+            return
+        }
+        guard let workerID = missionTargetWorkerID() else {
+            errorMessage = "No active desktop worker found."
+            return
+        }
+        guard let client = makeClient() else {
+            errorMessage = "Sign in first to refresh snapshot."
+            return
+        }
+
+        let requestID = "iosutil-\(UUID().uuidString.lowercased())"
+        let occurredAt = iso8601(now())
+        upsertMissionUtilityRequest(
+            requestID: requestID,
+            workerID: workerID,
+            threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+            method: "worker/snapshot_refresh",
+            state: "queued",
+            occurredAt: occurredAt,
+            errorCode: nil,
+            errorMessage: nil,
+            retryable: false,
+            response: nil
+        )
+        upsertMissionUtilityRequest(
+            requestID: requestID,
+            workerID: workerID,
+            threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+            method: "worker/snapshot_refresh",
+            state: "running",
+            occurredAt: occurredAt,
+            errorCode: nil,
+            errorMessage: nil,
+            retryable: false,
+            response: nil
+        )
+
+        do {
+            let snapshot = try await client.workerSnapshot(workerID: workerID)
+            latestSnapshot = snapshot
+            let finishedAt = iso8601(now())
+            missionControlProjection = missionControlStore.ingestWorkerSummary(
+                workerID: snapshot.workerID,
+                status: snapshot.status,
+                heartbeatState: nil,
+                latestSeq: snapshot.latestSeq,
+                lagEvents: nil,
+                reconnectState: streamReconnectStateLabel(),
+                occurredAt: finishedAt
+            )
+            upsertMissionUtilityRequest(
+                requestID: requestID,
+                workerID: workerID,
+                threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+                method: "worker/snapshot_refresh",
+                state: "success",
+                occurredAt: finishedAt,
+                errorCode: nil,
+                errorMessage: nil,
+                retryable: false,
+                response: .object([
+                    "status": .string(snapshot.status),
+                    "latest_seq": .int(snapshot.latestSeq)
+                ])
+            )
+            statusMessage = "Refreshed snapshot for \(shortWorkerID(workerID))."
+            errorMessage = nil
+        } catch {
+            let runtimeError = error as? RuntimeCodexApiError
+            let message = formatError(error)
+            let finishedAt = iso8601(now())
+            upsertMissionUtilityRequest(
+                requestID: requestID,
+                workerID: workerID,
+                threadID: resolvedMissionThreadID(preferredWorkerID: workerID),
+                method: "worker/snapshot_refresh",
+                state: "error",
+                occurredAt: finishedAt,
+                errorCode: runtimeError?.code.rawValue ?? "snapshot_refresh_failed",
+                errorMessage: message,
+                retryable: runtimeError?.code == .network,
+                response: nil
+            )
+            errorMessage = message
+            statusMessage = nil
         }
     }
 
@@ -922,6 +1127,108 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    private func missionTargetWorkerID() -> String? {
+        if let workerID = missionControlProjection.activeWorkerID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !workerID.isEmpty {
+            return workerID
+        }
+        if let workerID = selectedWorkerID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !workerID.isEmpty {
+            return workerID
+        }
+        return preferredWorker(from: workers)?.workerID
+    }
+
+    private func resolvedMissionThreadID(preferredWorkerID: String?) -> String? {
+        if let threadID = activeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+        if let threadID = missionControlProjection.activeThreadID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        let workerFilter = preferredWorkerID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchingThreads = missionControlProjection.threads.filter { thread in
+            guard let workerFilter, !workerFilter.isEmpty else {
+                return true
+            }
+            return thread.workerID == workerFilter
+        }
+
+        if let turnActive = matchingThreads.first(where: { thread in
+            if let turnID = thread.activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                return !turnID.isEmpty
+            }
+            return false
+        }) {
+            return turnActive.threadID
+        }
+
+        return matchingThreads.sorted { lhs, rhs in
+            let lhsSeq = lhs.freshnessSeq ?? Int.min
+            let rhsSeq = rhs.freshnessSeq ?? Int.min
+            if lhsSeq != rhsSeq {
+                return lhsSeq > rhsSeq
+            }
+            if lhs.unreadCount != rhs.unreadCount {
+                return lhs.unreadCount > rhs.unreadCount
+            }
+            return lhs.threadID < rhs.threadID
+        }.first?.threadID
+    }
+
+    private func resolvedMissionTurnID(workerID: String?, threadID: String) -> String? {
+        if let turnID = activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !turnID.isEmpty {
+            return turnID
+        }
+
+        let turnID = missionControlProjection.threads.first(where: { thread in
+            if thread.threadID != threadID {
+                return false
+            }
+            if let workerID, !workerID.isEmpty {
+                return thread.workerID == workerID
+            }
+            return true
+        })?.activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let turnID, !turnID.isEmpty {
+            return turnID
+        }
+        return nil
+    }
+
+    private func upsertMissionUtilityRequest(
+        requestID: String,
+        workerID: String,
+        threadID: String?,
+        method: String,
+        state: String,
+        occurredAt: String,
+        errorCode: String?,
+        errorMessage: String?,
+        retryable: Bool,
+        response: JSONValue?
+    ) {
+        let request = RuntimeMissionControlRequestState(
+            requestID: requestID,
+            workerID: workerID,
+            threadID: threadID,
+            method: method,
+            state: state,
+            occurredAt: occurredAt,
+            errorCode: errorCode,
+            errorMessage: errorMessage,
+            retryable: retryable,
+            response: response
+        )
+        missionControlProjection = missionControlStore.upsertRequestState(request)
     }
 
     private func normalizedModelOverrideValue() -> String? {
