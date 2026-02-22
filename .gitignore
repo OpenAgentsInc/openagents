@@ -172,3 +172,7 @@ docker/autopilot/bin/
 # Native object artifacts (can be huge; never commit)
 *.o
 *.rcgu.o
+
+# Xcode user-specific state (per-developer; do not version)
+**/xcuserdata/
+*.xcuserstate
