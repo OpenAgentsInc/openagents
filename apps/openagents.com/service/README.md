@@ -219,6 +219,12 @@ Auth persistence and token-domain storage notes:
 - `apps/openagents.com/service/docs/CODEX_THREAD_PERSISTENCE.md`
 - `apps/openagents.com/service/docs/DOMAIN_PERSISTENCE.md`
 
+Rust ownership migration/backfill runbook + scripts:
+- `apps/openagents.com/service/docs/RUST_OWNERSHIP_BACKFILL_RUNBOOK.md`
+- `apps/openagents.com/service/scripts/run-rust-ownership-backfill.sh`
+- `apps/openagents.com/service/scripts/verify-rust-ownership-backfill.sh`
+- `apps/openagents.com/service/scripts/rollback-rust-ownership-backfill.sh`
+
 ## Route split and rollback
 
 - Route targeting is deterministic per request/cohort key (`x-oa-route-key`) using configured route prefixes and split mode.
