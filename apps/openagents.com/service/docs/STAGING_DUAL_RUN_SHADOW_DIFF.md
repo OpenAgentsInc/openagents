@@ -17,6 +17,10 @@ Optional:
 - `AUTH_TOKEN` (Bearer token for auth-required request rows)
 - `REQUESTS_FILE` (override request manifest path)
 - `OUTPUT_DIR` (override output directory)
+- `MAX_CRITICAL_MISMATCHES` (default `0`)
+- `MAX_TOTAL_MISMATCHES` (default `0`)
+- `MAX_STREAM_MISMATCHES` (default `0`)
+- `MAX_P95_LATENCY_DELTA_MS` (default `250`)
 
 ## Run
 
@@ -34,6 +38,10 @@ The harness writes:
 - `SUMMARY.md`
 - request-level response captures and normalized payloads
 - unified diff files for mismatches
+- normalized SSE semantic projections for stream requests:
+  - event order
+  - tool event sequence
+  - finish/error event sets
 
 Default output directory:
 - `apps/openagents.com/storage/app/staging-dual-run/<timestamp>/`
@@ -44,4 +52,10 @@ Default output directory:
 - `fail`: mismatch detected (`status_mismatch` or `body_mismatch`).
 - `skipped`: request required auth and `AUTH_TOKEN` was not supplied.
 
-The script exits non-zero only for critical mismatches.
+Go/no-go gates:
+- critical mismatches must be `<= MAX_CRITICAL_MISMATCHES`
+- total mismatches must be `<= MAX_TOTAL_MISMATCHES`
+- SSE stream mismatches must be `<= MAX_STREAM_MISMATCHES`
+- Rust-vs-legacy p95 latency delta must be `<= MAX_P95_LATENCY_DELTA_MS`
+
+The script exits non-zero when any gate threshold is exceeded.

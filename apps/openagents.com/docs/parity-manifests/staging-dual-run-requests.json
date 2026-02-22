@@ -58,6 +58,75 @@
       "response_kind": "json",
       "critical": true,
       "requires_auth": true
+    },
+    {
+      "id": "legacy-chat-stream",
+      "method": "POST",
+      "path": "/api/chat/stream",
+      "response_kind": "sse",
+      "critical": true,
+      "requires_auth": true,
+      "headers": {
+        "x-oa-client-build-id": "20260221T130000Z",
+        "x-oa-protocol-version": "openagents.control.v1",
+        "x-oa-schema-version": "1"
+      },
+      "body": {
+        "id": "thread-shadow-stream",
+        "messages": [
+          {
+            "role": "user",
+            "content": "shadow stream prompt"
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-chats-stream-path",
+      "method": "POST",
+      "path": "/api/chats/thread-shadow-path/stream",
+      "response_kind": "sse",
+      "critical": true,
+      "requires_auth": true,
+      "headers": {
+        "x-oa-client-build-id": "20260221T130000Z",
+        "x-oa-protocol-version": "openagents.control.v1",
+        "x-oa-schema-version": "1"
+      },
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "shadow path stream prompt"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-chat-stream-invalid",
+      "method": "POST",
+      "path": "/api/chat/stream",
+      "response_kind": "json",
+      "critical": false,
+      "requires_auth": true,
+      "headers": {
+        "x-oa-client-build-id": "20260221T130000Z",
+        "x-oa-protocol-version": "openagents.control.v1",
+        "x-oa-schema-version": "1"
+      },
+      "body": {
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "no user text"
+          }
+        ]
+      }
     }
   ]
 }

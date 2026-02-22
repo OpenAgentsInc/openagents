@@ -14,6 +14,10 @@ RUST_BASE_URL="${RUST_BASE_URL:-}"
 LEGACY_BASE_URL="${LEGACY_BASE_URL:-}"
 AUTH_TOKEN="${AUTH_TOKEN:-}"
 REQUESTS_FILE="${REQUESTS_FILE:-${REQUESTS_FILE_DEFAULT}}"
+MAX_CRITICAL_MISMATCHES="${MAX_CRITICAL_MISMATCHES:-0}"
+MAX_TOTAL_MISMATCHES="${MAX_TOTAL_MISMATCHES:-0}"
+MAX_STREAM_MISMATCHES="${MAX_STREAM_MISMATCHES:-0}"
+MAX_P95_LATENCY_DELTA_MS="${MAX_P95_LATENCY_DELTA_MS:-250}"
 
 require_command() {
   local command_name="$1"
@@ -69,6 +73,50 @@ canonicalize_json() {
   ' "${source_path}" >"${target_path}"
 }
 
+canonicalize_sse() {
+  local source_path="$1"
+  local target_path="$2"
+  local events_jsonl="${target_path}.events.jsonl"
+  local done_seen=0
+
+  : >"${events_jsonl}"
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    local line
+    line="$(printf '%s' "${raw_line}" | sed 's/\r$//')"
+    [[ -z "${line}" ]] && continue
+    [[ "${line}" != data:* ]] && continue
+
+    local payload
+    payload="${line#data:}"
+    payload="$(printf '%s' "${payload}" | sed 's/^[[:space:]]*//')"
+    if [[ "${payload}" == "[DONE]" ]]; then
+      done_seen=1
+      continue
+    fi
+
+    if jq -e . <<<"${payload}" >/dev/null 2>&1; then
+      jq -c '
+        del(.request_id, .requestId, .turn_id, .turnId, .generated_at, .generatedAt) |
+        del(.. | .request_id?) |
+        del(.. | .requestId?) |
+        del(.. | .generated_at?) |
+        del(.. | .generatedAt?)
+      ' <<<"${payload}" >>"${events_jsonl}"
+    fi
+  done <"${source_path}"
+
+  jq -s --argjson done_seen "${done_seen}" '
+    {
+      done: ($done_seen == 1),
+      events: .,
+      order: map(.type // "unknown"),
+      tool_events: map(select((.type // "") | startswith("tool-"))),
+      finish_events: map(select((.type // "") == "finish" or (.type // "") == "finish-step")),
+      error_events: map(select((.type // "") == "error"))
+    }
+  ' "${events_jsonl}" >"${target_path}"
+}
+
 perform_request() {
   local target_name="$1"
   local base_url="$2"
@@ -92,7 +140,7 @@ perform_request() {
     "${url}"
     -D "${headers_path}"
     -o "${body_path}"
-    -w "%{http_code}"
+    -w "%{http_code} %{time_total}"
   )
 
   if [[ "${requires_auth}" == "true" && -n "${AUTH_TOKEN}" ]]; then
@@ -110,10 +158,15 @@ perform_request() {
     curl_args+=( -H "content-type: application/json" --data "${body_payload}" )
   fi
 
-  local http_code
-  if ! http_code="$(curl "${curl_args[@]}")"; then
+  local curl_metrics http_code time_total duration_ms
+  if ! curl_metrics="$(curl "${curl_args[@]}")"; then
     http_code="000"
+    time_total="0"
+  else
+    http_code="$(awk '{print $1}' <<<"${curl_metrics}")"
+    time_total="$(awk '{print $2}' <<<"${curl_metrics}")"
   fi
+  duration_ms="$(awk "BEGIN {printf \"%.0f\", (${time_total:-0}) * 1000}")"
 
   if [[ "${response_kind}" == "json" ]]; then
     if jq -e . "${body_path}" >/dev/null 2>&1; then
@@ -121,6 +174,8 @@ perform_request() {
     else
       cp "${body_path}" "${normalized_path}"
     fi
+  elif [[ "${response_kind}" == "sse" ]]; then
+    canonicalize_sse "${body_path}" "${normalized_path}"
   else
     cp "${body_path}" "${normalized_path}"
   fi
@@ -130,11 +185,13 @@ perform_request() {
 
   jq -n \
     --arg http_code "${http_code}" \
+    --arg duration_ms "${duration_ms}" \
     --arg body_path "${body_path}" \
     --arg normalized_path "${normalized_path}" \
     --arg body_hash "${body_hash}" \
     '{
       status_code: ($http_code | tonumber),
+      duration_ms: ($duration_ms | tonumber),
       body_path: $body_path,
       normalized_path: $normalized_path,
       body_hash: $body_hash
@@ -232,6 +289,7 @@ while IFS= read -r request_b64; do
       rust: {
         base_url: $rust_base,
         status_code: $rust_result.status_code,
+        duration_ms: $rust_result.duration_ms,
         body_hash: $rust_result.body_hash,
         body_path: $rust_result.body_path,
         normalized_path: $rust_result.normalized_path
@@ -239,6 +297,7 @@ while IFS= read -r request_b64; do
       legacy: {
         base_url: $legacy_base,
         status_code: $legacy_result.status_code,
+        duration_ms: $legacy_result.duration_ms,
         body_hash: $legacy_result.body_hash,
         body_path: $legacy_result.body_path,
         normalized_path: $legacy_result.normalized_path
@@ -253,20 +312,43 @@ jq -s \
   --arg rust_base_url "${RUST_BASE_URL}" \
   --arg legacy_base_url "${LEGACY_BASE_URL}" \
   --arg requests_file "${REQUESTS_FILE}" \
+  --arg max_critical_mismatches "${MAX_CRITICAL_MISMATCHES}" \
+  --arg max_total_mismatches "${MAX_TOTAL_MISMATCHES}" \
+  --arg max_stream_mismatches "${MAX_STREAM_MISMATCHES}" \
+  --arg max_p95_latency_delta_ms "${MAX_P95_LATENCY_DELTA_MS}" \
   '
   def count_status(s): map(select(.status == s)) | length;
+  def abs_value(v): if v < 0 then -v else v end;
+  def p95(values):
+    if (values | length) == 0 then 0
+    else (values | sort | .[(((length - 1) * 0.95) | floor)])
+    end;
+  def rust_durations: [ .[] | select(.status != "skipped") | .rust.duration_ms ];
+  def legacy_durations: [ .[] | select(.status != "skipped") | .legacy.duration_ms ];
   {
     schema: "openagents.webparity.staging_dual_run_diff.v1",
     generated_at: $generated_at,
     rust_base_url: $rust_base_url,
     legacy_base_url: $legacy_base_url,
     requests_file: $requests_file,
+    thresholds: {
+      max_critical_mismatches: ($max_critical_mismatches | tonumber),
+      max_total_mismatches: ($max_total_mismatches | tonumber),
+      max_stream_mismatches: ($max_stream_mismatches | tonumber),
+      max_p95_latency_delta_ms: ($max_p95_latency_delta_ms | tonumber)
+    },
     totals: {
       request_count: length,
       passed: count_status("pass"),
       failed: count_status("fail"),
       skipped: count_status("skipped"),
-      critical_failed: map(select(.status == "fail" and .critical == true)) | length
+      critical_failed: map(select(.status == "fail" and .critical == true)) | length,
+      stream_failed: map(select(.status == "fail" and .response_kind == "sse")) | length
+    },
+    latency_ms: {
+      rust_p95: p95(rust_durations),
+      legacy_p95: p95(legacy_durations),
+      p95_delta: abs_value(p95(rust_durations) - p95(legacy_durations))
     },
     overall_status: (
       if (map(select(.status == "fail" and .critical == true)) | length) > 0 then "failed"
@@ -286,6 +368,9 @@ jq -s \
   echo "- Legacy base URL: ${LEGACY_BASE_URL}"
   echo "- Overall status: $(jq -r '.overall_status' "${SUMMARY_JSON}")"
   echo "- Totals: $(jq -r '.totals.passed' "${SUMMARY_JSON}") pass / $(jq -r '.totals.failed' "${SUMMARY_JSON}") fail / $(jq -r '.totals.skipped' "${SUMMARY_JSON}") skipped"
+  echo "- Stream mismatches: $(jq -r '.totals.stream_failed' "${SUMMARY_JSON}")"
+  echo "- Latency p95 (Rust/Legacy/Delta ms): $(jq -r '.latency_ms.rust_p95' "${SUMMARY_JSON}") / $(jq -r '.latency_ms.legacy_p95' "${SUMMARY_JSON}") / $(jq -r '.latency_ms.p95_delta' "${SUMMARY_JSON}")"
+  echo "- Thresholds: critical<=$(jq -r '.thresholds.max_critical_mismatches' "${SUMMARY_JSON}"), total<=$(jq -r '.thresholds.max_total_mismatches' "${SUMMARY_JSON}"), stream<=$(jq -r '.thresholds.max_stream_mismatches' "${SUMMARY_JSON}"), p95-delta<=$(jq -r '.thresholds.max_p95_latency_delta_ms' "${SUMMARY_JSON}")ms"
   echo
   echo "| Request | Method | Path | Critical | Status | Reason | Diff |"
   echo "| --- | --- | --- | --- | --- | --- | --- |"
@@ -295,13 +380,33 @@ jq -s \
 echo "[staging-dual-run] summary: ${SUMMARY_JSON}"
 echo "[staging-dual-run] report: ${SUMMARY_MD}"
 
-if [[ "${critical_mismatch_count}" -gt 0 ]]; then
-  echo "error: detected ${critical_mismatch_count} critical mismatch(es)" >&2
+critical_failed="$(jq -r '.totals.critical_failed' "${SUMMARY_JSON}")"
+total_failed="$(jq -r '.totals.failed' "${SUMMARY_JSON}")"
+stream_failed="$(jq -r '.totals.stream_failed' "${SUMMARY_JSON}")"
+p95_latency_delta_ms="$(jq -r '.latency_ms.p95_delta' "${SUMMARY_JSON}")"
+
+if [[ "${critical_failed}" -gt "${MAX_CRITICAL_MISMATCHES}" ]]; then
+  echo "error: critical mismatches ${critical_failed} exceed threshold ${MAX_CRITICAL_MISMATCHES}" >&2
+  exit 1
+fi
+
+if [[ "${total_failed}" -gt "${MAX_TOTAL_MISMATCHES}" ]]; then
+  echo "error: total mismatches ${total_failed} exceed threshold ${MAX_TOTAL_MISMATCHES}" >&2
+  exit 1
+fi
+
+if [[ "${stream_failed}" -gt "${MAX_STREAM_MISMATCHES}" ]]; then
+  echo "error: stream mismatches ${stream_failed} exceed threshold ${MAX_STREAM_MISMATCHES}" >&2
+  exit 1
+fi
+
+if [[ "${p95_latency_delta_ms}" -gt "${MAX_P95_LATENCY_DELTA_MS}" ]]; then
+  echo "error: p95 latency delta ${p95_latency_delta_ms}ms exceeds threshold ${MAX_P95_LATENCY_DELTA_MS}ms" >&2
   exit 1
 fi
 
 if [[ "${mismatch_count}" -gt 0 ]]; then
-  echo "warning: detected ${mismatch_count} non-critical mismatch(es)" >&2
+  echo "warning: detected ${mismatch_count} mismatch(es) within configured thresholds" >&2
 fi
 
 if [[ "${skip_count}" -gt 0 ]]; then
