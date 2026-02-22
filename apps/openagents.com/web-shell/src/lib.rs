@@ -78,6 +78,14 @@ mod wasm {
         static SETTINGS_GOOGLE_DISCONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static L402_SURFACE_STATE: RefCell<L402SurfaceState> = RefCell::new(L402SurfaceState::default());
         static L402_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
+        static ADMIN_WORKER_SURFACE_STATE: RefCell<AdminWorkerSurfaceState> = RefCell::new(AdminWorkerSurfaceState::default());
+        static ADMIN_WORKER_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
+        static ADMIN_WORKER_CREATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ADMIN_WORKER_REFRESH_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ADMIN_WORKER_STOP_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ADMIN_WORKER_REQUEST_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ADMIN_WORKER_EVENT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static ADMIN_WORKER_STREAM_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
@@ -132,6 +140,26 @@ mod wasm {
     const SETTINGS_RESEND_TEST_ID: &str = "openagents-web-shell-settings-resend-test";
     const SETTINGS_GOOGLE_CONNECT_ID: &str = "openagents-web-shell-settings-google-connect";
     const SETTINGS_GOOGLE_DISCONNECT_ID: &str = "openagents-web-shell-settings-google-disconnect";
+    const ADMIN_PANEL_ID: &str = "openagents-web-shell-admin-panel";
+    const ADMIN_STATUS_ID: &str = "openagents-web-shell-admin-status";
+    const ADMIN_WORKER_ID_ID: &str = "openagents-web-shell-admin-worker-id";
+    const ADMIN_WORKSPACE_ID: &str = "openagents-web-shell-admin-workspace";
+    const ADMIN_ADAPTER_ID: &str = "openagents-web-shell-admin-adapter";
+    const ADMIN_CREATE_ID: &str = "openagents-web-shell-admin-create";
+    const ADMIN_REFRESH_ID: &str = "openagents-web-shell-admin-refresh";
+    const ADMIN_STOP_REASON_ID: &str = "openagents-web-shell-admin-stop-reason";
+    const ADMIN_STOP_CONFIRM_ID: &str = "openagents-web-shell-admin-stop-confirm";
+    const ADMIN_STOP_ID: &str = "openagents-web-shell-admin-stop";
+    const ADMIN_REQUEST_METHOD_ID: &str = "openagents-web-shell-admin-request-method";
+    const ADMIN_REQUEST_PARAMS_ID: &str = "openagents-web-shell-admin-request-params";
+    const ADMIN_REQUEST_ID_ID: &str = "openagents-web-shell-admin-request-id";
+    const ADMIN_REQUEST_SEND_ID: &str = "openagents-web-shell-admin-request-send";
+    const ADMIN_EVENT_TYPE_ID: &str = "openagents-web-shell-admin-event-type";
+    const ADMIN_EVENT_PAYLOAD_ID: &str = "openagents-web-shell-admin-event-payload";
+    const ADMIN_EVENT_SEND_ID: &str = "openagents-web-shell-admin-event-send";
+    const ADMIN_STREAM_CURSOR_ID: &str = "openagents-web-shell-admin-stream-cursor";
+    const ADMIN_STREAM_TAIL_ID: &str = "openagents-web-shell-admin-stream-tail";
+    const ADMIN_STREAM_FETCH_ID: &str = "openagents-web-shell-admin-stream-fetch";
     const DOM_READY_BUDGET_MS: u64 = 450;
     const GPU_INIT_BUDGET_MS: u64 = 1_600;
     const FIRST_FRAME_BUDGET_MS: u64 = 2_200;
@@ -147,6 +175,14 @@ mod wasm {
         CODEX_CHAT_PROMPT_1_ID,
         CODEX_CHAT_PROMPT_2_ID,
         CODEX_CHAT_PROMPT_3_ID,
+    ];
+    const ADMIN_WORKER_ALLOWED_METHODS: [&str; 6] = [
+        "thread/start",
+        "thread/resume",
+        "thread/list",
+        "thread/read",
+        "turn/start",
+        "turn/interrupt",
     ];
 
     #[derive(Debug, Clone, Default)]
@@ -198,6 +234,19 @@ mod wasm {
         loaded_session_id: Option<String>,
         loaded_route_path: Option<String>,
         payload: Option<serde_json::Value>,
+        last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct AdminWorkerSurfaceState {
+        loaded_session_id: Option<String>,
+        loaded_route_path: Option<String>,
+        selected_worker_id: Option<String>,
+        workers: Vec<serde_json::Value>,
+        worker_snapshot: Option<serde_json::Value>,
+        worker_stream: Option<serde_json::Value>,
+        last_response: Option<serde_json::Value>,
+        last_status: Option<String>,
         last_error: Option<String>,
     }
 
@@ -791,6 +840,7 @@ mod wasm {
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
         schedule_l402_surface_refresh();
+        schedule_admin_worker_surface_refresh();
         render_codex_chat_dom();
 
         let dom_ready_latency_ms =
@@ -1066,6 +1116,7 @@ mod wasm {
                     reset_management_surface_state();
                     reset_settings_surface_state();
                     reset_l402_surface_state();
+                    reset_admin_worker_surface_state();
                     reset_codex_history_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
@@ -1084,6 +1135,7 @@ mod wasm {
             reset_management_surface_state();
             reset_settings_surface_state();
             reset_l402_surface_state();
+            reset_admin_worker_surface_state();
             reset_codex_history_state();
             apply_auth_action(AppAction::AuthSignedOut);
             return Ok(());
@@ -1127,6 +1179,7 @@ mod wasm {
                             reset_management_surface_state();
                             reset_settings_surface_state();
                             reset_l402_surface_state();
+                            reset_admin_worker_surface_state();
                             reset_codex_history_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
@@ -1189,6 +1242,7 @@ mod wasm {
         reset_management_surface_state();
         reset_settings_surface_state();
         reset_l402_surface_state();
+        reset_admin_worker_surface_state();
         reset_codex_history_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
@@ -1237,6 +1291,7 @@ mod wasm {
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
         schedule_l402_surface_refresh();
+        schedule_admin_worker_surface_refresh();
     }
 
     async fn refresh_then_hydrate(
@@ -1739,6 +1794,7 @@ mod wasm {
         schedule_management_surface_refresh();
         schedule_settings_surface_refresh();
         schedule_l402_surface_refresh();
+        schedule_admin_worker_surface_refresh();
         render_codex_chat_dom();
     }
 
@@ -1946,6 +2002,10 @@ mod wasm {
         matches!(route, AppRoute::Billing { .. })
     }
 
+    fn route_is_admin_surface(route: &AppRoute) -> bool {
+        matches!(route, AppRoute::Admin { .. })
+    }
+
     fn route_is_codex_chat_surface(route: &AppRoute) -> bool {
         matches!(
             route,
@@ -1981,6 +2041,13 @@ mod wasm {
         L402_SURFACE_LOADING.with(|loading| loading.set(false));
         L402_SURFACE_STATE.with(|state| {
             *state.borrow_mut() = L402SurfaceState::default();
+        });
+    }
+
+    fn reset_admin_worker_surface_state() {
+        ADMIN_WORKER_SURFACE_LOADING.with(|loading| loading.set(false));
+        ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            *state.borrow_mut() = AdminWorkerSurfaceState::default();
         });
     }
 
@@ -2567,6 +2634,197 @@ mod wasm {
             Some("deployments") => "/api/l402/deployments".to_string(),
             Some(_) => "/api/l402/wallet".to_string(),
         }
+    }
+
+    fn schedule_admin_worker_surface_refresh() {
+        let (access_token, session_id, route) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (
+                state.auth.access_token.clone(),
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.clone()),
+                state.route.clone(),
+            )
+        });
+
+        if !route_is_admin_surface(&route) {
+            return;
+        }
+
+        let route_path = route.to_path();
+        let selected_worker_id = admin_worker_id_from_route(&route).or_else(|| {
+            ADMIN_WORKER_SURFACE_STATE.with(|state| state.borrow().selected_worker_id.clone())
+        });
+
+        let Some(access_token) = access_token else {
+            reset_admin_worker_surface_state();
+            return;
+        };
+        let Some(session_id) = session_id else {
+            reset_admin_worker_surface_state();
+            return;
+        };
+        if access_token.trim().is_empty() {
+            reset_admin_worker_surface_state();
+            return;
+        }
+
+        let already_loaded = ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            let state = state.borrow();
+            state.loaded_session_id.as_deref() == Some(session_id.as_str())
+                && state.loaded_route_path.as_deref() == Some(route_path.as_str())
+                && state.selected_worker_id == selected_worker_id
+                && state.last_error.is_none()
+        });
+        if already_loaded {
+            return;
+        }
+
+        let already_loading = ADMIN_WORKER_SURFACE_LOADING.with(|loading| {
+            if loading.get() {
+                true
+            } else {
+                loading.set(true);
+                false
+            }
+        });
+        if already_loading {
+            return;
+        }
+
+        spawn_local(async move {
+            let result = fetch_admin_worker_surface_state(
+                &access_token,
+                &session_id,
+                &route_path,
+                selected_worker_id.clone(),
+            )
+            .await;
+            ADMIN_WORKER_SURFACE_LOADING.with(|loading| loading.set(false));
+            ADMIN_WORKER_SURFACE_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                match result {
+                    Ok(snapshot) => {
+                        *state = snapshot;
+                    }
+                    Err(error) => {
+                        state.loaded_session_id = Some(session_id.clone());
+                        state.loaded_route_path = Some(route_path.clone());
+                        state.selected_worker_id = selected_worker_id;
+                        state.last_error = Some(error.message);
+                    }
+                }
+            });
+            render_codex_chat_dom();
+        });
+    }
+
+    async fn fetch_admin_worker_surface_state(
+        access_token: &str,
+        session_id: &str,
+        route_path: &str,
+        selected_worker_id: Option<String>,
+    ) -> Result<AdminWorkerSurfaceState, ControlApiError> {
+        let list_request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/runtime/codex/workers?limit=50".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let listed: JsonDataEnvelope =
+            send_json_request(&list_request, &AppState::default()).await?;
+        let workers = listed.data.as_array().cloned().unwrap_or_default();
+
+        let selected_worker_id = selected_worker_id
+            .and_then(trimmed_non_empty_string)
+            .or_else(|| {
+                workers
+                    .iter()
+                    .find_map(|worker| worker.get("worker_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)
+            });
+
+        let mut worker_snapshot = None;
+        let mut worker_stream = None;
+
+        if let Some(worker_id) = selected_worker_id.as_ref() {
+            let encoded_worker_id = encode_path_component(worker_id);
+            let show_request = HttpCommandRequest {
+                method: HttpMethod::Get,
+                path: format!("/api/runtime/codex/workers/{encoded_worker_id}"),
+                body: None,
+                auth: AuthRequirement::None,
+                headers: vec![(
+                    "authorization".to_string(),
+                    format!("Bearer {access_token}"),
+                )],
+            };
+            let showed: JsonDataEnvelope =
+                send_json_request(&show_request, &AppState::default()).await?;
+            worker_snapshot = Some(showed.data);
+
+            let stream_request = HttpCommandRequest {
+                method: HttpMethod::Get,
+                path: format!(
+                    "/api/runtime/codex/workers/{encoded_worker_id}/stream?cursor=0&tail_ms=15000"
+                ),
+                body: None,
+                auth: AuthRequirement::None,
+                headers: vec![(
+                    "authorization".to_string(),
+                    format!("Bearer {access_token}"),
+                )],
+            };
+            let streamed: JsonDataEnvelope =
+                send_json_request(&stream_request, &AppState::default()).await?;
+            worker_stream = Some(streamed.data);
+        }
+
+        Ok(AdminWorkerSurfaceState {
+            loaded_session_id: Some(session_id.to_string()),
+            loaded_route_path: Some(route_path.to_string()),
+            selected_worker_id,
+            workers,
+            worker_snapshot,
+            worker_stream,
+            last_response: None,
+            last_status: None,
+            last_error: None,
+        })
+    }
+
+    fn encode_path_component(raw: &str) -> String {
+        js_sys::encode_uri_component(raw)
+            .as_string()
+            .unwrap_or_else(|| raw.to_string())
+    }
+
+    fn trimmed_non_empty_string(raw: String) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn admin_worker_id_from_route(route: &AppRoute) -> Option<String> {
+        let AppRoute::Admin { section } = route else {
+            return None;
+        };
+        let section = section.as_ref()?;
+        section
+            .strip_prefix("workers/")
+            .map(ToString::to_string)
+            .and_then(trimmed_non_empty_string)
     }
 
     fn apply_autopilot_payload_to_settings_state(
@@ -4000,6 +4258,324 @@ mod wasm {
             let _ = settings_panel.append_child(&google_actions);
 
             let _ = root.append_child(&settings_panel);
+
+            let admin_panel = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin panel".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin panel is not HtmlElement".to_string())?;
+            admin_panel.set_id(ADMIN_PANEL_ID);
+            let _ = admin_panel.style().set_property("display", "none");
+            let _ = admin_panel.style().set_property("flex-direction", "column");
+            let _ = admin_panel.style().set_property("gap", "8px");
+            let _ = admin_panel.style().set_property("max-width", "760px");
+            let _ = admin_panel.style().set_property("margin", "0 auto");
+            let _ = admin_panel.style().set_property("width", "100%");
+            let _ = admin_panel.style().set_property("pointer-events", "auto");
+            let _ = admin_panel.style().set_property("padding", "8px 0 4px 0");
+
+            let admin_status = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin status".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin status is not HtmlElement".to_string())?;
+            admin_status.set_id(ADMIN_STATUS_ID);
+            let _ = admin_status.style().set_property("min-height", "20px");
+            let _ = admin_status.style().set_property("font-size", "12px");
+            let _ = admin_status.style().set_property("color", "#93c5fd");
+            admin_status.set_inner_text("Admin worker controls ready.");
+            let _ = admin_panel.append_child(&admin_status);
+
+            let worker_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin worker row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin worker row is not HtmlElement".to_string())?;
+            let _ = worker_row.style().set_property("display", "grid");
+            let _ = worker_row
+                .style()
+                .set_property("grid-template-columns", "2fr 2fr 1fr auto auto");
+            let _ = worker_row.style().set_property("gap", "8px");
+
+            for (id, placeholder) in [
+                (ADMIN_WORKER_ID_ID, "worker_id (desktopw:local)"),
+                (ADMIN_WORKSPACE_ID, "workspace_ref"),
+                (ADMIN_ADAPTER_ID, "adapter"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create admin worker input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "admin worker input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = worker_row.append_child(&input);
+            }
+
+            for (id, label, bg, border) in [
+                (ADMIN_CREATE_ID, "Create/Reattach", "#1d4ed8", "#1d4ed8"),
+                (ADMIN_REFRESH_ID, "Refresh", "#334155", "#334155"),
+            ] {
+                let button = document
+                    .create_element("button")
+                    .map_err(|_| "failed to create admin worker action button".to_string())?
+                    .dyn_into::<HtmlElement>()
+                    .map_err(|_| "admin worker action button is not HtmlElement".to_string())?;
+                button.set_id(id);
+                button.set_inner_text(label);
+                let _ = button.style().set_property("height", "34px");
+                let _ = button.style().set_property("padding", "0 10px");
+                let _ = button.style().set_property("border-radius", "8px");
+                let _ = button
+                    .style()
+                    .set_property("border", &format!("1px solid {border}"));
+                let _ = button.style().set_property("background", bg);
+                let _ = button.style().set_property("color", "#ffffff");
+                let _ = worker_row.append_child(&button);
+            }
+            let _ = admin_panel.append_child(&worker_row);
+
+            let stop_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin stop row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin stop row is not HtmlElement".to_string())?;
+            let _ = stop_row.style().set_property("display", "grid");
+            let _ = stop_row
+                .style()
+                .set_property("grid-template-columns", "2fr 2fr auto");
+            let _ = stop_row.style().set_property("gap", "8px");
+
+            for (id, placeholder) in [
+                (ADMIN_STOP_REASON_ID, "stop reason"),
+                (ADMIN_STOP_CONFIRM_ID, "type worker_id to confirm stop"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create admin stop input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "admin stop input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #7f1d1d");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#fecaca");
+                let _ = stop_row.append_child(&input);
+            }
+            let stop_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create admin stop button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin stop button is not HtmlElement".to_string())?;
+            stop_button.set_id(ADMIN_STOP_ID);
+            stop_button.set_inner_text("Stop Worker");
+            let _ = stop_button.style().set_property("height", "34px");
+            let _ = stop_button.style().set_property("padding", "0 10px");
+            let _ = stop_button.style().set_property("border-radius", "8px");
+            let _ = stop_button
+                .style()
+                .set_property("border", "1px solid #7f1d1d");
+            let _ = stop_button.style().set_property("background", "#7f1d1d");
+            let _ = stop_button.style().set_property("color", "#ffffff");
+            let _ = stop_row.append_child(&stop_button);
+            let _ = admin_panel.append_child(&stop_row);
+
+            let request_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin request row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin request row is not HtmlElement".to_string())?;
+            let _ = request_row.style().set_property("display", "grid");
+            let _ = request_row
+                .style()
+                .set_property("grid-template-columns", "2fr 2fr auto");
+            let _ = request_row.style().set_property("gap", "8px");
+
+            for (id, placeholder) in [
+                (ADMIN_REQUEST_METHOD_ID, "method (thread/list)"),
+                (ADMIN_REQUEST_ID_ID, "request_id (optional)"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create admin request input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "admin request input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = request_row.append_child(&input);
+            }
+            let request_send_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create admin request send button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin request send button is not HtmlElement".to_string())?;
+            request_send_button.set_id(ADMIN_REQUEST_SEND_ID);
+            request_send_button.set_inner_text("Send Request");
+            let _ = request_send_button.style().set_property("height", "34px");
+            let _ = request_send_button
+                .style()
+                .set_property("padding", "0 10px");
+            let _ = request_send_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = request_send_button
+                .style()
+                .set_property("border", "1px solid #166534");
+            let _ = request_send_button
+                .style()
+                .set_property("background", "#166534");
+            let _ = request_send_button.style().set_property("color", "#ffffff");
+            let _ = request_row.append_child(&request_send_button);
+            let _ = admin_panel.append_child(&request_row);
+
+            let request_params_input = document
+                .create_element("input")
+                .map_err(|_| "failed to create admin request params input".to_string())?
+                .dyn_into::<HtmlInputElement>()
+                .map_err(|_| "admin request params input is not HtmlInputElement".to_string())?;
+            request_params_input.set_id(ADMIN_REQUEST_PARAMS_ID);
+            request_params_input.set_placeholder(
+                "request params JSON object (for example: {\"thread_id\":\"thread_123\"})",
+            );
+            let _ = request_params_input.style().set_property("height", "34px");
+            let _ = request_params_input
+                .style()
+                .set_property("padding", "0 10px");
+            let _ = request_params_input
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = request_params_input
+                .style()
+                .set_property("border", "1px solid #1f2937");
+            let _ = request_params_input
+                .style()
+                .set_property("background", "#0f172a");
+            let _ = request_params_input
+                .style()
+                .set_property("color", "#cbd5e1");
+            let _ = admin_panel.append_child(&request_params_input);
+
+            let event_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin event row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin event row is not HtmlElement".to_string())?;
+            let _ = event_row.style().set_property("display", "grid");
+            let _ = event_row
+                .style()
+                .set_property("grid-template-columns", "2fr 3fr auto");
+            let _ = event_row.style().set_property("gap", "8px");
+
+            for (id, placeholder) in [
+                (ADMIN_EVENT_TYPE_ID, "event_type (worker.event)"),
+                (ADMIN_EVENT_PAYLOAD_ID, "event payload JSON object"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create admin event input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "admin event input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = event_row.append_child(&input);
+            }
+            let event_send_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create admin event send button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin event send button is not HtmlElement".to_string())?;
+            event_send_button.set_id(ADMIN_EVENT_SEND_ID);
+            event_send_button.set_inner_text("Send Event");
+            let _ = event_send_button.style().set_property("height", "34px");
+            let _ = event_send_button.style().set_property("padding", "0 10px");
+            let _ = event_send_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = event_send_button
+                .style()
+                .set_property("border", "1px solid #334155");
+            let _ = event_send_button
+                .style()
+                .set_property("background", "#334155");
+            let _ = event_send_button.style().set_property("color", "#ffffff");
+            let _ = event_row.append_child(&event_send_button);
+            let _ = admin_panel.append_child(&event_row);
+
+            let stream_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create admin stream row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin stream row is not HtmlElement".to_string())?;
+            let _ = stream_row.style().set_property("display", "grid");
+            let _ = stream_row
+                .style()
+                .set_property("grid-template-columns", "1fr 1fr auto");
+            let _ = stream_row.style().set_property("gap", "8px");
+            for (id, placeholder) in [
+                (ADMIN_STREAM_CURSOR_ID, "cursor (default 0)"),
+                (ADMIN_STREAM_TAIL_ID, "tail_ms (default 15000)"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create admin stream input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "admin stream input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = stream_row.append_child(&input);
+            }
+            let stream_fetch_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create admin stream fetch button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "admin stream fetch button is not HtmlElement".to_string())?;
+            stream_fetch_button.set_id(ADMIN_STREAM_FETCH_ID);
+            stream_fetch_button.set_inner_text("Fetch Stream");
+            let _ = stream_fetch_button.style().set_property("height", "34px");
+            let _ = stream_fetch_button
+                .style()
+                .set_property("padding", "0 10px");
+            let _ = stream_fetch_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = stream_fetch_button
+                .style()
+                .set_property("border", "1px solid #334155");
+            let _ = stream_fetch_button
+                .style()
+                .set_property("background", "#334155");
+            let _ = stream_fetch_button.style().set_property("color", "#ffffff");
+            let _ = stream_row.append_child(&stream_fetch_button);
+            let _ = admin_panel.append_child(&stream_row);
+
+            let _ = root.append_child(&admin_panel);
             body.append_child(&root)
                 .map_err(|_| "failed to append codex chat root".to_string())?;
         }
@@ -4246,6 +4822,97 @@ mod wasm {
             *slot.borrow_mut() = Some(callback);
         });
 
+        let admin_create_button = document
+            .get_element_by_id(ADMIN_CREATE_ID)
+            .ok_or_else(|| "missing admin create button".to_string())?;
+        let admin_refresh_button = document
+            .get_element_by_id(ADMIN_REFRESH_ID)
+            .ok_or_else(|| "missing admin refresh button".to_string())?;
+        let admin_stop_button = document
+            .get_element_by_id(ADMIN_STOP_ID)
+            .ok_or_else(|| "missing admin stop button".to_string())?;
+        let admin_request_button = document
+            .get_element_by_id(ADMIN_REQUEST_SEND_ID)
+            .ok_or_else(|| "missing admin request send button".to_string())?;
+        let admin_event_button = document
+            .get_element_by_id(ADMIN_EVENT_SEND_ID)
+            .ok_or_else(|| "missing admin event send button".to_string())?;
+        let admin_stream_button = document
+            .get_element_by_id(ADMIN_STREAM_FETCH_ID)
+            .ok_or_else(|| "missing admin stream fetch button".to_string())?;
+
+        ADMIN_WORKER_CREATE_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_create_from_inputs();
+            }));
+            let _ = admin_create_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ADMIN_WORKER_REFRESH_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_refresh_from_inputs();
+            }));
+            let _ = admin_refresh_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ADMIN_WORKER_STOP_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_stop_from_inputs();
+            }));
+            let _ = admin_stop_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ADMIN_WORKER_REQUEST_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_request_from_inputs();
+            }));
+            let _ = admin_request_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ADMIN_WORKER_EVENT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_event_from_inputs();
+            }));
+            let _ = admin_event_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        ADMIN_WORKER_STREAM_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_admin_worker_stream_fetch_from_inputs();
+            }));
+            let _ = admin_stream_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
         Ok(())
     }
 
@@ -4328,6 +4995,358 @@ mod wasm {
             let mut state = state.borrow_mut();
             state.last_error = Some(message.into());
             state.last_status = None;
+        });
+    }
+
+    fn admin_set_loading(value: bool) {
+        ADMIN_WORKER_SURFACE_LOADING.with(|loading| loading.set(value));
+    }
+
+    fn admin_set_status(message: impl Into<String>) {
+        ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.last_status = Some(message.into());
+            state.last_error = None;
+        });
+    }
+
+    fn admin_set_error(message: impl Into<String>) {
+        ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.last_error = Some(message.into());
+            state.last_status = None;
+        });
+    }
+
+    fn admin_set_last_response(payload: serde_json::Value) {
+        ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            state.borrow_mut().last_response = Some(payload);
+        });
+    }
+
+    fn force_admin_surface_refresh(selected_worker_id: Option<String>) {
+        ADMIN_WORKER_SURFACE_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if let Some(worker_id) = selected_worker_id
+                .clone()
+                .and_then(trimmed_non_empty_string)
+            {
+                state.selected_worker_id = Some(worker_id);
+            }
+            state.loaded_route_path = None;
+            state.last_error = None;
+        });
+        schedule_admin_worker_surface_refresh();
+    }
+
+    fn active_admin_worker_id_from_inputs_or_state() -> Option<String> {
+        read_input_value(ADMIN_WORKER_ID_ID)
+            .and_then(trimmed_non_empty_string)
+            .or_else(|| {
+                ADMIN_WORKER_SURFACE_STATE.with(|state| state.borrow().selected_worker_id.clone())
+            })
+    }
+
+    fn parse_json_object_input(
+        raw: &str,
+        field: &str,
+    ) -> Result<serde_json::Value, ControlApiError> {
+        if raw.trim().is_empty() {
+            return Ok(serde_json::json!({}));
+        }
+        let parsed: serde_json::Value =
+            serde_json::from_str(raw).map_err(|error| ControlApiError {
+                status_code: 422,
+                code: Some("validation_error".to_string()),
+                message: format!("{field} must be valid JSON: {error}"),
+                kind: CommandErrorKind::Validation,
+                retryable: false,
+            })?;
+        if !parsed.is_object() {
+            return Err(ControlApiError {
+                status_code: 422,
+                code: Some("validation_error".to_string()),
+                message: format!("{field} must be a JSON object."),
+                kind: CommandErrorKind::Validation,
+                retryable: false,
+            });
+        }
+        Ok(parsed)
+    }
+
+    async fn admin_get_json<T: for<'de> Deserialize<'de>>(
+        path: &str,
+    ) -> Result<T, ControlApiError> {
+        let access_token = current_access_token()?;
+        let request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: path.to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        send_json_request(&request, &AppState::default()).await
+    }
+
+    fn submit_admin_worker_refresh_from_inputs() {
+        let worker_id = active_admin_worker_id_from_inputs_or_state();
+        admin_set_status("Refreshing worker view...");
+        force_admin_surface_refresh(worker_id);
+        render_codex_chat_dom();
+    }
+
+    fn submit_admin_worker_create_from_inputs() {
+        let worker_id = read_input_value(ADMIN_WORKER_ID_ID).and_then(trimmed_non_empty_string);
+        let workspace_ref = read_input_value(ADMIN_WORKSPACE_ID).and_then(trimmed_non_empty_string);
+        let adapter = read_input_value(ADMIN_ADAPTER_ID).and_then(trimmed_non_empty_string);
+
+        admin_set_loading(true);
+        admin_set_status("Creating or reattaching worker...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let mut body = serde_json::Map::new();
+            if let Some(worker_id) = worker_id.clone() {
+                body.insert("worker_id".to_string(), serde_json::json!(worker_id));
+            }
+            if let Some(workspace_ref) = workspace_ref.clone() {
+                body.insert(
+                    "workspace_ref".to_string(),
+                    serde_json::json!(workspace_ref),
+                );
+            }
+            if let Some(adapter) = adapter.clone() {
+                body.insert("adapter".to_string(), serde_json::json!(adapter));
+            }
+
+            let result = settings_post_json::<JsonDataEnvelope>(
+                "/api/runtime/codex/workers",
+                serde_json::Value::Object(body),
+            )
+            .await;
+            admin_set_loading(false);
+            match result {
+                Ok(response) => {
+                    let selected_worker_id = response
+                        .data
+                        .get("workerId")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToString::to_string)
+                        .or(worker_id);
+                    admin_set_last_response(response.data);
+                    admin_set_status("Worker create/reattach accepted.");
+                    force_admin_surface_refresh(selected_worker_id);
+                }
+                Err(error) => {
+                    admin_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_admin_worker_stop_from_inputs() {
+        let Some(worker_id) = active_admin_worker_id_from_inputs_or_state() else {
+            admin_set_error("Worker id is required before stop.");
+            render_codex_chat_dom();
+            return;
+        };
+        let confirmation = read_input_value(ADMIN_STOP_CONFIRM_ID)
+            .and_then(trimmed_non_empty_string)
+            .unwrap_or_default();
+        if confirmation != worker_id {
+            admin_set_error("Stop confirmation must exactly match worker id.");
+            render_codex_chat_dom();
+            return;
+        }
+        let reason = read_input_value(ADMIN_STOP_REASON_ID).and_then(trimmed_non_empty_string);
+        let encoded = encode_path_component(&worker_id);
+        let path = format!("/api/runtime/codex/workers/{encoded}/stop");
+        let body = reason
+            .map(|reason| serde_json::json!({ "reason": reason }))
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        admin_set_loading(true);
+        admin_set_status("Stopping worker...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let result = settings_post_json::<JsonDataEnvelope>(&path, body).await;
+            admin_set_loading(false);
+            match result {
+                Ok(response) => {
+                    admin_set_last_response(response.data);
+                    admin_set_status("Worker stop request accepted.");
+                    force_admin_surface_refresh(Some(worker_id));
+                }
+                Err(error) => {
+                    admin_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_admin_worker_request_from_inputs() {
+        let Some(worker_id) = active_admin_worker_id_from_inputs_or_state() else {
+            admin_set_error("Worker id is required before sending a control request.");
+            render_codex_chat_dom();
+            return;
+        };
+        let method = read_input_value(ADMIN_REQUEST_METHOD_ID)
+            .and_then(trimmed_non_empty_string)
+            .unwrap_or_else(|| "thread/list".to_string())
+            .to_lowercase();
+        if !ADMIN_WORKER_ALLOWED_METHODS.contains(&method.as_str()) {
+            admin_set_error("Control method is not allowlisted for admin UI.");
+            render_codex_chat_dom();
+            return;
+        }
+        let params_raw = read_input_value(ADMIN_REQUEST_PARAMS_ID).unwrap_or_default();
+        let params = match parse_json_object_input(&params_raw, "request params") {
+            Ok(value) => value,
+            Err(error) => {
+                admin_set_error(error.message);
+                render_codex_chat_dom();
+                return;
+            }
+        };
+        let request_id = read_input_value(ADMIN_REQUEST_ID_ID)
+            .and_then(trimmed_non_empty_string)
+            .unwrap_or_else(|| format!("req_{}", current_unix_ms()));
+
+        let encoded = encode_path_component(&worker_id);
+        let path = format!("/api/runtime/codex/workers/{encoded}/requests");
+        let body = serde_json::json!({
+            "request": {
+                "request_id": request_id,
+                "method": method,
+                "params": params,
+                "source": "openagents.web.admin",
+                "request_version": "v1"
+            }
+        });
+
+        admin_set_loading(true);
+        admin_set_status("Submitting worker control request...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let result = settings_post_json::<JsonDataEnvelope>(&path, body).await;
+            admin_set_loading(false);
+            match result {
+                Ok(response) => {
+                    admin_set_last_response(response.data);
+                    admin_set_status("Worker control request accepted.");
+                    force_admin_surface_refresh(Some(worker_id));
+                }
+                Err(error) => {
+                    admin_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_admin_worker_event_from_inputs() {
+        let Some(worker_id) = active_admin_worker_id_from_inputs_or_state() else {
+            admin_set_error("Worker id is required before sending an event.");
+            render_codex_chat_dom();
+            return;
+        };
+        let event_type = read_input_value(ADMIN_EVENT_TYPE_ID)
+            .and_then(trimmed_non_empty_string)
+            .unwrap_or_else(|| "worker.event".to_string());
+        if !event_type.starts_with("worker.") {
+            admin_set_error("Event type must start with `worker.`.");
+            render_codex_chat_dom();
+            return;
+        }
+        let payload_raw = read_input_value(ADMIN_EVENT_PAYLOAD_ID).unwrap_or_default();
+        let payload = match parse_json_object_input(&payload_raw, "event payload") {
+            Ok(value) => value,
+            Err(error) => {
+                admin_set_error(error.message);
+                render_codex_chat_dom();
+                return;
+            }
+        };
+        let encoded = encode_path_component(&worker_id);
+        let path = format!("/api/runtime/codex/workers/{encoded}/events");
+        let body = serde_json::json!({
+            "event": {
+                "event_type": event_type,
+                "payload": payload,
+            }
+        });
+
+        admin_set_loading(true);
+        admin_set_status("Appending worker event...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let result = settings_post_json::<JsonDataEnvelope>(&path, body).await;
+            admin_set_loading(false);
+            match result {
+                Ok(response) => {
+                    admin_set_last_response(response.data);
+                    admin_set_status("Worker event accepted.");
+                    force_admin_surface_refresh(Some(worker_id));
+                }
+                Err(error) => {
+                    admin_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_admin_worker_stream_fetch_from_inputs() {
+        let Some(worker_id) = active_admin_worker_id_from_inputs_or_state() else {
+            admin_set_error("Worker id is required before fetching stream.");
+            render_codex_chat_dom();
+            return;
+        };
+        let cursor = read_input_value(ADMIN_STREAM_CURSOR_ID)
+            .and_then(trimmed_non_empty_string)
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .unwrap_or(0);
+        let tail_ms = read_input_value(ADMIN_STREAM_TAIL_ID)
+            .and_then(trimmed_non_empty_string)
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .unwrap_or(15_000)
+            .clamp(1, 120_000);
+        let encoded = encode_path_component(&worker_id);
+        let path = format!(
+            "/api/runtime/codex/workers/{encoded}/stream?cursor={cursor}&tail_ms={tail_ms}"
+        );
+
+        admin_set_loading(true);
+        admin_set_status("Fetching worker stream snapshot...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let result = admin_get_json::<JsonDataEnvelope>(&path).await;
+            admin_set_loading(false);
+            match result {
+                Ok(response) => {
+                    ADMIN_WORKER_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.selected_worker_id = Some(worker_id.clone());
+                        state.worker_stream = Some(response.data.clone());
+                    });
+                    admin_set_last_response(response.data);
+                    admin_set_status("Worker stream fetched.");
+                    force_admin_surface_refresh(Some(worker_id));
+                }
+                Err(error) => {
+                    admin_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
         });
     }
 
@@ -4751,6 +5770,8 @@ mod wasm {
         let settings_loading = SETTINGS_SURFACE_LOADING.with(Cell::get);
         let l402_state = L402_SURFACE_STATE.with(|state| state.borrow().clone());
         let l402_loading = L402_SURFACE_LOADING.with(Cell::get);
+        let admin_state = ADMIN_WORKER_SURFACE_STATE.with(|state| state.borrow().clone());
+        let admin_loading = ADMIN_WORKER_SURFACE_LOADING.with(Cell::get);
 
         let thread_id = thread_id_from_route(&route);
         let is_management_route = route_is_management_surface(&route);
@@ -4790,6 +5811,9 @@ mod wasm {
         let settings_panel = document
             .get_element_by_id(SETTINGS_PANEL_ID)
             .and_then(|element| element.dyn_into::<HtmlElement>().ok());
+        let admin_panel = document
+            .get_element_by_id(ADMIN_PANEL_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok());
 
         if is_codex_chat_route && !auth_state.has_active_session() {
             let _ = root.style().set_property("display", "flex");
@@ -4802,6 +5826,9 @@ mod wasm {
             }
             if let Some(settings_panel) = settings_panel.as_ref() {
                 let _ = settings_panel.style().set_property("display", "none");
+            }
+            if let Some(admin_panel) = admin_panel.as_ref() {
+                let _ = admin_panel.style().set_property("display", "none");
             }
             render_chat_auth_gate_messages(&document, &messages_container, &route);
             messages_container.set_scroll_top(0);
@@ -4819,6 +5846,9 @@ mod wasm {
             }
             if let Some(settings_panel) = settings_panel.as_ref() {
                 let _ = settings_panel.style().set_property("display", "none");
+            }
+            if let Some(admin_panel) = admin_panel.as_ref() {
+                let _ = admin_panel.style().set_property("display", "none");
             }
             render_codex_thread_messages(&document, &messages_container);
             render_codex_thread_status(
@@ -4848,6 +5878,9 @@ mod wasm {
             }
             if let Some(settings_panel) = settings_panel.as_ref() {
                 let _ = settings_panel.style().set_property("display", "none");
+            }
+            if let Some(admin_panel) = admin_panel.as_ref() {
+                let _ = admin_panel.style().set_property("display", "none");
             }
             render_chat_landing_messages(
                 &document,
@@ -4881,6 +5914,16 @@ mod wasm {
                 },
             );
         }
+        if let Some(admin_panel) = admin_panel.as_ref() {
+            let _ = admin_panel.style().set_property(
+                "display",
+                if route_is_admin_surface(&route) {
+                    "flex"
+                } else {
+                    "none"
+                },
+            );
+        }
 
         if is_auth_route {
             sync_auth_form_inputs(&document, &auth_state);
@@ -4891,6 +5934,19 @@ mod wasm {
 
         if route_is_settings_surface(&route) {
             sync_settings_form_inputs(&document, &settings_state, settings_loading);
+        }
+
+        if route_is_admin_surface(&route) {
+            sync_admin_worker_form_inputs(&document, &admin_state, admin_loading);
+            render_admin_worker_surface_messages(
+                &document,
+                &messages_container,
+                &route,
+                &admin_state,
+                admin_loading,
+            );
+            messages_container.set_scroll_top(0);
+            return;
         }
 
         if route_is_l402_surface(&route) {
@@ -5032,6 +6088,59 @@ mod wasm {
                 ));
                 let _ = status.style().set_property("color", "#94a3b8");
             }
+        }
+    }
+
+    fn sync_admin_worker_form_inputs(
+        document: &web_sys::Document,
+        admin_state: &AdminWorkerSurfaceState,
+        loading: bool,
+    ) {
+        if let Some(worker_id) = admin_state.selected_worker_id.as_ref() {
+            set_admin_input_value(document, ADMIN_WORKER_ID_ID, worker_id);
+        }
+
+        if let Some(snapshot) = admin_state.worker_snapshot.as_ref() {
+            let workspace_ref = l402_value_text(snapshot.get("workspace_ref"));
+            if workspace_ref != "-" {
+                set_admin_input_value(document, ADMIN_WORKSPACE_ID, workspace_ref.as_str());
+            }
+            let adapter = l402_value_text(snapshot.get("adapter"));
+            if adapter != "-" {
+                set_admin_input_value(document, ADMIN_ADAPTER_ID, adapter.as_str());
+            }
+        }
+
+        if let Some(status) = document
+            .get_element_by_id(ADMIN_STATUS_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok())
+        {
+            if loading {
+                status.set_inner_text("Running admin worker request...");
+                let _ = status.style().set_property("color", "#93c5fd");
+            } else if let Some(error) = admin_state.last_error.as_ref() {
+                status.set_inner_text(error);
+                let _ = status.style().set_property("color", "#f87171");
+            } else if let Some(message) = admin_state.last_status.as_ref() {
+                status.set_inner_text(message);
+                let _ = status.style().set_property("color", "#93c5fd");
+            } else {
+                status.set_inner_text(&format!(
+                    "workers={} selected={}",
+                    admin_state.workers.len(),
+                    admin_state.selected_worker_id.as_deref().unwrap_or("none")
+                ));
+                let _ = status.style().set_property("color", "#94a3b8");
+            }
+        }
+    }
+
+    fn set_admin_input_value(document: &web_sys::Document, id: &str, value: &str) {
+        if let Some(input) = document
+            .get_element_by_id(id)
+            .and_then(|element| element.dyn_into::<HtmlInputElement>().ok())
+        {
+            input.set_value(value);
         }
     }
 
@@ -5357,6 +6466,214 @@ mod wasm {
 
         for card in cards {
             append_management_card(document, messages_container, card);
+        }
+    }
+
+    fn render_admin_worker_surface_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        admin_state: &AdminWorkerSurfaceState,
+        loading: bool,
+    ) {
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Admin Route".to_string(),
+                body: route.to_path(),
+                tone: ManagementCardTone::Info,
+            },
+        );
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Action Safety".to_string(),
+                body: "Stop requires exact worker-id confirmation. Control methods are allowlisted. Event payloads are validated as JSON objects."
+                    .to_string(),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
+
+        if loading {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Admin Data".to_string(),
+                    body: "Loading codex worker list/snapshot/stream state.".to_string(),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+            return;
+        }
+        if let Some(error) = admin_state.last_error.as_ref() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Admin Error".to_string(),
+                    body: error.clone(),
+                    tone: ManagementCardTone::Error,
+                },
+            );
+        }
+
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Workers".to_string(),
+                body: format!(
+                    "count={} selected={}",
+                    admin_state.workers.len(),
+                    admin_state.selected_worker_id.as_deref().unwrap_or("none")
+                ),
+                tone: if admin_state.workers.is_empty() {
+                    ManagementCardTone::Warning
+                } else {
+                    ManagementCardTone::Success
+                },
+            },
+        );
+
+        if let Some(panel) = append_l402_panel(document, messages_container, "Worker Index") {
+            if admin_state.workers.is_empty() {
+                append_l402_panel_line(document, &panel, "No workers for this user.", true, false);
+            } else {
+                for worker in admin_state.workers.iter().take(40) {
+                    let worker_id = l402_value_text(worker.get("worker_id"));
+                    let status = l402_value_text(worker.get("status"));
+                    let latest_seq = l402_value_text(worker.get("latest_seq"));
+                    let heartbeat = l402_value_text(worker.get("heartbeat_state"));
+
+                    let Ok(anchor) = document.create_element("a") else {
+                        continue;
+                    };
+                    let Ok(anchor) = anchor.dyn_into::<HtmlElement>() else {
+                        continue;
+                    };
+                    let _ = anchor
+                        .set_attribute("href", format!("/admin/workers/{worker_id}").as_str());
+                    let _ = anchor.style().set_property("display", "block");
+                    let _ = anchor.style().set_property("padding", "6px 8px");
+                    let _ = anchor.style().set_property("border-radius", "8px");
+                    let _ = anchor.style().set_property("border", "1px solid #1f2937");
+                    let _ = anchor.style().set_property("background", "#0b1220");
+                    let _ = anchor.style().set_property("color", "#dbeafe");
+                    let _ = anchor.style().set_property("font-size", "12px");
+                    let _ = anchor.style().set_property("text-decoration", "none");
+                    anchor.set_inner_text(&format!(
+                        "{worker_id}  status={status}  latest_seq={latest_seq}  heartbeat={heartbeat}"
+                    ));
+                    let _ = panel.append_child(&anchor);
+                }
+            }
+        }
+
+        if let Some(snapshot) = admin_state.worker_snapshot.as_ref() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Selected Worker Snapshot".to_string(),
+                    body: format!(
+                        "worker_id={} status={} latest_seq={} workspace_ref={} adapter={} heartbeat_state={} heartbeat_age_ms={} updated_at={}",
+                        l402_value_text(snapshot.get("worker_id")),
+                        l402_value_text(snapshot.get("status")),
+                        l402_value_text(snapshot.get("latest_seq")),
+                        l402_value_text(snapshot.get("workspace_ref")),
+                        l402_value_text(snapshot.get("adapter")),
+                        l402_value_text(snapshot.get("heartbeat_state")),
+                        l402_value_text(snapshot.get("heartbeat_age_ms")),
+                        l402_value_text(snapshot.get("updated_at")),
+                    ),
+                    tone: ManagementCardTone::Neutral,
+                },
+            );
+        }
+
+        if let Some(stream) = admin_state.worker_stream.as_ref() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Delivery".to_string(),
+                    body: format!(
+                        "stream_protocol={} transport={} topic={} scope={} syncTokenRoute={} cursor={} tail_ms={}",
+                        l402_value_text(stream.get("stream_protocol")),
+                        l402_value_text(
+                            stream
+                                .get("delivery")
+                                .and_then(|value| value.get("transport"))
+                        ),
+                        l402_value_text(
+                            stream.get("delivery").and_then(|value| value.get("topic"))
+                        ),
+                        l402_value_text(
+                            stream.get("delivery").and_then(|value| value.get("scope"))
+                        ),
+                        l402_value_text(
+                            stream
+                                .get("delivery")
+                                .and_then(|value| value.get("syncTokenRoute"))
+                        ),
+                        l402_value_text(stream.get("cursor")),
+                        l402_value_text(stream.get("tail_ms")),
+                    ),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+
+            if let Some(panel) =
+                append_l402_panel(document, messages_container, "Worker Stream Events")
+            {
+                let events = stream
+                    .get("events")
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                if events.is_empty() {
+                    append_l402_panel_line(
+                        document,
+                        &panel,
+                        "No events at current cursor.",
+                        true,
+                        false,
+                    );
+                } else {
+                    for event in events.iter().take(120) {
+                        append_l402_panel_line(
+                            document,
+                            &panel,
+                            &format!(
+                                "seq={} event_type={} occurred_at={}",
+                                l402_value_text(event.get("seq")),
+                                l402_value_text(event.get("event_type")),
+                                l402_value_text(event.get("occurred_at")),
+                            ),
+                            true,
+                            true,
+                        );
+                        if let Some(payload) = event.get("payload") {
+                            if let Ok(payload_text) = serde_json::to_string(payload) {
+                                append_l402_panel_line(document, &panel, &payload_text, true, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(last_response) = admin_state.last_response.as_ref() {
+            if let Ok(response_json) = serde_json::to_string_pretty(last_response) {
+                if let Some(panel) =
+                    append_l402_panel(document, messages_container, "Last Admin Action Response")
+                {
+                    append_l402_pre(document, &panel, &response_json);
+                }
+            }
         }
     }
 
