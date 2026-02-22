@@ -210,6 +210,8 @@ Baseline and migration evidence targets:
   Flip runner/runbook/report: `apps/openagents.com/service/scripts/run-production-rust-route-flip.sh`, `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`, `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
 - [x] Laravel serving lane retirement report (`OA-WEBPARITY-060`)
   Retirement verifier/report: `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`, `.github/workflows/web-verify-laravel-serving-retired.yml`, `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
+- [x] Post-cutover architecture audit and hardening report (`OA-WEBPARITY-061`)
+  Audit report: `docs/audits/2026-02-22-openagents-web-post-cutover-architecture-audit.md`
 
 ## Checklist Freeze Rules
 
