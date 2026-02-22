@@ -1,11 +1,12 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::auth::{normalize_email, normalize_verification_code};
-use crate::codex_control::{ControlMethod, extract_control_request_json};
+use crate::codex_control::{extract_control_request_json, ControlMethod};
 use crate::codex_worker::extract_desktop_handshake_ack_id;
 use crate::command::normalize_thread_message_text;
 use crate::ios_codex_state::{
@@ -13,9 +14,9 @@ use crate::ios_codex_state::{
     RuntimeCodexControlRequestState, RuntimeCodexControlRequestTracker,
     RuntimeCodexWorkerActionRequest,
 };
-use crate::ios_mission_control::IosMissionControlStore;
 use crate::ios_khala_session::{IosKhalaSession, SessionStep};
-use crate::ios_worker_selection::{RuntimeCodexWorkerCandidate, select_preferred_worker_id};
+use crate::ios_mission_control::IosMissionControlStore;
+use crate::ios_worker_selection::{select_preferred_worker_id, RuntimeCodexWorkerCandidate};
 use crate::khala_protocol::parse_phoenix_frame;
 
 pub const OA_CLIENT_CORE_FFI_CONTRACT_VERSION: u32 = 1;
@@ -625,6 +626,33 @@ pub unsafe extern "C" fn oa_client_core_khala_session_create(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn oa_client_core_khala_session_create_multi(
+    topics_json: *const c_char,
+    resume_after_json: *const c_char,
+) -> *mut IosKhalaSession {
+    let Some(topics_json) = with_c_string_input(topics_json) else {
+        return std::ptr::null_mut();
+    };
+    let Some(resume_after_json) = with_c_string_input(resume_after_json) else {
+        return std::ptr::null_mut();
+    };
+
+    let Ok(topics) = serde_json::from_str::<Vec<String>>(&topics_json) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(resume_after_by_topic) =
+        serde_json::from_str::<HashMap<String, u64>>(&resume_after_json)
+    else {
+        return std::ptr::null_mut();
+    };
+
+    Box::into_raw(Box::new(IosKhalaSession::new_multi(
+        topics,
+        resume_after_by_topic,
+    )))
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_khala_session_start(
     session: *mut IosKhalaSession,
 ) -> *mut c_char {
@@ -694,8 +722,8 @@ pub unsafe extern "C" fn oa_client_core_khala_session_free(session: *mut IosKhal
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_control_coordinator_create()
--> *mut RuntimeCodexControlCoordinator {
+pub unsafe extern "C" fn oa_client_core_control_coordinator_create(
+) -> *mut RuntimeCodexControlCoordinator {
     Box::into_raw(Box::new(RuntimeCodexControlCoordinator::default()))
 }
 
@@ -727,7 +755,8 @@ pub unsafe extern "C" fn oa_client_core_control_coordinator_free(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_mission_control_store_create() -> *mut IosMissionControlStore {
+pub unsafe extern "C" fn oa_client_core_mission_control_store_create() -> *mut IosMissionControlStore
+{
     Box::into_raw(Box::new(IosMissionControlStore::new()))
 }
 
@@ -803,14 +832,13 @@ mod tests {
     use std::ptr;
 
     use super::{
-        IosMissionControlStore, OA_CLIENT_CORE_FFI_CONTRACT_VERSION,
-        RuntimeCodexControlCoordinator,
         apply_control_coordinator_command_json, apply_mission_control_command_json,
-        decode_control_receipt_json,
-        extract_control_request_from_payload_json, extract_control_success_context_json,
-        extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
-        normalize_verification_code_string, oa_client_core_ffi_contract_version,
-        oa_client_core_normalize_email, parse_khala_frame_json, select_preferred_worker_json,
+        decode_control_receipt_json, extract_control_request_from_payload_json,
+        extract_control_success_context_json, extract_desktop_ack_id_json, normalize_email_string,
+        normalize_message_text_string, normalize_verification_code_string,
+        oa_client_core_ffi_contract_version, oa_client_core_normalize_email,
+        parse_khala_frame_json, select_preferred_worker_json, IosMissionControlStore,
+        RuntimeCodexControlCoordinator, OA_CLIENT_CORE_FFI_CONTRACT_VERSION,
     };
 
     #[test]

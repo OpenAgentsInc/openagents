@@ -11,8 +11,14 @@ enum RustClientCoreBridge {
     }
 
     struct KhalaSessionEvent: Decodable {
+        let topic: String
         let seq: Int?
         let payload: JSONValue
+    }
+
+    struct KhalaSessionTopicWatermark: Decodable {
+        let topic: String
+        let watermark: Int
     }
 
     struct KhalaSessionStep: Decodable {
@@ -20,6 +26,7 @@ enum RustClientCoreBridge {
         let frame: String?
         let events: [KhalaSessionEvent]?
         let watermark: Int?
+        let topicWatermarks: [KhalaSessionTopicWatermark]?
         let code: String?
         let message: String?
         let status: Int?
@@ -32,6 +39,7 @@ enum RustClientCoreBridge {
             case frame
             case events
             case watermark
+            case topicWatermarks = "topic_watermarks"
             case code
             case message
             case status
@@ -50,6 +58,10 @@ enum RustClientCoreBridge {
         UnsafePointer<CChar>?,
         UnsafePointer<CChar>?,
         UInt64
+    ) -> UnsafeMutableRawPointer?
+    private typealias KhalaSessionCreateMultiFunction = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?
     ) -> UnsafeMutableRawPointer?
     private typealias KhalaSessionStepFunction = @convention(c) (UnsafeMutableRawPointer?) -> UnsafeMutablePointer<CChar>?
     private typealias KhalaSessionOnFrameFunction = @convention(c) (
@@ -81,6 +93,7 @@ enum RustClientCoreBridge {
         let decodeControlReceipt: TransformFunction?
         let extractControlSuccessContext: TransformFunction?
         let khalaSessionCreate: KhalaSessionCreateFunction?
+        let khalaSessionCreateMulti: KhalaSessionCreateMultiFunction?
         let khalaSessionStart: KhalaSessionStepFunction?
         let khalaSessionOnFrame: KhalaSessionOnFrameFunction?
         let khalaSessionHeartbeat: KhalaSessionStepFunction?
@@ -134,6 +147,10 @@ enum RustClientCoreBridge {
                 khalaSessionCreate: loadSymbol(
                     "oa_client_core_khala_session_create",
                     as: KhalaSessionCreateFunction.self
+                ),
+                khalaSessionCreateMulti: loadSymbol(
+                    "oa_client_core_khala_session_create_multi",
+                    as: KhalaSessionCreateMultiFunction.self
                 ),
                 khalaSessionStart: loadSymbol(
                     "oa_client_core_khala_session_start",
@@ -295,16 +312,38 @@ enum RustClientCoreBridge {
     }
 
     static func createKhalaSession(
-        workerID: String,
-        workerEventsTopic: String,
-        resumeAfter: Int
+        topics: [String],
+        resumeAfterByTopic: [String: Int]
     ) -> UnsafeMutableRawPointer? {
-        guard let create = symbols.khalaSessionCreate else {
+        let normalizedTopics = Array(Set(topics.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !normalizedTopics.isEmpty else {
             return nil
         }
 
-        return withTwoCStringInputs(workerID, workerEventsTopic) { workerPtr, topicPtr in
-            create(workerPtr, topicPtr, UInt64(max(0, resumeAfter)))
+        if let createMulti = symbols.khalaSessionCreateMulti,
+           let topicsData = try? JSONEncoder().encode(normalizedTopics),
+           let topicsJSON = String(data: topicsData, encoding: .utf8) {
+            let normalizedResumeMap = normalizedTopics.reduce(into: [String: Int]()) { partial, topic in
+                partial[topic] = max(0, resumeAfterByTopic[topic] ?? 0)
+            }
+            guard let resumeData = try? JSONEncoder().encode(normalizedResumeMap),
+                  let resumeJSON = String(data: resumeData, encoding: .utf8) else {
+                return nil
+            }
+            return withTwoCStringInputs(topicsJSON, resumeJSON) { topicsPtr, resumePtr in
+                createMulti(topicsPtr, resumePtr)
+            }
+        }
+
+        guard let create = symbols.khalaSessionCreate else {
+            return nil
+        }
+        let fallbackTopic = normalizedTopics[0]
+        let fallbackResume = max(0, resumeAfterByTopic[fallbackTopic] ?? 0)
+        return withTwoCStringInputs("autopilot-ios", fallbackTopic) { workerPtr, topicPtr in
+            create(workerPtr, topicPtr, UInt64(fallbackResume))
         }
     }
 

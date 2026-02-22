@@ -22,6 +22,8 @@ run_rust_case "worker selection ranking" "prefers_desktop_shared_running_worker_
 run_rust_case "worker selection running fallback" "falls_back_to_running_workers_when_no_desktop_worker_is_running"
 run_rust_case "desktop handshake ack extraction" "extract_desktop_handshake_ack_id_requires_proto_fields"
 run_rust_case "khala stream resume subscribe path" "session_starts_with_join_and_subscribe_on_reply"
+run_rust_case "khala stream multi-topic subscribe payload" "session_subscribe_payload_supports_multi_topic_resume_map"
+run_rust_case "khala stream multi-topic multi-worker update routing" "update_batch_emits_multi_topic_events_without_worker_filtering"
 run_rust_case "khala stream stale-cursor mapping" "stale_cursor_maps_conflict_error"
 run_rust_case "thread start + interrupt control lifecycle" "control_coordinator_turn_start_then_interrupt_scenario"
 run_rust_case "reconnect backoff policy" "khala_reconnect_policy_uses_bounded_backoff"
@@ -58,6 +60,7 @@ echo "==> ios parity: runtime codex app-server integration tests"
     -destination "id=${destination_id}" \
     -only-testing:AutopilotTests/AutopilotTests/runtimeCodexClientAuthWorkerAndSyncApisCoverAppServerContracts \
     -only-testing:AutopilotTests/AutopilotTests/runtimeCodexClientRequestStopApisEncodeAndMapErrors \
+    -only-testing:AutopilotTests/AutopilotTests/rustBridgeKhalaSessionMultiTopicParity \
     -only-testing:AutopilotTests/AutopilotTests/rustBridgeWorkerSelectionParity \
     test
 )
