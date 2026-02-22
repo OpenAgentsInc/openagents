@@ -95,11 +95,14 @@ impl CommunityFeedClient {
     }
 
     fn auth_header(&self) -> Result<reqwest::header::HeaderValue> {
-        let key = self.api_key.as_deref().ok_or_else(|| CommunityFeedError::Api {
-            status: 401,
-            error: "API key required".to_string(),
-            hint: Some("Use CommunityFeedClient::new(api_key) or register first.".to_string()),
-        })?;
+        let key = self
+            .api_key
+            .as_deref()
+            .ok_or_else(|| CommunityFeedError::Api {
+                status: 401,
+                error: "API key required".to_string(),
+                hint: Some("Use CommunityFeedClient::new(api_key) or register first.".to_string()),
+            })?;
         let value = format!("Bearer {key}");
         reqwest::header::HeaderValue::from_str(&value).map_err(|_| CommunityFeedError::Api {
             status: 401,
@@ -277,11 +280,13 @@ impl CommunityFeedClient {
             .await?;
         let envelope: crate::types::AgentsMeEnvelope =
             response.json().await.map_err(CommunityFeedError::Http)?;
-        envelope.into_agent().ok_or_else(|| CommunityFeedError::Api {
-            status: 200,
-            error: "agents/me response missing 'data' and 'agent'".to_string(),
-            hint: None,
-        })
+        envelope
+            .into_agent()
+            .ok_or_else(|| CommunityFeedError::Api {
+                status: 200,
+                error: "agents/me response missing 'data' and 'agent'".to_string(),
+                hint: None,
+            })
     }
 
     /// Check claim status (pending_claim or claimed).

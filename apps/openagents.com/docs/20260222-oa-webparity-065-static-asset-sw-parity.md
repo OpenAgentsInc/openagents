@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-065
 
 - Static asset/service-worker parity harness:
   - `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-static-asset-sw-parity-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Static asset parity fixes and tests:
   - `apps/openagents.com/service/src/lib.rs`
 

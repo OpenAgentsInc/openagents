@@ -7,7 +7,7 @@ mod codex_thread;
 mod wasm {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use web_time::{Duration, Instant};
 
     use futures_util::{FutureExt, SinkExt, StreamExt, pin_mut, select};
     use gloo_net::http::Request;
@@ -3210,10 +3210,7 @@ mod wasm {
     }
 
     fn current_unix_ms() -> u64 {
-        let elapsed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::from_secs(0));
-        u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        epoch_millis_now()
     }
 
     async fn mint_sync_token(scopes: Vec<String>) -> Result<SyncTokenData, ControlApiError> {
@@ -8311,10 +8308,15 @@ mod wasm {
     }
 
     fn now_unix_ms() -> u64 {
-        let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        epoch_millis_now()
+    }
+
+    fn epoch_millis_now() -> u64 {
+        let now = js_sys::Date::now();
+        if !now.is_finite() || now.is_sign_negative() {
             return 0;
-        };
-        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        }
+        now.floor().min(u64::MAX as f64) as u64
     }
 
     fn should_force_boot_failure() -> bool {

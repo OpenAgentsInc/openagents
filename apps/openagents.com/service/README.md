@@ -224,8 +224,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `apps/openagents.com/service/scripts/verify-openapi-json.sh`
 - Committed snapshot:
   - `apps/openagents.com/service/openapi/openapi.json`
-- CI gate:
-  - `.github/workflows/web-openapi-rust.yml`
+- CI gate: removed (workflow automation disabled by invariant).
 
 ## Compatibility negotiation policy
 

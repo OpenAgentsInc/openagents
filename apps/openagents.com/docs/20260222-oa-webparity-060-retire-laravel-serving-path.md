@@ -9,7 +9,6 @@ Issue: OA-WEBPARITY-060
 - Legacy-serving retirement verifier:
   - `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`
 - Manual verification workflow:
-  - `.github/workflows/web-verify-laravel-serving-retired.yml`
 - Active app agent guidance switched to Rust-only:
   - `apps/openagents.com/AGENTS.md`
 - Historical Laravel agent guidance archived:

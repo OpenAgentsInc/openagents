@@ -38,7 +38,8 @@ async fn main() -> Result<()> {
             status: 401,
             error: "No CommunityFeed API key".to_string(),
             hint: Some(
-                "Set COMMUNITYFEED_API_KEY or create ~/.config/communityfeed/credentials.json".to_string(),
+                "Set COMMUNITYFEED_API_KEY or create ~/.config/communityfeed/credentials.json"
+                    .to_string(),
             ),
         })?;
 

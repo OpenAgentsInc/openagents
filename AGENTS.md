@@ -114,6 +114,7 @@ Hard rule for iOS Codex lanes:
 - No TODO-only stubs in production paths.
 - Boundary contracts are typed and schema-governed.
 - Replayability and deterministic hashes are required for execution artifacts.
+- `.github/` workflow automation is forbidden in this repo; do not add GitHub Actions workflow files.
 
 Canonical references:
 - `docs/execution/ARTIFACTS.md`

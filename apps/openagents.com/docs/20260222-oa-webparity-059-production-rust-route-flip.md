@@ -8,7 +8,7 @@ Issue: OA-WEBPARITY-059
 
 - Route flip automation: `apps/openagents.com/service/scripts/run-production-rust-route-flip.sh`
 - Runbook: `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`
-- Manual workflow dispatch: `.github/workflows/web-production-rust-route-flip.yml`
+- Workflow automation removed (invariant: no `.github/workflows`).
 
 ## Rust-Authority Lock Added
 

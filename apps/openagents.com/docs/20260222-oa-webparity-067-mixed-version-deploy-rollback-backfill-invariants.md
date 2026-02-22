@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-067
 
 - Mixed-version deploy safety harness:
   - `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-mixed-version-deploy-safety-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Mixed-version deploy and rollback runbook:
   - `apps/openagents.com/service/docs/MIXED_VERSION_DEPLOY_SAFETY.md`
 

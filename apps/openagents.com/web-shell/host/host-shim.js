@@ -195,7 +195,8 @@ async function boot() {
     return;
   }
 
-  await init("./openagents_web_shell_bg.wasm");
+  const wasmUrl = new URL("./openagents_web_shell_bg.wasm", import.meta.url);
+  await init({ module_or_path: wasmUrl });
   setStatus("Boot: wasm initialized");
 }
 

@@ -219,23 +219,23 @@ Baseline and migration evidence targets:
 - [x] Production Rust-only route target flip report (`OA-WEBPARITY-059`)
   Flip runner/runbook/report: `apps/openagents.com/service/scripts/run-production-rust-route-flip.sh`, `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`, `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
 - [x] Laravel serving lane retirement report (`OA-WEBPARITY-060`)
-  Retirement verifier/report: `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`, `.github/workflows/web-verify-laravel-serving-retired.yml`, `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
+  Retirement verifier/report: `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`, `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
 - [x] Post-cutover architecture audit and hardening report (`OA-WEBPARITY-061`)
   Audit report: `docs/audits/2026-02-22-openagents-web-post-cutover-architecture-audit.md`
 - [x] Non-HTTP parity harness report (`OA-WEBPARITY-062`)
-  Harness/report: `apps/openagents.com/scripts/run-non-http-parity-harness.sh`, `.github/workflows/web-non-http-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-062-non-http-parity-harness.md`
+  Harness/report: `apps/openagents.com/scripts/run-non-http-parity-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-062-non-http-parity-harness.md`
 - [x] Auth/session edge-case matrix parity (`OA-WEBPARITY-063`)
-  Harness/report: `apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh`, `.github/workflows/web-auth-session-edge-case-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-063-auth-session-edge-case-matrix.md`
+  Harness/report: `apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-063-auth-session-edge-case-matrix.md`
 - [x] Webhook signature/idempotency/replay parity (`OA-WEBPARITY-064`)
-  Harness/report: `apps/openagents.com/scripts/run-webhook-parity-harness.sh`, `.github/workflows/web-webhook-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-064-webhook-signature-idempotency-replay.md`
+  Harness/report: `apps/openagents.com/scripts/run-webhook-parity-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-064-webhook-signature-idempotency-replay.md`
 - [x] Static asset host and service-worker delivery parity (`OA-WEBPARITY-065`)
-  Harness/report: `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`, `.github/workflows/web-static-asset-sw-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-065-static-asset-sw-parity.md`
+  Harness/report: `apps/openagents.com/scripts/run-static-asset-sw-parity-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-065-static-asset-sw-parity.md`
 - [x] Queue/scheduler/listener parity and Laravel scheduler shutdown (`OA-WEBPARITY-066`)
-  Harness/report: `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`, `.github/workflows/web-async-lane-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-066-queue-scheduler-listener-parity.md`
+  Harness/report: `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-066-queue-scheduler-listener-parity.md`
 - [x] Mixed-version deploy safety, rollback, and backfill invariants (`OA-WEBPARITY-067`)
-  Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `.github/workflows/web-mixed-version-deploy-safety-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
+  Harness/report: `apps/openagents.com/scripts/run-mixed-version-deploy-safety-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-067-mixed-version-deploy-rollback-backfill-invariants.md`
 - [x] Rust-only terminal gate (`OA-WEBPARITY-068`)
-  Harness/report: `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`, `.github/workflows/web-rust-only-terminal-gate.yml`, `apps/openagents.com/docs/20260222-oa-webparity-068-rust-only-terminal-gate.md`
+  Harness/report: `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`, `apps/openagents.com/docs/20260222-oa-webparity-068-rust-only-terminal-gate.md`
 - [x] Compatibility extension lane (`OA-WEBPARITY-069..082`)
   Governance and rollout evidence: ADR-0008, mapping spec, fixture corpus, adapter tests, staging dual-run diff, cutover/steady-state reports, and retired-header cleanup closure (`apps/openagents.com/docs/20260222-oa-webparity-080-production-stream-cutover.md`, `docs/audits/2026-02-22-openagents-web-compatibility-lane-steady-state-audit.md`, `apps/openagents.com/docs/20260222-oa-webparity-082-retired-chat-header-cleanup.md`).
 

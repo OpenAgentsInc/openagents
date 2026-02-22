@@ -1,0 +1,22 @@
+2c8e5a98159a49f5f09b56693eee74b00b7caab2	crates/gitafter/Cargo.toml	-maud = "0.26"
+35aa13dc161a5a092391c5a6ced180e334821e01	crates/gitafter/Cargo.toml	+maud = "0.26"
+37a78a58c71cc312774ebb46bbcf3a341f906677	Cargo.toml	-maud = "0.27.0"
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/autopilot-gui/Cargo.toml	-maud = "0.26"
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/autopilot/Cargo.toml	-maud = { version = "0.26", features = ["actix-web"] }
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/gitafter/Cargo.toml	-maud = { version = "0.26", features = ["actix-web"] }
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/marketplace/Cargo.toml	-maud = "0.26"
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/storybook/Cargo.toml	-maud = { version = "0.26", features = ["actix-web"] }
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/ui/Cargo.toml	-maud = "0.26"
+37a78a58c71cc312774ebb46bbcf3a341f906677	crates/wallet/Cargo.toml	-maud = { version = "0.26", features = ["actix-web"] }
+c1757880bd0f1ca1ede5775e77d3dcc9a5494c85	Cargo.toml	+maud = "0.27.0"
+29b37f0bf4fe69f053fce72c6545827d9a2e9f45	crates/desktop/Cargo.toml	-maud = { version = "0.26", features = ["actix-web"] }
+0a432dc477e8c6d58ca310095d85cfe71e4e79b1	crates/autopilot-gui/Cargo.toml	+maud = "0.26"
+1a5e9e18eb1ede866e1057a566a4aa4872133fab	crates/marketplace/Cargo.toml	+maud = "0.26"
+c6a3d6c1ccc4ef28e52d61e6507bc38cba874667	crates/autopilot/Cargo.toml	-maud = "0.26"
+c6a3d6c1ccc4ef28e52d61e6507bc38cba874667	crates/autopilot/Cargo.toml	+maud = { version = "0.26", features = ["actix-web"] }
+9f4f9cd8dd7a929c265c678f4f20445c560dcdc5	crates/wallet/Cargo.toml	+maud = { version = "0.26", features = ["actix-web"] }
+0f148f97817435f276727a4b835d0ba55e9b302a	crates/agentgit/Cargo.toml	+maud = { version = "0.26", features = ["actix-web"] }
+e9703ca00df8aed17b2d59064f52ad864ea0d44f	crates/autopilot/Cargo.toml	+maud = "0.26"
+daa3727d6887ca87065561af1c62e396295b5693	crates/desktop/Cargo.toml	+maud = { version = "0.26", features = ["actix-web"] }
+daa3727d6887ca87065561af1c62e396295b5693	crates/ui/Cargo.toml	+maud = "0.26"
+7e848adcd05752d6b3e7005e6438ba2130c3ac81	crates/storybook/Cargo.toml	+maud = { version = "0.26", features = ["actix-web"] }

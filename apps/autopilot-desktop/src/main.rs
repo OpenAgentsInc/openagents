@@ -12,9 +12,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use arboard::Clipboard;
 use autopilot_app::{
-    App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
-    CommunityFeedCommentSummary, CommunityFeedPostSummary, CommunityFeedProfileSummary, PylonStatus,
-    RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
+    App as AutopilotApp, AppConfig, AppEvent, CommunityFeedCommentSummary,
+    CommunityFeedPostSummary, CommunityFeedProfileSummary, DvmHistorySnapshot, DvmProviderStatus,
+    EventRecorder, PylonStatus, RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -27,6 +27,9 @@ use codex_client::{
     SandboxPolicy, ThreadListParams, ThreadReadParams, ThreadResumeParams, ThreadStartParams,
     TurnInterruptParams, TurnStartParams, UserInput,
 };
+use communityfeed::{
+    CommentSort, CommunityFeedClient, CommunityFeedError, CreateCommentRequest, PostSort,
+};
 use dsrs::signatures::{
     GuidanceDirectiveSignature, GuidanceRouterSignature, PlanningSignature,
     TaskUnderstandingSignature,
@@ -38,7 +41,6 @@ use full_auto::{
     run_full_auto_decision,
 };
 use futures::{SinkExt, StreamExt};
-use communityfeed::{CommentSort, CreateCommentRequest, CommunityFeedClient, CommunityFeedError, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
@@ -76,9 +78,7 @@ use runtime_auth::{
 };
 use runtime_codex_proto::{
     ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame,
-    build_success_receipt,
-    extract_control_request,
-    extract_desktop_handshake_ack_id,
+    build_success_receipt, extract_control_request, extract_desktop_handshake_ack_id,
     extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
@@ -1015,7 +1015,10 @@ impl RuntimeCodexSync {
         message: &str,
         details: Option<Value>,
     ) -> Result<(), String> {
-        if !self.mark_control_terminal_receipt(worker_id, request_id).await {
+        if !self
+            .mark_control_terminal_receipt(worker_id, request_id)
+            .await
+        {
             tracing::debug!(
                 worker_id = %worker_id,
                 request_id = %request_id,
@@ -1045,7 +1048,10 @@ impl RuntimeCodexSync {
         method: ControlMethod,
         response: Value,
     ) -> Result<(), String> {
-        if !self.mark_control_terminal_receipt(worker_id, request_id).await {
+        if !self
+            .mark_control_terminal_receipt(worker_id, request_id)
+            .await
+        {
             tracing::debug!(
                 worker_id = %worker_id,
                 request_id = %request_id,
@@ -1055,8 +1061,7 @@ impl RuntimeCodexSync {
             return Ok(());
         }
 
-        let receipt =
-            build_success_receipt(request_id, method, response, &Utc::now().to_rfc3339());
+        let receipt = build_success_receipt(request_id, method, response, &Utc::now().to_rfc3339());
         self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
             .await
     }
@@ -1654,13 +1659,11 @@ async fn execute_runtime_remote_control_request(
                 .map_err(|err| {
                     remote_control_internal(
                         format!("turn/interrupt failed: {err}"),
-                        Some(
-                            json!({
-                                "method": "turn/interrupt",
-                                "thread_id": thread_id,
-                                "turn_id": turn_id,
-                            }),
-                        ),
+                        Some(json!({
+                            "method": "turn/interrupt",
+                            "thread_id": thread_id,
+                            "turn_id": turn_id,
+                        })),
                     )
                 })?;
 
@@ -4982,7 +4985,11 @@ fn communityfeed_cache_connection() -> Result<Connection> {
     Ok(conn)
 }
 
-fn ensure_communityfeed_cache_column(conn: &Connection, name: &str, definition: &str) -> Result<()> {
+fn ensure_communityfeed_cache_column(
+    conn: &Connection,
+    name: &str,
+    definition: &str,
+) -> Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(communityfeed_posts)")?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -5304,9 +5311,10 @@ async fn post_communityfeed_reply_comment(
         })
     }?;
 
-    let post_url = resolve_communityfeed_post_url(post_id, proxy_client.as_ref(), live_client.as_ref())
-        .await
-        .unwrap_or_else(|| format!("https://www.communityfeed.com/posts/{post_id}"));
+    let post_url =
+        resolve_communityfeed_post_url(post_id, proxy_client.as_ref(), live_client.as_ref())
+            .await
+            .unwrap_or_else(|| format!("https://www.communityfeed.com/posts/{post_id}"));
 
     let _ = proxy.send_event(AppEvent::CommunityFeedLog {
         message: format!(
@@ -5322,8 +5330,10 @@ async fn post_communityfeed_reply_comment(
 
 async fn load_communityfeed_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) -> Result<()> {
     let api_key = communityfeed_api_key();
-    let proxy_client = CommunityFeedClient::with_base_url(communityfeed_proxy_base(), api_key.clone()).ok();
-    let live_client = CommunityFeedClient::with_base_url(communityfeed_live_base(), api_key.clone()).ok();
+    let proxy_client =
+        CommunityFeedClient::with_base_url(communityfeed_proxy_base(), api_key.clone()).ok();
+    let live_client =
+        CommunityFeedClient::with_base_url(communityfeed_live_base(), api_key.clone()).ok();
 
     let comments = if let Some(client) = proxy_client.as_ref() {
         client

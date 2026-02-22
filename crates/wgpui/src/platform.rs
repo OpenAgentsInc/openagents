@@ -1815,8 +1815,7 @@ pub mod ios {
                 {
                     match region.rule {
                         MissionAlertRuleToggle::Errors => {
-                            self.mission_alert_errors_enabled =
-                                !self.mission_alert_errors_enabled;
+                            self.mission_alert_errors_enabled = !self.mission_alert_errors_enabled;
                             self.mission_alert_errors_toggle_requested = true;
                         }
                         MissionAlertRuleToggle::StuckTurns => {
@@ -3293,8 +3292,8 @@ pub mod ios {
                         let pref_row_y = action_row_y + action_height + 4.0;
                         let pref_height = 22.0;
                         let pref_gap = 4.0;
-                        let pref_width = ((transcript_bounds.width() - 16.0 - pref_gap * 5.0) / 6.0)
-                            .max(48.0);
+                        let pref_width =
+                            ((transcript_bounds.width() - 16.0 - pref_gap * 5.0) / 6.0).max(48.0);
                         let mut pref_x = transcript_bounds.x() + 8.0;
                         let pref_items = [
                             ("Watch A".to_string(), 0_u8),
@@ -3353,25 +3352,32 @@ pub mod ios {
                                         .push(MissionWatchlistOnlyTapRegion { bounds });
                                 }
                                 2 => {
-                                    mission_order_tap_regions.push(MissionOrderTapRegion { bounds });
+                                    mission_order_tap_regions
+                                        .push(MissionOrderTapRegion { bounds });
                                 }
                                 3 => {
-                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
-                                        bounds,
-                                        rule: MissionAlertRuleToggle::Errors,
-                                    });
+                                    mission_alert_rule_tap_regions.push(
+                                        MissionAlertRuleTapRegion {
+                                            bounds,
+                                            rule: MissionAlertRuleToggle::Errors,
+                                        },
+                                    );
                                 }
                                 4 => {
-                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
-                                        bounds,
-                                        rule: MissionAlertRuleToggle::StuckTurns,
-                                    });
+                                    mission_alert_rule_tap_regions.push(
+                                        MissionAlertRuleTapRegion {
+                                            bounds,
+                                            rule: MissionAlertRuleToggle::StuckTurns,
+                                        },
+                                    );
                                 }
                                 _ => {
-                                    mission_alert_rule_tap_regions.push(MissionAlertRuleTapRegion {
-                                        bounds,
-                                        rule: MissionAlertRuleToggle::ReconnectStorms,
-                                    });
+                                    mission_alert_rule_tap_regions.push(
+                                        MissionAlertRuleTapRegion {
+                                            bounds,
+                                            rule: MissionAlertRuleToggle::ReconnectStorms,
+                                        },
+                                    );
                                 }
                             }
                             pref_x += pref_width + pref_gap;
@@ -5485,9 +5491,7 @@ pub mod ios {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn wgpui_ios_background_mission_filter(
-        state: *mut IosBackgroundState,
-    ) -> u8 {
+    pub extern "C" fn wgpui_ios_background_mission_filter(state: *mut IosBackgroundState) -> u8 {
         if state.is_null() {
             return 0;
         }

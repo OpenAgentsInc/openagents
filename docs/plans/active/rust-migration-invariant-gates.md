@@ -1,7 +1,7 @@
 # Rust Migration Invariant Gates
 
 Status: active
-Last updated: 2026-02-21
+Last updated: 2026-02-22
 
 These invariants gate Rust migration work and release decisions.
 
@@ -56,3 +56,10 @@ iOS product UI surfaces (Codex/chat/thread/admin flows) must run through Rust/WG
 - Swift/SwiftUI is limited to host/bootstrap and OS capability bridges only.
 - No new product UI/state logic is allowed in SwiftUI view code.
 - Existing SwiftUI product UI is migration debt and must be removed as WGPUI parity lands.
+
+## INV-12: No GitHub workflow automation in-repo
+
+The repository must not contain `.github/` workflow automation.
+
+- Do not add GitHub Actions workflow files under `.github/workflows/`.
+- Execute verification/deploy gates via canonical local scripts and runbooks.

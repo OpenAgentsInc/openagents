@@ -19,7 +19,6 @@ Canonical sources:
 
 CI enforcement:
 
-- `.github/workflows/web-openapi-rust.yml`
 - Validates OpenAPI-generation tests and snapshot parity.
 
 Historical Laravel documentation (archived):

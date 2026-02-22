@@ -2375,6 +2375,9 @@ async fn web_shell_entry(
     if is_retired_web_route(path) {
         return Err(static_not_found(format!("Route '{}' was not found.", path)));
     }
+    if let Some(response) = maybe_serve_file_like_static_alias(&state, path, &headers).await? {
+        return Ok(response);
+    }
 
     let request_id = request_id(&headers);
     let cohort_key = resolve_route_cohort_key(&headers);
@@ -2423,6 +2426,49 @@ async fn web_shell_entry(
             Ok(Redirect::temporary(&redirect).into_response())
         }
     }
+}
+
+async fn maybe_serve_file_like_static_alias(
+    state: &AppState,
+    request_path: &str,
+    request_headers: &HeaderMap,
+) -> Result<Option<Response>, (StatusCode, Json<ApiErrorResponse>)> {
+    let trimmed = request_path.trim().trim_start_matches('/');
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if FsPath::new(trimmed).extension().is_none() {
+        return Ok(None);
+    }
+
+    let relative_path = normalize_static_path(trimmed)
+        .ok_or_else(|| static_not_found(format!("Asset '{}' was not found.", request_path)))?;
+    let static_root = state.config.static_dir.as_path();
+    let direct_path = static_root.join(&relative_path);
+    let assets_fallback_path = static_root.join("assets").join(&relative_path);
+
+    let asset_path = if direct_path.is_file() {
+        direct_path
+    } else if assets_fallback_path.is_file() {
+        assets_fallback_path
+    } else {
+        return Err(static_not_found(format!(
+            "Asset '{}' was not found.",
+            relative_path
+        )));
+    };
+
+    let cache_control = if is_hashed_asset_path(&relative_path) {
+        CACHE_IMMUTABLE_ONE_YEAR
+    } else {
+        CACHE_SHORT_LIVED
+    };
+
+    let response = build_static_response(&asset_path, cache_control, Some(request_headers))
+        .await
+        .map_err(map_static_error)?;
+    Ok(Some(response))
 }
 
 async fn route_split_status(
@@ -14404,7 +14450,9 @@ mod tests {
         UpsertUserSparkWalletInput,
     };
     use crate::observability::{Observability, RecordingAuditSink};
-    use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, MAINTENANCE_CACHE_CONTROL};
+    use crate::{
+        CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, CACHE_SHORT_LIVED, MAINTENANCE_CACHE_CONTROL,
+    };
 
     fn test_config(static_dir: PathBuf) -> Config {
         let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
@@ -15893,6 +15941,67 @@ mod tests {
         );
         let gz_body = gz_response.into_body().collect().await?.to_bytes();
         assert_eq!(gz_body.as_ref(), b"gzip-bytes");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_like_root_wasm_path_resolves_to_assets_fallback() -> Result<()> {
+        let static_dir = tempdir()?;
+        let assets_dir = static_dir.path().join("assets");
+        std::fs::create_dir_all(&assets_dir)?;
+        let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
+        std::fs::write(
+            assets_dir.join("openagents_web_shell_bg.wasm"),
+            wasm_bytes.clone(),
+        )?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/openagents_web_shell_bg.wasm")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_SHORT_LIVED)
+        );
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("application/wasm"));
+
+        let body = response.into_body().collect().await?.to_bytes();
+        assert_eq!(body.as_ref(), wasm_bytes.as_slice());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_like_missing_path_returns_not_found_instead_of_html_shell() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/missing-module.wasm")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "not_found");
 
         Ok(())
     }

@@ -67,7 +67,8 @@ fn parse_feed_object_data() {
             { "id": "d1", "author": { "name": "D" } }
         ]
     });
-    let wrapper: communityfeed::PostsResponse = serde_json::from_value(body).expect("parse object data");
+    let wrapper: communityfeed::PostsResponse =
+        serde_json::from_value(body).expect("parse object data");
     let posts = wrapper.into_posts();
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].id, "d1");
@@ -108,7 +109,8 @@ fn parse_feed_submolt_as_object() {
             "submolt": { "id": "sub-uuid", "name": "general", "display_name": "General" }
         }
     ]);
-    let posts: Vec<communityfeed::Post> = serde_json::from_value(body).expect("parse submolt object");
+    let posts: Vec<communityfeed::Post> =
+        serde_json::from_value(body).expect("parse submolt object");
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].submolt.as_deref(), Some("general"));
 }

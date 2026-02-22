@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-064
 
 - Webhook parity harness:
   - `apps/openagents.com/scripts/run-webhook-parity-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-webhook-parity-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Webhook parity fixes and tests:
   - `apps/openagents.com/service/src/lib.rs`
   - `apps/openagents.com/service/src/domain_store.rs`

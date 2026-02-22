@@ -136,7 +136,7 @@ docs:
     notes: "CANONICAL for tool schema validation"
 
 # CI Integration
-# Add to .github/workflows/docs.yml:
+# GitHub workflow automation is disabled in this repository:
 #
 # - name: Doc Audit
 #   run: ./crates/dsrs/scripts/doc_audit.sh

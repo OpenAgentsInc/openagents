@@ -30,6 +30,4 @@ Run local parity scoreboard:
 ./apps/openagents.com/scripts/archived-laravel/run-parity-scoreboard.sh
 ```
 
-CI workflow:
-
-- `.github/workflows/web-parity-scoreboard.yml`
+CI workflow: removed (workflow automation disabled by invariant).

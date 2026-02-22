@@ -5,10 +5,10 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane,
-    InboxSnapshot, InboxThreadSummary, CommunityFeedCommentSummary, CommunityFeedPostSummary,
-    CommunityFeedProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary,
-    UserAction, WorkspaceId,
+    AppEvent, CommunityFeedCommentSummary, CommunityFeedPostSummary, CommunityFeedProfileSummary,
+    DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane, InboxSnapshot,
+    InboxThreadSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary, UserAction,
+    WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -3473,7 +3473,8 @@ impl MinimalRoot {
             }
             AppEvent::CommunityFeedFeedUpdated { posts } => {
                 self.communityfeed_feed = posts;
-                self.communityfeed_feed_scroll.scroll_to(Point::new(0.0, 0.0));
+                self.communityfeed_feed_scroll
+                    .scroll_to(Point::new(0.0, 0.0));
                 self.refresh_communityfeed_post_panes();
             }
             AppEvent::CommunityFeedCommentsLoaded { post_id, comments } => {
@@ -4223,26 +4224,27 @@ impl MinimalRoot {
 
     fn toggle_communityfeed_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
-        self.pane_store.toggle_pane("communityfeed", screen, |snapshot| {
-            let rect = snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.rect)
-                .unwrap_or_else(|| {
-                    calculate_new_pane_position(
-                        last_position,
-                        screen,
-                        COMMUNITYFEED_PANE_WIDTH,
-                        COMMUNITYFEED_PANE_HEIGHT,
-                    )
-                });
-            Pane {
-                id: "communityfeed".to_string(),
-                kind: PaneKind::CommunityFeed,
-                title: "CommunityFeed".to_string(),
-                rect,
-                dismissable: true,
-            }
-        });
+        self.pane_store
+            .toggle_pane("communityfeed", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            COMMUNITYFEED_PANE_WIDTH,
+                            COMMUNITYFEED_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "communityfeed".to_string(),
+                    kind: PaneKind::CommunityFeed,
+                    title: "CommunityFeed".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
         if self.pane_store.is_active("communityfeed") {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::CommunityFeedRefresh);
@@ -4283,7 +4285,8 @@ impl MinimalRoot {
             dismissable: true,
         };
         self.pane_store.add_pane(pane);
-        let pane_state = CommunityFeedPostPane::new(&post, title, self.pending_communityfeed_replies.clone());
+        let pane_state =
+            CommunityFeedPostPane::new(&post, title, self.pending_communityfeed_replies.clone());
         self.communityfeed_post_panes.insert(pane_id, pane_state);
         if let Some(handler) = self.send_handler.as_mut() {
             handler(UserAction::CommunityFeedLoadComments {
@@ -4828,7 +4831,8 @@ impl MinimalRoot {
                         let mut allow_drag = true;
                         if let Some(pane) = self.pane_store.pane(&pane_id) {
                             if pane.kind == PaneKind::CommunityFeedPost {
-                                if let Some(post_pane) = self.communityfeed_post_panes.get(&pane_id) {
+                                if let Some(post_pane) = self.communityfeed_post_panes.get(&pane_id)
+                                {
                                     if post_pane.reply_bounds.contains(self.cursor_position) {
                                         allow_drag = false;
                                     }
@@ -5474,7 +5478,9 @@ impl MinimalRoot {
                                     if let Some(index) =
                                         self.communityfeed_card_index_at(self.cursor_position)
                                     {
-                                        if let Some(post) = self.communityfeed_feed.get(index).cloned() {
+                                        if let Some(post) =
+                                            self.communityfeed_feed.get(index).cloned()
+                                        {
                                             self.open_communityfeed_post_pane(post);
                                             opened = true;
                                         }
@@ -5484,7 +5490,8 @@ impl MinimalRoot {
                             handled |= refresh_handled || scroll_handled || opened;
                         }
                         PaneKind::CommunityFeedPost => {
-                            if let Some(post_pane) = self.communityfeed_post_panes.get_mut(&pane_id) {
+                            if let Some(post_pane) = self.communityfeed_post_panes.get_mut(&pane_id)
+                            {
                                 let reply_handled = matches!(
                                     post_pane.reply_button.event(
                                         event,
@@ -8340,7 +8347,10 @@ fn communityfeed_post_content(post: &CommunityFeedPostSummary) -> String {
     }
 }
 
-fn communityfeed_post_document(post: &CommunityFeedPostSummary, config: &MarkdownConfig) -> MarkdownDocument {
+fn communityfeed_post_document(
+    post: &CommunityFeedPostSummary,
+    config: &MarkdownConfig,
+) -> MarkdownDocument {
     let parser = MarkdownParser::with_config(config.clone());
     let content = communityfeed_post_content(post);
     parser.parse(&content)
@@ -8651,13 +8661,14 @@ fn paint_communityfeed_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pai
     let content_height = content_height.max(content_bounds.size.height);
     root.communityfeed_feed_scroll
         .set_content_size(Size::new(content_bounds.size.width, content_height));
-    root.communityfeed_feed_scroll.set_content(CommunityFeedFeedView::new(
-        feed_rows.clone(),
-        card_size,
-        card_gap,
-        text_size,
-        markdown_config,
-    ));
+    root.communityfeed_feed_scroll
+        .set_content(CommunityFeedFeedView::new(
+            feed_rows.clone(),
+            card_size,
+            card_gap,
+            text_size,
+            markdown_config,
+        ));
     root.communityfeed_feed_scroll.paint(content_bounds, cx);
 }
 
@@ -11360,8 +11371,12 @@ fn format_event(event: &AppEvent) -> String {
             }
             UserAction::CommunityFeedReply { post_id } => format!("CommunityFeedReply ({post_id})"),
             UserAction::CommunityFeedSay { .. } => "CommunityFeedSay".to_string(),
-            UserAction::CommunityFeedComment { post_id, .. } => format!("CommunityFeedComment ({post_id})"),
-            UserAction::CommunityFeedUpvote { post_id } => format!("CommunityFeedUpvote ({post_id})"),
+            UserAction::CommunityFeedComment { post_id, .. } => {
+                format!("CommunityFeedComment ({post_id})")
+            }
+            UserAction::CommunityFeedUpvote { post_id } => {
+                format!("CommunityFeedUpvote ({post_id})")
+            }
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
             UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),

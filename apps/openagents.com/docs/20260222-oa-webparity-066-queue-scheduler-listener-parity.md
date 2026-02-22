@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-066
 
 - Async lane parity harness:
   - `apps/openagents.com/scripts/run-async-lane-parity-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-async-lane-parity-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Async lane retirement/shutdown automation:
   - `apps/openagents.com/service/scripts/verify-laravel-async-lanes-disabled.sh`
   - `apps/openagents.com/service/scripts/disable-legacy-laravel-async-jobs.sh`

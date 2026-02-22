@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use communityfeed::{
-    ClaimStatus, CommentSort, CreateCommentRequest, CreatePostRequest, CreateSubmoltRequest,
-    ModeratorRequest, CommunityFeedClient, CommunityFeedError, PostSort, RegisterRequest,
+    ClaimStatus, CommentSort, CommunityFeedClient, CommunityFeedError, CreateCommentRequest,
+    CreatePostRequest, CreateSubmoltRequest, ModeratorRequest, PostSort, RegisterRequest,
     SubmoltSettingsRequest, UpdateProfileRequest,
 };
 use serde::Serialize;
@@ -577,7 +577,9 @@ async fn run_async(args: CommunityFeedArgs) -> Result<()> {
         CommunityFeedCommand::Comments(cmd) => {
             comments_command(args.api_key, args.credentials_file, cmd).await
         }
-        CommunityFeedCommand::Feed(cmd) => feed_command(args.api_key, args.credentials_file, cmd).await,
+        CommunityFeedCommand::Feed(cmd) => {
+            feed_command(args.api_key, args.credentials_file, cmd).await
+        }
         CommunityFeedCommand::Search(cmd) => {
             search_command(args.api_key, args.credentials_file, cmd).await
         }
@@ -595,7 +597,8 @@ async fn register_command(
     credentials_file: Option<PathBuf>,
     args: RegisterArgs,
 ) -> Result<()> {
-    let client = CommunityFeedClient::unauthenticated().context("Failed to create CommunityFeed client")?;
+    let client =
+        CommunityFeedClient::unauthenticated().context("Failed to create CommunityFeed client")?;
     let res = client
         .register(RegisterRequest {
             name: args.name.clone(),

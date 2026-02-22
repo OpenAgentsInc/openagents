@@ -514,14 +514,16 @@ impl IosMissionControlStore {
                     .iter()
                     .any(|thread| thread.worker_id == worker.worker_id)
             });
-            events.retain(|event| {
-                match (event.worker_id.clone(), event.thread_id.clone()) {
-                    (Some(worker_id), Some(thread_id)) => WorkerThreadKey::new(worker_id, thread_id)
-                        .map(|lane_key| watchset.contains(&lane_key))
-                        .unwrap_or(false),
+            events.retain(
+                |event| match (event.worker_id.clone(), event.thread_id.clone()) {
+                    (Some(worker_id), Some(thread_id)) => {
+                        WorkerThreadKey::new(worker_id, thread_id)
+                            .map(|lane_key| watchset.contains(&lane_key))
+                            .unwrap_or(false)
+                    }
                     _ => true,
-                }
-            });
+                },
+            );
             requests.retain(|request| {
                 if let Some(thread_id) = normalized_owned(request.thread_id.clone()) {
                     return WorkerThreadKey::new(request.worker_id.clone(), thread_id)
@@ -535,9 +537,9 @@ impl IosMissionControlStore {
         }
 
         let lane_visible = |lane: &WorkerThreadKey| -> bool {
-            threads
-                .iter()
-                .any(|thread| thread.worker_id == lane.worker_id && thread.thread_id == lane.thread_id)
+            threads.iter().any(|thread| {
+                thread.worker_id == lane.worker_id && thread.thread_id == lane.thread_id
+            })
         };
 
         let mut active_lane = self.active_lane.clone();
@@ -611,9 +613,12 @@ impl IosMissionControlStore {
             worker.heartbeat_state = normalized_owned(heartbeat_state);
             worker.latest_seq = latest_seq.or(worker.latest_seq);
             worker.lag_events = lag_events.or(worker.lag_events);
-            worker.reconnect_state =
-                normalized_reconnect_state.clone().or(worker.reconnect_state.clone());
-            worker.last_event_at = normalized_occurred_at.clone().or(worker.last_event_at.clone());
+            worker.reconnect_state = normalized_reconnect_state
+                .clone()
+                .or(worker.reconnect_state.clone());
+            worker.last_event_at = normalized_occurred_at
+                .clone()
+                .or(worker.last_event_at.clone());
             (
                 worker.worker_id.clone(),
                 worker.reconnect_state.clone(),
@@ -635,7 +640,8 @@ impl IosMissionControlStore {
         worker_id: Option<String>,
         payload: Value,
     ) {
-        let topic = normalized_owned(Some(topic)).unwrap_or_else(|| "runtime.codex_worker_events".to_string());
+        let topic = normalized_owned(Some(topic))
+            .unwrap_or_else(|| "runtime.codex_worker_events".to_string());
         if let Some(seq) = seq {
             let dedupe_key = format!("{topic}:{seq}");
             if !self.event_dedupe.insert(dedupe_key) {
@@ -672,7 +678,11 @@ impl IosMissionControlStore {
             .or_else(|| object_string(&params, &["request_id", "requestId"]));
 
         let severity = classify_event_severity(event_type.as_deref(), method.as_deref());
-        let summary = summarize_event(event_type.as_deref(), method.as_deref(), request_id.as_deref());
+        let summary = summarize_event(
+            event_type.as_deref(),
+            method.as_deref(),
+            request_id.as_deref(),
+        );
         let mut lane_key_for_alert: Option<WorkerThreadKey> = None;
 
         let record = MissionEventRecord {
@@ -715,7 +725,9 @@ impl IosMissionControlStore {
             }
         }
 
-        if let (Some(worker_id), Some(thread_id)) = (resolved_worker_id.as_deref(), thread_id.as_deref()) {
+        if let (Some(worker_id), Some(thread_id)) =
+            (resolved_worker_id.as_deref(), thread_id.as_deref())
+        {
             if let Some(key) = WorkerThreadKey::new(worker_id, thread_id) {
                 let thread = self
                     .thread_store
@@ -828,7 +840,8 @@ impl IosMissionControlStore {
         let Some(request_id) = normalized_owned(request_id.map(ToString::to_string)) else {
             return;
         };
-        let method = normalized_owned(method.map(ToString::to_string)).unwrap_or_else(|| "unknown".to_string());
+        let method = normalized_owned(method.map(ToString::to_string))
+            .unwrap_or_else(|| "unknown".to_string());
 
         let state = match event_type {
             Some("worker.request") => "running",
@@ -885,18 +898,18 @@ impl IosMissionControlStore {
             return;
         };
 
-        self.request_store.insert(request_id.clone(), request.clone());
+        self.request_store
+            .insert(request_id.clone(), request.clone());
         self.refresh_worker_request_stats(request.worker_id.as_str());
 
         if let Some(thread_id) = normalized_owned(request.thread_id.clone()) {
             if let Some(key) = WorkerThreadKey::new(request.worker_id.clone(), thread_id) {
-                let thread = self
-                    .thread_store
-                    .entry(key)
-                    .or_insert_with(|| MissionThreadState::new(&WorkerThreadKey {
+                let thread = self.thread_store.entry(key).or_insert_with(|| {
+                    MissionThreadState::new(&WorkerThreadKey {
                         worker_id: request.worker_id.clone(),
                         thread_id: request.thread_id.clone().unwrap_or_default(),
-                    }));
+                    })
+                });
                 thread.watchlisted = self.watchlist.contains(&WorkerThreadKey {
                     worker_id: thread.worker_id.clone(),
                     thread_id: thread.thread_id.clone(),
@@ -1080,7 +1093,10 @@ impl IosMissionControlStore {
         let is_turn_started = matches!(method, Some("turn/started"));
         let is_terminal = matches!(
             method,
-            Some("turn/completed") | Some("turn/failed") | Some("turn/interrupted") | Some("turn/aborted")
+            Some("turn/completed")
+                | Some("turn/failed")
+                | Some("turn/interrupted")
+                | Some("turn/aborted")
         );
 
         if is_turn_started {
@@ -1148,7 +1164,8 @@ impl IosMissionControlStore {
         reconnect_state: Option<&str>,
         occurred_at: Option<&str>,
     ) {
-        let Some(reconnect_state) = reconnect_state.map(|value| value.trim().to_ascii_lowercase()) else {
+        let Some(reconnect_state) = reconnect_state.map(|value| value.trim().to_ascii_lowercase())
+        else {
             return;
         };
 
@@ -1304,14 +1321,16 @@ fn object_string(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Opti
 }
 
 fn extract_thread_id(object: &serde_json::Map<String, Value>) -> Option<String> {
-    object_string(object, &["thread_id", "threadId", "conversation_id", "conversationId"]).or_else(
-        || {
-            object
-                .get("thread")
-                .and_then(Value::as_object)
-                .and_then(|thread| object_string(thread, &["id"]))
-        },
+    object_string(
+        object,
+        &["thread_id", "threadId", "conversation_id", "conversationId"],
     )
+    .or_else(|| {
+        object
+            .get("thread")
+            .and_then(Value::as_object)
+            .and_then(|thread| object_string(thread, &["id"]))
+    })
 }
 
 fn extract_turn_id(object: &serde_json::Map<String, Value>) -> Option<String> {
@@ -1356,7 +1375,11 @@ fn method_is_error(method: Option<&str>) -> bool {
     method.contains("error") || method.contains("failed")
 }
 
-fn summarize_event(event_type: Option<&str>, method: Option<&str>, request_id: Option<&str>) -> String {
+fn summarize_event(
+    event_type: Option<&str>,
+    method: Option<&str>,
+    request_id: Option<&str>,
+) -> String {
     if let Some(method) = method {
         if let Some(request_id) = request_id {
             return format!("{} ({})", method, request_id);
@@ -1456,7 +1479,7 @@ fn timeline_item_from_event(
 mod tests {
     use super::{
         IosMissionControlStore, MissionControlCommand, MissionRequestState, MissionTimelineItem,
-        WorkerThreadKey, STUCK_TURN_EVENT_THRESHOLD,
+        STUCK_TURN_EVENT_THRESHOLD, WorkerThreadKey,
     };
 
     #[test]
@@ -1497,7 +1520,10 @@ mod tests {
         assert_eq!(projection.workers.len(), 1);
         assert_eq!(projection.threads.len(), 1);
         assert_eq!(projection.events.len(), 1);
-        assert_eq!(projection.active_worker_id.as_deref(), Some("desktopw:shared"));
+        assert_eq!(
+            projection.active_worker_id.as_deref(),
+            Some("desktopw:shared")
+        );
         assert_eq!(projection.active_thread_id.as_deref(), Some("thread-1"));
         assert_eq!(projection.compatibility_chat_messages.len(), 1);
         assert_eq!(projection.compatibility_chat_messages[0].role, "user");
@@ -1840,9 +1866,11 @@ mod tests {
         });
 
         let projection = store.projection();
-        assert!(projection
-            .events
-            .iter()
-            .all(|event| event.method.as_deref() != Some("mission/alert/error_event")));
+        assert!(
+            projection
+                .events
+                .iter()
+                .all(|event| event.method.as_deref() != Some("mission/alert/error_event"))
+        );
     }
 }

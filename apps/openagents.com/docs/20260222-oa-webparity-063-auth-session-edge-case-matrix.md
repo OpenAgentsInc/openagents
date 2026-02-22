@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-063
 
 - Auth/session edge-case harness:
   - `apps/openagents.com/scripts/run-auth-session-edge-case-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-auth-session-edge-case-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Auth/session parity fixes and tests:
   - `apps/openagents.com/service/src/auth.rs`
   - `apps/openagents.com/service/src/lib.rs`

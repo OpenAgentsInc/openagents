@@ -348,7 +348,7 @@ cargo install cargo-bundle --git https://github.com/zed-industries/cargo-bundle.
 
 ## CI/CD Integration
 
-For GitHub Actions, see `.github/workflows/release-mac.yml` (to be created).
+GitHub Actions workflows are disabled for this repository.
 
 Key secrets needed:
 - `MACOS_CERTIFICATE` - Base64-encoded .p12 certificate

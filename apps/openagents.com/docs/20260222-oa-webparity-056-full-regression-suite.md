@@ -26,7 +26,6 @@ Local CI lane integration:
 - `scripts/local-ci.sh web-parity`
 
 CI workflow gate:
-- `.github/workflows/web-parity-regression.yml`
 - check name: `web-parity-regression / parity-regression`
 
 ## Regression Categories

@@ -10,8 +10,7 @@ Issue: OA-WEBPARITY-068
   - `apps/openagents.com/scripts/verify-rust-only-terminal-gate.sh`
 - Rust-only terminal gate harness:
   - `apps/openagents.com/scripts/run-rust-only-terminal-gate-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-rust-only-terminal-gate.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Legacy implementation archive manifest:
   - `apps/openagents.com/docs/archived/legacy-php-typescript-implementation-archive.md`
 - Legacy Laravel parity helper scripts archived under:

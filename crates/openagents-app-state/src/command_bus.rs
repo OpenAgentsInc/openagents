@@ -1,10 +1,14 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::cell::Cell;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::intent::CommandIntent;
 use crate::state::AppState;
+
+thread_local! {
+    static REQUEST_SEQUENCE: Cell<u64> = const { Cell::new(0) };
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -218,13 +222,7 @@ pub fn map_intent_to_http(
                 .clone()
                 .unwrap_or_else(|| "desktopw:shared".to_string())
                 .replace(':', "%3A");
-            let request_id = format!(
-                "webreq_{}",
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-            );
+            let request_id = next_web_request_id();
             Ok(HttpCommandRequest {
                 method: HttpMethod::Post,
                 path: format!("/api/runtime/codex/workers/{worker_id}/requests"),
@@ -252,6 +250,15 @@ pub fn map_intent_to_http(
             intent_name(intent)
         ))),
     }
+}
+
+fn next_web_request_id() -> String {
+    let seq = REQUEST_SEQUENCE.with(|counter| {
+        let next = counter.get().wrapping_add(1);
+        counter.set(next);
+        next
+    });
+    format!("webreq_{seq}")
 }
 
 #[must_use]

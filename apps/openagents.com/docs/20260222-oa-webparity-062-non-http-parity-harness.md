@@ -8,8 +8,7 @@ Issue: OA-WEBPARITY-062
 
 - Non-HTTP parity harness:
   - `apps/openagents.com/scripts/run-non-http-parity-harness.sh`
-- Manual workflow dispatch:
-  - `.github/workflows/web-non-http-parity-harness.yml`
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 - Contract and behavior updates in service:
   - `apps/openagents.com/service/src/lib.rs`
 

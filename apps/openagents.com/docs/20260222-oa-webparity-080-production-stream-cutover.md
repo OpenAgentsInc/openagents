@@ -9,7 +9,7 @@ Issue: OA-WEBPARITY-080
 - Cutover runner: `apps/openagents.com/service/scripts/run-production-stream-cutover.sh`
 - Stream contract smoke runner: `apps/openagents.com/service/scripts/run-production-stream-contract-smoke.sh`
 - Cutover runbook: `apps/openagents.com/service/docs/PRODUCTION_STREAM_CUTOVER.md`
-- Manual workflow: `.github/workflows/web-production-stream-cutover.yml`
+- Workflow automation removed (invariant: no `.github/workflows`).
 
 ## Hard Gates Added
 

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::khala_protocol::{
-    build_phoenix_frame, decode_khala_payload, parse_phoenix_frame, KhalaEventPayload,
-    PhoenixFrame, SyncErrorPayload,
+    KhalaEventPayload, PhoenixFrame, SyncErrorPayload, build_phoenix_frame, decode_khala_payload,
+    parse_phoenix_frame,
 };
 
 const DEFAULT_CHANNEL_TOPIC: &str = "sync:v1";

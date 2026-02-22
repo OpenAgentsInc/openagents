@@ -1,0 +1,156 @@
+36d8bb6e63074d1269045bed34e03ae2bdb3348b	2025-12-19	Christopher David	Add autopilot logs and update Cargo.lock
+50446e6d51c70525df57af895dcf75429cf18baf	2025-12-19	Christopher David	Add BlackBox atoms and storybook page (#1518)
+62c8b89a122c9c57afd2bb38586e43c9ec84d3aa	2025-12-19	Christopher David	Add /autopilot route and /events endpoint to desktop app (#18)
+7e848adcd05752d6b3e7005e6438ba2130c3ac81	2025-12-19	Christopher David	Add storybook crate with button component (#1516)
+89076fe9797a36125a28b54b47dfdb701d695ed2	2025-12-19	Christopher David	Logs/docs
+89e4dc17272e3566e01a765ca991b06849d09b5a	2025-12-19	Christopher David	interrupted log
+9d0b4146d9c53bbcf68671c9675edc71319637c5	2025-12-19	Christopher David	Add issue_counter sync trigger and AGENTS.md database rule
+daa3727d6887ca87065561af1c62e396295b5693	2025-12-19	Christopher David	Add Tailwind UI system with semantic color tokens (#1517)
+e9703ca00df8aed17b2d59064f52ad864ea0d44f	2025-12-19	Christopher David	Create recorder component renderer for SDK messages
+0153828275e8b743fe9f4e9e88958eeec6041946	2025-12-20	Christopher David	Add memory checker to prevent crashes in full-auto mode
+0f148f97817435f276727a4b835d0ba55e9b302a	2025-12-20	Christopher David	Create agentgit crate with wry/tao desktop window foundation
+157d3c9c888fb1f5c90044c819e104c7f39a80e5	2025-12-20	Christopher David	Add comprehensive Examples section to workspace README
+401e4ca7746885e781e9e4c436ba6c6b94b1ee2b	2025-12-20	Christopher David	Add rlog replay mode to desktop app
+71cdc4c9d071d7a28c79b0588671832ad8bcaa4c	2025-12-20	Christopher David	Add comprehensive README for ui crate
+81a955fc54c8c8a7c18360464e583b7405d0448d	2025-12-20	Christopher David	Add comprehensive README for desktop crate
+961948bbac654b1c1933da700781bbc641dddce6	2025-12-20	Christopher David	Add directives system for high-level project goals
+9c507748a548c85fdb011390b51144b650dc6a2a	2025-12-20	Christopher David	logs and bump them numbers up
+9f57da901393eb3902bd59cde613f03ea69854aa	2025-12-20	Christopher David	Use query() with continue_session for full-auto loop
+c81433b911927009b62312e6b7e46f36339bf630	2025-12-20	Christopher David	Add memory hog detection and process killer
+f336ee5e7923373d81c6e5d4788a6f7d5da84426	2025-12-20	Christopher David	Add directive d-005: Build Nostr GitHub Alternative (AgentGit)
+f49e33fb4aef58fc99c8dac63b13ea3f481a8f2e	2025-12-20	Christopher David	Add comprehensive README for storybook crate
+0a432dc477e8c6d58ca310095d85cfe71e4e79b1	2025-12-21	Christopher David	Create autopilot-gui crate with wry/tao window and Actix server
+0cc5b5d98cc4eaca4f383a7a603aeca62ebf8d79	2025-12-21	Christopher David	Add base_document story to storybook atoms
+1a5e9e18eb1ede866e1057a566a4aa4872133fab	2025-12-21	Christopher David	Create marketplace crate with basic structure for d-008
+1dc0e2c884f420ba9022e5e63bf5c1877cb5f58f	2025-12-21	Christopher David	Add WebSocket support for live dashboard updates in autopilot-gui
+240ceea4e0f0622afc4ca4dbd920085242487546	2025-12-21	Christopher David	Create comprehensive README for autopilot-gui
+29b37f0bf4fe69f053fce72c6545827d9a2e9f45	2025-12-21	Christopher David	Unify all binaries into single openagents binary
+3026d39cf5e5cadcf60797f0f6c1e448c4c7a788	2025-12-21	Christopher David	Add comprehensive documentation for AgentGit
+33a898d57a777b85d0d5e9b550a8ef6a6bc3c32c	2025-12-21	Christopher David	Add comprehensive error handling to AgentGit event publishing
+3aa595c6d13b58f7719024597fb74c5444fa55fe	2025-12-21	Christopher David	Add ClaudeStatus component showing auth status
+43de989bd7076d8950a0f697f050fe11f87be59a	2025-12-21	Christopher David	Add d-008: Unified Data/Compute/Skills Marketplace
+5cb4af90022b39a37462b1023412a294dd64e610	2025-12-21	Christopher David	Implement WebSocket streaming for autopilot-gui chat interface
+6b84c126fcbc7ee824b343c90f7a4e8b9903d305	2025-12-21	Christopher David	Add FullAutoSwitch component and simplify GUI to black screen
+6e346a39255016430faa11f8923d285f5a88b98d	2025-12-21	Christopher David	Add context inspector view to autopilot-gui
+7165a72c06f6ab4caa7f1f8d4a3823dade32222e	2025-12-21	Christopher David	directive: Add d-009 Autopilot GUI - Visual Agent Interface
+9f4f9cd8dd7a929c265c678f4f20445c560dcdc5	2025-12-21	Christopher David	Implement wallet GUI with Maud/HTMX UI
+bf5e2744511de4e30dae976d35343a63ce80948b	2025-12-21	Christopher David	Add tool execution display to autopilot-gui
+c6a3d6c1ccc4ef28e52d61e6507bc38cba874667	2025-12-21	Christopher David	Implement autopilot metrics dashboard web UI
+cc4a00ca3e059390baeb76373a79c8aec2af44a3	2025-12-21	Christopher David	Add dashboard modular structure foundation and migration plan
+f9d37b43c0bac492feb2ffd137178ee15146b6db	2025-12-21	Christopher David	Add permission management system to autopilot-gui
+fd75520212ba0672b8f7f7fada3c5496373baec3	2025-12-21	Christopher David	Complete dashboard metrics visualization with real-time charts
+05a4115123b5857223591980485cb5c2f2ccb9dc	2025-12-22	Christopher David	Connect Full Auto toggle to spawn autopilot process with output streaming
+07822bce093929475d69a7de7244a6f95fcb64e1	2025-12-22	Christopher David	Optimize GitAfter PR diff rendering for large files
+08b85f5c4a0e77b8e52eaebd87b27b675771e694	2025-12-22	Christopher David	Add rustdoc examples to key public APIs
+174e5dc41a21888b1e81bd493de41352d039d038	2025-12-22	Christopher David	Complete NIP-87 (Ecash Mint Discoverability) implementation
+1af043269a1b0c8caf33b5da3011fb1d012f2896	2025-12-22	Christopher David	Add NIP-77 ReconciliationState struct with range splitting algorithm
+1cd55bdf5649be11e96e30b9e3c2f0ffc585968f	2025-12-22	Christopher David	Add rustdoc examples to UI crate component types
+25bb69d1e832c0d07e877c233665c54d4d733550	2025-12-22	Christopher David	Add push button to AgentGit git status page
+26d7266c565ac70baf406cf2ed7970a18b33b12a	2025-12-22	Christopher David	Add comprehensive component tests for recorder UI atoms
+337cbd801b7b237037384d35e95cd1e06a284f6e	2025-12-22	Christopher David	Rename AgentGit to GitAfter
+34a8612119c8035acdaf973e0ff1fa9f9cfe7c58	2025-12-22	Christopher David	Add HTTP endpoints for autopilot daemon metrics
+3743a1e552cdc88c369348b611710802de1bacb9	2025-12-22	Christopher David	Implement trajectory-to-diff comparison in AgentGit PR detail view
+37478033fdeb314c3a70fba413cdfa1ba57a59a8	2025-12-22	Christopher David	Add inline comment support for AgentGit code review
+3820e8de3a4062b641226dc1286f5195f862ab07	2025-12-22	Christopher David	Verify syntax-highlighted diff viewer integration in AgentGit
+386cf501300581e9fee8b8eb26a9f5693ef8aaa1	2025-12-22	Christopher David	Add autopilot session logs from 2025-12-22
+403e093142f96bb8ac03f8ebb0d0c165da641807	2025-12-22	Christopher David	Add per-layer bounty support to GitAfter stacked PRs
+40bf50a9a310e3e3f363350a03ae0601401b336c	2025-12-22	Christopher David	Add connection pooling to nostr-client relay connections
+4364ddcb5b8a60418fe33d7d5792f29af9269bbe	2025-12-22	Christopher David	Integrate circuit breaker and health metrics into nostr relay connections
+481246ba91af03d1a248914859e8e0d4d15d8653	2025-12-22	Christopher David	Add trajectory-to-diff comparison tool for AgentGit
+54778309d7dc851823d80356410ef0871a05075d	2025-12-22	Christopher David	Implement NIP-08 (Handling Mentions)
+63094beb2be6a289789427d40032938b8611950b	2025-12-22	Christopher David	Implement stacked PR dependency graph validation in AgentGit
+633529375f47f7df32bd6c6152e14a17ed712fe2	2025-12-22	Christopher David	Add agent marketplace to discover agents by specialty in AgentGit
+675742ffa499449b1eb61e0cc0c9d9b470d113c3	2025-12-22	Christopher David	Implement NIP-88 (Polls)
+7ff62cde9daf409ffb5604fd9082e1a6f678544c	2025-12-22	Christopher David	Add fingerprint calculation and record sorting to NIP-77
+8ed21398e64f1152dc3c3bfdfdde126274bac9cf	2025-12-22	Christopher David	Add syntax-highlighted PR/patch diff viewer in AgentGit
+8f5a841d728a9381f50a64973c777a09c0b570f6	2025-12-22	Christopher David	Connect APM visualization to real database data in dashboard
+936fa3fee5973028a08d216d30d271f2fccbdec0	2025-12-22	Christopher David	Add comprehensive unified binary architecture documentation
+a2349ac7071d31be2437a46357be3c29b29d77fd	2025-12-22	Christopher David	Implement stacked PR merge order enforcement in AgentGit
+a3d581847b1d7800cf8a6b9baeedafe0adc1484d	2025-12-22	Christopher David	Implement NIP-77 Negentropy core protocol types and varint encoding
+a81e39240c15f10e59013b3d50246eb06f9d8b18	2025-12-22	Christopher David	Add automated PR review checklist to AgentGit
+ad66622fec2d370a1b27981e95af81d8863524f2	2025-12-22	Christopher David	Add ChatPane with Raw/Formatted toggle and Copy button
+c0c2a18701b86d4b75b32112ec89efd0008aab51	2025-12-22	Christopher David	Display comment threads on diff lines in AgentGit PR view
+c640a0e518849ae7a5c2ba1547526bbae01e9382	2025-12-22	Christopher David	Fix compilation errors in autopilot tests after SessionMetrics schema update
+d358a72fd2f4353655b7b4bc395708b3e2a4097c	2025-12-22	Christopher David	Implement marketplace reputation scoring algorithm
+d98c5e7fce925ee98413743174ecef609ec842bb	2025-12-22	Christopher David	Add syntax-highlighted diff viewer to AgentGit PR detail page
+dcbf298a6cbbfcb69f613317f51951450e9b4016	2025-12-22	Christopher David	Implement autopilot issue state caching to avoid duplicate work
+de37f873418cd6c5449dba7eb5cae3a7df9ac605	2025-12-22	Christopher David	Implement NIP-03 (OpenTimestamps Attestations)
+deb768ad11e652800d3ba53903a8cc99015f61de	2025-12-22	Christopher David	Implement per-issue and per-directive metrics tracking
+e2fbe3f339acc8db5a340eeb46bef88ea76eaaeb	2025-12-22	Christopher David	Update UI components, storybook, and add GUI assets
+e35634717e076417584218faefe9dcd577f757f1	2025-12-22	Christopher David	Implement autopilot run caching to avoid duplicate work
+f0dd7ba82e07cf42da979e252c23505ecb43e0fd	2025-12-22	Christopher David	Investigate and resolve d-013 blocked issues
+03b8063ae4a11895c13341a4c20bde2295e30fc3	2025-12-23	Christopher David	Implement NIP-57 zap payment for bounty release in GitAfter
+05d1efca226244de939329060e39894c3719b532	2025-12-23	Christopher David	Add real-time WebSocket metrics streaming to autopilot dashboard
+06d37f2b327fb8f71375323094ee906352b1f9c7	2025-12-23	Christopher David	Add command to release stale in_progress issues
+14c5bc57df0d178e9b9d7adad848c9969b1df9b1	2025-12-23	Christopher David	fix(autopilot): add Default derive to TaskComplexity and ComplexityLevel
+160f7c6104b9d5d37e83788b7f938e0f80b941b4	2025-12-23	Christopher David	feat(ui): add 35 ACP components for Claude Code conversation rendering
+164f65ff2296476580554291a3c68c96934d67b6	2025-12-23	Christopher David	Add debug logging to GUI routes
+1a7a2b53f05db2a52bc7fc76f1c90500e5e2cd22	2025-12-23	Christopher David	Improve GitAfter pull request list UI with status badges and filters
+20f9ef2da1df4878a92d8bd2d6ef38e814a79d93	2025-12-23	Christopher David	Document clippy warning reduction from 95 to 49
+23bba2372e06a033bc958fb8c715b91929fb2229	2025-12-23	Christopher David	feat(gui): add local inference configuration UI
+28ba454ceaa8c0dd9e348834019b5d52d8cb73c0	2025-12-23	Christopher David	Fix clippy warnings and compilation errors
+2cfe4c82347e2554722a3fefb9e04220ffd9b58a	2025-12-23	Christopher David	Fix memory cleanup killing unrelated processes (SAFE-1)
+32655390bfa01415138884c45bbb57f10d9b5ae9	2025-12-23	Christopher David	docs(acp-adapter): add comprehensive documentation with usage examples
+37822402184c54be0ab0483abba94a2aa6528e76	2025-12-23	Christopher David	Add rate limiting to API endpoints (SEC-10)
+423accc275e197b0f0c1de58662b54569522b9b7	2025-12-23	Christopher David	Add comprehensive rustdoc examples to GitAfter event builders
+454415ea6ec230f83e9215b06ee5a6082676aeea	2025-12-23	Christopher David	Fix Storybook WebSocket handshake panic
+45718960d34fbe9987f66f4e21426f9dd167fd02	2025-12-23	Christopher David	Fix relay message parsing with silent defaults (ERR-8)
+460c930e84c343733d6db9cc15c07e12d416f954	2025-12-23	Christopher David	Fix UnifiedIdentity Nostr key derivation (NOSTR-1)
+4941c2989c76e58b011cba981ab98ac4565c992e	2025-12-23	Christopher David	Add real-time WebSocket updates to GitAfter PR and issue views
+50598177ea57f4bdd440769444d09f37a8fd752c	2025-12-23	Christopher David	Implement NIP-90 provider capability advertisement
+51b90b70cc45427dfefeffdbaae8f4f183e231f5	2025-12-23	Christopher David	Remove auth middleware from autopilot toggle - local app only
+5552fcb5f050c76360418d0c225deed58cb9a92b	2025-12-23	Christopher David	Add PR status change notification type to GitAfter desktop notifications
+58148c82c9f2fe84708b07de7a9c0d3ba1b854f3	2025-12-23	Christopher David	Add visual toast notifications for real-time GitAfter updates
+59b0d90cbb672bc113cf1d54dfcda899ce5b6e9a	2025-12-23	Christopher David	Fix redundant clone errors in NIP-77 and GitAfter notifications
+5a3c43a0d4c4ce2e4d37d2f66ba3667491f076a7	2025-12-23	Christopher David	Add daemon/worker monitoring GUI panel
+5e4e2e737fd559fee50383e8fffefab8201d9360	2025-12-23	Christopher David	fix(autopilot): verify DATA-1 issue #836 already resolved
+80c562748da3c43875768f3027c6d8f98e47ca4e	2025-12-23	Christopher David	feat(gui): refactor platform-specific GUI initialization
+826a8c1581c5a0a4c2e74c80a3f7ef2957fd0592	2025-12-23	Christopher David	fix(gui): use inherited stdout/stderr for daemon spawn
+8c8b73acf2f1064d824fa702c2f9bef5f8d9c7ab	2025-12-23	Christopher David	Add integration test for ACP telemetry end-to-end flow
+907900daf181d7a78c86079ae55bbd4cc1edfc74	2025-12-23	Christopher David	Add auto_created flag to track anomaly-detected issues
+97c801ded07930d071c6f391127a9a374e95c0d3	2025-12-23	Christopher David	Add autopilot logs
+9c73b017b26ec11e10bf306ff20c3b8e40bdd29f	2025-12-23	Christopher David	Fix unused identifier variable warnings in gitafter server
+a989075c86b6cd22bde24aafa074d0dee4db265e	2025-12-23	Christopher David	Fix 81 clippy warnings and compilation errors
+af2e9eba8a624aa3503b31f73a06fd2be308cfa6	2025-12-23	Christopher David	Add bearer token authentication for API routes (SEC-6)
+b32686c980d65cd5f01b10256fbc26b51ce96e2d	2025-12-23	Christopher David	Fix compilation errors in autopilot metrics and main
+b5b821395f53fc62cb5c0eeb9c7ef0086c3fb13e	2025-12-23	Christopher David	fix(gui): capture daemon stdout/stderr on crash
+b6b86479d8793d08d887c8d6c10adf67af828a4a	2025-12-23	Christopher David	Add authentication to WebSocket connections (SEC-7)
+bdebe84fc4e7c228f3a891b458d9115e22d3c547	2025-12-23	Christopher David	feat(autopilot): add --anomalies flag to metrics analyze command
+c1757880bd0f1ca1ede5775e77d3dcc9a5494c85	2025-12-23	Christopher David	feat(gui): add parallel agents page to main GUI
+c1c09d843c6655b58ff34c1a84320f245eb7348b	2025-12-23	Christopher David	feat(local-inference): create trait crate with LocalModelBackend
+c32bdd1703157ac3ea2cc464c49c108564717d12	2025-12-23	Christopher David	Add Wayland support for desktop GUI
+ca969b780a00ef9c782cf0cfbbabdc97d8553eed	2025-12-23	Christopher David	Add comprehensive edge case tests for autopilot analyze module
+ce025270fc8943dcf715e7731b0dd1ac165c1d98	2025-12-23	Christopher David	Remove obsolete guardrails module (PERM-3)
+ce06e9b5d817634fe3095a44217cfe97e691392a	2025-12-23	Christopher David	refactor(autopilot): deduplicate lockfile and memory functions in main.rs
+d08cb67ce43655d78d057a4decae9a89dfc5ccad	2025-12-23	Christopher David	Fix unused variable and import warnings
+d3e03299b707014c8947ad3648f05637da6d957b	2025-12-23	Christopher David	feat(marketplace): add verification badge types for trust signals
+dbf4a3479ecfbd78cfe18aafc8df7589cfa6eae7	2025-12-23	Christopher David	Add APM data model and storage to autopilot crate
+dee4b2594b1ce022a1efffa2561c67fba86a7c23	2025-12-23	Christopher David	Fix glib::Propagation import in GUI app
+e6addbde79d3dd13b0d30ef108a9715534cca041	2025-12-23	Christopher David	feat(storybook): add individual ACP molecule story routes
+e7476a6895e93fb57e69486cace6429f25702c32	2025-12-23	Christopher David	Add APM comparison view for Claude Code vs Autopilot sessions
+f27d27a36dbb077a90a89de900f849ceca6391b5	2025-12-23	Christopher David	Add agent selection UI for Claude/Codex switching
+f36823e1a960750f6feb6debc85c845122c5d983	2025-12-23	Christopher David	Add layer attribution to stacked PR review comments in GitAfter (#939)
+f9231dde2c27321f8550b3eb6a603feeb3d92d20	2025-12-23	Christopher David	Fix unified CLI stubbed commands (STUB-8)
+ade16110d9bdb68157a0956d8a7a3d762877eaf8	2025-12-24	Christopher David	Add d-025: All-In WGPUI - Delete Web Stack
+bbd2021845481799be243086ea8d1dfea14b2842	2025-12-24	Christopher David	Add HUD storybook stories
+bcf4789c4f90cf2dfe49d406c5702c8a3abba5c7	2025-12-24	Christopher David	chore: checkpoint workspace changes
+35aa13dc161a5a092391c5a6ced180e334821e01	2025-12-25	Christopher David	Add GitAfter server dependencies
+37a78a58c71cc312774ebb46bbcf3a341f906677	2025-12-25	Christopher David	Phase 2: remove web stack
+672dd7730425582af079c9dc9eefefee50af7d20	2025-12-25	Christopher David	Update directives for WGPUI + GitAfter alignment
+eeac1612e497a970d7803dc30ed6512c371e9d58	2025-12-25	Christopher David	Align directives with WGPUI and integration touchpoints
+00a8265d898c6388bdd46ab124694e4d7198b659	2025-12-26	Christopher David	Rename Commander to Autopilot and archive old autopilot crates
+19fc2bf1b51c96ada15c0658656cdd7d22004888	2025-12-26	Christopher David	Add WGPUI wallet GUI for balance, send, receive
+362598d049ca649898986d46ad3bb1c716416810	2025-12-26	Christopher David	Verify autopilot-gui WGPUI-only stack
+f49684033949742af637adcf0997e57edaa2e356	2025-12-26	Christopher David	Guard examples against legacy web stack
+a36a5bc36a749348a7c0c8238d5c489030fefe33	2025-12-27	Christopher David	Complete d-027 web-based demo viewer and gallery (65% → production-ready MVP)
+4173dd9f38ffc4df3d473e03044d779d5bb59ea5	2025-12-28	Christopher David	Remove obsolete CLI integration tests for removed subcommands
+da0531370873af8b45bee756ffe6cef6317acecc	2025-12-28	Christopher David	Archive demo gallery to ~/code/backroom
+121f007959ab5353452d0c72b4b2ff21fb6a4059	2025-12-31	Christopher David	gitafter: refresh server, cache, and views
+290d5d7d0c95fd1b8d7b58d811222a145b6d6c9d	2026-01-10	Christopher David	Split gitafter server into submodules
+615ee2be2407d51a649ffeb65242ab243228f77c	2026-01-10	Christopher David	Refactor long runtime, gitafter, and probes modules
+a18826273d5caaadab0a02a48540a065dd24ea61	2026-01-10	Christopher David	Split large JSON fixtures into parts
+7df96b6e7a918fb546b77e8d6175c76ed884626a	2026-01-11	Christopher David	Remove Claude/Anthropic references
+2c8e5a98159a49f5f09b56693eee74b00b7caab2	2026-01-12	Christopher David	Prune autopilot MVP workspace
+8606a851882c3bd7f4b0d29c7d8aa1a82468929d	2026-01-12	Christopher David	Prune non-MVP assets and add Codex events
+d00af068b673c4ab23ab84f36604398baf394e42	2026-01-13	Christopher David	Update legacy docs with authority banners and archive planning docs
+08d6a8cd8825eab207ef3a28fd179db99f648258	2026-02-01	Christopher David	Ignore local .openagents files

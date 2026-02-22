@@ -12,9 +12,7 @@ Automated canary/rollback drill runner:
 Automation runbook:
 - `apps/openagents.com/service/docs/CANARY_ROLLBACK_DRILL_AUTOMATION.md`
 
-Manual workflow dispatch:
-- `.github/workflows/web-production-canary-rollback-drill.yml`
-
+- Manual workflow dispatch: removed (workflow automation disabled by invariant).
 Local CI lane:
 - `scripts/local-ci.sh canary-drill`
   - requires `OA_CANARY_STABLE_REVISION` and `OA_CANARY_CANARY_REVISION`

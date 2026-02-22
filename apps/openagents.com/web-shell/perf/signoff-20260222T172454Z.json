@@ -1,6 +1,6 @@
 {
-  "timestamp": "20260222T181254Z",
-  "build_id": "20260222T181159Z",
+  "timestamp": "20260222T172454Z",
+  "build_id": "20260222T172426Z",
   "base_url": "http://127.0.0.1:8787",
   "samples": {
     "latency": 20,
@@ -23,40 +23,40 @@
   "metrics": {
     "boot": {
       "root": {
-        "p95_ms": 2.03,
-        "avg_ms": 1.78,
-        "max_ms": 2.49
+        "p95_ms": 1.86,
+        "avg_ms": 1.69,
+        "max_ms": 2.27
       },
       "manifest": {
-        "p95_ms": 2.15,
-        "avg_ms": 1.73
+        "p95_ms": 1.73,
+        "avg_ms": 1.53
       },
       "wasm_asset": {
-        "p95_ms": 14.23,
-        "avg_ms": 13.81
+        "p95_ms": 14.04,
+        "avg_ms": 13.87
       },
       "asset_sizes": {
         "js_bytes": 141227,
-        "wasm_bytes": 3757639,
+        "wasm_bytes": 3747323,
         "host_shim_bytes": 5242,
-        "wasm_gzip_bytes": 1403337
+        "wasm_gzip_bytes": 1400622
       }
     },
     "interaction": {
       "auth_verify": {
-        "p95_ms": 1.83,
-        "avg_ms": 1.74
+        "p95_ms": 3.15,
+        "avg_ms": 1.87
       },
       "sync_token": {
-        "p95_ms": 1.89,
-        "avg_ms": 1.74
+        "p95_ms": 2.47,
+        "avg_ms": 1.84
       },
       "auth_errors": 0
     },
     "soak": {
       "manifest_poll": {
-        "p95_ms": 2.43,
-        "avg_ms": 1.87
+        "p95_ms": 1.90,
+        "avg_ms": 1.77
       },
       "errors": 0,
       "rss_kb": {
