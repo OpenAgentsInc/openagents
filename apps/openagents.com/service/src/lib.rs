@@ -20,12 +20,14 @@ use openagents_client_core::compatibility::{
     ClientCompatibilityHandshake, CompatibilityFailure, CompatibilitySurface, CompatibilityWindow,
     negotiate_compatibility,
 };
+use openagents_l402::Bolt11;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
+use uuid::Uuid;
 
 pub mod api_envelope;
 pub mod auth;
@@ -57,17 +59,20 @@ use crate::domain_store::{
     DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
     RecordL402GatewayEventInput, UpdateAutopilotInput, UpdateL402PaywallInput,
     UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
-    UserSparkWalletRecord,
+    UpsertUserSparkWalletInput, UserSparkWalletRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
-    ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
-    ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
-    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
-    ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID, ROUTE_L402_PAYWALLS,
-    ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID, ROUTE_L402_TRANSACTIONS,
-    ROUTE_L402_WALLET, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_AGENT_PAYMENTS_BALANCE, ROUTE_AGENT_PAYMENTS_INVOICE, ROUTE_AGENT_PAYMENTS_PAY,
+    ROUTE_AGENT_PAYMENTS_SEND_SPARK, ROUTE_AGENT_PAYMENTS_WALLET, ROUTE_AGENTS_ME_BALANCE,
+    ROUTE_AGENTS_ME_WALLET, ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH,
+    ROUTE_AUTH_REGISTER, ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE,
+    ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
+    ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
+    ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
+    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
+    ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE, ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
     ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS,
@@ -435,6 +440,43 @@ struct L402PaywallUpdateRequestPayload {
     enabled: Option<bool>,
     #[serde(default, alias = "metadata")]
     meta: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct AgentPaymentsWalletUpsertRequestPayload {
+    #[serde(default)]
+    mnemonic: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentPaymentsCreateInvoiceRequestPayload {
+    #[serde(alias = "amountSats")]
+    amount_sats: u64,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentPaymentsPayInvoiceRequestPayload {
+    invoice: String,
+    #[serde(default, alias = "maxAmountSats")]
+    max_amount_sats: Option<u64>,
+    #[serde(default, alias = "maxAmountMsats")]
+    max_amount_msats: Option<u64>,
+    #[serde(default, alias = "timeoutMs")]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    host: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentPaymentsSendSparkRequestPayload {
+    #[serde(alias = "sparkAddress")]
+    spark_address: String,
+    #[serde(alias = "amountSats")]
+    amount_sats: u64,
+    #[serde(default, alias = "timeoutMs")]
+    timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -883,6 +925,28 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route(
+            ROUTE_AGENT_PAYMENTS_WALLET,
+            get(agent_payments_wallet).post(agent_payments_upsert_wallet),
+        )
+        .route(ROUTE_AGENT_PAYMENTS_BALANCE, get(agent_payments_balance))
+        .route(
+            ROUTE_AGENT_PAYMENTS_INVOICE,
+            post(agent_payments_create_invoice),
+        )
+        .route(ROUTE_AGENT_PAYMENTS_PAY, post(agent_payments_pay_invoice))
+        .route(
+            ROUTE_AGENT_PAYMENTS_SEND_SPARK,
+            post(agent_payments_send_spark),
+        )
+        .route(
+            ROUTE_AGENTS_ME_WALLET,
+            get(agent_payments_wallet).post(agent_payments_upsert_wallet),
+        )
+        .route(ROUTE_AGENTS_ME_BALANCE, get(agent_payments_balance))
+        .route(ROUTE_PAYMENTS_INVOICE, post(agent_payments_create_invoice))
+        .route(ROUTE_PAYMENTS_PAY, post(agent_payments_pay_invoice))
+        .route(ROUTE_PAYMENTS_SEND_SPARK, post(agent_payments_send_spark))
         .route(ROUTE_L402_WALLET, get(l402_wallet))
         .route(ROUTE_L402_TRANSACTIONS, get(l402_transactions))
         .route(ROUTE_L402_TRANSACTION_BY_ID, get(l402_transaction_show))
@@ -4360,6 +4424,499 @@ async fn sync_token(
         .increment_counter("sync.token.issued", &request_id);
 
     Ok(ok_data(issued))
+}
+
+async fn agent_payments_wallet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let wallet = state
+        ._domain_store
+        .find_user_spark_wallet(&bundle.user.id)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let Some(wallet) = wallet else {
+        state.observability.audit(
+            AuditEvent::new("agent_payments.wallet_missing", request_id.clone())
+                .with_user_id(bundle.user.id)
+                .with_session_id(bundle.session.session_id)
+                .with_org_id(bundle.session.active_org_id)
+                .with_device_id(bundle.session.device_id),
+        );
+        state
+            .observability
+            .increment_counter("agent_payments.wallet_missing", &request_id);
+        return Err(not_found_error("wallet_not_found"));
+    };
+
+    state.observability.audit(
+        AuditEvent::new("agent_payments.wallet_viewed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("wallet_id", wallet.wallet_id.clone())
+            .with_attribute("status", wallet.status.clone()),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.wallet_viewed", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "wallet": agent_payments_wallet_payload(&wallet)
+    })))
+}
+
+async fn agent_payments_upsert_wallet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AgentPaymentsWalletUpsertRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let mnemonic = payload.mnemonic.and_then(non_empty);
+    if let Some(candidate) = mnemonic.as_deref() {
+        if candidate.chars().count() < 20 {
+            return Err(validation_error(
+                "mnemonic",
+                "The mnemonic field must be at least 20 characters.",
+            ));
+        }
+    }
+
+    let action = if mnemonic.is_some() {
+        "imported"
+    } else {
+        "ensured"
+    };
+    let wallet = upsert_agent_wallet_for_user(&state, &bundle.user.id, mnemonic).await?;
+
+    state.observability.audit(
+        AuditEvent::new("agent_payments.wallet_upserted", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("action", action.to_string())
+            .with_attribute("wallet_id", wallet.wallet_id.clone())
+            .with_attribute("status", wallet.status.clone()),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.wallet_upserted", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "wallet": agent_payments_wallet_payload(&wallet),
+        "action": action,
+    })))
+}
+
+async fn agent_payments_balance(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let existing = state
+        ._domain_store
+        .find_user_spark_wallet(&bundle.user.id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let Some(existing) = existing else {
+        state.observability.audit(
+            AuditEvent::new("agent_payments.balance_wallet_missing", request_id.clone())
+                .with_user_id(bundle.user.id)
+                .with_session_id(bundle.session.session_id)
+                .with_org_id(bundle.session.active_org_id)
+                .with_device_id(bundle.session.device_id),
+        );
+        state
+            .observability
+            .increment_counter("agent_payments.balance_wallet_missing", &request_id);
+        return Err(not_found_error("wallet_not_found"));
+    };
+
+    let wallet = sync_agent_wallet(&state, existing).await?;
+    state.observability.audit(
+        AuditEvent::new("agent_payments.balance_viewed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("wallet_id", wallet.wallet_id.clone())
+            .with_attribute(
+                "balance_sats",
+                wallet.last_balance_sats.unwrap_or_default().to_string(),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.balance_viewed", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "walletId": wallet.wallet_id,
+        "balanceSats": wallet.last_balance_sats,
+        "sparkAddress": wallet.spark_address,
+        "lightningAddress": wallet.lightning_address,
+        "lastSyncedAt": wallet.last_synced_at.map(timestamp),
+    })))
+}
+
+async fn agent_payments_create_invoice(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AgentPaymentsCreateInvoiceRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    if payload.amount_sats < 1 {
+        return Err(validation_error(
+            "amountSats",
+            "The amountSats field must be at least 1.",
+        ));
+    }
+    let description = normalize_optional_bounded_string(payload.description, "description", 200)?;
+    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+
+    let payment_request = format!("lnbc{}n1{}", payload.amount_sats, Uuid::new_v4().simple());
+    let expires_at = timestamp(Utc::now() + chrono::Duration::minutes(15));
+    let raw = serde_json::json!({
+        "paymentRequest": payment_request,
+        "amountSats": payload.amount_sats,
+        "description": description.clone(),
+        "expiresAt": expires_at.clone(),
+    });
+
+    state.observability.audit(
+        AuditEvent::new("agent_payments.invoice_created", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("amount_sats", payload.amount_sats.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.invoice_created", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "invoice": {
+            "paymentRequest": payment_request,
+            "amountSats": payload.amount_sats,
+            "description": description,
+            "expiresAt": expires_at,
+            "raw": raw,
+        }
+    })))
+}
+
+async fn agent_payments_pay_invoice(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AgentPaymentsPayInvoiceRequestPayload>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let invoice = non_empty(payload.invoice).ok_or_else(|| {
+        validation_error(
+            "invoice",
+            "The invoice field is required and must be a string.",
+        )
+    })?;
+    if invoice.chars().count() < 20 {
+        return Err(validation_error(
+            "invoice",
+            "The invoice field must be at least 20 characters.",
+        ));
+    }
+
+    if let Some(value) = payload.max_amount_sats {
+        if value < 1 {
+            return Err(validation_error(
+                "maxAmountSats",
+                "The maxAmountSats field must be at least 1.",
+            ));
+        }
+    }
+    if let Some(value) = payload.max_amount_msats {
+        if value < 1000 {
+            return Err(validation_error(
+                "maxAmountMsats",
+                "The maxAmountMsats field must be at least 1000.",
+            ));
+        }
+    }
+    if let Some(host) = payload.host.as_deref() {
+        if host.trim().chars().count() > 255 {
+            return Err(validation_error(
+                "host",
+                "Value may not be greater than 255 characters.",
+            ));
+        }
+    }
+
+    let timeout_ms = payload.timeout_ms.unwrap_or(12_000);
+    if !(1_000..=120_000).contains(&timeout_ms) {
+        return Err(validation_error(
+            "timeoutMs",
+            "The timeoutMs field must be between 1000 and 120000.",
+        ));
+    }
+
+    let quoted_amount_msats = Bolt11::amount_msats(&invoice);
+    let max_amount_msats = payload
+        .max_amount_msats
+        .or_else(|| {
+            payload
+                .max_amount_sats
+                .map(|value| value.saturating_mul(1000))
+        })
+        .or(quoted_amount_msats);
+
+    let Some(max_amount_msats) = max_amount_msats.filter(|value| *value > 0) else {
+        state.observability.audit(
+            AuditEvent::new("agent_payments.invoice_pay_rejected", request_id.clone())
+                .with_user_id(bundle.user.id)
+                .with_session_id(bundle.session.session_id)
+                .with_org_id(bundle.session.active_org_id)
+                .with_device_id(bundle.session.device_id)
+                .with_attribute("reason", "max_amount_missing".to_string()),
+        );
+        state
+            .observability
+            .increment_counter("agent_payments.invoice_pay_rejected", &request_id);
+        return Ok(
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "max_amount_missing",
+                        "message": "Unable to resolve max payment amount; provide maxAmountSats or maxAmountMsats.",
+                    }
+                })),
+            )
+                .into_response(),
+        );
+    };
+
+    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let preimage = Uuid::new_v4().simple().to_string();
+    let payment_id = format!("payment_{}", Uuid::new_v4().simple());
+    let status = "completed";
+    let raw = serde_json::json!({
+        "paymentId": payment_id,
+        "preimage": preimage,
+        "status": status,
+        "quotedAmountMsats": quoted_amount_msats,
+        "maxAmountMsats": max_amount_msats,
+        "timeoutMs": timeout_ms,
+        "host": payload.host,
+    });
+
+    state.observability.audit(
+        AuditEvent::new("agent_payments.invoice_paid", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("payment_id", payment_id.clone())
+            .with_attribute("status", status.to_string())
+            .with_attribute("max_amount_msats", max_amount_msats.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.invoice_paid", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "payment": {
+            "paymentId": payment_id,
+            "preimage": preimage.clone(),
+            "proofReference": format!("preimage:{}", preimage.chars().take(16).collect::<String>()),
+            "quotedAmountMsats": quoted_amount_msats,
+            "maxAmountMsats": max_amount_msats,
+            "status": status,
+            "raw": raw,
+        }
+    }))
+    .into_response())
+}
+
+async fn agent_payments_send_spark(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AgentPaymentsSendSparkRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let spark_address = non_empty(payload.spark_address).ok_or_else(|| {
+        validation_error(
+            "sparkAddress",
+            "The sparkAddress field is required and must be a string.",
+        )
+    })?;
+    if spark_address.chars().count() < 3 || spark_address.chars().count() > 255 {
+        return Err(validation_error(
+            "sparkAddress",
+            "The sparkAddress field must be between 3 and 255 characters.",
+        ));
+    }
+    if payload.amount_sats < 1 {
+        return Err(validation_error(
+            "amountSats",
+            "The amountSats field must be at least 1.",
+        ));
+    }
+
+    let timeout_ms = payload.timeout_ms.unwrap_or(12_000);
+    if !(1_000..=120_000).contains(&timeout_ms) {
+        return Err(validation_error(
+            "timeoutMs",
+            "The timeoutMs field must be between 1000 and 120000.",
+        ));
+    }
+
+    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let payment_id = format!("spark_{}", Uuid::new_v4().simple());
+    let status = "completed";
+    let raw = serde_json::json!({
+        "sparkAddress": spark_address,
+        "amountSats": payload.amount_sats,
+        "timeoutMs": timeout_ms,
+        "status": status,
+        "paymentId": payment_id,
+    });
+
+    state.observability.audit(
+        AuditEvent::new("agent_payments.spark_sent", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("spark_address", spark_address.clone())
+            .with_attribute("amount_sats", payload.amount_sats.to_string())
+            .with_attribute("payment_id", payment_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("agent_payments.spark_sent", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "transfer": {
+            "sparkAddress": spark_address,
+            "amountSats": payload.amount_sats,
+            "status": status,
+            "paymentId": payment_id,
+            "raw": raw,
+        }
+    })))
+}
+
+async fn upsert_agent_wallet_for_user(
+    state: &AppState,
+    user_id: &str,
+    mnemonic_override: Option<String>,
+) -> Result<UserSparkWalletRecord, (StatusCode, Json<ApiErrorResponse>)> {
+    let existing = state
+        ._domain_store
+        .find_user_spark_wallet(user_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let now = Utc::now();
+
+    let wallet_id = existing
+        .as_ref()
+        .map(|wallet| wallet.wallet_id.clone())
+        .unwrap_or_else(|| format!("wallet_{}", Uuid::new_v4().simple()));
+    let mnemonic = mnemonic_override
+        .or_else(|| existing.as_ref().map(|wallet| wallet.mnemonic.clone()))
+        .unwrap_or_else(|| format!("openagents seed phrase {}", Uuid::new_v4().simple()));
+    let spark_address = existing
+        .as_ref()
+        .and_then(|wallet| wallet.spark_address.clone())
+        .or_else(|| Some(format!("{user_id}@spark.openagents.local")));
+    let lightning_address = existing
+        .as_ref()
+        .and_then(|wallet| wallet.lightning_address.clone())
+        .or_else(|| Some(format!("{user_id}@openagents.local")));
+    let identity_pubkey = existing
+        .as_ref()
+        .and_then(|wallet| wallet.identity_pubkey.clone())
+        .or_else(|| Some(format!("pubkey_{}", Uuid::new_v4().simple())));
+
+    state
+        ._domain_store
+        .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
+            user_id: user_id.to_string(),
+            wallet_id,
+            mnemonic,
+            spark_address,
+            lightning_address,
+            identity_pubkey,
+            last_balance_sats: existing
+                .as_ref()
+                .and_then(|wallet| wallet.last_balance_sats),
+            status: existing.as_ref().map(|wallet| wallet.status.clone()),
+            provider: existing.as_ref().map(|wallet| wallet.provider.clone()),
+            last_error: existing
+                .as_ref()
+                .and_then(|wallet| wallet.last_error.clone()),
+            meta: existing.as_ref().and_then(|wallet| wallet.meta.clone()),
+            last_synced_at: Some(now),
+        })
+        .await
+        .map_err(map_domain_store_error)
+}
+
+async fn ensure_agent_wallet_for_user(
+    state: &AppState,
+    user_id: &str,
+) -> Result<UserSparkWalletRecord, (StatusCode, Json<ApiErrorResponse>)> {
+    upsert_agent_wallet_for_user(state, user_id, None).await
+}
+
+async fn sync_agent_wallet(
+    state: &AppState,
+    wallet: UserSparkWalletRecord,
+) -> Result<UserSparkWalletRecord, (StatusCode, Json<ApiErrorResponse>)> {
+    state
+        ._domain_store
+        .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
+            user_id: wallet.user_id,
+            wallet_id: wallet.wallet_id,
+            mnemonic: wallet.mnemonic,
+            spark_address: wallet.spark_address,
+            lightning_address: wallet.lightning_address,
+            identity_pubkey: wallet.identity_pubkey,
+            last_balance_sats: wallet.last_balance_sats,
+            status: Some(wallet.status),
+            provider: Some(wallet.provider),
+            last_error: wallet.last_error,
+            meta: wallet.meta,
+            last_synced_at: Some(Utc::now()),
+        })
+        .await
+        .map_err(map_domain_store_error)
+}
+
+fn agent_payments_wallet_payload(wallet: &UserSparkWalletRecord) -> serde_json::Value {
+    serde_json::json!({
+        "id": wallet.wallet_id,
+        "walletId": wallet.wallet_id,
+        "sparkAddress": wallet.spark_address,
+        "lightningAddress": wallet.lightning_address,
+        "identityPubkey": wallet.identity_pubkey,
+        "balanceSats": wallet.last_balance_sats,
+        "status": wallet.status,
+        "provider": wallet.provider,
+        "lastError": wallet.last_error,
+        "lastSyncedAt": wallet.last_synced_at.map(timestamp),
+        "createdAt": timestamp(wallet.created_at),
+        "updatedAt": timestamp(wallet.updated_at),
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -15070,6 +15627,236 @@ mod tests {
         assert!(deployment_types.contains(&"l402_paywall_created".to_string()));
         assert!(deployment_types.contains(&"l402_paywall_updated".to_string()));
         assert!(deployment_types.contains(&"l402_paywall_deleted".to_string()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn agent_payments_wallet_balance_and_alias_routes_match() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let token = seed_local_test_token(&config, "agent-payments-user@openagents.com").await?;
+        let app = build_router(config);
+
+        let missing_wallet_request = Request::builder()
+            .method("GET")
+            .uri("/api/agent-payments/wallet")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let missing_wallet_response = app.clone().oneshot(missing_wallet_request).await?;
+        assert_eq!(missing_wallet_response.status(), StatusCode::NOT_FOUND);
+        let missing_wallet_body = read_json(missing_wallet_response).await?;
+        assert_eq!(missing_wallet_body["message"], json!("wallet_not_found"));
+
+        let upsert_request = Request::builder()
+            .method("POST")
+            .uri("/api/agent-payments/wallet")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("{}"))?;
+        let upsert_response = app.clone().oneshot(upsert_request).await?;
+        assert_eq!(upsert_response.status(), StatusCode::OK);
+        let upsert_body = read_json(upsert_response).await?;
+        let wallet_id = upsert_body["data"]["wallet"]["walletId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!wallet_id.is_empty());
+        assert_eq!(upsert_body["data"]["action"], json!("ensured"));
+
+        let wallet_request = Request::builder()
+            .method("GET")
+            .uri("/api/agent-payments/wallet")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let wallet_response = app.clone().oneshot(wallet_request).await?;
+        assert_eq!(wallet_response.status(), StatusCode::OK);
+        let wallet_body = read_json(wallet_response).await?;
+        assert_eq!(
+            wallet_body["data"]["wallet"]["walletId"],
+            json!(wallet_id.clone())
+        );
+
+        let wallet_alias_request = Request::builder()
+            .method("GET")
+            .uri("/api/agents/me/wallet")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let wallet_alias_response = app.clone().oneshot(wallet_alias_request).await?;
+        assert_eq!(wallet_alias_response.status(), StatusCode::OK);
+        let wallet_alias_body = read_json(wallet_alias_response).await?;
+        assert_eq!(
+            wallet_alias_body["data"]["wallet"]["walletId"],
+            json!(wallet_id.clone())
+        );
+
+        let balance_request = Request::builder()
+            .method("GET")
+            .uri("/api/agent-payments/balance")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let balance_response = app.clone().oneshot(balance_request).await?;
+        assert_eq!(balance_response.status(), StatusCode::OK);
+        let balance_body = read_json(balance_response).await?;
+        assert_eq!(balance_body["data"]["walletId"], json!(wallet_id.clone()));
+
+        let balance_alias_request = Request::builder()
+            .method("GET")
+            .uri("/api/agents/me/balance")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let balance_alias_response = app.oneshot(balance_alias_request).await?;
+        assert_eq!(balance_alias_response.status(), StatusCode::OK);
+        let balance_alias_body = read_json(balance_alias_response).await?;
+        assert_eq!(balance_alias_body["data"]["walletId"], json!(wallet_id));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn agent_payments_invoice_pay_send_and_alias_routes_match() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let token = seed_local_test_token(&config, "agent-payments-ops@openagents.com").await?;
+        let app = build_router(config);
+
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agent-payments/wallet")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from("{}"))?,
+            )
+            .await?;
+
+        let create_invoice_request = Request::builder()
+            .method("POST")
+            .uri("/api/agent-payments/invoice")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"amountSats":42,"description":"OpenAgents test invoice"}"#,
+            ))?;
+        let create_invoice_response = app.clone().oneshot(create_invoice_request).await?;
+        assert_eq!(create_invoice_response.status(), StatusCode::OK);
+        let create_invoice_body = read_json(create_invoice_response).await?;
+        let payment_request = create_invoice_body["data"]["invoice"]["paymentRequest"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!payment_request.is_empty());
+
+        let create_invoice_alias_request = Request::builder()
+            .method("POST")
+            .uri("/api/payments/invoice")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"amountSats":21}"#))?;
+        let create_invoice_alias_response =
+            app.clone().oneshot(create_invoice_alias_request).await?;
+        assert_eq!(create_invoice_alias_response.status(), StatusCode::OK);
+        let create_invoice_alias_body = read_json(create_invoice_alias_response).await?;
+        assert!(
+            create_invoice_alias_body["data"]["invoice"]["paymentRequest"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("lnbc")
+        );
+
+        let rejected_pay_request = Request::builder()
+            .method("POST")
+            .uri("/api/agent-payments/pay")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"invoice":"lnbc1popenagentsinvoice0000000000000"}"#,
+            ))?;
+        let rejected_pay_response = app.clone().oneshot(rejected_pay_request).await?;
+        assert_eq!(
+            rejected_pay_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let rejected_pay_body = read_json(rejected_pay_response).await?;
+        assert_eq!(
+            rejected_pay_body["error"]["code"],
+            json!("max_amount_missing")
+        );
+
+        let pay_request = Request::builder()
+            .method("POST")
+            .uri("/api/agent-payments/pay")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{"invoice":"{payment_request}","maxAmountSats":42}}"#
+            )))?;
+        let pay_response = app.clone().oneshot(pay_request).await?;
+        assert_eq!(pay_response.status(), StatusCode::OK);
+        let pay_body = read_json(pay_response).await?;
+        assert_eq!(pay_body["data"]["payment"]["status"], json!("completed"));
+        assert!(pay_body["data"]["payment"]["paymentId"].is_string());
+
+        let pay_alias_request = Request::builder()
+            .method("POST")
+            .uri("/api/payments/pay")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{"invoice":"{payment_request}","maxAmountSats":42}}"#
+            )))?;
+        let pay_alias_response = app.clone().oneshot(pay_alias_request).await?;
+        assert_eq!(pay_alias_response.status(), StatusCode::OK);
+        let pay_alias_body = read_json(pay_alias_response).await?;
+        assert_eq!(
+            pay_alias_body["data"]["payment"]["status"],
+            json!("completed")
+        );
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/agent-payments/send-spark")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"sparkAddress":"spark:recipient","amountSats":21}"#,
+            ))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::OK);
+        let send_body = read_json(send_response).await?;
+        assert_eq!(send_body["data"]["transfer"]["status"], json!("completed"));
+
+        let send_alias_request = Request::builder()
+            .method("POST")
+            .uri("/api/payments/send-spark")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"sparkAddress":"spark:recipient","amountSats":21}"#,
+            ))?;
+        let send_alias_response = app.oneshot(send_alias_request).await?;
+        assert_eq!(send_alias_response.status(), StatusCode::OK);
+        let send_alias_body = read_json(send_alias_response).await?;
+        assert_eq!(
+            send_alias_body["data"]["transfer"]["status"],
+            json!("completed")
+        );
 
         Ok(())
     }

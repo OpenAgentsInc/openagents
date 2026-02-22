@@ -15,6 +15,7 @@ chrono.workspace = true
 hmac = "0.12"
 mime_guess = "2.0"
 openagents-client-core = { path = "../../../crates/openagents-client-core" }
+openagents-l402 = { path = "../../../crates/openagents-l402" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

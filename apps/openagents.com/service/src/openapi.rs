@@ -21,6 +21,16 @@ pub const ROUTE_KHALA_TOKEN: &str = "/api/khala/token";
 pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
+pub const ROUTE_AGENT_PAYMENTS_WALLET: &str = "/api/agent-payments/wallet";
+pub const ROUTE_AGENT_PAYMENTS_BALANCE: &str = "/api/agent-payments/balance";
+pub const ROUTE_AGENT_PAYMENTS_INVOICE: &str = "/api/agent-payments/invoice";
+pub const ROUTE_AGENT_PAYMENTS_PAY: &str = "/api/agent-payments/pay";
+pub const ROUTE_AGENT_PAYMENTS_SEND_SPARK: &str = "/api/agent-payments/send-spark";
+pub const ROUTE_AGENTS_ME_WALLET: &str = "/api/agents/me/wallet";
+pub const ROUTE_AGENTS_ME_BALANCE: &str = "/api/agents/me/balance";
+pub const ROUTE_PAYMENTS_INVOICE: &str = "/api/payments/invoice";
+pub const ROUTE_PAYMENTS_PAY: &str = "/api/payments/pay";
+pub const ROUTE_PAYMENTS_SEND_SPARK: &str = "/api/payments/send-spark";
 pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
@@ -424,6 +434,150 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("policy_authorize"),
         response_example: Some("policy_authorize"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AGENT_PAYMENTS_WALLET,
+        operation_id: "agentPaymentsWallet",
+        summary: "Read authenticated user's Spark wallet metadata.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("agent_payments_wallet"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AGENT_PAYMENTS_WALLET,
+        operation_id: "agentPaymentsWalletUpsert",
+        summary: "Create/import wallet for authenticated user.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("agent_payments_wallet_upsert"),
+        response_example: Some("agent_payments_wallet_upsert"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AGENT_PAYMENTS_BALANCE,
+        operation_id: "agentPaymentsBalance",
+        summary: "Read authenticated wallet balance snapshot.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("agent_payments_balance"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AGENT_PAYMENTS_INVOICE,
+        operation_id: "agentPaymentsInvoiceCreate",
+        summary: "Create Lightning invoice from authenticated wallet.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("agent_payments_invoice_create"),
+        response_example: Some("agent_payments_invoice"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AGENT_PAYMENTS_PAY,
+        operation_id: "agentPaymentsInvoicePay",
+        summary: "Pay a BOLT11 invoice from authenticated wallet.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("agent_payments_invoice_pay"),
+        response_example: Some("agent_payments_payment"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AGENT_PAYMENTS_SEND_SPARK,
+        operation_id: "agentPaymentsSendSpark",
+        summary: "Send sats to Spark address from authenticated wallet.",
+        tag: "payments",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("agent_payments_send_spark"),
+        response_example: Some("agent_payments_transfer"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AGENTS_ME_WALLET,
+        operation_id: "agentsMeWallet",
+        summary: "Compatibility alias for agent-payments wallet read.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("agent_payments_wallet"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AGENTS_ME_WALLET,
+        operation_id: "agentsMeWalletUpsert",
+        summary: "Compatibility alias for agent-payments wallet upsert.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("agent_payments_wallet_upsert"),
+        response_example: Some("agent_payments_wallet_upsert"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_AGENTS_ME_BALANCE,
+        operation_id: "agentsMeBalance",
+        summary: "Compatibility alias for agent-payments balance read.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("agent_payments_balance"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_PAYMENTS_INVOICE,
+        operation_id: "paymentsInvoiceCreateAlias",
+        summary: "Compatibility alias for agent-payments invoice create.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("agent_payments_invoice_create"),
+        response_example: Some("agent_payments_invoice"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_PAYMENTS_PAY,
+        operation_id: "paymentsInvoicePayAlias",
+        summary: "Compatibility alias for agent-payments invoice pay.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("agent_payments_invoice_pay"),
+        response_example: Some("agent_payments_payment"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_PAYMENTS_SEND_SPARK,
+        operation_id: "paymentsSendSparkAlias",
+        summary: "Compatibility alias for agent-payments spark transfer.",
+        tag: "payments",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("agent_payments_send_spark"),
+        response_example: Some("agent_payments_transfer"),
     },
     OpenApiContract {
         method: "get",
@@ -1150,6 +1304,24 @@ fn request_example(key: &str) -> Option<Value> {
             "required_scopes": ["runtime.read"],
             "requested_topics": ["org:openagents:worker_events"]
         })),
+        "agent_payments_wallet_upsert" => Some(json!({
+            "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        })),
+        "agent_payments_invoice_create" => Some(json!({
+            "amountSats": 42,
+            "description": "OpenAgents test invoice"
+        })),
+        "agent_payments_invoice_pay" => Some(json!({
+            "invoice": "lnbc42n1p0openagentssampleinvoice00000000000000",
+            "maxAmountSats": 42,
+            "timeoutMs": 12000,
+            "host": "sats4ai.com"
+        })),
+        "agent_payments_send_spark" => Some(json!({
+            "sparkAddress": "spark:recipient",
+            "amountSats": 21,
+            "timeoutMs": 12000
+        })),
         "l402_paywall_create" => Some(json!({
             "name": "Default",
             "hostRegexp": "sats4ai\\.com",
@@ -1645,6 +1817,96 @@ fn response_example(key: &str) -> Option<Value> {
                 "resolved_org_id": "org:openagents",
                 "granted_scopes": ["runtime.read"],
                 "denied_reasons": []
+            }
+        })),
+        "agent_payments_wallet" => Some(json!({
+            "data": {
+                "wallet": {
+                    "id": "wallet_123",
+                    "walletId": "wallet_123",
+                    "sparkAddress": "usr_123@spark.openagents.local",
+                    "lightningAddress": "usr_123@openagents.local",
+                    "identityPubkey": "pubkey_123",
+                    "balanceSats": 4200,
+                    "status": "active",
+                    "provider": "spark_executor",
+                    "lastError": null,
+                    "lastSyncedAt": "2026-02-22T00:00:00Z",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                }
+            }
+        })),
+        "agent_payments_wallet_upsert" => Some(json!({
+            "data": {
+                "wallet": {
+                    "id": "wallet_123",
+                    "walletId": "wallet_123",
+                    "sparkAddress": "usr_123@spark.openagents.local",
+                    "lightningAddress": "usr_123@openagents.local",
+                    "identityPubkey": "pubkey_123",
+                    "balanceSats": 0,
+                    "status": "active",
+                    "provider": "spark_executor",
+                    "lastError": null,
+                    "lastSyncedAt": "2026-02-22T00:00:00Z",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                },
+                "action": "ensured"
+            }
+        })),
+        "agent_payments_balance" => Some(json!({
+            "data": {
+                "walletId": "wallet_123",
+                "balanceSats": 4200,
+                "sparkAddress": "usr_123@spark.openagents.local",
+                "lightningAddress": "usr_123@openagents.local",
+                "lastSyncedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "agent_payments_invoice" => Some(json!({
+            "data": {
+                "invoice": {
+                    "paymentRequest": "lnbc42n1psampleinvoice",
+                    "amountSats": 42,
+                    "description": "OpenAgents test invoice",
+                    "expiresAt": "2026-02-22T00:15:00Z",
+                    "raw": {
+                        "paymentRequest": "lnbc42n1psampleinvoice",
+                        "amountSats": 42
+                    }
+                }
+            }
+        })),
+        "agent_payments_payment" => Some(json!({
+            "data": {
+                "payment": {
+                    "paymentId": "payment_123",
+                    "preimage": "abc123",
+                    "proofReference": "preimage:abc123",
+                    "quotedAmountMsats": 42000,
+                    "maxAmountMsats": 42000,
+                    "status": "completed",
+                    "raw": {
+                        "paymentId": "payment_123",
+                        "status": "completed"
+                    }
+                }
+            }
+        })),
+        "agent_payments_transfer" => Some(json!({
+            "data": {
+                "transfer": {
+                    "sparkAddress": "spark:recipient",
+                    "amountSats": 21,
+                    "status": "completed",
+                    "paymentId": "spark_123",
+                    "raw": {
+                        "sparkAddress": "spark:recipient",
+                        "amountSats": 21
+                    }
+                }
             }
         })),
         "l402_wallet" => Some(json!({

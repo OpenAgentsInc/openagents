@@ -7110,6 +7110,7 @@ dependencies = [
  "http-body-util",
  "mime_guess",
  "openagents-client-core",
+ "openagents-l402",
  "openapiv3",
  "reqwest",
  "serde",
