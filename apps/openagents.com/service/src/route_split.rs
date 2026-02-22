@@ -101,15 +101,14 @@ impl RouteSplitService {
         let rollback_target = self.rollback_target_for_domain(route_domain.as_deref());
         let override_target = *self.override_target.read().await;
 
-        // Keep Codex worker control APIs on the Laravel authority lane until
-        // an explicit ownership migration is completed.
+        // Codex worker control APIs are Rust authority and must not route to legacy.
         if is_codex_worker_control_path(&normalized_path) {
             return RouteSplitDecision {
                 path: normalized_path,
-                target: RouteTarget::Legacy,
-                reason: "codex_worker_control_legacy_authority".to_string(),
+                target: RouteTarget::RustShell,
+                reason: "codex_worker_control_rust_authority".to_string(),
                 route_domain: "runtime_codex_worker_control".to_string(),
-                rollback_target: Some(RouteTarget::Legacy),
+                rollback_target: Some(RouteTarget::RustShell),
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -619,9 +618,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codex_worker_control_paths_stay_on_legacy_even_in_rust_mode() {
+    async fn codex_worker_control_paths_stay_on_rust_even_with_legacy_biased_modes() {
         let mut config = test_config();
-        config.route_split_mode = "rust".to_string();
+        config.route_split_mode = "legacy".to_string();
         config.route_split_rust_routes = vec!["/".to_string()];
         let service = RouteSplitService::from_config(&config);
 
@@ -635,26 +634,38 @@ mod tests {
             let decision = service.evaluate(path, "user:1").await;
             assert_eq!(
                 decision.target,
-                RouteTarget::Legacy,
-                "codex worker control path must remain legacy: {path}"
+                RouteTarget::RustShell,
+                "codex worker control path must remain rust authority: {path}"
             );
-            assert_eq!(decision.reason, "codex_worker_control_legacy_authority");
+            assert_eq!(decision.reason, "codex_worker_control_rust_authority");
         }
     }
 
     #[tokio::test]
-    async fn codex_worker_control_paths_ignore_runtime_override_to_rust() {
+    async fn codex_worker_control_paths_ignore_runtime_override_to_legacy() {
         let service = RouteSplitService::from_config(&test_config());
-        service
-            .set_override_target(Some(RouteTarget::RustShell))
-            .await;
+        service.set_override_target(Some(RouteTarget::Legacy)).await;
 
         let decision = service
             .evaluate("/api/runtime/codex/workers/codexw_1/requests", "user:1")
             .await;
 
-        assert_eq!(decision.target, RouteTarget::Legacy);
-        assert_eq!(decision.reason, "codex_worker_control_legacy_authority");
+        assert_eq!(decision.target, RouteTarget::RustShell);
+        assert_eq!(decision.reason, "codex_worker_control_rust_authority");
+    }
+
+    #[tokio::test]
+    async fn codex_worker_control_paths_ignore_force_legacy() {
+        let mut config = test_config();
+        config.route_split_force_legacy = true;
+        let service = RouteSplitService::from_config(&config);
+
+        let decision = service
+            .evaluate("/api/runtime/codex/workers/codexw_1/requests", "user:1")
+            .await;
+
+        assert_eq!(decision.target, RouteTarget::RustShell);
+        assert_eq!(decision.reason, "codex_worker_control_rust_authority");
     }
 
     #[tokio::test]

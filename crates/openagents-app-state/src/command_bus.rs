@@ -370,6 +370,8 @@ mod tests {
             request.path,
             "/api/runtime/codex/workers/desktopw%3Ashared/requests"
         );
+        assert!(!request.path.starts_with("/api/chat"));
+        assert!(!request.path.starts_with("/api/chats"));
         let body = request.body.expect("request body");
         assert_eq!(body["request"]["method"], json!("turn/start"));
         assert_eq!(body["request"]["params"]["thread_id"], json!("thread-123"));
