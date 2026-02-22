@@ -46,7 +46,7 @@ use crate::api_envelope::{
     not_found_error, ok_data, unauthorized_error, validation_error,
 };
 use crate::auth::{
-    AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
+    AuthError, AuthService, AuthUser, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
     SessionRevocationRequest, SessionRevocationTarget,
 };
 use crate::codex_threads::{
@@ -57,9 +57,10 @@ use crate::config::Config;
 use crate::domain_store::{
     AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, CreateShoutInput,
     DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
-    RecordL402GatewayEventInput, ShoutRecord, UpdateAutopilotInput, UpdateL402PaywallInput,
-    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
-    UpsertUserSparkWalletInput, UserSparkWalletRecord,
+    RecordL402GatewayEventInput, SendWhisperInput, ShoutRecord, UpdateAutopilotInput,
+    UpdateL402PaywallInput, UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
+    UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput, UserSparkWalletRecord,
+    WhisperRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -86,7 +87,8 @@ use crate::openapi::{
     ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS,
-    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
+    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, ROUTE_WHISPERS, ROUTE_WHISPERS_READ,
+    openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
@@ -629,6 +631,26 @@ struct ShoutStoreRequestPayload {
     zone: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct WhispersIndexQuery {
+    #[serde(default)]
+    with: Option<String>,
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default, alias = "beforeId")]
+    before_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WhisperStoreRequestPayload {
+    #[serde(default, alias = "recipientId")]
+    recipient_id: Option<String>,
+    #[serde(default, alias = "recipientHandle")]
+    recipient_handle: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CreateAutopilotRequestPayload {
     #[serde(default)]
@@ -1087,6 +1109,8 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
         .route(ROUTE_SHOUTS, post(shouts_store))
+        .route(ROUTE_WHISPERS, get(whispers_index).post(whispers_store))
+        .route(ROUTE_WHISPERS_READ, patch(whispers_read))
         .route(
             ROUTE_AGENT_PAYMENTS_WALLET,
             get(agent_payments_wallet).post(agent_payments_upsert_wallet),
@@ -4515,6 +4539,270 @@ async fn shouts_store(
     ))
 }
 
+async fn whispers_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<WhispersIndexQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let with = normalize_whisper_lookup(query.with.as_deref(), "with")?;
+    let with_user = if let Some(lookup) = with.as_deref() {
+        Some(
+            state
+                .auth
+                .user_by_id_or_handle(lookup)
+                .await
+                .ok_or_else(|| not_found_error("Not found."))?,
+        )
+    } else {
+        None
+    };
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let before_id = parse_shout_optional_u64(query.before_id.as_deref(), "before_id")?;
+
+    let rows = state
+        ._domain_store
+        .list_whispers_for(
+            &bundle.user.id,
+            with_user.as_ref().map(|user| user.id.as_str()),
+            limit,
+            before_id,
+        )
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut user_cache: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut data = Vec::with_capacity(rows.len());
+    for whisper in &rows {
+        data.push(whisper_payload(&state, whisper, &mut user_cache).await);
+    }
+
+    let next_cursor = if rows.len() == limit {
+        rows.last().map(|row| row.id.to_string())
+    } else {
+        None
+    };
+
+    let mut audit = AuditEvent::new("whispers.list_viewed", request_id.clone())
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("limit", limit.to_string())
+        .with_attribute("returned_count", rows.len().to_string());
+    if let Some(with_user) = with_user.as_ref() {
+        audit = audit
+            .with_attribute("with_user_id", with_user.id.clone())
+            .with_attribute("with_user_handle", user_handle_from_email(&with_user.email));
+    }
+    state.observability.audit(audit);
+    state
+        .observability
+        .increment_counter("whispers.list_viewed", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": data,
+            "meta": {
+                "nextCursor": next_cursor,
+                "with": with_user
+                    .as_ref()
+                    .map(|user| user_handle_from_email(&user.email)),
+            }
+        })),
+    ))
+}
+
+async fn whispers_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<WhisperStoreRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let recipient = resolve_whisper_recipient(&state, &payload).await?;
+    let body = payload
+        .body
+        .and_then(non_empty)
+        .ok_or_else(|| validation_error("body", "The body field is required."))?;
+    if body.chars().count() > 5000 {
+        return Err(validation_error(
+            "body",
+            "The body field may not be greater than 5000 characters.",
+        ));
+    }
+    if recipient.id == bundle.user.id {
+        return Err(validation_error("recipientId", "Cannot whisper yourself."));
+    }
+
+    let whisper = state
+        ._domain_store
+        .send_whisper(SendWhisperInput {
+            sender_id: bundle.user.id.clone(),
+            recipient_id: recipient.id.clone(),
+            body,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut user_cache = HashMap::new();
+    let data = whisper_payload(&state, &whisper, &mut user_cache).await;
+
+    state.observability.audit(
+        AuditEvent::new("whispers.sent", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("whisper_id", whisper.id.to_string())
+            .with_attribute("recipient_id", whisper.recipient_id.clone())
+            .with_attribute("recipient_handle", user_handle_from_email(&recipient.email))
+            .with_attribute("body_length", whisper.body.chars().count().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("whispers.sent", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "data": data,
+        })),
+    ))
+}
+
+async fn whispers_read(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let whisper_id = id
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| not_found_error("Not found."))?;
+
+    let whisper = state
+        ._domain_store
+        .whisper_by_id(whisper_id)
+        .await
+        .map_err(map_domain_store_error)?
+        .ok_or_else(|| not_found_error("Not found."))?;
+    if whisper.recipient_id != bundle.user.id {
+        return Err(forbidden_error("Forbidden."));
+    }
+
+    let updated = state
+        ._domain_store
+        .mark_whisper_read(whisper_id, &bundle.user.id)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut user_cache = HashMap::new();
+    let data = whisper_payload(&state, &updated, &mut user_cache).await;
+
+    state.observability.audit(
+        AuditEvent::new("whispers.marked_read", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("whisper_id", updated.id.to_string())
+            .with_attribute("sender_id", updated.sender_id.clone())
+            .with_attribute("recipient_id", updated.recipient_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("whispers.marked_read", &request_id);
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": data }))))
+}
+
+fn normalize_whisper_lookup(
+    raw: Option<&str>,
+    field: &'static str,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw.map(str::trim) else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    normalize_whisper_identifier(raw, field, true).map(Some)
+}
+
+fn normalize_whisper_identifier(
+    raw: &str,
+    field: &'static str,
+    lowercase: bool,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field is required."),
+        ));
+    }
+    if trimmed.chars().count() > 64 {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field may not be greater than 64 characters."),
+        ));
+    }
+
+    let normalized = if lowercase {
+        trimmed.to_ascii_lowercase()
+    } else {
+        trimmed.to_string()
+    };
+    let valid = normalized
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-'));
+    if !valid {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field format is invalid."),
+        ));
+    }
+    Ok(normalized)
+}
+
+async fn resolve_whisper_recipient(
+    state: &AppState,
+    payload: &WhisperStoreRequestPayload,
+) -> Result<AuthUser, (StatusCode, Json<ApiErrorResponse>)> {
+    let recipient_id = payload.recipient_id.clone().and_then(non_empty);
+    let recipient_handle = payload.recipient_handle.clone().and_then(non_empty);
+
+    if recipient_id.is_some() && recipient_handle.is_some() {
+        return Err(validation_error(
+            "recipientId",
+            "The recipientId field prohibits recipientHandle.",
+        ));
+    }
+
+    let lookup = if let Some(recipient_id) = recipient_id {
+        normalize_whisper_identifier(&recipient_id, "recipientId", false)?
+    } else if let Some(recipient_handle) = recipient_handle {
+        normalize_whisper_identifier(&recipient_handle, "recipientHandle", true)?
+    } else {
+        return Err(validation_error(
+            "recipientId",
+            "The recipientId field is required when recipientHandle is not present.",
+        ));
+    };
+
+    state
+        .auth
+        .user_by_id_or_handle(&lookup)
+        .await
+        .ok_or_else(|| not_found_error("Not found."))
+}
+
 fn parse_shout_limit(
     raw: Option<&str>,
     field: &'static str,
@@ -4621,6 +4909,53 @@ async fn shout_payload(
         "author": author,
         "createdAt": timestamp(shout.created_at),
         "updatedAt": timestamp(shout.updated_at),
+    })
+}
+
+async fn whisper_user_payload(
+    state: &AppState,
+    user_id: &str,
+    user_cache: &mut HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    if let Some(cached) = user_cache.get(user_id).cloned() {
+        return cached;
+    }
+
+    let resolved = if let Some(user) = state.auth.user_by_id(user_id).await {
+        serde_json::json!({
+            "id": user.id,
+            "name": user.name,
+            "handle": user_handle_from_email(&user.email),
+            "avatar": serde_json::Value::Null,
+        })
+    } else {
+        serde_json::json!({
+            "id": user_id,
+            "name": "Unknown",
+            "handle": "user",
+            "avatar": serde_json::Value::Null,
+        })
+    };
+    user_cache.insert(user_id.to_string(), resolved.clone());
+    resolved
+}
+
+async fn whisper_payload(
+    state: &AppState,
+    whisper: &WhisperRecord,
+    user_cache: &mut HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    let sender = whisper_user_payload(state, &whisper.sender_id, user_cache).await;
+    let recipient = whisper_user_payload(state, &whisper.recipient_id, user_cache).await;
+
+    serde_json::json!({
+        "id": whisper.id,
+        "body": whisper.body.clone(),
+        "sender": sender,
+        "recipient": recipient,
+        "readAt": whisper.read_at.map(timestamp),
+        "createdAt": timestamp(whisper.created_at),
+        "updatedAt": timestamp(whisper.updated_at),
     })
 }
 
@@ -18708,6 +19043,252 @@ mod tests {
             page_two_body["data"].as_array().map(|rows| rows.len()),
             Some(5)
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn whispers_create_list_and_read_match_contract() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let sender_token = seed_local_test_token(&config, "whisper-sender@openagents.com").await?;
+        let recipient_token =
+            seed_local_test_token(&config, "whisper-recipient@openagents.com").await?;
+        let third_token = seed_local_test_token(&config, "whisper-third@openagents.com").await?;
+        let app = build_router(config.clone());
+
+        let unauthorized_request = Request::builder()
+            .method("POST")
+            .uri("/api/whispers")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"recipientHandle":"whisper-recipient","body":"unauthorized"}"#,
+            ))?;
+        let unauthorized_response = app.clone().oneshot(unauthorized_request).await?;
+        assert_eq!(unauthorized_response.status(), StatusCode::UNAUTHORIZED);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/whispers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::from(
+                r#"{"recipientHandle":"whisper-recipient","body":"hey"}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        assert_eq!(create_body["data"]["body"], json!("hey"));
+        assert_eq!(
+            create_body["data"]["sender"]["handle"],
+            json!("whisper-sender")
+        );
+        assert_eq!(
+            create_body["data"]["recipient"]["handle"],
+            json!("whisper-recipient")
+        );
+        assert_eq!(create_body["data"]["readAt"], json!(null));
+        let whisper_id = create_body["data"]["id"]
+            .as_u64()
+            .expect("expected whisper id");
+
+        let sender_list_request = Request::builder()
+            .method("GET")
+            .uri("/api/whispers?with=whisper-recipient")
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::empty())?;
+        let sender_list_response = app.clone().oneshot(sender_list_request).await?;
+        assert_eq!(sender_list_response.status(), StatusCode::OK);
+        let sender_list_body = read_json(sender_list_response).await?;
+        assert_eq!(
+            sender_list_body["data"].as_array().map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(sender_list_body["meta"]["with"], json!("whisper-recipient"));
+
+        let recipient_list_request = Request::builder()
+            .method("GET")
+            .uri("/api/whispers?with=whisper-sender")
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let recipient_list_response = app.clone().oneshot(recipient_list_request).await?;
+        assert_eq!(recipient_list_response.status(), StatusCode::OK);
+        let recipient_list_body = read_json(recipient_list_response).await?;
+        assert_eq!(
+            recipient_list_body["data"]
+                .as_array()
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+
+        let mark_read_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/whispers/{whisper_id}/read"))
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let mark_read_response = app.clone().oneshot(mark_read_request).await?;
+        assert_eq!(mark_read_response.status(), StatusCode::OK);
+        let mark_read_body = read_json(mark_read_response).await?;
+        assert!(mark_read_body["data"]["readAt"].as_str().is_some());
+
+        let sender_mark_read_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/whispers/{whisper_id}/read"))
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::empty())?;
+        let sender_mark_read_response = app.clone().oneshot(sender_mark_read_request).await?;
+        assert_eq!(sender_mark_read_response.status(), StatusCode::FORBIDDEN);
+
+        let third_mark_read_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/whispers/{whisper_id}/read"))
+            .header("authorization", format!("Bearer {third_token}"))
+            .body(Body::empty())?;
+        let third_mark_read_response = app.oneshot(third_mark_read_request).await?;
+        assert_eq!(third_mark_read_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn whispers_pagination_and_validation_edges_match_contract() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let sender_token =
+            seed_local_test_token(&config, "whisper-page-sender@openagents.com").await?;
+        let recipient_token =
+            seed_local_test_token(&config, "whisper-page-recipient@openagents.com").await?;
+        let app = build_router(config.clone());
+
+        let recipient_id = authenticated_user_id(app.clone(), &recipient_token).await?;
+        for idx in 0..205 {
+            let create_request = Request::builder()
+                .method("POST")
+                .uri("/api/whispers")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {sender_token}"))
+                .body(Body::from(format!(
+                    r#"{{"recipientId":"{recipient_id}","body":"feed-{idx}"}}"#
+                )))?;
+            let create_response = app.clone().oneshot(create_request).await?;
+            assert_eq!(create_response.status(), StatusCode::CREATED);
+        }
+
+        let page_one_request = Request::builder()
+            .method("GET")
+            .uri("/api/whispers?limit=999")
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let page_one_response = app.clone().oneshot(page_one_request).await?;
+        assert_eq!(page_one_response.status(), StatusCode::OK);
+        let page_one_body = read_json(page_one_response).await?;
+        assert_eq!(
+            page_one_body["data"].as_array().map(|rows| rows.len()),
+            Some(200)
+        );
+        let last_id = page_one_body["data"][199]["id"]
+            .as_u64()
+            .expect("expected cursor id");
+        assert_eq!(
+            page_one_body["meta"]["nextCursor"],
+            json!(last_id.to_string())
+        );
+
+        let page_two_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/whispers?limit=200&before_id={last_id}"))
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let page_two_response = app.clone().oneshot(page_two_request).await?;
+        assert_eq!(page_two_response.status(), StatusCode::OK);
+        let page_two_body = read_json(page_two_response).await?;
+        assert_eq!(
+            page_two_body["data"].as_array().map(|rows| rows.len()),
+            Some(5)
+        );
+
+        let invalid_with_request = Request::builder()
+            .method("GET")
+            .uri("/api/whispers?with=bad*handle")
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let invalid_with_response = app.clone().oneshot(invalid_with_request).await?;
+        assert_eq!(
+            invalid_with_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+
+        let missing_recipient_request = Request::builder()
+            .method("POST")
+            .uri("/api/whispers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::from(r#"{"body":"no recipient"}"#))?;
+        let missing_recipient_response = app.clone().oneshot(missing_recipient_request).await?;
+        assert_eq!(
+            missing_recipient_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+
+        let both_recipient_fields_request = Request::builder()
+            .method("POST")
+            .uri("/api/whispers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::from(format!(
+                r#"{{"recipientId":"{recipient_id}","recipientHandle":"whisper-page-recipient","body":"mutually exclusive"}}"#
+            )))?;
+        let both_recipient_fields_response =
+            app.clone().oneshot(both_recipient_fields_request).await?;
+        assert_eq!(
+            both_recipient_fields_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+
+        let sender_id = authenticated_user_id(app.clone(), &sender_token).await?;
+        let self_whisper_request = Request::builder()
+            .method("POST")
+            .uri("/api/whispers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {sender_token}"))
+            .body(Body::from(format!(
+                r#"{{"recipientId":"{sender_id}","body":"self whisper"}}"#
+            )))?;
+        let self_whisper_response = app.clone().oneshot(self_whisper_request).await?;
+        assert_eq!(
+            self_whisper_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+
+        let invalid_id_read_request = Request::builder()
+            .method("PATCH")
+            .uri("/api/whispers/not-a-number/read")
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let invalid_id_read_response = app.clone().oneshot(invalid_id_read_request).await?;
+        assert_eq!(invalid_id_read_response.status(), StatusCode::NOT_FOUND);
+
+        let missing_read_request = Request::builder()
+            .method("PATCH")
+            .uri("/api/whispers/999999/read")
+            .header("authorization", format!("Bearer {recipient_token}"))
+            .body(Body::empty())?;
+        let missing_read_response = app.oneshot(missing_read_request).await?;
+        assert_eq!(missing_read_response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }

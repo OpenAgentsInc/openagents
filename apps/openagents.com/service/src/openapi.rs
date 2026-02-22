@@ -33,6 +33,8 @@ pub const ROUTE_PAYMENTS_PAY: &str = "/api/payments/pay";
 pub const ROUTE_PAYMENTS_SEND_SPARK: &str = "/api/payments/send-spark";
 pub const ROUTE_SHOUTS: &str = "/api/shouts";
 pub const ROUTE_SHOUTS_ZONES: &str = "/api/shouts/zones";
+pub const ROUTE_WHISPERS: &str = "/api/whispers";
+pub const ROUTE_WHISPERS_READ: &str = "/api/whispers/:id/read";
 pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
@@ -620,6 +622,42 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("shouts_zones"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_WHISPERS,
+        operation_id: "whispersIndex",
+        summary: "List whispers for the authenticated actor with optional peer/cursor filters.",
+        tag: "social",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("whispers_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_WHISPERS,
+        operation_id: "whispersStore",
+        summary: "Send a whisper to a recipient by id or handle.",
+        tag: "social",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("whisper_create"),
+        response_example: Some("whisper"),
+    },
+    OpenApiContract {
+        method: "patch",
+        route_path: ROUTE_WHISPERS_READ,
+        operation_id: "whispersRead",
+        summary: "Mark a whisper as read for the authenticated recipient.",
+        tag: "social",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("whisper"),
     },
     OpenApiContract {
         method: "get",
@@ -1392,6 +1430,10 @@ fn request_example(key: &str) -> Option<Value> {
             "body": "L402 payment shipped",
             "zone": "l402"
         })),
+        "whisper_create" => Some(json!({
+            "recipientHandle": "openagents-user",
+            "body": "hey"
+        })),
         "l402_paywall_create" => Some(json!({
             "name": "Default",
             "hostRegexp": "sats4ai\\.com",
@@ -2037,6 +2079,54 @@ fn response_example(key: &str) -> Option<Value> {
                 {"zone": "global", "count24h": 12},
                 {"zone": "l402", "count24h": 4}
             ]
+        })),
+        "whisper" => Some(json!({
+            "data": {
+                "id": 42,
+                "body": "hey",
+                "sender": {
+                    "id": "usr_sender",
+                    "name": "OpenAgents Sender",
+                    "handle": "openagents-sender",
+                    "avatar": null
+                },
+                "recipient": {
+                    "id": "usr_recipient",
+                    "name": "OpenAgents Recipient",
+                    "handle": "openagents-recipient",
+                    "avatar": null
+                },
+                "readAt": null,
+                "createdAt": "2026-02-22T00:00:00Z",
+                "updatedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "whispers_list" => Some(json!({
+            "data": [
+                {
+                    "id": 42,
+                    "body": "hey",
+                    "sender": {
+                        "id": "usr_sender",
+                        "name": "OpenAgents Sender",
+                        "handle": "openagents-sender",
+                        "avatar": null
+                    },
+                    "recipient": {
+                        "id": "usr_recipient",
+                        "name": "OpenAgents Recipient",
+                        "handle": "openagents-recipient",
+                        "avatar": null
+                    },
+                    "readAt": null,
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                }
+            ],
+            "meta": {
+                "nextCursor": "42",
+                "with": "openagents-recipient"
+            }
         })),
         "l402_wallet" => Some(json!({
             "data": {

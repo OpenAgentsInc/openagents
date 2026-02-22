@@ -793,6 +793,35 @@ impl AuthService {
         })
     }
 
+    pub async fn user_by_id_or_handle(&self, value: &str) -> Option<AuthUser> {
+        let needle = value.trim();
+        if needle.is_empty() {
+            return None;
+        }
+        let normalized = needle.to_ascii_lowercase();
+
+        let state = self.state.read().await;
+        if let Some(record) = state.users_by_id.get(needle) {
+            return Some(AuthUser {
+                id: record.id.clone(),
+                email: record.email.clone(),
+                name: record.name.clone(),
+                workos_user_id: record.workos_user_id.clone(),
+            });
+        }
+
+        let record = state
+            .users_by_id
+            .values()
+            .find(|candidate| user_handle_from_email(&candidate.email) == normalized)?;
+        Some(AuthUser {
+            id: record.id.clone(),
+            email: record.email.clone(),
+            name: record.name.clone(),
+            workos_user_id: record.workos_user_id.clone(),
+        })
+    }
+
     pub async fn refresh_session(
         &self,
         refresh_token: &str,
@@ -1906,6 +1935,32 @@ fn default_name_from_email(email: &str) -> String {
         title
     };
     truncate_name(&candidate)
+}
+
+fn user_handle_from_email(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or_default();
+    let mut output = String::with_capacity(local.len().min(64));
+    let mut previous_dash = false;
+    for character in local.chars() {
+        let normalized = character.to_ascii_lowercase();
+        if normalized.is_ascii_alphanumeric() {
+            output.push(normalized);
+            previous_dash = false;
+            continue;
+        }
+
+        if !previous_dash {
+            output.push('-');
+            previous_dash = true;
+        }
+    }
+
+    let trimmed = output.trim_matches('-');
+    if trimmed.is_empty() {
+        "user".to_string()
+    } else {
+        trimmed.chars().take(64).collect()
+    }
 }
 
 fn truncate_name(raw: &str) -> String {

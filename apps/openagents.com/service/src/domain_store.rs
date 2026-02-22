@@ -2096,6 +2096,18 @@ impl DomainStore {
         Ok(rows)
     }
 
+    pub async fn whisper_by_id(
+        &self,
+        whisper_id: u64,
+    ) -> Result<Option<WhisperRecord>, DomainStoreError> {
+        let state = self.state.read().await;
+        Ok(state
+            .whispers
+            .iter()
+            .find(|row| row.id == whisper_id)
+            .cloned())
+    }
+
     pub async fn mark_whisper_read(
         &self,
         whisper_id: u64,
