@@ -13,6 +13,7 @@ pub const ROUTE_ME: &str = "/api/me";
 pub const ROUTE_AUTOPILOTS: &str = "/api/autopilots";
 pub const ROUTE_AUTOPILOTS_BY_ID: &str = "/api/autopilots/:autopilot";
 pub const ROUTE_AUTOPILOTS_THREADS: &str = "/api/autopilots/:autopilot/threads";
+pub const ROUTE_AUTOPILOTS_STREAM: &str = "/api/autopilots/:autopilot/stream";
 pub const ROUTE_TOKENS: &str = "/api/tokens";
 pub const ROUTE_TOKENS_CURRENT: &str = "/api/tokens/current";
 pub const ROUTE_TOKENS_BY_ID: &str = "/api/tokens/:token_id";
@@ -229,6 +230,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "201",
         request_example: Some("autopilot_thread_create"),
         response_example: Some("autopilot_thread"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AUTOPILOTS_STREAM,
+        operation_id: "autopilotStreamBootstrap",
+        summary: "Bootstrap autopilot turn execution and consume live updates via Khala WS.",
+        tag: "autopilot",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("autopilot_stream"),
+        response_example: Some("autopilot_stream_bootstrap"),
     },
     OpenApiContract {
         method: "get",
@@ -827,6 +840,12 @@ fn request_example(key: &str) -> Option<Value> {
         "autopilot_thread_create" => Some(json!({
             "title": "Autopilot test thread"
         })),
+        "autopilot_stream" => Some(json!({
+            "conversationId": "thread_123",
+            "messages": [
+                {"id": "m1", "role": "user", "content": "hello from autopilot stream alias"}
+            ]
+        })),
         _ => None,
     }
 }
@@ -981,6 +1000,37 @@ fn response_example(key: &str) -> Option<Value> {
                     "updatedAt": "2026-02-22T00:00:00Z"
                 }
             ]
+        })),
+        "autopilot_stream_bootstrap" => Some(json!({
+            "data": {
+                "accepted": true,
+                "autopilotId": "ap_123",
+                "autopilotConfigVersion": 2,
+                "threadId": "thread_123",
+                "conversationId": "thread_123",
+                "streamProtocol": "disabled",
+                "delivery": {
+                    "transport": "khala_ws",
+                    "topic": "org:openagents:worker_events",
+                    "scope": "runtime.codex_worker_events",
+                    "syncTokenRoute": "/api/sync/token"
+                },
+                "control": {
+                    "method": "turn/start",
+                    "workerId": "desktopw:shared",
+                    "requestId": "autopilot_stream_123"
+                },
+                "response": {
+                    "thread_id": "thread_123",
+                    "turn": {"id": "turn_456"},
+                    "message": {
+                        "id": "msg_1",
+                        "thread_id": "thread_123",
+                        "role": "user",
+                        "text": "hello from autopilot stream alias"
+                    }
+                }
+            }
         })),
         "tokens_list" => Some(json!({
             "data": [

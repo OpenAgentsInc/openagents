@@ -60,8 +60,8 @@ use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
-    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN,
-    ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
+    ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
     ROUTE_RUNTIME_THREADS, ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
     ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
@@ -298,6 +298,14 @@ struct AutopilotListQuery {
 struct AutopilotThreadListQuery {
     #[serde(default)]
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AutopilotStreamQuery {
+    #[serde(default, alias = "conversationId")]
+    conversation_id: Option<String>,
+    #[serde(default, alias = "threadId")]
+    thread_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -584,6 +592,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             ROUTE_AUTOPILOTS_THREADS,
             get(list_autopilot_threads).post(create_autopilot_thread),
         )
+        .route(ROUTE_AUTOPILOTS_STREAM, post(autopilot_stream))
         .route(
             ROUTE_TOKENS,
             get(list_personal_access_tokens)
@@ -2813,6 +2822,131 @@ async fn list_autopilot_threads(
     ))
 }
 
+async fn autopilot_stream(
+    State(state): State<AppState>,
+    Path(autopilot): Path<String>,
+    headers: HeaderMap,
+    Query(query): Query<AutopilotStreamQuery>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let reference = normalize_autopilot_reference(autopilot)?;
+    let autopilot = state
+        ._domain_store
+        .resolve_owned_autopilot(&bundle.user.id, &reference)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let requested_thread_id = query
+        .conversation_id
+        .and_then(non_empty)
+        .or_else(|| query.thread_id.and_then(non_empty))
+        .or_else(|| autopilot_stream_thread_id_from_payload(&payload));
+
+    let thread = match requested_thread_id {
+        Some(thread_id) => {
+            let normalized_thread_id = normalized_conversation_id(&thread_id)?;
+            let _existing = state
+                .codex_thread_store
+                .get_thread_for_user(&bundle.user.id, &normalized_thread_id)
+                .await
+                .map_err(map_autopilot_stream_thread_error)?;
+            state
+                .codex_thread_store
+                .create_autopilot_thread_for_user(
+                    &bundle.user.id,
+                    &bundle.session.active_org_id,
+                    &normalized_thread_id,
+                    &autopilot.autopilot.id,
+                    "Autopilot conversation",
+                )
+                .await
+                .map_err(map_autopilot_stream_thread_error)?
+        }
+        None => {
+            let thread_id = format!("thread_{}", uuid::Uuid::new_v4().simple());
+            state
+                .codex_thread_store
+                .create_autopilot_thread_for_user(
+                    &bundle.user.id,
+                    &bundle.session.active_org_id,
+                    &thread_id,
+                    &autopilot.autopilot.id,
+                    "Autopilot conversation",
+                )
+                .await
+                .map_err(map_thread_store_error)?
+        }
+    };
+
+    let text = legacy_stream_user_text_from_payload(&payload).ok_or_else(|| {
+        validation_error(
+            "messages",
+            "Autopilot stream payload must include user message text.",
+        )
+    })?;
+    validate_codex_turn_text(&text)?;
+
+    let worker_id = legacy_stream_worker_id_from_payload(&payload)
+        .unwrap_or_else(|| "desktopw:shared".to_string());
+    let thread_id = thread.id.clone();
+    let control_request_id = format!("autopilot_stream_{}", uuid::Uuid::new_v4().simple());
+    let control_request = RuntimeCodexWorkerControlRequest {
+        request_id: control_request_id.clone(),
+        method: "turn/start".to_string(),
+        params: serde_json::json!({
+            "thread_id": thread_id.clone(),
+            "text": text,
+            "autopilot_id": autopilot.autopilot.id,
+        }),
+        request_version: Some("v1".to_string()),
+        source: Some("autopilot_stream_alias".to_string()),
+        session_id: Some(bundle.session.session_id.clone()),
+        thread_id: Some(thread_id.clone()),
+    };
+    let control_response =
+        execute_codex_control_request(&state, &bundle, "turn/start", &control_request).await?;
+
+    let worker_events_topic = org_worker_events_topic(&bundle.session.active_org_id);
+    state.observability.audit(
+        AuditEvent::new("autopilot.stream.bootstrap.accepted", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("thread_id", thread_id.clone())
+            .with_attribute("worker_id", worker_id.clone())
+            .with_attribute("method", "turn/start".to_string())
+            .with_attribute("transport", "khala_ws".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("autopilot.stream.bootstrap.accepted", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "accepted": true,
+        "autopilotId": autopilot.autopilot.id,
+        "autopilotConfigVersion": autopilot.autopilot.config_version,
+        "threadId": thread_id.clone(),
+        "conversationId": thread_id,
+        "streamProtocol": "disabled",
+        "delivery": {
+            "transport": "khala_ws",
+            "topic": worker_events_topic,
+            "scope": "runtime.codex_worker_events",
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+        },
+        "control": {
+            "method": "turn/start",
+            "workerId": worker_id,
+            "requestId": control_request_id,
+        },
+        "response": control_response,
+    })))
+}
+
 async fn settings_profile_show(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3789,9 +3923,24 @@ fn legacy_stream_thread_id_from_payload(payload: &serde_json::Value) -> Option<S
         .or_else(|| json_non_empty_string(payload.get("id")))
 }
 
+fn autopilot_stream_thread_id_from_payload(payload: &serde_json::Value) -> Option<String> {
+    json_non_empty_string(payload.get("conversationId"))
+        .or_else(|| json_non_empty_string(payload.get("conversation_id")))
+        .or_else(|| json_non_empty_string(payload.get("threadId")))
+        .or_else(|| json_non_empty_string(payload.get("thread_id")))
+}
+
 fn legacy_stream_worker_id_from_payload(payload: &serde_json::Value) -> Option<String> {
     json_non_empty_string(payload.get("worker_id"))
         .or_else(|| json_non_empty_string(payload.get("workerId")))
+}
+
+fn org_worker_events_topic(org_id: &str) -> String {
+    if org_id.starts_with("org:") {
+        format!("{org_id}:worker_events")
+    } else {
+        format!("org:{org_id}:worker_events")
+    }
 }
 
 fn legacy_stream_user_text_from_payload(payload: &serde_json::Value) -> Option<String> {
@@ -4602,6 +4751,19 @@ fn map_thread_store_error(error: ThreadStoreError) -> (StatusCode, Json<ApiError
     match error {
         ThreadStoreError::NotFound => not_found_error("Thread not found."),
         ThreadStoreError::Forbidden => forbidden_error("Requested thread is not available."),
+        ThreadStoreError::Persistence { message } => error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            message,
+        ),
+    }
+}
+
+fn map_autopilot_stream_thread_error(
+    error: ThreadStoreError,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        ThreadStoreError::NotFound | ThreadStoreError::Forbidden => not_found_error("Not found."),
         ThreadStoreError::Persistence { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorCode::ServiceUnavailable,
@@ -7546,6 +7708,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn autopilot_stream_route_bootstraps_codex_and_returns_ws_delivery() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "autopilot-stream@openagents.com").await?;
+
+        let create_autopilot_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"handle":"stream-bot","displayName":"Stream Bot"}"#,
+            ))?;
+        let create_autopilot_response = app.clone().oneshot(create_autopilot_request).await?;
+        assert_eq!(create_autopilot_response.status(), StatusCode::CREATED);
+        let create_autopilot_body = read_json(create_autopilot_response).await?;
+        let autopilot_id = create_autopilot_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let stream_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/stream"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"messages":[{"id":"m1","role":"user","content":"hello from autopilot stream alias"}]}"#,
+            ))?;
+        let stream_response = app.clone().oneshot(stream_request).await?;
+        assert_eq!(stream_response.status(), StatusCode::OK);
+        let stream_body = read_json(stream_response).await?;
+        let thread_id = stream_body["data"]["threadId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(thread_id.starts_with("thread_"));
+        assert_eq!(stream_body["data"]["accepted"], json!(true));
+        assert_eq!(
+            stream_body["data"]["autopilotId"],
+            json!(autopilot_id.clone())
+        );
+        assert_eq!(
+            stream_body["data"]["delivery"]["transport"],
+            json!("khala_ws")
+        );
+        let delivery_topic = stream_body["data"]["delivery"]["topic"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(delivery_topic.ends_with(":worker_events"));
+        assert_eq!(
+            stream_body["data"]["control"]["method"],
+            json!("turn/start")
+        );
+        assert_eq!(
+            stream_body["data"]["response"]["thread_id"],
+            json!(thread_id.clone())
+        );
+
+        let list_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_response = app.clone().oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = read_json(list_response).await?;
+        let listed = list_body["data"].as_array().cloned().unwrap_or_default();
+        assert!(
+            listed
+                .iter()
+                .any(|row| row["id"] == json!(thread_id.clone()))
+        );
+
+        let resume_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/stream"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{"conversationId":"{thread_id}","messages":[{{"id":"m2","role":"user","content":"continue this thread"}}]}}"#
+            )))?;
+        let resume_response = app.oneshot(resume_request).await?;
+        assert_eq!(resume_response.status(), StatusCode::OK);
+        let resume_body = read_json(resume_response).await?;
+        assert_eq!(resume_body["data"]["threadId"], json!(thread_id));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn autopilot_routes_enforce_owner_boundary() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
         let owner_token =
@@ -7608,8 +7860,19 @@ mod tests {
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {other_token}"))
             .body(Body::from(r#"{"title":"intruder thread"}"#))?;
-        let other_create_thread_response = app.oneshot(other_create_thread_request).await?;
+        let other_create_thread_response = app.clone().oneshot(other_create_thread_request).await?;
         assert_eq!(other_create_thread_response.status(), StatusCode::NOT_FOUND);
+
+        let other_stream_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/stream"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::from(
+                r#"{"messages":[{"id":"m1","role":"user","content":"intruder stream"}]}"#,
+            ))?;
+        let other_stream_response = app.oneshot(other_stream_request).await?;
+        assert_eq!(other_stream_response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }
@@ -7670,13 +7933,40 @@ mod tests {
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {token}"))
             .body(Body::from(format!(r#"{{"title":"{oversized_title}"}}"#)))?;
-        let bad_thread_response = app.oneshot(bad_thread_request).await?;
+        let bad_thread_response = app.clone().oneshot(bad_thread_request).await?;
         assert_eq!(
             bad_thread_response.status(),
             StatusCode::UNPROCESSABLE_ENTITY
         );
         let bad_thread_body = read_json(bad_thread_response).await?;
         assert_eq!(bad_thread_body["error"]["code"], json!("invalid_request"));
+
+        let bad_stream_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/stream"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"messages":[{"id":"m1","role":"assistant","content":"missing user prompt"}]}"#,
+            ))?;
+        let bad_stream_response = app.clone().oneshot(bad_stream_request).await?;
+        assert_eq!(
+            bad_stream_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let bad_stream_body = read_json(bad_stream_response).await?;
+        assert_eq!(bad_stream_body["error"]["code"], json!("invalid_request"));
+
+        let missing_thread_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/stream"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"conversationId":"thread_missing","messages":[{"id":"m2","role":"user","content":"hello"}]}"#,
+            ))?;
+        let missing_thread_response = app.oneshot(missing_thread_request).await?;
+        assert_eq!(missing_thread_response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }
