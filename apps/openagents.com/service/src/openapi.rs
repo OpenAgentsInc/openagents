@@ -25,6 +25,11 @@ pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_TOOLS_EXECUTE: &str = "/api/runtime/tools/execute";
+pub const ROUTE_RUNTIME_SKILLS_TOOL_SPECS: &str = "/api/runtime/skills/tool-specs";
+pub const ROUTE_RUNTIME_SKILLS_SKILL_SPECS: &str = "/api/runtime/skills/skill-specs";
+pub const ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH: &str =
+    "/api/runtime/skills/skill-specs/:skill_id/:version/publish";
+pub const ROUTE_RUNTIME_SKILLS_RELEASE: &str = "/api/runtime/skills/releases/:skill_id/:version";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
 pub const ROUTE_RUNTIME_CODEX_WORKER_REQUESTS: &str =
@@ -424,6 +429,78 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("runtime_tools_execute"),
         response_example: Some("runtime_tools_execute"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_SKILLS_TOOL_SPECS,
+        operation_id: "runtimeSkillToolSpecsList",
+        summary: "List runtime tool specs (registry + built-ins).",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_skill_tool_specs_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_SKILLS_TOOL_SPECS,
+        operation_id: "runtimeSkillToolSpecsStore",
+        summary: "Upsert a runtime tool spec with schema/version validation.",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("runtime_skill_tool_spec_store"),
+        response_example: Some("runtime_skill_tool_spec_store"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+        operation_id: "runtimeSkillSpecsList",
+        summary: "List runtime skill specs (registry + built-ins).",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_skill_specs_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+        operation_id: "runtimeSkillSpecsStore",
+        summary: "Upsert a runtime skill spec with schema/version validation.",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("runtime_skill_spec_store"),
+        response_example: Some("runtime_skill_spec_store"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH,
+        operation_id: "runtimeSkillSpecPublish",
+        summary: "Publish a skill spec release bundle.",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: None,
+        response_example: Some("runtime_skill_spec_publish"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_SKILLS_RELEASE,
+        operation_id: "runtimeSkillReleaseShow",
+        summary: "Fetch a published runtime skill release bundle.",
+        tag: "runtime",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_skill_release_show"),
     },
     OpenApiContract {
         method: "get",
@@ -850,6 +927,34 @@ fn request_example(key: &str) -> Option<Value> {
                 "authorization_id": "auth_123",
                 "authorization_mode": "delegated_budget",
                 "budget": {"max_per_call_sats": 100}
+            }
+        })),
+        "runtime_skill_tool_spec_store" => Some(json!({
+            "state": "validated",
+            "tool_spec": {
+                "tool_id": "github.custom",
+                "version": 1,
+                "tool_pack": "coding.v1",
+                "name": "GitHub Custom",
+                "execution_kind": "http",
+                "integration_manifest": {
+                    "manifest_version": "coding.integration.v1",
+                    "integration_id": "github.custom",
+                    "provider": "github",
+                    "status": "active",
+                    "tool_pack": "coding.v1",
+                    "capabilities": ["get_issue", "get_pull_request"]
+                }
+            }
+        })),
+        "runtime_skill_spec_store" => Some(json!({
+            "state": "validated",
+            "skill_spec": {
+                "skill_id": "github-coding-custom",
+                "version": 1,
+                "name": "GitHub Coding Custom",
+                "allowed_tools": [{"tool_id": "github.custom", "version": 1}],
+                "compatibility": {"runtime": "runtime"}
             }
         })),
         "runtime_codex_worker_request" => Some(json!({
@@ -1287,6 +1392,65 @@ fn response_example(key: &str) -> Option<Value> {
                         "number": 1747,
                         "title": "Issue #1747",
                         "url": "https://github.com/OpenAgentsInc/openagents/issues/1747"
+                    }
+                }
+            }
+        })),
+        "runtime_skill_tool_specs_list" => Some(json!({
+            "data": [
+                {
+                    "tool_id": "github.primary",
+                    "version": 1,
+                    "tool_pack": "coding.v1",
+                    "state": "published"
+                }
+            ]
+        })),
+        "runtime_skill_tool_spec_store" => Some(json!({
+            "data": {
+                "tool_id": "github.custom",
+                "version": 1,
+                "tool_pack": "coding.v1",
+                "state": "validated"
+            }
+        })),
+        "runtime_skill_specs_list" => Some(json!({
+            "data": [
+                {
+                    "skill_id": "github-coding",
+                    "version": 1,
+                    "state": "published"
+                }
+            ]
+        })),
+        "runtime_skill_spec_store" => Some(json!({
+            "data": {
+                "skill_id": "github-coding-custom",
+                "version": 1,
+                "state": "validated"
+            }
+        })),
+        "runtime_skill_spec_publish" => Some(json!({
+            "data": {
+                "release_id": "skillrel_abc123",
+                "skill_id": "github-coding-custom",
+                "version": 1,
+                "bundle_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "published_at": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "runtime_skill_release_show" => Some(json!({
+            "data": {
+                "release_id": "skillrel_abc123",
+                "skill_id": "github-coding-custom",
+                "version": 1,
+                "bundle_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "published_at": "2026-02-22T00:00:00Z",
+                "bundle": {
+                    "bundle_format": "agent_skills.v1",
+                    "skill_spec": {
+                        "skill_id": "github-coding-custom",
+                        "version": 1
                     }
                 }
             }

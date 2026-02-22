@@ -62,13 +62,15 @@ use crate::openapi::{
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_THREAD_MESSAGES,
-    ROUTE_RUNTIME_THREADS, ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT,
-    ROUTE_SETTINGS_PROFILE, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
-    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
-    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
-    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_SKILLS_RELEASE,
+    ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+    ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
+    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE,
+    ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT,
+    ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
+    openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
@@ -154,6 +156,7 @@ struct AppState {
     throttle_state: ThrottleState,
     codex_control_receipts: CodexControlReceiptState,
     runtime_tool_receipts: RuntimeToolReceiptState,
+    runtime_skill_registry: RuntimeSkillRegistryState,
     runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
 }
@@ -176,6 +179,13 @@ struct CodexControlReceiptState {
 #[derive(Clone, Default)]
 struct RuntimeToolReceiptState {
     entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+#[derive(Clone, Default)]
+struct RuntimeSkillRegistryState {
+    tool_specs: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    skill_specs: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    releases: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 
 #[derive(Clone)]
@@ -532,6 +542,20 @@ struct RuntimeToolsExecuteRequestPayload {
 }
 
 #[derive(Debug, Deserialize)]
+struct RuntimeToolSpecUpsertRequestPayload {
+    tool_spec: serde_json::Value,
+    #[serde(default)]
+    state: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeSkillSpecUpsertRequestPayload {
+    skill_spec: serde_json::Value,
+    #[serde(default)]
+    state: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LegacyChatsListQuery {
     #[serde(default)]
     limit: Option<usize>,
@@ -579,6 +603,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         throttle_state: ThrottleState::default(),
         codex_control_receipts: CodexControlReceiptState::default(),
         runtime_tool_receipts: RuntimeToolReceiptState::default(),
+        runtime_skill_registry: RuntimeSkillRegistryState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
@@ -699,6 +724,22 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             get(legacy_chats_run_events),
         )
         .route(ROUTE_RUNTIME_TOOLS_EXECUTE, post(runtime_tools_execute))
+        .route(
+            ROUTE_RUNTIME_SKILLS_TOOL_SPECS,
+            get(runtime_skill_tool_specs_list).post(runtime_skill_tool_spec_store),
+        )
+        .route(
+            ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+            get(runtime_skill_specs_list).post(runtime_skill_spec_store),
+        )
+        .route(
+            ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH,
+            post(runtime_skill_spec_publish),
+        )
+        .route(
+            ROUTE_RUNTIME_SKILLS_RELEASE,
+            get(runtime_skill_release_show),
+        )
         .route(ROUTE_RUNTIME_THREADS, get(list_runtime_threads))
         .route(
             ROUTE_RUNTIME_THREAD_MESSAGES,
@@ -4456,6 +4497,306 @@ async fn runtime_tools_execute(
     Ok(ok_data(response_payload))
 }
 
+async fn runtime_skill_tool_specs_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let _ = session_bundle_from_headers(&state, &headers).await?;
+
+    let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
+    for spec in builtin_tool_specs() {
+        let key = registry_item_key(&spec, "tool_id");
+        by_key.insert(key, spec);
+    }
+    {
+        let stored = state.runtime_skill_registry.tool_specs.lock().await;
+        for (key, spec) in stored.iter() {
+            by_key.insert(key.clone(), spec.clone());
+        }
+    }
+
+    let mut payload = by_key.into_values().collect::<Vec<_>>();
+    payload.sort_by_key(|item| registry_sort_key(item, "tool_id"));
+    Ok(ok_data(payload))
+}
+
+async fn runtime_skill_tool_spec_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeToolSpecUpsertRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let state_value = normalize_registry_state(payload.state, "state")?;
+    let tool_spec = payload
+        .tool_spec
+        .as_object()
+        .ok_or_else(|| validation_error("tool_spec", "The tool_spec field must be an array."))?;
+    let (tool_id, version, tool_pack) = validate_tool_spec_schema(tool_spec)?;
+
+    let now = timestamp(Utc::now());
+    let key = registry_key(&tool_id, version);
+    let existing_created_at = {
+        let store = state.runtime_skill_registry.tool_specs.lock().await;
+        store
+            .get(&key)
+            .and_then(|entry| entry.get("created_at"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(now.clone()))
+    };
+
+    let record = serde_json::json!({
+        "tool_id": tool_id.clone(),
+        "version": version,
+        "tool_pack": tool_pack,
+        "state": state_value.clone(),
+        "tool_spec": payload.tool_spec,
+        "created_at": existing_created_at,
+        "updated_at": now,
+    });
+
+    state
+        .runtime_skill_registry
+        .tool_specs
+        .lock()
+        .await
+        .insert(key, record.clone());
+
+    state.observability.audit(
+        AuditEvent::new("runtime.skills.tool_spec.upserted", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("tool_id", tool_id)
+            .with_attribute("version", version.to_string())
+            .with_attribute("state", state_value),
+    );
+    state
+        .observability
+        .increment_counter("runtime.skills.tool_spec.upserted", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": record })),
+    ))
+}
+
+async fn runtime_skill_specs_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let _ = session_bundle_from_headers(&state, &headers).await?;
+
+    let mut by_key: HashMap<String, serde_json::Value> = HashMap::new();
+    for spec in builtin_skill_specs() {
+        let key = registry_item_key(&spec, "skill_id");
+        by_key.insert(key, spec);
+    }
+    {
+        let stored = state.runtime_skill_registry.skill_specs.lock().await;
+        for (key, spec) in stored.iter() {
+            by_key.insert(key.clone(), spec.clone());
+        }
+    }
+
+    let mut payload = by_key.into_values().collect::<Vec<_>>();
+    payload.sort_by_key(|item| registry_sort_key(item, "skill_id"));
+    Ok(ok_data(payload))
+}
+
+async fn runtime_skill_spec_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeSkillSpecUpsertRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let state_value = normalize_registry_state(payload.state, "state")?;
+    let skill_spec = payload
+        .skill_spec
+        .as_object()
+        .ok_or_else(|| validation_error("skill_spec", "The skill_spec field must be an array."))?;
+    let (skill_id, version) = validate_skill_spec_schema(skill_spec)?;
+
+    let now = timestamp(Utc::now());
+    let key = registry_key(&skill_id, version);
+    let existing_created_at = {
+        let store = state.runtime_skill_registry.skill_specs.lock().await;
+        store
+            .get(&key)
+            .and_then(|entry| entry.get("created_at"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(now.clone()))
+    };
+
+    let record = serde_json::json!({
+        "skill_id": skill_id.clone(),
+        "version": version,
+        "state": state_value.clone(),
+        "skill_spec": payload.skill_spec,
+        "created_at": existing_created_at,
+        "updated_at": now,
+    });
+
+    state
+        .runtime_skill_registry
+        .skill_specs
+        .lock()
+        .await
+        .insert(key, record.clone());
+
+    state.observability.audit(
+        AuditEvent::new("runtime.skills.skill_spec.upserted", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("skill_id", skill_id)
+            .with_attribute("version", version.to_string())
+            .with_attribute("state", state_value),
+    );
+    state
+        .observability
+        .increment_counter("runtime.skills.skill_spec.upserted", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": record })),
+    ))
+}
+
+async fn runtime_skill_spec_publish(
+    State(state): State<AppState>,
+    Path((skill_id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_skill_id = skill_id.trim().to_string();
+    if normalized_skill_id.is_empty() {
+        return Err(validation_error(
+            "skill_id",
+            "The skill_id route parameter is required.",
+        ));
+    }
+    let normalized_version = version.trim().parse::<u64>().map_err(|_| {
+        validation_error("version", "The version route parameter must be an integer.")
+    })?;
+    if normalized_version < 1 {
+        return Err(validation_error(
+            "version",
+            "The version route parameter must be at least 1.",
+        ));
+    }
+
+    let key = registry_key(&normalized_skill_id, normalized_version);
+    let mut skill_spec_row = {
+        let mut skill_specs = state.runtime_skill_registry.skill_specs.lock().await;
+        if !skill_specs.contains_key(&key) {
+            if let Some(builtin) = builtin_skill_spec(&normalized_skill_id, normalized_version) {
+                skill_specs.insert(key.clone(), builtin);
+            }
+        }
+        let row = skill_specs
+            .get(&key)
+            .cloned()
+            .ok_or_else(|| not_found_error("Not found."))?;
+        if let Some(existing) = skill_specs.get_mut(&key) {
+            existing["state"] = serde_json::json!("published");
+            existing["updated_at"] = serde_json::json!(timestamp(Utc::now()));
+        }
+        row
+    };
+
+    let skill_spec_payload = skill_spec_row
+        .get("skill_spec")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    let bundle_hash = runtime_tools_replay_hash_hex(&skill_spec_payload);
+    let now = timestamp(Utc::now());
+    let release = serde_json::json!({
+        "release_id": format!("skillrel_{}", &bundle_hash[..12]),
+        "skill_id": normalized_skill_id.clone(),
+        "version": normalized_version,
+        "bundle_hash": bundle_hash,
+        "published_at": now,
+        "bundle": {
+            "bundle_format": "agent_skills.v1",
+            "skill_spec": skill_spec_payload,
+        }
+    });
+
+    state
+        .runtime_skill_registry
+        .releases
+        .lock()
+        .await
+        .insert(key, release.clone());
+
+    skill_spec_row["state"] = serde_json::json!("published");
+
+    state.observability.audit(
+        AuditEvent::new("runtime.skills.skill_spec.published", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("skill_id", normalized_skill_id)
+            .with_attribute("version", normalized_version.to_string())
+            .with_attribute(
+                "release_id",
+                release["release_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("runtime.skills.skill_spec.published", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": release })),
+    ))
+}
+
+async fn runtime_skill_release_show(
+    State(state): State<AppState>,
+    Path((skill_id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let _ = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_skill_id = skill_id.trim().to_string();
+    if normalized_skill_id.is_empty() {
+        return Err(validation_error(
+            "skill_id",
+            "The skill_id route parameter is required.",
+        ));
+    }
+    let normalized_version = version.trim().parse::<u64>().map_err(|_| {
+        validation_error("version", "The version route parameter must be an integer.")
+    })?;
+    if normalized_version < 1 {
+        return Err(validation_error(
+            "version",
+            "The version route parameter must be at least 1.",
+        ));
+    }
+
+    let key = registry_key(&normalized_skill_id, normalized_version);
+    let release = state
+        .runtime_skill_registry
+        .releases
+        .lock()
+        .await
+        .get(&key)
+        .cloned()
+        .ok_or_else(|| not_found_error("Not found."))?;
+    Ok(ok_data(release))
+}
+
 async fn list_runtime_threads(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -6237,6 +6578,269 @@ fn mark_runtime_tools_replay(mut payload: serde_json::Value) -> serde_json::Valu
     payload
 }
 
+fn builtin_tool_specs() -> Vec<serde_json::Value> {
+    vec![serde_json::json!({
+        "tool_id": "github.primary",
+        "version": 1,
+        "tool_pack": "coding.v1",
+        "state": "published",
+        "tool_spec": {
+            "tool_id": "github.primary",
+            "version": 1,
+            "tool_pack": "coding.v1",
+            "name": "GitHub Primary",
+            "execution_kind": "http",
+            "integration_manifest": {
+                "manifest_version": "coding.integration.v1",
+                "integration_id": "github.primary",
+                "provider": "github",
+                "status": "active",
+                "tool_pack": "coding.v1",
+                "capabilities": ["get_issue", "get_pull_request", "add_issue_comment"],
+            }
+        },
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z"
+    })]
+}
+
+fn builtin_skill_specs() -> Vec<serde_json::Value> {
+    vec![serde_json::json!({
+        "skill_id": "github-coding",
+        "version": 1,
+        "state": "published",
+        "skill_spec": {
+            "skill_id": "github-coding",
+            "version": 1,
+            "name": "GitHub Coding",
+            "description": "Default GitHub coding workflow skill",
+            "allowed_tools": [{"tool_id": "github.primary", "version": 1}],
+            "compatibility": {"runtime": "runtime"},
+        },
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z"
+    })]
+}
+
+fn builtin_skill_spec(skill_id: &str, version: u64) -> Option<serde_json::Value> {
+    builtin_skill_specs().into_iter().find(|item| {
+        item.get("skill_id")
+            .and_then(serde_json::Value::as_str)
+            .map(|candidate| candidate == skill_id)
+            .unwrap_or(false)
+            && item
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .map(|candidate| candidate == version)
+                .unwrap_or(false)
+    })
+}
+
+fn registry_key(id: &str, version: u64) -> String {
+    format!("{}::{version}", id.trim().to_lowercase())
+}
+
+fn registry_item_key(item: &serde_json::Value, id_field: &str) -> String {
+    let id = item
+        .get(id_field)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let version = item
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    registry_key(id, version)
+}
+
+fn registry_sort_key(item: &serde_json::Value, id_field: &str) -> String {
+    let id = item
+        .get(id_field)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_lowercase();
+    let version = item
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    format!("{id}:{version:020}")
+}
+
+fn normalize_registry_state(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = value
+        .and_then(non_empty)
+        .unwrap_or_else(|| "validated".to_string())
+        .to_lowercase();
+    if !matches!(
+        normalized.as_str(),
+        "draft" | "validated" | "published" | "deprecated"
+    ) {
+        return Err(validation_error(field, "The selected state is invalid."));
+    }
+    Ok(normalized)
+}
+
+fn validate_tool_spec_schema(
+    tool_spec: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(String, u64, String), (StatusCode, Json<ApiErrorResponse>)> {
+    let tool_id = tool_spec
+        .get("tool_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            validation_error(
+                "tool_spec.tool_id",
+                "The tool_spec.tool_id field is required.",
+            )
+        })?;
+    if tool_id.chars().count() > 160 {
+        return Err(validation_error(
+            "tool_spec.tool_id",
+            "The tool_spec.tool_id field may not be greater than 160 characters.",
+        ));
+    }
+
+    let version = tool_spec
+        .get("version")
+        .and_then(positive_u64_from_value)
+        .ok_or_else(|| {
+            validation_error(
+                "tool_spec.version",
+                "The tool_spec.version field must be an integer.",
+            )
+        })?;
+    if version < 1 {
+        return Err(validation_error(
+            "tool_spec.version",
+            "The tool_spec.version field must be at least 1.",
+        ));
+    }
+
+    let tool_pack = tool_spec
+        .get("tool_pack")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            validation_error(
+                "tool_spec.tool_pack",
+                "The tool_spec.tool_pack field is required.",
+            )
+        })?;
+    if tool_pack != "coding.v1" {
+        return Err(validation_error(
+            "tool_spec.tool_pack",
+            "Only coding.v1 tool_pack is currently supported.",
+        ));
+    }
+
+    if let Some(integration_manifest) = tool_spec.get("integration_manifest") {
+        if !integration_manifest.is_object() {
+            return Err(validation_error(
+                "tool_spec.integration_manifest",
+                "The tool_spec.integration_manifest field must be an array.",
+            ));
+        }
+        let manifest_version = integration_manifest
+            .get("manifest_version")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if manifest_version.is_none() {
+            return Err(validation_error(
+                "tool_spec.integration_manifest.manifest_version",
+                "The tool_spec.integration_manifest.manifest_version field is required.",
+            ));
+        }
+    }
+
+    Ok((tool_id, version, tool_pack))
+}
+
+fn validate_skill_spec_schema(
+    skill_spec: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(String, u64), (StatusCode, Json<ApiErrorResponse>)> {
+    let skill_id = skill_spec
+        .get("skill_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            validation_error(
+                "skill_spec.skill_id",
+                "The skill_spec.skill_id field is required.",
+            )
+        })?;
+    if skill_id.chars().count() > 160 {
+        return Err(validation_error(
+            "skill_spec.skill_id",
+            "The skill_spec.skill_id field may not be greater than 160 characters.",
+        ));
+    }
+
+    let version = skill_spec
+        .get("version")
+        .and_then(positive_u64_from_value)
+        .ok_or_else(|| {
+            validation_error(
+                "skill_spec.version",
+                "The skill_spec.version field must be an integer.",
+            )
+        })?;
+    if version < 1 {
+        return Err(validation_error(
+            "skill_spec.version",
+            "The skill_spec.version field must be at least 1.",
+        ));
+    }
+
+    if let Some(allowed_tools) = skill_spec.get("allowed_tools") {
+        let entries = allowed_tools.as_array().ok_or_else(|| {
+            validation_error(
+                "skill_spec.allowed_tools",
+                "The skill_spec.allowed_tools field must be an array.",
+            )
+        })?;
+        for entry in entries {
+            let entry_object = entry.as_object().ok_or_else(|| {
+                validation_error(
+                    "skill_spec.allowed_tools",
+                    "Each skill_spec.allowed_tools entry must be an object.",
+                )
+            })?;
+            let tool_id = entry_object
+                .get("tool_id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if tool_id.is_none() {
+                return Err(validation_error(
+                    "skill_spec.allowed_tools",
+                    "Each allowed tool entry requires tool_id.",
+                ));
+            }
+            let tool_version = entry_object
+                .get("version")
+                .and_then(positive_u64_from_value)
+                .filter(|value| *value >= 1);
+            if tool_version.is_none() {
+                return Err(validation_error(
+                    "skill_spec.allowed_tools",
+                    "Each allowed tool entry requires version >= 1.",
+                ));
+            }
+        }
+    }
+
+    Ok((skill_id, version))
+}
+
 fn normalize_autopilot_profile_update(
     payload: UpdateAutopilotProfilePayload,
 ) -> Result<UpsertAutopilotProfileInput, (StatusCode, Json<ApiErrorResponse>)> {
@@ -6985,6 +7589,7 @@ mod tests {
             throttle_state: super::ThrottleState::default(),
             codex_control_receipts: super::CodexControlReceiptState::default(),
             runtime_tool_receipts: super::RuntimeToolReceiptState::default(),
+            runtime_skill_registry: super::RuntimeSkillRegistryState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
@@ -10521,6 +11126,173 @@ mod tests {
         assert_eq!(
             allowed_body["data"]["result"]["comment"]["body"],
             "Ship it."
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_skill_registry_routes_support_list_upsert_publish_and_release() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "runtime-skills@openagents.com").await?;
+
+        let list_tools_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/skills/tool-specs")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_tools_response = app.clone().oneshot(list_tools_request).await?;
+        assert_eq!(list_tools_response.status(), StatusCode::OK);
+        let list_tools_body = read_json(list_tools_response).await?;
+        let tool_specs = list_tools_body["data"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            tool_specs
+                .iter()
+                .any(|tool| tool["tool_id"] == serde_json::json!("github.primary"))
+        );
+
+        let store_tool_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/skills/tool-specs")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "state":"validated",
+                    "tool_spec":{
+                        "tool_id":"github.custom",
+                        "version":1,
+                        "tool_pack":"coding.v1",
+                        "name":"GitHub Custom",
+                        "execution_kind":"http",
+                        "integration_manifest":{
+                            "manifest_version":"coding.integration.v1",
+                            "integration_id":"github.custom",
+                            "provider":"github",
+                            "status":"active",
+                            "tool_pack":"coding.v1",
+                            "capabilities":["get_issue","get_pull_request"]
+                        }
+                    }
+                }"#,
+            ))?;
+        let store_tool_response = app.clone().oneshot(store_tool_request).await?;
+        assert_eq!(store_tool_response.status(), StatusCode::CREATED);
+        let store_tool_body = read_json(store_tool_response).await?;
+        assert_eq!(store_tool_body["data"]["tool_id"], "github.custom");
+        assert_eq!(store_tool_body["data"]["state"], "validated");
+
+        let store_skill_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/skills/skill-specs")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "state":"validated",
+                    "skill_spec":{
+                        "skill_id":"github-coding-custom",
+                        "version":1,
+                        "name":"GitHub Coding Custom",
+                        "allowed_tools":[{"tool_id":"github.custom","version":1}],
+                        "compatibility":{"runtime":"runtime"}
+                    }
+                }"#,
+            ))?;
+        let store_skill_response = app.clone().oneshot(store_skill_request).await?;
+        assert_eq!(store_skill_response.status(), StatusCode::CREATED);
+        let store_skill_body = read_json(store_skill_response).await?;
+        assert_eq!(store_skill_body["data"]["skill_id"], "github-coding-custom");
+        assert_eq!(store_skill_body["data"]["state"], "validated");
+
+        let publish_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/skills/skill-specs/github-coding-custom/1/publish")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let publish_response = app.clone().oneshot(publish_request).await?;
+        assert_eq!(publish_response.status(), StatusCode::CREATED);
+        let publish_body = read_json(publish_response).await?;
+        assert_eq!(publish_body["data"]["skill_id"], "github-coding-custom");
+        assert!(
+            publish_body["data"]["bundle_hash"]
+                .as_str()
+                .unwrap_or_default()
+                .len()
+                == 64
+        );
+
+        let release_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/skills/releases/github-coding-custom/1")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let release_response = app.oneshot(release_request).await?;
+        assert_eq!(release_response.status(), StatusCode::OK);
+        let release_body = read_json(release_response).await?;
+        assert_eq!(
+            release_body["data"]["bundle"]["bundle_format"],
+            "agent_skills.v1"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_skill_registry_routes_validate_schema_and_state() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token =
+            authenticate_token(app.clone(), "runtime-skills-invalid@openagents.com").await?;
+
+        let invalid_state_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/skills/tool-specs")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "state":"unsupported",
+                    "tool_spec":{
+                        "tool_id":"github.custom",
+                        "version":1,
+                        "tool_pack":"coding.v1"
+                    }
+                }"#,
+            ))?;
+        let invalid_state_response = app.clone().oneshot(invalid_state_request).await?;
+        assert_eq!(
+            invalid_state_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_state_body = read_json(invalid_state_response).await?;
+        assert_eq!(invalid_state_body["error"]["code"], "invalid_request");
+
+        let missing_version_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/skills/tool-specs")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "tool_spec":{
+                        "tool_id":"github.custom",
+                        "tool_pack":"coding.v1"
+                    }
+                }"#,
+            ))?;
+        let missing_version_response = app.oneshot(missing_version_request).await?;
+        assert_eq!(
+            missing_version_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let missing_version_body = read_json(missing_version_response).await?;
+        assert_eq!(missing_version_body["error"]["code"], "invalid_request");
+        assert_eq!(
+            missing_version_body["errors"]["tool_spec.version"],
+            serde_json::json!(["The tool_spec.version field must be an integer."])
         );
 
         Ok(())
