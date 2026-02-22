@@ -102,9 +102,15 @@ const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
 const AUTH_ACCESS_COOKIE_NAME: &str = "oa_access_token";
 const AUTH_REFRESH_COOKIE_NAME: &str = "oa_refresh_token";
 const LOCAL_TEST_AUTH_COOKIE_NAME: &str = "oa_local_test_auth";
+const CACHE_API_NO_STORE: &str = "no-store";
 const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
+const CORS_ALLOW_HEADERS: &str = "authorization,content-type,x-request-id,x-xsrf-token,x-client";
+const CORS_ALLOW_METHODS: &str = "GET,POST,PATCH,DELETE,OPTIONS";
+const CORS_MAX_AGE_SECONDS: &str = "600";
+const CORS_VARY_HEADERS: &str =
+    "Origin, Access-Control-Request-Method, Access-Control-Request-Headers";
 const HEADER_OA_CLIENT_BUILD_ID: &str = "x-oa-client-build-id";
 const HEADER_OA_COMPAT_CODE: &str = "x-oa-compatibility-code";
 const HEADER_OA_COMPAT_MAX_BUILD: &str = "x-oa-compatibility-max-client-build-id";
@@ -1360,6 +1366,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             compatibility_state,
             control_compatibility_gate,
         ))
+        .layer(middleware::from_fn(api_non_http_behavior_gate))
         .layer(
             ServiceBuilder::new()
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -1891,6 +1898,56 @@ fn request_identity_key(headers: &HeaderMap) -> String {
     }
 
     "ip:unknown".to_string()
+}
+
+fn is_api_request_path(path: &str) -> bool {
+    path == "/api" || path.starts_with("/api/")
+}
+
+fn apply_api_non_http_headers(headers: &mut HeaderMap, origin: Option<&HeaderValue>) {
+    let allow_origin = origin
+        .cloned()
+        .unwrap_or_else(|| HeaderValue::from_static("*"));
+    headers.insert("access-control-allow-origin", allow_origin);
+    headers.insert(
+        "access-control-allow-methods",
+        HeaderValue::from_static(CORS_ALLOW_METHODS),
+    );
+    headers.insert(
+        "access-control-allow-headers",
+        HeaderValue::from_static(CORS_ALLOW_HEADERS),
+    );
+    headers.insert(
+        "access-control-max-age",
+        HeaderValue::from_static(CORS_MAX_AGE_SECONDS),
+    );
+    headers.insert("vary", HeaderValue::from_static(CORS_VARY_HEADERS));
+}
+
+async fn api_non_http_behavior_gate(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let is_api = is_api_request_path(&path);
+    let origin = request.headers().get("origin").cloned();
+
+    if is_api && request.method() == Method::OPTIONS {
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        apply_api_non_http_headers(response.headers_mut(), origin.as_ref());
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_API_NO_STORE));
+        return response;
+    }
+
+    let mut response = next.run(request).await;
+    if is_api {
+        apply_api_non_http_headers(response.headers_mut(), origin.as_ref());
+        if !response.headers().contains_key(CACHE_CONTROL) {
+            response
+                .headers_mut()
+                .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_API_NO_STORE));
+        }
+    }
+    response
 }
 
 fn is_admin_email(email: &str, admin_emails: &[String]) -> bool {
@@ -12165,30 +12222,30 @@ fn maintenance_bypass_cookie(
 
 fn challenge_cookie(challenge_id: &str, max_age_seconds: u64) -> String {
     format!(
-        "{CHALLENGE_COOKIE_NAME}={challenge_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+        "{CHALLENGE_COOKIE_NAME}={challenge_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_seconds}"
     )
 }
 
 fn auth_access_cookie(access_token: &str, max_age_seconds: u64) -> String {
     format!(
-        "{AUTH_ACCESS_COOKIE_NAME}={access_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+        "{AUTH_ACCESS_COOKIE_NAME}={access_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_seconds}"
     )
 }
 
 fn auth_refresh_cookie(refresh_token: &str, max_age_seconds: u64) -> String {
     format!(
-        "{AUTH_REFRESH_COOKIE_NAME}={refresh_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+        "{AUTH_REFRESH_COOKIE_NAME}={refresh_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_seconds}"
     )
 }
 
 fn local_test_auth_cookie(max_age_seconds: u64) -> String {
     format!(
-        "{LOCAL_TEST_AUTH_COOKIE_NAME}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+        "{LOCAL_TEST_AUTH_COOKIE_NAME}=1; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_seconds}"
     )
 }
 
 fn clear_cookie(name: &str) -> String {
-    format!("{name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+    format!("{name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0")
 }
 
 fn append_set_cookie_header(
@@ -14811,6 +14868,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_preflight_options_returns_cors_headers_without_auth() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let request = Request::builder()
+            .method("OPTIONS")
+            .uri("/api/settings/profile")
+            .header("origin", "https://console.openagents.com")
+            .header("access-control-request-method", "PATCH")
+            .header(
+                "access-control-request-headers",
+                "authorization,content-type",
+            )
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://console.openagents.com")
+        );
+        let allow_methods = response
+            .headers()
+            .get("access-control-allow-methods")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(allow_methods.contains("OPTIONS"));
+        assert!(allow_methods.contains("PATCH"));
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(super::CACHE_API_NO_STORE)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn auth_email_route_enforces_throttle_limit() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
 
@@ -14835,6 +14933,42 @@ mod tests {
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "rate_limited");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_email_throttle_is_scoped_per_client_key() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        for _ in 0..super::THROTTLE_AUTH_EMAIL_LIMIT {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/auth/email")
+                .header("content-type", "application/json")
+                .header("x-forwarded-for", "203.0.113.10")
+                .body(Body::from(r#"{"email":"throttle-a@openagents.com"}"#))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let second_key_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", "198.51.100.22")
+            .body(Body::from(r#"{"email":"throttle-b@openagents.com"}"#))?;
+        let second_key_response = app.clone().oneshot(second_key_request).await?;
+        assert_eq!(second_key_response.status(), StatusCode::OK);
+
+        let exceeded_primary = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", "203.0.113.10")
+            .body(Body::from(r#"{"email":"throttle-a@openagents.com"}"#))?;
+        let exceeded_response = app.oneshot(exceeded_primary).await?;
+        assert_eq!(exceeded_response.status(), StatusCode::TOO_MANY_REQUESTS);
 
         Ok(())
     }
@@ -15437,6 +15571,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_list_routes_default_to_no_store_cache_header() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/shouts")
+            .header("origin", "https://console.openagents.com")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(super::CACHE_API_NO_STORE)
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://console.openagents.com")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn smoke_stream_requires_secret_header() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
 
@@ -15944,6 +16108,72 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("/")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_auth_cookies_include_secure_same_site_and_host_scope() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=cookie-scope%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        let challenge_cookie_header = all_set_cookie_values(&send_response)
+            .into_iter()
+            .find(|value| value.starts_with(&format!("{}=", super::CHALLENGE_COOKIE_NAME)))
+            .expect("missing challenge set-cookie header");
+        for required in ["HttpOnly", "Secure", "SameSite=Lax"] {
+            assert!(
+                challenge_cookie_header.contains(required),
+                "challenge cookie missing attribute: {required}"
+            );
+        }
+        assert!(
+            !challenge_cookie_header.contains("Domain="),
+            "challenge cookie should remain host-scoped"
+        );
+
+        let challenge_cookie_value =
+            cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+                .expect("missing challenge cookie value");
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie_value}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=123456"))?;
+        let verify_response = app.oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        let verify_cookies = all_set_cookie_values(&verify_response);
+        for name in [
+            super::AUTH_ACCESS_COOKIE_NAME,
+            super::AUTH_REFRESH_COOKIE_NAME,
+        ] {
+            let cookie = verify_cookies
+                .iter()
+                .find(|value| value.starts_with(&format!("{name}=")))
+                .expect("missing auth set-cookie header");
+            for required in ["HttpOnly", "Secure", "SameSite=Lax"] {
+                assert!(
+                    cookie.contains(required),
+                    "cookie {name} missing attribute: {required}"
+                );
+            }
+            assert!(
+                !cookie.contains("Domain="),
+                "cookie {name} should remain host-scoped"
+            );
+        }
 
         Ok(())
     }

@@ -212,6 +212,8 @@ Baseline and migration evidence targets:
   Retirement verifier/report: `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`, `.github/workflows/web-verify-laravel-serving-retired.yml`, `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
 - [x] Post-cutover architecture audit and hardening report (`OA-WEBPARITY-061`)
   Audit report: `docs/audits/2026-02-22-openagents-web-post-cutover-architecture-audit.md`
+- [x] Non-HTTP parity harness report (`OA-WEBPARITY-062`)
+  Harness/report: `apps/openagents.com/scripts/run-non-http-parity-harness.sh`, `.github/workflows/web-non-http-parity-harness.yml`, `apps/openagents.com/docs/20260222-oa-webparity-062-non-http-parity-harness.md`
 
 ## Checklist Freeze Rules
 
