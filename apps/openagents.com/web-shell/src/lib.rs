@@ -66,6 +66,16 @@ mod wasm {
         static AUTH_RESTORE_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static AUTH_LOGOUT_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static CODEX_QUICK_PROMPT_CLICK_HANDLERS: RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>> = RefCell::new(Vec::new());
+        static SETTINGS_SURFACE_STATE: RefCell<SettingsSurfaceState> = RefCell::new(SettingsSurfaceState::default());
+        static SETTINGS_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
+        static SETTINGS_PROFILE_SAVE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_PROFILE_DELETE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_AUTOPILOT_SAVE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_RESEND_CONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_RESEND_DISCONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_RESEND_TEST_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_GOOGLE_CONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
+        static SETTINGS_GOOGLE_DISCONNECT_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_POPSTATE_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static ROUTE_LINK_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
     }
@@ -98,6 +108,28 @@ mod wasm {
     const AUTH_VERIFY_ID: &str = "openagents-web-shell-auth-verify";
     const AUTH_RESTORE_ID: &str = "openagents-web-shell-auth-restore";
     const AUTH_LOGOUT_ID: &str = "openagents-web-shell-auth-logout";
+    const SETTINGS_PANEL_ID: &str = "openagents-web-shell-settings-panel";
+    const SETTINGS_STATUS_ID: &str = "openagents-web-shell-settings-status";
+    const SETTINGS_PROFILE_NAME_ID: &str = "openagents-web-shell-settings-profile-name";
+    const SETTINGS_PROFILE_SAVE_ID: &str = "openagents-web-shell-settings-profile-save";
+    const SETTINGS_PROFILE_DELETE_ID: &str = "openagents-web-shell-settings-profile-delete";
+    const SETTINGS_AUTOPILOT_DISPLAY_NAME_ID: &str =
+        "openagents-web-shell-settings-autopilot-display-name";
+    const SETTINGS_AUTOPILOT_TAGLINE_ID: &str = "openagents-web-shell-settings-autopilot-tagline";
+    const SETTINGS_AUTOPILOT_OWNER_ID: &str = "openagents-web-shell-settings-autopilot-owner";
+    const SETTINGS_AUTOPILOT_PERSONA_ID: &str = "openagents-web-shell-settings-autopilot-persona";
+    const SETTINGS_AUTOPILOT_VOICE_ID: &str = "openagents-web-shell-settings-autopilot-voice";
+    const SETTINGS_AUTOPILOT_PRINCIPLES_ID: &str =
+        "openagents-web-shell-settings-autopilot-principles";
+    const SETTINGS_AUTOPILOT_SAVE_ID: &str = "openagents-web-shell-settings-autopilot-save";
+    const SETTINGS_RESEND_KEY_ID: &str = "openagents-web-shell-settings-resend-key";
+    const SETTINGS_RESEND_EMAIL_ID: &str = "openagents-web-shell-settings-resend-email";
+    const SETTINGS_RESEND_NAME_ID: &str = "openagents-web-shell-settings-resend-name";
+    const SETTINGS_RESEND_CONNECT_ID: &str = "openagents-web-shell-settings-resend-connect";
+    const SETTINGS_RESEND_DISCONNECT_ID: &str = "openagents-web-shell-settings-resend-disconnect";
+    const SETTINGS_RESEND_TEST_ID: &str = "openagents-web-shell-settings-resend-test";
+    const SETTINGS_GOOGLE_CONNECT_ID: &str = "openagents-web-shell-settings-google-connect";
+    const SETTINGS_GOOGLE_DISCONNECT_ID: &str = "openagents-web-shell-settings-google-disconnect";
     const DOM_READY_BUDGET_MS: u64 = 450;
     const GPU_INIT_BUDGET_MS: u64 = 1_600;
     const FIRST_FRAME_BUDGET_MS: u64 = 2_200;
@@ -136,6 +168,26 @@ mod wasm {
         loaded_thread_id: Option<String>,
         threads: Vec<RuntimeThreadRecord>,
         active_thread_exists: Option<bool>,
+        last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct SettingsSurfaceState {
+        loaded_session_id: Option<String>,
+        profile_id: Option<String>,
+        profile_name: String,
+        profile_email: String,
+        autopilot_display_name: String,
+        autopilot_tagline: String,
+        autopilot_owner_display_name: String,
+        autopilot_persona_summary: String,
+        autopilot_voice: String,
+        autopilot_principles_text: String,
+        resend_connected: Option<bool>,
+        resend_secret_last4: Option<String>,
+        google_connected: Option<bool>,
+        google_secret_last4: Option<String>,
+        last_status: Option<String>,
         last_error: Option<String>,
     }
 
@@ -244,6 +296,84 @@ mod wasm {
         #[serde(rename = "denied_reasons")]
         #[serde(alias = "deniedReasons")]
         denied_reasons: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsProfileEnvelope {
+        data: SettingsProfilePayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsProfilePayload {
+        id: String,
+        name: String,
+        email: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct AutopilotListEnvelope {
+        data: Vec<AutopilotPayload>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct AutopilotPayload {
+        #[serde(default, rename = "displayName")]
+        display_name: String,
+        #[serde(default)]
+        tagline: Option<String>,
+        profile: AutopilotProfilePayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct AutopilotProfilePayload {
+        #[serde(default, rename = "ownerDisplayName")]
+        owner_display_name: String,
+        #[serde(default, rename = "personaSummary")]
+        persona_summary: Option<String>,
+        #[serde(default, rename = "autopilotVoice")]
+        autopilot_voice: Option<String>,
+        #[serde(default)]
+        principles: Option<serde_json::Value>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsAutopilotUpdateEnvelope {
+        data: SettingsAutopilotUpdatePayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsAutopilotUpdatePayload {
+        status: String,
+        autopilot: AutopilotPayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsIntegrationEnvelope {
+        data: SettingsIntegrationPayloadEnvelope,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsIntegrationPayloadEnvelope {
+        status: String,
+        action: Option<String>,
+        integration: SettingsIntegrationPayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsIntegrationPayload {
+        connected: bool,
+        #[serde(default, rename = "secretLast4")]
+        secret_last4: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsDeleteProfileEnvelope {
+        data: SettingsDeleteProfilePayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct SettingsDeleteProfilePayload {
+        deleted: bool,
     }
 
     #[derive(Debug, Clone, Serialize)]
@@ -644,6 +774,7 @@ mod wasm {
         });
         APP_STATE.with(|state| replace_route_in_browser_history(&state.borrow().route));
         schedule_management_surface_refresh();
+        schedule_settings_surface_refresh();
         render_codex_chat_dom();
 
         let dom_ready_latency_ms =
@@ -917,6 +1048,7 @@ mod wasm {
                     clear_persisted_sync_state();
                     clear_runtime_sync_state();
                     reset_management_surface_state();
+                    reset_settings_surface_state();
                     reset_codex_history_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
@@ -933,6 +1065,7 @@ mod wasm {
 
         let Some(tokens) = load_tokens().or_else(auth_tokens_from_state) else {
             reset_management_surface_state();
+            reset_settings_surface_state();
             reset_codex_history_state();
             apply_auth_action(AppAction::AuthSignedOut);
             return Ok(());
@@ -974,6 +1107,7 @@ mod wasm {
                             clear_persisted_sync_state();
                             clear_runtime_sync_state();
                             reset_management_surface_state();
+                            reset_settings_surface_state();
                             reset_codex_history_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
@@ -1034,6 +1168,7 @@ mod wasm {
         clear_persisted_sync_state();
         clear_runtime_sync_state();
         reset_management_surface_state();
+        reset_settings_surface_state();
         reset_codex_history_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
@@ -1080,6 +1215,7 @@ mod wasm {
         queue_intent(CommandIntent::ConnectStream { worker_id: None });
         schedule_codex_history_refresh();
         schedule_management_surface_refresh();
+        schedule_settings_surface_refresh();
     }
 
     async fn refresh_then_hydrate(
@@ -1580,6 +1716,7 @@ mod wasm {
         sync_thread_route_from_state(&state);
         schedule_codex_history_refresh();
         schedule_management_surface_refresh();
+        schedule_settings_surface_refresh();
         render_codex_chat_dom();
     }
 
@@ -1779,6 +1916,10 @@ mod wasm {
         )
     }
 
+    fn route_is_settings_surface(route: &AppRoute) -> bool {
+        matches!(route, AppRoute::Settings { .. })
+    }
+
     fn route_is_codex_chat_surface(route: &AppRoute) -> bool {
         matches!(
             route,
@@ -1800,6 +1941,13 @@ mod wasm {
         MANAGEMENT_SURFACE_LOADING.with(|loading| loading.set(false));
         MANAGEMENT_SURFACE_STATE.with(|state| {
             *state.borrow_mut() = ManagementSurfaceState::default();
+        });
+    }
+
+    fn reset_settings_surface_state() {
+        SETTINGS_SURFACE_LOADING.with(|loading| loading.set(false));
+        SETTINGS_SURFACE_STATE.with(|state| {
+            *state.borrow_mut() = SettingsSurfaceState::default();
         });
     }
 
@@ -2149,6 +2297,161 @@ mod wasm {
         let response: PolicyDecisionResponse =
             send_json_request(&authorize_request, &AppState::default()).await?;
         Ok(Some(response.data))
+    }
+
+    fn schedule_settings_surface_refresh() {
+        let (access_token, session_id, route) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (
+                state.auth.access_token.clone(),
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.clone()),
+                state.route.clone(),
+            )
+        });
+
+        if !route_is_settings_surface(&route) {
+            return;
+        }
+
+        let Some(access_token) = access_token else {
+            reset_settings_surface_state();
+            return;
+        };
+        let Some(session_id) = session_id else {
+            reset_settings_surface_state();
+            return;
+        };
+        if access_token.trim().is_empty() {
+            reset_settings_surface_state();
+            return;
+        }
+
+        let already_loaded = SETTINGS_SURFACE_STATE.with(|state| {
+            let state = state.borrow();
+            state.loaded_session_id.as_deref() == Some(session_id.as_str())
+                && state.last_error.is_none()
+        });
+        if already_loaded {
+            return;
+        }
+
+        let already_loading = SETTINGS_SURFACE_LOADING.with(|loading| {
+            if loading.get() {
+                true
+            } else {
+                loading.set(true);
+                false
+            }
+        });
+        if already_loading {
+            return;
+        }
+
+        spawn_local(async move {
+            let result = fetch_settings_surface_state(&access_token, &session_id).await;
+            SETTINGS_SURFACE_LOADING.with(|loading| loading.set(false));
+            SETTINGS_SURFACE_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                match result {
+                    Ok(snapshot) => {
+                        *state = snapshot;
+                    }
+                    Err(error) => {
+                        state.loaded_session_id = Some(session_id.clone());
+                        state.last_error = Some(error.message.clone());
+                        state.last_status = None;
+                    }
+                }
+            });
+            render_codex_chat_dom();
+        });
+    }
+
+    async fn fetch_settings_surface_state(
+        access_token: &str,
+        session_id: &str,
+    ) -> Result<SettingsSurfaceState, ControlApiError> {
+        let profile_request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/settings/profile".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let profile: SettingsProfileEnvelope =
+            send_json_request(&profile_request, &AppState::default()).await?;
+
+        let autopilot_request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/autopilots?limit=1".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let autopilots: AutopilotListEnvelope =
+            send_json_request(&autopilot_request, &AppState::default()).await?;
+
+        let mut state = SettingsSurfaceState {
+            loaded_session_id: Some(session_id.to_string()),
+            profile_id: Some(profile.data.id),
+            profile_name: profile.data.name,
+            profile_email: profile.data.email,
+            ..SettingsSurfaceState::default()
+        };
+        apply_autopilot_payload_to_settings_state(&mut state, autopilots.data.first());
+        Ok(state)
+    }
+
+    fn apply_autopilot_payload_to_settings_state(
+        state: &mut SettingsSurfaceState,
+        autopilot: Option<&AutopilotPayload>,
+    ) {
+        let Some(autopilot) = autopilot else {
+            return;
+        };
+
+        state.autopilot_display_name = autopilot.display_name.clone();
+        state.autopilot_tagline = autopilot.tagline.clone().unwrap_or_default();
+        state.autopilot_owner_display_name = autopilot.profile.owner_display_name.clone();
+        state.autopilot_persona_summary = autopilot
+            .profile
+            .persona_summary
+            .clone()
+            .unwrap_or_default();
+        state.autopilot_voice = autopilot
+            .profile
+            .autopilot_voice
+            .clone()
+            .unwrap_or_default();
+        state.autopilot_principles_text =
+            principles_text_from_value(autopilot.profile.principles.as_ref());
+    }
+
+    fn principles_text_from_value(value: Option<&serde_json::Value>) -> String {
+        let Some(value) = value else {
+            return String::new();
+        };
+        let Some(values) = value.as_array() else {
+            return String::new();
+        };
+
+        values
+            .iter()
+            .filter_map(|entry| entry.as_str())
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn billing_required_scopes(section: Option<&str>) -> Vec<String> {
@@ -3243,6 +3546,303 @@ mod wasm {
             let _ = auth_panel.append_child(&auth_action_row);
 
             let _ = root.append_child(&auth_panel);
+
+            let settings_panel = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings panel".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings panel is not HtmlElement".to_string())?;
+            settings_panel.set_id(SETTINGS_PANEL_ID);
+            let _ = settings_panel.style().set_property("display", "none");
+            let _ = settings_panel
+                .style()
+                .set_property("flex-direction", "column");
+            let _ = settings_panel.style().set_property("gap", "10px");
+            let _ = settings_panel.style().set_property("max-width", "760px");
+            let _ = settings_panel.style().set_property("margin", "0 auto");
+            let _ = settings_panel.style().set_property("width", "100%");
+            let _ = settings_panel
+                .style()
+                .set_property("pointer-events", "auto");
+            let _ = settings_panel
+                .style()
+                .set_property("padding", "8px 0 4px 0");
+
+            let settings_status = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings status".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings status is not HtmlElement".to_string())?;
+            settings_status.set_id(SETTINGS_STATUS_ID);
+            let _ = settings_status.style().set_property("min-height", "20px");
+            let _ = settings_status.style().set_property("font-size", "12px");
+            let _ = settings_status.style().set_property("color", "#93c5fd");
+            settings_status.set_inner_text("Settings ready.");
+            let _ = settings_panel.append_child(&settings_status);
+
+            let profile_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings profile row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings profile row is not HtmlElement".to_string())?;
+            let _ = profile_row.style().set_property("display", "flex");
+            let _ = profile_row.style().set_property("gap", "8px");
+            let _ = profile_row.style().set_property("align-items", "center");
+
+            let profile_name_input = document
+                .create_element("input")
+                .map_err(|_| "failed to create settings profile input".to_string())?
+                .dyn_into::<HtmlInputElement>()
+                .map_err(|_| "settings profile input is not HtmlInputElement".to_string())?;
+            profile_name_input.set_id(SETTINGS_PROFILE_NAME_ID);
+            profile_name_input.set_placeholder("Profile name");
+            let _ = profile_name_input.style().set_property("flex", "1");
+            let _ = profile_name_input.style().set_property("height", "36px");
+            let _ = profile_name_input.style().set_property("padding", "0 10px");
+            let _ = profile_name_input
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = profile_name_input
+                .style()
+                .set_property("border", "1px solid #1f2937");
+            let _ = profile_name_input
+                .style()
+                .set_property("background", "#0f172a");
+            let _ = profile_name_input.style().set_property("color", "#e2e8f0");
+            let _ = profile_row.append_child(&profile_name_input);
+
+            let profile_save_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create settings profile save button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings profile save button is not HtmlElement".to_string())?;
+            profile_save_button.set_id(SETTINGS_PROFILE_SAVE_ID);
+            profile_save_button.set_inner_text("Save Profile");
+            let _ = profile_save_button.style().set_property("height", "36px");
+            let _ = profile_save_button
+                .style()
+                .set_property("padding", "0 12px");
+            let _ = profile_save_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = profile_save_button
+                .style()
+                .set_property("border", "1px solid #0f766e");
+            let _ = profile_save_button
+                .style()
+                .set_property("background", "#0f766e");
+            let _ = profile_save_button.style().set_property("color", "#ffffff");
+            let _ = profile_row.append_child(&profile_save_button);
+
+            let profile_delete_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create settings profile delete button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings profile delete button is not HtmlElement".to_string())?;
+            profile_delete_button.set_id(SETTINGS_PROFILE_DELETE_ID);
+            profile_delete_button.set_inner_text("Delete Profile");
+            let _ = profile_delete_button.style().set_property("height", "36px");
+            let _ = profile_delete_button
+                .style()
+                .set_property("padding", "0 12px");
+            let _ = profile_delete_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = profile_delete_button
+                .style()
+                .set_property("border", "1px solid #7f1d1d");
+            let _ = profile_delete_button
+                .style()
+                .set_property("background", "#7f1d1d");
+            let _ = profile_delete_button
+                .style()
+                .set_property("color", "#ffffff");
+            let _ = profile_row.append_child(&profile_delete_button);
+            let _ = settings_panel.append_child(&profile_row);
+
+            let autopilot_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings autopilot row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings autopilot row is not HtmlElement".to_string())?;
+            let _ = autopilot_row.style().set_property("display", "grid");
+            let _ = autopilot_row
+                .style()
+                .set_property("grid-template-columns", "repeat(2, minmax(0, 1fr))");
+            let _ = autopilot_row.style().set_property("gap", "8px");
+
+            for (id, placeholder) in [
+                (SETTINGS_AUTOPILOT_DISPLAY_NAME_ID, "Autopilot display name"),
+                (SETTINGS_AUTOPILOT_TAGLINE_ID, "Autopilot tagline"),
+                (SETTINGS_AUTOPILOT_OWNER_ID, "Owner display name"),
+                (SETTINGS_AUTOPILOT_PERSONA_ID, "Persona summary"),
+                (SETTINGS_AUTOPILOT_VOICE_ID, "Autopilot voice"),
+                (
+                    SETTINGS_AUTOPILOT_PRINCIPLES_ID,
+                    "Principles text (one per line)",
+                ),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create settings autopilot input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "settings autopilot input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = autopilot_row.append_child(&input);
+            }
+            let _ = settings_panel.append_child(&autopilot_row);
+
+            let autopilot_save_button = document
+                .create_element("button")
+                .map_err(|_| "failed to create settings autopilot save button".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings autopilot save button is not HtmlElement".to_string())?;
+            autopilot_save_button.set_id(SETTINGS_AUTOPILOT_SAVE_ID);
+            autopilot_save_button.set_inner_text("Save Autopilot");
+            let _ = autopilot_save_button.style().set_property("height", "34px");
+            let _ = autopilot_save_button
+                .style()
+                .set_property("padding", "0 12px");
+            let _ = autopilot_save_button
+                .style()
+                .set_property("border-radius", "8px");
+            let _ = autopilot_save_button
+                .style()
+                .set_property("border", "1px solid #334155");
+            let _ = autopilot_save_button
+                .style()
+                .set_property("background", "#334155");
+            let _ = autopilot_save_button
+                .style()
+                .set_property("color", "#ffffff");
+            let _ = settings_panel.append_child(&autopilot_save_button);
+
+            let resend_row = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings resend row".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings resend row is not HtmlElement".to_string())?;
+            let _ = resend_row.style().set_property("display", "grid");
+            let _ = resend_row
+                .style()
+                .set_property("grid-template-columns", "repeat(3, minmax(0, 1fr))");
+            let _ = resend_row.style().set_property("gap", "8px");
+            for (id, placeholder) in [
+                (SETTINGS_RESEND_KEY_ID, "Resend API key"),
+                (SETTINGS_RESEND_EMAIL_ID, "Resend sender email"),
+                (SETTINGS_RESEND_NAME_ID, "Resend sender name"),
+            ] {
+                let input = document
+                    .create_element("input")
+                    .map_err(|_| "failed to create settings resend input".to_string())?
+                    .dyn_into::<HtmlInputElement>()
+                    .map_err(|_| "settings resend input is not HtmlInputElement".to_string())?;
+                input.set_id(id);
+                input.set_placeholder(placeholder);
+                let _ = input.style().set_property("height", "34px");
+                let _ = input.style().set_property("padding", "0 10px");
+                let _ = input.style().set_property("border-radius", "8px");
+                let _ = input.style().set_property("border", "1px solid #1f2937");
+                let _ = input.style().set_property("background", "#0f172a");
+                let _ = input.style().set_property("color", "#cbd5e1");
+                let _ = resend_row.append_child(&input);
+            }
+            let _ = settings_panel.append_child(&resend_row);
+
+            let resend_actions = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings resend actions".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings resend actions is not HtmlElement".to_string())?;
+            let _ = resend_actions.style().set_property("display", "flex");
+            let _ = resend_actions.style().set_property("gap", "8px");
+            for (id, label, bg, border) in [
+                (
+                    SETTINGS_RESEND_CONNECT_ID,
+                    "Connect Resend",
+                    "#1d4ed8",
+                    "#1d4ed8",
+                ),
+                (
+                    SETTINGS_RESEND_DISCONNECT_ID,
+                    "Disconnect Resend",
+                    "#7f1d1d",
+                    "#7f1d1d",
+                ),
+                (
+                    SETTINGS_RESEND_TEST_ID,
+                    "Send Resend Test",
+                    "#374151",
+                    "#374151",
+                ),
+            ] {
+                let button = document
+                    .create_element("button")
+                    .map_err(|_| "failed to create settings resend action button".to_string())?
+                    .dyn_into::<HtmlElement>()
+                    .map_err(|_| "settings resend action button is not HtmlElement".to_string())?;
+                button.set_id(id);
+                button.set_inner_text(label);
+                let _ = button.style().set_property("height", "34px");
+                let _ = button.style().set_property("padding", "0 10px");
+                let _ = button.style().set_property("border-radius", "8px");
+                let _ = button
+                    .style()
+                    .set_property("border", &format!("1px solid {border}"));
+                let _ = button.style().set_property("background", bg);
+                let _ = button.style().set_property("color", "#ffffff");
+                let _ = resend_actions.append_child(&button);
+            }
+            let _ = settings_panel.append_child(&resend_actions);
+
+            let google_actions = document
+                .create_element("div")
+                .map_err(|_| "failed to create settings google actions".to_string())?
+                .dyn_into::<HtmlElement>()
+                .map_err(|_| "settings google actions is not HtmlElement".to_string())?;
+            let _ = google_actions.style().set_property("display", "flex");
+            let _ = google_actions.style().set_property("gap", "8px");
+            for (id, label, bg, border) in [
+                (
+                    SETTINGS_GOOGLE_CONNECT_ID,
+                    "Connect Google",
+                    "#166534",
+                    "#166534",
+                ),
+                (
+                    SETTINGS_GOOGLE_DISCONNECT_ID,
+                    "Disconnect Google",
+                    "#7f1d1d",
+                    "#7f1d1d",
+                ),
+            ] {
+                let button = document
+                    .create_element("button")
+                    .map_err(|_| "failed to create settings google action button".to_string())?
+                    .dyn_into::<HtmlElement>()
+                    .map_err(|_| "settings google action button is not HtmlElement".to_string())?;
+                button.set_id(id);
+                button.set_inner_text(label);
+                let _ = button.style().set_property("height", "34px");
+                let _ = button.style().set_property("padding", "0 10px");
+                let _ = button.style().set_property("border-radius", "8px");
+                let _ = button
+                    .style()
+                    .set_property("border", &format!("1px solid {border}"));
+                let _ = button.style().set_property("background", bg);
+                let _ = button.style().set_property("color", "#ffffff");
+                let _ = google_actions.append_child(&button);
+            }
+            let _ = settings_panel.append_child(&google_actions);
+
+            let _ = root.append_child(&settings_panel);
             body.append_child(&root)
                 .map_err(|_| "failed to append codex chat root".to_string())?;
         }
@@ -3364,6 +3964,131 @@ mod wasm {
             *slot.borrow_mut() = Some(callback);
         });
 
+        let settings_profile_save_button = document
+            .get_element_by_id(SETTINGS_PROFILE_SAVE_ID)
+            .ok_or_else(|| "missing settings profile save button".to_string())?;
+        let settings_profile_delete_button = document
+            .get_element_by_id(SETTINGS_PROFILE_DELETE_ID)
+            .ok_or_else(|| "missing settings profile delete button".to_string())?;
+        let settings_autopilot_save_button = document
+            .get_element_by_id(SETTINGS_AUTOPILOT_SAVE_ID)
+            .ok_or_else(|| "missing settings autopilot save button".to_string())?;
+        let settings_resend_connect_button = document
+            .get_element_by_id(SETTINGS_RESEND_CONNECT_ID)
+            .ok_or_else(|| "missing settings resend connect button".to_string())?;
+        let settings_resend_disconnect_button = document
+            .get_element_by_id(SETTINGS_RESEND_DISCONNECT_ID)
+            .ok_or_else(|| "missing settings resend disconnect button".to_string())?;
+        let settings_resend_test_button = document
+            .get_element_by_id(SETTINGS_RESEND_TEST_ID)
+            .ok_or_else(|| "missing settings resend test button".to_string())?;
+        let settings_google_connect_button = document
+            .get_element_by_id(SETTINGS_GOOGLE_CONNECT_ID)
+            .ok_or_else(|| "missing settings google connect button".to_string())?;
+        let settings_google_disconnect_button = document
+            .get_element_by_id(SETTINGS_GOOGLE_DISCONNECT_ID)
+            .ok_or_else(|| "missing settings google disconnect button".to_string())?;
+
+        SETTINGS_PROFILE_SAVE_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_profile_update_from_inputs();
+            }));
+            let _ = settings_profile_save_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_PROFILE_DELETE_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_profile_delete();
+            }));
+            let _ = settings_profile_delete_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_AUTOPILOT_SAVE_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_autopilot_update_from_inputs();
+            }));
+            let _ = settings_autopilot_save_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_RESEND_CONNECT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_resend_connect_from_inputs();
+            }));
+            let _ = settings_resend_connect_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_RESEND_DISCONNECT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_resend_disconnect();
+            }));
+            let _ = settings_resend_disconnect_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_RESEND_TEST_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_resend_test();
+            }));
+            let _ = settings_resend_test_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_GOOGLE_CONNECT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                if let Some(window) = web_sys::window() {
+                    let _ = window
+                        .location()
+                        .set_href("/settings/integrations/google/redirect");
+                }
+            }));
+            let _ = settings_google_connect_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
+        SETTINGS_GOOGLE_DISCONNECT_HANDLER.with(|slot| {
+            if slot.borrow().is_some() {
+                return;
+            }
+            let callback = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_event| {
+                submit_settings_google_disconnect();
+            }));
+            let _ = settings_google_disconnect_button
+                .add_event_listener_with_callback("click", callback.as_ref().unchecked_ref());
+            *slot.borrow_mut() = Some(callback);
+        });
+
         Ok(())
     }
 
@@ -3429,6 +4154,420 @@ mod wasm {
         queue_intent(CommandIntent::VerifyAuthCode { code });
     }
 
+    fn settings_set_loading(value: bool) {
+        SETTINGS_SURFACE_LOADING.with(|loading| loading.set(value));
+    }
+
+    fn settings_set_status(message: impl Into<String>) {
+        SETTINGS_SURFACE_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.last_status = Some(message.into());
+            state.last_error = None;
+        });
+    }
+
+    fn settings_set_error(message: impl Into<String>) {
+        SETTINGS_SURFACE_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.last_error = Some(message.into());
+            state.last_status = None;
+        });
+    }
+
+    fn current_access_token() -> Result<String, ControlApiError> {
+        APP_STATE
+            .with(|state| state.borrow().auth.access_token.clone())
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                ControlApiError::from_command_error(CommandError::missing_credential(
+                    "access token is unavailable",
+                ))
+            })
+    }
+
+    async fn settings_post_json<T: for<'de> Deserialize<'de>>(
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<T, ControlApiError> {
+        let access_token = current_access_token()?;
+        let body = serde_json::to_string(&body).map_err(|error| ControlApiError {
+            status_code: 500,
+            code: Some("request_body_serialize_failed".to_string()),
+            message: format!("failed to serialize request body: {error}"),
+            kind: CommandErrorKind::Decode,
+            retryable: false,
+        })?;
+        let response = Request::post(path)
+            .header("authorization", &format!("Bearer {access_token}"))
+            .header("content-type", "application/json")
+            .body(body)
+            .map_err(map_network_error)?
+            .send()
+            .await
+            .map_err(map_network_error)?;
+        decode_json_response(response).await
+    }
+
+    async fn settings_patch_json<T: for<'de> Deserialize<'de>>(
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<T, ControlApiError> {
+        let access_token = current_access_token()?;
+        let body = serde_json::to_string(&body).map_err(|error| ControlApiError {
+            status_code: 500,
+            code: Some("request_body_serialize_failed".to_string()),
+            message: format!("failed to serialize request body: {error}"),
+            kind: CommandErrorKind::Decode,
+            retryable: false,
+        })?;
+        let response = Request::patch(path)
+            .header("authorization", &format!("Bearer {access_token}"))
+            .header("content-type", "application/json")
+            .body(body)
+            .map_err(map_network_error)?
+            .send()
+            .await
+            .map_err(map_network_error)?;
+        decode_json_response(response).await
+    }
+
+    async fn settings_delete_json<T: for<'de> Deserialize<'de>>(
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<T, ControlApiError> {
+        let access_token = current_access_token()?;
+        let mut builder =
+            Request::delete(path).header("authorization", &format!("Bearer {access_token}"));
+
+        let response = if let Some(body) = body {
+            let body = serde_json::to_string(&body).map_err(|error| ControlApiError {
+                status_code: 500,
+                code: Some("request_body_serialize_failed".to_string()),
+                message: format!("failed to serialize request body: {error}"),
+                kind: CommandErrorKind::Decode,
+                retryable: false,
+            })?;
+            builder = builder.header("content-type", "application/json");
+            builder
+                .body(body)
+                .map_err(map_network_error)?
+                .send()
+                .await
+                .map_err(map_network_error)?
+        } else {
+            builder.send().await.map_err(map_network_error)?
+        };
+        decode_json_response(response).await
+    }
+
+    fn read_input_value(id: &str) -> Option<String> {
+        let window = web_sys::window()?;
+        let document = window.document()?;
+        let input = document.get_element_by_id(id)?;
+        let input = input.dyn_into::<HtmlInputElement>().ok()?;
+        Some(input.value())
+    }
+
+    fn submit_settings_profile_update_from_inputs() {
+        let name = read_input_value(SETTINGS_PROFILE_NAME_ID)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            settings_set_error("Profile name is required.");
+            render_codex_chat_dom();
+            return;
+        }
+        if name.chars().count() > 255 {
+            settings_set_error("Profile name may not be greater than 255 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+
+        settings_set_loading(true);
+        settings_set_status("Saving profile...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_patch_json::<SettingsProfileEnvelope>(
+                "/api/settings/profile",
+                serde_json::json!({ "name": name }),
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.profile_id = Some(response.data.id);
+                        state.profile_name = response.data.name;
+                        state.profile_email = response.data.email;
+                        state.last_status = Some("Profile saved.".to_string());
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => {
+                    settings_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_profile_delete() {
+        let email = SETTINGS_SURFACE_STATE.with(|state| state.borrow().profile_email.clone());
+        if email.trim().is_empty() {
+            settings_set_error("Profile email is unavailable; refresh settings first.");
+            render_codex_chat_dom();
+            return;
+        }
+
+        settings_set_loading(true);
+        settings_set_status("Deleting profile...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_delete_json::<SettingsDeleteProfileEnvelope>(
+                "/api/settings/profile",
+                Some(serde_json::json!({ "email": email })),
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    if response.data.deleted {
+                        settings_set_status("Profile deleted. You may need to sign in again.");
+                    } else {
+                        settings_set_error("Profile delete response did not confirm deletion.");
+                    }
+                }
+                Err(error) => {
+                    settings_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_autopilot_update_from_inputs() {
+        let display_name = read_input_value(SETTINGS_AUTOPILOT_DISPLAY_NAME_ID).unwrap_or_default();
+        let tagline = read_input_value(SETTINGS_AUTOPILOT_TAGLINE_ID).unwrap_or_default();
+        let owner_display_name = read_input_value(SETTINGS_AUTOPILOT_OWNER_ID).unwrap_or_default();
+        let persona_summary = read_input_value(SETTINGS_AUTOPILOT_PERSONA_ID).unwrap_or_default();
+        let autopilot_voice = read_input_value(SETTINGS_AUTOPILOT_VOICE_ID).unwrap_or_default();
+        let principles_text =
+            read_input_value(SETTINGS_AUTOPILOT_PRINCIPLES_ID).unwrap_or_default();
+
+        if display_name.chars().count() > 120 {
+            settings_set_error("Autopilot display name may not exceed 120 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+        if tagline.chars().count() > 255 {
+            settings_set_error("Autopilot tagline may not exceed 255 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+        if owner_display_name.chars().count() > 120 {
+            settings_set_error("Owner display name may not exceed 120 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+        if autopilot_voice.chars().count() > 64 {
+            settings_set_error("Autopilot voice may not exceed 64 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+
+        settings_set_loading(true);
+        settings_set_status("Saving autopilot settings...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_patch_json::<SettingsAutopilotUpdateEnvelope>(
+                "/settings/autopilot",
+                serde_json::json!({
+                    "displayName": display_name,
+                    "tagline": tagline,
+                    "ownerDisplayName": owner_display_name,
+                    "personaSummary": persona_summary,
+                    "autopilotVoice": autopilot_voice,
+                    "principlesText": principles_text,
+                }),
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        apply_autopilot_payload_to_settings_state(
+                            &mut state,
+                            Some(&response.data.autopilot),
+                        );
+                        state.last_status =
+                            Some(format!("Autopilot saved: {}", response.data.status));
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => {
+                    settings_set_error(error.message);
+                }
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_resend_connect_from_inputs() {
+        let resend_api_key = read_input_value(SETTINGS_RESEND_KEY_ID)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let sender_email = read_input_value(SETTINGS_RESEND_EMAIL_ID)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let sender_name = read_input_value(SETTINGS_RESEND_NAME_ID)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if resend_api_key.len() < 8 {
+            settings_set_error("Resend API key must be at least 8 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+        if resend_api_key.len() > 4096 {
+            settings_set_error("Resend API key may not exceed 4096 characters.");
+            render_codex_chat_dom();
+            return;
+        }
+        if !sender_email.is_empty() && !sender_email.contains('@') {
+            settings_set_error("Resend sender email must be a valid email address.");
+            render_codex_chat_dom();
+            return;
+        }
+
+        settings_set_loading(true);
+        settings_set_status("Connecting Resend integration...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_post_json::<SettingsIntegrationEnvelope>(
+                "/settings/integrations/resend",
+                serde_json::json!({
+                    "resendApiKey": resend_api_key,
+                    "senderEmail": if sender_email.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(sender_email) },
+                    "senderName": if sender_name.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(sender_name) },
+                }),
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.resend_connected = Some(response.data.integration.connected);
+                        state.resend_secret_last4 = response.data.integration.secret_last4.clone();
+                        state.last_status = Some(format!(
+                            "Resend status: {} ({})",
+                            response.data.status,
+                            response.data.action.unwrap_or_else(|| "ok".to_string())
+                        ));
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => settings_set_error(error.message),
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_resend_disconnect() {
+        settings_set_loading(true);
+        settings_set_status("Disconnecting Resend integration...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_delete_json::<SettingsIntegrationEnvelope>(
+                "/settings/integrations/resend",
+                None,
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.resend_connected = Some(response.data.integration.connected);
+                        state.resend_secret_last4 = response.data.integration.secret_last4.clone();
+                        state.last_status =
+                            Some(format!("Resend status: {}", response.data.status));
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => settings_set_error(error.message),
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_resend_test() {
+        settings_set_loading(true);
+        settings_set_status("Sending Resend integration test...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_post_json::<SettingsIntegrationEnvelope>(
+                "/settings/integrations/resend/test",
+                serde_json::json!({}),
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.last_status =
+                            Some(format!("Resend status: {}", response.data.status));
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => settings_set_error(error.message),
+            }
+            render_codex_chat_dom();
+        });
+    }
+
+    fn submit_settings_google_disconnect() {
+        settings_set_loading(true);
+        settings_set_status("Disconnecting Google integration...");
+        render_codex_chat_dom();
+
+        spawn_local(async move {
+            let response = settings_delete_json::<SettingsIntegrationEnvelope>(
+                "/settings/integrations/google",
+                None,
+            )
+            .await;
+            settings_set_loading(false);
+            match response {
+                Ok(response) => {
+                    SETTINGS_SURFACE_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.google_connected = Some(response.data.integration.connected);
+                        state.google_secret_last4 = response.data.integration.secret_last4.clone();
+                        state.last_status =
+                            Some(format!("Google status: {}", response.data.status));
+                        state.last_error = None;
+                    });
+                }
+                Err(error) => settings_set_error(error.message),
+            }
+            render_codex_chat_dom();
+        });
+    }
+
     fn render_codex_chat_dom() {
         let Some(window) = web_sys::window() else {
             return;
@@ -3451,6 +4590,8 @@ mod wasm {
         let codex_history_loading = CODEX_HISTORY_LOADING.with(Cell::get);
         let management_state = MANAGEMENT_SURFACE_STATE.with(|state| state.borrow().clone());
         let management_loading = MANAGEMENT_SURFACE_LOADING.with(Cell::get);
+        let settings_state = SETTINGS_SURFACE_STATE.with(|state| state.borrow().clone());
+        let settings_loading = SETTINGS_SURFACE_LOADING.with(Cell::get);
 
         let thread_id = thread_id_from_route(&route);
         let is_management_route = route_is_management_surface(&route);
@@ -3487,6 +4628,9 @@ mod wasm {
         let auth_panel = document
             .get_element_by_id(AUTH_PANEL_ID)
             .and_then(|element| element.dyn_into::<HtmlElement>().ok());
+        let settings_panel = document
+            .get_element_by_id(SETTINGS_PANEL_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok());
 
         if is_codex_chat_route && !auth_state.has_active_session() {
             let _ = root.style().set_property("display", "flex");
@@ -3496,6 +4640,9 @@ mod wasm {
             }
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
+            }
+            if let Some(settings_panel) = settings_panel.as_ref() {
+                let _ = settings_panel.style().set_property("display", "none");
             }
             render_chat_auth_gate_messages(&document, &messages_container, &route);
             messages_container.set_scroll_top(0);
@@ -3510,6 +4657,9 @@ mod wasm {
             }
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
+            }
+            if let Some(settings_panel) = settings_panel.as_ref() {
+                let _ = settings_panel.style().set_property("display", "none");
             }
             render_codex_thread_messages(&document, &messages_container);
             render_codex_thread_status(
@@ -3537,6 +4687,9 @@ mod wasm {
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
             }
+            if let Some(settings_panel) = settings_panel.as_ref() {
+                let _ = settings_panel.style().set_property("display", "none");
+            }
             render_chat_landing_messages(
                 &document,
                 &messages_container,
@@ -3559,12 +4712,26 @@ mod wasm {
                 .style()
                 .set_property("display", if is_auth_route { "flex" } else { "none" });
         }
+        if let Some(settings_panel) = settings_panel.as_ref() {
+            let _ = settings_panel.style().set_property(
+                "display",
+                if route_is_settings_surface(&route) {
+                    "flex"
+                } else {
+                    "none"
+                },
+            );
+        }
 
         if is_auth_route {
             sync_auth_form_inputs(&document, &auth_state);
             render_auth_surface_messages(&document, &messages_container, &route, &auth_state);
             messages_container.set_scroll_top(0);
             return;
+        }
+
+        if route_is_settings_surface(&route) {
+            sync_settings_form_inputs(&document, &settings_state, settings_loading);
         }
 
         render_management_surface_messages(
@@ -3589,6 +4756,118 @@ mod wasm {
             if let Some(email) = auth_state.email.as_ref() {
                 email_input.set_value(email);
             }
+        }
+    }
+
+    fn sync_settings_form_inputs(
+        document: &web_sys::Document,
+        settings_state: &SettingsSurfaceState,
+        loading: bool,
+    ) {
+        set_settings_input_value(
+            document,
+            SETTINGS_PROFILE_NAME_ID,
+            &settings_state.profile_name,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_DISPLAY_NAME_ID,
+            &settings_state.autopilot_display_name,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_TAGLINE_ID,
+            &settings_state.autopilot_tagline,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_OWNER_ID,
+            &settings_state.autopilot_owner_display_name,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_PERSONA_ID,
+            &settings_state.autopilot_persona_summary,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_VOICE_ID,
+            &settings_state.autopilot_voice,
+        );
+        set_settings_input_value(
+            document,
+            SETTINGS_AUTOPILOT_PRINCIPLES_ID,
+            &settings_state.autopilot_principles_text,
+        );
+
+        let resend_connected = settings_state
+            .resend_connected
+            .map(|connected| {
+                if connected {
+                    "connected"
+                } else {
+                    "disconnected"
+                }
+            })
+            .unwrap_or("unknown");
+        let google_connected = settings_state
+            .google_connected
+            .map(|connected| {
+                if connected {
+                    "connected"
+                } else {
+                    "disconnected"
+                }
+            })
+            .unwrap_or("unknown");
+
+        if let Some(status) = document
+            .get_element_by_id(SETTINGS_STATUS_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok())
+        {
+            if loading {
+                status.set_inner_text("Saving settings...");
+                let _ = status.style().set_property("color", "#93c5fd");
+            } else if let Some(error) = settings_state.last_error.as_ref() {
+                status.set_inner_text(error);
+                let _ = status.style().set_property("color", "#f87171");
+            } else if let Some(message) = settings_state.last_status.as_ref() {
+                status.set_inner_text(&format!(
+                    "{message} | resend={resend_connected} google={google_connected}"
+                ));
+                let _ = status.style().set_property("color", "#93c5fd");
+            } else {
+                status.set_inner_text(&format!(
+                    "profile={} | resend={}{} | google={}{}",
+                    if settings_state.profile_email.is_empty() {
+                        "unknown"
+                    } else {
+                        settings_state.profile_email.as_str()
+                    },
+                    resend_connected,
+                    settings_state
+                        .resend_secret_last4
+                        .as_ref()
+                        .map(|value| format!("({value})"))
+                        .unwrap_or_default(),
+                    google_connected,
+                    settings_state
+                        .google_secret_last4
+                        .as_ref()
+                        .map(|value| format!("({value})"))
+                        .unwrap_or_default(),
+                ));
+                let _ = status.style().set_property("color", "#94a3b8");
+            }
+        }
+    }
+
+    fn set_settings_input_value(document: &web_sys::Document, id: &str, value: &str) {
+        if let Some(input) = document
+            .get_element_by_id(id)
+            .and_then(|element| element.dyn_into::<HtmlInputElement>().ok())
+        {
+            input.set_value(value);
         }
     }
 
@@ -3962,6 +5241,17 @@ mod wasm {
                     session.session_id, session.active_org_id, session.device_id, session.status
                 ),
                 tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if let AppRoute::Settings { section } = route {
+            cards.push(ManagementCard {
+                title: "Settings Surface".to_string(),
+                body: format!(
+                    "section: {}\nforms: profile + autopilot + integrations (Resend/Google)",
+                    section.clone().unwrap_or_else(|| "profile".to_string())
+                ),
+                tone: ManagementCardTone::Info,
             });
         }
 
