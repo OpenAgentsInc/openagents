@@ -15,11 +15,23 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
     var onModelCycleRequested: (() -> Void)?
     var onReasoningCycleRequested: (() -> Void)?
     var onComposerChanged: ((String) -> Void)?
+    var onAuthEmailChanged: ((String) -> Void)?
+    var onAuthCodeChanged: ((String) -> Void)?
+    var onSendCodeRequested: (() -> Void)?
+    var onVerifyCodeRequested: (() -> Void)?
+    var onSignOutRequested: (() -> Void)?
+    var onRefreshWorkersRequested: (() -> Void)?
+    var onConnectStreamRequested: (() -> Void)?
+    var onDisconnectStreamRequested: (() -> Void)?
+    var onSendHandshakeRequested: (() -> Void)?
 
     private var statePtr: UnsafeMutableRawPointer?
     private var displayLink: CADisplayLink?
     private var renderTickCount: Int = 0
     private var composerDraft: String = ""
+    private var authEmailDraft: String = ""
+    private var authCodeDraft: String = ""
+    private var activeInputTarget: WgpuiInputTarget = .none
     private let keyboardProxyField = UITextField(frame: .zero)
 
     private var effectiveScale: CGFloat {
@@ -142,11 +154,46 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
             title: emptyState.title,
             detail: emptyState.detail
         )
+        WgpuiBackgroundBridge.setAuthFields(
+            state: statePtr,
+            email: model.email,
+            code: model.verificationCode,
+            authStatus: authDescription(model.authState)
+        )
+        WgpuiBackgroundBridge.setOperatorStatus(
+            state: statePtr,
+            workerStatus: workerStatusText(model: model),
+            streamStatus: streamDescription(model.streamState),
+            handshakeStatus: handshakeDescription(model.handshakeState),
+            deviceStatus: "device: \(model.deviceID)",
+            telemetry: telemetrySummary(model: model),
+            events: eventsSummary(model: model),
+            control: controlRequestSummary(model: model)
+        )
 
         composerDraft = model.messageDraft
         WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
-        if keyboardProxyField.text != composerDraft {
-            keyboardProxyField.text = composerDraft
+        authEmailDraft = model.email
+        authCodeDraft = model.verificationCode
+        WgpuiBackgroundBridge.setAuthEmail(state: statePtr, authEmailDraft)
+        WgpuiBackgroundBridge.setAuthCode(state: statePtr, authCodeDraft)
+        syncKeyboardProxyText()
+    }
+
+    private func syncKeyboardProxyText() {
+        let text: String
+        switch activeInputTarget {
+        case .composer:
+            text = composerDraft
+        case .authEmail:
+            text = authEmailDraft
+        case .authCode:
+            text = authCodeDraft
+        case .none:
+            text = ""
+        }
+        if keyboardProxyField.text != text {
+            keyboardProxyField.text = text
         }
     }
 
@@ -170,36 +217,118 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         if WgpuiBackgroundBridge.consumeReasoningCycleRequested(state: statePtr) {
             onReasoningCycleRequested?()
         }
+        if WgpuiBackgroundBridge.consumeSendCodeRequested(state: statePtr) {
+            onSendCodeRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeVerifyCodeRequested(state: statePtr) {
+            onVerifyCodeRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeSignOutRequested(state: statePtr) {
+            onSignOutRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeRefreshWorkersRequested(state: statePtr) {
+            onRefreshWorkersRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeConnectStreamRequested(state: statePtr) {
+            onConnectStreamRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeDisconnectStreamRequested(state: statePtr) {
+            onDisconnectStreamRequested?()
+        }
+        if WgpuiBackgroundBridge.consumeSendHandshakeRequested(state: statePtr) {
+            onSendHandshakeRequested?()
+        }
 
-        if WgpuiBackgroundBridge.composerFocused(state: statePtr) {
-            WgpuiBackgroundBridge.setComposerFocused(state: statePtr, focused: false)
+        let target = WgpuiBackgroundBridge.activeInputTarget(state: statePtr)
+        if target == .none {
+            if activeInputTarget != .none {
+                activeInputTarget = .none
+                DispatchQueue.main.async { [weak self] in
+                    self?.keyboardProxyField.resignFirstResponder()
+                    self?.syncKeyboardProxyText()
+                }
+            }
+        } else {
+            WgpuiBackgroundBridge.setActiveInputTarget(state: statePtr, .none)
             DispatchQueue.main.async { [weak self] in
-                self?.beginComposerEditing()
+                self?.beginEditing(target: target)
             }
         }
     }
 
-    private func beginComposerEditing() {
+    private func beginEditing(target: WgpuiInputTarget) {
         guard statePtr != nil else { return }
-        keyboardProxyField.text = composerDraft
+        activeInputTarget = target
+        syncKeyboardProxyText()
+
+        switch target {
+        case .authCode:
+            keyboardProxyField.keyboardType = .numberPad
+            keyboardProxyField.returnKeyType = .done
+            keyboardProxyField.textContentType = .oneTimeCode
+            keyboardProxyField.autocapitalizationType = .none
+            keyboardProxyField.autocorrectionType = .no
+            keyboardProxyField.spellCheckingType = .no
+        case .authEmail:
+            keyboardProxyField.keyboardType = .emailAddress
+            keyboardProxyField.returnKeyType = .next
+            keyboardProxyField.textContentType = .username
+            keyboardProxyField.autocapitalizationType = .none
+            keyboardProxyField.autocorrectionType = .no
+            keyboardProxyField.spellCheckingType = .no
+        case .composer:
+            keyboardProxyField.keyboardType = .default
+            keyboardProxyField.returnKeyType = .send
+            keyboardProxyField.textContentType = .none
+            keyboardProxyField.autocapitalizationType = .sentences
+            keyboardProxyField.autocorrectionType = .yes
+            keyboardProxyField.spellCheckingType = .yes
+        case .none:
+            break
+        }
+        keyboardProxyField.reloadInputViews()
         if !keyboardProxyField.isFirstResponder {
             keyboardProxyField.becomeFirstResponder()
         }
     }
 
     @objc private func keyboardProxyChanged(_ textField: UITextField) {
-        composerDraft = textField.text ?? ""
-        WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
-        onComposerChanged?(composerDraft)
+        let text = textField.text ?? ""
+        switch activeInputTarget {
+        case .composer:
+            composerDraft = text
+            WgpuiBackgroundBridge.setComposerText(state: statePtr, composerDraft)
+            onComposerChanged?(composerDraft)
+        case .authEmail:
+            authEmailDraft = text
+            WgpuiBackgroundBridge.setAuthEmail(state: statePtr, authEmailDraft)
+            onAuthEmailChanged?(authEmailDraft)
+        case .authCode:
+            authCodeDraft = text
+            WgpuiBackgroundBridge.setAuthCode(state: statePtr, authCodeDraft)
+            onAuthCodeChanged?(authCodeDraft)
+        case .none:
+            break
+        }
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        onSendRequested?()
+        switch activeInputTarget {
+        case .composer:
+            onSendRequested?()
+        case .authEmail:
+            onSendCodeRequested?()
+        case .authCode:
+            onVerifyCodeRequested?()
+        case .none:
+            break
+        }
         return false
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
-        WgpuiBackgroundBridge.setComposerFocused(state: statePtr, focused: false)
+        activeInputTarget = .none
+        WgpuiBackgroundBridge.setActiveInputTarget(state: statePtr, .none)
     }
 
     private func mapRole(_ role: CodexChatRole) -> WgpuiCodexRole {
@@ -224,7 +353,7 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
             return ("Codex Error", error)
         }
         if !model.isAuthenticated {
-            return ("Sign In Required", "Open the hidden debug panel to sign in.")
+            return ("Sign In Required", "Tap Open Ops and sign in with email code.")
         }
         switch model.streamState {
         case .connecting:
@@ -234,6 +363,91 @@ private final class WgpuiBackgroundUIView: UIView, UITextFieldDelegate {
         default:
             return ("No Codex Messages Yet", "Waiting for Codex events from desktop.")
         }
+    }
+
+    private func authDescription(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signed out"
+        case .sendingCode:
+            return "sending code"
+        case .codeSent(let email):
+            return "code sent to \(email)"
+        case .verifying:
+            return "verifying"
+        case .authenticated(let email):
+            if let email, !email.isEmpty {
+                return "signed in as \(email)"
+            }
+            return "signed in"
+        }
+    }
+
+    private func streamDescription(_ state: StreamState) -> String {
+        switch state {
+        case .idle:
+            return "idle"
+        case .connecting:
+            return "connecting"
+        case .live:
+            return "live"
+        case .reconnecting:
+            return "reconnecting"
+        }
+    }
+
+    private func handshakeDescription(_ state: HandshakeState) -> String {
+        switch state {
+        case .idle:
+            return "idle"
+        case .sending:
+            return "sending"
+        case .waitingAck(let handshakeID):
+            return "waiting (\(handshakeID))"
+        case .success(let handshakeID):
+            return "success (\(handshakeID))"
+        case .timedOut(let handshakeID):
+            return "timed out (\(handshakeID))"
+        case .failed(let message):
+            return "failed (\(message))"
+        }
+    }
+
+    private func workerStatusText(model: CodexHandshakeViewModel) -> String {
+        if let selected = model.selectedWorkerID {
+            let snapshotStatus = model.latestSnapshot?.status ?? "unknown"
+            return "\(selected) (\(snapshotStatus))"
+        }
+        return model.workers.isEmpty ? "none" : "candidates: \(model.workers.count)"
+    }
+
+    private func telemetrySummary(model: CodexHandshakeViewModel) -> String {
+        let snapshot = model.streamLifecycle
+        return [
+            "connect=\(snapshot.connectAttempts)",
+            "reconnect=\(snapshot.reconnectAttempts)",
+            "sessions=\(snapshot.successfulSessions)",
+            "recovered=\(snapshot.recoveredSessions)",
+            "backoff=\(snapshot.lastBackoffMs)ms",
+            "recovery=\(snapshot.lastRecoveryLatencyMs)ms",
+            "last=\(snapshot.lastDisconnectReason?.rawValue ?? "n/a")"
+        ].joined(separator: " | ")
+    }
+
+    private func eventsSummary(model: CodexHandshakeViewModel) -> String {
+        if model.recentEvents.isEmpty {
+            return "none"
+        }
+        return model.recentEvents.prefix(4).map(\.event).joined(separator: " | ")
+    }
+
+    private func controlRequestSummary(model: CodexHandshakeViewModel) -> String {
+        if model.controlRequests.isEmpty {
+            return "none"
+        }
+        return model.controlRequests.prefix(4).map {
+            "\($0.request.method.rawValue)[\($0.state.rawValue)]"
+        }.joined(separator: " | ")
     }
 
     deinit {
@@ -302,12 +516,49 @@ struct WgpuiBackgroundView: View {
             view.onComposerChanged = { [weak model] text in
                 model?.messageDraft = text
             }
+            view.onAuthEmailChanged = { [weak model] text in
+                model?.email = text
+            }
+            view.onAuthCodeChanged = { [weak model] text in
+                model?.verificationCode = text
+            }
+            view.onSendCodeRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.sendEmailCode() }
+            }
+            view.onVerifyCodeRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.verifyEmailCode() }
+            }
+            view.onSignOutRequested = { [weak model] in
+                model?.signOut()
+            }
+            view.onRefreshWorkersRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.refreshWorkers() }
+            }
+            view.onConnectStreamRequested = { [weak model] in
+                model?.connectStream()
+            }
+            view.onDisconnectStreamRequested = { [weak model] in
+                model?.disconnectStream()
+            }
+            view.onSendHandshakeRequested = { [weak model] in
+                guard let model else { return }
+                Task { await model.sendHandshake() }
+            }
             return view
         }
 
         func updateUIView(_ uiView: WgpuiBackgroundUIView, context: Context) {
             uiView.onComposerChanged = { [weak model] text in
                 model?.messageDraft = text
+            }
+            uiView.onAuthEmailChanged = { [weak model] text in
+                model?.email = text
+            }
+            uiView.onAuthCodeChanged = { [weak model] text in
+                model?.verificationCode = text
             }
             uiView.sync(model: model)
         }

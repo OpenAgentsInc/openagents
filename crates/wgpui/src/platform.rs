@@ -551,6 +551,14 @@ pub mod ios {
     const BUBBLE_MAX_WIDTH_RATIO: f32 = 0.72;
     const MAX_RENDERED_MESSAGES: usize = 42;
     const MAX_STORED_MESSAGES: usize = 220;
+    const OPS_TOGGLE_WIDTH: f32 = 86.0;
+    const OPS_TOGGLE_HEIGHT: f32 = 30.0;
+    const OPS_PANEL_WIDTH_RATIO: f32 = 0.9;
+    const OPS_PANEL_HEIGHT_RATIO: f32 = 0.64;
+    const OPS_PANEL_PADDING: f32 = 12.0;
+    const OPS_INPUT_HEIGHT: f32 = 34.0;
+    const OPS_ROW_HEIGHT: f32 = 32.0;
+    const OPS_TEXT_BLOCK_HEIGHT: f32 = 54.0;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum CodexMessageRole {
@@ -582,6 +590,29 @@ pub mod ios {
         pub is_streaming: bool,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum InputTarget {
+        None = 0,
+        Composer = 1,
+        AuthEmail = 2,
+        AuthCode = 3,
+    }
+
+    impl InputTarget {
+        fn from_u8(value: u8) -> Self {
+            match value {
+                1 => Self::Composer,
+                2 => Self::AuthEmail,
+                3 => Self::AuthCode,
+                _ => Self::None,
+            }
+        }
+
+        fn as_u8(self) -> u8 {
+            self as u8
+        }
+    }
+
     /// State for the iOS WGPUI Codex renderer.
     pub struct IosBackgroundState {
         device: wgpu::Device,
@@ -603,12 +634,30 @@ pub mod ios {
         pub reasoning_label: String,
         pub empty_title: String,
         pub empty_detail: String,
+        pub auth_email: String,
+        pub auth_code: String,
+        pub auth_status: String,
+        pub worker_status: String,
+        pub stream_status: String,
+        pub handshake_status: String,
+        pub device_status: String,
+        pub telemetry_text: String,
+        pub events_text: String,
+        pub control_text: String,
         send_requested: bool,
         new_thread_requested: bool,
         interrupt_requested: bool,
         model_cycle_requested: bool,
         reasoning_cycle_requested: bool,
-        composer_focused: bool,
+        send_code_requested: bool,
+        verify_code_requested: bool,
+        sign_out_requested: bool,
+        refresh_workers_requested: bool,
+        connect_stream_requested: bool,
+        disconnect_stream_requested: bool,
+        send_handshake_requested: bool,
+        operator_panel_visible: bool,
+        active_input_target: InputTarget,
     }
 
     impl IosBackgroundState {
@@ -716,12 +765,30 @@ pub mod ios {
                 reasoning_label: "reasoning:auto".to_string(),
                 empty_title: "No Codex Messages Yet".to_string(),
                 empty_detail: "Waiting for Codex events from desktop.".to_string(),
+                auth_email: String::new(),
+                auth_code: String::new(),
+                auth_status: "signed out".to_string(),
+                worker_status: "No workers loaded".to_string(),
+                stream_status: "idle".to_string(),
+                handshake_status: "idle".to_string(),
+                device_status: String::new(),
+                telemetry_text: "No reconnect telemetry yet".to_string(),
+                events_text: "No recent events".to_string(),
+                control_text: "No control requests".to_string(),
                 send_requested: false,
                 new_thread_requested: false,
                 interrupt_requested: false,
                 model_cycle_requested: false,
                 reasoning_cycle_requested: false,
-                composer_focused: false,
+                send_code_requested: false,
+                verify_code_requested: false,
+                sign_out_requested: false,
+                refresh_workers_requested: false,
+                connect_stream_requested: false,
+                disconnect_stream_requested: false,
+                send_handshake_requested: false,
+                operator_panel_visible: false,
+                active_input_target: InputTarget::None,
             }))
         }
 
@@ -824,6 +891,118 @@ pub mod ios {
             (model_bounds, reasoning_bounds)
         }
 
+        fn ops_toggle_bounds(&self) -> Bounds {
+            let panel = self.primary_panel_bounds();
+            Bounds::new(
+                panel.x() + panel.width() - OPS_TOGGLE_WIDTH - 12.0,
+                panel.y() + 10.0,
+                OPS_TOGGLE_WIDTH,
+                OPS_TOGGLE_HEIGHT,
+            )
+        }
+
+        fn operator_panel_bounds(&self) -> Bounds {
+            let panel = self.primary_panel_bounds();
+            let width = (panel.width() * OPS_PANEL_WIDTH_RATIO).max(240.0);
+            let height = (panel.height() * OPS_PANEL_HEIGHT_RATIO).max(260.0);
+            Bounds::new(
+                panel.x() + (panel.width() - width) * 0.5,
+                panel.y() + (panel.height() - height) * 0.18,
+                width,
+                height,
+            )
+        }
+
+        fn operator_layout(
+            &self,
+            panel: Bounds,
+        ) -> (
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+            Bounds,
+        ) {
+            let content_x = panel.x() + OPS_PANEL_PADDING;
+            let content_w = panel.width() - OPS_PANEL_PADDING * 2.0;
+            let mut y = panel.y() + OPS_PANEL_PADDING + 20.0;
+
+            let auth_email_bounds = Bounds::new(content_x, y, content_w * 0.58, OPS_INPUT_HEIGHT);
+            let send_code_bounds = Bounds::new(
+                auth_email_bounds.x() + auth_email_bounds.width() + 8.0,
+                y,
+                (content_w - auth_email_bounds.width() - 8.0).max(88.0),
+                OPS_INPUT_HEIGHT,
+            );
+
+            y += OPS_INPUT_HEIGHT + 8.0;
+            let auth_code_bounds = Bounds::new(content_x, y, content_w * 0.58, OPS_INPUT_HEIGHT);
+            let verify_bounds = Bounds::new(
+                auth_code_bounds.x() + auth_code_bounds.width() + 8.0,
+                y,
+                (content_w - auth_code_bounds.width() - 8.0).max(88.0),
+                OPS_INPUT_HEIGHT,
+            );
+
+            y += OPS_INPUT_HEIGHT + 8.0;
+            let signout_bounds = Bounds::new(content_x, y, 120.0, OPS_ROW_HEIGHT);
+            let refresh_workers_bounds = Bounds::new(content_x + 128.0, y, 140.0, OPS_ROW_HEIGHT);
+            let connect_bounds = Bounds::new(content_x + 276.0, y, 108.0, OPS_ROW_HEIGHT);
+            let disconnect_bounds = Bounds::new(content_x + 392.0, y, 108.0, OPS_ROW_HEIGHT);
+            let handshake_bounds = Bounds::new(content_x + 508.0, y, 128.0, OPS_ROW_HEIGHT);
+
+            let clamp_row = |bounds: Bounds| -> Bounds {
+                Bounds::new(
+                    bounds.x(),
+                    bounds.y(),
+                    bounds
+                        .width()
+                        .min(panel.x() + panel.width() - OPS_PANEL_PADDING - bounds.x()),
+                    bounds.height(),
+                )
+            };
+
+            let signout_bounds = clamp_row(signout_bounds);
+            let refresh_workers_bounds = clamp_row(refresh_workers_bounds);
+            let connect_bounds = clamp_row(connect_bounds);
+            let disconnect_bounds = clamp_row(disconnect_bounds);
+            let handshake_bounds = clamp_row(handshake_bounds);
+
+            y += OPS_ROW_HEIGHT + 8.0;
+            let status_block_bounds = Bounds::new(content_x, y, content_w, OPS_TEXT_BLOCK_HEIGHT);
+            y += OPS_TEXT_BLOCK_HEIGHT + 6.0;
+            let telemetry_block_bounds =
+                Bounds::new(content_x, y, content_w, OPS_TEXT_BLOCK_HEIGHT);
+            y += OPS_TEXT_BLOCK_HEIGHT + 6.0;
+            let events_block_bounds = Bounds::new(content_x, y, content_w, OPS_TEXT_BLOCK_HEIGHT);
+            y += OPS_TEXT_BLOCK_HEIGHT + 6.0;
+            let controls_block_bounds = Bounds::new(content_x, y, content_w, OPS_TEXT_BLOCK_HEIGHT);
+
+            (
+                auth_email_bounds,
+                auth_code_bounds,
+                send_code_bounds,
+                verify_bounds,
+                signout_bounds,
+                refresh_workers_bounds,
+                connect_bounds,
+                disconnect_bounds,
+                handshake_bounds,
+                status_block_bounds,
+                telemetry_block_bounds,
+                events_block_bounds,
+                controls_block_bounds,
+            )
+        }
+
         /// Handle tap at logical coordinates (same as render: origin top-left, units = pixels).
         pub fn handle_tap(&mut self, x: f32, y: f32) {
             use crate::geometry::Point;
@@ -837,6 +1016,75 @@ pub mod ios {
             ) = self.controls_layout();
             let (model_bounds, reasoning_bounds) = self.context_chip_bounds(context_bounds);
             let p = Point::new(x, y);
+
+            let ops_toggle_bounds = self.ops_toggle_bounds();
+            if ops_toggle_bounds.contains(p) {
+                self.operator_panel_visible = !self.operator_panel_visible;
+                self.active_input_target = InputTarget::None;
+                return;
+            }
+
+            if self.operator_panel_visible {
+                let ops_panel = self.operator_panel_bounds();
+                let (
+                    auth_email_bounds,
+                    auth_code_bounds,
+                    send_code_bounds,
+                    verify_bounds,
+                    signout_bounds,
+                    refresh_workers_bounds,
+                    connect_bounds,
+                    disconnect_bounds,
+                    handshake_bounds,
+                    _status_block_bounds,
+                    _telemetry_block_bounds,
+                    _events_block_bounds,
+                    _controls_block_bounds,
+                ) = self.operator_layout(ops_panel);
+
+                if auth_email_bounds.contains(p) {
+                    self.active_input_target = InputTarget::AuthEmail;
+                    return;
+                }
+                if auth_code_bounds.contains(p) {
+                    self.active_input_target = InputTarget::AuthCode;
+                    return;
+                }
+                if send_code_bounds.contains(p) {
+                    self.send_code_requested = true;
+                    return;
+                }
+                if verify_bounds.contains(p) {
+                    self.verify_code_requested = true;
+                    return;
+                }
+                if signout_bounds.contains(p) {
+                    self.sign_out_requested = true;
+                    return;
+                }
+                if refresh_workers_bounds.contains(p) {
+                    self.refresh_workers_requested = true;
+                    return;
+                }
+                if connect_bounds.contains(p) {
+                    self.connect_stream_requested = true;
+                    return;
+                }
+                if disconnect_bounds.contains(p) {
+                    self.disconnect_stream_requested = true;
+                    return;
+                }
+                if handshake_bounds.contains(p) {
+                    self.send_handshake_requested = true;
+                    return;
+                }
+                if !ops_panel.contains(p) {
+                    self.operator_panel_visible = false;
+                    self.active_input_target = InputTarget::None;
+                }
+                return;
+            }
+
             if model_bounds.contains(p) {
                 self.model_cycle_requested = true;
                 return;
@@ -846,7 +1094,7 @@ pub mod ios {
                 return;
             }
             if composer_bounds.contains(p) {
-                self.composer_focused = true;
+                self.active_input_target = InputTarget::Composer;
                 return;
             }
             if send_bounds.contains(p) {
@@ -861,7 +1109,7 @@ pub mod ios {
                 self.interrupt_requested = true;
                 return;
             }
-            self.composer_focused = false;
+            self.active_input_target = InputTarget::None;
         }
 
         pub fn clear_codex_messages(&mut self) {
@@ -920,12 +1168,80 @@ pub mod ios {
             Self::set_utf8_string(&mut self.empty_detail, detail_ptr, detail_len);
         }
 
+        pub fn set_auth_fields_utf8(
+            &mut self,
+            email_ptr: *const u8,
+            email_len: usize,
+            code_ptr: *const u8,
+            code_len: usize,
+            auth_status_ptr: *const u8,
+            auth_status_len: usize,
+        ) {
+            Self::set_utf8_string(&mut self.auth_email, email_ptr, email_len);
+            Self::set_utf8_string(&mut self.auth_code, code_ptr, code_len);
+            Self::set_utf8_string(&mut self.auth_status, auth_status_ptr, auth_status_len);
+        }
+
+        pub fn set_operator_status_utf8(
+            &mut self,
+            worker_status_ptr: *const u8,
+            worker_status_len: usize,
+            stream_status_ptr: *const u8,
+            stream_status_len: usize,
+            handshake_status_ptr: *const u8,
+            handshake_status_len: usize,
+            device_status_ptr: *const u8,
+            device_status_len: usize,
+            telemetry_ptr: *const u8,
+            telemetry_len: usize,
+            events_ptr: *const u8,
+            events_len: usize,
+            control_ptr: *const u8,
+            control_len: usize,
+        ) {
+            Self::set_utf8_string(
+                &mut self.worker_status,
+                worker_status_ptr,
+                worker_status_len,
+            );
+            Self::set_utf8_string(
+                &mut self.stream_status,
+                stream_status_ptr,
+                stream_status_len,
+            );
+            Self::set_utf8_string(
+                &mut self.handshake_status,
+                handshake_status_ptr,
+                handshake_status_len,
+            );
+            Self::set_utf8_string(
+                &mut self.device_status,
+                device_status_ptr,
+                device_status_len,
+            );
+            Self::set_utf8_string(&mut self.telemetry_text, telemetry_ptr, telemetry_len);
+            Self::set_utf8_string(&mut self.events_text, events_ptr, events_len);
+            Self::set_utf8_string(&mut self.control_text, control_ptr, control_len);
+        }
+
         pub fn composer_focused(&self) -> bool {
-            self.composer_focused
+            self.active_input_target == InputTarget::Composer
         }
 
         pub fn set_composer_focused(&mut self, focused: bool) {
-            self.composer_focused = focused;
+            self.active_input_target = if focused {
+                InputTarget::Composer
+            } else {
+                InputTarget::None
+            };
+        }
+
+        fn active_input_target(&self) -> InputTarget {
+            self.active_input_target
+        }
+
+        fn set_active_input_target(&mut self, target: InputTarget) {
+            self.active_input_target = target;
         }
 
         pub fn consume_send_requested(&mut self) -> bool {
@@ -955,6 +1271,48 @@ pub mod ios {
         pub fn consume_reasoning_cycle_requested(&mut self) -> bool {
             let requested = self.reasoning_cycle_requested;
             self.reasoning_cycle_requested = false;
+            requested
+        }
+
+        pub fn consume_send_code_requested(&mut self) -> bool {
+            let requested = self.send_code_requested;
+            self.send_code_requested = false;
+            requested
+        }
+
+        pub fn consume_verify_code_requested(&mut self) -> bool {
+            let requested = self.verify_code_requested;
+            self.verify_code_requested = false;
+            requested
+        }
+
+        pub fn consume_sign_out_requested(&mut self) -> bool {
+            let requested = self.sign_out_requested;
+            self.sign_out_requested = false;
+            requested
+        }
+
+        pub fn consume_refresh_workers_requested(&mut self) -> bool {
+            let requested = self.refresh_workers_requested;
+            self.refresh_workers_requested = false;
+            requested
+        }
+
+        pub fn consume_connect_stream_requested(&mut self) -> bool {
+            let requested = self.connect_stream_requested;
+            self.connect_stream_requested = false;
+            requested
+        }
+
+        pub fn consume_disconnect_stream_requested(&mut self) -> bool {
+            let requested = self.disconnect_stream_requested;
+            self.disconnect_stream_requested = false;
+            requested
+        }
+
+        pub fn consume_send_handshake_requested(&mut self) -> bool {
+            let requested = self.send_handshake_requested;
+            self.send_handshake_requested = false;
             requested
         }
 
@@ -1129,6 +1487,21 @@ pub mod ios {
             let active_thread_label = self.active_thread_label.clone();
             let active_turn_label = self.active_turn_label.clone();
             let composer_text = self.composer_text.clone();
+            let ops_toggle_bounds = self.ops_toggle_bounds();
+            let operator_panel_visible = self.operator_panel_visible;
+            let auth_email = self.auth_email.clone();
+            let auth_code = self.auth_code.clone();
+            let auth_status = self.auth_status.clone();
+            let worker_status = self.worker_status.clone();
+            let stream_status = self.stream_status.clone();
+            let handshake_status = self.handshake_status.clone();
+            let device_status = self.device_status.clone();
+            let telemetry_text = self.telemetry_text.clone();
+            let events_text = self.events_text.clone();
+            let control_text = self.control_text.clone();
+            let active_input_target = self.active_input_target;
+            let operator_panel_bounds = self.operator_panel_bounds();
+            let operator_layout = self.operator_layout(operator_panel_bounds);
 
             let mut scene = Scene::new();
             let mut paint = PaintContext::new(&mut scene, &mut self.text_system, self.scale);
@@ -1178,6 +1551,14 @@ pub mod ios {
                 ),
                 &mut paint,
             );
+
+            let mut ops_toggle = Button::new(if operator_panel_visible {
+                "Close Ops"
+            } else {
+                "Open Ops"
+            })
+            .variant(ButtonVariant::Secondary);
+            ops_toggle.paint(ops_toggle_bounds, &mut paint);
 
             paint.scene.draw_quad(
                 Quad::new(transcript_bounds)
@@ -1267,11 +1648,114 @@ pub mod ios {
 
             let mut composer = TextInput::new().placeholder("Message Codex");
             composer.set_value(&composer_text);
-            composer.set_focused(self.composer_focused);
+            composer.set_focused(active_input_target == InputTarget::Composer);
             composer.paint(composer_bounds, &mut paint);
 
             let mut send = Button::new("Send").variant(ButtonVariant::Primary);
             send.paint(send_bounds, &mut paint);
+
+            if operator_panel_visible {
+                paint.scene.draw_quad(
+                    Quad::new(operator_panel_bounds)
+                        .with_background(theme::bg::APP.with_alpha(0.96))
+                        .with_border(theme::border::DEFAULT, 1.0)
+                        .with_corner_radius(12.0),
+                );
+
+                let mut ops_title = Text::new("Codex Operator")
+                    .font_size(16.0)
+                    .color(theme::text::PRIMARY)
+                    .no_wrap();
+                ops_title.paint(
+                    Bounds::new(
+                        operator_panel_bounds.x() + OPS_PANEL_PADDING,
+                        operator_panel_bounds.y() + 8.0,
+                        operator_panel_bounds.width() - OPS_PANEL_PADDING * 2.0,
+                        18.0,
+                    ),
+                    &mut paint,
+                );
+
+                let (
+                    auth_email_bounds,
+                    auth_code_bounds,
+                    send_code_bounds,
+                    verify_bounds,
+                    signout_bounds,
+                    refresh_workers_bounds,
+                    connect_bounds,
+                    disconnect_bounds,
+                    handshake_bounds,
+                    status_block_bounds,
+                    telemetry_block_bounds,
+                    events_block_bounds,
+                    controls_block_bounds,
+                ) = operator_layout;
+
+                let mut email_input = TextInput::new().placeholder("Email");
+                email_input.set_value(&auth_email);
+                email_input.set_focused(active_input_target == InputTarget::AuthEmail);
+                email_input.paint(auth_email_bounds, &mut paint);
+
+                let mut code_input = TextInput::new().placeholder("Verification Code");
+                code_input.set_value(&auth_code);
+                code_input.set_focused(active_input_target == InputTarget::AuthCode);
+                code_input.paint(auth_code_bounds, &mut paint);
+
+                let mut send_code = Button::new("Send Code").variant(ButtonVariant::Secondary);
+                send_code.paint(send_code_bounds, &mut paint);
+                let mut verify = Button::new("Verify").variant(ButtonVariant::Secondary);
+                verify.paint(verify_bounds, &mut paint);
+                let mut sign_out = Button::new("Sign Out").variant(ButtonVariant::Secondary);
+                sign_out.paint(signout_bounds, &mut paint);
+                let mut refresh_workers =
+                    Button::new("Load Workers").variant(ButtonVariant::Secondary);
+                refresh_workers.paint(refresh_workers_bounds, &mut paint);
+                let mut connect = Button::new("Connect").variant(ButtonVariant::Secondary);
+                connect.paint(connect_bounds, &mut paint);
+                let mut disconnect = Button::new("Disconnect").variant(ButtonVariant::Secondary);
+                disconnect.paint(disconnect_bounds, &mut paint);
+                let mut send_handshake = Button::new("Handshake").variant(ButtonVariant::Secondary);
+                send_handshake.paint(handshake_bounds, &mut paint);
+
+                for block in [
+                    status_block_bounds,
+                    telemetry_block_bounds,
+                    events_block_bounds,
+                    controls_block_bounds,
+                ] {
+                    paint.scene.draw_quad(
+                        Quad::new(block)
+                            .with_background(theme::bg::SURFACE.with_alpha(0.92))
+                            .with_border(theme::border::DEFAULT.with_alpha(0.9), 1.0)
+                            .with_corner_radius(8.0),
+                    );
+                }
+
+                let status_text = format!(
+                    "auth: {}\nworker: {}\nstream: {} | handshake: {}\n{}",
+                    auth_status, worker_status, stream_status, handshake_status, device_status
+                );
+                let mut status_view = Text::new(status_text)
+                    .font_size(11.5)
+                    .color(theme::text::MUTED);
+                status_view.paint(status_block_bounds.inset(8.0), &mut paint);
+
+                let mut telemetry_view = Text::new(format!("telemetry\n{}", telemetry_text))
+                    .font_size(11.5)
+                    .color(theme::text::MUTED);
+                telemetry_view.paint(telemetry_block_bounds.inset(8.0), &mut paint);
+
+                let mut events_view = Text::new(format!("events\n{}", events_text))
+                    .font_size(11.5)
+                    .color(theme::text::MUTED);
+                events_view.paint(events_block_bounds.inset(8.0), &mut paint);
+
+                let mut controls_view = Text::new(format!("control requests\n{}", control_text))
+                    .font_size(11.5)
+                    .color(theme::text::MUTED);
+                controls_view.paint(controls_block_bounds.inset(8.0), &mut paint);
+            }
 
             self.renderer.resize(&self.queue, self.size, self.scale);
 
@@ -1509,6 +1993,110 @@ pub mod ios {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_auth_fields(
+        state: *mut IosBackgroundState,
+        email_ptr: *const c_char,
+        email_len: usize,
+        code_ptr: *const c_char,
+        code_len: usize,
+        auth_status_ptr: *const c_char,
+        auth_status_len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_auth_fields_utf8(
+            if email_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                email_ptr as *const u8
+            },
+            email_len,
+            if code_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                code_ptr as *const u8
+            },
+            code_len,
+            if auth_status_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                auth_status_ptr as *const u8
+            },
+            auth_status_len,
+        );
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_operator_status(
+        state: *mut IosBackgroundState,
+        worker_status_ptr: *const c_char,
+        worker_status_len: usize,
+        stream_status_ptr: *const c_char,
+        stream_status_len: usize,
+        handshake_status_ptr: *const c_char,
+        handshake_status_len: usize,
+        device_status_ptr: *const c_char,
+        device_status_len: usize,
+        telemetry_ptr: *const c_char,
+        telemetry_len: usize,
+        events_ptr: *const c_char,
+        events_len: usize,
+        control_ptr: *const c_char,
+        control_len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_operator_status_utf8(
+            if worker_status_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                worker_status_ptr as *const u8
+            },
+            worker_status_len,
+            if stream_status_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                stream_status_ptr as *const u8
+            },
+            stream_status_len,
+            if handshake_status_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                handshake_status_ptr as *const u8
+            },
+            handshake_status_len,
+            if device_status_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                device_status_ptr as *const u8
+            },
+            device_status_len,
+            if telemetry_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                telemetry_ptr as *const u8
+            },
+            telemetry_len,
+            if events_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                events_ptr as *const u8
+            },
+            events_len,
+            if control_ptr.is_null() {
+                std::ptr::null()
+            } else {
+                control_ptr as *const u8
+            },
+            control_len,
+        );
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_set_composer_text(
         state: *mut IosBackgroundState,
         ptr: *const c_char,
@@ -1524,6 +2112,65 @@ pub mod ios {
             ptr as *const u8
         };
         state.set_composer_text_utf8(ptr_u8, len);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_auth_email(
+        state: *mut IosBackgroundState,
+        ptr: *const c_char,
+        len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        let ptr_u8 = if ptr.is_null() {
+            std::ptr::null()
+        } else {
+            ptr as *const u8
+        };
+        IosBackgroundState::set_utf8_string(&mut state.auth_email, ptr_u8, len);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_auth_code(
+        state: *mut IosBackgroundState,
+        ptr: *const c_char,
+        len: usize,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        let ptr_u8 = if ptr.is_null() {
+            std::ptr::null()
+        } else {
+            ptr as *const u8
+        };
+        IosBackgroundState::set_utf8_string(&mut state.auth_code, ptr_u8, len);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_active_input_target(
+        state: *mut IosBackgroundState,
+    ) -> u8 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &*state };
+        state.active_input_target().as_u8()
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_set_active_input_target(
+        state: *mut IosBackgroundState,
+        target: u8,
+    ) {
+        if state.is_null() {
+            return;
+        }
+        let state = unsafe { &mut *state };
+        state.set_active_input_target(InputTarget::from_u8(target));
     }
 
     #[unsafe(no_mangle)]
@@ -1618,6 +2265,111 @@ pub mod ios {
         }
     }
 
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_send_code_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_send_code_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_verify_code_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_verify_code_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_sign_out_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_sign_out_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_refresh_workers_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_refresh_workers_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_connect_stream_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_connect_stream_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_disconnect_stream_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_disconnect_stream_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn wgpui_ios_background_consume_send_handshake_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
+        if state.is_null() {
+            return 0;
+        }
+        let state = unsafe { &mut *state };
+        if state.consume_send_handshake_requested() {
+            1
+        } else {
+            0
+        }
+    }
+
     /// Backward-compatible alias for older iOS bridge code.
     #[unsafe(no_mangle)]
     pub extern "C" fn wgpui_ios_background_login_submit_requested(
@@ -1627,7 +2379,7 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &mut *state };
-        if state.send_requested { 1 } else { 0 }
+        if state.send_code_requested { 1 } else { 0 }
     }
 
     /// Backward-compatible alias for older iOS bridge code.
@@ -1639,7 +2391,11 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &mut *state };
-        if state.consume_send_requested() { 1 } else { 0 }
+        if state.consume_send_code_requested() {
+            1
+        } else {
+            0
+        }
     }
 
     /// Backward-compatible alias for older iOS bridge code.
@@ -1649,7 +2405,11 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &*state };
-        if state.composer_focused() { 1 } else { 0 }
+        if state.active_input_target() == InputTarget::AuthEmail {
+            1
+        } else {
+            0
+        }
     }
 
     /// Backward-compatible alias for older iOS bridge code.
@@ -1662,7 +2422,11 @@ pub mod ios {
             return;
         }
         let state = unsafe { &mut *state };
-        state.set_composer_focused(focused != 0);
+        state.set_active_input_target(if focused != 0 {
+            InputTarget::AuthEmail
+        } else {
+            InputTarget::None
+        });
     }
 
     /// Backward-compatible alias for older iOS bridge code.
@@ -1677,10 +2441,10 @@ pub mod ios {
         }
         let state = unsafe { &mut *state };
         if ptr.is_null() || len == 0 {
-            state.set_composer_text_utf8(std::ptr::null(), 0);
+            IosBackgroundState::set_utf8_string(&mut state.auth_email, std::ptr::null(), 0);
             return;
         }
         let ptr_u8 = ptr as *const u8;
-        state.set_composer_text_utf8(ptr_u8, len);
+        IosBackgroundState::set_utf8_string(&mut state.auth_email, ptr_u8, len);
     }
 }
