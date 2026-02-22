@@ -1,17 +1,27 @@
+use std::collections::{HashMap, HashSet};
+
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::khala_protocol::{
-    KhalaEventPayload, PhoenixFrame, SyncErrorPayload, build_phoenix_frame, decode_khala_payload,
-    parse_phoenix_frame,
+    build_phoenix_frame, decode_khala_payload, parse_phoenix_frame, KhalaEventPayload,
+    PhoenixFrame, SyncErrorPayload,
 };
 
 const DEFAULT_CHANNEL_TOPIC: &str = "sync:v1";
+const DEFAULT_WORKER_EVENTS_TOPIC: &str = "runtime.codex_worker_events";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SessionEvent {
+    pub topic: String,
     pub seq: Option<u64>,
     pub payload: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SessionTopicWatermark {
+    pub topic: String,
+    pub watermark: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,6 +35,7 @@ pub enum SessionStep {
     Events {
         events: Vec<SessionEvent>,
         watermark: u64,
+        topic_watermarks: Vec<SessionTopicWatermark>,
     },
     Error {
         code: String,
@@ -39,34 +50,55 @@ pub enum SessionStep {
 #[derive(Debug, Clone)]
 pub struct IosKhalaSession {
     channel_topic: String,
-    worker_events_topic: String,
-    worker_id: String,
-    resume_after: u64,
+    subscribed_topics: Vec<String>,
+    subscribed_topic_set: HashSet<String>,
+    topic_watermarks: HashMap<String, u64>,
     next_ref: u64,
     join_ref: Option<String>,
     pending_join_ref: Option<String>,
     pending_subscribe_ref: Option<String>,
     live: bool,
-    latest_watermark: u64,
 }
 
 impl IosKhalaSession {
     pub fn new(
-        worker_id: impl Into<String>,
+        _worker_id: impl Into<String>,
         worker_events_topic: impl Into<String>,
         resume_after: u64,
     ) -> Self {
+        let worker_events_topic = normalize_topic(worker_events_topic.into())
+            .unwrap_or_else(|| DEFAULT_WORKER_EVENTS_TOPIC.to_string());
+        let mut resume_after_map = HashMap::new();
+        resume_after_map.insert(worker_events_topic.clone(), resume_after);
+        Self::new_multi(vec![worker_events_topic], resume_after_map)
+    }
+
+    pub fn new_multi(topics: Vec<String>, resume_after_by_topic: HashMap<String, u64>) -> Self {
+        let mut subscribed_topics = normalize_topics(topics);
+        if subscribed_topics.is_empty() {
+            subscribed_topics.push(DEFAULT_WORKER_EVENTS_TOPIC.to_string());
+        }
+
+        let mut subscribed_topic_set = HashSet::new();
+        let mut topic_watermarks = HashMap::new();
+        for topic in &subscribed_topics {
+            subscribed_topic_set.insert(topic.clone());
+            topic_watermarks.insert(
+                topic.clone(),
+                resume_after_by_topic.get(topic).copied().unwrap_or(0),
+            );
+        }
+
         Self {
             channel_topic: DEFAULT_CHANNEL_TOPIC.to_string(),
-            worker_events_topic: worker_events_topic.into(),
-            worker_id: worker_id.into(),
-            resume_after,
+            subscribed_topics,
+            subscribed_topic_set,
+            topic_watermarks,
             next_ref: 1,
             join_ref: None,
             pending_join_ref: None,
             pending_subscribe_ref: None,
             live: false,
-            latest_watermark: resume_after,
         }
     }
 
@@ -100,7 +132,7 @@ impl IosKhalaSession {
     }
 
     pub fn latest_watermark(&self) -> u64 {
-        self.latest_watermark
+        self.topic_watermarks.values().copied().max().unwrap_or(0)
     }
 
     pub fn handle_frame_raw(&mut self, raw_frame: &str) -> SessionStep {
@@ -166,10 +198,8 @@ impl IosKhalaSession {
                     self.channel_topic.as_str(),
                     "sync:subscribe",
                     json!({
-                        "topics": [self.worker_events_topic.clone()],
-                        "resume_after": {
-                            self.worker_events_topic.clone(): self.latest_watermark.max(self.resume_after),
-                        },
+                        "topics": self.subscribed_topics,
+                        "resume_after": self.topic_watermarks,
                         "replay_batch_size": 200,
                     }),
                 );
@@ -202,40 +232,42 @@ impl IosKhalaSession {
     fn handle_update(&mut self, frame: PhoenixFrame) -> SessionStep {
         match decode_khala_payload(&frame) {
             Some(KhalaEventPayload::UpdateBatch(batch)) => {
-                let previous = self.latest_watermark;
+                let previous_topic_watermarks = self.topic_watermarks.clone();
                 let mut events = Vec::new();
 
                 for update in batch.updates {
-                    if update.topic != self.worker_events_topic {
+                    if !self.subscribed_topic_set.contains(update.topic.as_str()) {
                         continue;
                     }
-                    self.latest_watermark = self.latest_watermark.max(update.watermark);
+
+                    self.topic_watermarks
+                        .entry(update.topic.clone())
+                        .and_modify(|watermark| *watermark = (*watermark).max(update.watermark))
+                        .or_insert(update.watermark);
 
                     let Some(payload) = update.payload else {
                         continue;
                     };
-                    let worker_id = payload
-                        .get("workerId")
-                        .and_then(Value::as_str)
-                        .or_else(|| payload.get("worker_id").and_then(Value::as_str));
-                    if worker_id != Some(self.worker_id.as_str()) {
-                        continue;
-                    }
 
                     let seq = payload
                         .get("seq")
                         .and_then(Value::as_u64)
                         .or(Some(update.watermark));
-                    events.push(SessionEvent { seq, payload });
+                    events.push(SessionEvent {
+                        topic: update.topic,
+                        seq,
+                        payload,
+                    });
                 }
 
-                if events.is_empty() && self.latest_watermark <= previous {
+                if events.is_empty() && self.topic_watermarks == previous_topic_watermarks {
                     return SessionStep::Ignore;
                 }
 
                 SessionStep::Events {
                     events,
-                    watermark: self.latest_watermark,
+                    watermark: self.latest_watermark(),
+                    topic_watermarks: self.topic_watermarks_snapshot(),
                 }
             }
             Some(KhalaEventPayload::Heartbeat(_)) | Some(KhalaEventPayload::Other) | None => {
@@ -243,6 +275,19 @@ impl IosKhalaSession {
             }
             Some(KhalaEventPayload::Error(sync_error)) => Self::from_sync_error(sync_error),
         }
+    }
+
+    fn topic_watermarks_snapshot(&self) -> Vec<SessionTopicWatermark> {
+        let mut watermarks: Vec<SessionTopicWatermark> = self
+            .topic_watermarks
+            .iter()
+            .map(|(topic, watermark)| SessionTopicWatermark {
+                topic: topic.clone(),
+                watermark: *watermark,
+            })
+            .collect();
+        watermarks.sort_by(|lhs, rhs| lhs.topic.cmp(&rhs.topic));
+        watermarks
     }
 
     fn handle_sync_error(&mut self, payload: Value) -> SessionStep {
@@ -319,8 +364,28 @@ impl IosKhalaSession {
     }
 }
 
+fn normalize_topic(raw: String) -> Option<String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_string())
+    }
+}
+
+fn normalize_topics(topics: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    topics
+        .into_iter()
+        .filter_map(normalize_topic)
+        .filter(|topic| seen.insert(topic.clone()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use serde_json::json;
 
     use super::{IosKhalaSession, SessionStep};
@@ -341,6 +406,33 @@ mod tests {
         };
         assert!(frame.contains("\"sync:subscribe\""));
         assert!(frame.contains("\"runtime.codex_worker_events\""));
+        assert!(frame.contains("\"resume_after\""));
+    }
+
+    #[test]
+    fn session_subscribe_payload_supports_multi_topic_resume_map() {
+        let mut resume_after = HashMap::new();
+        resume_after.insert("runtime.codex_worker_events".to_string(), 19);
+        resume_after.insert("runtime.codex_worker_summaries".to_string(), 7);
+        let mut session = IosKhalaSession::new_multi(
+            vec![
+                "runtime.codex_worker_events".to_string(),
+                "runtime.codex_worker_summaries".to_string(),
+                "runtime.codex_worker_events".to_string(),
+            ],
+            resume_after,
+        );
+
+        let _ = session.start();
+        let subscribe = session
+            .handle_frame_raw(r#"[null,"1","sync:v1","phx_reply",{"status":"ok","response":{}}]"#);
+        let SessionStep::Outbound { frame } = subscribe else {
+            panic!("expected subscribe frame");
+        };
+        assert!(frame.contains("\"runtime.codex_worker_events\""));
+        assert!(frame.contains("\"runtime.codex_worker_summaries\""));
+        assert!(frame.contains("\"runtime.codex_worker_events\":19"));
+        assert!(frame.contains("\"runtime.codex_worker_summaries\":7"));
     }
 
     #[test]
@@ -355,8 +447,14 @@ mod tests {
     }
 
     #[test]
-    fn update_batch_emits_filtered_events_and_watermark() {
-        let mut session = IosKhalaSession::new("worker-1", "runtime.codex_worker_events", 0);
+    fn update_batch_emits_multi_topic_events_without_worker_filtering() {
+        let mut session = IosKhalaSession::new_multi(
+            vec![
+                "runtime.codex_worker_events".to_string(),
+                "runtime.codex_worker_summaries".to_string(),
+            ],
+            HashMap::new(),
+        );
         let frame = json!([
             "1",
             "9",
@@ -381,6 +479,23 @@ mod tests {
                             "seq": 12,
                             "method": "turn/completed"
                         }
+                    },
+                    {
+                        "topic": "runtime.codex_worker_summaries",
+                        "watermark": 20,
+                        "payload": {
+                            "worker_id": "worker-other",
+                            "status": "running",
+                            "latest_seq": 12,
+                            "adapter": "desktop_bridge"
+                        }
+                    },
+                    {
+                        "topic": "runtime.other_topic",
+                        "watermark": 30,
+                        "payload": {
+                            "ignored": true
+                        }
                     }
                 ]
             }
@@ -388,10 +503,30 @@ mod tests {
         let step =
             session.handle_frame_raw(&serde_json::to_string(&frame).expect("serialize frame"));
         match step {
-            SessionStep::Events { events, watermark } => {
-                assert_eq!(watermark, 12);
-                assert_eq!(events.len(), 1);
-                assert_eq!(events[0].seq, Some(11));
+            SessionStep::Events {
+                events,
+                watermark,
+                topic_watermarks,
+            } => {
+                assert_eq!(watermark, 20);
+                assert_eq!(events.len(), 3);
+                assert_eq!(events[0].topic, "runtime.codex_worker_events");
+                assert_eq!(events[1].topic, "runtime.codex_worker_events");
+                assert_eq!(events[2].topic, "runtime.codex_worker_summaries");
+                assert_eq!(events[1].seq, Some(12));
+                assert_eq!(
+                    topic_watermarks,
+                    vec![
+                        super::SessionTopicWatermark {
+                            topic: "runtime.codex_worker_events".to_string(),
+                            watermark: 12,
+                        },
+                        super::SessionTopicWatermark {
+                            topic: "runtime.codex_worker_summaries".to_string(),
+                            watermark: 20,
+                        },
+                    ]
+                );
             }
             _ => panic!("expected events step"),
         }

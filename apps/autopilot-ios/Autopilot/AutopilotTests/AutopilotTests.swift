@@ -294,6 +294,100 @@ struct AutopilotTests {
         }
     }
 
+    @Test("rust bridge khala session supports multi-topic multi-worker stream parity")
+    func rustBridgeKhalaSessionMultiTopicParity() {
+        guard RustClientCoreBridge.isAvailable else {
+            #expect(RustClientCoreBridge.ffiContractVersion == nil || !RustClientCoreBridge.isContractVersionCompatible)
+            return
+        }
+
+        guard let session = RustClientCoreBridge.createKhalaSession(
+            topics: [
+                "runtime.codex_worker_events",
+                "runtime.codex_worker_summaries",
+            ],
+            resumeAfterByTopic: [
+                "runtime.codex_worker_events": 12,
+                "runtime.codex_worker_summaries": 4,
+            ]
+        ) else {
+            #expect(Bool(false), "expected khala session allocation")
+            return
+        }
+        defer {
+            RustClientCoreBridge.freeKhalaSession(session)
+        }
+
+        let start = RustClientCoreBridge.khalaSessionStart(session)
+        #expect(start?.kind == "outbound")
+        #expect(start?.frame?.contains("\"phx_join\"") == true)
+
+        let joinReply = #"[null,"1","sync:v1","phx_reply",{"status":"ok","response":{}}]"#
+        let subscribe = RustClientCoreBridge.khalaSessionOnFrame(session, raw: joinReply)
+        #expect(subscribe?.kind == "outbound")
+        #expect(subscribe?.frame?.contains("runtime.codex_worker_events") == true)
+        #expect(subscribe?.frame?.contains("runtime.codex_worker_summaries") == true)
+
+        let updateBatch = #"""
+        ["1","3","sync:v1","sync:update_batch",{
+          "updates":[
+            {
+              "topic":"runtime.codex_worker_events",
+              "watermark":41,
+              "payload":{
+                "workerId":"desktopw:shared",
+                "seq":41,
+                "eventType":"worker.event",
+                "payload":{"method":"turn/started","source":"autopilot-desktop","params":{"thread_id":"thread-1"}}
+              }
+            },
+            {
+              "topic":"runtime.codex_worker_events",
+              "watermark":42,
+              "payload":{
+                "workerId":"desktopw:other",
+                "seq":42,
+                "eventType":"worker.event",
+                "payload":{"method":"turn/completed","source":"autopilot-desktop","params":{"thread_id":"thread-2"}}
+              }
+            },
+            {
+              "topic":"runtime.codex_worker_summaries",
+              "watermark":17,
+              "payload":{
+                "worker_id":"desktopw:other",
+                "status":"running",
+                "latest_seq":42,
+                "adapter":"desktop_bridge"
+              }
+            }
+          ]
+        }]
+        """#
+
+        let step = RustClientCoreBridge.khalaSessionOnFrame(session, raw: updateBatch)
+        #expect(step?.kind == "events")
+        #expect(step?.events?.count == 3)
+
+        let topics = Set(step?.events?.map(\.topic) ?? [])
+        #expect(topics.contains("runtime.codex_worker_events"))
+        #expect(topics.contains("runtime.codex_worker_summaries"))
+
+        let eventWorkerIDs = Set((step?.events ?? [])
+            .compactMap { event in
+                event.payload.objectValue?["workerId"]?.stringValue
+                    ?? event.payload.objectValue?["worker_id"]?.stringValue
+            })
+        #expect(eventWorkerIDs.contains("desktopw:shared"))
+        #expect(eventWorkerIDs.contains("desktopw:other"))
+
+        let topicWatermarks = Dictionary(uniqueKeysWithValues: (step?.topicWatermarks ?? []).map { item in
+            (item.topic, item.watermark)
+        })
+        #expect(topicWatermarks["runtime.codex_worker_events"] == 42)
+        #expect(topicWatermarks["runtime.codex_worker_summaries"] == 17)
+    }
+
     @Test("auth flow state keeps latest send-code challenge and drops stale completion")
     func authFlowStateDropsStaleSendCompletion() {
         var flow = CodexAuthFlowState()
@@ -392,6 +486,41 @@ struct AutopilotTests {
 
         #expect(store.watermark(namespace: namespace, workerID: workerID, topic: "runtime.codex_worker_events") == 0)
         #expect(store.watermark(namespace: namespace, workerID: workerID, topic: "runtime.other_topic") == 9)
+    }
+
+    @Test("resume checkpoint store computes max topic watermark across workers")
+    func resumeCheckpointStoreMaxTopicWatermark() {
+        var store = CodexResumeCheckpointStore()
+        let namespace = "device:ios-3|user:user-11"
+
+        store.upsert(
+            namespace: namespace,
+            workerID: "desktopw:shared",
+            topic: "runtime.codex_worker_events",
+            watermark: 30,
+            sessionID: "session-a",
+            updatedAt: "2026-02-21T10:20:00Z"
+        )
+        store.upsert(
+            namespace: namespace,
+            workerID: "desktopw:other",
+            topic: "runtime.codex_worker_events",
+            watermark: 44,
+            sessionID: "session-a",
+            updatedAt: "2026-02-21T10:20:01Z"
+        )
+        store.upsert(
+            namespace: namespace,
+            workerID: "desktopw:shared",
+            topic: "runtime.codex_worker_summaries",
+            watermark: 9,
+            sessionID: "session-a",
+            updatedAt: "2026-02-21T10:20:02Z"
+        )
+
+        #expect(store.maxWatermark(namespace: namespace, topic: "runtime.codex_worker_events") == 44)
+        #expect(store.maxWatermark(namespace: namespace, topic: "runtime.codex_worker_summaries") == 9)
+        #expect(store.maxWatermark(namespace: namespace, topic: "runtime.unknown") == 0)
     }
 
     @Test("lifecycle resume state rejects stale foreground generations")

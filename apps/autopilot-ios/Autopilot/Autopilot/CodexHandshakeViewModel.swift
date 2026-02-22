@@ -45,6 +45,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var activeStreamWorkerID: String?
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var khalaWorkerEventsWatermark: Int
+    private var pendingResyncFromByTopic: [String: Int] = [:]
     private var nextCodeSendAllowedAt: Date?
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
@@ -85,6 +86,8 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
     private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
+    private static let khalaWorkerSummariesTopic = "runtime.codex_worker_summaries"
+    private static let khalaSubscribedTopics = [khalaWorkerEventsTopic, khalaWorkerSummariesTopic]
     private static let khalaChannelTopic = "sync:v1"
     private static let khalaHeartbeatIntervalNS: UInt64 = 20_000_000_000
     private static let reconnectPolicy = KhalaReconnectPolicy.default
@@ -236,16 +239,10 @@ final class CodexHandshakeViewModel: ObservableObject {
             authUserID: normalizedAuthUserID,
             email: savedEmail
         )
-        let resumeWatermark: Int = {
-            guard let workerID = savedSelectedWorkerID else {
-                return 0
-            }
-            return loadedResumeStore.watermark(
-                namespace: resumeNamespace,
-                workerID: workerID,
-                topic: Self.khalaWorkerEventsTopic
-            )
-        }()
+        let resumeWatermark = loadedResumeStore.maxWatermark(
+            namespace: resumeNamespace,
+            topic: Self.khalaWorkerEventsTopic
+        )
         let initialWatermark = max(savedWorkerEventsWatermark, resumeWatermark)
 
         self.email = savedEmail
@@ -462,6 +459,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         resumeCheckpointStore.removeNamespace(namespaceToRemove)
         persistResumeCheckpointStore()
         khalaWorkerEventsWatermark = 0
+        pendingResyncFromByTopic.removeAll()
         defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
         isSendingCode = false
@@ -1214,17 +1212,18 @@ final class CodexHandshakeViewModel: ObservableObject {
             }
 
             do {
-                let syncToken = try await client.mintSyncToken(scopes: [Self.khalaWorkerEventsTopic])
+                let syncToken = try await client.mintSyncToken(scopes: Self.khalaSubscribedTopics)
                 let socketURL = try client.syncWebSocketURL(token: syncToken.token)
                 let session = URLSession(configuration: .default)
                 let socket = session.webSocketTask(with: socketURL)
                 socket.resume()
                 activeKhalaSocket = socket
 
+                let resumeAfterByTopic = khalaResumeAfterByTopic()
+
                 guard let khalaSession = RustClientCoreBridge.createKhalaSession(
-                    workerID: workerID,
-                    workerEventsTopic: Self.khalaWorkerEventsTopic,
-                    resumeAfter: khalaWorkerEventsWatermark
+                    topics: Self.khalaSubscribedTopics,
+                    resumeAfterByTopic: resumeAfterByTopic
                 ) else {
                     throw RuntimeCodexApiError(
                         message: "khala_session_init_failed",
@@ -1366,31 +1365,21 @@ final class CodexHandshakeViewModel: ObservableObject {
             await dispatchQueuedControlRequestsIfPossible(clientOverride: client)
 
         case "events":
-            if let watermark = step.watermark, watermark > khalaWorkerEventsWatermark {
-                persistWatermark(
-                    watermark,
-                    topic: Self.khalaWorkerEventsTopic,
-                    workerID: workerID
-                )
-            }
+            applyTopicWatermarks(step.topicWatermarks, fallbackWorkerID: workerID)
 
-            let mappedEvents = (step.events ?? []).map { event in
-                RuntimeCodexStreamEvent(
-                    id: event.seq,
-                    event: "codex.worker.event",
-                    payload: event.payload,
-                    rawData: jsonString(from: event.payload) ?? "{}"
-                )
+            let sessionEvents = (step.events ?? []).sorted { lhs, rhs in
+                let lhsSeq = lhs.seq ?? Int.min
+                let rhsSeq = rhs.seq ?? Int.min
+                if lhsSeq == rhsSeq {
+                    return lhs.topic < rhs.topic
+                }
+                return lhsSeq < rhsSeq
             }
-
-            guard !mappedEvents.isEmpty else {
+            guard !sessionEvents.isEmpty else {
                 return
             }
 
-            let orderedEvents = mappedEvents.sorted { lhs, rhs in
-                (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
-            }
-            handleIncoming(events: orderedEvents, workerID: workerID)
+            routeSessionEventsAcrossLanes(sessionEvents, fallbackWorkerID: workerID)
 
         case "error":
             let code = step.code ?? "sync_error"
@@ -1443,7 +1432,14 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: String, workerID: String) {
-        persistWatermark(0, topic: Self.khalaWorkerEventsTopic, workerID: workerID, allowDecrease: true)
+        let previousByTopic = khalaResumeAfterByTopic()
+        for topic in Self.khalaSubscribedTopics {
+            let previous = max(0, previousByTopic[topic] ?? 0)
+            if previous > 0 {
+                pendingResyncFromByTopic[topic] = previous
+            }
+            persistWatermark(0, topic: topic, workerID: workerID, allowDecrease: true)
+        }
         recordLifecycleEvent("stale_cursor_reset reason=\(reason)")
     }
 
@@ -1620,7 +1616,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         let updates = payloadObject["updates"]?.arrayValue ?? []
-        var matchedEvents: [RuntimeCodexStreamEvent] = []
+        var workerEventBatches: [String: [RuntimeCodexStreamEvent]] = [:]
 
         for update in updates {
             guard let updateObject = update.objectValue,
@@ -1644,15 +1640,13 @@ final class CodexHandshakeViewModel: ObservableObject {
                 streamPayload["workerId"]?.stringValue
                 ?? streamPayload["worker_id"]?.stringValue
 
-            guard eventWorkerID == workerID else {
-                continue
-            }
-
             let eventValue = JSONValue.object(streamPayload)
             let rawData = jsonString(from: eventValue) ?? "{}"
             let seq = streamPayload["seq"]?.intValue
 
-            matchedEvents.append(
+            let resolvedWorkerID = eventWorkerID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let workerKey = (resolvedWorkerID?.isEmpty == false) ? resolvedWorkerID! : workerID
+            workerEventBatches[workerKey, default: []].append(
                 RuntimeCodexStreamEvent(
                     id: seq,
                     event: "codex.worker.event",
@@ -1662,15 +1656,16 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
         }
 
-        guard !matchedEvents.isEmpty else {
+        guard !workerEventBatches.isEmpty else {
             return
         }
 
-        let orderedEvents = matchedEvents.sorted { lhs, rhs in
-            (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
+        for (batchWorkerID, batch) in workerEventBatches {
+            let orderedEvents = batch.sorted { lhs, rhs in
+                (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
+            }
+            handleIncoming(events: orderedEvents, workerID: batchWorkerID)
         }
-
-        handleIncoming(events: orderedEvents, workerID: workerID)
 
         if case .waitingAck = handshakeState {
             return
@@ -1846,6 +1841,66 @@ final class CodexHandshakeViewModel: ObservableObject {
     private func nextKhalaRef() -> String {
         khalaRefCounter += 1
         return String(khalaRefCounter)
+    }
+
+    private func routeSessionEventsAcrossLanes(
+        _ sessionEvents: [RustClientCoreBridge.KhalaSessionEvent],
+        fallbackWorkerID: String
+    ) {
+        var workerEventBatches: [String: [RuntimeCodexStreamEvent]] = [:]
+        workerEventBatches.reserveCapacity(4)
+
+        for sessionEvent in sessionEvents {
+            let topic = sessionEvent.topic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                continue
+            }
+
+            let inferredWorkerID = extractWorkerID(from: sessionEvent.payload) ?? fallbackWorkerID
+            if let seq = sessionEvent.seq {
+                persistWatermark(seq, topic: topic, workerID: inferredWorkerID)
+            }
+
+            if topic == Self.khalaWorkerSummariesTopic {
+                missionControlProjection = missionControlStore.ingestStreamEvent(
+                    topic: topic,
+                    seq: sessionEvent.seq,
+                    workerID: inferredWorkerID,
+                    payload: sessionEvent.payload
+                )
+                applyWorkerSummaryFromStreamPayload(
+                    sessionEvent.payload,
+                    fallbackWorkerID: inferredWorkerID
+                )
+                continue
+            }
+
+            guard topic == Self.khalaWorkerEventsTopic else {
+                missionControlProjection = missionControlStore.ingestStreamEvent(
+                    topic: topic,
+                    seq: sessionEvent.seq,
+                    workerID: inferredWorkerID,
+                    payload: sessionEvent.payload
+                )
+                continue
+            }
+
+            let rawData = jsonString(from: sessionEvent.payload) ?? "{}"
+            let mapped = RuntimeCodexStreamEvent(
+                id: sessionEvent.seq,
+                event: "codex.worker.event",
+                payload: sessionEvent.payload,
+                rawData: rawData
+            )
+            workerEventBatches[inferredWorkerID, default: []].append(mapped)
+        }
+
+        for (workerID, events) in workerEventBatches {
+            let orderedEvents = events.sorted { lhs, rhs in
+                (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
+            }
+            handleIncoming(events: orderedEvents, workerID: workerID)
+        }
     }
 
     private func handleIncoming(events: [RuntimeCodexStreamEvent], workerID: String) {
@@ -2082,7 +2137,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             break
         }
 
-        if let workerID = selectedWorkerID ?? activeStreamWorkerID {
+        if let workerID = event.workerID ?? selectedWorkerID ?? activeStreamWorkerID {
             missionControlProjection = missionControlStore.setActiveLane(
                 workerID: workerID,
                 threadID: activeThreadID
@@ -2922,6 +2977,55 @@ final class CodexHandshakeViewModel: ObservableObject {
         defaults.set(encoded, forKey: khalaResumeStoreKey)
     }
 
+    private func khalaResumeAfterByTopic() -> [String: Int] {
+        var resumeAfterByTopic: [String: Int] = [:]
+        for topic in Self.khalaSubscribedTopics {
+            var next = resumeCheckpointStore.maxWatermark(
+                namespace: currentResumeNamespace,
+                topic: topic
+            )
+            if topic == Self.khalaWorkerEventsTopic {
+                next = max(next, max(0, khalaWorkerEventsWatermark))
+            }
+            resumeAfterByTopic[topic] = max(0, next)
+        }
+        return resumeAfterByTopic
+    }
+
+    private func applyTopicWatermarks(
+        _ topicWatermarks: [RustClientCoreBridge.KhalaSessionTopicWatermark]?,
+        fallbackWorkerID: String
+    ) {
+        guard let topicWatermarks else {
+            return
+        }
+
+        for topicWatermark in topicWatermarks {
+            let topic = topicWatermark.topic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                continue
+            }
+
+            let watermark = max(0, topicWatermark.watermark)
+            persistWatermark(
+                watermark,
+                topic: topic,
+                workerID: fallbackWorkerID
+            )
+
+            if let fromSeq = pendingResyncFromByTopic[topic], watermark > fromSeq {
+                missionControlProjection = missionControlStore.markResynced(
+                    topic: topic,
+                    fromSeq: fromSeq,
+                    toSeq: watermark,
+                    workerID: nil
+                )
+                pendingResyncFromByTopic.removeValue(forKey: topic)
+                recordLifecycleEvent("resynced topic=\(topic) from=\(fromSeq) to=\(watermark)")
+            }
+        }
+    }
+
     private func persistWatermark(
         _ watermark: Int,
         topic: String,
@@ -2929,15 +3033,20 @@ final class CodexHandshakeViewModel: ObservableObject {
         allowDecrease: Bool = false
     ) {
         let normalized = max(0, watermark)
-        let current = max(0, khalaWorkerEventsWatermark)
-        if allowDecrease {
-            khalaWorkerEventsWatermark = normalized
-        } else {
-            khalaWorkerEventsWatermark = max(current, normalized)
-        }
-        defaults.set(khalaWorkerEventsWatermark, forKey: khalaWorkerEventsWatermarkKey)
+        let existing = resumeCheckpointStore.watermark(
+            namespace: currentResumeNamespace,
+            workerID: workerID,
+            topic: topic
+        )
+        let nextWatermark = allowDecrease ? normalized : max(existing, normalized)
 
-        if allowDecrease && khalaWorkerEventsWatermark == 0 {
+        if topic == Self.khalaWorkerEventsTopic {
+            let current = max(0, khalaWorkerEventsWatermark)
+            khalaWorkerEventsWatermark = allowDecrease ? normalized : max(current, nextWatermark)
+            defaults.set(khalaWorkerEventsWatermark, forKey: khalaWorkerEventsWatermarkKey)
+        }
+
+        if allowDecrease && nextWatermark == 0 {
             resumeCheckpointStore.resetTopic(
                 namespace: currentResumeNamespace,
                 workerID: workerID,
@@ -2949,7 +3058,7 @@ final class CodexHandshakeViewModel: ObservableObject {
                 namespace: currentResumeNamespace,
                 workerID: workerID,
                 topic: topic,
-                watermark: khalaWorkerEventsWatermark,
+                watermark: nextWatermark,
                 sessionID: sessionID,
                 updatedAt: iso8601(now())
             )
@@ -2983,18 +3092,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func syncMissionControlWorkerSummaries(from workers: [RuntimeCodexWorkerSummary]) {
-        let reconnectState: String = {
-            switch streamState {
-            case .idle:
-                return "idle"
-            case .connecting:
-                return "connecting"
-            case .live:
-                return "live"
-            case .reconnecting:
-                return "reconnecting"
-            }
-        }()
+        let reconnectState = streamReconnectStateLabel()
         for worker in workers {
             missionControlProjection = missionControlStore.ingestWorkerSummary(
                 worker,
@@ -3009,6 +3107,101 @@ final class CodexHandshakeViewModel: ObservableObject {
                 threadID: activeThreadID
             )
         }
+    }
+
+    private func streamReconnectStateLabel() -> String {
+        switch streamState {
+        case .idle:
+            return "idle"
+        case .connecting:
+            return "connecting"
+        case .live:
+            return "live"
+        case .reconnecting:
+            return "reconnecting"
+        }
+    }
+
+    private func extractWorkerID(from payload: JSONValue) -> String? {
+        if let object = payload.objectValue {
+            if let direct = object["workerId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !direct.isEmpty {
+                return direct
+            }
+            if let direct = object["worker_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !direct.isEmpty {
+                return direct
+            }
+            if let nested = object["payload"]?.objectValue {
+                if let nestedID = nested["workerId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !nestedID.isEmpty {
+                    return nestedID
+                }
+                if let nestedID = nested["worker_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !nestedID.isEmpty {
+                    return nestedID
+                }
+            }
+        }
+        return nil
+    }
+
+    private func applyWorkerSummaryFromStreamPayload(_ payload: JSONValue, fallbackWorkerID: String) {
+        guard var object = payload.objectValue else {
+            return
+        }
+
+        if let nested = object["summary"]?.objectValue {
+            object = nested
+        } else if let nested = object["payload"]?.objectValue,
+                  nested["status"] != nil || nested["latest_seq"] != nil || nested["worker_id"] != nil {
+            object = nested
+        }
+
+        let resolvedWorkerID = extractWorkerID(from: .object(object))
+            ?? fallbackWorkerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !resolvedWorkerID.isEmpty else {
+            return
+        }
+
+        let existing = workers.first { $0.workerID == resolvedWorkerID }
+        object["worker_id"] = .string(resolvedWorkerID)
+        if object["status"] == nil {
+            object["status"] = .string(existing?.status ?? "unknown")
+        }
+        if object["latest_seq"] == nil {
+            let fallbackSeq = object["seq"]?.intValue
+            object["latest_seq"] = .int(max(0, fallbackSeq ?? existing?.latestSeq ?? 0))
+        }
+        if object["adapter"] == nil {
+            object["adapter"] = .string(existing?.adapter ?? "unknown")
+        }
+        if object["metadata"] == nil {
+            object["metadata"] = .object(existing?.metadata ?? [:])
+        }
+        if object["workspace_ref"] == nil, let workspaceRef = existing?.workspaceRef {
+            object["workspace_ref"] = .string(workspaceRef)
+        }
+        if object["codex_home_ref"] == nil, let codexHomeRef = existing?.codexHomeRef {
+            object["codex_home_ref"] = .string(codexHomeRef)
+        }
+
+        guard let summaryData = try? JSONEncoder().encode(JSONValue.object(object)),
+              let summary = try? JSONDecoder().decode(RuntimeCodexWorkerSummary.self, from: summaryData) else {
+            return
+        }
+
+        if let index = workers.firstIndex(where: { $0.workerID == summary.workerID }) {
+            workers[index] = summary
+        } else {
+            workers.append(summary)
+        }
+
+        missionControlProjection = missionControlStore.ingestWorkerSummary(
+            summary,
+            reconnectState: streamReconnectStateLabel(),
+            occurredAt: iso8601(now())
+        )
     }
 
     private func selectedWorkerLatestSeq(workerID: String) -> Int {

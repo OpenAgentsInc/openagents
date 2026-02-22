@@ -1085,6 +1085,7 @@ enum RuntimeCodexProto {
     }
 
     struct WorkerPayload {
+        let workerID: String?
         let source: String?
         let method: String?
         let handshakeID: String?
@@ -1096,6 +1097,7 @@ enum RuntimeCodexProto {
 
     struct CodexEventEnvelope {
         let seq: Int?
+        let workerID: String?
         let source: String?
         let method: String
         let params: [String: JSONValue]
@@ -1143,6 +1145,12 @@ enum RuntimeCodexProto {
         }
 
         let payloadEnvelope = WorkerPayload(
+            workerID: normalizedString(
+                object["workerId"]?.stringValue
+                    ?? object["worker_id"]?.stringValue
+                    ?? workerPayload["workerId"]?.stringValue
+                    ?? workerPayload["worker_id"]?.stringValue
+            ),
             source: normalizedString(workerPayload["source"]?.stringValue),
             method: normalizedString(workerPayload["method"]?.stringValue),
             handshakeID: normalizedString(
@@ -1219,6 +1227,7 @@ enum RuntimeCodexProto {
 
         return CodexEventEnvelope(
             seq: event.seq,
+            workerID: event.payload.workerID,
             source: event.payload.source,
             method: method,
             params: params,
@@ -1428,6 +1437,13 @@ struct CodexResumeCheckpointStore: Codable, Equatable {
             return 0
         }
         return max(0, checkpoint.topicWatermarks[topic] ?? 0)
+    }
+
+    func maxWatermark(namespace: String, topic: String) -> Int {
+        checkpoints.values
+            .filter { $0.namespace == namespace }
+            .map { max(0, $0.topicWatermarks[topic] ?? 0) }
+            .max() ?? 0
     }
 
     mutating func upsert(
