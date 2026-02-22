@@ -24,8 +24,8 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
-    SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
-    TurnStartParams, UserInput,
+    SandboxPolicy, ThreadListParams, ThreadReadParams, ThreadResumeParams, ThreadStartParams,
+    TurnInterruptParams, TurnStartParams, UserInput,
 };
 use dsrs::signatures::{
     GuidanceDirectiveSignature, GuidanceRouterSignature, PlanningSignature,
@@ -75,7 +75,8 @@ use runtime_auth::{
     runtime_auth_state_path,
 };
 use runtime_codex_proto::{
-    RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame, extract_control_request,
+    ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame,
+    extract_control_request,
     extract_desktop_handshake_ack_id,
     extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
@@ -166,11 +167,16 @@ struct RuntimeCodexSync {
     acked_handshakes: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
 }
 
 impl RuntimeCodexSync {
-    fn from_env(cwd: &str, action_tx: mpsc::Sender<UserAction>) -> Option<Self> {
+    fn from_env(
+        cwd: &str,
+        action_tx: mpsc::Sender<UserAction>,
+        remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
+    ) -> Option<Self> {
         let stored_auth = load_runtime_auth_state();
         let env_base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
             .ok()
@@ -236,6 +242,7 @@ impl RuntimeCodexSync {
             acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            remote_control_tx,
             action_tx,
         })
     }
@@ -852,15 +859,44 @@ impl RuntimeCodexSync {
                 }
 
                 self.mark_control_request_seen(dedupe_key).await;
+                let Some(session_id) = self.resolve_worker_session_id(worker_id).await else {
+                    self.emit_control_error_receipt(
+                        worker_id,
+                        &request.request_id,
+                        request.method.as_str(),
+                        "worker_unavailable",
+                        "desktop session mapping unavailable",
+                        Some(json!({
+                            "phase": "dispatch",
+                            "reason": "missing_session_mapping",
+                        })),
+                    )
+                    .await?;
+                    return Ok(());
+                };
+
+                let dispatch = RuntimeRemoteControlRequest {
+                    worker_id: worker_id.to_string(),
+                    request_id: request.request_id.clone(),
+                    method: request.method,
+                    params: request.params.clone(),
+                    session_id,
+                    thread_id: request.thread_id.clone(),
+                };
+
+                self.remote_control_tx.send(dispatch).await.map_err(|err| {
+                    format!(
+                        "runtime sync failed to enqueue remote control request {}: {}",
+                        request.request_id, err
+                    )
+                })?;
+
                 tracing::info!(
                     worker_id = %worker_id,
                     request_id = %request.request_id,
                     method = request.method.as_str(),
-                    "runtime sync accepted remote control request"
+                    "runtime sync queued remote control request"
                 );
-
-                // Phase 1 parse/validation lane: request is accepted and deduped here.
-                // Execution dispatch is wired in the next phase.
                 return Ok(());
             }
             Ok(None) => {}
@@ -875,23 +911,19 @@ impl RuntimeCodexSync {
                 let method = error
                     .method
                     .unwrap_or_else(|| RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK.to_string());
-
-                let receipt = build_error_receipt(
+                self.emit_control_error_receipt(
+                    worker_id,
                     &request_id,
                     &method,
                     error.code,
                     &error.message,
-                    false,
                     Some(json!({
                         "phase": "parse",
                         "worker_id": worker_id,
                         "seq": stream_event_seq(event),
                     })),
-                    &Utc::now().to_rfc3339(),
-                );
-
-                self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
-                    .await?;
+                )
+                .await?;
                 tracing::warn!(
                     worker_id = %worker_id,
                     request_id = %request_id,
@@ -957,6 +989,28 @@ impl RuntimeCodexSync {
         });
         let path = format!("/api/runtime/codex/workers/{worker_id}/events");
         self.post_json(&path, body).await.map(|_| ())
+    }
+
+    async fn emit_control_error_receipt(
+        &self,
+        worker_id: &str,
+        request_id: &str,
+        method: &str,
+        code: &str,
+        message: &str,
+        details: Option<Value>,
+    ) -> Result<(), String> {
+        let receipt = build_error_receipt(
+            request_id,
+            method,
+            code,
+            message,
+            false,
+            details,
+            &Utc::now().to_rfc3339(),
+        );
+        self.ingest_worker_event(worker_id, &receipt.event_type, receipt.payload)
+            .await
     }
 
     async fn fetch_worker_latest_seq(&self, worker_id: &str) -> Result<u64, String> {
@@ -1255,6 +1309,373 @@ fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     }
 }
 
+fn remote_control_invalid(
+    message: impl Into<String>,
+    details: Option<Value>,
+) -> RuntimeRemoteControlDispatchError {
+    RuntimeRemoteControlDispatchError {
+        code: "invalid_request",
+        message: message.into(),
+        details,
+    }
+}
+
+fn remote_control_worker_unavailable(
+    message: impl Into<String>,
+    details: Option<Value>,
+) -> RuntimeRemoteControlDispatchError {
+    RuntimeRemoteControlDispatchError {
+        code: "worker_unavailable",
+        message: message.into(),
+        details,
+    }
+}
+
+fn remote_control_internal(
+    message: impl Into<String>,
+    details: Option<Value>,
+) -> RuntimeRemoteControlDispatchError {
+    RuntimeRemoteControlDispatchError {
+        code: "internal_error",
+        message: message.into(),
+        details,
+    }
+}
+
+fn control_param_string(params: &Value, keys: &[&str]) -> Option<String> {
+    let object = params.as_object()?;
+    for key in keys {
+        if let Some(value) = object.get(*key).and_then(Value::as_str) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn control_param_bool(params: &Value, keys: &[&str]) -> Option<bool> {
+    let object = params.as_object()?;
+    for key in keys {
+        if let Some(value) = object.get(*key).and_then(Value::as_bool) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn control_param_u32(params: &Value, keys: &[&str], max: u32) -> Option<u32> {
+    let object = params.as_object()?;
+    for key in keys {
+        if let Some(raw) = object.get(*key).and_then(Value::as_u64) {
+            let capped = raw.min(u64::from(max));
+            let converted = u32::try_from(capped).ok()?;
+            if converted > 0 {
+                return Some(converted);
+            }
+        }
+    }
+    None
+}
+
+fn to_json_value_lossy<T: serde::Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+fn decode_turn_start_input(
+    params: &Value,
+) -> Result<Vec<UserInput>, RuntimeRemoteControlDispatchError> {
+    if let Some(input) = params.get("input") {
+        let decoded = serde_json::from_value::<Vec<UserInput>>(input.clone()).map_err(|err| {
+            remote_control_invalid(
+                format!("turn/start input payload is invalid: {err}"),
+                Some(json!({ "field": "input" })),
+            )
+        })?;
+
+        if decoded.is_empty() {
+            return Err(remote_control_invalid(
+                "turn/start input payload must not be empty",
+                Some(json!({ "field": "input" })),
+            ));
+        }
+
+        return Ok(decoded);
+    }
+
+    if let Some(text) = control_param_string(params, &["text", "message"]) {
+        return Ok(vec![UserInput::Text { text }]);
+    }
+
+    Err(remote_control_invalid(
+        "turn/start requires `input` or `text`",
+        Some(json!({ "field": "input" })),
+    ))
+}
+
+async fn execute_runtime_remote_control_request(
+    client: Arc<AppServerClient>,
+    request: RuntimeRemoteControlRequest,
+    cwd: String,
+    runtime_sync: Arc<Option<RuntimeCodexSync>>,
+    session_states: Arc<tokio::sync::Mutex<HashMap<SessionId, SessionRuntime>>>,
+    thread_to_session: Arc<tokio::sync::Mutex<HashMap<String, SessionId>>>,
+) -> Result<Value, RuntimeRemoteControlDispatchError> {
+    let session_state = session_states
+        .lock()
+        .await
+        .get(&request.session_id)
+        .cloned()
+        .ok_or_else(|| {
+            remote_control_worker_unavailable(
+                format!("session {} is not available", request.session_id),
+                Some(json!({ "session_id": request.session_id.to_string() })),
+            )
+        })?;
+
+    let requested_thread_id = request
+        .thread_id
+        .clone()
+        .or_else(|| extract_thread_id(Some(&request.params)));
+    let mapped_thread_id = session_state.thread_id.lock().await.clone();
+    let resolved_thread_id = requested_thread_id.or(mapped_thread_id.clone());
+
+    match request.method {
+        ControlMethod::ThreadStart => {
+            let model = control_param_string(&request.params, &["model"]);
+            let model_provider = control_param_string(&request.params, &["model_provider"]);
+            let response = client
+                .thread_start(ThreadStartParams {
+                    model,
+                    model_provider,
+                    cwd: Some(cwd.clone()),
+                    approval_policy: Some(AskForApproval::Never),
+                    sandbox: Some(SandboxMode::DangerFullAccess),
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("thread/start failed: {err}"),
+                        Some(json!({ "method": "thread/start" })),
+                    )
+                })?;
+
+            {
+                let mut guard = session_state.thread_id.lock().await;
+                *guard = Some(response.thread.id.clone());
+            }
+            {
+                let mut guard = thread_to_session.lock().await;
+                guard.insert(response.thread.id.clone(), request.session_id);
+            }
+            if let Some(sync) = runtime_sync.as_ref() {
+                sync.ensure_worker_for_thread(&response.thread.id, Some(request.session_id))
+                    .await
+                    .map_err(|err| {
+                        remote_control_internal(
+                            format!("thread/start worker mapping sync failed: {err}"),
+                            Some(json!({ "thread_id": response.thread.id })),
+                        )
+                    })?;
+            }
+
+            Ok(to_json_value_lossy(&response))
+        }
+        ControlMethod::ThreadResume => {
+            let thread_id = resolved_thread_id.ok_or_else(|| {
+                remote_control_invalid(
+                    "thread/resume requires thread_id",
+                    Some(json!({ "field": "thread_id" })),
+                )
+            })?;
+            let model = control_param_string(&request.params, &["model"]);
+            let model_provider = control_param_string(&request.params, &["model_provider"]);
+
+            let response = client
+                .thread_resume(ThreadResumeParams {
+                    thread_id: thread_id.clone(),
+                    model,
+                    model_provider,
+                    cwd: Some(cwd.clone()),
+                    approval_policy: Some(AskForApproval::Never),
+                    sandbox: Some(SandboxMode::DangerFullAccess),
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("thread/resume failed: {err}"),
+                        Some(json!({ "method": "thread/resume", "thread_id": thread_id })),
+                    )
+                })?;
+
+            {
+                let mut guard = session_state.thread_id.lock().await;
+                *guard = Some(response.thread.id.clone());
+            }
+            {
+                let mut guard = thread_to_session.lock().await;
+                guard.insert(response.thread.id.clone(), request.session_id);
+            }
+            if let Some(sync) = runtime_sync.as_ref() {
+                sync.ensure_worker_for_thread(&response.thread.id, Some(request.session_id))
+                    .await
+                    .map_err(|err| {
+                        remote_control_internal(
+                            format!("thread/resume worker mapping sync failed: {err}"),
+                            Some(json!({ "thread_id": response.thread.id })),
+                        )
+                    })?;
+            }
+
+            Ok(to_json_value_lossy(&response))
+        }
+        ControlMethod::TurnStart => {
+            let thread_id = resolved_thread_id.ok_or_else(|| {
+                remote_control_invalid(
+                    "turn/start requires thread_id",
+                    Some(json!({ "field": "thread_id" })),
+                )
+            })?;
+            let input = decode_turn_start_input(&request.params)?;
+            let model = control_param_string(&request.params, &["model"]);
+            let effort = control_param_string(
+                &request.params,
+                &["effort", "reasoning", "reasoning_effort"],
+            )
+            .and_then(|value| parse_reasoning_effort(&value));
+
+            let response = client
+                .turn_start(TurnStartParams {
+                    thread_id: thread_id.clone(),
+                    input,
+                    model,
+                    effort,
+                    summary: None,
+                    approval_policy: Some(AskForApproval::Never),
+                    sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+                    cwd: Some(cwd.clone()),
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("turn/start failed: {err}"),
+                        Some(json!({ "method": "turn/start", "thread_id": thread_id })),
+                    )
+                })?;
+
+            {
+                let mut thread_guard = session_state.thread_id.lock().await;
+                *thread_guard = Some(thread_id.clone());
+            }
+            {
+                let mut turn_guard = session_state.turn_id.lock().await;
+                *turn_guard = Some(response.turn.id.clone());
+            }
+
+            Ok(to_json_value_lossy(&response))
+        }
+        ControlMethod::TurnInterrupt => {
+            let thread_id = resolved_thread_id.ok_or_else(|| {
+                remote_control_invalid(
+                    "turn/interrupt requires thread_id",
+                    Some(json!({ "field": "thread_id" })),
+                )
+            })?;
+            let requested_turn_id = control_param_string(&request.params, &["turn_id", "turnId"]);
+            let mapped_turn_id = session_state.turn_id.lock().await.clone();
+            let turn_id = requested_turn_id.or(mapped_turn_id).ok_or_else(|| {
+                remote_control_invalid(
+                    "turn/interrupt requires turn_id",
+                    Some(json!({ "field": "turn_id" })),
+                )
+            })?;
+
+            client
+                .turn_interrupt(TurnInterruptParams {
+                    thread_id: thread_id.clone(),
+                    turn_id: turn_id.clone(),
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("turn/interrupt failed: {err}"),
+                        Some(
+                            json!({
+                                "method": "turn/interrupt",
+                                "thread_id": thread_id,
+                                "turn_id": turn_id,
+                            }),
+                        ),
+                    )
+                })?;
+
+            {
+                let mut guard = session_state.turn_id.lock().await;
+                *guard = None;
+            }
+
+            Ok(json!({ "status": "interrupted", "turn_id": turn_id }))
+        }
+        ControlMethod::ThreadList => {
+            let limit = control_param_u32(&request.params, &["limit"], 200);
+            let cursor = control_param_string(&request.params, &["cursor"]);
+            let model_provider = control_param_string(&request.params, &["model_provider"]);
+            let model_providers = model_provider.map(|value| vec![value]);
+
+            let response = client
+                .thread_list(ThreadListParams {
+                    cursor,
+                    limit,
+                    model_providers,
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("thread/list failed: {err}"),
+                        Some(json!({ "method": "thread/list" })),
+                    )
+                })?;
+
+            Ok(to_json_value_lossy(&response))
+        }
+        ControlMethod::ThreadRead => {
+            let thread_id = resolved_thread_id.ok_or_else(|| {
+                remote_control_invalid(
+                    "thread/read requires thread_id",
+                    Some(json!({ "field": "thread_id" })),
+                )
+            })?;
+            let include_turns =
+                control_param_bool(&request.params, &["include_turns", "includeTurns"])
+                    .unwrap_or(false);
+
+            let response = client
+                .thread_read(ThreadReadParams {
+                    thread_id: thread_id.clone(),
+                    include_turns,
+                })
+                .await
+                .map_err(|err| {
+                    remote_control_internal(
+                        format!("thread/read failed: {err}"),
+                        Some(json!({ "method": "thread/read", "thread_id": thread_id })),
+                    )
+                })?;
+
+            {
+                let mut guard = session_state.thread_id.lock().await;
+                *guard = Some(response.thread.id.clone());
+            }
+            {
+                let mut guard = thread_to_session.lock().await;
+                guard.insert(response.thread.id.clone(), request.session_id);
+            }
+            Ok(to_json_value_lossy(&response))
+        }
+    }
+}
+
 fn resolve_path(raw: &str, cwd: &str) -> PathBuf {
     let trimmed = raw.trim();
     let path_buf = if trimmed == "~" || trimmed.starts_with("~/") {
@@ -1425,6 +1846,23 @@ impl SessionRuntime {
 #[derive(Clone)]
 struct MoltbookReplyTarget {
     post_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeRemoteControlRequest {
+    worker_id: String,
+    request_id: String,
+    method: ControlMethod,
+    params: Value,
+    session_id: SessionId,
+    thread_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeRemoteControlDispatchError {
+    code: &'static str,
+    message: String,
+    details: Option<Value>,
 }
 
 struct InProcessPylon {
@@ -2040,7 +2478,13 @@ fn spawn_event_bridge(
             let cwd_string = cwd.to_string_lossy().to_string();
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
-            let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string, action_tx.clone()));
+            let (remote_control_tx, remote_control_rx) =
+                tokio::sync::mpsc::channel::<RuntimeRemoteControlRequest>(128);
+            let runtime_sync = Arc::new(RuntimeCodexSync::from_env(
+                &cwd_string,
+                action_tx.clone(),
+                remote_control_tx,
+            ));
             let pending_runtime_auth_flow =
                 Arc::new(tokio::sync::Mutex::new(None::<RuntimeSyncAuthFlow>));
             if let Some(sync) = runtime_sync.as_ref() {
@@ -2719,6 +3163,87 @@ fn spawn_event_bridge(
                             thread_id_value.as_deref(),
                             turn_id_value.as_deref(),
                         );
+                    }
+                }
+            });
+
+            let client_remote_control = client.clone();
+            let runtime_sync_remote_control = runtime_sync.clone();
+            let session_states_remote_control = session_states.clone();
+            let thread_to_session_remote_control = thread_to_session.clone();
+            let cwd_remote_control = cwd_string.clone();
+            let proxy_remote_control = proxy.clone();
+            tokio::spawn(async move {
+                let mut remote_control_rx = remote_control_rx;
+                while let Some(request) = remote_control_rx.recv().await {
+                    let outcome = execute_runtime_remote_control_request(
+                        client_remote_control.clone(),
+                        request.clone(),
+                        cwd_remote_control.clone(),
+                        runtime_sync_remote_control.clone(),
+                        session_states_remote_control.clone(),
+                        thread_to_session_remote_control.clone(),
+                    )
+                    .await;
+
+                    match outcome {
+                        Ok(response_payload) => {
+                            tracing::info!(
+                                worker_id = %request.worker_id,
+                                request_id = %request.request_id,
+                                method = request.method.as_str(),
+                                "runtime sync executed remote control request"
+                            );
+                            let _ = proxy_remote_control.send_event(AppEvent::AppServerEvent {
+                                message: json!({
+                                    "method": "runtime/control_dispatch",
+                                    "params": {
+                                        "workerId": request.worker_id,
+                                        "requestId": request.request_id,
+                                        "method": request.method.as_str(),
+                                        "status": "ok",
+                                        "response": response_payload,
+                                    }
+                                })
+                                .to_string(),
+                            });
+                        }
+                        Err(error) => {
+                            if let Some(sync) = runtime_sync_remote_control.as_ref() {
+                                let _ = sync
+                                    .emit_control_error_receipt(
+                                        &request.worker_id,
+                                        &request.request_id,
+                                        request.method.as_str(),
+                                        error.code,
+                                        &error.message,
+                                        error.details.clone(),
+                                    )
+                                    .await;
+                            }
+                            tracing::warn!(
+                                worker_id = %request.worker_id,
+                                request_id = %request.request_id,
+                                method = request.method.as_str(),
+                                code = error.code,
+                                message = %error.message,
+                                "runtime sync remote control dispatch failed"
+                            );
+                            let _ = proxy_remote_control.send_event(AppEvent::AppServerEvent {
+                                message: json!({
+                                    "method": "runtime/control_dispatch",
+                                    "params": {
+                                        "workerId": request.worker_id,
+                                        "requestId": request.request_id,
+                                        "method": request.method.as_str(),
+                                        "status": "error",
+                                        "code": error.code,
+                                        "message": error.message,
+                                    }
+                                })
+                                .to_string(),
+                            });
+                        }
                     }
                 }
             });

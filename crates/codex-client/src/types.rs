@@ -144,6 +144,20 @@ pub struct ThreadResumeResponse {
     pub model_provider: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadReadParams {
+    pub thread_id: String,
+    #[serde(default)]
+    pub include_turns: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadReadResponse {
+    pub thread: ThreadSnapshot,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadSnapshot {
