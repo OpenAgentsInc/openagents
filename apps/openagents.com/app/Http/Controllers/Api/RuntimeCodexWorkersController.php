@@ -3,13 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\AI\Runtime\RuntimeCodexClient;
+use Carbon\CarbonImmutable;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RuntimeCodexWorkersController extends Controller
 {
+    private const CONTROL_METHOD_ALLOWLIST = [
+        'thread/start',
+        'thread/resume',
+        'turn/start',
+        'turn/interrupt',
+        'thread/list',
+        'thread/read',
+    ];
+
     public function index(Request $request, RuntimeCodexClient $client): JsonResponse
     {
         $user = $request->user();
@@ -99,14 +110,55 @@ class RuntimeCodexWorkersController extends Controller
 
         $validated = $request->validate([
             'request' => ['required', 'array'],
+            'request.request_id' => ['required', 'string', 'max:160'],
+            'request.method' => ['required', 'string', 'in:'.implode(',', self::CONTROL_METHOD_ALLOWLIST)],
+            'request.params' => ['nullable', 'array'],
+            'request.request_version' => ['nullable', 'string', 'max:32'],
+            'request.sent_at' => ['nullable', 'date'],
+            'request.source' => ['nullable', 'string', 'max:120'],
+            'request.session_id' => ['nullable', 'string', 'max:160'],
+            'request.thread_id' => ['nullable', 'string', 'max:160'],
         ]);
+
+        $requestId = (string) data_get($validated, 'request.request_id', '');
+        $method = (string) data_get($validated, 'request.method', '');
+        $requestVersion = data_get($validated, 'request.request_version');
+        $source = data_get($validated, 'request.source');
+        $deliveryLagMs = $this->deliveryLagMs(data_get($validated, 'request.sent_at'));
+        $correlationId = trim((string) ($request->header('x-request-id') ?? ''));
+        if ($correlationId === '' && $requestId !== '') {
+            $request->headers->set('x-request-id', $requestId);
+            $correlationId = $requestId;
+        }
 
         $pathTemplate = (string) config('runtime.elixir.codex_worker_requests_path_template', '/internal/v1/codex/workers/{worker_id}/requests');
         $path = str_replace('{worker_id}', $workerId, $pathTemplate);
+        $startedAt = microtime(true);
 
         $result = $client->request('POST', $path, $validated, [
             'user_id' => (int) $user->getAuthIdentifier(),
         ]);
+
+        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+        $logContext = [
+            'worker_id' => $workerId,
+            'request_id' => $requestId,
+            'method' => $method,
+            'request_version' => is_string($requestVersion) ? $requestVersion : null,
+            'source' => is_string($source) ? $source : null,
+            'correlation_id' => $correlationId !== '' ? $correlationId : null,
+            'delivery_lag_ms' => $deliveryLagMs,
+            'duration_ms' => $durationMs,
+            'status' => $result['status'],
+            'ok' => $result['ok'],
+        ];
+        if ($result['ok'] === true) {
+            Log::info('runtime codex control request dispatched', $logContext);
+        } else {
+            Log::warning('runtime codex control request failed', $logContext + [
+                'error' => $result['error'],
+            ]);
+        }
 
         return $this->fromRuntimeResult($result);
     }
@@ -228,5 +280,22 @@ class RuntimeCodexWorkersController extends Controller
                 'message' => (string) ($result['error'] ?? 'runtime codex request failed'),
             ],
         ], $status);
+    }
+
+    private function deliveryLagMs(mixed $sentAt): ?int
+    {
+        if (! is_string($sentAt) || trim($sentAt) === '') {
+            return null;
+        }
+
+        try {
+            $parsed = CarbonImmutable::parse($sentAt);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $lagMs = (int) round((microtime(true) * 1000) - $parsed->valueOf());
+
+        return max(0, $lagMs);
     }
 }

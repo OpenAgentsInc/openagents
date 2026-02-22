@@ -5,6 +5,7 @@ Rust-era Codex planning and integration boundaries.
 ## Canonical Doc
 
 - `docs/codex/rust-codex-unified-plan.md`
+- `docs/codex/control-lane-observability-guardrails.md`
 
 ## Related Docs
 
