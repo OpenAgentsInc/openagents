@@ -3,12 +3,36 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var model = CodexHandshakeViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showDebugSurface = false
 
     var body: some View {
-        // WGPUI-only: dots grid full screen, no Codex UI on top.
-        WgpuiBackgroundView()
-            .ignoresSafeArea()
-            .preferredColorScheme(.dark)
+        NavigationStack {
+            CodexChatView(model: model)
+                .navigationTitle("Codex")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(OATheme.background, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .overlay(alignment: .topTrailing) {
+                    Color.clear
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                        .onLongPressGesture(minimumDuration: 1.2) {
+                            showDebugSurface = true
+                        }
+                        .accessibilityHidden(true)
+                }
+        }
+        .sheet(isPresented: $showDebugSurface) {
+            CodexDebugView(model: model)
+        }
+        .onAppear {
+            model.handleScenePhaseChange(scenePhase)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            model.handleScenePhaseChange(newPhase)
+        }
+        .background(OATheme.background.ignoresSafeArea())
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -33,7 +57,7 @@ private struct CodexChatView: View {
                     if model.chatMessages.isEmpty {
                         let emptyDescription: String = {
                             if !model.isAuthenticated {
-                                return "Sign in on the Debug tab."
+                                return "Sign in from the hidden debug surface."
                             }
 
                             switch model.streamState {
