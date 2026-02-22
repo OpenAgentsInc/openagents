@@ -4,6 +4,9 @@ Date: 2026-02-22
 Status: Proposed program plan (execution backlog not yet created)  
 Owner: openagents.com platform
 
+Canonical execution checklist:
+- `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
+
 ## 1) Goal
 
 Port or explicitly retire 100% of currently active Laravel web app functionality in `apps/openagents.com` to Rust services (`service`) plus Rust/WGPUI web UI (`web-shell`), with production running Rust-only once parity is verified.

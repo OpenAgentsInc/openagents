@@ -1,6 +1,7 @@
 # Web Parity Status (Rust Shell)
 
 Status: active parity tracker for Rust web shell.
+Canonical checklist + charter: `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
 
 ## Core parity lanes
 
