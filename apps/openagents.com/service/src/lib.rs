@@ -497,6 +497,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route("/api/chat/stream", post(legacy_chat_stream))
         .route(
             "/api/chats",
             get(legacy_chats_index).post(legacy_chats_store),
@@ -505,6 +506,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(
             "/api/chats/:conversation_id/messages",
             get(legacy_chats_messages),
+        )
+        .route(
+            "/api/chats/:conversation_id/stream",
+            post(legacy_chats_stream),
         )
         .route("/api/chats/:conversation_id/runs", get(legacy_chats_runs))
         .route(
@@ -3141,6 +3146,107 @@ async fn legacy_chats_messages(
     ))
 }
 
+async fn legacy_chat_stream(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    legacy_stream_bridge(state, None, headers, payload).await
+}
+
+async fn legacy_chats_stream(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    legacy_stream_bridge(state, Some(conversation_id), headers, payload).await
+}
+
+async fn legacy_stream_bridge(
+    state: AppState,
+    conversation_id: Option<String>,
+    headers: HeaderMap,
+    payload: serde_json::Value,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let audit_request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let thread_id = match conversation_id {
+        Some(conversation_id) => normalized_conversation_id(&conversation_id)?,
+        None => legacy_stream_thread_id_from_payload(&payload)
+            .unwrap_or_else(|| format!("thread_{}", uuid::Uuid::new_v4().simple())),
+    };
+
+    let text = legacy_stream_user_text_from_payload(&payload).ok_or_else(|| {
+        validation_error(
+            "messages",
+            "Legacy stream payload must include user message text.",
+        )
+    })?;
+    validate_codex_turn_text(&text)?;
+
+    let worker_id = legacy_stream_worker_id_from_payload(&payload);
+    let thread_id_for_bridge = thread_id.clone();
+    let text_for_bridge = text.clone();
+    let bridge_request_id = format!("legacy_stream_{}", uuid::Uuid::new_v4().simple());
+    let control_request = RuntimeCodexWorkerControlRequest {
+        request_id: bridge_request_id.clone(),
+        method: "turn/start".to_string(),
+        params: serde_json::json!({
+            "thread_id": thread_id_for_bridge,
+            "text": text_for_bridge,
+        }),
+        request_version: Some("v1".to_string()),
+        source: Some("legacy_chat_stream_alias".to_string()),
+        session_id: None,
+        thread_id: None,
+    };
+
+    let worker_id_for_response = worker_id.unwrap_or_else(|| "desktopw:shared".to_string());
+    let bridge_response =
+        execute_codex_control_request(&state, &session, "turn/start", &control_request).await?;
+
+    state.observability.audit(
+        AuditEvent::new(
+            "legacy.chat.stream.bridge.accepted",
+            audit_request_id.clone(),
+        )
+        .with_user_id(session.user.id.clone())
+        .with_session_id(session.session.session_id.clone())
+        .with_org_id(session.session.active_org_id.clone())
+        .with_device_id(session.session.device_id.clone())
+        .with_attribute("thread_id", thread_id)
+        .with_attribute("bridge_method", "turn/start")
+        .with_attribute("bridge_request_id", bridge_request_id.clone())
+        .with_attribute("worker_id", worker_id_for_response.clone()),
+    );
+    state
+        .observability
+        .increment_counter("legacy.chat.stream.bridge.accepted", &audit_request_id);
+
+    Ok(legacy_chat_stream_data_response(
+        serde_json::json!({
+            "retired": true,
+            "stream_protocol": "disabled",
+            "canonical": "/api/runtime/codex/workers/:worker_id/requests",
+            "bridge": {
+                "method": "turn/start",
+                "worker_id": worker_id_for_response,
+                "request_id": bridge_request_id,
+            },
+            "response": bridge_response,
+        }),
+        StatusCode::OK,
+    ))
+}
+
 async fn legacy_chats_runs(
     State(state): State<AppState>,
     Path(conversation_id): Path<String>,
@@ -3228,6 +3334,91 @@ fn legacy_chat_data_response(payload: serde_json::Value, status: StatusCode) -> 
         HeaderValue::from_static("/api/runtime/threads"),
     );
     response
+}
+
+fn legacy_chat_stream_data_response(payload: serde_json::Value, status: StatusCode) -> Response {
+    let mut response = (status, Json(serde_json::json!({ "data": payload }))).into_response();
+    response
+        .headers_mut()
+        .insert("x-oa-legacy-chat-retired", HeaderValue::from_static("true"));
+    response.headers_mut().insert(
+        "x-oa-legacy-chat-canonical",
+        HeaderValue::from_static("/api/runtime/codex/workers/:worker_id/requests"),
+    );
+    response.headers_mut().insert(
+        "x-oa-legacy-chat-stream-protocol",
+        HeaderValue::from_static("disabled"),
+    );
+    response
+}
+
+fn legacy_stream_thread_id_from_payload(payload: &serde_json::Value) -> Option<String> {
+    json_non_empty_string(payload.get("thread_id"))
+        .or_else(|| json_non_empty_string(payload.get("threadId")))
+        .or_else(|| json_non_empty_string(payload.get("conversation_id")))
+        .or_else(|| json_non_empty_string(payload.get("conversationId")))
+        .or_else(|| json_non_empty_string(payload.get("id")))
+}
+
+fn legacy_stream_worker_id_from_payload(payload: &serde_json::Value) -> Option<String> {
+    json_non_empty_string(payload.get("worker_id"))
+        .or_else(|| json_non_empty_string(payload.get("workerId")))
+}
+
+fn legacy_stream_user_text_from_payload(payload: &serde_json::Value) -> Option<String> {
+    if let Some(text) = json_non_empty_string(payload.get("text"))
+        .or_else(|| json_non_empty_string(payload.get("message")))
+    {
+        return Some(text);
+    }
+
+    let messages = payload.get("messages")?.as_array()?;
+    for message in messages.iter().rev() {
+        let role = json_non_empty_string(message.get("role"))
+            .unwrap_or_else(|| "user".to_string())
+            .to_ascii_lowercase();
+        if role != "user" {
+            continue;
+        }
+        if let Some(text) = legacy_stream_message_text(message) {
+            return Some(text);
+        }
+    }
+
+    None
+}
+
+fn legacy_stream_message_text(message: &serde_json::Value) -> Option<String> {
+    if let Some(text) = json_non_empty_string(message.get("text"))
+        .or_else(|| json_non_empty_string(message.get("message")))
+    {
+        return Some(text);
+    }
+
+    match message.get("content") {
+        Some(serde_json::Value::String(content)) => non_empty(content.to_string()),
+        Some(serde_json::Value::Object(content)) => json_non_empty_string(content.get("text")),
+        Some(serde_json::Value::Array(parts)) => {
+            let joined = parts
+                .iter()
+                .filter_map(|part| match part {
+                    serde_json::Value::String(text) => non_empty(text.to_string()),
+                    serde_json::Value::Object(object) => json_non_empty_string(object.get("text"))
+                        .or_else(|| json_non_empty_string(object.get("value"))),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            non_empty(joined)
+        }
+        _ => None,
+    }
+}
+
+fn json_non_empty_string(value: Option<&serde_json::Value>) -> Option<String> {
+    let value = value?;
+    let raw = value.as_str()?;
+    non_empty(raw.to_string())
 }
 
 fn legacy_chat_summary(
@@ -7181,6 +7372,125 @@ mod tests {
             .body(Body::empty())?;
         let other_show_response = app.oneshot(other_show_request).await?;
         assert_eq!(other_show_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_alias_bridges_to_codex_control_request() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "legacy-stream@openagents.com").await?;
+
+        let stream_request = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"id":"thread-stream-alias","messages":[{"role":"user","content":"bridge hello"}]}"#,
+            ))?;
+        let stream_response = app.clone().oneshot(stream_request).await?;
+        assert_eq!(stream_response.status(), StatusCode::OK);
+        assert_eq!(
+            stream_response
+                .headers()
+                .get("x-oa-legacy-chat-retired")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+        assert_eq!(
+            stream_response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .and_then(|value| value.to_str().ok()),
+            Some("/api/runtime/codex/workers/:worker_id/requests")
+        );
+        assert_eq!(
+            stream_response
+                .headers()
+                .get("x-oa-legacy-chat-stream-protocol")
+                .and_then(|value| value.to_str().ok()),
+            Some("disabled")
+        );
+        let stream_body = read_json(stream_response).await?;
+        assert_eq!(stream_body["data"]["retired"], json!(true));
+        assert_eq!(stream_body["data"]["stream_protocol"], json!("disabled"));
+        assert_eq!(
+            stream_body["data"]["response"]["thread_id"],
+            json!("thread-stream-alias")
+        );
+
+        let messages_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads/thread-stream-alias/messages")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let messages_response = app.oneshot(messages_request).await?;
+        assert_eq!(messages_response.status(), StatusCode::OK);
+        let messages_body = read_json(messages_response).await?;
+        assert_eq!(
+            messages_body["data"]["messages"][0]["text"],
+            json!("bridge hello")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chats_stream_alias_uses_path_thread_id_and_accepts_structured_content()
+    -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "legacy-stream-path@openagents.com").await?;
+
+        let stream_request = Request::builder()
+            .method("POST")
+            .uri("/api/chats/thread-stream-path/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"messages":[{"role":"user","content":[{"type":"text","text":"path bridge"}]}]}"#,
+            ))?;
+        let stream_response = app.clone().oneshot(stream_request).await?;
+        assert_eq!(stream_response.status(), StatusCode::OK);
+        let stream_body = read_json(stream_response).await?;
+        assert_eq!(
+            stream_body["data"]["response"]["thread_id"],
+            json!("thread-stream-path")
+        );
+
+        let messages_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads/thread-stream-path/messages")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let messages_response = app.oneshot(messages_request).await?;
+        assert_eq!(messages_response.status(), StatusCode::OK);
+        let messages_body = read_json(messages_response).await?;
+        assert_eq!(
+            messages_body["data"]["messages"][0]["text"],
+            json!("path bridge")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_stream_alias_rejects_payload_without_user_text() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "legacy-stream-bad@openagents.com").await?;
+
+        let stream_request = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"messages":[{"role":"assistant","content":"no user message"}]}"#,
+            ))?;
+        let stream_response = app.oneshot(stream_request).await?;
+        assert_eq!(stream_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let stream_body = read_json(stream_response).await?;
+        assert_eq!(stream_body["error"]["code"], json!("invalid_request"));
 
         Ok(())
     }
