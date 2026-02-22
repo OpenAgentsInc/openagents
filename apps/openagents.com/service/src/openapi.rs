@@ -25,6 +25,7 @@ pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
 pub const ROUTE_L402_PAYWALLS: &str = "/api/l402/paywalls";
+pub const ROUTE_L402_PAYWALL_BY_ID: &str = "/api/l402/paywalls/:paywallId";
 pub const ROUTE_L402_SETTLEMENTS: &str = "/api/l402/settlements";
 pub const ROUTE_L402_DEPLOYMENTS: &str = "/api/l402/deployments";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
@@ -471,6 +472,42 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("l402_paywalls"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_L402_PAYWALLS,
+        operation_id: "l402PaywallCreate",
+        summary: "Create an L402 paywall rule (admin-only).",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("l402_paywall_create"),
+        response_example: Some("l402_paywall_create"),
+    },
+    OpenApiContract {
+        method: "patch",
+        route_path: ROUTE_L402_PAYWALL_BY_ID,
+        operation_id: "l402PaywallUpdate",
+        summary: "Update an L402 paywall rule (admin-only).",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("l402_paywall_update"),
+        response_example: Some("l402_paywall_update"),
+    },
+    OpenApiContract {
+        method: "delete",
+        route_path: ROUTE_L402_PAYWALL_BY_ID,
+        operation_id: "l402PaywallDelete",
+        summary: "Soft-delete an L402 paywall rule (admin-only).",
+        tag: "l402",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("l402_paywall_delete"),
     },
     OpenApiContract {
         method: "get",
@@ -1113,6 +1150,24 @@ fn request_example(key: &str) -> Option<Value> {
             "required_scopes": ["runtime.read"],
             "requested_topics": ["org:openagents:worker_events"]
         })),
+        "l402_paywall_create" => Some(json!({
+            "name": "Default",
+            "hostRegexp": "sats4ai\\.com",
+            "pathRegexp": "^/api/.*",
+            "priceMsats": 1000,
+            "upstream": "https://upstream.openagents.com",
+            "enabled": true,
+            "metadata": {
+                "tier": "default"
+            }
+        })),
+        "l402_paywall_update" => Some(json!({
+            "priceMsats": 2500,
+            "enabled": false,
+            "metadata": {
+                "tier": "burst"
+            }
+        })),
         "sync_token" => Some(json!({
             "scopes": ["runtime.codex_worker_events"],
             "topics": ["org:openagents:worker_events"],
@@ -1722,6 +1777,91 @@ fn response_example(key: &str) -> Option<Value> {
                 "filter": {
                     "autopilot": null
                 }
+            }
+        })),
+        "l402_paywall_create" => Some(json!({
+            "data": {
+                "paywall": {
+                    "id": "pw_123",
+                    "ownerUserId": "usr_123",
+                    "name": "Default",
+                    "hostRegexp": "sats4ai\\.com",
+                    "pathRegexp": "^/api/.*",
+                    "priceMsats": 1000,
+                    "upstream": "https://upstream.openagents.com",
+                    "enabled": true,
+                    "metadata": {"tier": "default"},
+                    "lastReconcileStatus": null,
+                    "lastReconcileError": null,
+                    "lastReconciledAt": null,
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z",
+                    "deletedAt": null
+                },
+                "deployment": {
+                    "status": "applied",
+                    "eventType": "l402_paywall_created",
+                    "eventId": 101,
+                    "reverted": false
+                },
+                "mutationEventId": 101
+            }
+        })),
+        "l402_paywall_update" => Some(json!({
+            "data": {
+                "paywall": {
+                    "id": "pw_123",
+                    "ownerUserId": "usr_123",
+                    "name": "Default",
+                    "hostRegexp": "sats4ai\\.com",
+                    "pathRegexp": "^/api/.*",
+                    "priceMsats": 2500,
+                    "upstream": "https://upstream.openagents.com",
+                    "enabled": false,
+                    "metadata": {"tier": "burst"},
+                    "lastReconcileStatus": "applied",
+                    "lastReconcileError": null,
+                    "lastReconciledAt": "2026-02-22T00:00:00Z",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:05:00Z",
+                    "deletedAt": null
+                },
+                "deployment": {
+                    "status": "applied",
+                    "eventType": "l402_paywall_updated",
+                    "eventId": 102,
+                    "reverted": false
+                },
+                "mutationEventId": 102
+            }
+        })),
+        "l402_paywall_delete" => Some(json!({
+            "data": {
+                "deleted": true,
+                "paywall": {
+                    "id": "pw_123",
+                    "ownerUserId": "usr_123",
+                    "name": "Default",
+                    "hostRegexp": "sats4ai\\.com",
+                    "pathRegexp": "^/api/.*",
+                    "priceMsats": 2500,
+                    "upstream": "https://upstream.openagents.com",
+                    "enabled": false,
+                    "metadata": {"tier": "burst"},
+                    "lastReconcileStatus": "applied",
+                    "lastReconcileError": null,
+                    "lastReconciledAt": "2026-02-22T00:05:00Z",
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:10:00Z",
+                    "deletedAt": "2026-02-22T00:10:00Z"
+                },
+                "deployment": {
+                    "status": "applied",
+                    "eventType": "l402_paywall_deleted",
+                    "eventId": 103,
+                    "reverted": false
+                },
+                "mutationEventId": 103
             }
         })),
         "l402_settlements" => Some(json!({

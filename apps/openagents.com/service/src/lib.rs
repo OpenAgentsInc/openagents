@@ -53,9 +53,11 @@ use crate::codex_threads::{
 };
 use crate::config::Config;
 use crate::domain_store::{
-    AutopilotAggregate, CreateAutopilotInput, DomainStore, DomainStoreError,
-    L402GatewayEventRecord, L402ReceiptRecord, UpdateAutopilotInput, UpsertAutopilotPolicyInput,
-    UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput, UserSparkWalletRecord,
+    AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, DomainStore,
+    DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
+    RecordL402GatewayEventInput, UpdateAutopilotInput, UpdateL402PaywallInput,
+    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
+    UserSparkWalletRecord,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -63,10 +65,10 @@ use crate::openapi::{
     ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
-    ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS,
-    ROUTE_L402_TRANSACTION_BY_ID, ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_ME,
-    ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
-    ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+    ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID, ROUTE_L402_PAYWALLS,
+    ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID, ROUTE_L402_TRANSACTIONS,
+    ROUTE_L402_WALLET, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
     ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS,
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
@@ -399,6 +401,40 @@ struct L402TransactionsQuery {
     per_page: Option<usize>,
     #[serde(default)]
     page: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct L402PaywallCreateRequestPayload {
+    name: String,
+    #[serde(alias = "hostRegexp")]
+    host_regexp: String,
+    #[serde(alias = "pathRegexp")]
+    path_regexp: String,
+    #[serde(alias = "priceMsats")]
+    price_msats: u64,
+    upstream: String,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default, alias = "metadata")]
+    meta: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct L402PaywallUpdateRequestPayload {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, alias = "hostRegexp")]
+    host_regexp: Option<String>,
+    #[serde(default, alias = "pathRegexp")]
+    path_regexp: Option<String>,
+    #[serde(default, alias = "priceMsats")]
+    price_msats: Option<u64>,
+    #[serde(default)]
+    upstream: Option<String>,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default, alias = "metadata")]
+    meta: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -851,6 +887,22 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_L402_TRANSACTIONS, get(l402_transactions))
         .route(ROUTE_L402_TRANSACTION_BY_ID, get(l402_transaction_show))
         .route(ROUTE_L402_PAYWALLS, get(l402_paywalls))
+        .route(
+            ROUTE_L402_PAYWALLS,
+            post(l402_paywall_create).route_layer(middleware::from_fn_with_state(
+                admin_state.clone(),
+                admin_email_gate,
+            )),
+        )
+        .route(
+            ROUTE_L402_PAYWALL_BY_ID,
+            patch(l402_paywall_update)
+                .delete(l402_paywall_delete)
+                .route_layer(middleware::from_fn_with_state(
+                    admin_state.clone(),
+                    admin_email_gate,
+                )),
+        )
         .route(ROUTE_L402_SETTLEMENTS, get(l402_settlements))
         .route(ROUTE_L402_DEPLOYMENTS, get(l402_deployments))
         .route("/api/chat/stream", post(legacy_chat_stream))
@@ -4714,6 +4766,370 @@ async fn l402_deployments(
             "autopilot": l402_filter_payload(autopilot_filter.as_ref())
         }
     })))
+}
+
+async fn l402_paywall_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<L402PaywallCreateRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let name = validate_l402_required_string(payload.name, "name", 120)?;
+    let host_regexp = validate_l402_regex_body(payload.host_regexp, "hostRegexp", false)?;
+    let path_regexp = validate_l402_regex_body(payload.path_regexp, "pathRegexp", true)?;
+    let price_msats = validate_l402_price_msats(payload.price_msats, "priceMsats")?;
+    let upstream = validate_l402_upstream(payload.upstream, "upstream")?;
+    let metadata = validate_optional_json_object_or_array(payload.meta, "metadata")?;
+
+    let paywall = state
+        ._domain_store
+        .create_l402_paywall(CreateL402PaywallInput {
+            owner_user_id: bundle.user.id.clone(),
+            name,
+            host_regexp,
+            path_regexp,
+            price_msats,
+            upstream,
+            enabled: payload.enabled,
+            meta: metadata,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mutation_event = state
+        ._domain_store
+        .record_l402_gateway_event(RecordL402GatewayEventInput {
+            user_id: bundle.user.id.clone(),
+            autopilot_id: None,
+            event_type: "l402_paywall_created".to_string(),
+            payload: serde_json::json!({
+                "paywallId": paywall.id.clone(),
+                "name": paywall.name.clone(),
+                "priceMsats": paywall.price_msats,
+                "enabled": paywall.enabled,
+            }),
+            created_at: Some(Utc::now()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("l402.paywall.created", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("paywall_id", paywall.id.clone())
+            .with_attribute("price_msats", paywall.price_msats.to_string())
+            .with_attribute("enabled", paywall.enabled.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("l402.paywall.created", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "data": {
+                "paywall": l402_paywall_payload(&paywall),
+                "deployment": l402_paywall_deployment_payload(&mutation_event),
+                "mutationEventId": mutation_event.id,
+            }
+        })),
+    ))
+}
+
+async fn l402_paywall_update(
+    State(state): State<AppState>,
+    Path(paywall_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<L402PaywallUpdateRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let paywall_id = non_empty(paywall_id).ok_or_else(|| not_found_error("Not found."))?;
+
+    let name = validate_l402_optional_mutable_string(payload.name, "name", 120)?;
+    let host_regexp = validate_l402_optional_regex_body(payload.host_regexp, "hostRegexp", false)?;
+    let path_regexp = validate_l402_optional_regex_body(payload.path_regexp, "pathRegexp", true)?;
+    let price_msats = payload
+        .price_msats
+        .map(|value| validate_l402_price_msats(value, "priceMsats"))
+        .transpose()?;
+    let upstream = payload
+        .upstream
+        .map(|value| validate_l402_upstream(value, "upstream"))
+        .transpose()?;
+    let metadata = validate_optional_json_object_or_array(payload.meta, "metadata")?;
+
+    if name.is_none()
+        && host_regexp.is_none()
+        && path_regexp.is_none()
+        && price_msats.is_none()
+        && upstream.is_none()
+        && payload.enabled.is_none()
+        && metadata.is_none()
+    {
+        return Err(validation_error(
+            "payload",
+            "At least one mutable paywall field must be provided.",
+        ));
+    }
+
+    let paywall = state
+        ._domain_store
+        .update_owned_l402_paywall(
+            &bundle.user.id,
+            &paywall_id,
+            UpdateL402PaywallInput {
+                name,
+                host_regexp,
+                path_regexp,
+                price_msats,
+                upstream,
+                enabled: payload.enabled,
+                meta: metadata,
+                last_reconcile_status: Some("applied".to_string()),
+                last_reconcile_error: Some(String::new()),
+                last_reconciled_at: Some(Utc::now()),
+            },
+        )
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mutation_event = state
+        ._domain_store
+        .record_l402_gateway_event(RecordL402GatewayEventInput {
+            user_id: bundle.user.id.clone(),
+            autopilot_id: None,
+            event_type: "l402_paywall_updated".to_string(),
+            payload: serde_json::json!({
+                "paywallId": paywall.id.clone(),
+                "priceMsats": paywall.price_msats,
+                "enabled": paywall.enabled,
+            }),
+            created_at: Some(Utc::now()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("l402.paywall.updated", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("paywall_id", paywall.id.clone())
+            .with_attribute("mutation_event_id", mutation_event.id.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("l402.paywall.updated", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "paywall": l402_paywall_payload(&paywall),
+        "deployment": l402_paywall_deployment_payload(&mutation_event),
+        "mutationEventId": mutation_event.id,
+    })))
+}
+
+async fn l402_paywall_delete(
+    State(state): State<AppState>,
+    Path(paywall_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let paywall_id = non_empty(paywall_id).ok_or_else(|| not_found_error("Not found."))?;
+
+    let paywall = state
+        ._domain_store
+        .soft_delete_owned_l402_paywall(&bundle.user.id, &paywall_id)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mutation_event = state
+        ._domain_store
+        .record_l402_gateway_event(RecordL402GatewayEventInput {
+            user_id: bundle.user.id.clone(),
+            autopilot_id: None,
+            event_type: "l402_paywall_deleted".to_string(),
+            payload: serde_json::json!({
+                "paywallId": paywall.id.clone(),
+                "deletedAt": paywall.deleted_at.map(timestamp),
+            }),
+            created_at: Some(Utc::now()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("l402.paywall.deleted", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("paywall_id", paywall.id.clone())
+            .with_attribute("mutation_event_id", mutation_event.id.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("l402.paywall.deleted", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "deleted": true,
+        "paywall": l402_paywall_payload(&paywall),
+        "deployment": l402_paywall_deployment_payload(&mutation_event),
+        "mutationEventId": mutation_event.id,
+    })))
+}
+
+fn l402_paywall_payload(paywall: &L402PaywallRecord) -> serde_json::Value {
+    let metadata = paywall
+        .meta
+        .clone()
+        .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+
+    serde_json::json!({
+        "id": paywall.id,
+        "ownerUserId": paywall.owner_user_id,
+        "name": paywall.name,
+        "hostRegexp": paywall.host_regexp,
+        "pathRegexp": paywall.path_regexp,
+        "priceMsats": paywall.price_msats,
+        "upstream": paywall.upstream,
+        "enabled": paywall.enabled,
+        "metadata": metadata,
+        "lastReconcileStatus": paywall.last_reconcile_status,
+        "lastReconcileError": paywall.last_reconcile_error,
+        "lastReconciledAt": paywall.last_reconciled_at.map(timestamp),
+        "createdAt": timestamp(paywall.created_at),
+        "updatedAt": timestamp(paywall.updated_at),
+        "deletedAt": paywall.deleted_at.map(timestamp),
+    })
+}
+
+fn l402_paywall_deployment_payload(event: &L402GatewayEventRecord) -> serde_json::Value {
+    serde_json::json!({
+        "status": "applied",
+        "eventType": event.event_type,
+        "eventId": event.id,
+        "reverted": false,
+    })
+}
+
+fn validate_l402_required_string(
+    value: String,
+    field: &'static str,
+    max_chars: usize,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(validation_error(field, "The field is required."));
+    }
+    if trimmed.chars().count() > max_chars {
+        return Err(validation_error(
+            field,
+            &format!("Value may not be greater than {max_chars} characters."),
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_l402_optional_mutable_string(
+    value: Option<String>,
+    field: &'static str,
+    max_chars: usize,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(validation_error(
+            field,
+            "The field is required when present.",
+        ));
+    }
+    if trimmed.chars().count() > max_chars {
+        return Err(validation_error(
+            field,
+            &format!("Value may not be greater than {max_chars} characters."),
+        ));
+    }
+
+    Ok(Some(trimmed.to_string()))
+}
+
+fn validate_l402_regex_body(
+    value: String,
+    field: &'static str,
+    must_start_with_path_anchor: bool,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = validate_l402_required_string(value, field, 255)?;
+
+    if must_start_with_path_anchor && !normalized.starts_with("^/") {
+        return Err(validation_error(
+            field,
+            "The field must start with '^/' to scope path matching.",
+        ));
+    }
+
+    if !must_start_with_path_anchor && !normalized.contains('.') && !normalized.contains("\\.") {
+        return Err(validation_error(
+            field,
+            "The field must include an explicit host pattern.",
+        ));
+    }
+
+    Ok(normalized)
+}
+
+fn validate_l402_optional_regex_body(
+    value: Option<String>,
+    field: &'static str,
+    must_start_with_path_anchor: bool,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    validate_l402_regex_body(value, field, must_start_with_path_anchor).map(Some)
+}
+
+fn validate_l402_price_msats(
+    value: u64,
+    field: &'static str,
+) -> Result<u64, (StatusCode, Json<ApiErrorResponse>)> {
+    const MAX_PRICE_MSATS: u64 = 1_000_000_000_000;
+    if value < 1 {
+        return Err(validation_error(field, "The value must be at least 1."));
+    }
+    if value > MAX_PRICE_MSATS {
+        return Err(validation_error(
+            field,
+            "The value may not be greater than 1000000000000.",
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_l402_upstream(
+    value: String,
+    field: &'static str,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = validate_l402_required_string(value, field, 2048)?;
+    let parsed = reqwest::Url::parse(&normalized)
+        .map_err(|_| validation_error(field, "The field must be a valid URL."))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(validation_error(
+            field,
+            "The field must start with http:// or https://.",
+        ));
+    }
+    Ok(normalized)
 }
 
 fn map_l402_receipt_row(row: L402ReceiptRecord) -> L402ReceiptView {
@@ -9647,6 +10063,14 @@ mod tests {
         paid_receipt_event_id: u64,
     }
 
+    async fn seed_local_test_token(config: &Config, email: &str) -> Result<String> {
+        let auth = super::AuthService::from_config(config);
+        let verify = auth
+            .local_test_sign_in(email.to_string(), None, Some("autopilot-ios"), None)
+            .await?;
+        Ok(verify.access_token)
+    }
+
     async fn seed_l402_fixture(config: &Config, email: &str) -> Result<L402Fixture> {
         let auth = super::AuthService::from_config(config);
         let verify = auth
@@ -14490,6 +14914,162 @@ mod tests {
         assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
         let forbidden_body = read_json(forbidden_response).await?;
         assert_eq!(forbidden_body["message"], json!("autopilot_forbidden"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let member_token = seed_local_test_token(&config, "member@openagents.com").await?;
+        let app = build_router(config);
+
+        let forbidden_request = Request::builder()
+            .method("POST")
+            .uri("/api/l402/paywalls")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {member_token}"))
+            .body(Body::from(
+                r#"{
+                    "name":"Default",
+                    "hostRegexp":"sats4ai\\.com",
+                    "pathRegexp":"^/api/.*",
+                    "priceMsats":1000,
+                    "upstream":"https://upstream.openagents.com",
+                    "enabled":true
+                }"#,
+            ))?;
+        let forbidden_response = app.clone().oneshot(forbidden_request).await?;
+        assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
+
+        let invalid_request = Request::builder()
+            .method("POST")
+            .uri("/api/l402/paywalls")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                r#"{
+                    "name":"Invalid",
+                    "hostRegexp":"sats4ai\\.com",
+                    "pathRegexp":"/api/.*",
+                    "priceMsats":1000,
+                    "upstream":"https://upstream.openagents.com"
+                }"#,
+            ))?;
+        let invalid_response = app.clone().oneshot(invalid_request).await?;
+        assert_eq!(invalid_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/l402/paywalls")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                r#"{
+                    "name":"Default",
+                    "hostRegexp":"sats4ai\\.com",
+                    "pathRegexp":"^/api/.*",
+                    "priceMsats":1000,
+                    "upstream":"https://upstream.openagents.com",
+                    "enabled":true,
+                    "metadata":{"tier":"default"}
+                }"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let paywall_id = create_body["data"]["paywall"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!paywall_id.is_empty());
+        assert_eq!(create_body["data"]["paywall"]["name"], json!("Default"));
+        assert_eq!(
+            create_body["data"]["deployment"]["status"],
+            json!("applied")
+        );
+        assert!(create_body["data"]["mutationEventId"].as_u64().unwrap_or(0) > 0);
+
+        let empty_update_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/l402/paywalls/{paywall_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("{}"))?;
+        let empty_update_response = app.clone().oneshot(empty_update_request).await?;
+        assert_eq!(
+            empty_update_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let empty_update_body = read_json(empty_update_response).await?;
+        assert_eq!(
+            empty_update_body["message"],
+            json!("At least one mutable paywall field must be provided.")
+        );
+
+        let update_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/l402/paywalls/{paywall_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                r#"{
+                    "priceMsats":2500,
+                    "enabled":false,
+                    "metadata":{"tier":"burst"}
+                }"#,
+            ))?;
+        let update_response = app.clone().oneshot(update_request).await?;
+        assert_eq!(update_response.status(), StatusCode::OK);
+        let update_body = read_json(update_response).await?;
+        assert_eq!(update_body["data"]["paywall"]["priceMsats"], json!(2500));
+        assert_eq!(update_body["data"]["paywall"]["enabled"], json!(false));
+        assert_eq!(
+            update_body["data"]["deployment"]["eventType"],
+            json!("l402_paywall_updated")
+        );
+
+        let delete_request = Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/l402/paywalls/{paywall_id}"))
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let delete_response = app.clone().oneshot(delete_request).await?;
+        assert_eq!(delete_response.status(), StatusCode::OK);
+        let delete_body = read_json(delete_response).await?;
+        assert_eq!(delete_body["data"]["deleted"], json!(true));
+        assert_eq!(
+            delete_body["data"]["deployment"]["eventType"],
+            json!("l402_paywall_deleted")
+        );
+
+        let deployments_request = Request::builder()
+            .method("GET")
+            .uri("/api/l402/deployments")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let deployments_response = app.oneshot(deployments_request).await?;
+        assert_eq!(deployments_response.status(), StatusCode::OK);
+        let deployments_body = read_json(deployments_response).await?;
+        let deployment_types = deployments_body["data"]["deployments"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|event| event["type"].as_str().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert!(deployment_types.contains(&"l402_paywall_created".to_string()));
+        assert!(deployment_types.contains(&"l402_paywall_updated".to_string()));
+        assert!(deployment_types.contains(&"l402_paywall_deleted".to_string()));
 
         Ok(())
     }
