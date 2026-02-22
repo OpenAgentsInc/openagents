@@ -1289,6 +1289,9 @@ async fn web_shell_entry(
     if path.starts_with("/api/") {
         return Err(static_not_found(format!("Route '{}' was not found.", path)));
     }
+    if is_retired_web_route(path) {
+        return Err(static_not_found(format!("Route '{}' was not found.", path)));
+    }
 
     let request_id = request_id(&headers);
     let cohort_key = resolve_route_cohort_key(&headers);
@@ -3697,7 +3700,12 @@ fn resolve_route_cohort_key(headers: &HeaderMap) -> String {
 
 fn is_pilot_chat_route(path: &str) -> bool {
     let normalized = path.trim();
-    normalized == "/chat" || normalized.starts_with("/chat/")
+    normalized == "/" || normalized == "/chat" || normalized.starts_with("/chat/")
+}
+
+fn is_retired_web_route(path: &str) -> bool {
+    let normalized = path.trim();
+    normalized == "/aui" || normalized.starts_with("/aui/")
 }
 
 fn emit_route_split_decision_audit(
@@ -6716,6 +6724,16 @@ mod tests {
         let route_html = String::from_utf8_lossy(&route_body);
         assert!(route_html.contains("rust shell"));
 
+        let root_request = Request::builder()
+            .uri("/")
+            .header("x-oa-route-key", "user:route")
+            .body(Body::empty())?;
+        let root_response = app.clone().oneshot(root_request).await?;
+        assert_eq!(root_response.status(), StatusCode::OK);
+        let root_body = root_response.into_body().collect().await?.to_bytes();
+        let root_html = String::from_utf8_lossy(&root_body);
+        assert!(root_html.contains("rust shell"));
+
         let workspace_request = Request::builder()
             .uri("/workspace/session-1")
             .header("x-oa-route-key", "user:route")
@@ -6729,6 +6747,22 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("https://legacy.openagents.test/workspace/session-1")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retired_aui_route_returns_not_found() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder().uri("/aui").body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
         Ok(())
     }

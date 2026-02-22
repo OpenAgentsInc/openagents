@@ -66,8 +66,6 @@ Route::get('api/smoke/stream', function (Request $request) {
     ]);
 })->name('api.smoke.stream');
 
-Route::get('aui', fn () => Inertia::render('aui'))->name('aui');
-
 Route::middleware([
     'auth',
     ValidateWorkOSSession::class,

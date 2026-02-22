@@ -1480,6 +1480,10 @@ mod wasm {
         )
     }
 
+    fn route_is_codex_chat_surface(route: &AppRoute) -> bool {
+        matches!(route, AppRoute::Home | AppRoute::Chat { .. })
+    }
+
     fn route_is_auth_surface(route: &AppRoute) -> bool {
         matches!(
             route,
@@ -2862,7 +2866,8 @@ mod wasm {
         let thread_id = thread_id_from_route(&route);
         let is_management_route = route_is_management_surface(&route);
         let is_auth_route = route_is_auth_surface(&route);
-        if thread_id.is_none() && !is_management_route && !is_auth_route {
+        let is_codex_chat_route = route_is_codex_chat_surface(&route);
+        if thread_id.is_none() && !is_management_route && !is_auth_route && !is_codex_chat_route {
             let _ = root.style().set_property("display", "none");
             return;
         }
@@ -2891,6 +2896,17 @@ mod wasm {
             .get_element_by_id(AUTH_PANEL_ID)
             .and_then(|element| element.dyn_into::<HtmlElement>().ok());
 
+        if is_codex_chat_route && !auth_state.has_active_session() {
+            let _ = root.style().set_property("display", "flex");
+            let _ = composer.style().set_property("display", "none");
+            if let Some(auth_panel) = auth_panel.as_ref() {
+                let _ = auth_panel.style().set_property("display", "none");
+            }
+            render_chat_auth_gate_messages(&document, &messages_container, &route);
+            messages_container.set_scroll_top(0);
+            return;
+        }
+
         if let Some(thread_id) = thread_id {
             let _ = root.style().set_property("display", "flex");
             let _ = composer.style().set_property("display", "flex");
@@ -2904,6 +2920,17 @@ mod wasm {
             } else {
                 let _ = messages_container.style().set_property("opacity", "1");
             }
+            return;
+        }
+
+        if is_codex_chat_route {
+            let _ = root.style().set_property("display", "flex");
+            let _ = composer.style().set_property("display", "none");
+            if let Some(auth_panel) = auth_panel.as_ref() {
+                let _ = auth_panel.style().set_property("display", "none");
+            }
+            render_chat_landing_messages(&document, &messages_container, &route, &auth_state);
+            messages_container.set_scroll_top(0);
             return;
         }
 
@@ -3078,6 +3105,75 @@ mod wasm {
             body: guidance,
             tone: ManagementCardTone::Neutral,
         });
+
+        for card in cards {
+            append_management_card(document, messages_container, card);
+        }
+    }
+
+    fn render_chat_auth_gate_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+    ) {
+        let cards = vec![
+            ManagementCard {
+                title: "Codex Access Required".to_string(),
+                body: "Sign in to use Codex web chat. First-pass policy requires a ChatGPT-linked account."
+                    .to_string(),
+                tone: ManagementCardTone::Warning,
+            },
+            ManagementCard {
+                title: "Next Step".to_string(),
+                body: "Open /login, verify your email, then return to / or /chat/<thread-id>."
+                    .to_string(),
+                tone: ManagementCardTone::Info,
+            },
+            ManagementCard {
+                title: "Route".to_string(),
+                body: route.to_path(),
+                tone: ManagementCardTone::Neutral,
+            },
+        ];
+
+        for card in cards {
+            append_management_card(document, messages_container, card);
+        }
+    }
+
+    fn render_chat_landing_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+    ) {
+        let mut cards = vec![
+            ManagementCard {
+                title: "Codex Chat Lane".to_string(),
+                body: "Web chat is routed through the Codex app-server contract and Khala WebSocket event stream."
+                    .to_string(),
+                tone: ManagementCardTone::Success,
+            },
+            ManagementCard {
+                title: "Start Thread".to_string(),
+                body: "Open /chat/<thread-id> to activate a thread, then send messages from the composer."
+                    .to_string(),
+                tone: ManagementCardTone::Info,
+            },
+            ManagementCard {
+                title: "Route".to_string(),
+                body: route.to_path(),
+                tone: ManagementCardTone::Neutral,
+            },
+        ];
+
+        if let Some(user) = auth_state.user.as_ref() {
+            cards.push(ManagementCard {
+                title: "Signed In".to_string(),
+                body: format!("{} <{}>", user.name, user.email),
+                tone: ManagementCardTone::Neutral,
+            });
+        }
 
         for card in cards {
             append_management_card(document, messages_container, card);
@@ -3318,7 +3414,7 @@ mod wasm {
             },
             AppRoute::Workers => "Workers".to_string(),
             AppRoute::Debug => "Debug".to_string(),
-            AppRoute::Home => "OpenAgents".to_string(),
+            AppRoute::Home => "Codex".to_string(),
         }
     }
 
