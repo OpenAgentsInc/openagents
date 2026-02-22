@@ -377,4 +377,195 @@ struct AutopilotTests {
             #expect(!state.shouldAccept(generation: secondResume))
         }
     }
+
+    @Test("runtime codex client request/stop APIs encode payloads and map error statuses")
+    func runtimeCodexClientRequestStopApisEncodeAndMapErrors() async throws {
+        let session = makeRuntimeCodexTestSession()
+        defer {
+            RuntimeCodexClientURLProtocol.setHandler(nil)
+        }
+
+        let client = RuntimeCodexClient(
+            baseURL: URL(string: "https://openagents.com")!,
+            authToken: "test-token",
+            session: session
+        )
+
+        RuntimeCodexClientURLProtocol.setHandler { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/runtime/codex/workers/desktopw%3Ashared/requests")
+
+            let body = readRequestBodyData(request)
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            let requestObject = json?["request"] as? [String: Any]
+
+            #expect((requestObject?["request_id"] as? String) == "req-ios-1")
+            #expect((requestObject?["method"] as? String) == "turn/start")
+            #expect((requestObject?["request_version"] as? String) == "v1")
+            #expect((requestObject?["source"] as? String) == "autopilot-ios")
+
+            let params = requestObject?["params"] as? [String: Any]
+            #expect((params?["thread_id"] as? String) == "thread-123")
+            #expect((params?["text"] as? String) == "continue")
+
+            let responseBody = """
+            {"data":{"worker_id":"desktopw:shared","request_id":"req-ios-1","ok":true,"method":"turn/start","response":{"status":"accepted"}}}
+            """
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://openagents.com/fallback")!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(responseBody.utf8))
+        }
+
+        let request = RuntimeCodexWorkerActionRequest(
+            requestID: "req-ios-1",
+            method: .turnStart,
+            params: [
+                "thread_id": .string("thread-123"),
+                "text": .string("continue"),
+            ],
+            sentAt: "2026-02-22T00:00:00Z"
+        )
+
+        let requestResult = try await client.requestWorkerAction(workerID: "desktopw:shared", request: request)
+        #expect(requestResult.workerID == "desktopw:shared")
+        #expect(requestResult.requestID == "req-ios-1")
+        #expect(requestResult.ok == true)
+        #expect(requestResult.method == "turn/start")
+
+        RuntimeCodexClientURLProtocol.setHandler { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/runtime/codex/workers/desktopw%3Ashared/stop")
+
+            let body = readRequestBodyData(request)
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            #expect((json?["reason"] as? String) == "user_requested")
+
+            let responseBody = """
+            {"data":{"worker_id":"desktopw:shared","status":"stopped","idempotent_replay":false}}
+            """
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://openagents.com/fallback")!,
+                statusCode: 202,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(responseBody.utf8))
+        }
+
+        let stopResult = try await client.stopWorker(workerID: "desktopw:shared", reason: "user_requested")
+        #expect(stopResult.workerID == "desktopw:shared")
+        #expect(stopResult.status == "stopped")
+        #expect(stopResult.idempotentReplay == false)
+
+        let cases: [(Int, RuntimeCodexApiErrorCode)] = [
+            (401, .auth),
+            (403, .forbidden),
+            (409, .conflict),
+            (422, .invalid),
+        ]
+
+        for (status, expectedCode) in cases {
+            RuntimeCodexClientURLProtocol.setHandler { request in
+                let response = HTTPURLResponse(
+                    url: request.url ?? URL(string: "https://openagents.com/fallback")!,
+                    statusCode: status,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                let body = """
+                {"error":{"message":"status_\(status)"}}
+                """
+                return (response, Data(body.utf8))
+            }
+
+            do {
+                _ = try await client.requestWorkerAction(workerID: "desktopw:shared", request: request)
+                #expect(Bool(false), "expected RuntimeCodexApiError for status \(status)")
+            } catch let error as RuntimeCodexApiError {
+                #expect(error.code == expectedCode)
+                #expect(error.status == status)
+                #expect(error.message == "status_\(status)")
+            }
+        }
+    }
+
+    private func makeRuntimeCodexTestSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RuntimeCodexClientURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private func readRequestBodyData(_ request: URLRequest) -> Data {
+        if let body = request.httpBody {
+            return body
+        }
+
+        guard let stream = request.httpBodyStream else {
+            return Data()
+        }
+
+        stream.open()
+        defer {
+            stream.close()
+        }
+
+        var collected = Data()
+        let bufferSize = 1024
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: bufferSize)
+            if read <= 0 {
+                break
+            }
+            collected.append(buffer, count: read)
+        }
+
+        return collected
+    }
+}
+
+private final class RuntimeCodexClientURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    static func setHandler(_ handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?) {
+        lock.lock()
+        requestHandler = handler
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        RuntimeCodexClientURLProtocol.lock.lock()
+        let handler = RuntimeCodexClientURLProtocol.requestHandler
+        RuntimeCodexClientURLProtocol.lock.unlock()
+
+        guard let handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

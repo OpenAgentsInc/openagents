@@ -116,6 +116,91 @@ struct RuntimeCodexWorkerSnapshot: Decodable {
     }
 }
 
+enum RuntimeCodexControlMethod: String, Codable, Equatable {
+    case threadStart = "thread/start"
+    case threadResume = "thread/resume"
+    case turnStart = "turn/start"
+    case turnInterrupt = "turn/interrupt"
+    case threadList = "thread/list"
+    case threadRead = "thread/read"
+}
+
+struct RuntimeCodexWorkerActionRequest: Encodable, Equatable {
+    let requestID: String
+    let method: RuntimeCodexControlMethod
+    let params: [String: JSONValue]
+    let requestVersion: String?
+    let sentAt: String?
+    let source: String?
+    let sessionID: String?
+    let threadID: String?
+
+    init(
+        requestID: String,
+        method: RuntimeCodexControlMethod,
+        params: [String: JSONValue] = [:],
+        requestVersion: String? = "v1",
+        sentAt: String? = nil,
+        source: String? = "autopilot-ios",
+        sessionID: String? = nil,
+        threadID: String? = nil
+    ) {
+        self.requestID = requestID
+        self.method = method
+        self.params = params
+        self.requestVersion = requestVersion
+        self.sentAt = sentAt
+        self.source = source
+        self.sessionID = sessionID
+        self.threadID = threadID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case requestID = "request_id"
+        case method
+        case params
+        case requestVersion = "request_version"
+        case sentAt = "sent_at"
+        case source
+        case sessionID = "session_id"
+        case threadID = "thread_id"
+    }
+}
+
+struct RuntimeCodexWorkerActionResult: Decodable {
+    let workerID: String?
+    let requestID: String?
+    let ok: Bool?
+    let method: String?
+    let response: JSONValue?
+    let status: String?
+    let projection: RuntimeCodexProjectionStatus?
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case requestID = "request_id"
+        case ok
+        case method
+        case response
+        case status
+        case projection
+    }
+}
+
+struct RuntimeCodexWorkerStopResult: Decodable {
+    let workerID: String?
+    let status: String?
+    let idempotentReplay: Bool?
+    let projection: RuntimeCodexProjectionStatus?
+
+    enum CodingKeys: String, CodingKey {
+        case workerID = "worker_id"
+        case status
+        case idempotentReplay = "idempotent_replay"
+        case projection
+    }
+}
+
 private extension KeyedDecodingContainer {
     func decodeLenientMetadata(forKey key: Key) -> [String: JSONValue]? {
         if let object = try? decodeIfPresent([String: JSONValue].self, forKey: key) {
