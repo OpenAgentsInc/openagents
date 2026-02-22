@@ -235,6 +235,22 @@ impl CodexThreadStore {
         Ok(ThreadProjection::from_record(thread))
     }
 
+    pub async fn autopilot_id_for_thread(&self, thread_id: &str) -> Option<String> {
+        let state = self.state.read().await;
+        state
+            .threads
+            .get(thread_id)
+            .and_then(|thread| thread.autopilot_id.clone())
+            .and_then(|value| {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+    }
+
     pub async fn list_threads_for_user(
         &self,
         user_id: &str,
@@ -580,6 +596,16 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            runtime_driver: "legacy".to_string(),
+            runtime_force_driver: None,
+            runtime_force_legacy: false,
+            runtime_canary_user_percent: 0,
+            runtime_canary_autopilot_percent: 0,
+            runtime_canary_seed: "runtime-canary-v1".to_string(),
+            runtime_overrides_enabled: true,
+            runtime_shadow_enabled: false,
+            runtime_shadow_sample_rate: 1.0,
+            runtime_shadow_max_capture_bytes: 200_000,
             codex_thread_store_path: store_path,
             domain_store_path: None,
             maintenance_mode_enabled: false,

@@ -50,6 +50,15 @@ const DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS: u64 = 60;
 const DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
 const DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS: u64 = 60_000;
+const DEFAULT_RUNTIME_DRIVER: &str = "legacy";
+const DEFAULT_RUNTIME_FORCE_LEGACY: bool = false;
+const DEFAULT_RUNTIME_CANARY_USER_PERCENT: u8 = 0;
+const DEFAULT_RUNTIME_CANARY_AUTOPILOT_PERCENT: u8 = 0;
+const DEFAULT_RUNTIME_CANARY_SEED: &str = "runtime-canary-v1";
+const DEFAULT_RUNTIME_OVERRIDES_ENABLED: bool = true;
+const DEFAULT_RUNTIME_SHADOW_ENABLED: bool = false;
+const DEFAULT_RUNTIME_SHADOW_SAMPLE_RATE: f64 = 1.0;
+const DEFAULT_RUNTIME_SHADOW_MAX_CAPTURE_BYTES: u64 = 200_000;
 const DEFAULT_MAINTENANCE_MODE_ENABLED: bool = false;
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME: &str = "oa_maintenance_bypass";
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS: u64 = 900;
@@ -118,6 +127,16 @@ pub struct Config {
     pub runtime_internal_signature_ttl_seconds: u64,
     pub runtime_internal_secret_fetch_path: String,
     pub runtime_internal_secret_cache_ttl_ms: u64,
+    pub runtime_driver: String,
+    pub runtime_force_driver: Option<String>,
+    pub runtime_force_legacy: bool,
+    pub runtime_canary_user_percent: u8,
+    pub runtime_canary_autopilot_percent: u8,
+    pub runtime_canary_seed: String,
+    pub runtime_overrides_enabled: bool,
+    pub runtime_shadow_enabled: bool,
+    pub runtime_shadow_sample_rate: f64,
+    pub runtime_shadow_max_capture_bytes: u64,
     pub codex_thread_store_path: Option<PathBuf>,
     pub domain_store_path: Option<PathBuf>,
     pub maintenance_mode_enabled: bool,
@@ -469,6 +488,60 @@ impl Config {
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS);
 
+        let runtime_driver = env::var("OA_RUNTIME_DRIVER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_DRIVER.to_string())
+            .trim()
+            .to_lowercase();
+
+        let runtime_force_driver = env::var("OA_RUNTIME_FORCE_DRIVER")
+            .ok()
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+
+        let runtime_force_legacy = env::var("OA_RUNTIME_FORCE_LEGACY")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_RUNTIME_FORCE_LEGACY);
+
+        let runtime_canary_user_percent = env::var("OA_RUNTIME_CANARY_USER_PERCENT")
+            .ok()
+            .and_then(|value| value.parse::<u8>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_CANARY_USER_PERCENT)
+            .min(100);
+
+        let runtime_canary_autopilot_percent = env::var("OA_RUNTIME_CANARY_AUTOPILOT_PERCENT")
+            .ok()
+            .and_then(|value| value.parse::<u8>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_CANARY_AUTOPILOT_PERCENT)
+            .min(100);
+
+        let runtime_canary_seed = env::var("OA_RUNTIME_CANARY_SEED")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_CANARY_SEED.to_string());
+
+        let runtime_overrides_enabled = env::var("OA_RUNTIME_OVERRIDES_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_RUNTIME_OVERRIDES_ENABLED);
+
+        let runtime_shadow_enabled = env::var("OA_RUNTIME_SHADOW_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_RUNTIME_SHADOW_ENABLED);
+
+        let runtime_shadow_sample_rate = env::var("OA_RUNTIME_SHADOW_SAMPLE_RATE")
+            .ok()
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_SHADOW_SAMPLE_RATE);
+
+        let runtime_shadow_max_capture_bytes = env::var("OA_RUNTIME_SHADOW_MAX_CAPTURE_BYTES")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_SHADOW_MAX_CAPTURE_BYTES);
+
         let codex_thread_store_path = env::var("OA_CODEX_THREAD_STORE_PATH")
             .ok()
             .map(|value| value.trim().to_string())
@@ -598,6 +671,16 @@ impl Config {
             runtime_internal_signature_ttl_seconds,
             runtime_internal_secret_fetch_path,
             runtime_internal_secret_cache_ttl_ms,
+            runtime_driver,
+            runtime_force_driver,
+            runtime_force_legacy,
+            runtime_canary_user_percent,
+            runtime_canary_autopilot_percent,
+            runtime_canary_seed,
+            runtime_overrides_enabled,
+            runtime_shadow_enabled,
+            runtime_shadow_sample_rate,
+            runtime_shadow_max_capture_bytes,
             codex_thread_store_path,
             domain_store_path,
             maintenance_mode_enabled,

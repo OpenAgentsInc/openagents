@@ -93,6 +93,29 @@ pub struct AutopilotRuntimeBindingRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeDriverOverrideRecord {
+    pub id: String,
+    pub scope_type: String,
+    pub scope_id: String,
+    pub driver: String,
+    pub is_active: bool,
+    pub reason: Option<String>,
+    pub meta: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertRuntimeDriverOverrideInput {
+    pub scope_type: String,
+    pub scope_id: String,
+    pub driver: String,
+    pub is_active: bool,
+    pub reason: Option<String>,
+    pub meta: Option<Value>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AutopilotAggregate {
     pub autopilot: AutopilotRecord,
@@ -438,6 +461,7 @@ struct DomainStoreState {
     autopilot_profiles: HashMap<String, AutopilotProfileRecord>,
     autopilot_policies: HashMap<String, AutopilotPolicyRecord>,
     autopilot_runtime_bindings: HashMap<String, AutopilotRuntimeBindingRecord>,
+    runtime_driver_overrides: HashMap<String, RuntimeDriverOverrideRecord>,
     l402_credentials: HashMap<String, L402CredentialRecord>,
     l402_paywalls: HashMap<String, L402PaywallRecord>,
     user_spark_wallets: HashMap<String, UserSparkWalletRecord>,
@@ -846,6 +870,104 @@ impl DomainStore {
             Ok(binding)
         })
         .await
+    }
+
+    pub async fn find_primary_autopilot_binding_driver(
+        &self,
+        autopilot_id: &str,
+    ) -> Result<Option<String>, DomainStoreError> {
+        let autopilot_id = normalize_non_empty(autopilot_id, "autopilot_id")?;
+        let state = self.state.read().await;
+        let runtime_type = state
+            .autopilot_runtime_bindings
+            .values()
+            .find(|binding| binding.autopilot_id == autopilot_id && binding.is_primary)
+            .map(|binding| binding.runtime_type.trim().to_ascii_lowercase());
+
+        let Some(runtime_type) = runtime_type else {
+            return Ok(None);
+        };
+
+        let driver = match runtime_type.as_str() {
+            "elixir" | "runtime" => Some("elixir".to_string()),
+            "legacy" | "laravel" | "openagents.com" => Some("legacy".to_string()),
+            _ => None,
+        };
+        Ok(driver)
+    }
+
+    pub async fn upsert_runtime_driver_override(
+        &self,
+        input: UpsertRuntimeDriverOverrideInput,
+    ) -> Result<RuntimeDriverOverrideRecord, DomainStoreError> {
+        let scope_type = normalize_runtime_scope_type(&input.scope_type)?;
+        let scope_id = normalize_non_empty(&input.scope_id, "scope_id")?;
+        let driver = normalize_runtime_driver(&input.driver)?;
+        let reason = normalize_optional_string(input.reason.as_deref());
+        let key = runtime_override_key(&scope_type, &scope_id);
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let row = state
+                .runtime_driver_overrides
+                .entry(key.clone())
+                .or_insert_with(|| RuntimeDriverOverrideRecord {
+                    id: format!("rdo_{}", Uuid::new_v4().simple()),
+                    scope_type: scope_type.clone(),
+                    scope_id: scope_id.clone(),
+                    driver: driver.clone(),
+                    is_active: input.is_active,
+                    reason: reason.clone(),
+                    meta: input.meta.clone(),
+                    created_at: now,
+                    updated_at: now,
+                });
+
+            row.driver = driver;
+            row.is_active = input.is_active;
+            row.reason = reason;
+            if input.meta.is_some() {
+                row.meta = input.meta;
+            }
+            row.updated_at = now;
+
+            Ok(row.clone())
+        })
+        .await
+    }
+
+    pub async fn find_active_runtime_driver_override(
+        &self,
+        scope_type: &str,
+        scope_id: &str,
+    ) -> Result<Option<RuntimeDriverOverrideRecord>, DomainStoreError> {
+        let scope_type = normalize_runtime_scope_type(scope_type)?;
+        let scope_id = normalize_non_empty(scope_id, "scope_id")?;
+        let key = runtime_override_key(&scope_type, &scope_id);
+        let state = self.state.read().await;
+        let row = state.runtime_driver_overrides.get(&key).cloned();
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        if !row.is_active {
+            return Ok(None);
+        }
+        if normalize_runtime_driver(&row.driver).is_err() {
+            return Ok(None);
+        }
+
+        Ok(Some(row))
+    }
+
+    pub async fn list_runtime_driver_overrides(
+        &self,
+    ) -> Result<Vec<RuntimeDriverOverrideRecord>, DomainStoreError> {
+        let state = self.state.read().await;
+        let mut rows: Vec<RuntimeDriverOverrideRecord> =
+            state.runtime_driver_overrides.values().cloned().collect();
+        rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(rows)
     }
 
     pub async fn upsert_l402_credential(
@@ -2060,6 +2182,32 @@ fn credential_key(host: &str, scope: &str) -> String {
     )
 }
 
+fn normalize_runtime_scope_type(value: &str) -> Result<String, DomainStoreError> {
+    let normalized = normalize_non_empty(value, "scope_type")?.to_ascii_lowercase();
+    if !matches!(normalized.as_str(), "user" | "autopilot") {
+        return Err(DomainStoreError::Validation {
+            field: "scope_type",
+            message: "value must be one of: user, autopilot".to_string(),
+        });
+    }
+    Ok(normalized)
+}
+
+fn normalize_runtime_driver(value: &str) -> Result<String, DomainStoreError> {
+    let normalized = normalize_non_empty(value, "driver")?.to_ascii_lowercase();
+    if !matches!(normalized.as_str(), "legacy" | "elixir") {
+        return Err(DomainStoreError::Validation {
+            field: "driver",
+            message: "value must be one of: legacy, elixir".to_string(),
+        });
+    }
+    Ok(normalized)
+}
+
+fn runtime_override_key(scope_type: &str, scope_id: &str) -> String {
+    format!("{}::{}", scope_type.trim(), scope_id.trim())
+}
+
 fn integration_key(user_id: &str, provider: &str) -> String {
     format!("{}::{}", user_id.trim(), provider.trim().to_lowercase())
 }
@@ -2168,6 +2316,16 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            runtime_driver: "legacy".to_string(),
+            runtime_force_driver: None,
+            runtime_force_legacy: false,
+            runtime_canary_user_percent: 0,
+            runtime_canary_autopilot_percent: 0,
+            runtime_canary_seed: "runtime-canary-v1".to_string(),
+            runtime_overrides_enabled: true,
+            runtime_shadow_enabled: false,
+            runtime_shadow_sample_rate: 1.0,
+            runtime_shadow_max_capture_bytes: 200_000,
             codex_thread_store_path: None,
             domain_store_path: store_path,
             maintenance_mode_enabled: false,

@@ -281,6 +281,7 @@ fn migrate_domain_store(input: Value) -> Value {
     ensure_object_field(&mut root, "autopilot_profiles");
     ensure_object_field(&mut root, "autopilot_policies");
     ensure_object_field(&mut root, "autopilot_runtime_bindings");
+    ensure_object_field(&mut root, "runtime_driver_overrides");
     ensure_object_field(&mut root, "l402_credentials");
     ensure_object_field(&mut root, "l402_paywalls");
     ensure_object_field(&mut root, "user_spark_wallets");

@@ -48,6 +48,11 @@ pub const ROUTE_V1_CONTROL_STATUS: &str = "/api/v1/control/status";
 pub const ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS: &str = "/api/v1/control/route-split/status";
 pub const ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE: &str = "/api/v1/control/route-split/override";
 pub const ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE: &str = "/api/v1/control/route-split/evaluate";
+pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS: &str = "/api/v1/control/runtime-routing/status";
+pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE: &str =
+    "/api/v1/control/runtime-routing/override";
+pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE: &str =
+    "/api/v1/control/runtime-routing/evaluate";
 pub const ROUTE_V1_SYNC_TOKEN: &str = "/api/v1/sync/token";
 
 #[derive(Clone, Copy)]
@@ -726,6 +731,42 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         response_example: Some("route_split_evaluate"),
     },
     OpenApiContract {
+        method: "get",
+        route_path: ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS,
+        operation_id: "controlRuntimeRoutingStatus",
+        summary: "Read runtime routing status and override records.",
+        tag: "control",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_routing_status"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
+        operation_id: "controlRuntimeRoutingOverride",
+        summary: "Upsert runtime driver override record.",
+        tag: "control",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("runtime_routing_override"),
+        response_example: Some("runtime_routing_override"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
+        operation_id: "controlRuntimeRoutingEvaluate",
+        summary: "Evaluate runtime driver decision for a user/thread.",
+        tag: "control",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("runtime_routing_evaluate"),
+        response_example: Some("runtime_routing_evaluate"),
+    },
+    OpenApiContract {
         method: "post",
         route_path: ROUTE_V1_SYNC_TOKEN,
         operation_id: "v1SyncToken",
@@ -1097,6 +1138,17 @@ fn request_example(key: &str) -> Option<Value> {
         "route_split_evaluate" => Some(json!({
             "path": "/chat/thread-1",
             "cohort_key": "user:123"
+        })),
+        "runtime_routing_override" => Some(json!({
+            "scope_type": "user",
+            "scope_id": "usr_123",
+            "driver": "elixir",
+            "is_active": true,
+            "reason": "canary cohort"
+        })),
+        "runtime_routing_evaluate" => Some(json!({
+            "thread_id": "thread_123",
+            "user_id": "usr_123"
         })),
         "autopilot_create" => Some(json!({
             "handle": "ep212-bot",
@@ -1727,6 +1779,57 @@ fn response_example(key: &str) -> Option<Value> {
                 "reason": "mode_cohort",
                 "route_domain": "chat_pilot",
                 "rollback_target": "rust_shell"
+            }
+        })),
+        "runtime_routing_status" => Some(json!({
+            "data": {
+                "default_driver": "legacy",
+                "forced_driver": null,
+                "force_legacy": false,
+                "overrides_enabled": true,
+                "canary_user_percent": 0,
+                "canary_autopilot_percent": 0,
+                "shadow": {
+                    "enabled": false,
+                    "sample_rate": 1.0,
+                    "max_capture_bytes": 200000
+                },
+                "overrides": [
+                    {
+                        "scope_type": "user",
+                        "scope_id": "usr_123",
+                        "driver": "elixir",
+                        "is_active": true
+                    }
+                ]
+            }
+        })),
+        "runtime_routing_override" => Some(json!({
+            "data": {
+                "override": {
+                    "scope_type": "user",
+                    "scope_id": "usr_123",
+                    "driver": "elixir",
+                    "is_active": true
+                },
+                "status": {
+                    "default_driver": "legacy",
+                    "forced_driver": null,
+                    "force_legacy": false
+                }
+            }
+        })),
+        "runtime_routing_evaluate" => Some(json!({
+            "data": {
+                "driver": "elixir",
+                "reason": "user_override",
+                "default_driver": "legacy",
+                "shadow": {
+                    "enabled": false,
+                    "mirrored": false,
+                    "sample_rate": 1.0,
+                    "shadow_driver": null
+                }
             }
         })),
         _ => None,

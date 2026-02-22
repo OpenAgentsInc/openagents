@@ -36,6 +36,7 @@ pub mod khala_token;
 pub mod observability;
 pub mod openapi;
 pub mod route_split;
+pub mod runtime_routing;
 pub mod sync_token;
 
 use crate::api_envelope::{
@@ -53,7 +54,7 @@ use crate::codex_threads::{
 use crate::config::Config;
 use crate::domain_store::{
     AutopilotAggregate, CreateAutopilotInput, DomainStore, DomainStoreError, UpdateAutopilotInput,
-    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
+    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -72,10 +73,12 @@ use crate::openapi::{
     ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT,
     ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
-    openapi_document,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
+    ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS,
+    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
+use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -151,6 +154,7 @@ struct AppState {
     auth: AuthService,
     observability: Observability,
     route_split: RouteSplitService,
+    runtime_routing: RuntimeRoutingService,
     khala_token_issuer: KhalaTokenIssuer,
     sync_token_issuer: SyncTokenIssuer,
     codex_thread_store: CodexThreadStore,
@@ -530,6 +534,28 @@ struct RouteSplitEvaluateRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct RuntimeRoutingEvaluateRequest {
+    thread_id: String,
+    #[serde(default)]
+    user_id: Option<String>,
+    #[serde(default)]
+    autopilot_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeRoutingOverrideRequest {
+    scope_type: String,
+    scope_id: String,
+    driver: String,
+    #[serde(default)]
+    is_active: Option<bool>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    meta: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SendThreadMessageRequest {
     text: String,
 }
@@ -670,6 +696,7 @@ pub fn build_router(config: Config) -> Router {
 pub fn build_router_with_observability(config: Config, observability: Observability) -> Router {
     let auth = AuthService::from_config(&config);
     let route_split = RouteSplitService::from_config(&config);
+    let runtime_routing = RuntimeRoutingService::from_config(&config);
     let khala_token_issuer = KhalaTokenIssuer::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let codex_thread_store = CodexThreadStore::from_config(&config);
@@ -680,6 +707,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         auth,
         observability,
         route_split,
+        runtime_routing,
         khala_token_issuer,
         sync_token_issuer,
         codex_thread_store,
@@ -881,13 +909,28 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(
             ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
             post(route_split_override).route_layer(middleware::from_fn_with_state(
-                admin_state,
+                admin_state.clone(),
                 admin_email_gate,
             )),
         )
         .route(
             ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
             post(route_split_evaluate),
+        )
+        .route(
+            ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS,
+            get(runtime_routing_status),
+        )
+        .route(
+            ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
+            post(runtime_routing_evaluate),
+        )
+        .route(
+            ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
+            post(runtime_routing_override).route_layer(middleware::from_fn_with_state(
+                admin_state,
+                admin_email_gate,
+            )),
         )
         .route(ROUTE_V1_SYNC_TOKEN, post(sync_token))
         .route_layer(middleware::from_fn_with_state(
@@ -1979,6 +2022,160 @@ async fn route_split_evaluate(
 
     let decision = state.route_split.evaluate(&payload.path, &cohort_key).await;
     Ok(ok_data(decision))
+}
+
+async fn runtime_routing_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let status = state.runtime_routing.status(&state._domain_store).await;
+    Ok(ok_data(status))
+}
+
+async fn runtime_routing_evaluate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeRoutingEvaluateRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let thread_id = payload.thread_id.trim().to_string();
+    if thread_id.is_empty() {
+        return Err(validation_error("thread_id", "Thread id is required."));
+    }
+
+    let user_id = payload
+        .user_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| session.user.id.clone());
+
+    if user_id != session.user.id {
+        return Err(forbidden_error(
+            "You may only evaluate runtime routing for your user.",
+        ));
+    }
+
+    let decision = state
+        .runtime_routing
+        .resolve(
+            &state._domain_store,
+            &state.codex_thread_store,
+            RuntimeRoutingResolveInput {
+                user_id,
+                thread_id,
+                autopilot_id: payload.autopilot_id,
+            },
+        )
+        .await;
+
+    Ok(ok_data(decision))
+}
+
+async fn runtime_routing_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeRoutingOverrideRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let scope_type = payload.scope_type.trim().to_ascii_lowercase();
+    if !matches!(scope_type.as_str(), "user" | "autopilot") {
+        return Err(validation_error(
+            "scope_type",
+            "Scope type must be one of: user, autopilot.",
+        ));
+    }
+
+    let scope_id = payload.scope_id.trim().to_string();
+    if scope_id.is_empty() {
+        return Err(validation_error("scope_id", "Scope id is required."));
+    }
+    if scope_id.chars().count() > 160 {
+        return Err(validation_error(
+            "scope_id",
+            "Scope id may not be greater than 160 characters.",
+        ));
+    }
+
+    let driver = RuntimeDriver::parse(&payload.driver)
+        .ok_or_else(|| validation_error("driver", "Driver must be one of: legacy, elixir."))?
+        .as_str()
+        .to_string();
+
+    let reason = payload
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    if reason
+        .as_deref()
+        .map(|value| value.chars().count() > 255)
+        .unwrap_or(false)
+    {
+        return Err(validation_error(
+            "reason",
+            "Reason may not be greater than 255 characters.",
+        ));
+    }
+
+    let override_record = state
+        ._domain_store
+        .upsert_runtime_driver_override(UpsertRuntimeDriverOverrideInput {
+            scope_type,
+            scope_id,
+            driver,
+            is_active: payload.is_active.unwrap_or(true),
+            reason,
+            meta: payload.meta,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("runtime.routing.override.updated", request_id.clone())
+            .with_user_id(session.user.id)
+            .with_session_id(session.session.session_id)
+            .with_org_id(session.session.active_org_id)
+            .with_device_id(session.session.device_id)
+            .with_attribute("scope_type", override_record.scope_type.clone())
+            .with_attribute("scope_id", override_record.scope_id.clone())
+            .with_attribute("driver", override_record.driver.clone())
+            .with_attribute("is_active", override_record.is_active.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("runtime.routing.override.updated", &request_id);
+
+    let status = state.runtime_routing.status(&state._domain_store).await;
+    Ok(ok_data(serde_json::json!({
+        "override": override_record,
+        "status": status,
+    })))
 }
 
 async fn build_static_response(
@@ -6035,6 +6232,7 @@ async fn control_status(
         .await
         .map_err(map_auth_error)?;
     let route_split_status = state.route_split.status().await;
+    let runtime_routing_status = state.runtime_routing.status(&state._domain_store).await;
 
     let response = serde_json::json!({
         "data": {
@@ -6043,6 +6241,7 @@ async fn control_status(
             "activeOrgId": bundle.session.active_org_id,
             "memberships": bundle.memberships,
             "routeSplit": route_split_status,
+            "runtimeRouting": runtime_routing_status,
         }
     });
 
@@ -8450,6 +8649,16 @@ mod tests {
             runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
+            runtime_driver: "legacy".to_string(),
+            runtime_force_driver: None,
+            runtime_force_legacy: false,
+            runtime_canary_user_percent: 0,
+            runtime_canary_autopilot_percent: 0,
+            runtime_canary_seed: "runtime-canary-v1".to_string(),
+            runtime_overrides_enabled: true,
+            runtime_shadow_enabled: false,
+            runtime_shadow_sample_rate: 1.0,
+            runtime_shadow_max_capture_bytes: 200_000,
             codex_thread_store_path: None,
             domain_store_path: None,
             maintenance_mode_enabled: false,
@@ -8498,6 +8707,7 @@ mod tests {
     fn test_app_state(config: Config) -> super::AppState {
         let auth = super::AuthService::from_config(&config);
         let route_split = super::RouteSplitService::from_config(&config);
+        let runtime_routing = super::RuntimeRoutingService::from_config(&config);
         let khala_token_issuer = super::KhalaTokenIssuer::from_config(&config);
         let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
         let codex_thread_store = super::CodexThreadStore::from_config(&config);
@@ -8508,6 +8718,7 @@ mod tests {
             auth,
             observability: Observability::default(),
             route_split,
+            runtime_routing,
             khala_token_issuer,
             sync_token_issuer,
             codex_thread_store,
@@ -8781,6 +8992,20 @@ mod tests {
         let verify_body = read_json(verify_response).await?;
 
         Ok(verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
+    }
+
+    async fn authenticated_user_id(app: Router, token: &str) -> Result<String> {
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        let body = read_json(response).await?;
+        Ok(body["data"]["user"]["id"]
             .as_str()
             .unwrap_or_default()
             .to_string())
@@ -13194,6 +13419,197 @@ mod tests {
         assert_eq!(
             body["data"]["domain_overrides"]["billing_l402"],
             json!("legacy")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_routing_force_legacy_wins_over_user_override() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.admin_emails = vec!["runtime-router@openagents.com".to_string()];
+        config.runtime_driver = "elixir".to_string();
+        config.runtime_force_legacy = true;
+        config.runtime_overrides_enabled = true;
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "runtime-router@openagents.com").await?;
+        let user_id = authenticated_user_id(app.clone(), &token).await?;
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{
+                    "scope_type":"user",
+                    "scope_id":"{user_id}",
+                    "driver":"elixir",
+                    "is_active":true,
+                    "reason":"canary"
+                }}"#
+            )))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let evaluate_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/evaluate")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"thread_id":"thread-runtime-1"}"#))?;
+        let evaluate_response = app.oneshot(evaluate_request).await?;
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let body = read_json(evaluate_response).await?;
+        assert_eq!(body["data"]["driver"], json!("legacy"));
+        assert_eq!(body["data"]["reason"], json!("force_legacy"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_routing_applies_autopilot_override_from_thread_binding() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.admin_emails = vec!["runtime-router@openagents.com".to_string()];
+        config.runtime_driver = "legacy".to_string();
+        config.runtime_force_legacy = false;
+        config.runtime_overrides_enabled = true;
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "runtime-router@openagents.com").await?;
+
+        let create_autopilot_request = Request::builder()
+            .method("POST")
+            .uri("/api/autopilots")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{
+                    "displayName":"Runtime Override Pilot",
+                    "handle":"runtime-override-pilot",
+                    "status":"active",
+                    "visibility":"private"
+                }"#,
+            ))?;
+        let create_autopilot_response = app.clone().oneshot(create_autopilot_request).await?;
+        assert_eq!(create_autopilot_response.status(), StatusCode::CREATED);
+        let autopilot_body = read_json(create_autopilot_response).await?;
+        let autopilot_id = autopilot_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let create_thread_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/autopilots/{autopilot_id}/threads"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"title":"Runtime override thread"}"#))?;
+        let create_thread_response = app.clone().oneshot(create_thread_request).await?;
+        assert_eq!(create_thread_response.status(), StatusCode::CREATED);
+        let thread_body = read_json(create_thread_response).await?;
+        let thread_id = thread_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                r#"{{
+                    "scope_type":"autopilot",
+                    "scope_id":"{autopilot_id}",
+                    "driver":"elixir",
+                    "is_active":true
+                }}"#
+            )))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let evaluate_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/evaluate")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(r#"{{"thread_id":"{thread_id}"}}"#)))?;
+        let evaluate_response = app.oneshot(evaluate_request).await?;
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let body = read_json(evaluate_response).await?;
+        assert_eq!(body["data"]["driver"], json!("elixir"));
+        assert_eq!(body["data"]["reason"], json!("autopilot_override"));
+        assert_eq!(body["data"]["autopilot_id"], json!(autopilot_id));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_routing_canary_and_shadow_semantics_match_config() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut canary_config = test_config(static_dir.path().to_path_buf());
+        canary_config.runtime_driver = "legacy".to_string();
+        canary_config.runtime_overrides_enabled = false;
+        canary_config.runtime_canary_seed = "test-seed".to_string();
+        canary_config.runtime_canary_user_percent = 100;
+        canary_config.runtime_shadow_enabled = true;
+        canary_config.runtime_shadow_sample_rate = 1.0;
+        let canary_app = build_router(canary_config);
+        let canary_token =
+            authenticate_token(canary_app.clone(), "runtime-canary@openagents.com").await?;
+
+        let canary_eval = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/evaluate")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {canary_token}"))
+            .body(Body::from(r#"{"thread_id":"thread-canary-1"}"#))?;
+        let canary_response = canary_app.oneshot(canary_eval).await?;
+        assert_eq!(canary_response.status(), StatusCode::OK);
+        let canary_body = read_json(canary_response).await?;
+        assert_eq!(canary_body["data"]["driver"], json!("elixir"));
+        assert_eq!(canary_body["data"]["reason"], json!("user_canary"));
+        assert_eq!(canary_body["data"]["shadow"]["mirrored"], json!(false));
+
+        let mut default_config = test_config(static_dir.path().to_path_buf());
+        default_config.runtime_driver = "legacy".to_string();
+        default_config.runtime_overrides_enabled = false;
+        default_config.runtime_canary_user_percent = 0;
+        default_config.runtime_shadow_enabled = true;
+        default_config.runtime_shadow_sample_rate = 1.0;
+        let default_app = build_router(default_config);
+        let default_token =
+            authenticate_token(default_app.clone(), "runtime-default@openagents.com").await?;
+
+        let default_eval = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/runtime-routing/evaluate")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {default_token}"))
+            .body(Body::from(r#"{"thread_id":"thread-default-1"}"#))?;
+        let default_response = default_app.oneshot(default_eval).await?;
+        assert_eq!(default_response.status(), StatusCode::OK);
+        let default_body = read_json(default_response).await?;
+        assert_eq!(default_body["data"]["driver"], json!("legacy"));
+        assert_eq!(default_body["data"]["reason"], json!("default_driver"));
+        assert_eq!(default_body["data"]["shadow"]["mirrored"], json!(true));
+        assert_eq!(
+            default_body["data"]["shadow"]["shadow_driver"],
+            json!("elixir")
         );
 
         Ok(())
