@@ -119,6 +119,24 @@ const CODEX_CONTROL_METHOD_ALLOWLIST: &[&str] = &[
     "thread/list",
     "thread/read",
 ];
+const AUTOPILOT_AUTHENTICATED_TOOLS: &[&str] = &[
+    "openagents_api",
+    "lightning_l402_fetch",
+    "lightning_l402_approve",
+    "lightning_l402_paywall_create",
+    "lightning_l402_paywall_update",
+    "lightning_l402_paywall_delete",
+];
+const AUTOPILOT_ALL_TOOLS: &[&str] = &[
+    "chat_login",
+    "openagents_api",
+    "lightning_l402_fetch",
+    "lightning_l402_approve",
+    "lightning_l402_paywall_create",
+    "lightning_l402_paywall_update",
+    "lightning_l402_paywall_delete",
+];
+const AUTOPILOT_GUEST_ALLOWED_TOOLS: &[&str] = &["chat_login", "openagents_api"];
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -2837,6 +2855,12 @@ async fn autopilot_stream(
         .resolve_owned_autopilot(&bundle.user.id, &reference)
         .await
         .map_err(map_domain_store_error)?;
+    let autopilot_id = autopilot.autopilot.id.clone();
+    let autopilot_config_version = autopilot.autopilot.config_version;
+    let prompt_context = autopilot_prompt_context(&autopilot);
+    let tool_policy_audit = autopilot_tool_resolution_audit(&autopilot, true);
+    let runtime_binding_payload = autopilot_runtime_binding_payload(&autopilot);
+    let runtime_binding_worker_id = autopilot_runtime_binding_worker_ref(&autopilot);
 
     let requested_thread_id = query
         .conversation_id
@@ -2858,7 +2882,7 @@ async fn autopilot_stream(
                     &bundle.user.id,
                     &bundle.session.active_org_id,
                     &normalized_thread_id,
-                    &autopilot.autopilot.id,
+                    &autopilot_id,
                     "Autopilot conversation",
                 )
                 .await
@@ -2872,7 +2896,7 @@ async fn autopilot_stream(
                     &bundle.user.id,
                     &bundle.session.active_org_id,
                     &thread_id,
-                    &autopilot.autopilot.id,
+                    &autopilot_id,
                     "Autopilot conversation",
                 )
                 .await
@@ -2889,6 +2913,7 @@ async fn autopilot_stream(
     validate_codex_turn_text(&text)?;
 
     let worker_id = legacy_stream_worker_id_from_payload(&payload)
+        .or(runtime_binding_worker_id)
         .unwrap_or_else(|| "desktopw:shared".to_string());
     let thread_id = thread.id.clone();
     let control_request_id = format!("autopilot_stream_{}", uuid::Uuid::new_v4().simple());
@@ -2898,7 +2923,8 @@ async fn autopilot_stream(
         params: serde_json::json!({
             "thread_id": thread_id.clone(),
             "text": text,
-            "autopilot_id": autopilot.autopilot.id,
+            "autopilot_id": autopilot_id.clone(),
+            "autopilot_config_version": autopilot_config_version,
         }),
         request_version: Some("v1".to_string()),
         source: Some("autopilot_stream_alias".to_string()),
@@ -2915,10 +2941,17 @@ async fn autopilot_stream(
             .with_session_id(bundle.session.session_id.clone())
             .with_org_id(bundle.session.active_org_id.clone())
             .with_device_id(bundle.session.device_id.clone())
-            .with_attribute("autopilot_id", autopilot.autopilot.id.clone())
+            .with_attribute("autopilot_id", autopilot_id.clone())
             .with_attribute("thread_id", thread_id.clone())
             .with_attribute("worker_id", worker_id.clone())
             .with_attribute("method", "turn/start".to_string())
+            .with_attribute(
+                "policy_applied",
+                tool_policy_audit["policyApplied"]
+                    .as_bool()
+                    .unwrap_or(false)
+                    .to_string(),
+            )
             .with_attribute("transport", "khala_ws".to_string()),
     );
     state
@@ -2927,11 +2960,14 @@ async fn autopilot_stream(
 
     Ok(ok_data(serde_json::json!({
         "accepted": true,
-        "autopilotId": autopilot.autopilot.id,
-        "autopilotConfigVersion": autopilot.autopilot.config_version,
+        "autopilotId": autopilot_id,
+        "autopilotConfigVersion": autopilot_config_version,
         "threadId": thread_id.clone(),
         "conversationId": thread_id,
         "streamProtocol": "disabled",
+        "promptContext": prompt_context,
+        "toolPolicy": tool_policy_audit,
+        "runtimeBinding": runtime_binding_payload,
         "delivery": {
             "transport": "khala_ws",
             "topic": worker_events_topic,
@@ -5563,6 +5599,311 @@ fn autopilot_thread_payload(thread: &AutopilotThreadProjection) -> serde_json::V
     })
 }
 
+fn autopilot_prompt_context(aggregate: &AutopilotAggregate) -> Option<String> {
+    let mut lines = vec![
+        format!("autopilot_id={}", aggregate.autopilot.id),
+        format!(
+            "config_version={}",
+            aggregate.autopilot.config_version.max(1)
+        ),
+        format!("handle={}", aggregate.autopilot.handle),
+    ];
+
+    if let Some(display_name) = non_empty(aggregate.autopilot.display_name.clone()) {
+        lines.push(format!("display_name={display_name}"));
+    }
+    if let Some(owner_display_name) = non_empty(aggregate.profile.owner_display_name.clone()) {
+        lines.push(format!("owner_display_name={owner_display_name}"));
+    }
+    if let Some(tagline) = aggregate.autopilot.tagline.clone().and_then(non_empty) {
+        lines.push(format!("tagline={tagline}"));
+    }
+    if let Some(persona_summary) = aggregate
+        .profile
+        .persona_summary
+        .clone()
+        .and_then(non_empty)
+    {
+        lines.push(format!("persona_summary={persona_summary}"));
+    }
+    if let Some(autopilot_voice) = aggregate
+        .profile
+        .autopilot_voice
+        .clone()
+        .and_then(non_empty)
+    {
+        lines.push(format!("autopilot_voice={autopilot_voice}"));
+    }
+
+    let principles = value_string_array(aggregate.profile.principles.as_ref());
+    if !principles.is_empty() {
+        lines.push(format!("principles={}", principles.join(" | ")));
+    }
+
+    if let Some(preferences) = aggregate
+        .profile
+        .preferences
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+    {
+        if let Some(user_preferences) = preferences
+            .get("user")
+            .and_then(serde_json::Value::as_object)
+        {
+            if let Some(address_as) = normalized_json_string(user_preferences.get("addressAs")) {
+                lines.push(format!("preferred_address={address_as}"));
+            }
+            if let Some(time_zone) = normalized_json_string(user_preferences.get("timeZone")) {
+                lines.push(format!("time_zone={time_zone}"));
+            }
+        }
+
+        if let Some(character_preferences) = preferences
+            .get("character")
+            .and_then(serde_json::Value::as_object)
+        {
+            let boundaries = character_preferences
+                .get("boundaries")
+                .and_then(serde_json::Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| {
+                            non_empty(value.as_str().unwrap_or_default().to_string())
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if !boundaries.is_empty() {
+                lines.push(format!("boundaries={}", boundaries.join(" | ")));
+            }
+        }
+    }
+
+    if let Some(onboarding) = aggregate
+        .profile
+        .onboarding_answers
+        .as_object()
+        .and_then(|object| object.get("bootstrapState"))
+        .and_then(serde_json::Value::as_object)
+    {
+        let status = normalized_json_string(onboarding.get("status"));
+        let stage = normalized_json_string(onboarding.get("stage"));
+        if status.is_some() || stage.is_some() {
+            let label = format!(
+                "{}{}",
+                status.unwrap_or_else(|| "unknown".to_string()),
+                stage.map(|value| format!(" @ {value}")).unwrap_or_default()
+            );
+            lines.push(format!("onboarding={label}"));
+        }
+    }
+
+    if !aggregate.policy.tool_allowlist.is_empty() {
+        lines.push(format!(
+            "tool_allowlist={}",
+            aggregate.policy.tool_allowlist.join(",")
+        ));
+    }
+    if !aggregate.policy.tool_denylist.is_empty() {
+        lines.push(format!(
+            "tool_denylist={}",
+            aggregate.policy.tool_denylist.join(",")
+        ));
+    }
+    lines.push(format!(
+        "l402_require_approval={}",
+        if aggregate.policy.l402_require_approval {
+            "true"
+        } else {
+            "false"
+        }
+    ));
+    if let Some(max_spend_per_call) = aggregate.policy.l402_max_spend_msats_per_call {
+        lines.push(format!(
+            "l402_max_spend_msats_per_call={max_spend_per_call}"
+        ));
+    }
+    if let Some(max_spend_per_day) = aggregate.policy.l402_max_spend_msats_per_day {
+        lines.push(format!("l402_max_spend_msats_per_day={max_spend_per_day}"));
+    }
+    if !aggregate.policy.l402_allowed_hosts.is_empty() {
+        lines.push(format!(
+            "l402_allowed_hosts={}",
+            aggregate.policy.l402_allowed_hosts.join(",")
+        ));
+    }
+
+    let context = lines.join("\n").trim().to_string();
+    if context.is_empty() {
+        return None;
+    }
+
+    Some(context.chars().take(3200).collect())
+}
+
+fn autopilot_tool_resolution_audit(
+    aggregate: &AutopilotAggregate,
+    session_authenticated: bool,
+) -> serde_json::Value {
+    if !session_authenticated {
+        let available_tools = tool_name_list_from_static(AUTOPILOT_ALL_TOOLS);
+        let guest_allowlist = tool_name_list_from_static(AUTOPILOT_GUEST_ALLOWED_TOOLS);
+        let exposed_tools = guest_allowlist
+            .iter()
+            .filter(|name| available_tools.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_by_auth_gate = available_tools
+            .iter()
+            .filter(|name| !exposed_tools.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        return serde_json::json!({
+            "policyApplied": false,
+            "authRestricted": true,
+            "sessionAuthenticated": false,
+            "autopilotId": serde_json::Value::Null,
+            "availableTools": available_tools,
+            "exposedTools": exposed_tools,
+            "allowlist": guest_allowlist,
+            "denylist": [],
+            "removedByAllowlist": [],
+            "removedByDenylist": [],
+            "removedByAuthGate": removed_by_auth_gate,
+        });
+    }
+
+    let available_tools = tool_name_list_from_static(AUTOPILOT_AUTHENTICATED_TOOLS);
+    let allowlist = tool_name_list(&aggregate.policy.tool_allowlist);
+    let denylist = tool_name_list(&aggregate.policy.tool_denylist);
+    let (exposed_tools, removed_by_allowlist, removed_by_denylist) =
+        resolve_tool_names(&available_tools, &allowlist, &denylist);
+
+    serde_json::json!({
+        "policyApplied": true,
+        "authRestricted": false,
+        "sessionAuthenticated": true,
+        "autopilotId": aggregate.autopilot.id.clone(),
+        "availableTools": available_tools,
+        "exposedTools": exposed_tools,
+        "allowlist": allowlist,
+        "denylist": denylist,
+        "removedByAllowlist": removed_by_allowlist,
+        "removedByDenylist": removed_by_denylist,
+        "removedByAuthGate": [],
+    })
+}
+
+fn autopilot_runtime_binding_worker_ref(aggregate: &AutopilotAggregate) -> Option<String> {
+    let binding = aggregate
+        .runtime_bindings
+        .iter()
+        .find(|binding| binding.is_primary)
+        .or_else(|| aggregate.runtime_bindings.first())?;
+    binding.runtime_ref.clone().and_then(non_empty)
+}
+
+fn autopilot_runtime_binding_payload(aggregate: &AutopilotAggregate) -> serde_json::Value {
+    let Some(binding) = aggregate
+        .runtime_bindings
+        .iter()
+        .find(|binding| binding.is_primary)
+        .or_else(|| aggregate.runtime_bindings.first())
+    else {
+        return serde_json::Value::Null;
+    };
+
+    serde_json::json!({
+        "id": binding.id,
+        "runtimeType": binding.runtime_type,
+        "runtimeRef": binding.runtime_ref,
+        "isPrimary": binding.is_primary,
+        "driverHint": runtime_driver_hint(&binding.runtime_type),
+        "lastSeenAt": binding.last_seen_at.map(timestamp),
+        "meta": binding.meta,
+        "createdAt": timestamp(binding.created_at),
+        "updatedAt": timestamp(binding.updated_at),
+    })
+}
+
+fn runtime_driver_hint(runtime_type: &str) -> Option<&'static str> {
+    match runtime_type.trim().to_ascii_lowercase().as_str() {
+        "elixir" | "runtime" => Some("elixir"),
+        "legacy" | "laravel" | "openagents.com" => Some("legacy"),
+        _ => None,
+    }
+}
+
+fn resolve_tool_names(
+    available_tool_names: &[String],
+    allowlist: &[String],
+    denylist: &[String],
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let mut candidate = Vec::new();
+    let mut removed_by_allowlist = Vec::new();
+    for name in available_tool_names {
+        if !allowlist.is_empty() && !allowlist.contains(name) {
+            removed_by_allowlist.push(name.clone());
+            continue;
+        }
+        candidate.push(name.clone());
+    }
+
+    let mut exposed = Vec::new();
+    let mut removed_by_denylist = Vec::new();
+    for name in candidate {
+        if denylist.contains(&name) {
+            removed_by_denylist.push(name);
+            continue;
+        }
+        exposed.push(name);
+    }
+
+    (exposed, removed_by_allowlist, removed_by_denylist)
+}
+
+fn tool_name_list_from_static(values: &[&str]) -> Vec<String> {
+    let mut names = Vec::new();
+    for value in values {
+        if let Some(normalized) = normalize_tool_name(value) {
+            if !names.contains(&normalized) {
+                names.push(normalized);
+            }
+        }
+    }
+    names
+}
+
+fn tool_name_list(values: &[String]) -> Vec<String> {
+    let mut names = Vec::new();
+    for value in values {
+        if let Some(normalized) = normalize_tool_name(value) {
+            if !names.contains(&normalized) {
+                names.push(normalized);
+            }
+        }
+    }
+    names
+}
+
+fn normalize_tool_name(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    non_empty(normalized)
+}
+
+fn value_string_array(value: Option<&serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(serde_json::Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| entry.as_str().and_then(|raw| non_empty(raw.to_string())))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
 fn user_handle_from_email(email: &str) -> String {
     let local = email.split('@').next().unwrap_or_default();
     let mut output = String::with_capacity(local.len().min(64));
@@ -5673,6 +6014,7 @@ mod tests {
     use axum::http::{HeaderValue, Request, StatusCode};
     use axum::routing::post;
     use axum::{Json, Router};
+    use chrono::Utc;
     use hmac::Mac;
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
@@ -5685,6 +6027,10 @@ mod tests {
     use crate::build_router;
     use crate::build_router_with_observability;
     use crate::config::Config;
+    use crate::domain_store::{
+        AutopilotAggregate, AutopilotPolicyRecord, AutopilotProfileRecord, AutopilotRecord,
+        AutopilotRuntimeBindingRecord,
+    };
     use crate::observability::{Observability, RecordingAuditSink};
     use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, MAINTENANCE_CACHE_CONTROL};
 
@@ -5831,6 +6177,92 @@ mod tests {
             codex_control_receipts: super::CodexControlReceiptState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
+        }
+    }
+
+    fn sample_autopilot_aggregate() -> AutopilotAggregate {
+        let now = Utc::now();
+        AutopilotAggregate {
+            autopilot: AutopilotRecord {
+                id: "ap_test_1".to_string(),
+                owner_user_id: "usr_test_1".to_string(),
+                handle: "test-pilot".to_string(),
+                display_name: "Test Pilot".to_string(),
+                avatar: None,
+                status: "active".to_string(),
+                visibility: "private".to_string(),
+                tagline: Some("Pragmatic and concise".to_string()),
+                config_version: 3,
+                deleted_at: None,
+                created_at: now,
+                updated_at: now,
+            },
+            profile: AutopilotProfileRecord {
+                autopilot_id: "ap_test_1".to_string(),
+                owner_display_name: "Chris".to_string(),
+                persona_summary: Some("Pragmatic and concise".to_string()),
+                autopilot_voice: Some("calm and direct".to_string()),
+                principles: Some(json!(["be concise", "be direct"])),
+                preferences: Some(json!({
+                    "user": {
+                        "addressAs": "Chris",
+                        "timeZone": "UTC"
+                    },
+                    "character": {
+                        "boundaries": ["No fluff", "No hype"]
+                    }
+                })),
+                onboarding_answers: json!({
+                    "bootstrapState": {
+                        "status": "ready",
+                        "stage": "profile"
+                    }
+                }),
+                schema_version: 1,
+                created_at: now,
+                updated_at: now,
+            },
+            policy: AutopilotPolicyRecord {
+                autopilot_id: "ap_test_1".to_string(),
+                model_provider: None,
+                model: None,
+                tool_allowlist: vec![
+                    "openagents_api".to_string(),
+                    "lightning_l402_fetch".to_string(),
+                ],
+                tool_denylist: vec!["lightning_l402_fetch".to_string()],
+                l402_require_approval: true,
+                l402_max_spend_msats_per_call: Some(100_000),
+                l402_max_spend_msats_per_day: Some(500_000),
+                l402_allowed_hosts: vec!["sats4ai.com".to_string()],
+                data_policy: Some(json!(["redact_secrets"])),
+                created_at: now,
+                updated_at: now,
+            },
+            runtime_bindings: vec![
+                AutopilotRuntimeBindingRecord {
+                    id: "arb_primary".to_string(),
+                    autopilot_id: "ap_test_1".to_string(),
+                    runtime_type: "runtime".to_string(),
+                    runtime_ref: Some("desktopw:autopilot".to_string()),
+                    is_primary: true,
+                    last_seen_at: Some(now),
+                    meta: Some(json!({"region":"us-central1"})),
+                    created_at: now,
+                    updated_at: now,
+                },
+                AutopilotRuntimeBindingRecord {
+                    id: "arb_secondary".to_string(),
+                    autopilot_id: "ap_test_1".to_string(),
+                    runtime_type: "legacy".to_string(),
+                    runtime_ref: Some("legacy:autopilot".to_string()),
+                    is_primary: false,
+                    last_seen_at: None,
+                    meta: None,
+                    created_at: now,
+                    updated_at: now,
+                },
+            ],
         }
     }
 
@@ -7526,6 +7958,63 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn autopilot_tool_resolution_audit_applies_allowlist_and_denylist() {
+        let aggregate = sample_autopilot_aggregate();
+        let audit = super::autopilot_tool_resolution_audit(&aggregate, true);
+
+        assert_eq!(audit["policyApplied"], json!(true));
+        assert_eq!(audit["authRestricted"], json!(false));
+        assert_eq!(audit["sessionAuthenticated"], json!(true));
+        assert_eq!(audit["autopilotId"], json!("ap_test_1"));
+        assert_eq!(audit["exposedTools"], json!(vec!["openagents_api"]));
+        assert_eq!(
+            audit["removedByDenylist"],
+            json!(vec!["lightning_l402_fetch"])
+        );
+
+        let removed_by_allowlist = audit["removedByAllowlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            removed_by_allowlist
+                .iter()
+                .any(|tool| tool == &json!("lightning_l402_approve"))
+        );
+    }
+
+    #[test]
+    fn autopilot_prompt_context_includes_profile_policy_and_limits() {
+        let aggregate = sample_autopilot_aggregate();
+        let context = super::autopilot_prompt_context(&aggregate).expect("context should exist");
+
+        assert!(context.contains("autopilot_id=ap_test_1"));
+        assert!(context.contains("config_version=3"));
+        assert!(context.contains("owner_display_name=Chris"));
+        assert!(context.contains("persona_summary=Pragmatic and concise"));
+        assert!(context.contains("autopilot_voice=calm and direct"));
+        assert!(context.contains("tool_allowlist=openagents_api,lightning_l402_fetch"));
+        assert!(context.contains("tool_denylist=lightning_l402_fetch"));
+        assert!(context.contains("l402_require_approval=true"));
+        assert!(context.chars().count() <= 3200);
+    }
+
+    #[test]
+    fn autopilot_runtime_binding_payload_prefers_primary_binding() {
+        let aggregate = sample_autopilot_aggregate();
+        let binding = super::autopilot_runtime_binding_payload(&aggregate);
+
+        assert_eq!(binding["id"], json!("arb_primary"));
+        assert_eq!(binding["runtimeType"], json!("runtime"));
+        assert_eq!(binding["runtimeRef"], json!("desktopw:autopilot"));
+        assert_eq!(binding["driverHint"], json!("elixir"));
+        assert_eq!(
+            super::autopilot_runtime_binding_worker_ref(&aggregate),
+            Some("desktopw:autopilot".to_string())
+        );
+    }
+
     #[tokio::test]
     async fn autopilot_crud_routes_support_create_list_show_and_update() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
@@ -7642,6 +8131,17 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .to_string();
+
+        let update_autopilot_request = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/autopilots/{autopilot_id}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"profile":{"ownerDisplayName":"Chris","personaSummary":"Pragmatic and concise","autopilotVoice":"calm and direct"},"policy":{"toolAllowlist":["openagents_api","lightning_l402_fetch"],"toolDenylist":["lightning_l402_fetch"],"l402RequireApproval":true,"l402AllowedHosts":["sats4ai.com"]}}"#,
+            ))?;
+        let update_autopilot_response = app.clone().oneshot(update_autopilot_request).await?;
+        assert_eq!(update_autopilot_response.status(), StatusCode::OK);
         assert!(autopilot_id.starts_with("ap_"));
 
         let create_thread_request = Request::builder()
@@ -7764,6 +8264,30 @@ mod tests {
         assert_eq!(
             stream_body["data"]["response"]["thread_id"],
             json!(thread_id.clone())
+        );
+        let prompt_context = stream_body["data"]["promptContext"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(!prompt_context.is_empty());
+        assert!(prompt_context.contains("autopilot_id="));
+        assert!(prompt_context.contains("l402_require_approval=true"));
+        assert_eq!(
+            stream_body["data"]["toolPolicy"]["policyApplied"],
+            json!(true)
+        );
+        let exposed_tools = stream_body["data"]["toolPolicy"]["exposedTools"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(!exposed_tools.is_empty());
+        let removed_by_denylist = stream_body["data"]["toolPolicy"]["removedByDenylist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(removed_by_denylist.len() <= exposed_tools.len());
+        assert!(
+            stream_body["data"]["runtimeBinding"].is_null()
+                || stream_body["data"]["runtimeBinding"].is_object()
         );
 
         let list_request = Request::builder()

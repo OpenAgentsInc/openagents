@@ -1009,6 +1009,35 @@ fn response_example(key: &str) -> Option<Value> {
                 "threadId": "thread_123",
                 "conversationId": "thread_123",
                 "streamProtocol": "disabled",
+                "promptContext": "autopilot_id=ap_123\nconfig_version=2\nhandle=ep212-bot\npersona_summary=Pragmatic and concise",
+                "toolPolicy": {
+                    "policyApplied": true,
+                    "authRestricted": false,
+                    "sessionAuthenticated": true,
+                    "autopilotId": "ap_123",
+                    "availableTools": [
+                        "openagents_api",
+                        "lightning_l402_fetch",
+                        "lightning_l402_approve"
+                    ],
+                    "exposedTools": ["openagents_api"],
+                    "allowlist": ["openagents_api", "lightning_l402_fetch"],
+                    "denylist": ["lightning_l402_fetch"],
+                    "removedByAllowlist": ["lightning_l402_approve"],
+                    "removedByDenylist": ["lightning_l402_fetch"],
+                    "removedByAuthGate": []
+                },
+                "runtimeBinding": {
+                    "id": "arb_123",
+                    "runtimeType": "runtime",
+                    "runtimeRef": "desktopw:autopilot",
+                    "isPrimary": true,
+                    "driverHint": "elixir",
+                    "lastSeenAt": "2026-02-22T00:00:00Z",
+                    "meta": {"region": "us-central1"},
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                },
                 "delivery": {
                     "transport": "khala_ws",
                     "topic": "org:openagents:worker_events",
