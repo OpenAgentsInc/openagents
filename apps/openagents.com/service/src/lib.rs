@@ -46,7 +46,9 @@ use crate::auth::{
     AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
     SessionRevocationRequest, SessionRevocationTarget,
 };
-use crate::codex_threads::{CodexThreadStore, ThreadStoreError};
+use crate::codex_threads::{
+    CodexThreadStore, ThreadMessageProjection, ThreadProjection, ThreadStoreError,
+};
 use crate::config::Config;
 use crate::domain_store::{CreateAutopilotInput, DomainStore, DomainStoreError};
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
@@ -363,6 +365,18 @@ struct RuntimeCodexWorkerControlRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct LegacyChatsListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LegacyCreateChatRequest {
+    #[serde(default)]
+    title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LocalTestLoginQuery {
     email: String,
     #[serde(default)]
@@ -483,6 +497,20 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route(
+            "/api/chats",
+            get(legacy_chats_index).post(legacy_chats_store),
+        )
+        .route("/api/chats/:conversation_id", get(legacy_chats_show))
+        .route(
+            "/api/chats/:conversation_id/messages",
+            get(legacy_chats_messages),
+        )
+        .route("/api/chats/:conversation_id/runs", get(legacy_chats_runs))
+        .route(
+            "/api/chats/:conversation_id/runs/:run_id/events",
+            get(legacy_chats_run_events),
+        )
         .route(ROUTE_RUNTIME_THREADS, get(list_runtime_threads))
         .route(
             ROUTE_RUNTIME_THREAD_MESSAGES,
@@ -2978,6 +3006,261 @@ async fn sync_token(
         .increment_counter("sync.token.issued", &request_id);
 
     Ok(ok_data(issued))
+}
+
+async fn legacy_chats_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<LegacyChatsListQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let mut threads = state
+        .codex_thread_store
+        .list_threads_for_user(&session.user.id, Some(&session.session.active_org_id))
+        .await
+        .map_err(map_thread_store_error)?;
+    threads.truncate(limit);
+
+    let data = threads
+        .iter()
+        .map(|thread| legacy_chat_summary(thread, None))
+        .collect::<Vec<_>>();
+
+    Ok(legacy_chat_data_response(
+        serde_json::json!(data),
+        StatusCode::OK,
+    ))
+}
+
+async fn legacy_chats_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<LegacyCreateChatRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let title = payload
+        .title
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+        .unwrap_or_else(|| "New conversation".to_string());
+    let conversation_id = format!("thread_{}", uuid::Uuid::new_v4().simple());
+    let thread = state
+        .codex_thread_store
+        .create_thread_for_user(
+            &session.user.id,
+            &session.session.active_org_id,
+            &conversation_id,
+        )
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(legacy_chat_data_response(
+        legacy_chat_summary(&thread, Some(&title)),
+        StatusCode::CREATED,
+    ))
+}
+
+async fn legacy_chats_show(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+    let normalized_conversation_id = normalized_conversation_id(&conversation_id)?;
+
+    let thread = state
+        .codex_thread_store
+        .get_thread_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+    let messages = state
+        .codex_thread_store
+        .list_thread_messages_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(legacy_chat_data_response(
+        serde_json::json!({
+            "conversation": legacy_chat_summary(&thread, None),
+            "messages": legacy_chat_messages(&messages),
+            "runs": [],
+        }),
+        StatusCode::OK,
+    ))
+}
+
+async fn legacy_chats_messages(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+    let normalized_conversation_id = normalized_conversation_id(&conversation_id)?;
+
+    let _ = state
+        .codex_thread_store
+        .get_thread_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+    let messages = state
+        .codex_thread_store
+        .list_thread_messages_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(legacy_chat_data_response(
+        serde_json::json!(legacy_chat_messages(&messages)),
+        StatusCode::OK,
+    ))
+}
+
+async fn legacy_chats_runs(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+    let normalized_conversation_id = normalized_conversation_id(&conversation_id)?;
+
+    let _ = state
+        .codex_thread_store
+        .get_thread_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(legacy_chat_data_response(
+        serde_json::json!([]),
+        StatusCode::OK,
+    ))
+}
+
+async fn legacy_chats_run_events(
+    State(state): State<AppState>,
+    Path((conversation_id, run_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+    let normalized_conversation_id = normalized_conversation_id(&conversation_id)?;
+    let normalized_run_id = run_id.trim().to_string();
+    if normalized_run_id.is_empty() {
+        return Err(validation_error("run_id", "Run id is required."));
+    }
+
+    let _ = state
+        .codex_thread_store
+        .get_thread_for_user(&session.user.id, &normalized_conversation_id)
+        .await
+        .map_err(map_thread_store_error)?;
+
+    Ok(legacy_chat_data_response(
+        serde_json::json!({
+            "run": {
+                "id": normalized_run_id,
+                "status": "retired",
+                "modelProvider": "codex_app_server",
+                "model": null,
+            },
+            "events": [],
+        }),
+        StatusCode::OK,
+    ))
+}
+
+fn normalized_conversation_id(
+    raw_conversation_id: &str,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = raw_conversation_id.trim().to_string();
+    if normalized.is_empty() {
+        return Err(validation_error(
+            "conversation_id",
+            "Conversation id is required.",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn legacy_chat_data_response(payload: serde_json::Value, status: StatusCode) -> Response {
+    let mut response = (status, Json(serde_json::json!({ "data": payload }))).into_response();
+    response
+        .headers_mut()
+        .insert("x-oa-legacy-chat-retired", HeaderValue::from_static("true"));
+    response.headers_mut().insert(
+        "x-oa-legacy-chat-canonical",
+        HeaderValue::from_static("/api/runtime/threads"),
+    );
+    response
+}
+
+fn legacy_chat_summary(
+    thread: &ThreadProjection,
+    title_override: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": thread.thread_id,
+        "title": title_override
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Codex Thread {}", thread.thread_id)),
+        "autopilotId": serde_json::Value::Null,
+        "createdAt": thread.created_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+        "updatedAt": thread.updated_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+    })
+}
+
+fn legacy_chat_messages(messages: &[ThreadMessageProjection]) -> Vec<serde_json::Value> {
+    messages
+        .iter()
+        .map(|message| {
+            serde_json::json!({
+                "id": message.message_id,
+                "runId": serde_json::Value::Null,
+                "autopilotId": serde_json::Value::Null,
+                "role": message.role,
+                "content": message.text,
+                "meta": serde_json::Value::Null,
+                "createdAt": message.created_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+                "updatedAt": message.created_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+            })
+        })
+        .collect()
 }
 
 async fn list_runtime_threads(
@@ -6736,6 +7019,168 @@ mod tests {
             .body(Body::empty())?;
         let read_other_response = app.oneshot(read_other_request).await?;
         assert_eq!(read_other_response.status(), StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chats_aliases_map_to_codex_threads() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "legacy-chats@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/chats")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"title":"Migration Chat"}"#))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        assert_eq!(
+            create_response
+                .headers()
+                .get("x-oa-legacy-chat-retired")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+        assert_eq!(
+            create_response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .and_then(|value| value.to_str().ok()),
+            Some("/api/runtime/threads")
+        );
+        let create_body = read_json(create_response).await?;
+        let conversation_id = create_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(conversation_id.starts_with("thread_"));
+
+        let runtime_threads_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/threads")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let runtime_threads_response = app.clone().oneshot(runtime_threads_request).await?;
+        assert_eq!(runtime_threads_response.status(), StatusCode::OK);
+        let runtime_threads_body = read_json(runtime_threads_response).await?;
+        let contains_thread = runtime_threads_body["data"]["threads"]
+            .as_array()
+            .map(|threads| {
+                threads
+                    .iter()
+                    .any(|thread| thread["thread_id"] == json!(conversation_id.clone()))
+            })
+            .unwrap_or(false);
+        assert!(contains_thread);
+
+        let send_message_request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/runtime/threads/{conversation_id}/messages"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"text":"legacy bridge message"}"#))?;
+        let send_message_response = app.clone().oneshot(send_message_request).await?;
+        assert_eq!(send_message_response.status(), StatusCode::OK);
+
+        let show_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/chats/{conversation_id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_response = app.clone().oneshot(show_request).await?;
+        assert_eq!(show_response.status(), StatusCode::OK);
+        let show_body = read_json(show_response).await?;
+        assert_eq!(
+            show_body["data"]["conversation"]["id"],
+            json!(conversation_id.clone())
+        );
+        assert_eq!(
+            show_body["data"]["messages"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            1
+        );
+        assert_eq!(
+            show_body["data"]["messages"][0]["content"],
+            json!("legacy bridge message")
+        );
+        assert_eq!(
+            show_body["data"]["runs"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            0
+        );
+
+        let runs_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/chats/{conversation_id}/runs"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let runs_response = app.clone().oneshot(runs_request).await?;
+        assert_eq!(runs_response.status(), StatusCode::OK);
+        let runs_body = read_json(runs_response).await?;
+        assert_eq!(
+            runs_body["data"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            0
+        );
+
+        let events_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/chats/{conversation_id}/runs/run_legacy/events"
+            ))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let events_response = app.oneshot(events_request).await?;
+        assert_eq!(events_response.status(), StatusCode::OK);
+        let events_body = read_json(events_response).await?;
+        assert_eq!(events_body["data"]["run"]["status"], json!("retired"));
+        assert_eq!(
+            events_body["data"]["events"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            0
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_chat_show_rejects_cross_user_access() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let owner_token = authenticate_token(app.clone(), "legacy-owner@openagents.com").await?;
+        let other_token = authenticate_token(app.clone(), "legacy-other@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/chats")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {owner_token}"))
+            .body(Body::from(r#"{"title":"Owner Chat"}"#))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        let conversation_id = create_body["data"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!conversation_id.is_empty());
+
+        let other_show_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/chats/{conversation_id}"))
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::empty())?;
+        let other_show_response = app.oneshot(other_show_request).await?;
+        assert_eq!(other_show_response.status(), StatusCode::FORBIDDEN);
 
         Ok(())
     }

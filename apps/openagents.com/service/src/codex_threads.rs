@@ -155,6 +155,69 @@ impl CodexThreadStore {
         Ok(result)
     }
 
+    pub async fn create_thread_for_user(
+        &self,
+        user_id: &str,
+        org_id: &str,
+        thread_id: &str,
+    ) -> Result<ThreadProjection, ThreadStoreError> {
+        let now = Utc::now();
+        let (projection, snapshot) = {
+            let mut state = self.state.write().await;
+
+            match state.threads.get_mut(thread_id) {
+                Some(existing) => {
+                    if existing.user_id != user_id {
+                        return Err(ThreadStoreError::Forbidden);
+                    }
+
+                    if existing.org_id != org_id {
+                        existing.org_id = org_id.to_string();
+                        existing.updated_at = now;
+                        (ThreadProjection::from_record(existing), Some(state.clone()))
+                    } else {
+                        (ThreadProjection::from_record(existing), None)
+                    }
+                }
+                None => {
+                    let record = ThreadProjectionRecord {
+                        thread_id: thread_id.to_string(),
+                        user_id: user_id.to_string(),
+                        org_id: org_id.to_string(),
+                        created_at: now,
+                        updated_at: now,
+                        message_count: 0,
+                        last_message_at: None,
+                    };
+                    state.threads.insert(thread_id.to_string(), record.clone());
+                    (ThreadProjection::from_record(&record), Some(state.clone()))
+                }
+            }
+        };
+
+        if let Some(snapshot) = snapshot {
+            self.persist_state(&snapshot).await?;
+        }
+
+        Ok(projection)
+    }
+
+    pub async fn get_thread_for_user(
+        &self,
+        user_id: &str,
+        thread_id: &str,
+    ) -> Result<ThreadProjection, ThreadStoreError> {
+        let state = self.state.read().await;
+        let thread = state
+            .threads
+            .get(thread_id)
+            .ok_or(ThreadStoreError::NotFound)?;
+        if thread.user_id != user_id {
+            return Err(ThreadStoreError::Forbidden);
+        }
+        Ok(ThreadProjection::from_record(thread))
+    }
+
     pub async fn list_threads_for_user(
         &self,
         user_id: &str,
@@ -437,5 +500,32 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].text, "persist me");
         assert!(path.is_file());
+    }
+
+    #[tokio::test]
+    async fn create_and_get_thread_respects_user_boundary() {
+        let store = CodexThreadStore::from_config(&test_config(None));
+
+        let created = store
+            .create_thread_for_user("usr_owner", "org:openagents", "thread-owned")
+            .await
+            .expect("create thread");
+        assert_eq!(created.thread_id, "thread-owned");
+        assert_eq!(created.message_count, 0);
+
+        let fetched = store
+            .get_thread_for_user("usr_owner", "thread-owned")
+            .await
+            .expect("get thread");
+        assert_eq!(fetched.thread_id, "thread-owned");
+
+        let forbidden = store
+            .get_thread_for_user("usr_other", "thread-owned")
+            .await
+            .expect_err("user boundary should be enforced");
+        assert!(matches!(
+            forbidden,
+            crate::codex_threads::ThreadStoreError::Forbidden
+        ));
     }
 }
