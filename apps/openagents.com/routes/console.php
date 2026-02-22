@@ -6,7 +6,9 @@ use App\Lightning\L402\L402Client;
 use App\Support\KhalaImport\KhalaChatImportService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -329,3 +331,140 @@ Artisan::command('ops:create-api-token {email : Email of the existing user} {nam
 
     return 0;
 })->purpose('Create a Sanctum API token for an existing user.');
+
+Artisan::command('ops:export-parity-manifests {--output=docs/parity-manifests/baseline : Output directory for generated manifests (absolute or relative to project root)}', function () {
+    $outputOption = trim((string) $this->option('output'));
+    if ($outputOption === '') {
+        $this->error('--output cannot be empty.');
+
+        return 1;
+    }
+
+    $outputDir = str_starts_with($outputOption, DIRECTORY_SEPARATOR)
+        ? $outputOption
+        : base_path($outputOption);
+    $outputDir = rtrim($outputDir, DIRECTORY_SEPARATOR);
+    File::ensureDirectoryExists($outputDir);
+
+    $generatedAt = now()->toISOString();
+    $routeRows = collect(Route::getRoutes()->getRoutes())
+        ->flatMap(function ($route): array {
+            $uri = '/'.ltrim($route->uri(), '/');
+            $routeName = $route->getName();
+            $actionName = $route->getActionName();
+            $middleware = array_values($route->gatherMiddleware());
+
+            return collect($route->methods())
+                ->reject(fn (string $method): bool => in_array($method, ['HEAD', 'OPTIONS'], true))
+                ->map(fn (string $method): array => [
+                    'method' => $method,
+                    'uri' => $uri,
+                    'name' => $routeName,
+                    'action' => $actionName,
+                    'middleware' => $middleware,
+                ])
+                ->values()
+                ->all();
+        })
+        ->sortBy(fn (array $route): string => sprintf('%s %s', $route['method'], $route['uri']))
+        ->values();
+
+    $apiRoutes = $routeRows
+        ->filter(fn (array $route): bool => str_starts_with($route['uri'], '/api/'))
+        ->values();
+
+    $webRoutes = $routeRows
+        ->filter(fn (array $route): bool => ! str_starts_with($route['uri'], '/api/'))
+        ->values();
+
+    $pagesRoot = resource_path('js/pages');
+    $pageEntries = collect(File::exists($pagesRoot) ? File::allFiles($pagesRoot) : [])
+        ->filter(function (\SplFileInfo $file): bool {
+            $extension = strtolower($file->getExtension());
+
+            return in_array($extension, ['tsx', 'jsx', 'ts', 'js', 'vue'], true);
+        })
+        ->map(function (\SplFileInfo $file): string {
+            $relative = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+
+            return str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+        })
+        ->sort()
+        ->values();
+
+    $consoleSource = File::exists(base_path('routes/console.php'))
+        ? File::get(base_path('routes/console.php'))
+        : '';
+    preg_match_all("/Artisan::command\\('([^']+)'/", $consoleSource, $signatureMatches);
+    $customCommandNames = collect($signatureMatches[1] ?? [])
+        ->map(fn (string $signature): string => (string) preg_split('/\\s+/', trim($signature))[0])
+        ->filter(fn (string $name): bool => $name !== '')
+        ->unique()
+        ->sort()
+        ->values();
+
+    $allCommands = collect(Artisan::all());
+    $customCommands = $customCommandNames
+        ->map(function (string $name) use ($allCommands): array {
+            $command = $allCommands->get($name);
+
+            return [
+                'name' => $name,
+                'description' => $command?->getDescription() ?? '',
+                'hidden' => $command?->isHidden() ?? false,
+                'class' => $command ? get_class($command) : null,
+            ];
+        })
+        ->values();
+
+    $writeJson = function (string $fileName, array $payload) use ($outputDir): string {
+        $path = $outputDir.DIRECTORY_SEPARATOR.$fileName;
+        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! is_string($encoded)) {
+            throw new RuntimeException('Failed to encode '.$fileName.' as JSON.');
+        }
+        File::put($path, $encoded.PHP_EOL);
+
+        return $path;
+    };
+
+    $apiPath = $writeJson('api-routes.json', [
+        'generated_at' => $generatedAt,
+        'count' => $apiRoutes->count(),
+        'routes' => $apiRoutes->all(),
+    ]);
+    $webPath = $writeJson('web-routes.json', [
+        'generated_at' => $generatedAt,
+        'count' => $webRoutes->count(),
+        'routes' => $webRoutes->all(),
+    ]);
+    $pagesPath = $writeJson('page-entries.json', [
+        'generated_at' => $generatedAt,
+        'count' => $pageEntries->count(),
+        'entries' => $pageEntries->all(),
+    ]);
+    $commandsPath = $writeJson('artisan-commands.json', [
+        'generated_at' => $generatedAt,
+        'count' => $customCommands->count(),
+        'commands' => $customCommands->all(),
+    ]);
+    $indexPath = $writeJson('manifest-index.json', [
+        'generated_at' => $generatedAt,
+        'manifests' => [
+            ['name' => 'api-routes', 'path' => basename($apiPath), 'count' => $apiRoutes->count()],
+            ['name' => 'web-routes', 'path' => basename($webPath), 'count' => $webRoutes->count()],
+            ['name' => 'page-entries', 'path' => basename($pagesPath), 'count' => $pageEntries->count()],
+            ['name' => 'artisan-commands', 'path' => basename($commandsPath), 'count' => $customCommands->count()],
+        ],
+    ]);
+
+    $this->info('Parity manifests exported.');
+    $this->line('  output: '.$outputDir);
+    $this->line('  api routes: '.$apiRoutes->count());
+    $this->line('  web routes: '.$webRoutes->count());
+    $this->line('  page entries: '.$pageEntries->count());
+    $this->line('  artisan commands: '.$customCommands->count());
+    $this->line('  index: '.$indexPath);
+
+    return 0;
+})->purpose('Export baseline JSON manifests for API routes, web routes, page entries, and custom Artisan commands.');

@@ -7,6 +7,14 @@ Tracking: OA-WEBPARITY-001
 Canonical source plan:
 - `apps/openagents.com/docs/20260222-laravel-rust-wgpui-full-parity-master-plan.md`
 
+Baseline manifest artifacts:
+- `apps/openagents.com/docs/parity-manifests/baseline/api-routes.json`
+- `apps/openagents.com/docs/parity-manifests/baseline/web-routes.json`
+- `apps/openagents.com/docs/parity-manifests/baseline/page-entries.json`
+- `apps/openagents.com/docs/parity-manifests/baseline/artisan-commands.json`
+- `apps/openagents.com/docs/parity-manifests/baseline/manifest-index.json`
+- Regenerate with: `php artisan ops:export-parity-manifests --output=docs/parity-manifests/baseline`
+
 ## Charter
 
 1. Port or explicitly retire all active Laravel product behavior for `apps/openagents.com` into Rust service + Rust/WGPUI web shell.
