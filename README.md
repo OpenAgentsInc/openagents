@@ -1,53 +1,30 @@
 # OpenAgents
 
-OpenAgents is a Rust-first, Rust-target architecture for multi-surface agent execution and administration.
+OpenAgents is an open platform for running and supervising AI agents across web, desktop, and iOS.
 
-Canonical architecture and migration sequencing live in:
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- `docs/DEPLOYMENT_RUST_SERVICES.md`
+The system is built around a shared runtime/control model so agent sessions can be observed, replayed, and administered across surfaces instead of being tied to one client.
 
-## Active Surfaces and Services (Canonical)
+Use OpenAgents:
+- Web: [openagents.com](https://openagents.com)
+- Desktop client: `apps/autopilot-desktop/`
+- iOS client: `apps/autopilot-ios/`
 
-- `apps/openagents.com/service/`: Rust control service (auth/session/control APIs + static host)
-- `apps/openagents.com/web-shell/`: Rust/WGPUI WASM web application
-- `apps/runtime/`: Rust runtime authority service (runs/workers/events/projectors/Khala delivery)
-- `apps/autopilot-desktop/`: Rust desktop app (WGPUI)
-- `apps/autopilot-ios/`: iOS host app for shared Rust client/runtime integration
-- `apps/onyx/`: Rust local-first notes app
-- `apps/lightning-ops/`: Rust Lightning operations service
-- `apps/lightning-wallet-executor/`: Rust Lightning payment execution service
+Core services:
+- Runtime authority: `apps/runtime/`
+- Control service + site host: `apps/openagents.com/service/`
+- Web shell: `apps/openagents.com/web-shell/`
 
-## Authority Model
+## Run Locally
 
-- `control.*` data plane: identity/session/authorization authority
-- `runtime.*` data plane: execution/sync/read-model authority
-- Khala is delivery/replay infrastructure only; it is never an authority mutation path
+```bash
+# Runtime service
+cargo run --manifest-path apps/runtime/Cargo.toml --bin openagents-runtime-service
 
-## Historical/Removed Surfaces
+# Control service
+cargo run --manifest-path apps/openagents.com/service/Cargo.toml
 
-These are removed from active architecture and treated as historical only:
-- `apps/mobile/` (removed)
-- `apps/desktop/` (removed)
-- `apps/inbox-autopilot/` (removed)
-- `apps/openagents-runtime/` (removed; superseded by `apps/runtime/`)
+# Desktop app
+cargo run -p autopilot-desktop
+```
 
-## Local Verification
-
-- Changed-files gate: `./scripts/local-ci.sh changed`
-- Rust push gate (manual): `./scripts/local-ci.sh all-rust`
-- Workspace baseline: `cargo check --workspace --all-targets`
-- Proto gate: `./scripts/local-ci.sh proto`
-
-## Quick Runtime Commands
-
-- Runtime service: `cargo run --manifest-path apps/runtime/Cargo.toml --bin openagents-runtime-service`
-- Control service: `cargo run --manifest-path apps/openagents.com/service/Cargo.toml`
-- Desktop app: `cargo run -p autopilot-desktop`
-
-## Documentation Entry Points
-
-- `AGENTS.md`
-- `docs/README.md`
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/ROADMAP.md`
+For architecture, contracts, and contributor docs, start with `AGENTS.md`.

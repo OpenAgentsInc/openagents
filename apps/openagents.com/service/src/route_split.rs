@@ -453,7 +453,9 @@ mod tests {
     #[tokio::test]
     async fn codex_worker_control_paths_ignore_runtime_override_to_rust() {
         let service = RouteSplitService::from_config(&test_config());
-        service.set_override_target(Some(RouteTarget::RustShell)).await;
+        service
+            .set_override_target(Some(RouteTarget::RustShell))
+            .await;
 
         let decision = service
             .evaluate("/api/runtime/codex/workers/codexw_1/requests", "user:1")
