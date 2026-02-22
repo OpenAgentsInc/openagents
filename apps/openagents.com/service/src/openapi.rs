@@ -547,7 +547,10 @@ fn request_example(key: &str) -> Option<Value> {
             "device_id": "ios:device"
         })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
-        "route_split_override" => Some(json!({ "target": "legacy" })),
+        "route_split_override" => Some(json!({
+            "target": "rollback",
+            "domain": "billing_l402"
+        })),
         "route_split_evaluate" => Some(json!({
             "path": "/chat/thread-1",
             "cohort_key": "user:123"
@@ -677,13 +680,28 @@ fn response_example(key: &str) -> Option<Value> {
         "route_split_status" => Some(json!({
             "data": {
                 "mode": "cohort",
-                "override_target": null
+                "override_target": null,
+                "rollback_matrix": {
+                    "auth_entry": "legacy",
+                    "billing_l402": "legacy",
+                    "chat_pilot": "rust_shell"
+                },
+                "route_groups": [
+                    {
+                        "domain": "billing_l402",
+                        "route_prefixes": ["/billing", "/l402"],
+                        "rollback_target": "legacy",
+                        "override_target": null
+                    }
+                ]
             }
         })),
         "route_split_evaluate" => Some(json!({
             "data": {
                 "target": "rust_shell",
-                "reason": "mode_cohort"
+                "reason": "mode_cohort",
+                "route_domain": "chat_pilot",
+                "rollback_target": "rust_shell"
             }
         })),
         _ => None,

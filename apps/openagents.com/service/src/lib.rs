@@ -228,6 +228,8 @@ struct SyncTokenRequestPayload {
 #[derive(Debug, Deserialize)]
 struct RouteSplitOverrideRequest {
     target: String,
+    #[serde(default)]
+    domain: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1027,6 +1029,8 @@ async fn web_shell_entry(
             path: path.to_string(),
             target: RouteTarget::RustShell,
             reason: "pilot_route_rust_only".to_string(),
+            route_domain: "chat_pilot".to_string(),
+            rollback_target: Some(RouteTarget::RustShell),
             cohort_bucket: decision.cohort_bucket,
             cohort_key: decision.cohort_key.clone(),
         };
@@ -1097,20 +1101,89 @@ async fn route_split_override(
         .map_err(map_auth_error)?;
 
     let normalized_target = payload.target.trim().to_lowercase();
-    let override_target = match normalized_target.as_str() {
-        "legacy" => Some(RouteTarget::Legacy),
-        "rust" | "rust_shell" => Some(RouteTarget::RustShell),
-        "clear" | "default" => None,
+    let normalized_domain = payload
+        .domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_lowercase());
+
+    match normalized_target.as_str() {
+        "legacy" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, Some(RouteTarget::Legacy))
+                    .await
+                    .map_err(|message| validation_error("domain", &message))?;
+            } else {
+                state
+                    .route_split
+                    .set_override_target(Some(RouteTarget::Legacy))
+                    .await;
+            }
+        }
+        "rust" | "rust_shell" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, Some(RouteTarget::RustShell))
+                    .await
+                    .map_err(|message| validation_error("domain", &message))?;
+            } else {
+                state
+                    .route_split
+                    .set_override_target(Some(RouteTarget::RustShell))
+                    .await;
+            }
+        }
+        "clear" | "default" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, None)
+                    .await
+                    .map_err(|message| validation_error("domain", &message))?;
+            } else {
+                state.route_split.set_override_target(None).await;
+            }
+        }
+        "rollback" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                let rollback_target = state
+                    .route_split
+                    .rollback_target_for_domain(Some(domain))
+                    .ok_or_else(|| validation_error("domain", "Unknown route domain."))?;
+                state
+                    .route_split
+                    .set_domain_override_target(domain, Some(rollback_target))
+                    .await
+                    .map_err(|message| validation_error("domain", &message))?;
+            } else if let Some(global_target) = state.route_split.rollback_target_for_domain(None) {
+                state
+                    .route_split
+                    .set_override_target(Some(global_target))
+                    .await;
+            } else {
+                state
+                    .route_split
+                    .set_override_target(Some(RouteTarget::Legacy))
+                    .await;
+            }
+        }
         _ => {
             return Err(validation_error(
                 "target",
-                "Target must be one of: legacy, rust, clear.",
+                "Target must be one of: legacy, rust, rollback, clear.",
             ));
         }
-    };
+    }
 
-    state.route_split.set_override_target(override_target).await;
     let status = state.route_split.status().await;
+    let scope = normalized_domain
+        .clone()
+        .map(|domain| format!("domain:{domain}"))
+        .unwrap_or_else(|| "global".to_string());
 
     state.observability.audit(
         AuditEvent::new("route.split.override.updated", request_id.clone())
@@ -1118,7 +1191,8 @@ async fn route_split_override(
             .with_session_id(session.session.session_id)
             .with_org_id(session.session.active_org_id)
             .with_device_id(session.session.device_id)
-            .with_attribute("target", normalized_target),
+            .with_attribute("target", normalized_target)
+            .with_attribute("scope", scope),
     );
     state
         .observability
@@ -2358,11 +2432,22 @@ fn emit_route_split_decision_audit(
             },
         )
         .with_attribute("reason", decision.reason.clone())
+        .with_attribute("route_domain", decision.route_domain.clone())
         .with_attribute("cohort_key", decision.cohort_key.clone())
         .with_attribute("user_agent", user_agent.to_string());
 
     if let Some(bucket) = decision.cohort_bucket {
         event = event.with_attribute("cohort_bucket", bucket.to_string());
+    }
+
+    if let Some(rollback_target) = decision.rollback_target {
+        event = event.with_attribute(
+            "rollback_target",
+            match rollback_target {
+                RouteTarget::Legacy => "legacy".to_string(),
+                RouteTarget::RustShell => "rust_shell".to_string(),
+            },
+        );
     }
 
     state.observability.audit(event);
@@ -4422,6 +4507,104 @@ mod tests {
                 .get("location")
                 .and_then(|value| value.to_str().ok()),
             Some("https://legacy.openagents.test/workspace/session-1")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_domain_override_only_affects_selected_route_group() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "routes@openagents.com").await?;
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"target":"legacy","domain":"billing_l402"}"#))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let billing_request = Request::builder()
+            .uri("/l402/paywalls")
+            .header("x-oa-route-key", "user:route")
+            .body(Body::empty())?;
+        let billing_response = app.clone().oneshot(billing_request).await?;
+        assert_eq!(billing_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            billing_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://legacy.openagents.test/l402/paywalls")
+        );
+
+        let settings_request = Request::builder()
+            .uri("/settings/profile")
+            .header("x-oa-route-key", "user:route")
+            .body(Body::empty())?;
+        let settings_response = app.oneshot(settings_request).await?;
+        assert_eq!(settings_response.status(), StatusCode::OK);
+        let body = settings_response.into_body().collect().await?.to_bytes();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("rust shell"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_status_exposes_rollback_matrix_and_domain_overrides() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "routes@openagents.com").await?;
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"target":"rollback","domain":"billing_l402"}"#,
+            ))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let status_request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/control/route-split/status")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let status_response = app.oneshot(status_request).await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+
+        let body = read_json(status_response).await?;
+        assert_eq!(
+            body["data"]["rollback_matrix"]["billing_l402"],
+            json!("legacy")
+        );
+        assert_eq!(
+            body["data"]["rollback_matrix"]["chat_pilot"],
+            json!("rust_shell")
+        );
+        assert_eq!(
+            body["data"]["domain_overrides"]["billing_l402"],
+            json!("legacy")
         );
 
         Ok(())

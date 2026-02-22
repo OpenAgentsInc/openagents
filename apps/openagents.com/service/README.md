@@ -244,14 +244,21 @@ Rust ownership migration/backfill runbook + scripts:
   - `/l402/*`
   - `/billing/*` (alias)
 - Fast rollback is supported with authenticated override:
-  - `POST /api/v1/control/route-split/override` with body `{"target":"legacy"}` forces legacy immediately.
-  - `POST /api/v1/control/route-split/override` with body `{"target":"clear"}` returns to configured mode.
+  - Global override:
+    - `POST /api/v1/control/route-split/override` with `{"target":"legacy"}` forces legacy immediately.
+    - `POST /api/v1/control/route-split/override` with `{"target":"clear"}` returns global routing to configured mode.
+  - Per-domain override:
+    - `POST /api/v1/control/route-split/override` with `{"target":"legacy","domain":"billing_l402"}` overrides one route group.
+    - `POST /api/v1/control/route-split/override` with `{"target":"clear","domain":"billing_l402"}` clears one route-group override.
+    - `POST /api/v1/control/route-split/override` with `{"target":"rollback","domain":"billing_l402"}` applies the configured rollback target for that route group.
+- Route-split status now includes per-domain rollback matrix and active domain overrides.
 - Route split decisions emit auditable events as `route.split.decision`.
 - Codex pilot route checklist/run notes: `apps/openagents.com/docs/20260221-codex-thread-rust-pilot.md`
 - Auth/onboarding rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-auth-onboarding.md`
 - Account/settings/admin rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-account-settings-admin.md`
 - Billing/lightning rollout checklist: `apps/openagents.com/docs/20260221-route-group-rollout-billing-lightning.md`
 - Default router cutover checklist: `apps/openagents.com/docs/20260221-route-cutover-default-rust.md`
+- Domain rollback matrix: `apps/openagents.com/service/docs/ROUTE_SPLIT_ROLLBACK_MATRIX.md`
 
 ## Canary Runbook
 

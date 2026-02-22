@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use base64::Engine;
@@ -27,9 +28,20 @@ pub struct RouteSplitDecision {
     pub path: String,
     pub target: RouteTarget,
     pub reason: String,
+    pub route_domain: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_target: Option<RouteTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cohort_bucket: Option<u8>,
     pub cohort_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RouteGroupStatus {
+    pub domain: String,
+    pub route_prefixes: Vec<String>,
+    pub rollback_target: RouteTarget,
+    pub override_target: Option<RouteTarget>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,12 +53,16 @@ pub struct RouteSplitStatus {
     pub force_legacy: bool,
     pub legacy_base_url: Option<String>,
     pub override_target: Option<RouteTarget>,
+    pub route_groups: Vec<RouteGroupStatus>,
+    pub rollback_matrix: HashMap<String, RouteTarget>,
+    pub domain_overrides: HashMap<String, RouteTarget>,
 }
 
 #[derive(Clone)]
 pub struct RouteSplitService {
     config: RouteSplitConfig,
     override_target: Arc<RwLock<Option<RouteTarget>>>,
+    domain_overrides: Arc<RwLock<HashMap<String, RouteTarget>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +74,15 @@ struct RouteSplitConfig {
     salt: String,
     force_legacy: bool,
     legacy_base_url: Option<String>,
+    route_groups: Vec<RouteGroupConfig>,
+    rollback_matrix: HashMap<String, RouteTarget>,
+}
+
+#[derive(Debug, Clone)]
+struct RouteGroupConfig {
+    domain: String,
+    route_prefixes: Vec<String>,
+    rollback_target: RouteTarget,
 }
 
 impl RouteSplitService {
@@ -65,12 +90,15 @@ impl RouteSplitService {
         Self {
             config: RouteSplitConfig::from_config(config),
             override_target: Arc::new(RwLock::new(None)),
+            domain_overrides: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub async fn evaluate(&self, path: &str, cohort_key: &str) -> RouteSplitDecision {
         let normalized_path = normalize_path(path);
         let normalized_cohort_key = normalize_cohort_key(cohort_key);
+        let route_domain = self.route_domain_for_path(&normalized_path);
+        let rollback_target = self.rollback_target_for_domain(route_domain.as_deref());
         let override_target = *self.override_target.read().await;
 
         // Keep Codex worker control APIs on the Laravel authority lane until
@@ -80,6 +108,27 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::Legacy,
                 reason: "codex_worker_control_legacy_authority".to_string(),
+                route_domain: "runtime_codex_worker_control".to_string(),
+                rollback_target: Some(RouteTarget::Legacy),
+                cohort_bucket: None,
+                cohort_key: normalized_cohort_key,
+            };
+        }
+
+        let domain_override = {
+            let lock = self.domain_overrides.read().await;
+            route_domain
+                .as_ref()
+                .and_then(|domain| lock.get(domain).copied())
+        };
+
+        if let Some(target) = domain_override {
+            return RouteSplitDecision {
+                path: normalized_path,
+                target,
+                reason: "domain_override".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -90,6 +139,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::Legacy,
                 reason: "force_legacy".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -100,6 +151,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target,
                 reason: "runtime_override".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -110,6 +163,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::Legacy,
                 reason: "route_split_disabled".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -120,6 +175,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::Legacy,
                 reason: "legacy_route_default".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             };
@@ -130,6 +187,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::Legacy,
                 reason: "mode_legacy".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             },
@@ -137,6 +196,8 @@ impl RouteSplitService {
                 path: normalized_path,
                 target: RouteTarget::RustShell,
                 reason: "mode_rust".to_string(),
+                route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                rollback_target,
                 cohort_bucket: None,
                 cohort_key: normalized_cohort_key,
             },
@@ -152,6 +213,8 @@ impl RouteSplitService {
                     path: normalized_path,
                     target,
                     reason: "mode_cohort".to_string(),
+                    route_domain: route_domain.unwrap_or_else(|| "unclassified".to_string()),
+                    rollback_target,
                     cohort_bucket: Some(bucket),
                     cohort_key: normalized_cohort_key,
                 }
@@ -164,8 +227,49 @@ impl RouteSplitService {
         *lock = target;
     }
 
+    pub async fn set_domain_override_target(
+        &self,
+        domain: &str,
+        target: Option<RouteTarget>,
+    ) -> Result<(), String> {
+        let normalized = normalize_domain(domain);
+        if !self.config.rollback_matrix.contains_key(&normalized) {
+            return Err(format!("Unknown route domain '{domain}'."));
+        }
+
+        let mut lock = self.domain_overrides.write().await;
+        if let Some(target) = target {
+            lock.insert(normalized, target);
+        } else {
+            lock.remove(&normalized);
+        }
+        Ok(())
+    }
+
+    pub fn rollback_target_for_domain(&self, domain: Option<&str>) -> Option<RouteTarget> {
+        let Some(domain) = domain else {
+            return Some(RouteTarget::Legacy);
+        };
+
+        let normalized = normalize_domain(domain);
+        self.config.rollback_matrix.get(&normalized).copied()
+    }
+
     pub async fn status(&self) -> RouteSplitStatus {
         let override_target = *self.override_target.read().await;
+        let domain_overrides = self.domain_overrides.read().await.clone();
+        let route_groups = self
+            .config
+            .route_groups
+            .iter()
+            .map(|group| RouteGroupStatus {
+                domain: group.domain.clone(),
+                route_prefixes: group.route_prefixes.clone(),
+                rollback_target: group.rollback_target,
+                override_target: domain_overrides.get(&group.domain).copied(),
+            })
+            .collect();
+
         RouteSplitStatus {
             enabled: self.config.enabled,
             mode: self.config.mode.as_str().to_string(),
@@ -174,6 +278,9 @@ impl RouteSplitService {
             force_legacy: self.config.force_legacy,
             legacy_base_url: self.config.legacy_base_url.clone(),
             override_target,
+            route_groups,
+            rollback_matrix: self.config.rollback_matrix.clone(),
+            domain_overrides,
         }
     }
 
@@ -194,10 +301,32 @@ impl RouteSplitService {
             normalized == *prefix || normalized.starts_with(&format!("{prefix}/"))
         })
     }
+
+    fn route_domain_for_path(&self, path: &str) -> Option<String> {
+        let normalized = normalize_path(path);
+
+        self.config.route_groups.iter().find_map(|group| {
+            if group.route_prefixes.iter().any(|prefix| {
+                if prefix == "/" {
+                    return normalized == "/";
+                }
+                normalized == *prefix || normalized.starts_with(&format!("{prefix}/"))
+            }) {
+                return Some(group.domain.clone());
+            }
+            None
+        })
+    }
 }
 
 impl RouteSplitConfig {
     fn from_config(config: &Config) -> Self {
+        let route_groups = default_route_groups();
+        let rollback_matrix = route_groups
+            .iter()
+            .map(|group| (group.domain.clone(), group.rollback_target))
+            .collect();
+
         Self {
             enabled: config.route_split_enabled,
             mode: RouteMode::from_str(&config.route_split_mode),
@@ -206,6 +335,8 @@ impl RouteSplitConfig {
             salt: config.route_split_salt.clone(),
             force_legacy: config.route_split_force_legacy,
             legacy_base_url: config.route_split_legacy_base_url.clone(),
+            route_groups,
+            rollback_matrix,
         }
     }
 }
@@ -281,6 +412,44 @@ fn stable_bucket(cohort_key: &str, salt: &str) -> u8 {
 
 fn is_codex_worker_control_path(path: &str) -> bool {
     path == "/api/runtime/codex/workers" || path.starts_with("/api/runtime/codex/workers/")
+}
+
+fn normalize_domain(value: &str) -> String {
+    value.trim().to_lowercase().replace('-', "_")
+}
+
+fn default_route_groups() -> Vec<RouteGroupConfig> {
+    vec![
+        RouteGroupConfig {
+            domain: "auth_entry".to_string(),
+            route_prefixes: vec![
+                "/login".to_string(),
+                "/register".to_string(),
+                "/authenticate".to_string(),
+                "/onboarding".to_string(),
+            ],
+            rollback_target: RouteTarget::Legacy,
+        },
+        RouteGroupConfig {
+            domain: "account_settings_admin".to_string(),
+            route_prefixes: vec![
+                "/account".to_string(),
+                "/settings".to_string(),
+                "/admin".to_string(),
+            ],
+            rollback_target: RouteTarget::Legacy,
+        },
+        RouteGroupConfig {
+            domain: "billing_l402".to_string(),
+            route_prefixes: vec!["/billing".to_string(), "/l402".to_string()],
+            rollback_target: RouteTarget::Legacy,
+        },
+        RouteGroupConfig {
+            domain: "chat_pilot".to_string(),
+            route_prefixes: vec!["/chat".to_string(), "/feed".to_string(), "/".to_string()],
+            rollback_target: RouteTarget::RustShell,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -471,5 +640,55 @@ mod tests {
 
         assert_eq!(decision.target, RouteTarget::Legacy);
         assert_eq!(decision.reason, "codex_worker_control_legacy_authority");
+    }
+
+    #[tokio::test]
+    async fn domain_override_applies_only_to_matching_route_group() {
+        let service = RouteSplitService::from_config(&test_config());
+        service
+            .set_domain_override_target("billing_l402", Some(RouteTarget::Legacy))
+            .await
+            .expect("set domain override");
+
+        let billing_decision = service.evaluate("/l402/paywalls", "user:1").await;
+        assert_eq!(billing_decision.target, RouteTarget::Legacy);
+        assert_eq!(billing_decision.reason, "domain_override");
+        assert_eq!(billing_decision.route_domain, "billing_l402");
+
+        let settings_decision = service.evaluate("/settings/profile", "user:1").await;
+        assert_eq!(settings_decision.target, RouteTarget::RustShell);
+        assert_ne!(settings_decision.reason, "domain_override");
+    }
+
+    #[tokio::test]
+    async fn status_exposes_rollback_matrix_per_route_group() {
+        let service = RouteSplitService::from_config(&test_config());
+        let status = service.status().await;
+
+        assert_eq!(
+            status.rollback_matrix.get("auth_entry"),
+            Some(&RouteTarget::Legacy)
+        );
+        assert_eq!(
+            status.rollback_matrix.get("account_settings_admin"),
+            Some(&RouteTarget::Legacy)
+        );
+        assert_eq!(
+            status.rollback_matrix.get("billing_l402"),
+            Some(&RouteTarget::Legacy)
+        );
+        assert_eq!(
+            status.rollback_matrix.get("chat_pilot"),
+            Some(&RouteTarget::RustShell)
+        );
+    }
+
+    #[tokio::test]
+    async fn route_decision_carries_domain_and_rollback_target() {
+        let service = RouteSplitService::from_config(&test_config());
+        let decision = service.evaluate("/settings/profile", "user:1").await;
+
+        assert_eq!(decision.route_domain, "account_settings_admin");
+        assert_eq!(decision.rollback_target, Some(RouteTarget::Legacy));
     }
 }
