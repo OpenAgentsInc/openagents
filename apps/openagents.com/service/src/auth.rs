@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -169,6 +170,12 @@ pub struct RefreshResult {
     pub refresh_token_id: String,
     pub replaced_refresh_token_id: Option<String>,
     pub session: SessionView,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiRegisterResult {
+    pub user: AuthUser,
+    pub created: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1029,6 +1036,99 @@ impl AuthService {
         })
     }
 
+    pub async fn register_api_user(
+        &self,
+        email: String,
+        name: Option<String>,
+    ) -> Result<ApiRegisterResult, AuthError> {
+        let normalized_email = normalize_email(&email)?;
+        let requested_name = name.and_then(non_empty).map(|value| truncate_name(&value));
+        let generated_workos_id = bootstrap_workos_id_for_email(&normalized_email);
+
+        let (user, created, snapshot) = {
+            let mut state = self.state.write().await;
+
+            if let Some(existing_user_id) = state.users_by_email.get(&normalized_email).cloned() {
+                let (updated_user, user_id, workos_user_id) = {
+                    let existing_user =
+                        state
+                            .users_by_id
+                            .get_mut(&existing_user_id)
+                            .ok_or_else(|| AuthError::Unauthorized {
+                                message: "Unauthenticated.".to_string(),
+                            })?;
+
+                    existing_user.email = normalized_email.clone();
+                    existing_user.name = requested_name
+                        .clone()
+                        .unwrap_or_else(|| default_name_from_email(&normalized_email));
+                    if existing_user.workos_user_id.trim().is_empty() {
+                        existing_user.workos_user_id = generated_workos_id.clone();
+                    }
+                    existing_user.memberships = ensure_default_memberships(
+                        &existing_user.id,
+                        &normalized_email,
+                        existing_user.memberships.clone(),
+                    );
+
+                    (
+                        existing_user.clone(),
+                        existing_user.id.clone(),
+                        existing_user.workos_user_id.clone(),
+                    )
+                };
+
+                state
+                    .users_by_workos_id
+                    .insert(workos_user_id, user_id.clone());
+                state
+                    .users_by_email
+                    .insert(normalized_email.clone(), user_id);
+
+                (updated_user, false, state.clone())
+            } else {
+                let user_id = format!("user_{}", Uuid::new_v4().simple());
+                let created_user = UserRecord {
+                    id: user_id.clone(),
+                    email: normalized_email.clone(),
+                    name: requested_name
+                        .clone()
+                        .unwrap_or_else(|| default_name_from_email(&normalized_email)),
+                    workos_user_id: generated_workos_id.clone(),
+                    memberships: ensure_default_memberships(
+                        &user_id,
+                        &normalized_email,
+                        Vec::new(),
+                    ),
+                };
+
+                state
+                    .users_by_email
+                    .insert(normalized_email.clone(), created_user.id.clone());
+                state
+                    .users_by_workos_id
+                    .insert(generated_workos_id, created_user.id.clone());
+                state
+                    .users_by_id
+                    .insert(created_user.id.clone(), created_user.clone());
+
+                (created_user, true, state.clone())
+            }
+        };
+
+        self.persist_state_snapshot(snapshot).await?;
+
+        Ok(ApiRegisterResult {
+            user: AuthUser {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                workos_user_id: user.workos_user_id,
+            },
+            created,
+        })
+    }
+
     pub async fn list_personal_access_tokens(
         &self,
         user_id: &str,
@@ -1337,6 +1437,51 @@ fn normalize_email(raw_email: &str) -> Result<String, AuthError> {
     }
 
     Ok(email)
+}
+
+fn default_name_from_email(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or_default();
+    let normalized = local.replace(['.', '-', '_'], " ");
+    let title = normalized
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<String>>()
+        .join(" ");
+
+    let candidate = if title.trim().is_empty() {
+        "API User".to_string()
+    } else {
+        title
+    };
+    truncate_name(&candidate)
+}
+
+fn truncate_name(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "API User".to_string();
+    }
+    trimmed.chars().take(120).collect()
+}
+
+fn bootstrap_workos_id_for_email(email: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(email.trim().to_lowercase().as_bytes());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+
+    let suffix: String = hex.chars().take(32).collect();
+    format!("api_bootstrap_{suffix}")
 }
 
 fn token_name_for_client(client_name: Option<&str>) -> String {
@@ -1958,6 +2103,9 @@ mod tests {
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
             auth_local_test_login_enabled: false,
+            auth_api_signup_enabled: false,
+            auth_api_signup_allowed_domains: vec![],
+            auth_api_signup_default_token_name: "api-bootstrap".to_string(),
             admin_emails: vec![],
             auth_store_path: store_path,
             auth_challenge_ttl_seconds: 600,
@@ -2097,5 +2245,32 @@ mod tests {
         assert_eq!(restored_tokens.len(), 1);
         assert!(restored_tokens[0].revoked_at.is_some());
         assert!(store_path.is_file());
+    }
+
+    #[tokio::test]
+    async fn api_register_user_creates_or_updates_user_record() {
+        let auth = AuthService::from_config(&test_config(None));
+
+        let first = auth
+            .register_api_user(
+                "api-user@staging.openagents.com".to_string(),
+                Some("API User".to_string()),
+            )
+            .await
+            .expect("first register");
+        assert!(first.created);
+        assert_eq!(first.user.email, "api-user@staging.openagents.com");
+        assert!(first.user.workos_user_id.starts_with("api_bootstrap_"));
+
+        let second = auth
+            .register_api_user(
+                "api-user@staging.openagents.com".to_string(),
+                Some("Updated Name".to_string()),
+            )
+            .await
+            .expect("second register");
+        assert!(!second.created);
+        assert_eq!(second.user.id, first.user.id);
+        assert_eq!(second.user.name, "Updated Name");
     }
 }

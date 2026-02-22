@@ -47,16 +47,17 @@ use crate::auth::{
 };
 use crate::codex_threads::{CodexThreadStore, ThreadStoreError};
 use crate::config::Config;
-use crate::domain_store::DomainStore;
+use crate::domain_store::{CreateAutopilotInput, DomainStore, DomainStoreError};
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
-    ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_SESSION,
-    ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY, ROUTE_ME,
-    ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_POLICY_AUTHORIZE,
-    ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS, ROUTE_SYNC_TOKEN, ROUTE_V1_AUTH_SESSION,
-    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
-    ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
-    ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN, openapi_document,
+    ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH, ROUTE_AUTH_REGISTER,
+    ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
+    ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS, ROUTE_SYNC_TOKEN,
+    ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
+    ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
+    openapi_document,
 };
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
@@ -166,6 +167,21 @@ struct VerifyEmailCodeRequest {
     challenge_id: Option<String>,
     #[serde(default, alias = "deviceId")]
     device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthRegisterRequest {
+    email: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, alias = "tokenName")]
+    token_name: Option<String>,
+    #[serde(default, alias = "tokenAbilities")]
+    token_abilities: Option<Vec<String>>,
+    #[serde(default, alias = "createAutopilot")]
+    create_autopilot: Option<bool>,
+    #[serde(default, alias = "autopilotDisplayName")]
+    autopilot_display_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,6 +297,13 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             ROUTE_AUTH_EMAIL,
             post(send_email_code).route_layer(middleware::from_fn_with_state(
                 auth_email_throttle_state,
+                throttle_auth_email_gate,
+            )),
+        )
+        .route(
+            ROUTE_AUTH_REGISTER,
+            post(auth_register).route_layer(middleware::from_fn_with_state(
+                state.clone(),
                 throttle_auth_email_gate,
             )),
         )
@@ -1362,6 +1385,146 @@ async fn send_email_code(
     ))
 }
 
+async fn auth_register(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AuthRegisterRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+
+    if !auth_api_signup_is_enabled(&state.config) {
+        return Err(not_found_error("Not found."));
+    }
+
+    let email =
+        non_empty(payload.email).ok_or_else(|| validation_error("email", "Email is required."))?;
+    let email = email.to_lowercase();
+
+    if let Some(name) = payload
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if name.chars().count() > 120 {
+            return Err(validation_error(
+                "name",
+                "Name may not be greater than 120 characters.",
+            ));
+        }
+    }
+
+    if let Some(domain) = email_domain(&email).map(|value| value.to_lowercase()) {
+        if !state.config.auth_api_signup_allowed_domains.is_empty()
+            && !state
+                .config
+                .auth_api_signup_allowed_domains
+                .iter()
+                .any(|allowed| allowed == &domain)
+        {
+            return Err(validation_error(
+                "email",
+                "Email domain is not allowed for API signup in this environment.",
+            ));
+        }
+    }
+
+    let token_name = normalize_register_token_name(
+        payload.token_name,
+        &state.config.auth_api_signup_default_token_name,
+    )?;
+    let token_abilities = normalize_register_token_abilities(payload.token_abilities)?;
+    let create_autopilot = payload.create_autopilot.unwrap_or(false);
+    let autopilot_display_name =
+        normalize_optional_display_name(payload.autopilot_display_name, "autopilotDisplayName")?;
+    let requested_name = normalize_optional_display_name(payload.name, "name")?;
+
+    let registered = state
+        .auth
+        .register_api_user(email, requested_name)
+        .await
+        .map_err(map_auth_error)?;
+
+    let issued_token = state
+        .auth
+        .issue_personal_access_token(
+            &registered.user.id,
+            token_name.clone(),
+            token_abilities.clone(),
+            None,
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    let autopilot_payload = if create_autopilot {
+        let autopilot_display = autopilot_display_name
+            .clone()
+            .unwrap_or_else(|| "Autopilot".to_string());
+        let autopilot = state
+            ._domain_store
+            .create_autopilot(CreateAutopilotInput {
+                owner_user_id: registered.user.id.clone(),
+                owner_display_name: registered.user.name.clone(),
+                display_name: autopilot_display,
+                handle_seed: None,
+                avatar: None,
+                status: None,
+                visibility: None,
+                tagline: None,
+            })
+            .await
+            .map_err(map_domain_store_error)?;
+        Some(serde_json::json!({
+            "id": autopilot.autopilot.id,
+            "handle": autopilot.autopilot.handle,
+            "displayName": autopilot.autopilot.display_name,
+            "status": autopilot.autopilot.status,
+            "visibility": autopilot.autopilot.visibility,
+        }))
+    } else {
+        None
+    };
+
+    state.observability.audit(
+        AuditEvent::new("auth.register.completed", request_id.clone())
+            .with_user_id(registered.user.id.clone())
+            .with_attribute("created", registered.created.to_string())
+            .with_attribute("token_name", token_name.clone())
+            .with_attribute("autopilot_created", create_autopilot.to_string())
+            .with_attribute(
+                "email_domain",
+                email_domain(&registered.user.email).unwrap_or_else(|| "unknown".to_string()),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("auth.register.completed", &request_id);
+
+    let status = if registered.created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    let response = serde_json::json!({
+        "data": {
+            "created": registered.created,
+            "tokenType": "Bearer",
+            "token": issued_token.plain_text_token,
+            "tokenName": token_name,
+            "tokenAbilities": token_abilities,
+            "user": {
+                "id": registered.user.id,
+                "name": registered.user.name,
+                "email": registered.user.email,
+                "handle": user_handle_from_email(&registered.user.email),
+            },
+            "autopilot": autopilot_payload,
+        }
+    });
+
+    Ok((status, Json(response)))
+}
+
 async fn verify_email_code(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2127,6 +2290,22 @@ fn map_thread_store_error(error: ThreadStoreError) -> (StatusCode, Json<ApiError
     }
 }
 
+fn map_domain_store_error(error: DomainStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        DomainStoreError::NotFound => not_found_error("Requested resource was not found."),
+        DomainStoreError::Forbidden => forbidden_error("Forbidden."),
+        DomainStoreError::Validation { field, message } => validation_error(field, &message),
+        DomainStoreError::Conflict { message } => {
+            error_response_with_status(StatusCode::CONFLICT, ApiErrorCode::Conflict, message)
+        }
+        DomainStoreError::Persistence { message } => error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            message,
+        ),
+    }
+}
+
 fn session_payload(bundle: SessionBundle) -> serde_json::Value {
     serde_json::json!({
         "data": {
@@ -2479,6 +2658,98 @@ fn non_empty(value: String) -> Option<String> {
     }
 }
 
+fn auth_api_signup_is_enabled(config: &Config) -> bool {
+    config.auth_api_signup_enabled && config.auth_provider_mode == "mock"
+}
+
+fn normalize_register_token_name(
+    token_name: Option<String>,
+    default_token_name: &str,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = token_name
+        .and_then(non_empty)
+        .unwrap_or_else(|| default_token_name.trim().to_string());
+    if normalized.chars().count() > 120 {
+        return Err(validation_error(
+            "tokenName",
+            "Token name may not be greater than 120 characters.",
+        ));
+    }
+
+    Ok(normalized)
+}
+
+fn normalize_register_token_abilities(
+    token_abilities: Option<Vec<String>>,
+) -> Result<Vec<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(values) = token_abilities else {
+        return Ok(vec!["*".to_string()]);
+    };
+
+    let mut normalized = Vec::new();
+    for value in values {
+        let Some(ability) = non_empty(value) else {
+            continue;
+        };
+        if ability.chars().count() > 120 {
+            return Err(validation_error(
+                "tokenAbilities",
+                "Token abilities may not be greater than 120 characters.",
+            ));
+        }
+        normalized.push(ability);
+    }
+
+    if normalized.is_empty() {
+        Ok(vec!["*".to_string()])
+    } else {
+        Ok(normalized)
+    }
+}
+
+fn normalize_optional_display_name(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let normalized = value.and_then(non_empty);
+    if let Some(candidate) = normalized.as_deref() {
+        if candidate.chars().count() > 120 {
+            return Err(validation_error(
+                field,
+                "Value may not be greater than 120 characters.",
+            ));
+        }
+    }
+
+    Ok(normalized)
+}
+
+fn user_handle_from_email(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or_default();
+    let mut output = String::with_capacity(local.len().min(64));
+    let mut previous_dash = false;
+    for character in local.chars() {
+        let normalized = character.to_ascii_lowercase();
+        if normalized.is_ascii_alphanumeric() {
+            output.push(normalized);
+            previous_dash = false;
+            continue;
+        }
+
+        if !previous_dash {
+            output.push('-');
+            previous_dash = true;
+        }
+    }
+
+    let trimmed = output.trim_matches('-');
+    if trimmed.is_empty() {
+        "user".to_string()
+    } else {
+        trimmed.chars().take(64).collect()
+    }
+}
+
 fn resolve_session_revocation_target(
     payload: &RevokeSessionsRequest,
 ) -> Result<SessionRevocationTarget, (StatusCode, Json<ApiErrorResponse>)> {
@@ -2573,6 +2844,9 @@ mod tests {
             workos_api_base_url: "https://api.workos.com".to_string(),
             mock_magic_code: "123456".to_string(),
             auth_local_test_login_enabled: false,
+            auth_api_signup_enabled: false,
+            auth_api_signup_allowed_domains: vec![],
+            auth_api_signup_default_token_name: "api-bootstrap".to_string(),
             admin_emails: vec![
                 "chris@openagents.com".to_string(),
                 "routes@openagents.com".to_string(),
@@ -3411,6 +3685,104 @@ mod tests {
 
         let message = body["error"]["message"].as_str().unwrap_or_default();
         assert!(message.contains("WorkOS identity provider is required"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_register_is_not_found_when_disabled() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"staging-user-1@staging.openagents.com"}"#,
+            ))?;
+
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_register_creates_user_and_returns_pat_when_enabled() -> Result<()> {
+        let mut config = test_config(std::env::temp_dir());
+        config.auth_api_signup_enabled = true;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"staging-user-1@staging.openagents.com","name":"Staging User 1","tokenName":"staging-e2e"}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = read_json(create_response).await?;
+        assert_eq!(create_body["data"]["created"], true);
+        assert_eq!(
+            create_body["data"]["user"]["email"],
+            "staging-user-1@staging.openagents.com"
+        );
+        assert_eq!(create_body["data"]["tokenName"], "staging-e2e");
+
+        let token = create_body["data"]["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!token.is_empty());
+
+        let second_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"staging-user-1@staging.openagents.com","name":"Updated Name"}"#,
+            ))?;
+        let second_response = app.oneshot(second_request).await?;
+        assert_eq!(second_response.status(), StatusCode::OK);
+        let second_body = read_json(second_response).await?;
+        assert_eq!(second_body["data"]["created"], false);
+        assert_eq!(second_body["data"]["user"]["name"], "Updated Name");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_register_enforces_allowed_domains_and_can_create_autopilot() -> Result<()> {
+        let mut config = test_config(std::env::temp_dir());
+        config.auth_api_signup_enabled = true;
+        config.auth_api_signup_allowed_domains = vec!["staging.openagents.com".to_string()];
+        let app = build_router(config);
+
+        let blocked_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"blocked@example.com"}"#))?;
+        let blocked_response = app.clone().oneshot(blocked_request).await?;
+        assert_eq!(blocked_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let blocked_body = read_json(blocked_response).await?;
+        assert_eq!(blocked_body["error"]["code"], "invalid_request");
+
+        let allowed_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"email":"creator@staging.openagents.com","createAutopilot":true,"autopilotDisplayName":"Creator Agent"}"#,
+            ))?;
+        let allowed_response = app.oneshot(allowed_request).await?;
+        assert_eq!(allowed_response.status(), StatusCode::CREATED);
+        let allowed_body = read_json(allowed_response).await?;
+        assert_eq!(
+            allowed_body["data"]["autopilot"]["displayName"],
+            "Creator Agent"
+        );
+        assert!(allowed_body["data"]["autopilot"]["id"].as_str().is_some());
 
         Ok(())
     }

@@ -9,6 +9,7 @@ Rust control service scaffold for `apps/openagents.com`.
   - `GET /healthz`
   - `GET /readyz`
   - `POST /api/auth/email`
+  - `POST /api/auth/register`
   - `POST /api/auth/verify`
   - `GET /api/auth/session`
   - `GET /api/auth/sessions`
@@ -56,6 +57,9 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_WORKOS_API_BASE_URL` (default: `https://api.workos.com`)
 - `OA_AUTH_MOCK_MAGIC_CODE` (default: `123456`)
 - `OA_AUTH_LOCAL_TEST_LOGIN_ENABLED` (`true|false`, default: `false`; allows `test_local_*` WorkOS bypass lane in local testing)
+- `OA_AUTH_API_SIGNUP_ENABLED` (`true|false`, default: `false`; enables local/testing-only `POST /api/auth/register`)
+- `OA_AUTH_API_SIGNUP_ALLOWED_DOMAINS` (CSV email-domain allowlist for API signup, empty means allow all)
+- `OA_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME` (default: `api-bootstrap`)
 - `OA_ADMIN_EMAILS` (CSV admin allowlist for admin middleware parity routes)
 - `OA_AUTH_STORE_PATH` (optional filesystem path for durable auth/session/token store snapshots)
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)

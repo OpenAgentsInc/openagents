@@ -2,6 +2,7 @@ use serde_json::{Map, Value, json};
 
 pub const ROUTE_OPENAPI_JSON: &str = "/openapi.json";
 pub const ROUTE_AUTH_EMAIL: &str = "/api/auth/email";
+pub const ROUTE_AUTH_REGISTER: &str = "/api/auth/register";
 pub const ROUTE_AUTH_VERIFY: &str = "/api/auth/verify";
 pub const ROUTE_AUTH_REFRESH: &str = "/api/auth/refresh";
 pub const ROUTE_AUTH_SESSION: &str = "/api/auth/session";
@@ -50,6 +51,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("auth_email"),
         response_example: Some("auth_email"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_AUTH_REGISTER,
+        operation_id: "authRegister",
+        summary: "Bootstrap an API user + bearer token (local/testing only).",
+        tag: "auth",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("auth_register"),
+        response_example: Some("auth_register"),
     },
     OpenApiContract {
         method: "post",
@@ -523,6 +536,14 @@ fn path_parameters(route_path: &str) -> Vec<Value> {
 fn request_example(key: &str) -> Option<Value> {
     match key {
         "auth_email" => Some(json!({ "email": "user@openagents.com" })),
+        "auth_register" => Some(json!({
+            "email": "staging-user@staging.openagents.com",
+            "name": "Staging User",
+            "tokenName": "staging-e2e",
+            "tokenAbilities": ["*"],
+            "createAutopilot": true,
+            "autopilotDisplayName": "Creator Agent"
+        })),
         "auth_verify" => Some(json!({ "code": "123456", "device_id": "ios:device" })),
         "auth_refresh" => Some(json!({
             "refresh_token": "oa_rt_123",
@@ -566,6 +587,28 @@ fn response_example(key: &str) -> Option<Value> {
                 "status": "ok",
                 "challengeId": "challenge_123",
                 "email": "user@openagents.com"
+            }
+        })),
+        "auth_register" => Some(json!({
+            "data": {
+                "created": true,
+                "tokenType": "Bearer",
+                "token": "oa_pat_123",
+                "tokenName": "staging-e2e",
+                "tokenAbilities": ["*"],
+                "user": {
+                    "id": "user_123",
+                    "name": "Staging User",
+                    "email": "staging-user@staging.openagents.com",
+                    "handle": "staging-user"
+                },
+                "autopilot": {
+                    "id": "ap_123",
+                    "handle": "creator-agent",
+                    "displayName": "Creator Agent",
+                    "status": "active",
+                    "visibility": "private"
+                }
             }
         })),
         "auth_verify" => Some(json!({
@@ -796,5 +839,15 @@ mod tests {
             .and_then(|content| content.get("application/json"))
             .and_then(|content| content.get("example"));
         assert!(sync_example.is_some());
+
+        let register_example = document
+            .get("paths")
+            .and_then(|paths| paths.get(ROUTE_AUTH_REGISTER))
+            .and_then(|path| path.get("post"))
+            .and_then(|post| post.get("requestBody"))
+            .and_then(|body| body.get("content"))
+            .and_then(|content| content.get("application/json"))
+            .and_then(|content| content.get("example"));
+        assert!(register_example.is_some());
     }
 }

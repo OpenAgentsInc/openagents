@@ -14,6 +14,9 @@ const DEFAULT_AUTH_CHALLENGE_TTL_SECONDS: u64 = 600;
 const DEFAULT_AUTH_ACCESS_TTL_SECONDS: u64 = 3600;
 const DEFAULT_AUTH_REFRESH_TTL_SECONDS: u64 = 2_592_000;
 const DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED: bool = false;
+const DEFAULT_AUTH_API_SIGNUP_ENABLED: bool = false;
+const DEFAULT_AUTH_API_SIGNUP_ALLOWED_DOMAINS: &str = "";
+const DEFAULT_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME: &str = "api-bootstrap";
 const DEFAULT_ADMIN_EMAILS: &str = "";
 const DEFAULT_SYNC_TOKEN_ISSUER: &str = "https://openagents.com";
 const DEFAULT_SYNC_TOKEN_AUDIENCE: &str = "openagents-sync";
@@ -54,6 +57,9 @@ pub struct Config {
     pub workos_api_base_url: String,
     pub mock_magic_code: String,
     pub auth_local_test_login_enabled: bool,
+    pub auth_api_signup_enabled: bool,
+    pub auth_api_signup_allowed_domains: Vec<String>,
+    pub auth_api_signup_default_token_name: String,
     pub admin_emails: Vec<String>,
     pub auth_store_path: Option<PathBuf>,
     pub auth_challenge_ttl_seconds: u64,
@@ -164,6 +170,25 @@ impl Config {
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
             .unwrap_or(DEFAULT_AUTH_LOCAL_TEST_LOGIN_ENABLED);
+
+        let auth_api_signup_enabled = env::var("OA_AUTH_API_SIGNUP_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_AUTH_API_SIGNUP_ENABLED);
+
+        let auth_api_signup_allowed_domains = parse_csv(
+            env::var("OA_AUTH_API_SIGNUP_ALLOWED_DOMAINS")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_AUTH_API_SIGNUP_ALLOWED_DOMAINS.to_string()),
+        )
+        .into_iter()
+        .map(|domain| domain.to_lowercase())
+        .collect();
+
+        let auth_api_signup_default_token_name = env::var("OA_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME.to_string());
 
         let admin_emails = parse_csv(
             env::var("OA_ADMIN_EMAILS")
@@ -413,6 +438,9 @@ impl Config {
             workos_api_base_url,
             mock_magic_code,
             auth_local_test_login_enabled,
+            auth_api_signup_enabled,
+            auth_api_signup_allowed_domains,
+            auth_api_signup_default_token_name,
             admin_emails,
             auth_store_path,
             auth_challenge_ttl_seconds,
