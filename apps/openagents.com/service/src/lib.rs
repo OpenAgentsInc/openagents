@@ -43,6 +43,7 @@ pub mod openapi;
 pub mod route_split;
 pub mod runtime_routing;
 pub mod sync_token;
+pub mod vercel_sse_adapter;
 
 use crate::api_envelope::{
     ApiErrorCode, ApiErrorDetail, ApiErrorResponse, error_response_with_status, forbidden_error,
@@ -76,8 +77,8 @@ use crate::openapi::{
     ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
     ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
     ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
-    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LEGACY_CHATS_STREAM,
-    ROUTE_LEGACY_CHAT_STREAM, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
+    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LEGACY_CHAT_STREAM,
+    ROUTE_LEGACY_CHATS_STREAM, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
     ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
     ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE, ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
@@ -10216,21 +10217,13 @@ async fn legacy_stream_bridge(
         .await
         .map_err(map_auth_error)?;
 
-    let thread_id = match conversation_id {
-        Some(conversation_id) => normalized_conversation_id(&conversation_id)?,
-        None => legacy_stream_thread_id_from_payload(&payload)
-            .unwrap_or_else(|| format!("thread_{}", uuid::Uuid::new_v4().simple())),
-    };
-
-    let text = legacy_stream_user_text_from_payload(&payload).ok_or_else(|| {
-        validation_error(
-            "messages",
-            "Legacy stream payload must include user message text.",
-        )
-    })?;
+    let normalized_request =
+        vercel_sse_adapter::normalize_legacy_stream_request(conversation_id.as_deref(), &payload)
+            .map_err(map_legacy_stream_adapter_error)?;
+    let thread_id = normalized_request.thread_id;
+    let text = normalized_request.user_text;
+    let worker_id = normalized_request.worker_id;
     validate_codex_turn_text(&text)?;
-
-    let worker_id = legacy_stream_worker_id_from_payload(&payload);
     let thread_id_for_bridge = thread_id.clone();
     let text_for_bridge = text.clone();
     let bridge_request_id = format!("legacy_stream_{}", uuid::Uuid::new_v4().simple());
@@ -10250,6 +10243,22 @@ async fn legacy_stream_bridge(
     let worker_id_for_response = worker_id.unwrap_or_else(|| "desktopw:shared".to_string());
     let bridge_response =
         execute_codex_control_request(&state, &session, "turn/start", &control_request).await?;
+    let stream_preview = vercel_sse_adapter::build_turn_start_preview(
+        &thread_id,
+        bridge_response
+            .get("turn")
+            .and_then(|turn| turn.get("id"))
+            .and_then(serde_json::Value::as_str),
+    )
+    .ok();
+    let preview_event_count = stream_preview
+        .as_ref()
+        .map(|preview| preview.events.len())
+        .unwrap_or(0);
+    let preview_wire_bytes = stream_preview
+        .as_ref()
+        .map(|preview| preview.wire.len())
+        .unwrap_or(0);
 
     state.observability.audit(
         AuditEvent::new(
@@ -10263,7 +10272,9 @@ async fn legacy_stream_bridge(
         .with_attribute("thread_id", thread_id)
         .with_attribute("bridge_method", "turn/start")
         .with_attribute("bridge_request_id", bridge_request_id.clone())
-        .with_attribute("worker_id", worker_id_for_response.clone()),
+        .with_attribute("worker_id", worker_id_for_response.clone())
+        .with_attribute("adapter_preview_events", preview_event_count.to_string())
+        .with_attribute("adapter_preview_wire_bytes", preview_wire_bytes.to_string()),
     );
     state
         .observability
@@ -10388,14 +10399,6 @@ fn legacy_chat_stream_data_response(payload: serde_json::Value, status: StatusCo
         HeaderValue::from_static("disabled"),
     );
     response
-}
-
-fn legacy_stream_thread_id_from_payload(payload: &serde_json::Value) -> Option<String> {
-    json_non_empty_string(payload.get("thread_id"))
-        .or_else(|| json_non_empty_string(payload.get("threadId")))
-        .or_else(|| json_non_empty_string(payload.get("conversation_id")))
-        .or_else(|| json_non_empty_string(payload.get("conversationId")))
-        .or_else(|| json_non_empty_string(payload.get("id")))
 }
 
 fn autopilot_stream_thread_id_from_payload(payload: &serde_json::Value) -> Option<String> {
@@ -12164,6 +12167,21 @@ fn map_thread_store_error(error: ThreadStoreError) -> (StatusCode, Json<ApiError
             ApiErrorCode::ServiceUnavailable,
             message,
         ),
+    }
+}
+
+fn map_legacy_stream_adapter_error(
+    error: vercel_sse_adapter::AdapterError,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        vercel_sse_adapter::AdapterError::MissingConversationId => {
+            validation_error("conversation_id", "Conversation id is required.")
+        }
+        vercel_sse_adapter::AdapterError::MissingUserText => validation_error(
+            "messages",
+            "Legacy stream payload must include user message text.",
+        ),
+        _ => validation_error("messages", &error.to_string()),
     }
 }
 
