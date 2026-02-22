@@ -588,17 +588,17 @@ pub mod ios {
             }
             .map_err(|e| format!("create_surface_unsafe: {:?}", e))?;
 
-            let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            }))
-            .ok_or("no adapter")?;
+            let adapter =
+                pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: Some(&surface),
+                    force_fallback_adapter: false,
+                }))
+                .ok_or("no adapter")?;
 
-            let (device, queue) = pollster::block_on(adapter.request_device(
-                &wgpu::DeviceDescriptor::default(),
-                None,
-            ))
+            let (device, queue) = pollster::block_on(
+                adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
+            )
             .map_err(|e| format!("request_device: {:?}", e))?;
 
             let caps = surface.get_capabilities(&adapter);
@@ -746,8 +746,7 @@ pub mod ios {
                 .map(|t| now.saturating_duration_since(t))
                 .unwrap_or(Duration::ZERO);
             self.last_frame = Some(now);
-            self.puffs
-                .update_with_delta(AnimatorState::Entered, delta);
+            self.puffs.update_with_delta(AnimatorState::Entered, delta);
             let grid_bounds = Bounds::new(0.0, 0.0, self.size.width, self.size.height);
             self.puffs.paint(grid_bounds, &mut paint);
 
@@ -806,8 +805,7 @@ pub mod ios {
                 &mut paint,
             );
 
-            self.renderer
-                .resize(&self.queue, self.size, self.scale);
+            self.renderer.resize(&self.queue, self.size, self.scale);
 
             if self.text_system.is_dirty() {
                 self.renderer.update_atlas(
@@ -867,7 +865,10 @@ pub mod ios {
         height: u32,
         scale: f32,
     ) -> *mut IosBackgroundState {
-        eprintln!("[WGPUI Rust] wgpui_ios_background_create called width={} height={} scale={}", width, height, scale);
+        eprintln!(
+            "[WGPUI Rust] wgpui_ios_background_create called width={} height={} scale={}",
+            width, height, scale
+        );
         if layer_ptr.is_null() {
             eprintln!("[WGPUI Rust] create: layer_ptr is null");
             return std::ptr::null_mut();
@@ -939,21 +940,21 @@ pub mod ios {
 
     /// C FFI: returns 1 if user tapped submit and it has not been consumed yet, else 0.
     #[unsafe(no_mangle)]
-    pub extern "C" fn wgpui_ios_background_login_submit_requested(state: *mut IosBackgroundState) -> i32 {
+    pub extern "C" fn wgpui_ios_background_login_submit_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
         if state.is_null() {
             return 0;
         }
         let state = unsafe { &*state };
-        if state.login_submit_requested() {
-            1
-        } else {
-            0
-        }
+        if state.login_submit_requested() { 1 } else { 0 }
     }
 
     /// C FFI: consume submit-requested flag. Returns 1 if it was set, 0 otherwise.
     #[unsafe(no_mangle)]
-    pub extern "C" fn wgpui_ios_background_consume_submit_requested(state: *mut IosBackgroundState) -> i32 {
+    pub extern "C" fn wgpui_ios_background_consume_submit_requested(
+        state: *mut IosBackgroundState,
+    ) -> i32 {
         if state.is_null() {
             return 0;
         }
@@ -972,11 +973,7 @@ pub mod ios {
             return 0;
         }
         let state = unsafe { &*state };
-        if state.email_focused() {
-            1
-        } else {
-            0
-        }
+        if state.email_focused() { 1 } else { 0 }
     }
 
     /// C FFI: set email field focused state (e.g. 0 after dismissing native keyboard).

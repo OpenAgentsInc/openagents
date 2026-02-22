@@ -14,6 +14,21 @@ This file is a map. Start here, then follow the linked canonical docs.
 - Canonical deploy/process matrix: `docs/DEPLOYMENT_RUST_SERVICES.md`
 - ADR index: `docs/adr/INDEX.md`
 
+## README Doc Index (Moved)
+
+Canonical architecture and migration sequencing:
+
+- `docs/ARCHITECTURE-RUST.md`
+- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/DEPLOYMENT_RUST_SERVICES.md`
+
+Documentation entry points:
+
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/PROJECT_OVERVIEW.md`
+- `docs/ROADMAP.md`
+
 ## Contracts (Canonical Specs)
 
 - Execution artifacts + replay: `docs/execution/README.md`

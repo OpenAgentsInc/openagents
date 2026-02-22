@@ -98,7 +98,10 @@ pub(crate) enum SparkWalletEvent {
     /// GET /agents/me/wallet result: true = linked, false = not linked
     OpenAgentsLinked(bool),
     /// POST /agents/me/wallet result
-    AttachResult { ok: bool, error: Option<String> },
+    AttachResult {
+        ok: bool,
+        error: Option<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -134,10 +137,12 @@ impl SparkWalletRuntime {
     }
 
     pub(crate) fn attach_to_openagents(&self, spark_address: String, lud16: Option<String>) {
-        let _ = self.cmd_tx.try_send(SparkWalletCommand::AttachToOpenAgents {
-            spark_address,
-            lud16,
-        });
+        let _ = self
+            .cmd_tx
+            .try_send(SparkWalletCommand::AttachToOpenAgents {
+                spark_address,
+                lud16,
+            });
     }
 }
 
@@ -216,7 +221,8 @@ impl SparkWalletState {
     pub(crate) fn attach_to_openagents(&self) {
         if let Some(snap) = &self.snapshot {
             if snap.openagents_api_key_present && !snap.spark_address.is_empty() {
-                self.runtime.attach_to_openagents(snap.spark_address.clone(), None);
+                self.runtime
+                    .attach_to_openagents(snap.spark_address.clone(), None);
             }
         }
     }
@@ -339,7 +345,9 @@ async fn run_spark_wallet_loop(
                         // If OpenAgents API key is set, check linked status
                         if let Some(ref key) = config.openagents_api_key {
                             if let Ok(linked) = fetch_openagents_wallet_linked(key).await {
-                                let _ = event_tx.send(SparkWalletEvent::OpenAgentsLinked(linked)).await;
+                                let _ = event_tx
+                                    .send(SparkWalletEvent::OpenAgentsLinked(linked))
+                                    .await;
                             }
                         }
                     }
@@ -411,7 +419,9 @@ async fn run_spark_wallet_loop(
 
 const OPENAGENTS_API_BASE: &str = "https://openagents.com/api";
 
-async fn fetch_openagents_wallet_linked(api_key: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+async fn fetch_openagents_wallet_linked(
+    api_key: &str,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("{}/agents/me/wallet", OPENAGENTS_API_BASE))
@@ -477,7 +487,9 @@ fn build_wallet_config() -> Result<SparkWalletRuntimeConfig, String> {
     })
 }
 
-fn load_pylon_config(pylon_dir: &PathBuf) -> (Network, Option<String>, Option<String>, Option<PathBuf>) {
+fn load_pylon_config(
+    pylon_dir: &PathBuf,
+) -> (Network, Option<String>, Option<String>, Option<PathBuf>) {
     let config_path = pylon_dir.join("config.toml");
     let mut network = Network::Regtest;
     let mut api_key: Option<String> = None;

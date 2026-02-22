@@ -98,12 +98,18 @@ fn wallet_executor_fixture_matches_wire_contract() {
     assert!(wire_receipt.receipt_id.starts_with("lwr_"));
     assert_eq!(wire_receipt.rail, "lightning");
     assert_eq!(wire_receipt.asset_id, "BTC_LN");
-    assert_eq!(wire_receipt.quoted_amount_msats, wire_receipt.settled_amount_msats);
+    assert_eq!(
+        wire_receipt.quoted_amount_msats,
+        wire_receipt.settled_amount_msats
+    );
 
     let auth_roundtrip = WalletExecutorAuthAssertion::decode(wire_auth.encode_to_vec().as_slice())
         .expect("auth assertion should decode after encode");
     assert_eq!(auth_roundtrip.wallet_id, wire_auth.wallet_id);
-    assert_eq!(auth_roundtrip.auth_token_version, wire_auth.auth_token_version);
+    assert_eq!(
+        auth_roundtrip.auth_token_version,
+        wire_auth.auth_token_version
+    );
 
     let receipt_roundtrip = WalletExecutionReceipt::decode(wire_receipt.encode_to_vec().as_slice())
         .expect("wallet receipt should decode after encode");
@@ -113,4 +119,3 @@ fn wallet_executor_fixture_matches_wire_contract() {
         wire_receipt.canonical_json_sha256
     );
 }
-

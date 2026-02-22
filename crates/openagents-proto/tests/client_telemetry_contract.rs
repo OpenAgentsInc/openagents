@@ -6,8 +6,10 @@ use prost::Message;
 use serde_json::Value;
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!("../../../docs/protocol/fixtures/client-telemetry-v1.json"))
-        .expect("client telemetry fixture JSON must parse")
+    serde_json::from_str(include_str!(
+        "../../../docs/protocol/fixtures/client-telemetry-v1.json"
+    ))
+    .expect("client telemetry fixture JSON must parse")
 }
 
 fn string_field(value: &Value, key: &str) -> String {
@@ -82,7 +84,10 @@ fn parse_wire_event(value: &Value) -> ClientTelemetryEvent {
         .iter()
         .filter(|key| value.get(**key).is_some())
         .count();
-    assert_eq!(oneof_count, 1, "fixture event must set exactly one event payload");
+    assert_eq!(
+        oneof_count, 1,
+        "fixture event must set exactly one event payload"
+    );
 
     let forbidden_keys = ["user_id", "org_id", "email", "device_uuid"];
     for forbidden_key in forbidden_keys {
@@ -125,8 +130,7 @@ fn client_telemetry_fixture_matches_wire_contract() {
     for event in events {
         let wire = parse_wire_event(event);
         assert_eq!(
-            wire.schema_version,
-            "openagents.sync.client_telemetry.v1",
+            wire.schema_version, "openagents.sync.client_telemetry.v1",
             "schema version mismatch"
         );
         assert!(
@@ -138,7 +142,10 @@ fn client_telemetry_fixture_matches_wire_contract() {
         let decoded = ClientTelemetryEvent::decode(encoded.as_slice())
             .expect("wire payload must decode after encode round-trip");
         assert_eq!(decoded.event_id, wire.event_id);
-        assert_eq!(decoded.event.as_ref().map(discriminant), wire.event.as_ref().map(discriminant));
+        assert_eq!(
+            decoded.event.as_ref().map(discriminant),
+            wire.event.as_ref().map(discriminant)
+        );
     }
 }
 

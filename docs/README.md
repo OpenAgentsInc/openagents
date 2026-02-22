@@ -39,6 +39,10 @@ This tree contains current Rust-era documentation and forward strategy only.
 - `sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
 - `codex/README.md`
 
+## Audits
+
+- `audits/README.md`
+
 ## Plans
 
 - `plans/README.md`
