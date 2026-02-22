@@ -1,17 +1,16 @@
 # Plans
 
-Plans are versioned, in-repo execution artifacts intended to make long-running work reproducible and agent-legible.
+This directory stores current execution plans only.
 
-Structure:
-- `docs/plans/active/` (in-progress work)
-- `docs/plans/completed/` (finished work; keep for history)
-- `docs/plans/archived/` (superseded/historical planning docs)
-- `docs/plans/TEMPLATE.md` (recommended structure)
+## Active
 
-Conventions:
-- Use concrete verification steps (commands, expected outputs).
-- Record decisions as they happen (short decision log).
-- Prefer linking to ADRs and canonical specs instead of duplicating them.
-- Layer-0 shared schemas are canonical in `proto/` (see `proto/README.md` and ADR-0028).
-- Codex cross-surface architecture planning is canonical in `docs/codex/unified-runtime-desktop-plan.md`; avoid creating competing Codex plan docs here.
-- Rust migration KPI governance is canonical in `docs/plans/active/rust-migration-kpi-dashboard.md`.
+- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/active/rust-migration-execution-control-plane.md`
+
+## Completed
+
+- `docs/plans/completed/README.md`
+
+Historical/superseded plan documents were moved to:
+
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/plans/`

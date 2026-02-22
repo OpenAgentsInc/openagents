@@ -1,24 +1,18 @@
-# Metrics (Evaluation + Optimization)
+# Metrics (Evaluation and Optimization)
 
-Metrics score outputs of signatures/modules. They enable optimization and safe rollouts.
-
-See:
-- `docs/GLOSSARY.md` (Metric, Proxy Metric, Truth Metric)
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md` (rollout states)
+Metrics score signature/module outputs for selection and rollout.
 
 ## Metric IDs
 
-Metrics SHOULD have stable ids.
+Use stable ids:
 
-Recommended pattern:
 - `oa.metric.<domain>.<name>.v<major>`
 
-## Proxy vs Truth
+## Metric Classes
 
-- Proxy metrics: cheap checks (schema validity, formatting, constraints).
-- Truth metrics: expensive checks (sandbox verification, judge models).
+1. Proxy metrics: cheap structural/policy checks.
+2. Truth metrics: expensive correctness or verification checks.
 
-## Where to Implement
+## Governance
 
-- Compiler/runtime metric code: `packages/dse/src/`
-- Domain-specific eval harnesses: `apps/openagents.com/`, `apps/runtime/`, `packages/effuse-test/`, and targeted runtime scripts in `scripts/`.
+Metric changes that affect rollout decisions must include verification evidence and compatibility notes.

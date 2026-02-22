@@ -1,25 +1,24 @@
-# Rust Docs Classification (OA-RUST-113)
+# Rust Docs Classification
 
 Date: 2026-02-21
 
-## Active (in-repo, authoritative)
+## In-Repo (Authoritative)
 
-1. `AGENTS.md`
-2. `docs/README.md`
-3. `docs/ARCHITECTURE-RUST.md`
-4. `docs/ARCHITECTURE-RUST-ROADMAP.md`
-5. `docs/DEPLOYMENT_RUST_SERVICES.md`
-6. `docs/RUST_STAGING_PROD_VALIDATION.md`
-7. service runbooks under `apps/openagents.com/service/docs/` and `apps/runtime/docs/`
-8. current iOS/desktop docs under `apps/autopilot-ios/docs/` and `apps/autopilot-desktop/docs/`
+1. Canonical architecture and rollout docs under `docs/` root.
+2. ADRs under `docs/adr/`.
+3. Contract docs under `docs/execution/`, `docs/protocol/`, `docs/dse/`, and `docs/sync/`.
+4. Active strategy docs under `docs/plans/active/` and synthesis docs.
 
-## Historical in repo (kept for audits/evidence)
+## Out-of-Repo (Archived)
 
-1. `docs/reports/`
-2. `docs/plans/archived/`
-3. `docs/ARCHITECTURE.md`
-4. status snapshot directories under `docs/logs/`, `docs/sync/status/`, `docs/lightning/status/` (also copied to backroom in OA-RUST-113)
+Historical/stale docs were moved to backroom and are not canonical for current work:
 
-## Moved to backroom
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-oa-rust-113/`
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/`
 
-See `docs/ARCHIVE_MANIFEST.md` for archived file list and destination root.
+## Rule
+
+In-repo docs must describe either:
+
+1. Current Rust-system behavior and operations, or
+2. Explicit forward-looking Rust strategy.

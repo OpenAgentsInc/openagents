@@ -1,49 +1,38 @@
 # Protocol Surface (Canonical Contracts)
 
-This document defines the **canonical protocol-level contracts** that are referenced across ADRs, receipts, and replay artifacts.
+Defines protocol-level contract fields referenced across receipts, replay, and sync/event streams.
 
-Authority:
-- Terminology: `docs/GLOSSARY.md` wins.
-- Behavior/implementation: code wins.
-- Architecture intent: ADRs win.
+Authority order:
 
-## Identifiers
+1. Terminology: `docs/GLOSSARY.md`
+2. Architecture intent: ADRs
+3. Behavior: code
 
-These identifiers appear across artifacts and telemetry.
+## Canonical IDs
 
 - `session_id`
-  Stable identifier for an agent run/session. Format is implementation-defined (UUID recommended).
 - `trajectory_hash`
-  Content hash that binds a session to its recorded trajectory/replay.
 - `job_hash`
-  Content hash that binds spending or external execution to an outcome/job definition.
 - `policy_bundle_id`
-  Identifier for the policy bundle used for the run (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0015-policy-bundles.md`).
 
-## Hashes
+## Hashing
 
-Whenever a hash is emitted, it MUST be computed deterministically over canonicalized inputs (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`).
+Whenever hashes are emitted (`params_hash`, `output_hash`, `trajectory_hash`, etc.), hashing must be deterministic over canonicalized input.
 
-Recommended representation:
-- `sha256:<hex>` (or bare hex if the algorithm is implied by the containing schema).
+Recommended encoding:
 
-## Monetary Representation
+- `sha256:<hex>`
 
-Receipts MUST represent value via `(rail, asset_id)` and MUST NOT use bare currency tickers.
+## Monetary Receipt Model
 
-Canonical terms:
-- `Rail` and `AssetId` are defined in `docs/GLOSSARY.md`.
+Payment receipts must use `(rail, asset_id, amount)` semantics.
 
-### Required Fields
+Required payment fields:
 
-- `rail` (string)
-  Example: `"lightning"`, `"cashu"`, `"onchain"`.
-- `asset_id` (string)
-  Example: `"BTC_LN"`, `"USD_CASHU(<mint_url>)"`.
-- `amount_msats` (integer)
-  Amount in millisatoshis when the rail supports msats. If a rail does not naturally support msats, the receipt MUST use an unambiguous amount field and document it in the relevant artifact schema.
-
-### payment_proof
+- `rail`
+- `asset_id`
+- `payment_proof`
+- amount field (`amount_msats` for msat-native rails)
 
 `payment_proof` is a typed object:
 
@@ -54,15 +43,7 @@ Canonical terms:
 }
 ```
 
-Normative notes:
-- Use the term **Cashu Proof** (not generic "proof") for `type = "cashu_proof"`.
-- New proof types may be added; existing types must remain stable (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md`).
-
-## Receipt Field Set (Protocol-Level)
-
-This section defines the minimal **protocol-level** payment receipt field set. Session receipts (Verified Patch Bundle) may embed one or more payment entries using this shape.
-
-### PaymentReceipt (minimal)
+## Minimal PaymentReceipt Shape
 
 ```jsonc
 {
@@ -70,8 +51,6 @@ This section defines the minimal **protocol-level** payment receipt field set. S
   "asset_id": "BTC_LN",
   "amount_msats": 123000,
   "payment_proof": { "type": "lightning_preimage", "value": "<hex>" },
-
-  // linkage / audit (required when available)
   "session_id": "<session_id>",
   "trajectory_hash": "<trajectory_hash>",
   "policy_bundle_id": "<policy_bundle_id>",
@@ -79,7 +58,8 @@ This section defines the minimal **protocol-level** payment receipt field set. S
 }
 ```
 
-See also:
-- `docs/execution/ARTIFACTS.md` (session receipt schema: `RECEIPT.json`)
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md` (normative rules)
+## Related Docs
 
+- `docs/execution/ARTIFACTS.md`
+- `docs/execution/REPLAY.md`
+- `docs/dse/TOOLS.md`

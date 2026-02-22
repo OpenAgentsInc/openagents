@@ -1,15 +1,14 @@
 # Execution Docs
 
-Canonical specs for **session execution artifacts** and **replay logs**.
+Canonical specs for session execution artifacts and replay logs.
 
-Entry points:
+## Entry Points
+
 - `docs/execution/ARTIFACTS.md` (Verified Patch Bundle: `PR_SUMMARY.md`, `RECEIPT.json`)
-- `docs/execution/REPLAY.md` (REPLAY.jsonl v1 format)
+- `docs/execution/REPLAY.md` (`REPLAY.jsonl` format)
 
-Related ADRs:
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0002-verified-patch-bundle.md`
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0003-replay-formats.md`
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`
-- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md`
+## Related
 
+- `docs/protocol/PROTOCOL_SURFACE.md`
+- `docs/dse/TOOLS.md`
+- `docs/dse/PRIVACY.md`

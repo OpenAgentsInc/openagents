@@ -41,8 +41,6 @@ Every ADR PR must show:
 
 ## Legacy ADR Archive
 
-Legacy (pre-Rust-reset) ADR corpus:
+Legacy (pre-Rust-reset) ADR corpora were moved to backroom and are historical context only:
 
-- `docs/plans/archived/adr-legacy-2026-02-21/`
-
-Legacy ADRs are historical context and do not override current Rust-era architecture authority.
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/plans/archived/`
