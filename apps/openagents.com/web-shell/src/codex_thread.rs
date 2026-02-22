@@ -169,6 +169,35 @@ impl CodexThreadState {
         }
     }
 
+    pub fn hydrate_history_if_empty(
+        &mut self,
+        thread_id: Option<String>,
+        messages: Vec<CodexThreadMessage>,
+    ) -> bool {
+        let mut changed = false;
+        if self.thread_id != thread_id {
+            self.set_thread_id(thread_id);
+            changed = true;
+        }
+
+        if !self.messages.is_empty() {
+            return changed;
+        }
+
+        if messages.is_empty() {
+            return changed;
+        }
+
+        self.messages = messages;
+        self.next_local_id = u64::try_from(self.messages.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        self.assistant_message_index_by_item.clear();
+        self.reasoning_message_index_by_item.clear();
+        self.pending_local_user_texts.clear();
+        true
+    }
+
     fn accept_thread(&mut self, incoming_thread_id: Option<&str>) -> bool {
         if let Some(incoming_thread_id) = incoming_thread_id {
             let incoming = incoming_thread_id.to_string();
@@ -545,5 +574,54 @@ mod tests {
         assert_eq!(state.messages.len(), 1);
         assert_eq!(state.messages[0].role, CodexMessageRole::Reasoning);
         assert_eq!(state.messages[0].text, "Requesting brief identity...");
+    }
+
+    #[test]
+    fn hydrate_history_seeds_empty_thread() {
+        let mut state = CodexThreadState::default();
+        let changed = state.hydrate_history_if_empty(
+            Some("thread-1".to_string()),
+            vec![
+                CodexThreadMessage {
+                    id: "msg-1".to_string(),
+                    role: CodexMessageRole::User,
+                    text: "hello".to_string(),
+                    streaming: false,
+                },
+                CodexThreadMessage {
+                    id: "msg-2".to_string(),
+                    role: CodexMessageRole::Assistant,
+                    text: "hi there".to_string(),
+                    streaming: false,
+                },
+            ],
+        );
+
+        assert!(changed);
+        assert_eq!(state.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(state.messages.len(), 2);
+        assert_eq!(state.messages[0].text, "hello");
+        assert_eq!(state.messages[1].text, "hi there");
+    }
+
+    #[test]
+    fn hydrate_history_does_not_overwrite_existing_messages() {
+        let mut state = CodexThreadState::default();
+        state.set_thread_id(Some("thread-1".to_string()));
+        assert!(state.append_local_user_message("pending local message"));
+
+        let changed = state.hydrate_history_if_empty(
+            Some("thread-1".to_string()),
+            vec![CodexThreadMessage {
+                id: "msg-1".to_string(),
+                role: CodexMessageRole::Assistant,
+                text: "history response".to_string(),
+                streaming: false,
+            }],
+        );
+
+        assert!(!changed);
+        assert_eq!(state.messages.len(), 1);
+        assert_eq!(state.messages[0].text, "pending local message");
     }
 }

@@ -40,7 +40,7 @@ mod wasm {
     use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement};
     use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
-    use crate::codex_thread::CodexThreadState;
+    use crate::codex_thread::{CodexMessageRole, CodexThreadMessage, CodexThreadState};
 
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
@@ -53,6 +53,8 @@ mod wasm {
         static SYNC_RUNTIME_STATE: RefCell<SyncRuntimeState> = RefCell::new(SyncRuntimeState::default());
         static SYNC_LAST_PERSIST_AT_MS: Cell<u64> = const { Cell::new(0) };
         static CODEX_THREAD_STATE: RefCell<CodexThreadState> = RefCell::new(CodexThreadState::default());
+        static CODEX_HISTORY_STATE: RefCell<CodexHistoryState> = RefCell::new(CodexHistoryState::default());
+        static CODEX_HISTORY_LOADING: Cell<bool> = const { Cell::new(false) };
         static MANAGEMENT_SURFACE_STATE: RefCell<ManagementSurfaceState> = RefCell::new(ManagementSurfaceState::default());
         static MANAGEMENT_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
         static CODEX_SEND_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
@@ -104,6 +106,52 @@ mod wasm {
         route_split_status: Option<RouteSplitStatus>,
         billing_policy: Option<PolicyDecision>,
         last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct CodexHistoryState {
+        loaded_session_id: Option<String>,
+        loaded_thread_id: Option<String>,
+        threads: Vec<RuntimeThreadRecord>,
+        active_thread_exists: Option<bool>,
+        last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadsResponse {
+        data: RuntimeThreadsPayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadsPayload {
+        threads: Vec<RuntimeThreadRecord>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadRecord {
+        thread_id: String,
+        #[serde(default)]
+        message_count: u32,
+        #[serde(default)]
+        updated_at: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadMessagesResponse {
+        data: RuntimeThreadMessagesPayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadMessagesPayload {
+        #[serde(default)]
+        messages: Vec<RuntimeThreadMessageRecord>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RuntimeThreadMessageRecord {
+        message_id: String,
+        role: String,
+        text: String,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -803,6 +851,7 @@ mod wasm {
                 });
                 let state = snapshot_state();
                 sync_thread_route_from_state(&state);
+                schedule_codex_history_refresh();
                 schedule_management_surface_refresh();
                 render_codex_chat_dom();
                 Ok(())
@@ -851,6 +900,7 @@ mod wasm {
                     clear_persisted_sync_state();
                     clear_runtime_sync_state();
                     reset_management_surface_state();
+                    reset_codex_history_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
                     });
@@ -866,6 +916,7 @@ mod wasm {
 
         let Some(tokens) = load_tokens().or_else(auth_tokens_from_state) else {
             reset_management_surface_state();
+            reset_codex_history_state();
             apply_auth_action(AppAction::AuthSignedOut);
             return Ok(());
         };
@@ -906,6 +957,7 @@ mod wasm {
                             clear_persisted_sync_state();
                             clear_runtime_sync_state();
                             reset_management_surface_state();
+                            reset_codex_history_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
                             });
@@ -965,6 +1017,7 @@ mod wasm {
         clear_persisted_sync_state();
         clear_runtime_sync_state();
         reset_management_surface_state();
+        reset_codex_history_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
         Ok(())
@@ -991,7 +1044,10 @@ mod wasm {
             });
             render_codex_chat_dom();
         }
-        response.map(|_| ())
+        response.map(|_| {
+            invalidate_codex_history_cache();
+            schedule_codex_history_refresh();
+        })
     }
 
     fn apply_auth_action(action: AppAction) {
@@ -1005,6 +1061,7 @@ mod wasm {
 
     fn on_auth_session_established() {
         queue_intent(CommandIntent::ConnectStream { worker_id: None });
+        schedule_codex_history_refresh();
         schedule_management_surface_refresh();
     }
 
@@ -1499,6 +1556,213 @@ mod wasm {
         MANAGEMENT_SURFACE_STATE.with(|state| {
             *state.borrow_mut() = ManagementSurfaceState::default();
         });
+    }
+
+    fn reset_codex_history_state() {
+        CODEX_HISTORY_LOADING.with(|loading| loading.set(false));
+        CODEX_HISTORY_STATE.with(|state| {
+            *state.borrow_mut() = CodexHistoryState::default();
+        });
+    }
+
+    fn invalidate_codex_history_cache() {
+        CODEX_HISTORY_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.loaded_session_id = None;
+            state.loaded_thread_id = None;
+        });
+    }
+
+    fn schedule_codex_history_refresh() {
+        let (access_token, session_id, route) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (
+                state.auth.access_token.clone(),
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.clone()),
+                state.route.clone(),
+            )
+        });
+
+        let Some(access_token) = access_token else {
+            reset_codex_history_state();
+            return;
+        };
+        let Some(session_id) = session_id else {
+            reset_codex_history_state();
+            return;
+        };
+        if access_token.trim().is_empty() {
+            reset_codex_history_state();
+            return;
+        }
+        if !route_is_codex_chat_surface(&route) {
+            return;
+        }
+
+        let route_thread_id = thread_id_from_route(&route);
+        let already_loaded = CODEX_HISTORY_STATE.with(|state| {
+            let state = state.borrow();
+            state.loaded_session_id.as_deref() == Some(session_id.as_str())
+                && state.loaded_thread_id == route_thread_id
+                && state.last_error.is_none()
+        });
+        if already_loaded {
+            return;
+        }
+
+        let already_loading = CODEX_HISTORY_LOADING.with(|loading| {
+            if loading.get() {
+                true
+            } else {
+                loading.set(true);
+                false
+            }
+        });
+        if already_loading {
+            return;
+        }
+
+        spawn_local(async move {
+            let result =
+                fetch_codex_history_state(&access_token, &session_id, route_thread_id.clone())
+                    .await;
+            CODEX_HISTORY_LOADING.with(|loading| loading.set(false));
+
+            let still_current = APP_STATE.with(|state| {
+                let state = state.borrow();
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.as_str())
+                    == Some(session_id.as_str())
+                    && thread_id_from_route(&state.route) == route_thread_id
+            });
+            if !still_current {
+                schedule_codex_history_refresh();
+                return;
+            }
+
+            match result {
+                Ok((snapshot, active_thread_history)) => {
+                    CODEX_HISTORY_STATE.with(|state| {
+                        *state.borrow_mut() = snapshot;
+                    });
+
+                    if let Some((thread_id, messages)) = active_thread_history {
+                        CODEX_THREAD_STATE.with(|chat| {
+                            chat.borrow_mut()
+                                .hydrate_history_if_empty(Some(thread_id), messages);
+                        });
+                    }
+                }
+                Err(error) => {
+                    CODEX_HISTORY_STATE.with(|state| {
+                        let mut state = state.borrow_mut();
+                        state.loaded_session_id = Some(session_id.clone());
+                        state.loaded_thread_id = route_thread_id.clone();
+                        state.last_error = Some(error.message.clone());
+                    });
+                }
+            }
+
+            render_codex_chat_dom();
+        });
+    }
+
+    async fn fetch_codex_history_state(
+        access_token: &str,
+        session_id: &str,
+        route_thread_id: Option<String>,
+    ) -> Result<(CodexHistoryState, Option<(String, Vec<CodexThreadMessage>)>), ControlApiError>
+    {
+        let threads = fetch_runtime_threads(access_token).await?;
+
+        let mut snapshot = CodexHistoryState {
+            loaded_session_id: Some(session_id.to_string()),
+            loaded_thread_id: route_thread_id.clone(),
+            threads,
+            active_thread_exists: None,
+            last_error: None,
+        };
+
+        let active_thread_history = if let Some(thread_id) = route_thread_id {
+            let (messages, exists) =
+                fetch_runtime_thread_messages(access_token, &thread_id).await?;
+            snapshot.active_thread_exists = Some(exists);
+            Some((thread_id, messages))
+        } else {
+            None
+        };
+
+        Ok((snapshot, active_thread_history))
+    }
+
+    async fn fetch_runtime_threads(
+        access_token: &str,
+    ) -> Result<Vec<RuntimeThreadRecord>, ControlApiError> {
+        let request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/runtime/threads".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let response: RuntimeThreadsResponse =
+            send_json_request(&request, &AppState::default()).await?;
+        Ok(response.data.threads)
+    }
+
+    async fn fetch_runtime_thread_messages(
+        access_token: &str,
+        thread_id: &str,
+    ) -> Result<(Vec<CodexThreadMessage>, bool), ControlApiError> {
+        let request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: format!("/api/runtime/threads/{thread_id}/messages"),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+
+        let response: RuntimeThreadMessagesResponse =
+            match send_json_request(&request, &AppState::default()).await {
+                Ok(response) => response,
+                Err(error) if error.status_code == 404 => return Ok((Vec::new(), false)),
+                Err(error) => return Err(error),
+            };
+
+        let messages = response
+            .data
+            .messages
+            .into_iter()
+            .map(|message| CodexThreadMessage {
+                id: message.message_id,
+                role: map_runtime_message_role(&message.role),
+                text: message.text,
+                streaming: false,
+            })
+            .collect::<Vec<_>>();
+        Ok((messages, true))
+    }
+
+    fn map_runtime_message_role(role: &str) -> CodexMessageRole {
+        match role.trim().to_ascii_lowercase().as_str() {
+            "user" => CodexMessageRole::User,
+            "assistant" => CodexMessageRole::Assistant,
+            "reasoning" => CodexMessageRole::Reasoning,
+            _ => CodexMessageRole::System,
+        }
     }
 
     fn schedule_management_surface_refresh() {
@@ -2860,6 +3124,8 @@ mod wasm {
             let state = state.borrow();
             (state.route.clone(), state.auth.clone())
         });
+        let codex_history_state = CODEX_HISTORY_STATE.with(|state| state.borrow().clone());
+        let codex_history_loading = CODEX_HISTORY_LOADING.with(Cell::get);
         let management_state = MANAGEMENT_SURFACE_STATE.with(|state| state.borrow().clone());
         let management_loading = MANAGEMENT_SURFACE_LOADING.with(Cell::get);
 
@@ -2914,6 +3180,13 @@ mod wasm {
                 let _ = auth_panel.style().set_property("display", "none");
             }
             render_codex_thread_messages(&document, &messages_container);
+            render_codex_thread_status(
+                &document,
+                &messages_container,
+                &thread_id,
+                &codex_history_state,
+                codex_history_loading,
+            );
             messages_container.set_scroll_top(messages_container.scroll_height());
             if thread_id.is_empty() {
                 let _ = messages_container.style().set_property("opacity", "0.9");
@@ -2929,7 +3202,14 @@ mod wasm {
             if let Some(auth_panel) = auth_panel.as_ref() {
                 let _ = auth_panel.style().set_property("display", "none");
             }
-            render_chat_landing_messages(&document, &messages_container, &route, &auth_state);
+            render_chat_landing_messages(
+                &document,
+                &messages_container,
+                &route,
+                &auth_state,
+                &codex_history_state,
+                codex_history_loading,
+            );
             messages_container.set_scroll_top(0);
             return;
         }
@@ -3035,6 +3315,70 @@ mod wasm {
                 let _ = messages_container.append_child(&row);
             }
         });
+    }
+
+    fn render_codex_thread_status(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        thread_id: &str,
+        history_state: &CodexHistoryState,
+        history_loading: bool,
+    ) {
+        let message_count = CODEX_THREAD_STATE.with(|state| state.borrow().messages.len());
+        if message_count > 0 {
+            return;
+        }
+
+        if history_loading {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Transcript".to_string(),
+                    body: format!("Loading Codex transcript for `{thread_id}`."),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+            return;
+        }
+
+        if let Some(error) = history_state.last_error.as_ref() {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "Transcript Load Error".to_string(),
+                    body: error.clone(),
+                    tone: ManagementCardTone::Error,
+                },
+            );
+            return;
+        }
+
+        if history_state.active_thread_exists == Some(false) {
+            append_management_card(
+                document,
+                messages_container,
+                ManagementCard {
+                    title: "New Thread".to_string(),
+                    body: format!(
+                        "No stored transcript found for `{thread_id}` yet. Send a message to create it."
+                    ),
+                    tone: ManagementCardTone::Info,
+                },
+            );
+            return;
+        }
+
+        append_management_card(
+            document,
+            messages_container,
+            ManagementCard {
+                title: "Transcript".to_string(),
+                body: "No transcript messages yet for this thread.".to_string(),
+                tone: ManagementCardTone::Neutral,
+            },
+        );
     }
 
     fn render_management_surface_messages(
@@ -3146,6 +3490,8 @@ mod wasm {
         messages_container: &HtmlElement,
         route: &AppRoute,
         auth_state: &openagents_app_state::AuthState,
+        history_state: &CodexHistoryState,
+        history_loading: bool,
     ) {
         let mut cards = vec![
             ManagementCard {
@@ -3156,7 +3502,7 @@ mod wasm {
             },
             ManagementCard {
                 title: "Start Thread".to_string(),
-                body: "Open /chat/<thread-id> to activate a thread, then send messages from the composer."
+                body: "Open /chat/<thread-id> for any existing thread or create one by sending the first message."
                     .to_string(),
                 tone: ManagementCardTone::Info,
             },
@@ -3171,6 +3517,50 @@ mod wasm {
             cards.push(ManagementCard {
                 title: "Signed In".to_string(),
                 body: format!("{} <{}>", user.name, user.email),
+                tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if history_loading {
+            cards.push(ManagementCard {
+                title: "Thread History".to_string(),
+                body: "Loading from `/api/runtime/threads`.".to_string(),
+                tone: ManagementCardTone::Info,
+            });
+        } else if let Some(error) = history_state.last_error.as_ref() {
+            cards.push(ManagementCard {
+                title: "Thread History Error".to_string(),
+                body: error.clone(),
+                tone: ManagementCardTone::Error,
+            });
+        } else if history_state.threads.is_empty() {
+            cards.push(ManagementCard {
+                title: "Thread History".to_string(),
+                body: "No saved Codex threads yet.".to_string(),
+                tone: ManagementCardTone::Warning,
+            });
+        } else {
+            let history_listing = history_state
+                .threads
+                .iter()
+                .take(8)
+                .map(|thread| {
+                    format!(
+                        "/chat/{}  messages={}  updated={}",
+                        thread.thread_id,
+                        thread.message_count,
+                        if thread.updated_at.is_empty() {
+                            "unknown".to_string()
+                        } else {
+                            thread.updated_at.clone()
+                        }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            cards.push(ManagementCard {
+                title: "Recent Threads".to_string(),
+                body: history_listing,
                 tone: ManagementCardTone::Neutral,
             });
         }
