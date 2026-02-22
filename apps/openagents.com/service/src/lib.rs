@@ -44,6 +44,7 @@ pub mod route_split;
 pub mod runtime_routing;
 pub mod sync_token;
 pub mod vercel_sse_adapter;
+pub mod web_maud;
 
 use crate::api_envelope::{
     ApiErrorCode, ApiErrorDetail, ApiErrorResponse, error_response_with_status, forbidden_error,
@@ -65,7 +66,7 @@ use crate::domain_store::{
     SendWhisperInput, ShoutRecord, UpdateAutopilotInput, UpdateL402PaywallInput,
     UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertGoogleIntegrationInput,
     UpsertResendIntegrationInput, UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput,
-    UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord,
+    UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord, ZoneCount,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -101,6 +102,10 @@ use crate::openapi::{
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
+use crate::web_maud::{
+    ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
+    render_page as render_maud_page,
+};
 
 const SERVICE_NAME: &str = "openagents-control-service";
 const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
@@ -885,6 +890,18 @@ struct SendThreadMessageRequest {
     text: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct WebChatSendForm {
+    text: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WebShoutForm {
+    body: String,
+    #[serde(default)]
+    zone: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RuntimeCodexWorkerControlRequestEnvelope {
     request: RuntimeCodexWorkerControlRequest,
@@ -1353,6 +1370,9 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     Router::new()
         .route("/", get(web_shell_entry))
         .route("/feed", get(feed_page))
+        .route("/feed/shout", post(web_feed_shout))
+        .route("/chat/new", post(web_chat_new_thread))
+        .route("/chat/:thread_id/send", post(web_chat_send_message))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
         .merge(web_auth_router)
@@ -2405,13 +2425,7 @@ async fn web_shell_entry(
     );
 
     match decision.target {
-        RouteTarget::RustShell => {
-            let entry_path = state.config.static_dir.join("index.html");
-            let response = build_static_response(&entry_path, CACHE_MANIFEST, Some(&headers))
-                .await
-                .map_err(map_static_error)?;
-            Ok(response)
-        }
+        RouteTarget::RustShell => render_web_page(&state, &headers, &uri).await,
         RouteTarget::Legacy => {
             let redirect = state
                 .route_split
@@ -2469,6 +2483,165 @@ async fn maybe_serve_file_like_static_alias(
         .await
         .map_err(map_static_error)?;
     Ok(Some(response))
+}
+
+async fn render_web_page(
+    state: &AppState,
+    headers: &HeaderMap,
+    uri: &axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let path = uri.path().to_string();
+    let status = query_param_value(uri.query(), "status");
+    let session_bundle = session_bundle_from_headers(state, headers).await.ok();
+    let session = session_bundle.as_ref().map(session_view_from_bundle);
+
+    if path == "/" || path == "/chat" || path.starts_with("/chat/") {
+        let mut active_thread_id = chat_thread_id_from_path(&path);
+        let mut threads = Vec::new();
+        let mut messages = Vec::new();
+
+        if let Some(bundle) = session_bundle.as_ref() {
+            let thread_rows = state
+                .codex_thread_store
+                .list_threads_for_user(&bundle.user.id, Some(&bundle.session.active_org_id))
+                .await
+                .map_err(map_thread_store_error)?;
+            if active_thread_id.is_none() {
+                active_thread_id = thread_rows.first().map(|thread| thread.thread_id.clone());
+            }
+            let active_lookup = active_thread_id.clone();
+            threads = thread_rows
+                .into_iter()
+                .map(|thread| {
+                    let thread_id = thread.thread_id.clone();
+                    let is_active = active_lookup.as_deref() == Some(thread_id.as_str());
+                    ChatThreadView {
+                        title: thread_title(&thread_id, thread.message_count),
+                        thread_id,
+                        updated_at: timestamp(thread.updated_at),
+                        message_count: thread.message_count,
+                        is_active,
+                    }
+                })
+                .collect();
+
+            if let Some(active_id) = active_thread_id.as_deref() {
+                let message_rows = state
+                    .codex_thread_store
+                    .list_thread_messages_for_user(&bundle.user.id, active_id)
+                    .await
+                    .map_err(map_thread_store_error)?;
+                messages = message_rows
+                    .into_iter()
+                    .map(|message| ChatMessageView {
+                        role: message.role,
+                        text: message.text,
+                        created_at: timestamp(message.created_at),
+                    })
+                    .collect();
+            }
+        }
+
+        let page = WebPage {
+            title: "Codex".to_string(),
+            path,
+            session,
+            body: WebBody::Chat {
+                status,
+                threads,
+                active_thread_id,
+                messages,
+            },
+        };
+        return Ok(web_html_response(page));
+    }
+
+    let (heading, description) = web_placeholder_for_path(&path);
+    let page = WebPage {
+        title: heading.clone(),
+        path,
+        session,
+        body: WebBody::Placeholder {
+            heading,
+            description,
+        },
+    };
+    Ok(web_html_response(page))
+}
+
+fn session_view_from_bundle(bundle: &SessionBundle) -> SessionView {
+    SessionView {
+        email: bundle.user.email.clone(),
+        display_name: bundle.user.name.clone(),
+    }
+}
+
+fn chat_thread_id_from_path(path: &str) -> Option<String> {
+    let remainder = path.strip_prefix("/chat/")?;
+    let segment = remainder.split('/').next().unwrap_or_default().trim();
+    if segment.is_empty() {
+        None
+    } else {
+        Some(segment.to_string())
+    }
+}
+
+fn web_placeholder_for_path(path: &str) -> (String, String) {
+    if path.starts_with("/settings") {
+        return (
+            "Settings".to_string(),
+            "Profile and integration surfaces are now server-rendered in Rust.".to_string(),
+        );
+    }
+    if path.starts_with("/billing") {
+        return (
+            "Billing".to_string(),
+            "Billing controls remain available through Rust API contracts.".to_string(),
+        );
+    }
+    if path.starts_with("/l402") {
+        return (
+            "L402".to_string(),
+            "L402 wallet, transactions, paywalls, and settlements stay on Rust APIs.".to_string(),
+        );
+    }
+    if path.starts_with("/account") {
+        return (
+            "Account".to_string(),
+            "Account and session controls are served by Rust authority.".to_string(),
+        );
+    }
+    if path.starts_with("/onboarding") || path.starts_with("/auth") || path.starts_with("/register")
+    {
+        return (
+            "Authentication".to_string(),
+            "Authentication routes are now rendered from Rust + Maud.".to_string(),
+        );
+    }
+    if path.starts_with("/admin") {
+        return (
+            "Admin".to_string(),
+            "Admin pages are rendered here while control-plane authority remains API-driven."
+                .to_string(),
+        );
+    }
+
+    (
+        "OpenAgents".to_string(),
+        "This route is now served as Rust-rendered HTML using Maud components.".to_string(),
+    )
+}
+
+fn web_html_response(page: WebPage) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (CONTENT_TYPE, "text/html; charset=utf-8"),
+            (CACHE_CONTROL, CACHE_MANIFEST),
+        ],
+        render_maud_page(&page),
+    )
+        .into_response()
 }
 
 async fn route_split_status(
@@ -3009,9 +3182,14 @@ async fn login_page(
         return Ok(Redirect::temporary("/").into_response());
     }
 
-    web_shell_entry(State(state), headers, uri)
-        .await
-        .map(IntoResponse::into_response)
+    let status = query_param_value(uri.query(), "status");
+    let page = WebPage {
+        title: "Sign in".to_string(),
+        path: "/login".to_string(),
+        session: None,
+        body: WebBody::Login { status },
+    };
+    Ok(web_html_response(page))
 }
 
 async fn login_email(
@@ -3151,6 +3329,116 @@ async fn web_logout(
     append_set_cookie_header(&mut response, &clear_cookie(LOCAL_TEST_AUTH_COOKIE_NAME))?;
     append_set_cookie_header(&mut response, &clear_cookie(CHALLENGE_COOKIE_NAME))?;
     Ok(response)
+}
+
+async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let session = match session_bundle_from_headers(&state, &headers).await {
+        Ok(session) => session,
+        Err(_) => return Redirect::temporary("/login").into_response(),
+    };
+
+    let thread_id = format!("thread_{}", Uuid::new_v4().simple());
+    match state
+        .codex_thread_store
+        .create_thread_for_user(&session.user.id, &session.session.active_org_id, &thread_id)
+        .await
+    {
+        Ok(thread) => {
+            Redirect::temporary(&format!("/chat/{}?status=thread-created", thread.thread_id))
+                .into_response()
+        }
+        Err(_) => Redirect::temporary("/chat?status=thread-create-failed").into_response(),
+    }
+}
+
+async fn web_chat_send_message(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+    headers: HeaderMap,
+    Form(payload): Form<WebChatSendForm>,
+) -> Response {
+    let session = match session_bundle_from_headers(&state, &headers).await {
+        Ok(session) => session,
+        Err(_) => return Redirect::temporary("/login").into_response(),
+    };
+
+    let normalized_thread_id = thread_id.trim().to_string();
+    if normalized_thread_id.is_empty() {
+        return Redirect::temporary("/chat?status=message-send-failed").into_response();
+    }
+
+    let text = payload.text.trim().to_string();
+    if text.is_empty() {
+        return Redirect::temporary(&format!("/chat/{normalized_thread_id}?status=empty-body"))
+            .into_response();
+    }
+    if text.chars().count() > 20_000 {
+        return Redirect::temporary(&format!(
+            "/chat/{normalized_thread_id}?status=message-send-failed"
+        ))
+        .into_response();
+    }
+
+    match state
+        .codex_thread_store
+        .append_user_message(
+            &session.user.id,
+            &session.session.active_org_id,
+            &normalized_thread_id,
+            text,
+        )
+        .await
+    {
+        Ok(_) => Redirect::temporary(&format!("/chat/{normalized_thread_id}?status=message-sent"))
+            .into_response(),
+        Err(_) => Redirect::temporary(&format!(
+            "/chat/{normalized_thread_id}?status=message-send-failed"
+        ))
+        .into_response(),
+    }
+}
+
+async fn web_feed_shout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebShoutForm>,
+) -> Response {
+    let session = match session_bundle_from_headers(&state, &headers).await {
+        Ok(session) => session,
+        Err(_) => return Redirect::temporary("/login").into_response(),
+    };
+
+    let body = payload.body.trim().to_string();
+    if body.is_empty() {
+        return Redirect::temporary("/feed?status=empty-body").into_response();
+    }
+    if body.chars().count() > 2000 {
+        return Redirect::temporary("/feed?status=shout-post-failed").into_response();
+    }
+
+    let zone = match normalize_shout_zone(payload.zone.as_deref(), "zone") {
+        Ok(zone) => zone,
+        Err(_) => return Redirect::temporary("/feed?status=invalid-zone").into_response(),
+    };
+
+    let result = state
+        ._domain_store
+        .create_shout(CreateShoutInput {
+            user_id: session.user.id,
+            zone: zone.clone(),
+            body,
+        })
+        .await;
+
+    if result.is_err() {
+        return Redirect::temporary("/feed?status=shout-post-failed").into_response();
+    }
+
+    if let Some(zone) = zone {
+        Redirect::temporary(&format!("/feed?zone={zone}&status=shout-posted")).into_response()
+    } else {
+        Redirect::temporary("/feed?status=shout-posted").into_response()
+    }
 }
 
 async fn local_test_login(
@@ -4352,10 +4640,6 @@ async fn settings_autopilot_update(
         .observability
         .increment_counter("settings.autopilot.updated", &request_id);
 
-    if headers.contains_key("x-inertia") {
-        return Ok(Redirect::to("/settings/autopilot?status=autopilot-updated").into_response());
-    }
-
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
@@ -4714,12 +4998,6 @@ async fn settings_integrations_google_callback(
         &request_id,
     );
 
-    if headers.contains_key("x-inertia") {
-        return Ok(
-            Redirect::to(&format!("/settings/integrations?status={status}")).into_response(),
-        );
-    }
-
     Ok(Redirect::to(&format!("/settings/integrations?status={status}")).into_response())
 }
 
@@ -4759,15 +5037,11 @@ async fn settings_integrations_google_disconnect(
 }
 
 fn settings_integration_response(
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
     status: &str,
     action: Option<String>,
     integration: serde_json::Value,
 ) -> Response {
-    if headers.contains_key("x-inertia") {
-        return Redirect::to(&format!("/settings/integrations?status={status}")).into_response();
-    }
-
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -6184,12 +6458,6 @@ async fn feed_page(
     uri: axum::http::Uri,
     Query(query): Query<FeedPageQuery>,
 ) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
-    if !headers.contains_key("x-inertia") {
-        return web_shell_entry(State(state), headers, uri)
-            .await
-            .map(IntoResponse::into_response);
-    }
-
     let zone = normalize_shout_zone(query.zone.as_deref(), "zone").and_then(|zone| match zone {
         Some(value) if value == "all" => Ok(None),
         _ => Ok(zone),
@@ -6208,30 +6476,29 @@ async fn feed_page(
         .await
         .map_err(map_domain_store_error)?;
 
-    let mut author_cache: HashMap<String, serde_json::Value> = HashMap::new();
-    let mut items = Vec::with_capacity(rows.len());
-    for shout in &rows {
-        items.push(feed_item_payload(&state, shout, &mut author_cache).await);
-    }
+    let status = query_param_value(uri.query(), "status");
+    let items = feed_items_for_web(&state, &rows).await;
+    let zone_views = feed_zones_for_web(&zones, zone.as_deref());
+    let session = session_bundle_from_headers(&state, &headers)
+        .await
+        .ok()
+        .map(|bundle| SessionView {
+            display_name: bundle.user.name.clone(),
+            email: bundle.user.email.clone(),
+        });
 
-    let page = serde_json::json!({
-        "component": "feed",
-        "props": {
-            "feed": {
-                "zone": zone,
-                "limit": limit,
-                "items": items,
-                "zones": zones,
-            }
+    let page = WebPage {
+        title: format!("Feed ({limit})"),
+        path: "/feed".to_string(),
+        session,
+        body: WebBody::Feed {
+            status,
+            items,
+            zones: zone_views,
         },
-        "url": uri
-            .path_and_query()
-            .map(|value| value.as_str().to_string())
-            .unwrap_or_else(|| "/feed".to_string()),
-        "version": serde_json::Value::Null,
-    });
+    };
 
-    Ok((StatusCode::OK, Json(page)).into_response())
+    Ok(web_html_response(page))
 }
 
 async fn shouts_zones(
@@ -6706,21 +6973,54 @@ async fn shout_payload(
     })
 }
 
-async fn feed_item_payload(
-    state: &AppState,
-    shout: &ShoutRecord,
-    author_cache: &mut HashMap<String, serde_json::Value>,
-) -> serde_json::Value {
-    let mut item = shout_payload(state, shout, author_cache).await;
-    let zone = item
-        .get("zone")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "global".to_string());
-    item["zone"] = serde_json::Value::String(zone);
-    item
+async fn feed_items_for_web(state: &AppState, rows: &[ShoutRecord]) -> Vec<FeedItemView> {
+    let mut author_handle_cache: HashMap<String, String> = HashMap::new();
+    let mut items = Vec::with_capacity(rows.len());
+
+    for row in rows {
+        let author_handle = if let Some(cached) = author_handle_cache.get(&row.user_id) {
+            cached.clone()
+        } else {
+            let resolved = if let Some(user) = state.auth.user_by_id(&row.user_id).await {
+                user_handle_from_email(&user.email)
+            } else {
+                "user".to_string()
+            };
+            author_handle_cache.insert(row.user_id.clone(), resolved.clone());
+            resolved
+        };
+
+        let zone = row
+            .zone
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("global")
+            .to_string();
+
+        items.push(FeedItemView {
+            id: row.id.to_string(),
+            zone,
+            author_handle,
+            body: row.body.clone(),
+            created_at: timestamp(row.created_at),
+        });
+    }
+
+    items
+}
+
+fn feed_zones_for_web(zones: &[ZoneCount], active_zone: Option<&str>) -> Vec<FeedZoneView> {
+    zones
+        .iter()
+        .map(|zone| FeedZoneView {
+            zone: zone.zone.clone(),
+            count_24h: zone.count24h,
+            is_active: active_zone
+                .map(|active| active.eq_ignore_ascii_case(&zone.zone))
+                .unwrap_or(false),
+        })
+        .collect()
 }
 
 async fn whisper_user_payload(
@@ -10326,20 +10626,22 @@ async fn legacy_stream_bridge(
         .observability
         .increment_counter("legacy.chat.stream.bridge.accepted", &audit_request_id);
 
-    let wire = stream_preview.map(|preview| preview.wire).unwrap_or_else(|| {
-        vercel_sse_adapter::serialize_sse(&[
-            serde_json::json!({
-                "type": "error",
-                "code": "adapter_preview_unavailable",
-                "message": "stream preview unavailable",
-                "retryable": false
-            }),
-            serde_json::json!({
-                "type": "finish",
-                "status": "error"
-            }),
-        ])
-    });
+    let wire = stream_preview
+        .map(|preview| preview.wire)
+        .unwrap_or_else(|| {
+            vercel_sse_adapter::serialize_sse(&[
+                serde_json::json!({
+                    "type": "error",
+                    "code": "adapter_preview_unavailable",
+                    "message": "stream preview unavailable",
+                    "retryable": false
+                }),
+                serde_json::json!({
+                    "type": "finish",
+                    "status": "error"
+                }),
+            ])
+        });
 
     Ok(legacy_chat_stream_sse_response(&state.config, wire))
 }
@@ -10462,12 +10764,14 @@ fn legacy_chat_stream_sse_response(config: &Config, wire: String) -> Response {
             .headers_mut()
             .insert(HEADER_OA_COMPAT_MAX_BUILD, value);
     }
-    if let Ok(value) = HeaderValue::from_str(&config.compat_control_min_schema_version.to_string()) {
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_min_schema_version.to_string())
+    {
         response
             .headers_mut()
             .insert(HEADER_OA_COMPAT_MIN_SCHEMA, value);
     }
-    if let Ok(value) = HeaderValue::from_str(&config.compat_control_max_schema_version.to_string()) {
+    if let Ok(value) = HeaderValue::from_str(&config.compat_control_max_schema_version.to_string())
+    {
         response
             .headers_mut()
             .insert(HEADER_OA_COMPAT_MAX_SCHEMA, value);
@@ -18440,23 +18744,6 @@ mod tests {
                 > 1
         );
 
-        let inertia_request = Request::builder()
-            .method("PATCH")
-            .uri("/settings/autopilot")
-            .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {token}"))
-            .header("x-inertia", "true")
-            .body(Body::from("{}"))?;
-        let inertia_response = app.clone().oneshot(inertia_request).await?;
-        assert_eq!(inertia_response.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            inertia_response
-                .headers()
-                .get("location")
-                .and_then(|value| value.to_str().ok()),
-            Some("/settings/autopilot?status=autopilot-updated")
-        );
-
         let too_long_display_name = "x".repeat(121);
         let invalid_request = Request::builder()
             .method("PATCH")
@@ -19249,7 +19536,12 @@ mod tests {
         let response = app.clone().oneshot(request).await?;
         assert_eq!(response.status(), StatusCode::GONE);
         assert!(response.headers().get("x-oa-legacy-chat-retired").is_none());
-        assert!(response.headers().get("x-oa-legacy-chat-canonical").is_none());
+        assert!(
+            response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .is_none()
+        );
         assert_eq!(
             response
                 .headers()
@@ -19278,8 +19570,18 @@ mod tests {
             .body(Body::from(r#"{"title":"Migration Chat"}"#))?;
         let create_response = app.clone().oneshot(create_request).await?;
         assert_eq!(create_response.status(), StatusCode::CREATED);
-        assert!(create_response.headers().get("x-oa-legacy-chat-retired").is_none());
-        assert!(create_response.headers().get("x-oa-legacy-chat-canonical").is_none());
+        assert!(
+            create_response
+                .headers()
+                .get("x-oa-legacy-chat-retired")
+                .is_none()
+        );
+        assert!(
+            create_response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .is_none()
+        );
         let create_body = read_json(create_response).await?;
         let conversation_id = create_body["data"]["id"]
             .as_str()
@@ -19444,8 +19746,18 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("v1")
         );
-        assert!(stream_response.headers().get("x-oa-legacy-chat-retired").is_none());
-        assert!(stream_response.headers().get("x-oa-legacy-chat-canonical").is_none());
+        assert!(
+            stream_response
+                .headers()
+                .get("x-oa-legacy-chat-retired")
+                .is_none()
+        );
+        assert!(
+            stream_response
+                .headers()
+                .get("x-oa-legacy-chat-canonical")
+                .is_none()
+        );
         assert!(
             stream_response
                 .headers()
@@ -19544,8 +19856,8 @@ mod tests {
     async fn legacy_chat_stream_edge_malformed_payloads_reject_deterministically() -> Result<()> {
         let static_dir = tempdir()?;
         let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
-        let token = authenticate_token(app.clone(), "legacy-stream-edge-malformed@openagents.com")
-            .await?;
+        let token =
+            authenticate_token(app.clone(), "legacy-stream-edge-malformed@openagents.com").await?;
 
         let malformed_json_request = legacy_stream_request(
             "/api/chat/stream",
@@ -19561,7 +19873,10 @@ mod tests {
             r#"{"messages":[{"role":"assistant","content":"no user payload"}]}"#,
         )?;
         let missing_text_response = app.oneshot(missing_text_request).await?;
-        assert_eq!(missing_text_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            missing_text_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
         let missing_text_body = read_json(missing_text_response).await?;
         assert_eq!(missing_text_body["error"]["code"], json!("invalid_request"));
 
@@ -22760,7 +23075,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feed_page_supports_inertia_query_semantics_and_feed_payload_shape() -> Result<()> {
+    async fn feed_page_renders_html_and_respects_zone_filters() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
             static_dir.path().join("index.html"),
@@ -22791,61 +23106,31 @@ mod tests {
         let zone_request = Request::builder()
             .method("GET")
             .uri("/feed?zone=l402")
-            .header("x-inertia", "true")
             .body(Body::empty())?;
         let zone_response = app.clone().oneshot(zone_request).await?;
         assert_eq!(zone_response.status(), StatusCode::OK);
-        let zone_body = read_json(zone_response).await?;
-        assert_eq!(zone_body["component"], json!("feed"));
-        assert_eq!(zone_body["props"]["feed"]["zone"], json!("l402"));
-        assert_eq!(
-            zone_body["props"]["feed"]["items"]
-                .as_array()
-                .map(|rows| rows.len()),
-            Some(1)
-        );
-        assert_eq!(
-            zone_body["props"]["feed"]["items"][0]["body"],
-            json!("L402-only shout body")
-        );
+        let zone_body = zone_response.into_body().collect().await?.to_bytes();
+        let zone_html = String::from_utf8_lossy(&zone_body);
+        assert!(zone_html.contains("rust shell"));
+        assert!(zone_html.contains("L402-only shout body"));
+        assert!(!zone_html.contains("Dev-only shout body"));
 
         let all_request = Request::builder()
             .method("GET")
             .uri("/feed?zone=all&limit=999")
-            .header("x-inertia", "true")
             .body(Body::empty())?;
         let all_response = app.clone().oneshot(all_request).await?;
         assert_eq!(all_response.status(), StatusCode::OK);
-        let all_body = read_json(all_response).await?;
-        assert_eq!(all_body["props"]["feed"]["zone"], json!(null));
-        assert_eq!(all_body["props"]["feed"]["limit"], json!(200));
-        assert_eq!(
-            all_body["props"]["feed"]["items"]
-                .as_array()
-                .map(|rows| rows.len()),
-            Some(3)
-        );
-        assert!(
-            all_body["props"]["feed"]["items"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|item| {
-                    item.get("body") == Some(&json!("Global shout body"))
-                        && item.get("zone") == Some(&json!("global"))
-                })
-        );
-        assert!(
-            all_body["props"]["feed"]["zones"]
-                .as_array()
-                .map(|rows| !rows.is_empty())
-                .unwrap_or(false)
-        );
+        let all_body = all_response.into_body().collect().await?.to_bytes();
+        let all_html = String::from_utf8_lossy(&all_body);
+        assert!(all_html.contains("rust shell"));
+        assert!(all_html.contains("L402-only shout body"));
+        assert!(all_html.contains("Dev-only shout body"));
+        assert!(all_html.contains("Global shout body"));
 
         let invalid_since_request = Request::builder()
             .method("GET")
             .uri("/feed?since=not-a-date")
-            .header("x-inertia", "true")
             .body(Body::empty())?;
         let invalid_since_response = app.oneshot(invalid_since_request).await?;
         assert_eq!(
