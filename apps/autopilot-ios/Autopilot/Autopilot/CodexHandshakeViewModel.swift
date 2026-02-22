@@ -27,8 +27,12 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var isSendingCode = false
     @Published private(set) var isVerifyingCode = false
+    @Published var selectedModelOverride: String = "default"
+    @Published var selectedReasoningEffort: String = "default"
     @Published var messageDraft: String = ""
     @Published private(set) var isSendingMessage = false
+    @Published private(set) var activeThreadID: String?
+    @Published private(set) var activeTurnID: String?
     @Published var latestSnapshot: RuntimeCodexWorkerSnapshot?
     @Published var recentEvents: [RuntimeCodexStreamEvent] = []
     @Published var chatMessages: [CodexChatMessage] = []
@@ -123,6 +127,9 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard !normalized.isEmpty else {
             return false
         }
+        guard activeThreadID != nil else {
+            return false
+        }
         guard isAuthenticated else {
             return false
         }
@@ -131,6 +138,34 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
         return selectedWorkerID != nil || preferredWorker(from: workers) != nil
     }
+
+    var canStartThread: Bool {
+        guard isAuthenticated else {
+            return false
+        }
+        guard !isSendingMessage else {
+            return false
+        }
+        return selectedWorkerID != nil || preferredWorker(from: workers) != nil
+    }
+
+    var canInterruptTurn: Bool {
+        guard isAuthenticated else {
+            return false
+        }
+        guard let threadID = activeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !threadID.isEmpty else {
+            return false
+        }
+        guard let turnID = activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !turnID.isEmpty else {
+            return false
+        }
+        return selectedWorkerID != nil || preferredWorker(from: workers) != nil
+    }
+
+    let modelOverrideOptions = ["default", "gpt-5-codex", "gpt-5", "gpt-4.1"]
+    let reasoningEffortOptions = ["default", "low", "medium", "high"]
 
     var canSendAuthCode: Bool {
         let normalizedEmail = normalizeEmail(email)
@@ -425,6 +460,8 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         workers = []
         selectedWorkerID = nil
+        activeThreadID = nil
+        activeTurnID = nil
         latestSnapshot = nil
         recentEvents = []
         resetChatTimeline()
@@ -626,6 +663,54 @@ final class CodexHandshakeViewModel: ObservableObject {
         return tracker.requestID
     }
 
+    func startThread() async {
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to start a thread."
+            return
+        }
+
+        var params: [String: JSONValue] = [:]
+        if let model = normalizedModelOverrideValue() {
+            params["model"] = .string(model)
+        }
+
+        let requestID = await queueControlRequest(
+            method: .threadStart,
+            params: params
+        )
+        if requestID != nil {
+            statusMessage = "Queued thread/start request."
+            errorMessage = nil
+        }
+    }
+
+    func interruptActiveTurn() async {
+        guard let threadID = activeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !threadID.isEmpty else {
+            errorMessage = "No active thread selected."
+            return
+        }
+
+        guard let turnID = activeTurnID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !turnID.isEmpty else {
+            errorMessage = "No active turn to interrupt."
+            return
+        }
+
+        let requestID = await queueControlRequest(
+            method: .turnInterrupt,
+            params: [
+                "thread_id": .string(threadID),
+                "turn_id": .string(turnID),
+            ],
+            threadID: threadID
+        )
+        if requestID != nil {
+            statusMessage = "Queued turn/interrupt request."
+            errorMessage = nil
+        }
+    }
+
     private func dispatchQueuedControlRequestsIfPossible(
         clientOverride: RuntimeCodexClient? = nil
     ) async {
@@ -718,7 +803,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         syncControlRequestSnapshots()
 
         switch envelope.receipt.outcome {
-        case .success:
+        case .success(let response):
+            applyControlSuccessContext(
+                method: tracker.request.method,
+                response: response,
+                fallbackThreadID: controlRequestThreadID(tracker.request)
+            )
             appendSystemMessage(
                 "Control \(tracker.request.method.rawValue) succeeded.",
                 threadID: controlRequestThreadID(tracker.request),
@@ -804,6 +894,113 @@ final class CodexHandshakeViewModel: ObservableObject {
         return nil
     }
 
+    private func normalizedModelOverrideValue() -> String? {
+        let normalized = selectedModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, normalized != "default" else {
+            return nil
+        }
+        return normalized
+    }
+
+    private func normalizedReasoningEffortValue() -> String? {
+        let normalized = selectedReasoningEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, normalized != "default" else {
+            return nil
+        }
+        return normalized
+    }
+
+    private func applyControlSuccessContext(
+        method: RuntimeCodexControlMethod,
+        response: JSONValue?,
+        fallbackThreadID: String?
+    ) {
+        switch method {
+        case .threadStart, .threadResume:
+            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
+                activeThreadID = threadID
+            }
+
+        case .turnStart:
+            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
+                activeThreadID = threadID
+            }
+            if let turnID = extractTurnID(fromControlResponse: response) {
+                activeTurnID = turnID
+            }
+
+        case .turnInterrupt:
+            activeTurnID = nil
+            if let threadID = extractThreadID(fromControlResponse: response) ?? fallbackThreadID {
+                activeThreadID = threadID
+            }
+
+        case .threadList, .threadRead:
+            if let threadID = extractThreadID(fromControlResponse: response) {
+                activeThreadID = threadID
+            }
+        }
+    }
+
+    private func extractThreadID(fromControlResponse response: JSONValue?) -> String? {
+        guard let object = response?.objectValue else {
+            return nil
+        }
+
+        if let threadID = object["thread_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        if let threadID = object["threadId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        if let thread = object["thread"]?.objectValue,
+           let threadID = thread["id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !threadID.isEmpty {
+            return threadID
+        }
+
+        if let turn = object["turn"]?.objectValue {
+            if let threadID = turn["thread_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !threadID.isEmpty {
+                return threadID
+            }
+            if let threadID = turn["threadId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !threadID.isEmpty {
+                return threadID
+            }
+        }
+
+        return nil
+    }
+
+    private func extractTurnID(fromControlResponse response: JSONValue?) -> String? {
+        guard let object = response?.objectValue else {
+            return nil
+        }
+
+        if let turnID = object["turn_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !turnID.isEmpty {
+            return turnID
+        }
+
+        if let turnID = object["turnId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !turnID.isEmpty {
+            return turnID
+        }
+
+        if let turn = object["turn"]?.objectValue,
+           let turnID = turn["id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !turnID.isEmpty {
+            return turnID
+        }
+
+        return nil
+    }
+
     func sendUserMessage() async {
         let normalizedMessage = normalizeMessageText(messageDraft)
         guard !normalizedMessage.isEmpty else {
@@ -815,71 +1012,51 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        guard let client = makeClient() else {
-            errorMessage = "Sign in first to send a message."
+        guard let threadID = activeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !threadID.isEmpty else {
+            errorMessage = "No active thread. Start or resume a thread first."
             return
         }
 
-        if workers.isEmpty {
-            await refreshWorkers()
-        }
-
-        guard let worker = preferredWorker(from: workers) else {
-            errorMessage = "No active desktop worker found."
-            return
-        }
-
-        if selectedWorkerID != worker.workerID {
-            selectedWorkerID = worker.workerID
-        }
-
-        let workerID = worker.workerID
-        let messageID = "iosmsg-\(UUID().uuidString.lowercased())"
-        let occurredAt = iso8601(now())
-
-        messageDraft = ""
         isSendingMessage = true
-        errorMessage = nil
         defer {
             isSendingMessage = false
         }
 
+        let occurredAt = iso8601(now())
+        var params: [String: JSONValue] = [
+            "thread_id": .string(threadID),
+            "text": .string(normalizedMessage),
+        ]
+
+        if let model = normalizedModelOverrideValue() {
+            params["model"] = .string(model)
+        }
+        if let effort = normalizedReasoningEffortValue() {
+            params["effort"] = .string(effort)
+        }
+
+        guard let requestID = await queueControlRequest(
+            method: .turnStart,
+            params: params,
+            threadID: threadID
+        ) else {
+            return
+        }
+
+        messageDraft = ""
+        errorMessage = nil
+
         // Optimistic local echo so mobile feels instant while runtime stream catches up.
         appendUserMessage(
             normalizedMessage,
-            dedupeKey: "local:\(messageID)",
-            threadID: nil,
+            dedupeKey: "local:\(requestID)",
+            threadID: threadID,
             turnID: nil,
             itemID: nil,
             occurredAt: occurredAt
         )
-
-        let payload: [String: JSONValue] = [
-            "source": .string("autopilot-ios"),
-            "method": .string("ios/user_message"),
-            "message_id": .string(messageID),
-            "occurred_at": .string(occurredAt),
-            "params": .object([
-                "message_id": .string(messageID),
-                "text": .string(normalizedMessage),
-                "sent_from": .string("autopilot-ios"),
-            ]),
-        ]
-
-        do {
-            try await client.ingestWorkerEvent(workerID: workerID, eventType: "worker.event", payload: payload)
-            statusMessage = "Sent to \(shortWorkerID(workerID))."
-        } catch {
-            if shouldAttemptAuthRecovery(after: error),
-               await refreshSessionFromStoredToken() != nil {
-                messageDraft = normalizedMessage
-                await sendUserMessage()
-                return
-            }
-            messageDraft = normalizedMessage
-            errorMessage = formatError(error)
-            statusMessage = nil
-        }
+        statusMessage = "Queued turn/start request."
     }
 
     func connectStream() {
@@ -1628,6 +1805,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     private func applyCodexEvent(_ event: RuntimeCodexProto.CodexEventEnvelope) {
         switch event.method {
         case "thread/started":
+            if let threadID = event.threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !threadID.isEmpty {
+                activeThreadID = threadID
+            }
             if CodexChatEventDisplayPolicy.shouldDisplaySystemMethod(event.method) {
                 appendSystemMessage(
                     "Thread started.",
@@ -1638,6 +1819,14 @@ final class CodexHandshakeViewModel: ObservableObject {
             }
 
         case "turn/started":
+            if let threadID = event.threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !threadID.isEmpty {
+                activeThreadID = threadID
+            }
+            if let turnID = event.turnID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !turnID.isEmpty {
+                activeTurnID = turnID
+            }
             appendSystemMessage(
                 "Turn started.",
                 threadID: event.threadID,
@@ -1646,6 +1835,15 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
 
         case "turn/completed", "turn/failed", "turn/aborted", "turn/interrupted":
+            if let threadID = event.threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !threadID.isEmpty {
+                activeThreadID = threadID
+            }
+            if let turnID = event.turnID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !turnID.isEmpty,
+               activeTurnID == nil || activeTurnID == turnID {
+                activeTurnID = nil
+            }
             let status = extractTurnStatus(from: event.params) ?? "completed"
             appendSystemMessage(
                 "Turn \(status).",
@@ -2488,6 +2686,8 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private func resetChatTimeline() {
         chatMessages = []
+        activeThreadID = nil
+        activeTurnID = nil
         assistantMessageIndexByItemKey = [:]
         reasoningMessageIndexByItemKey = [:]
         toolMessageIndexByItemKey = [:]

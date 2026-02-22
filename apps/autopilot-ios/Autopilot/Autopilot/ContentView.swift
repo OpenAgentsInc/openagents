@@ -103,51 +103,108 @@ private struct CodexChatView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message Codex", text: $model.messageDraft, axis: .vertical)
-                .lineLimit(1...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .textInputAutocapitalization(.sentences)
-                .autocorrectionDisabled(false)
-                .focused($isComposerFocused)
-                .submitLabel(.send)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(OATheme.input)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(OATheme.border, lineWidth: 1)
-                )
-                .foregroundStyle(OATheme.foreground)
-                .tint(OATheme.ring)
-                .onSubmit {
+        VStack(alignment: .leading, spacing: 8) {
+            controlAffordances
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Message Codex", text: $model.messageDraft, axis: .vertical)
+                    .lineLimit(1...5)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled(false)
+                    .focused($isComposerFocused)
+                    .submitLabel(.send)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(OATheme.input)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(OATheme.border, lineWidth: 1)
+                    )
+                    .foregroundStyle(OATheme.foreground)
+                    .tint(OATheme.ring)
+                    .onSubmit {
+                        Task {
+                            await model.sendUserMessage()
+                        }
+                    }
+
+                Button {
                     Task {
                         await model.sendUserMessage()
                     }
+                } label: {
+                    if model.isSendingMessage {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    } else {
+                        Text("Send")
+                    }
                 }
-
-            Button {
-                Task {
-                    await model.sendUserMessage()
-                }
-            } label: {
-                if model.isSendingMessage {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                } else {
-                    Text("Send")
-                }
+                .buttonStyle(.borderedProminent)
+                .tint(OATheme.primary)
+                .disabled(!model.canSendMessage)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(OATheme.primary)
-            .disabled(!model.canSendMessage)
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(OATheme.background)
+    }
+
+    private var controlAffordances: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Picker("Model", selection: $model.selectedModelOverride) {
+                    ForEach(model.modelOverrideOptions, id: \.self) { option in
+                        Text(option == "default" ? "model:auto" : option)
+                            .tag(option)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Reasoning", selection: $model.selectedReasoningEffort) {
+                    ForEach(model.reasoningEffortOptions, id: \.self) { option in
+                        Text(option == "default" ? "reasoning:auto" : option)
+                            .tag(option)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            HStack(spacing: 8) {
+                Button("New Thread") {
+                    Task {
+                        await model.startThread()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canStartThread)
+
+                Button("Interrupt") {
+                    Task {
+                        await model.interruptActiveTurn()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canInterruptTurn)
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("thread: \(model.activeThreadID ?? "none")")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("turn: \(model.activeTurnID ?? "none")")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .font(.caption2)
+                .foregroundStyle(OATheme.mutedForeground)
+            }
+        }
     }
 
     private func dismissKeyboard() {
