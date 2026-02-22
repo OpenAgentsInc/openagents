@@ -62,7 +62,9 @@ use crate::openapi::{
     ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE, ROUTE_AUTH_VERIFY,
     ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM, ROUTE_AUTOPILOTS_THREADS,
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_SKILLS_RELEASE,
+    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+    ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
+    ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS, ROUTE_RUNTIME_SKILLS_RELEASE,
     ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
     ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
     ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE,
@@ -157,6 +159,7 @@ struct AppState {
     codex_control_receipts: CodexControlReceiptState,
     runtime_tool_receipts: RuntimeToolReceiptState,
     runtime_skill_registry: RuntimeSkillRegistryState,
+    runtime_workers: RuntimeWorkerState,
     runtime_internal_nonces: RuntimeInternalNonceState,
     started_at: SystemTime,
 }
@@ -186,6 +189,37 @@ struct RuntimeSkillRegistryState {
     tool_specs: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     skill_specs: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     releases: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+#[derive(Clone, Default)]
+struct RuntimeWorkerState {
+    workers: Arc<Mutex<HashMap<String, RuntimeWorkerRecord>>>,
+    events: Arc<Mutex<HashMap<String, Vec<RuntimeWorkerEventRecord>>>>,
+}
+
+#[derive(Clone)]
+struct RuntimeWorkerRecord {
+    worker_id: String,
+    owner_user_id: String,
+    status: String,
+    latest_seq: u64,
+    workspace_ref: Option<String>,
+    codex_home_ref: Option<String>,
+    adapter: String,
+    metadata: Option<serde_json::Value>,
+    started_at: Option<chrono::DateTime<Utc>>,
+    stopped_at: Option<chrono::DateTime<Utc>>,
+    last_heartbeat_at: Option<chrono::DateTime<Utc>>,
+    heartbeat_stale_after_ms: u64,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct RuntimeWorkerEventRecord {
+    seq: u64,
+    event_type: String,
+    payload: serde_json::Value,
+    occurred_at: chrono::DateTime<Utc>,
 }
 
 #[derive(Clone)]
@@ -521,6 +555,56 @@ struct RuntimeCodexWorkerControlRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkersListQuery {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    workspace_ref: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerCreateRequestPayload {
+    #[serde(default)]
+    worker_id: Option<String>,
+    #[serde(default)]
+    workspace_ref: Option<String>,
+    #[serde(default)]
+    codex_home_ref: Option<String>,
+    #[serde(default)]
+    adapter: Option<String>,
+    #[serde(default)]
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerEventEnvelope {
+    event: RuntimeCodexWorkerEventPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerEventPayload {
+    event_type: String,
+    #[serde(default)]
+    payload: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerStopRequestPayload {
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimeCodexWorkerStreamQuery {
+    #[serde(default)]
+    cursor: Option<u64>,
+    #[serde(default)]
+    tail_ms: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
 struct RuntimeToolsExecuteRequestPayload {
     #[serde(alias = "toolPack")]
     tool_pack: String,
@@ -604,6 +688,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         codex_control_receipts: CodexControlReceiptState::default(),
         runtime_tool_receipts: RuntimeToolReceiptState::default(),
         runtime_skill_registry: RuntimeSkillRegistryState::default(),
+        runtime_workers: RuntimeWorkerState::default(),
         runtime_internal_nonces: RuntimeInternalNonceState::default(),
         started_at: SystemTime::now(),
     };
@@ -749,6 +834,26 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                     thread_message_throttle_state,
                     throttle_thread_message_gate,
                 )),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKERS,
+            get(runtime_codex_workers_index).post(runtime_codex_workers_create),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKER_BY_ID,
+            get(runtime_codex_worker_show),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKER_STREAM,
+            get(runtime_codex_worker_stream),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+            post(runtime_codex_worker_events),
+        )
+        .route(
+            ROUTE_RUNTIME_CODEX_WORKER_STOP,
+            post(runtime_codex_worker_stop),
         )
         .route(
             ROUTE_RUNTIME_CODEX_WORKER_REQUESTS,
@@ -4923,6 +5028,356 @@ async fn send_thread_message(
     })))
 }
 
+async fn runtime_codex_workers_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RuntimeCodexWorkersListQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let status_filter = query
+        .status
+        .and_then(non_empty)
+        .map(|value| value.to_lowercase());
+    if status_filter
+        .as_deref()
+        .map(|value| {
+            !matches!(
+                value,
+                "starting" | "running" | "stopping" | "stopped" | "failed"
+            )
+        })
+        .unwrap_or(false)
+    {
+        return Err(validation_error(
+            "status",
+            "The selected status is invalid.",
+        ));
+    }
+    let workspace_ref =
+        normalize_optional_bounded_string(query.workspace_ref, "workspace_ref", 255)?;
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+
+    let now = Utc::now();
+    let workers = state.runtime_workers.workers.lock().await;
+    let mut payload = workers
+        .values()
+        .filter(|worker| worker.owner_user_id == bundle.user.id)
+        .filter(|worker| {
+            status_filter
+                .as_deref()
+                .map(|status| worker.status == status)
+                .unwrap_or(true)
+        })
+        .filter(|worker| {
+            workspace_ref
+                .as_deref()
+                .map(|workspace| worker.workspace_ref.as_deref() == Some(workspace))
+                .unwrap_or(true)
+        })
+        .map(|worker| runtime_worker_snapshot_payload(worker, now))
+        .collect::<Vec<_>>();
+    payload.sort_by(|left, right| {
+        let left_updated = left
+            .get("updated_at")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let right_updated = right
+            .get("updated_at")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        right_updated.cmp(left_updated)
+    });
+    payload.truncate(limit);
+
+    Ok(ok_data(payload))
+}
+
+async fn runtime_codex_workers_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeCodexWorkerCreateRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let worker_id = normalize_optional_bounded_string(payload.worker_id, "worker_id", 160)?
+        .unwrap_or_else(|| format!("codexw_{}", uuid::Uuid::new_v4().simple()));
+    let workspace_ref =
+        normalize_optional_bounded_string(payload.workspace_ref, "workspace_ref", 255)?;
+    let codex_home_ref =
+        normalize_optional_bounded_string(payload.codex_home_ref, "codex_home_ref", 255)?;
+    let adapter = normalize_optional_bounded_string(payload.adapter, "adapter", 120)?
+        .unwrap_or_else(|| "in_memory".to_string());
+    let metadata = validate_optional_json_object_or_array(payload.metadata, "metadata")?;
+
+    let now = Utc::now();
+    let mut workers = state.runtime_workers.workers.lock().await;
+    let (status, latest_seq, idempotent_replay) =
+        if let Some(existing) = workers.get_mut(&worker_id) {
+            if existing.owner_user_id != bundle.user.id {
+                return Err(forbidden_error(
+                    "worker does not belong to authenticated principal",
+                ));
+            }
+            let replay = existing.status == "running";
+            existing.status = "running".to_string();
+            existing.workspace_ref = workspace_ref.clone().or(existing.workspace_ref.clone());
+            existing.codex_home_ref = codex_home_ref.clone().or(existing.codex_home_ref.clone());
+            existing.adapter = adapter.clone();
+            if metadata.is_some() {
+                existing.metadata = metadata.clone();
+            }
+            existing.stopped_at = None;
+            existing.last_heartbeat_at = Some(now);
+            existing.updated_at = now;
+            (existing.status.clone(), existing.latest_seq, replay)
+        } else {
+            workers.insert(
+                worker_id.clone(),
+                RuntimeWorkerRecord {
+                    worker_id: worker_id.clone(),
+                    owner_user_id: bundle.user.id.clone(),
+                    status: "running".to_string(),
+                    latest_seq: 0,
+                    workspace_ref,
+                    codex_home_ref,
+                    adapter,
+                    metadata,
+                    started_at: Some(now),
+                    stopped_at: None,
+                    last_heartbeat_at: Some(now),
+                    heartbeat_stale_after_ms: 120_000,
+                    updated_at: now,
+                },
+            );
+            ("running".to_string(), 0, false)
+        };
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "data": {
+                "workerId": worker_id,
+                "status": status,
+                "latestSeq": latest_seq,
+                "idempotentReplay": idempotent_replay,
+            }
+        })),
+    ))
+}
+
+async fn runtime_codex_worker_show(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_worker_id = worker_id.trim().to_string();
+    if normalized_worker_id.is_empty() {
+        return Err(validation_error("worker_id", "Worker id is required."));
+    }
+
+    let now = Utc::now();
+    let workers = state.runtime_workers.workers.lock().await;
+    let worker = workers
+        .get(&normalized_worker_id)
+        .ok_or_else(|| not_found_error("Not found."))?;
+    if worker.owner_user_id != bundle.user.id {
+        return Err(forbidden_error(
+            "worker does not belong to authenticated principal",
+        ));
+    }
+
+    Ok(ok_data(runtime_worker_snapshot_payload(worker, now)))
+}
+
+async fn runtime_codex_worker_stream(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+    headers: HeaderMap,
+    Query(query): Query<RuntimeCodexWorkerStreamQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_worker_id = worker_id.trim().to_string();
+    if normalized_worker_id.is_empty() {
+        return Err(validation_error("worker_id", "Worker id is required."));
+    }
+    if query
+        .tail_ms
+        .map(|tail_ms| !(1..=120_000).contains(&tail_ms))
+        .unwrap_or(false)
+    {
+        return Err(validation_error(
+            "tail_ms",
+            "The tail_ms field must be between 1 and 120000.",
+        ));
+    }
+
+    let now = Utc::now();
+    let worker = {
+        let workers = state.runtime_workers.workers.lock().await;
+        let worker = workers
+            .get(&normalized_worker_id)
+            .cloned()
+            .ok_or_else(|| not_found_error("Not found."))?;
+        if worker.owner_user_id != bundle.user.id {
+            return Err(forbidden_error(
+                "worker does not belong to authenticated principal",
+            ));
+        }
+        worker
+    };
+
+    let cursor = query.cursor.unwrap_or(0);
+    let events = {
+        let event_log = state.runtime_workers.events.lock().await;
+        event_log
+            .get(&normalized_worker_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|event| event.seq > cursor)
+            .map(|event| runtime_worker_event_payload(&event))
+            .collect::<Vec<_>>()
+    };
+
+    Ok(ok_data(serde_json::json!({
+        "worker_id": normalized_worker_id,
+        "stream_protocol": "khala_ws",
+        "cursor": cursor,
+        "tail_ms": query.tail_ms.unwrap_or(15_000),
+        "delivery": {
+            "transport": "khala_ws",
+            "topic": org_worker_events_topic(&bundle.session.active_org_id),
+            "scope": "runtime.codex_worker_events",
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+        },
+        "snapshot": runtime_worker_snapshot_payload(&worker, now),
+        "events": events,
+    })))
+}
+
+async fn runtime_codex_worker_events(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeCodexWorkerEventEnvelope>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_worker_id = worker_id.trim().to_string();
+    if normalized_worker_id.is_empty() {
+        return Err(validation_error("worker_id", "Worker id is required."));
+    }
+
+    let event_type = payload.event.event_type.trim().to_string();
+    if event_type.is_empty() {
+        return Err(validation_error(
+            "event.event_type",
+            "The event.event_type field is required.",
+        ));
+    }
+    if event_type.chars().count() > 160 || !event_type.starts_with("worker.") {
+        return Err(validation_error(
+            "event.event_type",
+            "The event.event_type field format is invalid.",
+        ));
+    }
+    let event_payload = payload
+        .event
+        .payload
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    if !event_payload.is_object() {
+        return Err(validation_error(
+            "event.payload",
+            "The event.payload field must be an object.",
+        ));
+    }
+    validate_worker_handshake_payload(&event_type, &event_payload)?;
+
+    ensure_runtime_worker_runnable(&state, &bundle.user.id, &normalized_worker_id, true).await?;
+    let occurred_at = parse_event_occurred_at(&event_payload).unwrap_or_else(Utc::now);
+    let seq = append_runtime_worker_event(
+        &state,
+        &normalized_worker_id,
+        &event_type,
+        event_payload.clone(),
+        occurred_at,
+    )
+    .await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "data": {
+                "worker_id": normalized_worker_id,
+                "seq": seq,
+                "event_type": event_type,
+                "payload": event_payload,
+                "occurred_at": timestamp(occurred_at),
+            }
+        })),
+    ))
+}
+
+async fn runtime_codex_worker_stop(
+    State(state): State<AppState>,
+    Path(worker_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeCodexWorkerStopRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let normalized_worker_id = worker_id.trim().to_string();
+    if normalized_worker_id.is_empty() {
+        return Err(validation_error("worker_id", "Worker id is required."));
+    }
+    let reason = normalize_optional_bounded_string(payload.reason, "reason", 255)?;
+
+    let now = Utc::now();
+    let (idempotent_replay, seq) = {
+        let mut workers = state.runtime_workers.workers.lock().await;
+        let worker = workers
+            .get_mut(&normalized_worker_id)
+            .ok_or_else(|| not_found_error("Not found."))?;
+        if worker.owner_user_id != bundle.user.id {
+            return Err(forbidden_error(
+                "worker does not belong to authenticated principal",
+            ));
+        }
+        if worker.status == "stopped" {
+            (true, worker.latest_seq)
+        } else {
+            worker.latest_seq = worker.latest_seq.saturating_add(1);
+            worker.status = "stopped".to_string();
+            worker.stopped_at = Some(now);
+            worker.updated_at = now;
+            let seq = worker.latest_seq;
+            let payload = serde_json::json!({
+                "reason": reason.clone().unwrap_or_else(|| "requested".to_string())
+            });
+            let mut events = state.runtime_workers.events.lock().await;
+            let entry = events.entry(normalized_worker_id.clone()).or_default();
+            entry.push(RuntimeWorkerEventRecord {
+                seq,
+                event_type: "worker.stopped".to_string(),
+                payload,
+                occurred_at: now,
+            });
+            (false, seq)
+        }
+    };
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "data": {
+                "worker_id": normalized_worker_id,
+                "status": "stopped",
+                "seq": seq,
+                "idempotent_replay": idempotent_replay,
+                "idempotentReplay": idempotent_replay,
+            }
+        })),
+    ))
+}
+
 async fn runtime_codex_worker_request(
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
@@ -4989,6 +5444,7 @@ async fn runtime_codex_worker_request(
             .increment_counter("runtime.codex.control.request.accepted", &request_id);
         return Ok(ok_data(replayed));
     }
+    ensure_runtime_worker_runnable(&state, &session.user.id, &normalized_worker_id, true).await?;
 
     let response =
         execute_codex_control_request(&state, &session, &normalized_method, &control_request)
@@ -5000,7 +5456,7 @@ async fn runtime_codex_worker_request(
         "ok": true,
         "method": normalized_method.clone(),
         "idempotent_replay": false,
-        "response": response,
+        "response": response.clone(),
     });
 
     if let Some(source) = control_request
@@ -5031,6 +5487,20 @@ async fn runtime_codex_worker_request(
         .lock()
         .await
         .insert(replay_key, envelope.clone());
+
+    let event_payload = serde_json::json!({
+        "request_id": normalized_control_request_id.clone(),
+        "method": normalized_method.clone(),
+        "response": response,
+    });
+    let _ = append_runtime_worker_event(
+        &state,
+        &normalized_worker_id,
+        "worker.response",
+        event_payload,
+        Utc::now(),
+    )
+    .await?;
 
     state.observability.audit(
         AuditEvent::new("runtime.codex.control.request.accepted", request_id.clone())
@@ -6578,6 +7048,231 @@ fn mark_runtime_tools_replay(mut payload: serde_json::Value) -> serde_json::Valu
     payload
 }
 
+fn runtime_worker_snapshot_payload(
+    worker: &RuntimeWorkerRecord,
+    now: chrono::DateTime<Utc>,
+) -> serde_json::Value {
+    let (heartbeat_state, heartbeat_age_ms) = runtime_worker_heartbeat(worker, now);
+    serde_json::json!({
+        "worker_id": worker.worker_id,
+        "status": worker.status,
+        "latest_seq": worker.latest_seq,
+        "workspace_ref": worker.workspace_ref,
+        "codex_home_ref": worker.codex_home_ref,
+        "adapter": worker.adapter,
+        "metadata": worker.metadata,
+        "started_at": worker.started_at.map(timestamp),
+        "stopped_at": worker.stopped_at.map(timestamp),
+        "last_heartbeat_at": worker.last_heartbeat_at.map(timestamp),
+        "heartbeat_age_ms": heartbeat_age_ms,
+        "heartbeat_stale_after_ms": worker.heartbeat_stale_after_ms,
+        "heartbeat_state": heartbeat_state,
+        "updated_at": timestamp(worker.updated_at),
+        "khala_projection": {
+            "status": "in_sync",
+            "lag_events": 0,
+            "last_runtime_seq": worker.latest_seq,
+            "last_projected_at": timestamp(worker.updated_at),
+        }
+    })
+}
+
+fn runtime_worker_event_payload(event: &RuntimeWorkerEventRecord) -> serde_json::Value {
+    serde_json::json!({
+        "seq": event.seq,
+        "event_type": event.event_type,
+        "payload": event.payload,
+        "occurred_at": timestamp(event.occurred_at),
+    })
+}
+
+fn runtime_worker_heartbeat(
+    worker: &RuntimeWorkerRecord,
+    now: chrono::DateTime<Utc>,
+) -> (&'static str, Option<u64>) {
+    let age_ms = worker.last_heartbeat_at.map(|heartbeat| {
+        now.signed_duration_since(heartbeat)
+            .num_milliseconds()
+            .max(0) as u64
+    });
+    match worker.status.as_str() {
+        "failed" => ("failed", age_ms),
+        "stopped" => ("stopped", age_ms),
+        _ => match age_ms {
+            None => ("missing", None),
+            Some(age_ms) if age_ms > worker.heartbeat_stale_after_ms => ("stale", Some(age_ms)),
+            Some(age_ms) => ("fresh", Some(age_ms)),
+        },
+    }
+}
+
+async fn ensure_runtime_worker_runnable(
+    state: &AppState,
+    owner_user_id: &str,
+    worker_id: &str,
+    auto_provision: bool,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    let mut workers = state.runtime_workers.workers.lock().await;
+    if let Some(worker) = workers.get_mut(worker_id) {
+        if worker.owner_user_id != owner_user_id {
+            return Err(forbidden_error(
+                "worker does not belong to authenticated principal",
+            ));
+        }
+        if matches!(worker.status.as_str(), "stopping" | "stopped" | "failed") {
+            return Err(error_response_with_status(
+                StatusCode::CONFLICT,
+                ApiErrorCode::Conflict,
+                "worker is stopped; create or reattach to resume",
+            ));
+        }
+        return Ok(());
+    }
+
+    if !auto_provision {
+        return Err(not_found_error("Not found."));
+    }
+
+    let now = Utc::now();
+    workers.insert(
+        worker_id.to_string(),
+        RuntimeWorkerRecord {
+            worker_id: worker_id.to_string(),
+            owner_user_id: owner_user_id.to_string(),
+            status: "running".to_string(),
+            latest_seq: 0,
+            workspace_ref: None,
+            codex_home_ref: None,
+            adapter: "in_memory".to_string(),
+            metadata: None,
+            started_at: Some(now),
+            stopped_at: None,
+            last_heartbeat_at: Some(now),
+            heartbeat_stale_after_ms: 120_000,
+            updated_at: now,
+        },
+    );
+
+    Ok(())
+}
+
+async fn append_runtime_worker_event(
+    state: &AppState,
+    worker_id: &str,
+    event_type: &str,
+    payload: serde_json::Value,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<u64, (StatusCode, Json<ApiErrorResponse>)> {
+    let seq = {
+        let mut workers = state.runtime_workers.workers.lock().await;
+        let worker = workers
+            .get_mut(worker_id)
+            .ok_or_else(|| not_found_error("Not found."))?;
+        worker.latest_seq = worker.latest_seq.saturating_add(1);
+        worker.updated_at = occurred_at;
+        if event_type == "worker.stopped" {
+            worker.status = "stopped".to_string();
+            worker.stopped_at = Some(occurred_at);
+        }
+        if event_type == "worker.heartbeat" {
+            worker.last_heartbeat_at = Some(occurred_at);
+        }
+        worker.latest_seq
+    };
+
+    let mut events = state.runtime_workers.events.lock().await;
+    events
+        .entry(worker_id.to_string())
+        .or_default()
+        .push(RuntimeWorkerEventRecord {
+            seq,
+            event_type: event_type.to_string(),
+            payload,
+            occurred_at,
+        });
+
+    Ok(seq)
+}
+
+fn validate_worker_handshake_payload(
+    event_type: &str,
+    payload: &serde_json::Value,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    if event_type != "worker.event" {
+        return Ok(());
+    }
+
+    let method = payload
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if !matches!(method, "ios/handshake" | "desktop/handshake_ack") {
+        return Ok(());
+    }
+
+    for field in ["source", "method", "handshake_id", "occurred_at"] {
+        let present = payload
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some();
+        if !present {
+            return Err(validation_error(
+                "event.payload",
+                "Handshake payload is missing required fields.",
+            ));
+        }
+    }
+    let occurred_at = payload
+        .get("occurred_at")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if parse_rfc3339_utc(occurred_at).is_err() {
+        return Err(validation_error(
+            "event.payload.occurred_at",
+            "The occurred_at field must be a valid RFC3339 timestamp.",
+        ));
+    }
+
+    if method == "ios/handshake"
+        && payload
+            .get("device_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(validation_error(
+            "event.payload.device_id",
+            "ios/handshake requires device_id.",
+        ));
+    }
+    if method == "desktop/handshake_ack"
+        && payload
+            .get("desktop_session_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(validation_error(
+            "event.payload.desktop_session_id",
+            "desktop/handshake_ack requires desktop_session_id.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn parse_event_occurred_at(payload: &serde_json::Value) -> Option<chrono::DateTime<Utc>> {
+    payload
+        .get("occurred_at")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| parse_rfc3339_utc(value).ok())
+}
+
 fn builtin_tool_specs() -> Vec<serde_json::Value> {
     vec![serde_json::json!({
         "tool_id": "github.primary",
@@ -7590,6 +8285,7 @@ mod tests {
             codex_control_receipts: super::CodexControlReceiptState::default(),
             runtime_tool_receipts: super::RuntimeToolReceiptState::default(),
             runtime_skill_registry: super::RuntimeSkillRegistryState::default(),
+            runtime_workers: super::RuntimeWorkerState::default(),
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
@@ -10932,6 +11628,218 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "invalid_request");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_worker_lifecycle_routes_support_create_events_stream_and_stop()
+    -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token =
+            authenticate_token(app.clone(), "codex-worker-lifecycle@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"worker_id":"desktopw:lifecycle","workspace_ref":"ws-local","adapter":"codex_cli"}"#,
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::ACCEPTED);
+        let create_body = read_json(create_response).await?;
+        assert_eq!(create_body["data"]["workerId"], "desktopw:lifecycle");
+        assert_eq!(create_body["data"]["status"], "running");
+        assert_eq!(create_body["data"]["latestSeq"], 0);
+        assert_eq!(create_body["data"]["idempotentReplay"], false);
+
+        let list_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/codex/workers?status=running&workspace_ref=ws-local")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_response = app.clone().oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = read_json(list_response).await?;
+        let workers = list_body["data"].as_array().cloned().unwrap_or_default();
+        assert!(
+            workers
+                .iter()
+                .any(|worker| worker["worker_id"] == json!("desktopw:lifecycle"))
+        );
+
+        let show_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_response = app.clone().oneshot(show_request).await?;
+        assert_eq!(show_response.status(), StatusCode::OK);
+        let show_body = read_json(show_response).await?;
+        assert_eq!(show_body["data"]["worker_id"], "desktopw:lifecycle");
+        assert_eq!(show_body["data"]["status"], "running");
+        assert_eq!(show_body["data"]["latest_seq"], 0);
+
+        let event_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle/events")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"event":{"event_type":"worker.event","payload":{"source":"autopilot-ios","method":"ios/handshake","handshake_id":"hs_1","occurred_at":"2026-02-22T00:00:00Z","device_id":"ios:device"}}}"#,
+            ))?;
+        let event_response = app.clone().oneshot(event_request).await?;
+        assert_eq!(event_response.status(), StatusCode::ACCEPTED);
+        let event_body = read_json(event_response).await?;
+        assert_eq!(event_body["data"]["worker_id"], "desktopw:lifecycle");
+        assert_eq!(event_body["data"]["event_type"], "worker.event");
+        assert_eq!(event_body["data"]["seq"], 1);
+
+        let stream_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle/stream?cursor=0&tail_ms=5000")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let stream_response = app.clone().oneshot(stream_request).await?;
+        assert_eq!(stream_response.status(), StatusCode::OK);
+        let stream_body = read_json(stream_response).await?;
+        assert_eq!(stream_body["data"]["stream_protocol"], "khala_ws");
+        assert_eq!(stream_body["data"]["delivery"]["transport"], "khala_ws");
+        let events = stream_body["data"]["events"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["event_type"], "worker.event");
+        assert_eq!(events[0]["seq"], 1);
+
+        let stop_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle/stop")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"reason":"test_complete"}"#))?;
+        let stop_response = app.clone().oneshot(stop_request).await?;
+        assert_eq!(stop_response.status(), StatusCode::ACCEPTED);
+        let stop_body = read_json(stop_response).await?;
+        assert_eq!(stop_body["data"]["status"], "stopped");
+        assert_eq!(stop_body["data"]["seq"], 2);
+        assert_eq!(stop_body["data"]["idempotent_replay"], false);
+        assert_eq!(stop_body["data"]["idempotentReplay"], false);
+
+        let stop_replay_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle/stop")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("{}"))?;
+        let stop_replay_response = app.clone().oneshot(stop_replay_request).await?;
+        assert_eq!(stop_replay_response.status(), StatusCode::ACCEPTED);
+        let stop_replay_body = read_json(stop_replay_response).await?;
+        assert_eq!(stop_replay_body["data"]["seq"], 2);
+        assert_eq!(stop_replay_body["data"]["idempotent_replay"], true);
+        assert_eq!(stop_replay_body["data"]["idempotentReplay"], true);
+
+        let stream_after_stop_request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/codex/workers/desktopw%3Alifecycle/stream?cursor=1")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let stream_after_stop_response = app.oneshot(stream_after_stop_request).await?;
+        assert_eq!(stream_after_stop_response.status(), StatusCode::OK);
+        let stream_after_stop_body = read_json(stream_after_stop_response).await?;
+        let events_after_stop = stream_after_stop_body["data"]["events"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(events_after_stop.len(), 1);
+        assert_eq!(events_after_stop[0]["event_type"], "worker.stopped");
+        assert_eq!(events_after_stop[0]["seq"], 2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_worker_events_validate_handshake_requirements() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token =
+            authenticate_token(app.clone(), "codex-worker-validation@openagents.com").await?;
+
+        let missing_device_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Avalidation/events")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"event":{"event_type":"worker.event","payload":{"source":"autopilot-ios","method":"ios/handshake","handshake_id":"hs_2","occurred_at":"2026-02-22T00:00:00Z"}}}"#,
+            ))?;
+        let missing_device_response = app.oneshot(missing_device_request).await?;
+        assert_eq!(
+            missing_device_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let missing_device_body = read_json(missing_device_response).await?;
+        assert_eq!(missing_device_body["error"]["code"], "invalid_request");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_workers_index_rejects_invalid_status_filter() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token =
+            authenticate_token(app.clone(), "codex-worker-list-invalid@openagents.com").await?;
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/runtime/codex/workers?status=unsupported")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "invalid_request");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_codex_control_request_conflicts_for_stopped_worker() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "codex-worker-stopped@openagents.com").await?;
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"worker_id":"desktopw:stopped"}"#))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::ACCEPTED);
+
+        let stop_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Astopped/stop")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("{}"))?;
+        let stop_response = app.clone().oneshot(stop_request).await?;
+        assert_eq!(stop_response.status(), StatusCode::ACCEPTED);
+
+        let control_request = Request::builder()
+            .method("POST")
+            .uri("/api/runtime/codex/workers/desktopw%3Astopped/requests")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"request":{"request_id":"req_stopped_1","method":"turn/start","params":{"thread_id":"thread-stopped-1","text":"continue"}}}"#,
+            ))?;
+        let control_response = app.oneshot(control_request).await?;
+        assert_eq!(control_response.status(), StatusCode::CONFLICT);
+        let control_body = read_json(control_response).await?;
+        assert_eq!(control_body["error"]["code"], "conflict");
 
         Ok(())
     }

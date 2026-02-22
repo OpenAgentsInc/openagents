@@ -30,10 +30,15 @@ pub const ROUTE_RUNTIME_SKILLS_SKILL_SPECS: &str = "/api/runtime/skills/skill-sp
 pub const ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH: &str =
     "/api/runtime/skills/skill-specs/:skill_id/:version/publish";
 pub const ROUTE_RUNTIME_SKILLS_RELEASE: &str = "/api/runtime/skills/releases/:skill_id/:version";
+pub const ROUTE_RUNTIME_CODEX_WORKERS: &str = "/api/runtime/codex/workers";
+pub const ROUTE_RUNTIME_CODEX_WORKER_BY_ID: &str = "/api/runtime/codex/workers/:worker_id";
+pub const ROUTE_RUNTIME_CODEX_WORKER_STREAM: &str = "/api/runtime/codex/workers/:worker_id/stream";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
 pub const ROUTE_RUNTIME_CODEX_WORKER_REQUESTS: &str =
     "/api/runtime/codex/workers/:worker_id/requests";
+pub const ROUTE_RUNTIME_CODEX_WORKER_EVENTS: &str = "/api/runtime/codex/workers/:worker_id/events";
+pub const ROUTE_RUNTIME_CODEX_WORKER_STOP: &str = "/api/runtime/codex/workers/:worker_id/stop";
 pub const ROUTE_V1_AUTH_SESSION: &str = "/api/v1/auth/session";
 pub const ROUTE_V1_AUTH_SESSIONS: &str = "/api/v1/auth/sessions";
 pub const ROUTE_V1_AUTH_SESSIONS_REVOKE: &str = "/api/v1/auth/sessions/revoke";
@@ -504,6 +509,78 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
     },
     OpenApiContract {
         method: "get",
+        route_path: ROUTE_RUNTIME_CODEX_WORKERS,
+        operation_id: "runtimeCodexWorkersList",
+        summary: "List principal-owned Codex workers with lifecycle metadata.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_codex_workers_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_CODEX_WORKERS,
+        operation_id: "runtimeCodexWorkersCreate",
+        summary: "Create or reattach a Codex worker session.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "202",
+        request_example: Some("runtime_codex_worker_create"),
+        response_example: Some("runtime_codex_worker_create"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_CODEX_WORKER_BY_ID,
+        operation_id: "runtimeCodexWorkerShow",
+        summary: "Read one principal-owned Codex worker snapshot.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_codex_worker_snapshot"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_RUNTIME_CODEX_WORKER_STREAM,
+        operation_id: "runtimeCodexWorkerStreamBootstrap",
+        summary: "Bootstrap Codex worker live delivery via Khala WebSocket.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("runtime_codex_worker_stream_bootstrap"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+        operation_id: "runtimeCodexWorkerEventsIngest",
+        summary: "Ingest desktop-originated worker events into durable log.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "202",
+        request_example: Some("runtime_codex_worker_events"),
+        response_example: Some("runtime_codex_worker_events"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_CODEX_WORKER_STOP,
+        operation_id: "runtimeCodexWorkerStop",
+        summary: "Request graceful worker stop and durable terminal state.",
+        tag: "codex",
+        secured: true,
+        deprecated: false,
+        success_status: "202",
+        request_example: Some("runtime_codex_worker_stop"),
+        response_example: Some("runtime_codex_worker_stop"),
+    },
+    OpenApiContract {
+        method: "get",
         route_path: ROUTE_RUNTIME_THREADS,
         operation_id: "runtimeThreadsList",
         summary: "List Codex thread projections for the current user.",
@@ -956,6 +1033,28 @@ fn request_example(key: &str) -> Option<Value> {
                 "allowed_tools": [{"tool_id": "github.custom", "version": 1}],
                 "compatibility": {"runtime": "runtime"}
             }
+        })),
+        "runtime_codex_worker_create" => Some(json!({
+            "worker_id": "codexw_12345",
+            "workspace_ref": "workspace://demo",
+            "codex_home_ref": "codex-home://demo",
+            "adapter": "in_memory",
+            "metadata": {"surface": "web"}
+        })),
+        "runtime_codex_worker_events" => Some(json!({
+            "event": {
+                "event_type": "worker.event",
+                "payload": {
+                    "source": "autopilot-ios",
+                    "method": "ios/handshake",
+                    "handshake_id": "hs_123",
+                    "device_id": "device_abc",
+                    "occurred_at": "2026-02-22T00:00:00Z"
+                }
+            }
+        })),
+        "runtime_codex_worker_stop" => Some(json!({
+            "reason": "done"
         })),
         "runtime_codex_worker_request" => Some(json!({
             "request": {
@@ -1453,6 +1552,75 @@ fn response_example(key: &str) -> Option<Value> {
                         "version": 1
                     }
                 }
+            }
+        })),
+        "runtime_codex_workers_list" => Some(json!({
+            "data": [
+                {
+                    "worker_id": "codexw_12345",
+                    "status": "running",
+                    "latest_seq": 12,
+                    "workspace_ref": "workspace://demo",
+                    "heartbeat_state": "fresh",
+                    "heartbeat_age_ms": 843,
+                    "heartbeat_stale_after_ms": 120000,
+                    "khala_projection": {
+                        "status": "in_sync",
+                        "lag_events": 0,
+                        "last_runtime_seq": 12,
+                        "last_projected_at": "2026-02-22T00:00:00Z"
+                    }
+                }
+            ]
+        })),
+        "runtime_codex_worker_create" => Some(json!({
+            "data": {
+                "workerId": "codexw_12345",
+                "status": "running",
+                "latestSeq": 0,
+                "idempotentReplay": false
+            }
+        })),
+        "runtime_codex_worker_snapshot" => Some(json!({
+            "data": {
+                "worker_id": "codexw_12345",
+                "status": "running",
+                "latest_seq": 12,
+                "heartbeat_state": "fresh",
+                "heartbeat_age_ms": 843,
+                "heartbeat_stale_after_ms": 120000
+            }
+        })),
+        "runtime_codex_worker_stream_bootstrap" => Some(json!({
+            "data": {
+                "worker_id": "codexw_12345",
+                "stream_protocol": "khala_ws",
+                "cursor": 0,
+                "tail_ms": 15000,
+                "delivery": {
+                    "transport": "khala_ws",
+                    "topic": "org:openagents:worker_events",
+                    "scope": "runtime.codex_worker_events",
+                    "syncTokenRoute": "/api/sync/token"
+                },
+                "events": []
+            }
+        })),
+        "runtime_codex_worker_events" => Some(json!({
+            "data": {
+                "worker_id": "codexw_12345",
+                "seq": 13,
+                "event_type": "worker.event",
+                "payload": {"method": "turn/started"},
+                "occurred_at": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "runtime_codex_worker_stop" => Some(json!({
+            "data": {
+                "worker_id": "codexw_12345",
+                "status": "stopped",
+                "seq": 14,
+                "idempotent_replay": false
             }
         })),
         "runtime_codex_worker_request" => Some(json!({
