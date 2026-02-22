@@ -36,6 +36,7 @@ members = [
     "crates/openagents-app-state",
     "crates/openagents-codex-control",
     "crates/openagents-client-core",
+    "crates/openagents-l402",
     "crates/openagents-ui-core",
     "crates/openagents-registry",
     "crates/openagents-utils",

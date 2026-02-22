@@ -7126,6 +7126,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-l402"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "openagents-proto"
 version = "0.1.0"
 dependencies = [
