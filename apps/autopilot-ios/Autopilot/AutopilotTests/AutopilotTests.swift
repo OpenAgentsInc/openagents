@@ -526,6 +526,67 @@ struct AutopilotTests {
         #expect(reconciled?.errorMessage == "turn already completed")
     }
 
+    @Test("control coordinator scenario supports turn start then interrupt receipts deterministically")
+    func controlCoordinatorTurnStartThenInterruptScenario() {
+        var coordinator = RuntimeCodexControlCoordinator()
+        let workerID = "desktopw:shared"
+
+        let startRequest = RuntimeCodexWorkerActionRequest(
+            requestID: "iosreq-turn-start",
+            method: .turnStart,
+            params: [
+                "thread_id": .string("thread-123"),
+                "text": .string("continue"),
+                "model": .string("gpt-5-codex"),
+                "effort": .string("medium"),
+            ],
+            sentAt: "2026-02-22T02:00:00Z"
+        )
+        _ = coordinator.enqueue(workerID: workerID, request: startRequest, occurredAt: "2026-02-22T02:00:00Z")
+        _ = coordinator.markRunning(requestID: startRequest.requestID, occurredAt: "2026-02-22T02:00:01Z")
+
+        let startReceipt = RuntimeCodexControlReceipt(
+            requestID: startRequest.requestID,
+            method: "turn/start",
+            occurredAt: "2026-02-22T02:00:02Z",
+            outcome: .success(
+                response: .object([
+                    "thread_id": .string("thread-123"),
+                    "turn": .object(["id": .string("turn-abc")]),
+                ])
+            )
+        )
+        let startReconciled = coordinator.reconcile(workerID: workerID, receipt: startReceipt)
+        #expect(startReconciled?.state == .success)
+
+        let interruptRequest = RuntimeCodexWorkerActionRequest(
+            requestID: "iosreq-turn-interrupt",
+            method: .turnInterrupt,
+            params: [
+                "thread_id": .string("thread-123"),
+                "turn_id": .string("turn-abc"),
+            ],
+            sentAt: "2026-02-22T02:00:03Z"
+        )
+        _ = coordinator.enqueue(workerID: workerID, request: interruptRequest, occurredAt: "2026-02-22T02:00:03Z")
+        _ = coordinator.markRunning(requestID: interruptRequest.requestID, occurredAt: "2026-02-22T02:00:04Z")
+
+        let interruptReceipt = RuntimeCodexControlReceipt(
+            requestID: interruptRequest.requestID,
+            method: "turn/interrupt",
+            occurredAt: "2026-02-22T02:00:05Z",
+            outcome: .success(
+                response: .object([
+                    "status": .string("interrupted"),
+                    "turn_id": .string("turn-abc"),
+                ])
+            )
+        )
+        let interruptReconciled = coordinator.reconcile(workerID: workerID, receipt: interruptReceipt)
+        #expect(interruptReconciled?.state == .success)
+        #expect(interruptReconciled?.response?.objectValue?["status"]?.stringValue == "interrupted")
+    }
+
     @Test("runtime codex client request/stop APIs encode payloads and map error statuses")
     func runtimeCodexClientRequestStopApisEncodeAndMapErrors() async throws {
         let session = makeRuntimeCodexTestSession()

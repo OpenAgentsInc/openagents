@@ -12,6 +12,8 @@ SUMMARY_MD="${OUTPUT_DIR}/SUMMARY.md"
 IOS_PROJECT="${IOS_PROJECT:-${ROOT_DIR}/apps/autopilot-ios/Autopilot/Autopilot.xcodeproj}"
 IOS_SCHEME="${IOS_SCHEME:-Autopilot}"
 IOS_DESTINATION="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
+RUNTIME_API_DIR="${RUNTIME_API_DIR:-${ROOT_DIR}/apps/openagents.com}"
+RUNTIME_API_TEST="${RUNTIME_API_TEST:-tests/Feature/Api/RuntimeCodexWorkersApiTest.php}"
 
 require_command() {
   local command_name="$1"
@@ -24,6 +26,7 @@ require_command() {
 require_command jq
 require_command cargo
 require_command xcodebuild
+require_command php
 
 if [[ ! -f "${CATALOG_PATH}" ]]; then
   echo "error: scenario catalog missing: ${CATALOG_PATH}" >&2
@@ -85,6 +88,9 @@ run_surface "web" \
 
 run_surface "desktop" \
   cargo test -p autopilot-desktop runtime_codex_proto::tests
+
+run_surface "runtime-api" \
+  bash -lc "cd \"$RUNTIME_API_DIR\" && ./vendor/bin/pest \"$RUNTIME_API_TEST\""
 
 run_surface "ios" \
   xcodebuild test \
