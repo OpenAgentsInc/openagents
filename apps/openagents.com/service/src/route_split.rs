@@ -114,6 +114,19 @@ impl RouteSplitService {
             };
         }
 
+        // All API paths are Rust authority and must never route to legacy.
+        if is_api_path(&normalized_path) {
+            return RouteSplitDecision {
+                path: normalized_path,
+                target: RouteTarget::RustShell,
+                reason: "api_rust_authority".to_string(),
+                route_domain: "api_rust_authority".to_string(),
+                rollback_target: Some(RouteTarget::RustShell),
+                cohort_bucket: None,
+                cohort_key: normalized_cohort_key,
+            };
+        }
+
         let domain_override = {
             let lock = self.domain_overrides.read().await;
             route_domain
@@ -413,6 +426,10 @@ fn is_codex_worker_control_path(path: &str) -> bool {
     path == "/api/runtime/codex/workers" || path.starts_with("/api/runtime/codex/workers/")
 }
 
+fn is_api_path(path: &str) -> bool {
+    path == "/api" || path.starts_with("/api/")
+}
+
 fn normalize_domain(value: &str) -> String {
     value.trim().to_lowercase().replace('-', "_")
 }
@@ -694,6 +711,36 @@ mod tests {
 
         assert_eq!(decision.target, RouteTarget::RustShell);
         assert_eq!(decision.reason, "codex_worker_control_rust_authority");
+    }
+
+    #[tokio::test]
+    async fn api_paths_are_rust_authority_even_under_legacy_overrides() {
+        let mut config = test_config();
+        config.route_split_mode = "legacy".to_string();
+        config.route_split_force_legacy = true;
+        let service = RouteSplitService::from_config(&config);
+        service.set_override_target(Some(RouteTarget::Legacy)).await;
+        service
+            .set_domain_override_target("billing_l402", Some(RouteTarget::Legacy))
+            .await
+            .expect("set domain override");
+
+        for path in [
+            "/api/auth/email",
+            "/api/settings/profile",
+            "/api/runtime/tools/execute",
+            "/api/v1/control/status",
+        ] {
+            let decision = service.evaluate(path, "user:1").await;
+            assert_eq!(
+                decision.target,
+                RouteTarget::RustShell,
+                "api path must remain rust authority: {path}"
+            );
+            assert_eq!(decision.reason, "api_rust_authority");
+            assert_eq!(decision.route_domain, "api_rust_authority");
+            assert_eq!(decision.rollback_target, Some(RouteTarget::RustShell));
+        }
     }
 
     #[tokio::test]

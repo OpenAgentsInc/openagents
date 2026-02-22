@@ -1,0 +1,43 @@
+name: web-production-rust-route-flip
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Control service base URL'
+        required: true
+        default: 'https://openagents.com'
+        type: string
+      apply:
+        description: 'Apply route split overrides (set true for live flip)'
+        required: true
+        default: false
+        type: boolean
+      cohort_key:
+        description: 'Cohort key used for evaluate probes'
+        required: true
+        default: 'prod-rust-route-flip'
+        type: string
+
+jobs:
+  rust-route-flip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run production rust route flip verification
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          APPLY: ${{ inputs.apply && '1' || '0' }}
+          COHORT_KEY: ${{ inputs.cohort_key }}
+          CONTROL_ACCESS_TOKEN: ${{ secrets.OPENAGENTS_CONTROL_ACCESS_TOKEN }}
+        run: ./apps/openagents.com/service/scripts/run-production-rust-route-flip.sh
+
+      - name: Upload route flip artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-production-rust-route-flip
+          path: apps/openagents.com/storage/app/production-route-flip/**
+          if-no-files-found: warn

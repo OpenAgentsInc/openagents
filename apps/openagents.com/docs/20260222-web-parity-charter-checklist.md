@@ -206,6 +206,8 @@ Baseline and migration evidence targets:
   Harness/runbook: `apps/openagents.com/service/scripts/run-staging-dual-run-shadow-diff.sh`, `apps/openagents.com/service/docs/STAGING_DUAL_RUN_SHADOW_DIFF.md`
 - [x] Production canary + rollback drill report (`OA-WEBPARITY-058`)
   Drill runner/runbook/report: `apps/openagents.com/service/deploy/run-canary-rollback-drill.sh`, `apps/openagents.com/service/docs/CANARY_ROLLBACK_DRILL_AUTOMATION.md`, `apps/openagents.com/docs/20260222-oa-webparity-058-production-canary-rollback-drill.md`
+- [x] Production Rust-only route target flip report (`OA-WEBPARITY-059`)
+  Flip runner/runbook/report: `apps/openagents.com/service/scripts/run-production-rust-route-flip.sh`, `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`, `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
 
 ## Checklist Freeze Rules
 

@@ -19521,6 +19521,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn route_split_evaluate_pins_api_paths_to_rust_authority() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "legacy".to_string();
+        config.route_split_force_legacy = true;
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "routes@openagents.com").await?;
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"target":"legacy"}"#))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let evaluate_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/evaluate")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"path":"/api/auth/email","cohort_key":"user:route"}"#,
+            ))?;
+        let evaluate_response = app.oneshot(evaluate_request).await?;
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+
+        let body = read_json(evaluate_response).await?;
+        assert_eq!(body["data"]["target"], json!("rust_shell"));
+        assert_eq!(body["data"]["reason"], json!("api_rust_authority"));
+        assert_eq!(body["data"]["route_domain"], json!("api_rust_authority"));
+        assert_eq!(body["data"]["rollback_target"], json!("rust_shell"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn l402_read_routes_match_wallet_transactions_and_deployments_shape() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
