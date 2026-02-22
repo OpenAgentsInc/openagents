@@ -86,7 +86,7 @@ Use this to confirm that keys and URLs (e.g. `OA_INTERNAL_KEY`, `PUBLIC_API_URL`
    cd apps/web
    npx khala logs --prod --history 30 --success
    ```
-3. **Find the failing function** in the output (e.g. `[KHALA A(openclawApi:getRuntimeStatus)] [ERROR] ... 401 'unauthorized'`).
+3. **Find the failing function** in the output (e.g. `[KHALA A(legacyparityApi:getRuntimeStatus)] [ERROR] ... 401 'unauthorized'`).
 4. **Confirm which deployment** is used: logs show the deployment name (e.g. `successful-mongoose-647` for prod).
 5. **Check env vars** for that deployment: `npx khala env list --prod` (or without `--prod` for dev).
 6. **Fix** env in Khala (Dashboard or `npx khala env set ...`) or fix the calling code; redeploy if needed.
@@ -95,9 +95,9 @@ Use this to confirm that keys and URLs (e.g. `OA_INTERNAL_KEY`, `PUBLIC_API_URL`
 
 ```
 Watching logs for production deployment successful-mongoose-647...
-2/4/2026, 12:39:06 PM [KHALA A(openclawApi:getInstance)] Function executed in 434 ms
-2/4/2026, 12:39:06 PM [KHALA A(openclawApi:getRuntimeStatus)] [ERROR] '[openclawApi getRuntimeStatus] API error response:' 401 'unauthorized'
-2/4/2026, 12:39:06 PM [KHALA A(openclawApi:getRuntimeStatus)] Uncaught Error: unauthorized ...
+2/4/2026, 12:39:06 PM [KHALA A(legacyparityApi:getInstance)] Function executed in 434 ms
+2/4/2026, 12:39:06 PM [KHALA A(legacyparityApi:getRuntimeStatus)] [ERROR] '[legacyparityApi getRuntimeStatus] API error response:' 401 'unauthorized'
+2/4/2026, 12:39:06 PM [KHALA A(legacyparityApi:getRuntimeStatus)] Uncaught Error: unauthorized ...
 ```
 
 Here, `getInstance` succeeded but `getRuntimeStatus` got 401 from the external API—often a mismatch of `OA_INTERNAL_KEY` between Khala and the API worker.

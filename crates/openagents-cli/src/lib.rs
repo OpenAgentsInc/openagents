@@ -1,7 +1,7 @@
 use clap::Parser;
 
 mod citrea_cli;
-mod moltbook_cli;
+mod communityfeed_cli;
 mod nostr_cli;
 mod spark_cli;
 
@@ -21,8 +21,8 @@ pub enum Commands {
     Spark(spark_cli::SparkArgs),
     /// Citrea utilities (keys, signatures, RPC helpers)
     Citrea(citrea_cli::CitreaArgs),
-    /// Moltbook utilities (agents, posts, comments, watch)
-    Moltbook(moltbook_cli::MoltbookArgs),
+    /// CommunityFeed utilities (agents, posts, comments, watch)
+    CommunityFeed(communityfeed_cli::CommunityFeedArgs),
 }
 
 pub fn run() -> anyhow::Result<()> {
@@ -31,6 +31,6 @@ pub fn run() -> anyhow::Result<()> {
         Commands::Nostr(args) => nostr_cli::run(args),
         Commands::Spark(args) => spark_cli::run(args),
         Commands::Citrea(args) => citrea_cli::run(args),
-        Commands::Moltbook(args) => moltbook_cli::run(args),
+        Commands::CommunityFeed(args) => communityfeed_cli::run(args),
     }
 }

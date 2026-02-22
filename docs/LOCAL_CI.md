@@ -33,7 +33,7 @@ Supported lanes:
 - `runtime`
 - `runtime-history`
 - `legacy-comms`
-- `legacy-openclaw`
+- `legacy-legacyparity`
 - `web-shell`
 - `workspace-compile`
 - `cross-surface`
@@ -61,7 +61,7 @@ Changed-mode trigger note:
 - `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
 - `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
-- `legacy-openclaw` lane auto-runs for legacy openclaw paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
+- `legacy-legacyparity` lane auto-runs for legacy legacyparity paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `cross-surface` lane auto-triggers for shared web-shell/desktop/iOS contract harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 - `ios-rust-core` lane auto-runs for `apps/autopilot-ios/**` and `crates/openagents-client-core/**` changes and enforces deterministic Rust artifact packaging + reproducibility checks.
 
@@ -171,7 +171,7 @@ When you need non-Rust compatibility gates during migration, opt in explicitly:
 OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
 OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh all
 ./scripts/local-ci.sh legacy-comms
-./scripts/local-ci.sh legacy-openclaw
+./scripts/local-ci.sh legacy-legacyparity
 ```
 
 Cross-surface harness opt-in in `changed` mode:

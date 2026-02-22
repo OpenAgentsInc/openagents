@@ -41,7 +41,7 @@ runtime = { path = "../../crates/runtime", default-features = false }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
-moltbook = { path = "../../crates/moltbook" }
+communityfeed = { path = "../../crates/communityfeed" }
 clap = { workspace = true }
 rustls = "0.23"
 arboard = "3.4"
