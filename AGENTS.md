@@ -84,10 +84,16 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 
 You must complete this gate before writing or modifying code.
 
+0. Read these baseline authorities first for every coding task:
+   - `docs/adr/INDEX.md`
+   - `docs/plans/active/rust-migration-invariant-gates.md`
 1. Identify touched surfaces and read the governing ADR(s), invariant gates, and ownership-boundary docs.
-2. Record in your first implementation update which docs were checked and which invariants/ADRs constrain the change.
-3. If proposed code violates those constraints, stop and redesign before editing files.
-4. If constraints still conflict with requested work, stop and ask the user how to proceed.
+2. Record a preflight proof in your first implementation update:
+   - List exactly which ADR(s)/invariant docs were checked.
+   - State the concrete constraints they impose on the planned change.
+3. Do not edit files until that preflight proof is written.
+4. If proposed code violates those constraints, stop and redesign before editing files.
+5. If constraints still conflict with requested work, stop and ask the user how to proceed.
 
 iOS Codex/WGPUI-specific required reads before coding:
 - `docs/plans/active/rust-migration-invariant-gates.md` (minimum: `INV-03`, `INV-07`, `INV-11`)
