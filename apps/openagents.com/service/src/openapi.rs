@@ -31,6 +31,8 @@ pub const ROUTE_AGENTS_ME_BALANCE: &str = "/api/agents/me/balance";
 pub const ROUTE_PAYMENTS_INVOICE: &str = "/api/payments/invoice";
 pub const ROUTE_PAYMENTS_PAY: &str = "/api/payments/pay";
 pub const ROUTE_PAYMENTS_SEND_SPARK: &str = "/api/payments/send-spark";
+pub const ROUTE_SHOUTS: &str = "/api/shouts";
+pub const ROUTE_SHOUTS_ZONES: &str = "/api/shouts/zones";
 pub const ROUTE_L402_WALLET: &str = "/api/l402/wallet";
 pub const ROUTE_L402_TRANSACTIONS: &str = "/api/l402/transactions";
 pub const ROUTE_L402_TRANSACTION_BY_ID: &str = "/api/l402/transactions/:eventId";
@@ -582,6 +584,42 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("agent_payments_send_spark"),
         response_example: Some("agent_payments_transfer"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SHOUTS,
+        operation_id: "shoutsIndex",
+        summary: "List public shouts with optional zone/cursor/date filters.",
+        tag: "social",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("shouts_list"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_SHOUTS,
+        operation_id: "shoutsStore",
+        summary: "Create a public shout (authenticated).",
+        tag: "social",
+        secured: true,
+        deprecated: false,
+        success_status: "201",
+        request_example: Some("shout_create"),
+        response_example: Some("shout"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_SHOUTS_ZONES,
+        operation_id: "shoutsZones",
+        summary: "List top shout zones by 24h activity.",
+        tag: "social",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("shouts_zones"),
     },
     OpenApiContract {
         method: "get",
@@ -1350,6 +1388,10 @@ fn request_example(key: &str) -> Option<Value> {
             "amountSats": 21,
             "timeoutMs": 12000
         })),
+        "shout_create" => Some(json!({
+            "body": "L402 payment shipped",
+            "zone": "l402"
+        })),
         "l402_paywall_create" => Some(json!({
             "name": "Default",
             "hostRegexp": "sats4ai\\.com",
@@ -1952,6 +1994,49 @@ fn response_example(key: &str) -> Option<Value> {
                     }
                 }
             }
+        })),
+        "shout" => Some(json!({
+            "data": {
+                "id": 42,
+                "zone": "l402",
+                "body": "L402 payment shipped",
+                "visibility": "public",
+                "author": {
+                    "id": "usr_123",
+                    "name": "OpenAgents User",
+                    "handle": "openagents-user",
+                    "avatar": null
+                },
+                "createdAt": "2026-02-22T00:00:00Z",
+                "updatedAt": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "shouts_list" => Some(json!({
+            "data": [
+                {
+                    "id": 42,
+                    "zone": "l402",
+                    "body": "L402 payment shipped",
+                    "visibility": "public",
+                    "author": {
+                        "id": "usr_123",
+                        "name": "OpenAgents User",
+                        "handle": "openagents-user",
+                        "avatar": null
+                    },
+                    "createdAt": "2026-02-22T00:00:00Z",
+                    "updatedAt": "2026-02-22T00:00:00Z"
+                }
+            ],
+            "meta": {
+                "nextCursor": "42"
+            }
+        })),
+        "shouts_zones" => Some(json!({
+            "data": [
+                {"zone": "global", "count24h": 12},
+                {"zone": "l402", "count24h": 4}
+            ]
         })),
         "l402_wallet" => Some(json!({
             "data": {

@@ -782,6 +782,17 @@ impl AuthService {
         Ok(bundle)
     }
 
+    pub async fn user_by_id(&self, user_id: &str) -> Option<AuthUser> {
+        let state = self.state.read().await;
+        let record = state.users_by_id.get(user_id)?;
+        Some(AuthUser {
+            id: record.id.clone(),
+            email: record.email.clone(),
+            name: record.name.clone(),
+            workos_user_id: record.workos_user_id.clone(),
+        })
+    }
+
     pub async fn refresh_session(
         &self,
         refresh_token: &str,

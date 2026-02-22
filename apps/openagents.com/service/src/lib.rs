@@ -55,9 +55,9 @@ use crate::codex_threads::{
 };
 use crate::config::Config;
 use crate::domain_store::{
-    AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, DomainStore,
-    DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
-    RecordL402GatewayEventInput, UpdateAutopilotInput, UpdateL402PaywallInput,
+    AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, CreateShoutInput,
+    DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
+    RecordL402GatewayEventInput, ShoutRecord, UpdateAutopilotInput, UpdateL402PaywallInput,
     UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertRuntimeDriverOverrideInput,
     UpsertUserSparkWalletInput, UserSparkWalletRecord,
 };
@@ -80,8 +80,8 @@ use crate::openapi::{
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
     ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
     ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
-    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE,
-    ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT,
+    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS,
+    ROUTE_SHOUTS_ZONES, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT,
     ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE, ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS, ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE,
@@ -601,6 +601,34 @@ struct AgentInvoicePaymentError {
     message: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct ShoutsIndexQuery {
+    #[serde(default)]
+    zone: Option<String>,
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default, alias = "beforeId")]
+    before_id: Option<String>,
+    #[serde(default)]
+    since: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ShoutsZonesQuery {
+    #[serde(default)]
+    limit: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ShoutStoreRequestPayload {
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    zone: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CreateAutopilotRequestPayload {
     #[serde(default)]
@@ -1012,7 +1040,9 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             )),
         )
         .route(ROUTE_AUTH_VERIFY, post(verify_email_code))
-        .route(ROUTE_AUTH_REFRESH, post(refresh_session));
+        .route(ROUTE_AUTH_REFRESH, post(refresh_session))
+        .route(ROUTE_SHOUTS, get(shouts_index))
+        .route(ROUTE_SHOUTS_ZONES, get(shouts_zones));
 
     let protected_api_router = Router::new()
         .route(ROUTE_AUTH_SESSION, get(current_session))
@@ -1056,6 +1086,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))
         .route(ROUTE_SYNC_TOKEN, post(sync_token))
+        .route(ROUTE_SHOUTS, post(shouts_store))
         .route(
             ROUTE_AGENT_PAYMENTS_WALLET,
             get(agent_payments_wallet).post(agent_payments_upsert_wallet),
@@ -4357,6 +4388,240 @@ async fn policy_authorize(
         .map_err(map_auth_error)?;
 
     Ok(ok_data(decision))
+}
+
+async fn shouts_index(
+    State(state): State<AppState>,
+    Query(query): Query<ShoutsIndexQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let zone = normalize_shout_zone(query.zone.as_deref(), "zone")?;
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let before_id = parse_shout_optional_u64(query.before_id.as_deref(), "before_id")?;
+    let since = query
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            parse_rfc3339_utc(value)
+                .map_err(|_| validation_error("since", "The since field must be a valid date."))
+        })
+        .transpose()?;
+
+    let rows = state
+        ._domain_store
+        .list_shouts(zone.as_deref(), limit, before_id, since)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut author_cache: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut data = Vec::with_capacity(rows.len());
+    for shout in &rows {
+        data.push(shout_payload(&state, shout, &mut author_cache).await);
+    }
+
+    let next_cursor = if rows.len() == limit {
+        rows.last().map(|row| row.id.to_string())
+    } else {
+        None
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": data,
+            "meta": {
+                "nextCursor": next_cursor,
+            }
+        })),
+    ))
+}
+
+async fn shouts_zones(
+    State(state): State<AppState>,
+    Query(query): Query<ShoutsZonesQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 20, 100)?;
+    let zones = state
+        ._domain_store
+        .top_shout_zones(limit)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": zones,
+        })),
+    ))
+}
+
+async fn shouts_store(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<ShoutStoreRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+
+    let body_raw = payload
+        .body
+        .or(payload.text)
+        .and_then(non_empty)
+        .ok_or_else(|| validation_error("body", "The body field is required."))?;
+    if body_raw.chars().count() > 2000 {
+        return Err(validation_error(
+            "body",
+            "The body field may not be greater than 2000 characters.",
+        ));
+    }
+    let zone = normalize_shout_zone(payload.zone.as_deref(), "zone")?;
+
+    let shout = state
+        ._domain_store
+        .create_shout(CreateShoutInput {
+            user_id: bundle.user.id.clone(),
+            zone,
+            body: body_raw,
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let mut author_cache = HashMap::new();
+    let data = shout_payload(&state, &shout, &mut author_cache).await;
+
+    state.observability.audit(
+        AuditEvent::new("shouts.created", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("shout_id", shout.id.to_string())
+            .with_attribute(
+                "zone",
+                shout.zone.clone().unwrap_or_else(|| "none".to_string()),
+            )
+            .with_attribute("body_length", shout.body.chars().count().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("shouts.created", &request_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "data": data,
+        })),
+    ))
+}
+
+fn parse_shout_limit(
+    raw: Option<&str>,
+    field: &'static str,
+    default: usize,
+    max: usize,
+) -> Result<usize, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(default);
+    };
+    let parsed = raw
+        .parse::<usize>()
+        .map_err(|_| validation_error(field, &format!("The {field} field must be an integer.")))?;
+    if parsed < 1 {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field must be at least 1."),
+        ));
+    }
+    Ok(parsed.min(max))
+}
+
+fn parse_shout_optional_u64(
+    raw: Option<&str>,
+    field: &'static str,
+) -> Result<Option<u64>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let parsed = raw
+        .parse::<u64>()
+        .map_err(|_| validation_error(field, &format!("The {field} field must be an integer.")))?;
+    if parsed < 1 {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field must be at least 1."),
+        ));
+    }
+    Ok(Some(parsed))
+}
+
+fn normalize_shout_zone(
+    raw: Option<&str>,
+    field: &'static str,
+) -> Result<Option<String>, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw.map(str::trim) else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if raw.chars().count() > 64 {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field may not be greater than 64 characters."),
+        ));
+    }
+
+    let normalized = raw.to_ascii_lowercase();
+    let valid = normalized
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-'));
+    if !valid {
+        return Err(validation_error(
+            field,
+            &format!("The {field} field format is invalid."),
+        ));
+    }
+
+    Ok(Some(normalized))
+}
+
+async fn shout_payload(
+    state: &AppState,
+    shout: &ShoutRecord,
+    author_cache: &mut HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    let author = if let Some(cached) = author_cache.get(&shout.user_id).cloned() {
+        cached
+    } else {
+        let resolved = if let Some(user) = state.auth.user_by_id(&shout.user_id).await {
+            serde_json::json!({
+                "id": user.id,
+                "name": user.name,
+                "handle": user_handle_from_email(&user.email),
+                "avatar": serde_json::Value::Null,
+            })
+        } else {
+            serde_json::json!({
+                "id": shout.user_id.clone(),
+                "name": "Unknown",
+                "handle": "user",
+                "avatar": serde_json::Value::Null,
+            })
+        };
+        author_cache.insert(shout.user_id.clone(), resolved.clone());
+        resolved
+    };
+
+    serde_json::json!({
+        "id": shout.id,
+        "zone": shout.zone.clone(),
+        "body": shout.body.clone(),
+        "visibility": shout.visibility.clone(),
+        "author": author,
+        "createdAt": timestamp(shout.created_at),
+        "updatedAt": timestamp(shout.updated_at),
+    })
 }
 
 async fn runtime_internal_secret_fetch(
@@ -18287,6 +18552,164 @@ mod tests {
         let normalized_b64 =
             super::normalize_preimage_hex(&encoded).expect("base64 normalization to hex");
         assert_eq!(normalized_b64, super::bytes_to_hex(&bytes));
+    }
+
+    #[tokio::test]
+    async fn shouts_create_list_and_zones_match_contract() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let author_token = seed_local_test_token(&config, "shout-author@openagents.com").await?;
+        let other_token = seed_local_test_token(&config, "shout-other@openagents.com").await?;
+        let app = build_router(config.clone());
+
+        let unauthorized_request = Request::builder()
+            .method("POST")
+            .uri("/api/shouts")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"body":"unauthorized"}"#))?;
+        let unauthorized_response = app.clone().oneshot(unauthorized_request).await?;
+        assert_eq!(unauthorized_response.status(), StatusCode::UNAUTHORIZED);
+
+        let create_l402_request = Request::builder()
+            .method("POST")
+            .uri("/api/shouts")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {author_token}"))
+            .body(Body::from(
+                r#"{"body":"L402 payment shipped","zone":"L402"}"#,
+            ))?;
+        let create_l402_response = app.clone().oneshot(create_l402_request).await?;
+        assert_eq!(create_l402_response.status(), StatusCode::CREATED);
+        let create_l402_body = read_json(create_l402_response).await?;
+        assert_eq!(create_l402_body["data"]["zone"], json!("l402"));
+        assert_eq!(
+            create_l402_body["data"]["body"],
+            json!("L402 payment shipped")
+        );
+        assert_eq!(
+            create_l402_body["data"]["author"]["handle"],
+            json!("shout-author")
+        );
+
+        let create_text_alias_request = Request::builder()
+            .method("POST")
+            .uri("/api/shouts")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {author_token}"))
+            .body(Body::from(
+                r#"{"text":"compat text alias shout","zone":"Global"}"#,
+            ))?;
+        let create_text_alias_response = app.clone().oneshot(create_text_alias_request).await?;
+        assert_eq!(create_text_alias_response.status(), StatusCode::CREATED);
+        let create_text_alias_body = read_json(create_text_alias_response).await?;
+        assert_eq!(create_text_alias_body["data"]["zone"], json!("global"));
+        assert_eq!(
+            create_text_alias_body["data"]["body"],
+            json!("compat text alias shout")
+        );
+
+        let create_global_request = Request::builder()
+            .method("POST")
+            .uri("/api/shouts")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::from(
+                r#"{"body":"hello from global","zone":"global"}"#,
+            ))?;
+        let create_global_response = app.clone().oneshot(create_global_request).await?;
+        assert_eq!(create_global_response.status(), StatusCode::CREATED);
+
+        let list_l402_request = Request::builder()
+            .method("GET")
+            .uri("/api/shouts?zone=l402")
+            .body(Body::empty())?;
+        let list_l402_response = app.clone().oneshot(list_l402_request).await?;
+        assert_eq!(list_l402_response.status(), StatusCode::OK);
+        let list_l402_body = read_json(list_l402_response).await?;
+        assert_eq!(
+            list_l402_body["data"].as_array().map(|rows| rows.len()),
+            Some(1)
+        );
+        assert_eq!(list_l402_body["data"][0]["zone"], json!("l402"));
+
+        let zones_request = Request::builder()
+            .method("GET")
+            .uri("/api/shouts/zones")
+            .body(Body::empty())?;
+        let zones_response = app.oneshot(zones_request).await?;
+        assert_eq!(zones_response.status(), StatusCode::OK);
+        let zones_body = read_json(zones_response).await?;
+        assert_eq!(zones_body["data"][0]["zone"], json!("global"));
+        assert_eq!(zones_body["data"][0]["count24h"], json!(2));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn shouts_feed_caps_limit_and_supports_before_id_pagination() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let token = seed_local_test_token(&config, "shout-pagination@openagents.com").await?;
+        let app = build_router(config.clone());
+        for idx in 0..205 {
+            let create_request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(format!(
+                    r#"{{"body":"feed-{idx}","zone":"global"}}"#
+                )))?;
+            let create_response = app.clone().oneshot(create_request).await?;
+            assert_eq!(create_response.status(), StatusCode::CREATED);
+        }
+
+        let page_one_request = Request::builder()
+            .method("GET")
+            .uri("/api/shouts?limit=999")
+            .body(Body::empty())?;
+        let page_one_response = app.clone().oneshot(page_one_request).await?;
+        assert_eq!(page_one_response.status(), StatusCode::OK);
+        let page_one_body = read_json(page_one_response).await?;
+        assert_eq!(
+            page_one_body["data"].as_array().map(|rows| rows.len()),
+            Some(200)
+        );
+        let last_id = page_one_body["data"][199]["id"]
+            .as_u64()
+            .expect("expected cursor id");
+        assert_eq!(
+            page_one_body["meta"]["nextCursor"],
+            json!(last_id.to_string())
+        );
+
+        let page_two_request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/shouts?limit=200&before_id={last_id}"))
+            .body(Body::empty())?;
+        let page_two_response = app.oneshot(page_two_request).await?;
+        assert_eq!(page_two_response.status(), StatusCode::OK);
+        let page_two_body = read_json(page_two_response).await?;
+        assert_eq!(
+            page_two_body["data"].as_array().map(|rows| rows.len()),
+            Some(5)
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
