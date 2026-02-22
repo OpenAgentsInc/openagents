@@ -47,6 +47,9 @@ const DEFAULT_RUNTIME_SYNC_REVOKE_PATH: &str = "/internal/v1/sync/sessions/revok
 const DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS: u64 = 60;
 const DEFAULT_RUNTIME_INTERNAL_KEY_ID: &str = "runtime-internal-v1";
 const DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS: u64 = 60;
+const DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH: &str =
+    "/api/internal/runtime/integrations/secrets/fetch";
+const DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS: u64 = 60_000;
 const DEFAULT_MAINTENANCE_MODE_ENABLED: bool = false;
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME: &str = "oa_maintenance_bypass";
 const DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS: u64 = 900;
@@ -113,6 +116,8 @@ pub struct Config {
     pub runtime_internal_shared_secret: Option<String>,
     pub runtime_internal_key_id: String,
     pub runtime_internal_signature_ttl_seconds: u64,
+    pub runtime_internal_secret_fetch_path: String,
+    pub runtime_internal_secret_cache_ttl_ms: u64,
     pub codex_thread_store_path: Option<PathBuf>,
     pub domain_store_path: Option<PathBuf>,
     pub maintenance_mode_enabled: bool,
@@ -452,6 +457,18 @@ impl Config {
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS)
                 .max(1);
 
+        let runtime_internal_secret_fetch_path = env::var("OA_RUNTIME_INTERNAL_SECRET_FETCH_PATH")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH.to_string());
+
+        let runtime_internal_secret_cache_ttl_ms =
+            env::var("OA_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS);
+
         let codex_thread_store_path = env::var("OA_CODEX_THREAD_STORE_PATH")
             .ok()
             .map(|value| value.trim().to_string())
@@ -579,6 +596,8 @@ impl Config {
             runtime_internal_shared_secret,
             runtime_internal_key_id,
             runtime_internal_signature_ttl_seconds,
+            runtime_internal_secret_fetch_path,
+            runtime_internal_secret_cache_ttl_ms,
             codex_thread_store_path,
             domain_store_path,
             maintenance_mode_enabled,

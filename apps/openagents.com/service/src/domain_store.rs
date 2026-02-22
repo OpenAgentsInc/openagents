@@ -1332,6 +1332,37 @@ impl DomainStore {
         .await
     }
 
+    pub async fn find_active_integration_secret(
+        &self,
+        user_id: &str,
+        provider: &str,
+    ) -> Result<Option<UserIntegrationRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let provider = normalize_non_empty(provider, "provider")?.to_lowercase();
+        let key = integration_key(&user_id, &provider);
+
+        let state = self.state.read().await;
+        let row = state.user_integrations.get(&key).cloned();
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        if row.status != "active" {
+            return Ok(None);
+        }
+        if row
+            .encrypted_secret
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(row))
+    }
+
     pub async fn list_integrations_for_user(
         &self,
         user_id: &str,
@@ -2134,6 +2165,9 @@ mod tests {
             runtime_internal_shared_secret: None,
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
+            runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
+                .to_string(),
+            runtime_internal_secret_cache_ttl_ms: 60_000,
             codex_thread_store_path: None,
             domain_store_path: store_path,
             maintenance_mode_enabled: false,

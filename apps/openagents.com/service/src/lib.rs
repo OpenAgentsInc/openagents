@@ -39,8 +39,8 @@ pub mod route_split;
 pub mod sync_token;
 
 use crate::api_envelope::{
-    ApiErrorCode, ApiErrorResponse, error_response_with_status, forbidden_error, not_found_error,
-    ok_data, unauthorized_error, validation_error,
+    ApiErrorCode, ApiErrorDetail, ApiErrorResponse, error_response_with_status, forbidden_error,
+    not_found_error, ok_data, unauthorized_error, validation_error,
 };
 use crate::auth::{
     AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
@@ -64,7 +64,8 @@ use crate::openapi::{
     ROUTE_KHALA_TOKEN, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS,
     ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
-    ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS, ROUTE_RUNTIME_SKILLS_RELEASE,
+    ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS,
+    ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
     ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
     ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
     ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_PROFILE,
@@ -701,8 +702,11 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let thread_message_throttle_state = state.clone();
     let codex_control_request_throttle_state = state.clone();
     let authenticated_routes_state = state.clone();
+    let runtime_internal_state = state.clone();
     let workos_session_state = state.clone();
     let admin_state = state.clone();
+    let runtime_internal_secret_fetch_path =
+        normalize_route_path(&state.config.runtime_internal_secret_fetch_path);
 
     let web_auth_router = Router::new()
         .route("/login", get(login_page))
@@ -730,6 +734,13 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         );
 
     let public_api_router = Router::new()
+        .route(
+            runtime_internal_secret_fetch_path.as_str(),
+            post(runtime_internal_secret_fetch).route_layer(middleware::from_fn_with_state(
+                runtime_internal_state,
+                runtime_internal_request_gate,
+            )),
+        )
         .route(
             ROUTE_AUTH_EMAIL,
             post(send_email_code).route_layer(middleware::from_fn_with_state(
@@ -1230,7 +1241,6 @@ async fn throttle_codex_control_request_gate(
     }
 }
 
-#[allow(dead_code)]
 async fn runtime_internal_request_gate(
     State(state): State<AppState>,
     request: Request,
@@ -1252,6 +1262,15 @@ async fn runtime_internal_request_gate(
     if let Err(response) =
         verify_runtime_internal_headers(&state, &parts.headers, &body_bytes).await
     {
+        let request_id = request_id(&parts.headers);
+        state.observability.audit(
+            AuditEvent::new("runtime.internal.auth.rejected", request_id.clone())
+                .with_attribute("path", parts.uri.path().to_string())
+                .with_attribute("error_code", response.1.0.error.code.to_string()),
+        );
+        state
+            .observability
+            .increment_counter("runtime.internal.auth.rejected", &request_id);
         return response.into_response();
     }
 
@@ -1270,17 +1289,21 @@ async fn verify_runtime_internal_headers(
         .as_ref()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
-            error_response_with_status(
+            runtime_internal_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorCode::InternalError,
-                "Runtime internal auth is misconfigured.".to_string(),
+                "internal_auth_misconfigured",
+                "runtime internal auth misconfigured",
             )
         })?;
 
     let provided_key_id =
         header_string(headers, RUNTIME_INTERNAL_KEY_ID_HEADER).unwrap_or_default();
     if provided_key_id.is_empty() || provided_key_id != state.config.runtime_internal_key_id {
-        return Err(unauthorized_error("Runtime internal key id is invalid."));
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_key_id",
+            "invalid key id",
+        ));
     }
 
     let timestamp = header_string(headers, RUNTIME_INTERNAL_TIMESTAMP_HEADER).unwrap_or_default();
@@ -1295,38 +1318,56 @@ async fn verify_runtime_internal_headers(
         || provided_body_hash.is_empty()
         || provided_signature.is_empty()
     {
-        return Err(unauthorized_error(
-            "Runtime internal auth headers are missing.",
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "missing_auth_headers",
+            "missing auth headers",
         ));
     }
 
-    let timestamp_epoch = timestamp
-        .parse::<i64>()
-        .map_err(|_| unauthorized_error("Runtime internal timestamp is invalid."))?;
+    let timestamp_epoch = timestamp.parse::<i64>().map_err(|_| {
+        runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_timestamp",
+            "invalid timestamp",
+        )
+    })?;
 
     let now_epoch = Utc::now().timestamp();
     let ttl_seconds = state.config.runtime_internal_signature_ttl_seconds as i64;
     if (now_epoch - timestamp_epoch).abs() > ttl_seconds {
-        return Err(unauthorized_error("Runtime internal signature expired."));
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "signature_expired",
+            "signature expired",
+        ));
     }
 
     let computed_body_hash = sha256_hex(body);
     if computed_body_hash != provided_body_hash {
-        return Err(unauthorized_error("Runtime internal body hash mismatch."));
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "body_hash_mismatch",
+            "body hash mismatch",
+        ));
     }
 
     let payload = format!("{timestamp}\n{nonce}\n{computed_body_hash}");
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| {
-        error_response_with_status(
+        runtime_internal_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            ApiErrorCode::InternalError,
-            "Runtime internal auth is misconfigured.".to_string(),
+            "internal_auth_misconfigured",
+            "runtime internal auth misconfigured",
         )
     })?;
     mac.update(payload.as_bytes());
     let expected_signature = sha256_bytes_hex(&mac.finalize().into_bytes());
     if expected_signature != provided_signature {
-        return Err(unauthorized_error("Runtime internal signature is invalid."));
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_signature",
+            "invalid signature",
+        ));
     }
 
     let replay_key = format!("{provided_key_id}:{nonce}");
@@ -1334,8 +1375,10 @@ async fn verify_runtime_internal_headers(
     let mut entries = state.runtime_internal_nonces.entries.lock().await;
     entries.retain(|_, expiry| *expiry > now_epoch);
     if entries.contains_key(&replay_key) {
-        return Err(unauthorized_error(
-            "Runtime internal nonce replay detected.",
+        return Err(runtime_internal_error(
+            StatusCode::UNAUTHORIZED,
+            "nonce_replay",
+            "nonce replay detected",
         ));
     }
     entries.insert(replay_key, expires_at);
@@ -3847,6 +3890,123 @@ async fn policy_authorize(
     Ok(ok_data(decision))
 }
 
+async fn runtime_internal_secret_fetch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let (lookup_user_id, scope_user_id) = parse_runtime_internal_user_id(payload.get("user_id"))?;
+    let provider = normalize_optional_bounded_string(
+        normalized_json_string(payload.get("provider")),
+        "provider",
+        32,
+    )?
+    .ok_or_else(|| validation_error("provider", "The provider field is required."))?
+    .to_lowercase();
+    if !matches!(provider.as_str(), "resend" | "google") {
+        return Err(validation_error(
+            "provider",
+            "The selected provider is invalid.",
+        ));
+    }
+    let integration_id = normalize_optional_bounded_string(
+        normalized_json_string(payload.get("integration_id")),
+        "integration_id",
+        160,
+    )?
+    .ok_or_else(|| validation_error("integration_id", "The integration_id field is required."))?;
+    let run_id = normalize_optional_bounded_string(
+        normalized_json_string(payload.get("run_id")),
+        "run_id",
+        160,
+    )?
+    .ok_or_else(|| validation_error("run_id", "The run_id field is required."))?;
+    let tool_call_id = normalize_optional_bounded_string(
+        normalized_json_string(payload.get("tool_call_id")),
+        "tool_call_id",
+        160,
+    )?
+    .ok_or_else(|| validation_error("tool_call_id", "The tool_call_id field is required."))?;
+    let org_id = normalize_optional_bounded_string(
+        normalized_json_string(payload.get("org_id")),
+        "org_id",
+        160,
+    )?;
+
+    let integration = state
+        ._domain_store
+        .find_active_integration_secret(&lookup_user_id, &provider)
+        .await
+        .map_err(map_domain_store_error)?;
+    let Some(integration) = integration else {
+        let mut audit = AuditEvent::new(
+            "runtime.internal.secret.fetch.not_found",
+            request_id.clone(),
+        )
+        .with_attribute("user_id", lookup_user_id)
+        .with_attribute("provider", provider.clone())
+        .with_attribute("integration_id", integration_id.clone())
+        .with_attribute("run_id", run_id.clone())
+        .with_attribute("tool_call_id", tool_call_id.clone());
+        if let Some(org_id) = org_id.clone() {
+            audit = audit.with_attribute("org_id", org_id);
+        }
+        state.observability.audit(audit);
+        state
+            .observability
+            .increment_counter("runtime.internal.secret.fetch.not_found", &request_id);
+        return Err(runtime_internal_error(
+            StatusCode::NOT_FOUND,
+            "secret_not_found",
+            "active provider secret not found",
+        ));
+    };
+
+    let secret = integration
+        .encrypted_secret
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            runtime_internal_error(
+                StatusCode::NOT_FOUND,
+                "secret_not_found",
+                "active provider secret not found",
+            )
+        })?;
+
+    let mut audit = AuditEvent::new("runtime.internal.secret.fetch.accepted", request_id.clone())
+        .with_attribute("user_id", integration.user_id.clone())
+        .with_attribute("provider", integration.provider.clone())
+        .with_attribute("integration_id", integration_id.clone())
+        .with_attribute("run_id", run_id.clone())
+        .with_attribute("tool_call_id", tool_call_id.clone());
+    if let Some(org_id) = org_id.clone() {
+        audit = audit.with_attribute("org_id", org_id);
+    }
+    state.observability.audit(audit);
+    state
+        .observability
+        .increment_counter("runtime.internal.secret.fetch.accepted", &request_id);
+
+    Ok(ok_data(serde_json::json!({
+        "provider": integration.provider,
+        "secret": secret,
+        "cache_ttl_ms": state.config.runtime_internal_secret_cache_ttl_ms,
+        "scope": {
+            "user_id": scope_user_id,
+            "provider": provider,
+            "integration_id": integration_id,
+            "run_id": run_id,
+            "tool_call_id": tool_call_id,
+            "org_id": org_id,
+        },
+        "fetched_at": timestamp(Utc::now()),
+    })))
+}
+
 async fn sync_token(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -5688,6 +5848,47 @@ fn normalized_json_string(value: Option<&serde_json::Value>) -> Option<String> {
         .and_then(|raw| non_empty(raw.to_string()))
 }
 
+fn parse_runtime_internal_user_id(
+    value: Option<&serde_json::Value>,
+) -> Result<(String, serde_json::Value), (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = value else {
+        return Err(validation_error(
+            "user_id",
+            "The user_id field is required.",
+        ));
+    };
+
+    match value {
+        serde_json::Value::String(raw) => {
+            let normalized = non_empty(raw.to_string())
+                .ok_or_else(|| validation_error("user_id", "The user_id field is required."))?;
+            Ok((normalized.clone(), serde_json::Value::String(normalized)))
+        }
+        serde_json::Value::Number(number) => {
+            let Some(user_id) = number.as_u64() else {
+                return Err(validation_error(
+                    "user_id",
+                    "The user_id field must be an integer greater than 0.",
+                ));
+            };
+            if user_id == 0 {
+                return Err(validation_error(
+                    "user_id",
+                    "The user_id field must be an integer greater than 0.",
+                ));
+            }
+            Ok((
+                user_id.to_string(),
+                serde_json::Value::Number(serde_json::Number::from(user_id)),
+            ))
+        }
+        _ => Err(validation_error(
+            "user_id",
+            "The user_id field must be a string or integer.",
+        )),
+    }
+}
+
 fn validate_codex_turn_text(text: &str) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
     let normalized = text.trim();
     if normalized.is_empty() {
@@ -6367,6 +6568,34 @@ fn request_id(headers: &HeaderMap) -> String {
     header_string(headers, "x-request-id")
         .and_then(non_empty)
         .unwrap_or_else(|| format!("req_{}", uuid::Uuid::new_v4().simple()))
+}
+
+fn normalize_route_path(raw_path: &str) -> String {
+    let normalized = raw_path.trim();
+    if normalized.is_empty() {
+        return ROUTE_RUNTIME_INTERNAL_SECRET_FETCH.to_string();
+    }
+    if normalized.starts_with('/') {
+        normalized.to_string()
+    } else {
+        format!("/{normalized}")
+    }
+}
+
+fn runtime_internal_error(
+    status: StatusCode,
+    code: &'static str,
+    message: impl Into<String>,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    let message = message.into();
+    (
+        status,
+        Json(ApiErrorResponse {
+            message: message.clone(),
+            error: ApiErrorDetail { code, message },
+            errors: None,
+        }),
+    )
 }
 
 fn email_domain(email: &str) -> Option<String> {
@@ -8137,7 +8366,7 @@ mod tests {
     use crate::config::Config;
     use crate::domain_store::{
         AutopilotAggregate, AutopilotPolicyRecord, AutopilotProfileRecord, AutopilotRecord,
-        AutopilotRuntimeBindingRecord,
+        AutopilotRuntimeBindingRecord, DomainStore, UpsertResendIntegrationInput,
     };
     use crate::observability::{Observability, RecordingAuditSink};
     use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST, MAINTENANCE_CACHE_CONTROL};
@@ -8218,6 +8447,9 @@ mod tests {
             runtime_internal_shared_secret: None,
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
+            runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
+                .to_string(),
+            runtime_internal_secret_cache_ttl_ms: 60_000,
             codex_thread_store_path: None,
             domain_store_path: None,
             maintenance_mode_enabled: false,
@@ -8289,6 +8521,58 @@ mod tests {
             runtime_internal_nonces: super::RuntimeInternalNonceState::default(),
             started_at: std::time::SystemTime::now(),
         }
+    }
+
+    fn runtime_internal_signed_headers(
+        body: &str,
+        secret: &str,
+        key_id: &str,
+        nonce: &str,
+        timestamp: i64,
+    ) -> Result<HeaderMap> {
+        let body_hash = super::sha256_hex(body.as_bytes());
+        let signing_payload = format!("{timestamp}\n{nonce}\n{body_hash}");
+        let mut mac = super::HmacSha256::new_from_slice(secret.as_bytes())?;
+        mac.update(signing_payload.as_bytes());
+        let signature = super::sha256_bytes_hex(&mac.finalize().into_bytes());
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::RUNTIME_INTERNAL_KEY_ID_HEADER,
+            HeaderValue::from_str(key_id)?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_TIMESTAMP_HEADER,
+            HeaderValue::from_str(&timestamp.to_string())?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_NONCE_HEADER,
+            HeaderValue::from_str(nonce)?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_BODY_HASH_HEADER,
+            HeaderValue::from_str(&body_hash)?,
+        );
+        headers.insert(
+            super::RUNTIME_INTERNAL_SIGNATURE_HEADER,
+            HeaderValue::from_str(&signature)?,
+        );
+        Ok(headers)
+    }
+
+    fn runtime_internal_signed_request(
+        path: &str,
+        body: &str,
+        headers: &HeaderMap,
+    ) -> Result<Request<Body>> {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json");
+        for (name, value) in headers {
+            builder = builder.header(name, value);
+        }
+        Ok(builder.body(Body::from(body.to_string()))?)
     }
 
     fn sample_autopilot_aggregate() -> AutopilotAggregate {
@@ -8652,12 +8936,206 @@ mod tests {
             .await
             .expect_err("expected nonce replay rejection");
         assert_eq!(replay.0, StatusCode::UNAUTHORIZED);
-        assert_eq!(replay.1.0.error.code, "unauthorized");
-        assert!(
-            replay.1.0.error.message.contains("nonce replay"),
-            "unexpected replay message: {}",
-            replay.1.0.error.message
+        assert_eq!(replay.1.0.error.code, "nonce_replay");
+        assert_eq!(replay.1.0.error.message, "nonce replay detected");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_internal_secret_fetch_returns_scoped_secret_for_signed_request() -> Result<()>
+    {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.runtime_internal_shared_secret = Some("runtime-internal-secret".to_string());
+        config.runtime_internal_key_id = "runtime-internal-v1".to_string();
+        config.runtime_internal_signature_ttl_seconds = 60;
+        config.runtime_internal_secret_cache_ttl_ms = 45_000;
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let store = DomainStore::from_config(&config);
+        store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "usr_runtime_secret".to_string(),
+                api_key: "re_live_1234567890".to_string(),
+                sender_email: None,
+                sender_name: None,
+            })
+            .await?;
+
+        let app = build_router(config.clone());
+        let body = r#"{"user_id":"usr_runtime_secret","provider":"resend","integration_id":"resend.primary","run_id":"run_123","tool_call_id":"tool_123","org_id":"org_abc"}"#;
+        let headers = runtime_internal_signed_headers(
+            body,
+            "runtime-internal-secret",
+            "runtime-internal-v1",
+            "nonce-runtime-secret-1",
+            Utc::now().timestamp(),
+        )?;
+        let request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &headers,
+        )?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = read_json(response).await?;
+        assert_eq!(payload["data"]["provider"], "resend");
+        assert_eq!(payload["data"]["secret"], "re_live_1234567890");
+        assert_eq!(payload["data"]["cache_ttl_ms"], 45_000);
+        assert_eq!(payload["data"]["scope"]["user_id"], "usr_runtime_secret");
+        assert_eq!(payload["data"]["scope"]["provider"], "resend");
+        assert_eq!(payload["data"]["scope"]["integration_id"], "resend.primary");
+        assert_eq!(payload["data"]["scope"]["run_id"], "run_123");
+        assert_eq!(payload["data"]["scope"]["tool_call_id"], "tool_123");
+        assert_eq!(payload["data"]["scope"]["org_id"], "org_abc");
+        assert!(payload["data"]["fetched_at"].as_str().is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_internal_secret_fetch_rejects_invalid_signature_code() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.runtime_internal_shared_secret = Some("runtime-internal-secret".to_string());
+        config.runtime_internal_key_id = "runtime-internal-v1".to_string();
+        config.runtime_internal_signature_ttl_seconds = 60;
+
+        let app = build_router(config.clone());
+        let body = r#"{"user_id":"usr_runtime_secret","provider":"resend","integration_id":"resend.primary","run_id":"run_123","tool_call_id":"tool_123"}"#;
+        let mut headers = runtime_internal_signed_headers(
+            body,
+            "runtime-internal-secret",
+            "runtime-internal-v1",
+            "nonce-runtime-secret-invalid",
+            Utc::now().timestamp(),
+        )?;
+        headers.insert(
+            super::RUNTIME_INTERNAL_SIGNATURE_HEADER,
+            HeaderValue::from_static("invalid-signature"),
         );
+        let request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &headers,
+        )?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let payload = read_json(response).await?;
+        assert_eq!(payload["error"]["code"], "invalid_signature");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_internal_secret_fetch_rejects_nonce_replay() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.runtime_internal_shared_secret = Some("runtime-internal-secret".to_string());
+        config.runtime_internal_key_id = "runtime-internal-v1".to_string();
+        config.runtime_internal_signature_ttl_seconds = 60;
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let store = DomainStore::from_config(&config);
+        store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "usr_runtime_secret".to_string(),
+                api_key: "re_live_1234567890".to_string(),
+                sender_email: None,
+                sender_name: None,
+            })
+            .await?;
+
+        let app = build_router(config.clone());
+        let body = r#"{"user_id":"usr_runtime_secret","provider":"resend","integration_id":"resend.primary","run_id":"run_123","tool_call_id":"tool_123"}"#;
+        let headers = runtime_internal_signed_headers(
+            body,
+            "runtime-internal-secret",
+            "runtime-internal-v1",
+            "nonce-runtime-secret-replay",
+            Utc::now().timestamp(),
+        )?;
+
+        let first_request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &headers,
+        )?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+
+        let second_request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &headers,
+        )?;
+        let second_response = app.oneshot(second_request).await?;
+        assert_eq!(second_response.status(), StatusCode::UNAUTHORIZED);
+        let second_body = read_json(second_response).await?;
+        assert_eq!(second_body["error"]["code"], "nonce_replay");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_internal_secret_fetch_returns_not_found_after_revoke() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.runtime_internal_shared_secret = Some("runtime-internal-secret".to_string());
+        config.runtime_internal_key_id = "runtime-internal-v1".to_string();
+        config.runtime_internal_signature_ttl_seconds = 60;
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let store = DomainStore::from_config(&config);
+        store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "usr_runtime_secret".to_string(),
+                api_key: "re_live_1234567890".to_string(),
+                sender_email: None,
+                sender_name: None,
+            })
+            .await?;
+
+        let body = r#"{"user_id":"usr_runtime_secret","provider":"resend","integration_id":"resend.primary","run_id":"run_123","tool_call_id":"tool_123"}"#;
+        let before_revoke_headers = runtime_internal_signed_headers(
+            body,
+            "runtime-internal-secret",
+            "runtime-internal-v1",
+            "nonce-runtime-secret-before-revoke",
+            Utc::now().timestamp(),
+        )?;
+        let app_before_revoke = build_router(config.clone());
+        let first_request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &before_revoke_headers,
+        )?;
+        let first_response = app_before_revoke.oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+
+        let revoked = store
+            .revoke_integration("usr_runtime_secret", "resend")
+            .await?;
+        assert!(revoked.is_some());
+
+        let app_after_revoke = build_router(config.clone());
+        let after_revoke_headers = runtime_internal_signed_headers(
+            body,
+            "runtime-internal-secret",
+            "runtime-internal-v1",
+            "nonce-runtime-secret-after-revoke",
+            Utc::now().timestamp(),
+        )?;
+        let second_request = runtime_internal_signed_request(
+            &config.runtime_internal_secret_fetch_path,
+            body,
+            &after_revoke_headers,
+        )?;
+        let second_response = app_after_revoke.oneshot(second_request).await?;
+        assert_eq!(second_response.status(), StatusCode::NOT_FOUND);
+        let second_body = read_json(second_response).await?;
+        assert_eq!(second_body["error"]["code"], "secret_not_found");
 
         Ok(())
     }

@@ -524,6 +524,9 @@ mod tests {
             runtime_internal_shared_secret: None,
             runtime_internal_key_id: "runtime-internal-v1".to_string(),
             runtime_internal_signature_ttl_seconds: 60,
+            runtime_internal_secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch"
+                .to_string(),
+            runtime_internal_secret_cache_ttl_ms: 60_000,
             codex_thread_store_path: None,
             domain_store_path: None,
             maintenance_mode_enabled: false,

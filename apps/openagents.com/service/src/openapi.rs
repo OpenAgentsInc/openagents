@@ -24,6 +24,8 @@ pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
 pub const ROUTE_SETTINGS_PROFILE: &str = "/api/settings/profile";
 pub const ROUTE_SETTINGS_AUTOPILOT: &str = "/settings/autopilot";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
+pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
+    "/api/internal/runtime/integrations/secrets/fetch";
 pub const ROUTE_RUNTIME_TOOLS_EXECUTE: &str = "/api/runtime/tools/execute";
 pub const ROUTE_RUNTIME_SKILLS_TOOL_SPECS: &str = "/api/runtime/skills/tool-specs";
 pub const ROUTE_RUNTIME_SKILLS_SKILL_SPECS: &str = "/api/runtime/skills/skill-specs";
@@ -422,6 +424,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: Some("sync_token"),
         response_example: Some("sync_token"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_RUNTIME_INTERNAL_SECRET_FETCH,
+        operation_id: "runtimeInternalSecretFetch",
+        summary: "Fetch active integration credentials via signed runtime-internal headers.",
+        tag: "runtime",
+        secured: false,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("runtime_internal_secret_fetch"),
+        response_example: Some("runtime_internal_secret_fetch"),
     },
     OpenApiContract {
         method: "post",
@@ -986,6 +1000,14 @@ fn request_example(key: &str) -> Option<Value> {
             "ttl_seconds": 300,
             "device_id": "ios:device"
         })),
+        "runtime_internal_secret_fetch" => Some(json!({
+            "user_id": 42,
+            "provider": "resend",
+            "integration_id": "resend.primary",
+            "run_id": "run_123",
+            "tool_call_id": "tool_123",
+            "org_id": "org_abc"
+        })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
         "runtime_tools_execute" => Some(json!({
             "tool_pack": "coding.v1",
@@ -1445,6 +1467,22 @@ fn response_example(key: &str) -> Option<Value> {
                 "token": "eyJ...",
                 "token_type": "Bearer",
                 "expires_at": "2026-02-22T00:00:00Z"
+            }
+        })),
+        "runtime_internal_secret_fetch" => Some(json!({
+            "data": {
+                "provider": "resend",
+                "secret": "re_live_1234567890",
+                "cache_ttl_ms": 60000,
+                "scope": {
+                    "user_id": 42,
+                    "provider": "resend",
+                    "integration_id": "resend.primary",
+                    "run_id": "run_123",
+                    "tool_call_id": "tool_123",
+                    "org_id": "org_abc"
+                },
+                "fetched_at": "2026-02-22T00:00:00Z"
             }
         })),
         "thread_message" => Some(json!({

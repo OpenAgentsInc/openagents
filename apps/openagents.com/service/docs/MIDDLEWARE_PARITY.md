@@ -32,7 +32,7 @@ This service now carries reusable middleware layers that mirror Laravel middlewa
     - `x-oa-internal-body-sha256`
     - `x-oa-internal-signature`
   - Includes timestamp TTL checks and nonce replay detection.
-  - Implemented as reusable layer and validated in tests; route adoption is tracked by OA-WEBPARITY-033.
+  - Implemented as reusable layer and validated in tests.
 
 ## Route usage in Rust service
 
@@ -46,6 +46,9 @@ This service now carries reusable middleware layers that mirror Laravel middlewa
 - Throttle-protected routes:
   - `POST /api/auth/email`
   - `POST /api/runtime/threads/:thread_id/messages`
+
+- Runtime-internal signature protected routes:
+  - `POST /api/internal/runtime/integrations/secrets/fetch`
 
 ## Environment
 
