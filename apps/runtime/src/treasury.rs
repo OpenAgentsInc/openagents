@@ -75,6 +75,26 @@ pub struct ComputeJobSettlement {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProviderEarningsEntry {
+    pub provider_id: String,
+    pub earned_msats: u64,
+    pub released_jobs: u64,
+    pub withheld_jobs: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComputeTreasurySummary {
+    pub schema: String,
+    pub owner_key: String,
+    pub account: BudgetAccount,
+    pub released_msats_total: u64,
+    pub released_count: u64,
+    pub withheld_count: u64,
+    pub provider_earnings: Vec<ProviderEarningsEntry>,
+    pub recent_jobs: Vec<ComputeJobSettlement>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreasuryError {
     #[error("job already reserved for a different owner")]
@@ -138,7 +158,9 @@ impl Treasury {
             settled_at: None,
             updated_at: now,
         };
-        inner.compute_jobs.insert(job_hash.to_string(), record.clone());
+        inner
+            .compute_jobs
+            .insert(job_hash.to_string(), record.clone());
         Ok((record, true))
     }
 
@@ -213,6 +235,81 @@ impl Treasury {
             .or_insert_with(|| BudgetAccount::ensure_default(now))
             .clone()
     }
+
+    pub async fn summarize_compute_owner(
+        &self,
+        owner_key: &str,
+        job_limit: usize,
+    ) -> ComputeTreasurySummary {
+        let mut inner = self.inner.lock().await;
+        let account = inner
+            .accounts
+            .entry(owner_key.to_string())
+            .or_insert_with(|| BudgetAccount::ensure_default(Utc::now()))
+            .clone();
+
+        let mut released_msats_total = 0u64;
+        let mut released_count = 0u64;
+        let mut withheld_count = 0u64;
+        let mut provider_map: HashMap<String, ProviderEarningsEntry> = HashMap::new();
+
+        let mut jobs = inner
+            .compute_jobs
+            .values()
+            .filter(|job| job.owner_key == owner_key)
+            .cloned()
+            .collect::<Vec<_>>();
+        jobs.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+
+        for job in &jobs {
+            match job.status {
+                SettlementStatus::Released => {
+                    released_count = released_count.saturating_add(1);
+                    released_msats_total = released_msats_total.saturating_add(job.amount_msats);
+                    let entry = provider_map
+                        .entry(job.provider_id.clone())
+                        .or_insert_with(|| ProviderEarningsEntry {
+                            provider_id: job.provider_id.clone(),
+                            earned_msats: 0,
+                            released_jobs: 0,
+                            withheld_jobs: 0,
+                        });
+                    entry.earned_msats = entry.earned_msats.saturating_add(job.amount_msats);
+                    entry.released_jobs = entry.released_jobs.saturating_add(1);
+                }
+                SettlementStatus::Withheld => {
+                    withheld_count = withheld_count.saturating_add(1);
+                    let entry = provider_map
+                        .entry(job.provider_id.clone())
+                        .or_insert_with(|| ProviderEarningsEntry {
+                            provider_id: job.provider_id.clone(),
+                            earned_msats: 0,
+                            released_jobs: 0,
+                            withheld_jobs: 0,
+                        });
+                    entry.withheld_jobs = entry.withheld_jobs.saturating_add(1);
+                }
+                SettlementStatus::Reserved => {}
+            }
+        }
+
+        let mut provider_earnings = provider_map.into_values().collect::<Vec<_>>();
+        provider_earnings.sort_by(|left, right| right.earned_msats.cmp(&left.earned_msats));
+
+        let limit = job_limit.clamp(1, 200);
+        jobs.truncate(limit);
+
+        ComputeTreasurySummary {
+            schema: "openagents.treasury.compute_summary.v1".to_string(),
+            owner_key: owner_key.to_string(),
+            account,
+            released_msats_total,
+            released_count,
+            withheld_count,
+            provider_earnings,
+            recent_jobs: jobs,
+        }
+    }
 }
 
 fn reservation_id_from_job_hash(job_hash: &str) -> String {
@@ -225,4 +322,3 @@ fn reservation_id_from_job_hash(job_hash: &str) -> String {
         format!("rsv_{normalized}")
     }
 }
-

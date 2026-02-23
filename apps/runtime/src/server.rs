@@ -28,21 +28,21 @@ use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     bridge::{BridgeNostrPublisher, ProviderAdV1, build_provider_ad_event},
-    marketplace::{
-        ProviderCatalogEntry, ProviderSelection, build_provider_catalog,
-        is_provider_worker, select_provider_for_capability,
-    },
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
+    marketplace::{
+        ProviderCatalogEntry, ProviderSelection, build_provider_catalog, is_provider_worker,
+        select_provider_for_capability,
+    },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
+    treasury::Treasury,
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
         RunProjectionSummary, RuntimeRun, StartRunRequest, WorkerHeartbeatRequest, WorkerOwner,
         WorkerStatus, WorkerStatusTransitionRequest,
     },
     workers::{InMemoryWorkerRegistry, WorkerError, WorkerSnapshot},
-    treasury::Treasury,
 };
 
 #[derive(Clone)]
@@ -54,6 +54,7 @@ pub struct AppState {
     sync_auth: Arc<SyncAuthorizer>,
     khala_delivery: Arc<KhalaDeliveryControl>,
     compute_abuse: Arc<ComputeAbuseControls>,
+    compute_telemetry: Arc<ComputeTelemetry>,
     treasury: Arc<Treasury>,
     fleet_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
@@ -76,6 +77,7 @@ impl AppState {
             sync_auth,
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
+            compute_telemetry: Arc::new(ComputeTelemetry::default()),
             treasury: Arc::new(Treasury::default()),
             fleet_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
@@ -119,6 +121,7 @@ struct ComputeAbuseControls {
 
 const COMPUTE_DISPATCH_WINDOW_SECONDS: i64 = 60;
 const COMPUTE_DISPATCH_MAX_PER_WINDOW: usize = 30;
+const COMPUTE_TELEMETRY_LATENCY_SAMPLES: usize = 256;
 
 impl ComputeAbuseControls {
     async fn enforce_dispatch_rate(&self, owner_key: &str) -> Result<(), ApiError> {
@@ -138,6 +141,114 @@ impl ComputeAbuseControls {
         }
         entries.push_back(now);
         Ok(())
+    }
+}
+
+#[derive(Default)]
+struct ComputeTelemetry {
+    owners: Mutex<HashMap<String, OwnerComputeTelemetry>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct OwnerComputeTelemetry {
+    dispatch_total: u64,
+    dispatch_not_found: u64,
+    dispatch_errors: u64,
+    dispatch_fallbacks: u64,
+    latencies_ms: VecDeque<u64>,
+    updated_at: Option<chrono::DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct OwnerComputeTelemetrySnapshot {
+    dispatch_total: u64,
+    dispatch_not_found: u64,
+    dispatch_errors: u64,
+    dispatch_fallbacks: u64,
+    latency_ms_avg: Option<u64>,
+    latency_ms_p50: Option<u64>,
+    samples: usize,
+    updated_at: Option<chrono::DateTime<Utc>>,
+}
+
+impl ComputeTelemetry {
+    async fn record_dispatch_not_found(&self, owner_key: &str) {
+        self.record(owner_key, |entry| {
+            entry.dispatch_total = entry.dispatch_total.saturating_add(1);
+            entry.dispatch_not_found = entry.dispatch_not_found.saturating_add(1);
+        })
+        .await;
+    }
+
+    async fn record_dispatch_error(&self, owner_key: &str) {
+        self.record(owner_key, |entry| {
+            entry.dispatch_total = entry.dispatch_total.saturating_add(1);
+            entry.dispatch_errors = entry.dispatch_errors.saturating_add(1);
+        })
+        .await;
+    }
+
+    async fn record_dispatch_success(&self, owner_key: &str, latency_ms: u64, fallback: bool) {
+        self.record(owner_key, |entry| {
+            entry.dispatch_total = entry.dispatch_total.saturating_add(1);
+            if fallback {
+                entry.dispatch_fallbacks = entry.dispatch_fallbacks.saturating_add(1);
+            }
+            if entry.latencies_ms.len() >= COMPUTE_TELEMETRY_LATENCY_SAMPLES {
+                entry.latencies_ms.pop_front();
+            }
+            entry.latencies_ms.push_back(latency_ms);
+        })
+        .await;
+    }
+
+    async fn snapshot(&self, owner_key: &str) -> OwnerComputeTelemetrySnapshot {
+        let owners = self.owners.lock().await;
+        let Some(entry) = owners.get(owner_key) else {
+            return OwnerComputeTelemetrySnapshot {
+                dispatch_total: 0,
+                dispatch_not_found: 0,
+                dispatch_errors: 0,
+                dispatch_fallbacks: 0,
+                latency_ms_avg: None,
+                latency_ms_p50: None,
+                samples: 0,
+                updated_at: None,
+            };
+        };
+
+        let samples = entry.latencies_ms.len();
+        let latency_ms_avg = if samples == 0 {
+            None
+        } else {
+            Some(entry.latencies_ms.iter().sum::<u64>() / samples as u64)
+        };
+        let latency_ms_p50 = if samples == 0 {
+            None
+        } else {
+            let mut sorted = entry.latencies_ms.iter().copied().collect::<Vec<_>>();
+            sorted.sort_unstable();
+            Some(sorted[(samples - 1) / 2])
+        };
+
+        OwnerComputeTelemetrySnapshot {
+            dispatch_total: entry.dispatch_total,
+            dispatch_not_found: entry.dispatch_not_found,
+            dispatch_errors: entry.dispatch_errors,
+            dispatch_fallbacks: entry.dispatch_fallbacks,
+            latency_ms_avg,
+            latency_ms_p50,
+            samples,
+            updated_at: entry.updated_at,
+        }
+    }
+
+    async fn record<F: FnOnce(&mut OwnerComputeTelemetry)>(&self, owner_key: &str, f: F) {
+        let now = Utc::now();
+        let mut owners = self.owners.lock().await;
+        let entry = owners.entry(owner_key.to_string()).or_default();
+        f(entry);
+        entry.updated_at = Some(now);
     }
 }
 
@@ -362,6 +473,14 @@ struct ProviderCatalogQuery {
     capability: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ComputeTelemetryQuery {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    #[serde(default)]
+    capability: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct ProviderCatalogResponse {
     providers: Vec<ProviderCatalogEntry>,
@@ -502,7 +621,10 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/projectors/run-summary/:run_id",
             get(get_projector_run_summary),
         )
-        .route("/internal/v1/workers", get(list_workers).post(register_worker))
+        .route(
+            "/internal/v1/workers",
+            get(list_workers).post(register_worker),
+        )
         .route("/internal/v1/workers/:worker_id", get(get_worker))
         .route(
             "/internal/v1/workers/:worker_id/heartbeat",
@@ -525,6 +647,10 @@ pub fn build_router(state: AppState) -> Router {
             get(get_job_types),
         )
         .route(
+            "/internal/v1/marketplace/telemetry/compute",
+            get(get_compute_telemetry),
+        )
+        .route(
             "/internal/v1/marketplace/route/provider",
             post(route_provider),
         )
@@ -535,6 +661,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/verifications/sandbox-run",
             post(verify_sandbox_run),
+        )
+        .route(
+            "/internal/v1/treasury/compute/summary",
+            get(get_compute_treasury_summary),
         )
         .route(
             "/internal/v1/treasury/compute/settle/sandbox-run",
@@ -1296,17 +1426,14 @@ async fn get_provider_catalog(
     State(state): State<AppState>,
     Query(query): Query<ProviderCatalogQuery>,
 ) -> Result<Json<ProviderCatalogResponse>, ApiError> {
-    let guest_scope = query
-        .owner_guest_scope
-        .clone()
-        .and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
+    let guest_scope = query.owner_guest_scope.clone().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
     let owner_filter = match (query.owner_user_id, guest_scope) {
         (None, None) => None,
         (user_id, guest_scope) => Some(owner_from_parts(user_id, guest_scope)?),
@@ -1340,8 +1467,8 @@ async fn route_provider(
 ) -> Result<Json<ProviderSelection>, ApiError> {
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
     let workers = state.workers.list_all_workers().await;
-    let selection =
-        select_provider_for_capability(&workers, Some(&owner), &body.capability).ok_or(ApiError::NotFound)?;
+    let selection = select_provider_for_capability(&workers, Some(&owner), &body.capability)
+        .ok_or(ApiError::NotFound)?;
     Ok(Json(selection))
 }
 
@@ -1361,9 +1488,20 @@ async fn dispatch_sandbox_run(
         .map_err(|error| ApiError::InvalidRequest(format!("invalid sandbox request: {error}")))?;
 
     let workers = state.workers.list_all_workers().await;
-    let selection =
-        select_provider_for_capability(&workers, Some(&owner), PHASE0_REQUIRED_PROVIDER_CAPABILITY)
-            .ok_or(ApiError::NotFound)?;
+    let selection = match select_provider_for_capability(
+        &workers,
+        Some(&owner),
+        PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+    ) {
+        Some(selection) => selection,
+        None => {
+            state
+                .compute_telemetry
+                .record_dispatch_not_found(owner_key.as_str())
+                .await;
+            return Err(ApiError::NotFound);
+        }
+    };
 
     match dispatch_sandbox_request_to_provider(&selection, &workers, &job_hash, &body.request).await
     {
@@ -1382,7 +1520,8 @@ async fn dispatch_sandbox_run(
                     PHASE0_REQUIRED_PROVIDER_CAPABILITY,
                 ) {
                     if reserve.provider.worker_id != selection.provider.worker_id {
-                        let fallback_from_provider_id = Some(selection.provider.provider_id.clone());
+                        let fallback_from_provider_id =
+                            Some(selection.provider.provider_id.clone());
                         let (response, latency_ms) = dispatch_sandbox_request_to_provider(
                             &reserve,
                             &workers,
@@ -1390,6 +1529,10 @@ async fn dispatch_sandbox_run(
                             &body.request,
                         )
                         .await?;
+                        state
+                            .compute_telemetry
+                            .record_dispatch_success(owner_key.as_str(), latency_ms, true)
+                            .await;
                         return Ok(Json(DispatchSandboxRunResponse {
                             job_hash,
                             selection: reserve,
@@ -1401,6 +1544,10 @@ async fn dispatch_sandbox_run(
                 }
             }
 
+            state
+                .compute_telemetry
+                .record_dispatch_success(owner_key.as_str(), latency_ms, false)
+                .await;
             Ok(Json(DispatchSandboxRunResponse {
                 job_hash,
                 selection,
@@ -1417,7 +1564,8 @@ async fn dispatch_sandbox_run(
                     PHASE0_REQUIRED_PROVIDER_CAPABILITY,
                 ) {
                     if reserve.provider.worker_id != selection.provider.worker_id {
-                        let fallback_from_provider_id = Some(selection.provider.provider_id.clone());
+                        let fallback_from_provider_id =
+                            Some(selection.provider.provider_id.clone());
                         let (response, latency_ms) = dispatch_sandbox_request_to_provider(
                             &reserve,
                             &workers,
@@ -1425,6 +1573,10 @@ async fn dispatch_sandbox_run(
                             &body.request,
                         )
                         .await?;
+                        state
+                            .compute_telemetry
+                            .record_dispatch_success(owner_key.as_str(), latency_ms, true)
+                            .await;
                         return Ok(Json(DispatchSandboxRunResponse {
                             job_hash,
                             selection: reserve,
@@ -1435,6 +1587,10 @@ async fn dispatch_sandbox_run(
                     }
                 }
             }
+            state
+                .compute_telemetry
+                .record_dispatch_error(owner_key.as_str())
+                .await;
             Err(error)
         }
     }
@@ -1443,6 +1599,79 @@ async fn dispatch_sandbox_run(
 async fn get_job_types() -> Json<JobTypesResponse> {
     let job_types = protocol::jobs::registered_job_types();
     Json(JobTypesResponse { job_types })
+}
+
+#[derive(Debug, Serialize)]
+struct ComputeTelemetryResponse {
+    schema: String,
+    owner_key: String,
+    capability: String,
+    provider_total: usize,
+    provider_eligible_owned: usize,
+    provider_eligible_reserve: usize,
+    provider_eligible_total: usize,
+    dispatch: OwnerComputeTelemetrySnapshot,
+}
+
+async fn get_compute_telemetry(
+    State(state): State<AppState>,
+    Query(query): Query<ComputeTelemetryQuery>,
+) -> Result<Json<ComputeTelemetryResponse>, ApiError> {
+    let owner = owner_from_parts(query.owner_user_id, query.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    let capability = query
+        .capability
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(PHASE0_REQUIRED_PROVIDER_CAPABILITY)
+        .to_string();
+
+    let workers = state.workers.list_all_workers().await;
+    let providers = build_provider_catalog(&workers);
+    let provider_total = providers.len();
+
+    let mut eligible_owned = 0usize;
+    let mut eligible_reserve = 0usize;
+    for provider in &providers {
+        if !provider_is_eligible_for_capability(provider, capability.as_str()) {
+            continue;
+        }
+        if owners_match(&provider.owner, &owner) {
+            eligible_owned += 1;
+            continue;
+        }
+        if provider.reserve_pool {
+            eligible_reserve += 1;
+        }
+    }
+    let provider_eligible_total = eligible_owned.saturating_add(eligible_reserve);
+
+    let dispatch = state.compute_telemetry.snapshot(owner_key.as_str()).await;
+
+    Ok(Json(ComputeTelemetryResponse {
+        schema: "openagents.marketplace.compute_telemetry.v1".to_string(),
+        owner_key,
+        capability,
+        provider_total,
+        provider_eligible_owned: eligible_owned,
+        provider_eligible_reserve: eligible_reserve,
+        provider_eligible_total,
+        dispatch,
+    }))
+}
+
+async fn get_compute_treasury_summary(
+    State(state): State<AppState>,
+    Query(query): Query<OwnerQuery>,
+) -> Result<Json<crate::treasury::ComputeTreasurySummary>, ApiError> {
+    let owner = owner_from_parts(query.owner_user_id, query.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    let summary = state
+        .treasury
+        .summarize_compute_owner(owner_key.as_str(), 50)
+        .await;
+    Ok(Json(summary))
 }
 
 async fn verify_sandbox_run(
@@ -1528,7 +1757,8 @@ async fn settle_sandbox_run(
     let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
     let violations = outcome.violations.clone();
     if !violations.is_empty() {
-        apply_provider_violation_strike(&state, body.provider_worker_id.trim(), &violations).await?;
+        apply_provider_violation_strike(&state, body.provider_worker_id.trim(), &violations)
+            .await?;
     }
 
     // Record verification receipt evidence (idempotent).
@@ -2087,6 +2317,39 @@ fn owner_rate_key(owner: &WorkerOwner) -> String {
         .unwrap_or_else(|| "guest:unknown".to_string())
 }
 
+fn owners_match(left: &WorkerOwner, right: &WorkerOwner) -> bool {
+    match (left.user_id, right.user_id) {
+        (Some(left_id), Some(right_id)) => left_id == right_id,
+        (None, None) => {
+            left.guest_scope.as_deref().map(str::trim)
+                == right.guest_scope.as_deref().map(str::trim)
+        }
+        _ => false,
+    }
+}
+
+fn provider_is_eligible_for_capability(provider: &ProviderCatalogEntry, capability: &str) -> bool {
+    if provider
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
+        return false;
+    }
+    if provider.quarantined {
+        return false;
+    }
+    if provider.status != WorkerStatus::Running {
+        return false;
+    }
+    if provider.heartbeat_state != "fresh" {
+        return false;
+    }
+    provider.capabilities.iter().any(|cap| cap == capability)
+}
+
 fn validate_sandbox_request_phase0(request: &protocol::SandboxRunRequest) -> Result<(), ApiError> {
     if request.commands.is_empty() {
         return Err(ApiError::InvalidRequest(
@@ -2145,9 +2408,7 @@ async fn dispatch_sandbox_request_to_provider(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            ApiError::InvalidRequest("routed provider missing base_url".to_string())
-        })?;
+        .ok_or_else(|| ApiError::InvalidRequest("routed provider missing base_url".to_string()))?;
     let provider_snapshot = workers
         .iter()
         .find(|snapshot| snapshot.worker.worker_id == selection.provider.worker_id)
@@ -2183,8 +2444,7 @@ async fn dispatch_sandbox_request_to_provider(
         let text = resp.text().await.unwrap_or_default();
         return Err(ApiError::InvalidRequest(format!(
             "provider dispatch returned {}: {}",
-            status,
-            text
+            status, text
         )));
     }
     let parsed = resp
@@ -2210,7 +2470,9 @@ async fn apply_provider_violation_strike(
         .await
         .into_iter()
         .find(|snapshot| snapshot.worker.worker_id == worker_id)
-        .ok_or_else(|| ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}")))?;
+        .ok_or_else(|| {
+            ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}"))
+        })?;
 
     let current_strikes = snapshot
         .worker
@@ -2309,10 +2571,16 @@ async fn publish_worker_snapshot(
     let provider_base_url = meta
         .get("provider_base_url")
         .and_then(serde_json::Value::as_str);
-    let min_price_msats = meta.get("min_price_msats").and_then(serde_json::Value::as_u64);
-    let reserve_pool = meta.get("reserve_pool").and_then(serde_json::Value::as_bool);
+    let min_price_msats = meta
+        .get("min_price_msats")
+        .and_then(serde_json::Value::as_u64);
+    let reserve_pool = meta
+        .get("reserve_pool")
+        .and_then(serde_json::Value::as_bool);
     let qualified = meta.get("qualified").and_then(serde_json::Value::as_bool);
-    let failure_strikes = meta.get("failure_strikes").and_then(serde_json::Value::as_u64);
+    let failure_strikes = meta
+        .get("failure_strikes")
+        .and_then(serde_json::Value::as_u64);
     let quarantined = meta.get("quarantined").and_then(serde_json::Value::as_bool);
     let quarantine_reason = meta
         .get("quarantine_reason")
@@ -2356,7 +2624,10 @@ async fn publish_worker_snapshot(
 
     if let Some(user_id) = snapshot.worker.owner.user_id {
         let fleet_topic = format!("fleet:user:{user_id}:workers");
-        let fleet_seq = state.fleet_seq.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        let fleet_seq = state
+            .fleet_seq
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
         state
             .fanout
             .publish(
@@ -2799,8 +3070,7 @@ mod tests {
         Ok((addr, shutdown_tx))
     }
 
-    async fn spawn_provider_stub(
-    ) -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
+    async fn spawn_provider_stub() -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
         let app = axum::Router::new().route(
             "/healthz",
             axum::routing::get(|| async { (axum::http::StatusCode::OK, "ok") }),
@@ -2809,8 +3079,7 @@ mod tests {
         Ok((format!("http://{addr}"), shutdown))
     }
 
-    async fn spawn_compute_provider_stub(
-    ) -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
+    async fn spawn_compute_provider_stub() -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
         async fn sandbox_run(
             axum::Json(request): axum::Json<protocol::SandboxRunRequest>,
         ) -> axum::Json<protocol::SandboxRunResponse> {
@@ -4974,13 +5243,13 @@ mod tests {
         assert_eq!(ok_response.status(), axum::http::StatusCode::OK);
         let ok_json = response_json(ok_response).await?;
         assert_eq!(
-            ok_json.pointer("/selection/provider/provider_id").and_then(Value::as_str),
+            ok_json
+                .pointer("/selection/provider/provider_id")
+                .and_then(Value::as_str),
             Some("provider-dispatch-1")
         );
         assert_eq!(
-            ok_json
-                .pointer("/response/status")
-                .and_then(Value::as_str),
+            ok_json.pointer("/response/status").and_then(Value::as_str),
             Some("success")
         );
 
@@ -5112,11 +5381,15 @@ mod tests {
         assert_eq!(settle.status(), axum::http::StatusCode::OK);
         let settle_json = response_json(settle).await?;
         assert_eq!(
-            settle_json.pointer("/settlement_status").and_then(Value::as_str),
+            settle_json
+                .pointer("/settlement_status")
+                .and_then(Value::as_str),
             Some("released")
         );
         assert_eq!(
-            settle_json.pointer("/verification_passed").and_then(Value::as_bool),
+            settle_json
+                .pointer("/verification_passed")
+                .and_then(Value::as_bool),
             Some(true)
         );
 
@@ -5281,9 +5554,7 @@ mod tests {
             .ok_or_else(|| anyhow!("missing providers array"))?;
         assert_eq!(providers.len(), 1);
         assert_eq!(
-            providers[0]
-                .get("quarantined")
-                .and_then(Value::as_bool),
+            providers[0].get("quarantined").and_then(Value::as_bool),
             Some(true)
         );
 
@@ -5446,9 +5717,7 @@ mod tests {
         let sandbox = job_types
             .iter()
             .find(|value| {
-                value
-                    .get("job_type")
-                    .and_then(serde_json::Value::as_str)
+                value.get("job_type").and_then(serde_json::Value::as_str)
                     == Some(<protocol::SandboxRunRequest as protocol::JobRequest>::JOB_TYPE)
             })
             .ok_or_else(|| anyhow!("missing sandbox job type info"))?;
@@ -5511,14 +5780,8 @@ mod tests {
             .await?;
         assert_eq!(ok_response.status(), axum::http::StatusCode::OK);
         let ok_json = response_json(ok_response).await?;
-        assert_eq!(
-            ok_json.get("passed").and_then(Value::as_bool),
-            Some(true)
-        );
-        assert_eq!(
-            ok_json.get("exit_code").and_then(Value::as_i64),
-            Some(0)
-        );
+        assert_eq!(ok_json.get("passed").and_then(Value::as_bool), Some(true));
+        assert_eq!(ok_json.get("exit_code").and_then(Value::as_i64), Some(0));
 
         let mut failing_response = response;
         failing_response.runs[0].exit_code = 2;
@@ -5542,10 +5805,7 @@ mod tests {
             fail_json.get("passed").and_then(Value::as_bool),
             Some(false)
         );
-        assert_eq!(
-            fail_json.get("exit_code").and_then(Value::as_i64),
-            Some(2)
-        );
+        assert_eq!(fail_json.get("exit_code").and_then(Value::as_i64), Some(2));
         Ok(())
     }
 

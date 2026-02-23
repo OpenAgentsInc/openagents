@@ -111,10 +111,12 @@ use crate::web_htmx::{
     set_push_url_header as htmx_set_push_url_header, set_trigger_header as htmx_set_trigger_header,
 };
 use crate::web_maud::{
-    ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, IntegrationStatusView,
-    L402DeploymentView, L402PaywallView, L402TransactionView, L402WalletSummaryView, SessionView,
-    WebBody, WebPage,
+    ChatMessageView, ChatThreadView, ComputeDeviceView, ComputeMetricsView, ComputeProviderView,
+    FeedItemView, FeedZoneView, IntegrationStatusView, L402DeploymentView, L402PaywallView,
+    L402TransactionView, L402WalletSummaryView, SessionView, WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
+    render_compute_fleet_fragment as render_maud_compute_fleet_fragment,
+    render_compute_metrics_fragment as render_maud_compute_metrics_fragment,
     render_feed_items_append_fragment as render_maud_feed_items_append_fragment,
     render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
     render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
@@ -1444,6 +1446,14 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
 
     Router::new()
         .route("/", get(web_shell_entry))
+        .route("/compute", get(compute_page))
+        .route("/compute/fragments/main", get(compute_main_fragment))
+        .route("/compute/fragments/metrics", get(compute_metrics_fragment))
+        .route("/compute/fragments/fleet", get(compute_fleet_fragment))
+        .route(
+            "/compute/providers/:worker_id/disable",
+            post(web_compute_provider_disable),
+        )
         .route("/feed", get(feed_page))
         .route("/feed/fragments/main", get(feed_main_fragment))
         .route("/feed/fragments/items", get(feed_items_fragment))
@@ -8819,6 +8829,604 @@ async fn shouts_index(
             }
         })),
     ))
+}
+
+const COMPUTE_DEFAULT_CAPABILITY: &str = "oa.sandbox_run.v1";
+const COMPUTE_DASHBOARD_TIMEOUT_MS: u64 = 1_500;
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeWorkersListResponse {
+    workers: Vec<ComputeRuntimeWorkerSnapshot>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeWorkerSnapshot {
+    worker: ComputeRuntimeWorkerRecord,
+    liveness: ComputeRuntimeWorkerLivenessRecord,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeWorkerRecord {
+    worker_id: String,
+    status: String,
+    #[serde(default)]
+    metadata: serde_json::Value,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeWorkerLivenessRecord {
+    heartbeat_state: String,
+    heartbeat_age_ms: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeProviderCatalogResponse {
+    providers: Vec<ComputeRuntimeProviderCatalogEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeProviderCatalogEntry {
+    provider_id: String,
+    worker_id: String,
+    supply_class: String,
+    #[serde(default)]
+    reserve_pool: bool,
+    status: String,
+    heartbeat_state: String,
+    heartbeat_age_ms: Option<i64>,
+    min_price_msats: Option<u64>,
+    #[serde(default)]
+    quarantined: bool,
+    #[serde(default)]
+    capabilities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeTelemetryResponse {
+    provider_eligible_owned: usize,
+    provider_eligible_reserve: usize,
+    provider_eligible_total: usize,
+    dispatch: ComputeRuntimeOwnerTelemetrySnapshot,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeOwnerTelemetrySnapshot {
+    dispatch_total: u64,
+    dispatch_not_found: u64,
+    dispatch_errors: u64,
+    dispatch_fallbacks: u64,
+    latency_ms_avg: Option<u64>,
+    latency_ms_p50: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeTreasurySummary {
+    account: ComputeRuntimeBudgetAccount,
+    released_msats_total: u64,
+    released_count: u64,
+    withheld_count: u64,
+    #[serde(default)]
+    provider_earnings: Vec<ComputeRuntimeProviderEarningsEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeBudgetAccount {
+    limit_msats: u64,
+    reserved_msats: u64,
+    spent_msats: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeRuntimeProviderEarningsEntry {
+    provider_id: String,
+    earned_msats: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ComputeRuntimeWorkerStatusTransitionRequest {
+    owner_user_id: u64,
+    status: String,
+    reason: String,
+}
+
+async fn compute_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return Ok(htmx_redirect_response("/login"));
+            }
+            return Ok(Redirect::temporary("/login").into_response());
+        }
+    };
+
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let status = query_param_value(uri.query(), "status");
+    let mut effective_status = status;
+
+    let (metrics, providers, devices) =
+        match fetch_compute_dashboard_views(&state, owner_user_id).await {
+            Ok(views) => views,
+            Err(error) => {
+                tracing::warn!(owner_user_id, error = %error, "compute dashboard fetch failed");
+                effective_status = Some("compute-runtime-unavailable".to_string());
+                (empty_compute_metrics_view(), Vec::new(), Vec::new())
+            }
+        };
+
+    let page = WebPage {
+        title: "Compute".to_string(),
+        path: "/compute".to_string(),
+        session: Some(session_view_from_bundle(&bundle)),
+        body: WebBody::Compute {
+            status: effective_status,
+            metrics,
+            providers,
+            devices,
+        },
+    };
+
+    Ok(web_response_for_page(&state, &headers, &uri, page).await)
+}
+
+async fn compute_main_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    let htmx_mode = state.route_split.htmx_mode_for_path("/compute").await;
+    if !htmx.is_hx_request || htmx_mode.mode == HtmxModeTarget::FullPage {
+        let suffix = uri
+            .query()
+            .map(|query| format!("?{query}"))
+            .unwrap_or_default();
+        return Ok(Redirect::temporary(&format!("/compute{suffix}")).into_response());
+    }
+
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => return Ok(htmx_redirect_response("/login")),
+    };
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let status = query_param_value(uri.query(), "status");
+    let mut effective_status = status;
+
+    let (metrics, providers, devices) =
+        match fetch_compute_dashboard_views(&state, owner_user_id).await {
+            Ok(views) => views,
+            Err(error) => {
+                tracing::warn!(owner_user_id, error = %error, "compute dashboard fetch failed");
+                effective_status = Some("compute-runtime-unavailable".to_string());
+                (empty_compute_metrics_view(), Vec::new(), Vec::new())
+            }
+        };
+
+    let page = WebPage {
+        title: "Compute".to_string(),
+        path: "/compute".to_string(),
+        session: Some(session_view_from_bundle(&bundle)),
+        body: WebBody::Compute {
+            status: effective_status,
+            metrics,
+            providers,
+            devices,
+        },
+    };
+
+    Ok(web_fragment_response(&page))
+}
+
+async fn compute_metrics_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    if !htmx.is_hx_request {
+        return Ok(Redirect::temporary("/compute").into_response());
+    }
+
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => return Ok(htmx_redirect_response("/login")),
+    };
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let metrics = fetch_compute_metrics_view(&state, owner_user_id)
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                message,
+            )
+        })?;
+    Ok(compute_metrics_fragment_response(&metrics))
+}
+
+async fn compute_fleet_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    if !htmx.is_hx_request {
+        return Ok(Redirect::temporary("/compute").into_response());
+    }
+
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => return Ok(htmx_redirect_response("/login")),
+    };
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let (providers, devices) = fetch_compute_fleet_views(&state, owner_user_id)
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                message,
+            )
+        })?;
+    Ok(compute_fleet_fragment_response(&providers, &devices))
+}
+
+async fn web_compute_provider_disable(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(worker_id): Path<String>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return Ok(htmx_redirect_response("/login"));
+            }
+            return Ok(Redirect::temporary("/login").into_response());
+        }
+    };
+
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Ok(htmx_notice_response(
+            "compute-status",
+            "compute-runtime-unavailable",
+            true,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ));
+    };
+
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let url = format!(
+        "{}/internal/v1/workers/{}/status",
+        base_url.trim_end_matches('/'),
+        worker_id.trim()
+    );
+    let request = ComputeRuntimeWorkerStatusTransitionRequest {
+        owner_user_id,
+        status: "stopped".to_string(),
+        reason: "disabled_from_web".to_string(),
+    };
+
+    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
+    let response = reqwest::Client::new()
+        .post(url.as_str())
+        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
+        .timeout(timeout)
+        .json(&request)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) if resp.status().is_success() => Ok(htmx_notice_response(
+            "compute-status",
+            "compute-provider-disabled",
+            false,
+            StatusCode::OK,
+        )),
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            tracing::warn!(owner_user_id, %status, body = %body, "runtime disable provider rejected");
+            Ok(htmx_notice_response(
+                "compute-status",
+                "compute-action-failed",
+                true,
+                StatusCode::BAD_GATEWAY,
+            ))
+        }
+        Err(error) => {
+            tracing::warn!(owner_user_id, error = %error, "runtime disable provider request failed");
+            Ok(htmx_notice_response(
+                "compute-status",
+                "compute-action-failed",
+                true,
+                StatusCode::BAD_GATEWAY,
+            ))
+        }
+    }
+}
+
+fn compute_metrics_fragment_response(metrics: &ComputeMetricsView) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_compute_metrics_fragment(metrics),
+        StatusCode::OK,
+    );
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn compute_fleet_fragment_response(
+    providers: &[ComputeProviderView],
+    devices: &[ComputeDeviceView],
+) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_compute_fleet_fragment(providers, devices),
+        StatusCode::OK,
+    );
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn runtime_dashboard_base_url(state: &AppState) -> Option<String> {
+    state
+        .config
+        .runtime_elixir_base_url
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+}
+
+fn empty_compute_metrics_view() -> ComputeMetricsView {
+    ComputeMetricsView {
+        provider_eligible_total: 0,
+        provider_eligible_owned: 0,
+        provider_eligible_reserve: 0,
+        dispatch_total: 0,
+        dispatch_not_found: 0,
+        dispatch_errors: 0,
+        dispatch_fallbacks: 0,
+        latency_ms_avg: None,
+        latency_ms_p50: None,
+        budget_limit_msats: 0,
+        budget_reserved_msats: 0,
+        budget_spent_msats: 0,
+        budget_remaining_msats: 0,
+        released_msats_total: 0,
+        released_count: 0,
+        withheld_count: 0,
+    }
+}
+
+async fn fetch_compute_dashboard_views(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<
+    (
+        ComputeMetricsView,
+        Vec<ComputeProviderView>,
+        Vec<ComputeDeviceView>,
+    ),
+    String,
+> {
+    let (telemetry, treasury, providers, workers) = tokio::try_join!(
+        fetch_runtime_compute_telemetry(state, owner_user_id),
+        fetch_runtime_compute_treasury(state, owner_user_id),
+        fetch_runtime_provider_catalog(state, owner_user_id),
+        fetch_runtime_workers(state, owner_user_id),
+    )?;
+
+    let metrics = build_compute_metrics_view(&telemetry, &treasury);
+    let provider_views = build_compute_provider_views(&providers, &treasury);
+    let device_views = build_compute_device_views(&workers);
+    Ok((metrics, provider_views, device_views))
+}
+
+async fn fetch_compute_metrics_view(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<ComputeMetricsView, String> {
+    let (telemetry, treasury) = tokio::try_join!(
+        fetch_runtime_compute_telemetry(state, owner_user_id),
+        fetch_runtime_compute_treasury(state, owner_user_id),
+    )?;
+    Ok(build_compute_metrics_view(&telemetry, &treasury))
+}
+
+async fn fetch_compute_fleet_views(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<(Vec<ComputeProviderView>, Vec<ComputeDeviceView>), String> {
+    let (treasury, providers, workers) = tokio::try_join!(
+        fetch_runtime_compute_treasury(state, owner_user_id),
+        fetch_runtime_provider_catalog(state, owner_user_id),
+        fetch_runtime_workers(state, owner_user_id),
+    )?;
+    Ok((
+        build_compute_provider_views(&providers, &treasury),
+        build_compute_device_views(&workers),
+    ))
+}
+
+fn build_compute_metrics_view(
+    telemetry: &ComputeRuntimeTelemetryResponse,
+    treasury: &ComputeRuntimeTreasurySummary,
+) -> ComputeMetricsView {
+    let remaining = treasury
+        .account
+        .limit_msats
+        .saturating_sub(treasury.account.spent_msats)
+        .saturating_sub(treasury.account.reserved_msats);
+
+    ComputeMetricsView {
+        provider_eligible_total: telemetry.provider_eligible_total,
+        provider_eligible_owned: telemetry.provider_eligible_owned,
+        provider_eligible_reserve: telemetry.provider_eligible_reserve,
+        dispatch_total: telemetry.dispatch.dispatch_total,
+        dispatch_not_found: telemetry.dispatch.dispatch_not_found,
+        dispatch_errors: telemetry.dispatch.dispatch_errors,
+        dispatch_fallbacks: telemetry.dispatch.dispatch_fallbacks,
+        latency_ms_avg: telemetry.dispatch.latency_ms_avg,
+        latency_ms_p50: telemetry.dispatch.latency_ms_p50,
+        budget_limit_msats: treasury.account.limit_msats,
+        budget_reserved_msats: treasury.account.reserved_msats,
+        budget_spent_msats: treasury.account.spent_msats,
+        budget_remaining_msats: remaining,
+        released_msats_total: treasury.released_msats_total,
+        released_count: treasury.released_count,
+        withheld_count: treasury.withheld_count,
+    }
+}
+
+fn build_compute_provider_views(
+    providers: &[ComputeRuntimeProviderCatalogEntry],
+    treasury: &ComputeRuntimeTreasurySummary,
+) -> Vec<ComputeProviderView> {
+    let mut earnings = HashMap::new();
+    for entry in &treasury.provider_earnings {
+        earnings.insert(entry.provider_id.as_str(), entry.earned_msats);
+    }
+
+    let mut out = Vec::with_capacity(providers.len());
+    for provider in providers {
+        out.push(ComputeProviderView {
+            provider_id: provider.provider_id.clone(),
+            worker_id: provider.worker_id.clone(),
+            supply_class: provider.supply_class.clone(),
+            reserve_pool: provider.reserve_pool,
+            status: provider.status.clone(),
+            heartbeat_state: provider.heartbeat_state.clone(),
+            heartbeat_age_ms: provider.heartbeat_age_ms,
+            min_price_msats: provider.min_price_msats,
+            earned_msats: earnings
+                .get(provider.provider_id.as_str())
+                .copied()
+                .unwrap_or(0),
+            quarantined: provider.quarantined,
+            capabilities: provider.capabilities.clone(),
+        });
+    }
+    out
+}
+
+fn build_compute_device_views(workers: &[ComputeRuntimeWorkerSnapshot]) -> Vec<ComputeDeviceView> {
+    let mut out = Vec::with_capacity(workers.len());
+    for worker in workers {
+        let roles = json_string_array(worker.worker.metadata.get("roles"));
+        out.push(ComputeDeviceView {
+            worker_id: worker.worker.worker_id.clone(),
+            status: worker.worker.status.clone(),
+            heartbeat_state: worker.liveness.heartbeat_state.clone(),
+            heartbeat_age_ms: worker.liveness.heartbeat_age_ms,
+            roles,
+            updated_at: timestamp(worker.worker.updated_at),
+        });
+    }
+    out
+}
+
+fn json_string_array(value: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    match value.as_array() {
+        Some(values) => values
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(|value| value.to_string())
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+async fn fetch_runtime_workers(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<Vec<ComputeRuntimeWorkerSnapshot>, String> {
+    let Some(base_url) = runtime_dashboard_base_url(state) else {
+        return Err("runtime misconfigured".to_string());
+    };
+    let url = format!(
+        "{}/internal/v1/workers?owner_user_id={owner_user_id}",
+        base_url.trim_end_matches('/')
+    );
+    let response: ComputeRuntimeWorkersListResponse = runtime_get_json(url.as_str()).await?;
+    Ok(response.workers)
+}
+
+async fn fetch_runtime_provider_catalog(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<Vec<ComputeRuntimeProviderCatalogEntry>, String> {
+    let Some(base_url) = runtime_dashboard_base_url(state) else {
+        return Err("runtime misconfigured".to_string());
+    };
+    let url = format!(
+        "{}/internal/v1/marketplace/catalog/providers?owner_user_id={owner_user_id}",
+        base_url.trim_end_matches('/')
+    );
+    let response: ComputeRuntimeProviderCatalogResponse = runtime_get_json(url.as_str()).await?;
+    Ok(response.providers)
+}
+
+async fn fetch_runtime_compute_telemetry(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<ComputeRuntimeTelemetryResponse, String> {
+    let Some(base_url) = runtime_dashboard_base_url(state) else {
+        return Err("runtime misconfigured".to_string());
+    };
+    let url = format!(
+        "{}/internal/v1/marketplace/telemetry/compute?owner_user_id={owner_user_id}&capability={}",
+        base_url.trim_end_matches('/'),
+        COMPUTE_DEFAULT_CAPABILITY
+    );
+    runtime_get_json(url.as_str()).await
+}
+
+async fn fetch_runtime_compute_treasury(
+    state: &AppState,
+    owner_user_id: u64,
+) -> Result<ComputeRuntimeTreasurySummary, String> {
+    let Some(base_url) = runtime_dashboard_base_url(state) else {
+        return Err("runtime misconfigured".to_string());
+    };
+    let url = format!(
+        "{}/internal/v1/treasury/compute/summary?owner_user_id={owner_user_id}",
+        base_url.trim_end_matches('/')
+    );
+    runtime_get_json(url.as_str()).await
+}
+
+async fn runtime_get_json<T>(url: &str) -> Result<T, String>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
+    let response = reqwest::Client::new()
+        .get(url)
+        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
+        .timeout(timeout)
+        .send()
+        .await
+        .map_err(|error| format!("runtime_request_failed:{error}"))?;
+
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("runtime_read_failed:{error}"))?;
+    if !status.is_success() {
+        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
+            .unwrap_or_else(|| "<empty>".to_string());
+        return Err(format!("runtime_http_{status}:{body}"));
+    }
+
+    serde_json::from_slice::<T>(&bytes)
+        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
 }
 
 async fn feed_page(

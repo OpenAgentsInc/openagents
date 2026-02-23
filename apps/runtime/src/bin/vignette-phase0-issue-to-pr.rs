@@ -1283,7 +1283,9 @@ async fn run_provider_offline_mid_run(
         ));
     }
     if dispatch.fallback_from_provider_id.as_deref() != Some(provider_a.state.id.as_str()) {
-        return Err(anyhow!("expected fallback_from_provider_id to be provider A"));
+        return Err(anyhow!(
+            "expected fallback_from_provider_id to be provider A"
+        ));
     }
 
     append_receipt_event(
@@ -1586,10 +1588,7 @@ async fn settle_sandbox_with_runtime(
     response: &SandboxRunResponse,
 ) -> Result<SandboxSettleResponse> {
     let url = format!("{runtime_base}/internal/v1/treasury/compute/settle/sandbox-run");
-    let amount_msats = selection
-        .provider
-        .min_price_msats
-        .unwrap_or(1_000);
+    let amount_msats = selection.provider.min_price_msats.unwrap_or(1_000);
     let resp = client
         .post(url)
         .json(&json!({

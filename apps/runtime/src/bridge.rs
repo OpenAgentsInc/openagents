@@ -104,7 +104,10 @@ pub fn build_provider_ad_event(
             .with_currency("msats"),
     )
     // NIP-89 handler info is parameterized replaceable (kind 31990); `d` identifies the handler.
-    .add_custom_tag("d", format!("openagents:compute_provider:{}", payload.provider_id))
+    .add_custom_tag(
+        "d",
+        format!("openagents:compute_provider:{}", payload.provider_id),
+    )
     .add_custom_tag("oa_schema", "openagents.bridge.provider_ad.v1")
     .add_custom_tag("oa_provider_id", payload.provider_id.clone());
 
@@ -161,12 +164,24 @@ pub fn build_receipt_pointer_event(
     let content = serde_json::to_string(payload)
         .map_err(|err| BridgeError::Serialization(err.to_string()))?;
     let mut app = AppData::new(identifier, content);
-    app.add_tag(vec!["oa_schema".to_string(), "openagents.bridge.receipt_ptr.v1".to_string()]);
-    app.add_tag(vec!["oa_provider_id".to_string(), payload.provider_id.clone()]);
+    app.add_tag(vec![
+        "oa_schema".to_string(),
+        "openagents.bridge.receipt_ptr.v1".to_string(),
+    ]);
+    app.add_tag(vec![
+        "oa_provider_id".to_string(),
+        payload.provider_id.clone(),
+    ]);
     app.add_tag(vec!["oa_run_id".to_string(), payload.run_id.clone()]);
     app.add_tag(vec!["oa_job_hash".to_string(), payload.job_hash.clone()]);
-    app.add_tag(vec!["oa_settlement".to_string(), payload.settlement_status.clone()]);
-    app.add_tag(vec!["oa_receipt_sha256".to_string(), payload.receipt_sha256.clone()]);
+    app.add_tag(vec![
+        "oa_settlement".to_string(),
+        payload.settlement_status.clone(),
+    ]);
+    app.add_tag(vec![
+        "oa_receipt_sha256".to_string(),
+        payload.receipt_sha256.clone(),
+    ]);
 
     let template = EventTemplate {
         created_at: created_at.unwrap_or_else(now_unix_seconds),
@@ -262,15 +277,19 @@ mod tests {
 
         assert!(matches!(kind, BridgeEventKind::ProviderAd));
         assert_eq!(event.kind, KIND_HANDLER_INFO);
-        assert!(event
-            .tags
-            .iter()
-            .any(|t| t.len() >= 2 && t[0] == "handler" && t[1] == "compute_provider"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "handler" && t[1] == "compute_provider")
+        );
         assert!(event.tags.iter().any(|t| t.len() >= 2 && t[0] == "d"));
-        assert!(event
-            .tags
-            .iter()
-            .any(|t| t.len() >= 2 && t[0] == "capability" && t[1] == "oa.sandbox_run.v1"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "capability" && t[1] == "oa.sandbox_run.v1")
+        );
     }
 
     #[test]
@@ -298,13 +317,16 @@ mod tests {
 
         assert!(matches!(kind, BridgeEventKind::ReceiptPointer));
         assert_eq!(u64::from(event.kind), KIND_APP_DATA);
-        assert!(event
-            .tags
-            .iter()
-            .any(|t| t.len() >= 2 && t[0] == "d" && t[1].starts_with("openagents:receipt_ptr:")));
-        assert!(event
-            .tags
-            .iter()
-            .any(|t| t.len() >= 2 && t[0] == "oa_receipt_sha256" && t[1] == receipt_sha256));
+        assert!(
+            event.tags.iter().any(|t| t.len() >= 2
+                && t[0] == "d"
+                && t[1].starts_with("openagents:receipt_ptr:"))
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_receipt_sha256" && t[1] == receipt_sha256)
+        );
     }
 }

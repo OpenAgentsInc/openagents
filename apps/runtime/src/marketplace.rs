@@ -63,7 +63,8 @@ impl ProviderCatalogEntry {
             return None;
         }
 
-        let provider_id = metadata_string(meta, "provider_id").unwrap_or_else(|| worker.worker_id.clone());
+        let provider_id =
+            metadata_string(meta, "provider_id").unwrap_or_else(|| worker.worker_id.clone());
         let base_url = metadata_string(meta, "provider_base_url");
         let capabilities = metadata_string_array(meta, "capabilities");
         let min_price_msats = metadata_u64(meta, "min_price_msats");
@@ -217,10 +218,13 @@ pub fn select_provider_for_capability(
         .filter(|provider| provider.supply_class == SupplyClass::ReservePool)
         .collect::<Vec<_>>();
     reserve_pool.sort_by(|a, b| provider_rank_key(a).cmp(&provider_rank_key(b)));
-    reserve_pool.into_iter().next().map(|provider| ProviderSelection {
-        provider,
-        tier: ProviderSelectionTier::ReservePool,
-    })
+    reserve_pool
+        .into_iter()
+        .next()
+        .map(|provider| ProviderSelection {
+            provider,
+            tier: ProviderSelectionTier::ReservePool,
+        })
 }
 
 fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, String) {
@@ -233,14 +237,22 @@ fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, String) {
 fn owners_match(left: &WorkerOwner, right: &WorkerOwner) -> bool {
     match (left.user_id, right.user_id) {
         (Some(left_id), Some(right_id)) => left_id == right_id,
-        (None, None) => left.guest_scope.as_deref().map(str::trim)
-            == right.guest_scope.as_deref().map(str::trim),
+        (None, None) => {
+            left.guest_scope.as_deref().map(str::trim)
+                == right.guest_scope.as_deref().map(str::trim)
+        }
         _ => false,
     }
 }
 
 fn is_provider_available(provider: &ProviderCatalogEntry, capability: &str) -> bool {
-    if provider.base_url.as_deref().map(str::trim).unwrap_or("").is_empty() {
+    if provider
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
         return false;
     }
 
@@ -256,8 +268,5 @@ fn is_provider_available(provider: &ProviderCatalogEntry, capability: &str) -> b
         return false;
     }
 
-    provider
-        .capabilities
-        .iter()
-        .any(|cap| cap == capability)
+    provider.capabilities.iter().any(|cap| cap == capability)
 }

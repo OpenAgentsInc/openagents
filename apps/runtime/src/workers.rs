@@ -265,7 +265,10 @@ impl InMemoryWorkerRegistry {
         ))
     }
 
-    pub async fn list_workers(&self, owner: &WorkerOwner) -> Result<Vec<WorkerSnapshot>, WorkerError> {
+    pub async fn list_workers(
+        &self,
+        owner: &WorkerOwner,
+    ) -> Result<Vec<WorkerSnapshot>, WorkerError> {
         if !owner.is_valid() {
             return Err(WorkerError::InvalidOwner);
         }

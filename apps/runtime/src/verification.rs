@@ -8,11 +8,15 @@ pub struct SandboxRunVerification {
     pub violations: Vec<String>,
 }
 
-pub fn verify_sandbox_run(request: &SandboxRunRequest, response: &SandboxRunResponse) -> SandboxRunVerification {
+pub fn verify_sandbox_run(
+    request: &SandboxRunRequest,
+    response: &SandboxRunResponse,
+) -> SandboxRunVerification {
     let mut violations = Vec::new();
 
     let requested_image = request.sandbox.image_digest.trim();
-    if !requested_image.is_empty() && request.sandbox.image_digest != response.env_info.image_digest {
+    if !requested_image.is_empty() && request.sandbox.image_digest != response.env_info.image_digest
+    {
         violations.push(format!(
             "image_digest mismatch: request={} response={}",
             request.sandbox.image_digest, response.env_info.image_digest
@@ -116,7 +120,8 @@ pub fn verify_sandbox_run(request: &SandboxRunRequest, response: &SandboxRunResp
         }
     };
 
-    let passed = violations.is_empty() && response.status == SandboxStatus::Success && exit_code == 0;
+    let passed =
+        violations.is_empty() && response.status == SandboxStatus::Success && exit_code == 0;
     if !passed && exit_code == 0 {
         exit_code = 1;
     }

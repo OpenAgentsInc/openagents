@@ -452,7 +452,10 @@ mod tests {
         let fleet_allowed = authorizer
             .authorize_topic(&principal, "fleet:user:1:workers")
             .expect("fleet topic should be allowed for bound user");
-        assert_eq!(fleet_allowed, AuthorizedKhalaTopic::FleetWorkers { user_id: 1 });
+        assert_eq!(
+            fleet_allowed,
+            AuthorizedKhalaTopic::FleetWorkers { user_id: 1 }
+        );
 
         let fleet_denied = authorizer
             .authorize_topic(&principal, "fleet:user:2:workers")

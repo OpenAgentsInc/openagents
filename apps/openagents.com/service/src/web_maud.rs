@@ -41,6 +41,51 @@ pub struct FeedZoneView {
 }
 
 #[derive(Debug, Clone)]
+pub struct ComputeMetricsView {
+    pub provider_eligible_total: usize,
+    pub provider_eligible_owned: usize,
+    pub provider_eligible_reserve: usize,
+    pub dispatch_total: u64,
+    pub dispatch_not_found: u64,
+    pub dispatch_errors: u64,
+    pub dispatch_fallbacks: u64,
+    pub latency_ms_avg: Option<u64>,
+    pub latency_ms_p50: Option<u64>,
+    pub budget_limit_msats: u64,
+    pub budget_reserved_msats: u64,
+    pub budget_spent_msats: u64,
+    pub budget_remaining_msats: u64,
+    pub released_msats_total: u64,
+    pub released_count: u64,
+    pub withheld_count: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComputeProviderView {
+    pub provider_id: String,
+    pub worker_id: String,
+    pub supply_class: String,
+    pub reserve_pool: bool,
+    pub status: String,
+    pub heartbeat_state: String,
+    pub heartbeat_age_ms: Option<i64>,
+    pub min_price_msats: Option<u64>,
+    pub earned_msats: u64,
+    pub quarantined: bool,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComputeDeviceView {
+    pub worker_id: String,
+    pub status: String,
+    pub heartbeat_state: String,
+    pub heartbeat_age_ms: Option<i64>,
+    pub roles: Vec<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct IntegrationStatusView {
     pub provider: String,
     pub connected: bool,
@@ -105,6 +150,12 @@ pub enum WebBody {
         current_zone: Option<String>,
         page_limit: u64,
         since: Option<String>,
+    },
+    Compute {
+        status: Option<String>,
+        metrics: ComputeMetricsView,
+        providers: Vec<ComputeProviderView>,
+        devices: Vec<ComputeDeviceView>,
     },
     Settings {
         status: Option<String>,
@@ -210,6 +261,7 @@ pub fn render_notice_fragment(target_id: &str, status: &str, is_error: bool) -> 
 fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
     let nav = [
         ("/", "Codex"),
+        ("/compute", "Compute"),
         ("/feed", "Feed"),
         ("/billing", "Billing"),
         ("/l402", "L402"),
@@ -282,6 +334,14 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                         *page_limit,
                         since.as_deref(),
                     ))
+                }
+                WebBody::Compute {
+                    status,
+                    metrics,
+                    providers,
+                    devices,
+                } => {
+                    (compute_panel(status.as_deref(), metrics, providers, devices))
                 }
                 WebBody::Settings {
                     status,
@@ -760,6 +820,234 @@ fn feed_items_fragment_route(
     route
 }
 
+fn compute_panel(
+    status: Option<&str>,
+    metrics: &ComputeMetricsView,
+    providers: &[ComputeProviderView],
+    devices: &[ComputeDeviceView],
+) -> Markup {
+    html! {
+        section id="compute-surface" class="oa-grid compute" {
+            aside class="oa-card" {
+                h2 { "OpenAgents Compute" }
+                p class="oa-muted" { "Connected devices + marketplace health." }
+                (status_slot("compute-status", status))
+            }
+
+            (compute_metrics_panel(metrics, false))
+            (compute_devices_panel(devices, false))
+            (compute_providers_panel(providers, false))
+        }
+    }
+}
+
+pub fn render_compute_metrics_fragment(metrics: &ComputeMetricsView) -> String {
+    // This fragment is requested by `#compute-metrics-panel` itself, so it should not be OOB.
+    compute_metrics_panel(metrics, false).into_string()
+}
+
+pub fn render_compute_fleet_fragment(
+    providers: &[ComputeProviderView],
+    devices: &[ComputeDeviceView],
+) -> String {
+    html! {
+        // Fleet refresh is requested by the providers panel. Return the providers panel as the
+        // normal swap target and update the devices panel out-of-band.
+        (compute_providers_panel(providers, false))
+        (compute_devices_panel(devices, true))
+    }
+    .into_string()
+}
+
+fn compute_metrics_panel(metrics: &ComputeMetricsView, out_of_band: bool) -> Markup {
+    let body = html! {
+        h3 { "Metrics" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "Providers eligible" } strong { (metrics.provider_eligible_total) } }
+                div class="oa-kv" { span { "Owned" } strong { (metrics.provider_eligible_owned) } }
+                div class="oa-kv" { span { "Reserve" } strong { (metrics.provider_eligible_reserve) } }
+            }
+            div {
+                div class="oa-kv" { span { "Dispatch total" } strong { (metrics.dispatch_total) } }
+                div class="oa-kv" { span { "Not found" } strong { (metrics.dispatch_not_found) } }
+                div class="oa-kv" { span { "Fallbacks" } strong { (metrics.dispatch_fallbacks) } }
+            }
+            div {
+                div class="oa-kv" { span { "Latency p50 (ms)" } strong { (metrics.latency_ms_p50.map_or("-".to_string(), |v| v.to_string())) } }
+                div class="oa-kv" { span { "Latency avg (ms)" } strong { (metrics.latency_ms_avg.map_or("-".to_string(), |v| v.to_string())) } }
+                div class="oa-kv" { span { "Dispatch errors" } strong { (metrics.dispatch_errors) } }
+            }
+            div {
+                div class="oa-kv" { span { "Spent (msats)" } strong { (metrics.budget_spent_msats) } }
+                div class="oa-kv" { span { "Reserved (msats)" } strong { (metrics.budget_reserved_msats) } }
+                div class="oa-kv" { span { "Remaining (msats)" } strong { (metrics.budget_remaining_msats) } }
+            }
+            div {
+                div class="oa-kv" { span { "Released count" } strong { (metrics.released_count) } }
+                div class="oa-kv" { span { "Withheld count" } strong { (metrics.withheld_count) } }
+                div class="oa-kv" { span { "Released total (msats)" } strong { (metrics.released_msats_total) } }
+            }
+        }
+    };
+
+    html! {
+        @if out_of_band {
+            article id="compute-metrics-panel"
+                class="oa-card"
+                hx-get="/compute/fragments/metrics"
+                hx-trigger="load, every 2s"
+                hx-swap="outerHTML"
+                hx-swap-oob="outerHTML" {
+                (body)
+            }
+        } @else {
+            article id="compute-metrics-panel"
+                class="oa-card"
+                hx-get="/compute/fragments/metrics"
+                hx-trigger="load, every 2s"
+                hx-swap="outerHTML" {
+                (body)
+            }
+        }
+    }
+}
+
+fn compute_devices_panel(devices: &[ComputeDeviceView], out_of_band: bool) -> Markup {
+    let body = html! {
+        h3 { "Devices" }
+        @if devices.is_empty() {
+            p class="oa-muted" { "No devices enrolled yet." }
+        } @else {
+            div class="oa-scroll" {
+                table class="oa-table" {
+                    thead {
+                        tr {
+                            th { "Worker" }
+                            th { "Status" }
+                            th { "Heartbeat" }
+                            th { "Roles" }
+                            th { "Updated" }
+                        }
+                    }
+                    tbody {
+                        @for device in devices {
+                            tr {
+                                td { code { (device.worker_id) } }
+                                td { (device.status) }
+                                td {
+                                    (device.heartbeat_state) " "
+                                    @if let Some(age) = device.heartbeat_age_ms {
+                                        span class="oa-muted" { "(" (age) "ms)" }
+                                    }
+                                }
+                                td { (device.roles.join(", ")) }
+                                td class="oa-muted" { (device.updated_at) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    html! {
+        @if out_of_band {
+            article id="compute-devices-panel"
+                hx-swap-oob="outerHTML"
+                class="oa-card" {
+                (body)
+            }
+        } @else {
+            article id="compute-devices-panel"
+                class="oa-card" {
+                (body)
+            }
+        }
+    }
+}
+
+fn compute_providers_panel(providers: &[ComputeProviderView], out_of_band: bool) -> Markup {
+    let body = html! {
+        h3 { "Providers" }
+        @if providers.is_empty() {
+            p class="oa-muted" { "No providers enrolled yet." }
+        } @else {
+            div class="oa-scroll" {
+                table class="oa-table" {
+                    thead {
+                        tr {
+                            th { "Provider" }
+                            th { "Class" }
+                            th { "Price" }
+                            th { "Earned" }
+                            th { "Status" }
+                            th { "Heartbeat" }
+                            th { "Caps" }
+                            th { "Actions" }
+                        }
+                    }
+                    tbody {
+                        @for provider in providers {
+                            tr {
+                                td { code { (provider.provider_id) } }
+                                td {
+                                    (provider.supply_class)
+                                    @if provider.reserve_pool { span class="oa-badge" { "Reserve" } }
+                                }
+                                td { (provider.min_price_msats.map_or("-".to_string(), |v| v.to_string())) }
+                                td { (provider.earned_msats) }
+                                td {
+                                    (provider.status)
+                                    @if provider.quarantined {
+                                        span class="oa-badge danger" { "Quarantined" }
+                                    }
+                                }
+                                td {
+                                    (provider.heartbeat_state) " "
+                                    @if let Some(age) = provider.heartbeat_age_ms {
+                                        span class="oa-muted" { "(" (age) "ms)" }
+                                    }
+                                }
+                                td class="oa-muted" { (provider.capabilities.join(", ")) }
+                                td {
+                                    form method="post" action={(format!("/compute/providers/{}/disable", provider.worker_id))}
+                                        hx-post={(format!("/compute/providers/{}/disable", provider.worker_id))}
+                                        hx-target="#compute-status"
+                                        hx-swap="outerHTML" {
+                                        (form_submit_action("Disable", "Disabling...", false))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    html! {
+        @if out_of_band {
+            article id="compute-providers-panel"
+                class="oa-card"
+                hx-get="/compute/fragments/fleet"
+                hx-trigger="load, every 2s"
+                hx-swap="outerHTML"
+                hx-swap-oob="outerHTML" {
+                (body)
+            }
+        } @else {
+            article id="compute-providers-panel"
+                class="oa-card"
+                hx-get="/compute/fragments/fleet"
+                hx-trigger="load, every 2s"
+                hx-swap="outerHTML" {
+                (body)
+            }
+        }
+    }
+}
+
 fn settings_panel(
     status: Option<&str>,
     profile_name: &str,
@@ -1220,6 +1508,9 @@ fn status_message(status: &str) -> &'static str {
         "l402-action-failed" => "Could not complete L402 action.",
         "admin-action-completed" => "Admin action completed.",
         "admin-action-failed" => "Admin action failed.",
+        "compute-provider-disabled" => "Provider disabled.",
+        "compute-runtime-unavailable" => "Runtime unavailable.",
+        "compute-action-failed" => "Compute action failed.",
         "admin-forbidden" => "Admin role required.",
         "settings-action-failed" => "Settings action failed.",
         _ => "Action completed.",
@@ -1300,8 +1591,32 @@ body {
 .oa-grid { display: grid; gap: 1rem; }
 .oa-grid.chat { grid-template-columns: minmax(260px, 320px) 1fr; }
 .oa-grid.feed { grid-template-columns: minmax(220px, 280px) 1fr; }
+.oa-grid.compute { grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; }
 .oa-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .oa-grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.oa-grid.compute #compute-devices-panel,
+.oa-grid.compute #compute-providers-panel { grid-column: 1 / -1; }
+.oa-kv span { color: var(--muted); }
+.oa-kv strong { justify-self: end; }
+.oa-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(67, 181, 255, 0.35);
+  background: rgba(15, 59, 89, 0.44);
+  color: #d8f1ff;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.oa-badge.danger {
+  border-color: rgba(255, 117, 137, 0.52);
+  background: rgba(117, 24, 42, 0.35);
+  color: #ffdce3;
+}
 .oa-kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.75rem; }
 .oa-kv dt { color: var(--muted); }
 .oa-kv dd { margin: 0; font-weight: 600; }
@@ -1451,7 +1766,7 @@ input:focus, textarea:focus {
 @media (max-width: 980px) {
   .oa-topbar { grid-template-columns: 1fr; }
   .oa-session { justify-content: space-between; }
-  .oa-grid.chat, .oa-grid.feed, .oa-grid.two { grid-template-columns: 1fr; }
+  .oa-grid.chat, .oa-grid.feed, .oa-grid.compute, .oa-grid.two { grid-template-columns: 1fr; }
 }
 "#
 }
