@@ -48,6 +48,22 @@ impl SparkSigner {
     /// let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("valid mnemonic");
     /// ```
     pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self, SparkError> {
+        Self::from_mnemonic_with_account(mnemonic, passphrase, 0)
+    }
+
+    /// Create a new SparkSigner from a BIP39 mnemonic using a domain-separated account.
+    ///
+    /// This is the same as [`Self::from_mnemonic`] except that the BIP44 account index
+    /// is parameterized:
+    ///
+    /// Derivation path: m/44'/0'/account'/0/0
+    ///
+    /// `account` must be a valid BIP32 hardened index (< 2^31).
+    pub fn from_mnemonic_with_account(
+        mnemonic: &str,
+        passphrase: &str,
+        account: u32,
+    ) -> Result<Self, SparkError> {
         // Parse and validate the mnemonic
         let parsed_mnemonic =
             Mnemonic::parse(mnemonic).map_err(|e| SparkError::InvalidMnemonic(e.to_string()))?;
@@ -56,7 +72,7 @@ impl SparkSigner {
         let seed = parsed_mnemonic.to_seed(passphrase);
 
         // Derive the keypair from the seed
-        let mut signer = Self::from_seed_bytes(&seed)?;
+        let mut signer = Self::from_seed_bytes_with_account(&seed, account)?;
 
         // Store the mnemonic and passphrase
         signer.mnemonic = mnemonic.to_string();
@@ -69,17 +85,24 @@ impl SparkSigner {
     ///
     /// Uses derivation path: m/44'/0'/0'/0/0
     fn from_seed_bytes(seed: &[u8]) -> Result<Self, SparkError> {
+        Self::from_seed_bytes_with_account(seed, 0)
+    }
+
+    /// Derive a SparkSigner from raw entropy bytes using a domain-separated account.
+    ///
+    /// Derivation path: m/44'/0'/account'/0/0
+    fn from_seed_bytes_with_account(seed: &[u8], account: u32) -> Result<Self, SparkError> {
         let secp = Secp256k1::new();
 
         // Create master key from seed (using Bitcoin mainnet)
         let master = Xpriv::new_master(Network::Bitcoin, seed)
             .map_err(|e| SparkError::KeyDerivation(e.to_string()))?;
 
-        // Build BIP44 derivation path: m/44'/0'/0'/0/0
+        // Build BIP44 derivation path: m/44'/0'/account'/0/0
         // m = master
         // 44' = purpose (BIP44)
         // 0' = coin type (Bitcoin)
-        // 0' = account
+        // account' = domain-separated account index
         // 0 = change (external)
         // 0 = address index
         let path = DerivationPath::from(vec![
@@ -87,7 +110,7 @@ impl SparkSigner {
                 .map_err(|e| SparkError::KeyDerivation(e.to_string()))?,
             ChildNumber::from_hardened_idx(BITCOIN_COIN_TYPE)
                 .map_err(|e| SparkError::KeyDerivation(e.to_string()))?,
-            ChildNumber::from_hardened_idx(0)
+            ChildNumber::from_hardened_idx(account)
                 .map_err(|e| SparkError::KeyDerivation(e.to_string()))?,
             ChildNumber::from_normal_idx(0)
                 .map_err(|e| SparkError::KeyDerivation(e.to_string()))?,
@@ -233,6 +256,27 @@ mod tests {
         // Different passphrases should produce different keys
         assert_ne!(signer_no_pass.private_key(), signer_with_pass.private_key());
         assert_ne!(signer_no_pass.public_key(), signer_with_pass.public_key());
+    }
+
+    #[test]
+    fn test_different_accounts_produce_different_keys() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let signer0 =
+            SparkSigner::from_mnemonic_with_account(mnemonic, "", 0).expect("should derive");
+        let signer1 =
+            SparkSigner::from_mnemonic_with_account(mnemonic, "", 1).expect("should derive");
+
+        assert_ne!(signer0.private_key(), signer1.private_key());
+        assert_ne!(signer0.public_key(), signer1.public_key());
+    }
+
+    #[test]
+    fn test_invalid_account_is_rejected() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        // Hardened index must be < 2^31.
+        let err = SparkSigner::from_mnemonic_with_account(mnemonic, "", 0x8000_0000)
+            .expect_err("should reject invalid account index");
+        assert!(matches!(err, SparkError::KeyDerivation(_)));
     }
 
     #[test]

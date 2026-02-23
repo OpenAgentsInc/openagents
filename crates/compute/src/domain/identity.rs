@@ -6,6 +6,7 @@
 
 use bip39::Mnemonic;
 use nostr::{Keypair, Nip06Error, derive_keypair_full};
+use sha2::{Digest, Sha256};
 use spark::{SparkError, SparkSigner};
 use thiserror::Error;
 
@@ -54,6 +55,12 @@ impl From<SparkError> for IdentityError {
 pub struct UnifiedIdentity {
     /// The BIP39 mnemonic (12 or 24 words)
     mnemonic: String,
+    /// Optional domain label used to derive the account index for NIP-06/BIP44.
+    ///
+    /// `None` implies the legacy default derivation at account `0`.
+    derivation_domain: Option<String>,
+    /// The domain-separated account index used for NIP-06/BIP44 derivation.
+    derivation_account: u32,
     /// Nostr keypair derived via NIP-06 (m/44'/1237'/0'/0/0)
     nostr_keypair: Keypair,
     /// Spark signer derived via BIP44 (m/44'/0'/0'/0/0)
@@ -100,9 +107,57 @@ impl UnifiedIdentity {
 
         Ok(Self {
             mnemonic: mnemonic.to_string(),
+            derivation_domain: None,
+            derivation_account: 0,
             nostr_keypair,
             spark_signer,
         })
+    }
+
+    /// Create identity from an existing mnemonic with domain separation.
+    ///
+    /// This parameterizes the NIP-06/BIP44 account index using a deterministic hash
+    /// of `domain`. The default legacy behavior is preserved by passing an empty
+    /// string or `"default"`.
+    ///
+    /// - Nostr: m/44'/1237'/account'/0/0
+    /// - Bitcoin/Spark: m/44'/0'/account'/0/0
+    pub fn from_mnemonic_domain(
+        mnemonic: &str,
+        passphrase: &str,
+        domain: &str,
+    ) -> Result<Self, IdentityError> {
+        // Validate the mnemonic
+        let _parsed =
+            Mnemonic::parse(mnemonic).map_err(|e| IdentityError::InvalidMnemonic(e.to_string()))?;
+
+        let normalized_domain = normalize_domain(domain);
+        let account = derive_domain_account(&normalized_domain);
+
+        let nostr_keypair = derive_keypair_full(mnemonic, passphrase, account)?;
+        let spark_signer = SparkSigner::from_mnemonic_with_account(mnemonic, passphrase, account)?;
+
+        Ok(Self {
+            mnemonic: mnemonic.to_string(),
+            derivation_domain: if account == 0 {
+                None
+            } else {
+                Some(normalized_domain)
+            },
+            derivation_account: account,
+            nostr_keypair,
+            spark_signer,
+        })
+    }
+
+    /// Return the domain label used for derivation (if any).
+    pub fn derivation_domain(&self) -> Option<&str> {
+        self.derivation_domain.as_deref()
+    }
+
+    /// Return the account index used for derivation.
+    pub fn derivation_account(&self) -> u32 {
+        self.derivation_account
     }
 
     /// Get the mnemonic words (for backup display)
@@ -183,8 +238,29 @@ impl std::fmt::Debug for UnifiedIdentity {
         f.debug_struct("UnifiedIdentity")
             .field("npub", &self.npub_short())
             .field("mnemonic", &"[redacted]")
+            .field("derivation_domain", &self.derivation_domain)
+            .field("derivation_account", &self.derivation_account)
             .finish()
     }
+}
+
+fn normalize_domain(domain: &str) -> String {
+    domain.trim().to_ascii_lowercase()
+}
+
+fn derive_domain_account(domain: &str) -> u32 {
+    let normalized = normalize_domain(domain);
+    if normalized.is_empty() || normalized == "default" {
+        return 0;
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(b"openagents.seed.v1:");
+    hasher.update(normalized.as_bytes());
+    let digest = hasher.finalize();
+    let raw = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
+    // BIP32 hardened index is limited to < 2^31.
+    let account = raw & 0x7fff_ffff;
+    account.max(1)
 }
 
 #[cfg(test)]
@@ -300,5 +376,49 @@ mod tests {
         // The keys should be different (different derivation paths)
         let nostr_hex = identity.public_key_hex();
         assert_ne!(nostr_hex, spark_pubkey);
+    }
+
+    #[test]
+    fn test_domain_separation_changes_keys() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let left = UnifiedIdentity::from_mnemonic_domain(mnemonic, "", "openagents:bridge")
+            .expect("should derive domain identity");
+        let right = UnifiedIdentity::from_mnemonic_domain(mnemonic, "", "openagents:treasury")
+            .expect("should derive domain identity");
+
+        assert_ne!(left.npub().unwrap(), right.npub().unwrap());
+        assert_ne!(left.spark_public_key_hex(), right.spark_public_key_hex());
+        assert_ne!(left.derivation_account(), 0);
+        assert_ne!(right.derivation_account(), 0);
+    }
+
+    #[test]
+    fn test_default_domain_matches_legacy_derivation() {
+        let mnemonic =
+            "leader monkey parrot ring guide accident before fence cannon height naive bean";
+        let legacy = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+        let domain_default =
+            UnifiedIdentity::from_mnemonic_domain(mnemonic, "", "default").expect("should derive");
+
+        assert_eq!(legacy.npub().unwrap(), domain_default.npub().unwrap());
+        assert_eq!(
+            legacy.spark_public_key_hex(),
+            domain_default.spark_public_key_hex()
+        );
+        assert_eq!(domain_default.derivation_account(), 0);
+        assert_eq!(domain_default.derivation_domain(), None);
+    }
+
+    #[test]
+    fn test_domain_account_normalizes_case() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let lower = UnifiedIdentity::from_mnemonic_domain(mnemonic, "", "OpenAgents:Bridge")
+            .expect("should derive");
+        let upper = UnifiedIdentity::from_mnemonic_domain(mnemonic, "", "openagents:bridge")
+            .expect("should derive");
+
+        assert_eq!(lower.npub().unwrap(), upper.npub().unwrap());
+        assert_eq!(lower.spark_public_key_hex(), upper.spark_public_key_hex());
+        assert_eq!(lower.derivation_account(), upper.derivation_account());
     }
 }
