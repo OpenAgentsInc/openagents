@@ -12,6 +12,7 @@ Primary context sources:
 - `docs/transcripts/201-fracking-apple-silicon.md`
 - `docs/transcripts/202-recursive-language-models.md`
 - `docs/transcripts/203-pylon-and-nexus.md`
+- `docs/transcripts/207-your-keys.md`
 
 ## 1) Purpose
 
@@ -19,6 +20,7 @@ This plan translates the macro thesis into a concrete OpenAgents execution progr
 
 - Avoid the closed-balance-sheet AI outcome (margin expansion + payroll compression + weak demand recycle).
 - Build open rails where intelligence can hold identity, transact, and form coalitions.
+- Treat public key cryptography as base-layer infrastructure for identity, authorization, receipts, and settlement.
 - Make coalition formation and contract execution latency approach zero.
 - Route income into machine-speed micro-contract markets with verifiable receipts and automatic settlement.
 - Encode default revenue splits so value is paid out to creators/providers/operators, not captured by a single platform balance sheet.
@@ -66,10 +68,22 @@ The program must remain aligned with active architecture constraints:
 - Khala WS-only live transport (`INV-03`), no new SSE authority lanes.
 - Control/runtime authority isolation (`INV-04`, `INV-05`).
 - Replay/idempotency guarantees (`INV-07`).
+- Public-key authoritative identity and signing across all contract-critical actions.
 - Rust-first product architecture boundaries (`ADR-0001`, iOS WGPUI authority `INV-11`).
 - No `.github` workflow automation in-repo (`INV-12`).
 
-## 4.1) Execution Principles from Transcript Synthesis
+## 4.1) Cryptographic Trust Baseline
+
+Public key cryptography is the root of the system, not a feature add-on:
+
+- One user-controlled seed phrase is the root secret; operational keys are derived with explicit domain separation for identity, signing, and payment lanes.
+- Identity keys (Nostr lane) anchor profile, delegation, and agent/coalition auth.
+- Payment keys (Spark/Lightning lane) anchor settlement endpoints and payout routing.
+- Every contract mutation, receipt, and settlement transition must be signature-verifiable against the active key graph.
+- Key rotation/revocation must be first-class and replay-safe (no orphaned authority after rotation).
+- Hot-wallet posture is explicit: default balances are operational, not treasury custody; sweep/guardrail policy is required.
+
+## 4.2) Execution Principles from Transcript Synthesis
 
 1. "Autopilot, not copilot" as product north star:
 - Persistent autonomous loops with bounded budgets and explicit escalation.
@@ -98,6 +112,7 @@ OpenAgents evolves into 6 coordinated planes plus an optional containment overla
 - Agent and coalition identities.
 - Delegation, capability, spend/budget policy.
 - Revocation and scope enforcement.
+- Seed-derived key hierarchy and verification policy for identity/signing/payment lanes.
 
 2. Messaging Plane
 - Append-only streams with cursors.
@@ -194,6 +209,7 @@ Deliverables:
 - Idempotent command application and replay tooling.
 - Key-split custody and guardian policy for sovereign agent identity operations.
 - Capability-bound licensing primitives for paid skill/workflow invocation.
+- Seed-derived key graph contract for identity and settlement verification (including rotation/revocation semantics).
 
 Issue batch:
 - `OA-ECON-010` Add proto package for compute market contracts.
@@ -203,6 +219,7 @@ Issue batch:
 - `OA-ECON-014` Add deterministic replay harness for contract flows.
 - `OA-ECON-015` Implement guardian/key-split policy hooks for agent and coalition signing authority.
 - `OA-ECON-016` Implement paid capability binding to prevent unauthorized copy/use of licensed skills.
+- `OA-ECON-017` Implement seed-derived key graph registry and verifier hooks (identity + settlement lanes).
 
 Exit criteria:
 - Every contract transition emits signed receipt.
@@ -406,6 +423,7 @@ Macro proxy metrics:
 - Signed envelopes and strict idempotency keys for all contract events.
 - Spam resistance for unknown contacts (economic stamps/capability gates).
 - Replay-resistant settlement and payout workflows.
+- Seed/key compromise response playbooks (rotation, revocation, replay-safe authority recovery).
 - Poison-message quarantine and circuit breakers.
 - Domain and coalition-level kill switches.
 - Deterministic recovery drills for timer/orchestrator failures.
@@ -443,6 +461,7 @@ What we should avoid now:
 - `OA-ECON-010` Proto contract schemas for compute market lifecycle.
 - `OA-ECON-011` Receipt schema + canonical hash/signature rules.
 - `OA-ECON-012` Receipt store/query service.
+- `OA-ECON-017` Seed-derived key graph registry and verifier hooks.
 - `OA-ECON-020` Provider capability publish/discovery API.
 - `OA-ECON-023` Spend-cap authorization and order issuance workflow.
 - `OA-ECON-027` Market plumbing completeness checks.
