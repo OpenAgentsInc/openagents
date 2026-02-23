@@ -6993,8 +6993,29 @@ mod tests {
             .pointer("/quote/valid_until_unix")
             .and_then(Value::as_u64)
             .unwrap_or_default();
+        let cancel_until = quote_json
+            .pointer("/quote/cancel_until_unix")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        let cancel_fee = quote_json
+            .pointer("/quote/cancel_fee_msats")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        let refund_until = quote_json
+            .pointer("/quote/refund_until_unix")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
         assert!(issued_at > 0);
         assert!(valid_until >= issued_at);
+        assert_eq!(cancel_until, valid_until);
+        assert_eq!(cancel_fee, 0);
+        assert!(refund_until >= issued_at);
+        assert_eq!(
+            quote_json
+                .pointer("/quote/currency")
+                .and_then(Value::as_str),
+            Some("msats")
+        );
 
         let _ = shutdown.send(());
         Ok(())
@@ -7414,6 +7435,219 @@ mod tests {
         );
 
         let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settle_sandbox_run_rejects_expired_quote_binding_window() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-provider-expired",
+                        "owner_user_id": 11,
+                        "adapter": "test",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-settle-expired",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let run_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+        let run_json = response_json(run_response).await?;
+        let run_id = run_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+        let job_hash = protocol::hash::canonical_hash(&request)?;
+
+        let catalog_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .pointer("/providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers list"))?;
+        let provider_value = providers
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("worker_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == "desktop:settle-provider-expired")
+            })
+            .cloned()
+            .ok_or_else(|| anyhow!("missing provider entry"))?;
+        let provider: crate::marketplace::ProviderCatalogEntry =
+            serde_json::from_value(provider_value)?;
+
+        let now_unix = Utc::now().timestamp().max(0) as u64;
+        let issued_at_unix = now_unix.saturating_sub(120);
+        let expired_quote = crate::marketplace::compute_all_in_quote_v1(
+            &provider,
+            "oa.sandbox_run.v1",
+            job_hash.as_str(),
+            issued_at_unix,
+        )
+        .ok_or_else(|| anyhow!("quote computation failed"))?;
+        assert!(expired_quote.valid_until_unix < now_unix);
+
+        let response = protocol::SandboxRunResponse {
+            env_info: protocol::jobs::sandbox::EnvInfo {
+                image_digest: "sha256:test".to_string(),
+                hostname: None,
+                system_info: None,
+            },
+            runs: vec![protocol::jobs::sandbox::CommandResult {
+                cmd: "echo hi".to_string(),
+                exit_code: 0,
+                duration_ms: 10,
+                stdout_sha256: "stdout".to_string(),
+                stderr_sha256: "stderr".to_string(),
+                stdout_preview: None,
+                stderr_preview: None,
+            }],
+            artifacts: Vec::new(),
+            status: protocol::jobs::sandbox::SandboxStatus::Success,
+            error: None,
+            provenance: protocol::Provenance::new("stub-success"),
+        };
+
+        let settle_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "run_id": run_id,
+                        "provider_id": "provider-settle-expired",
+                        "provider_worker_id": "desktop:settle-provider-expired",
+                        "amount_msats": expired_quote.provider_price_msats,
+                        "quote": expired_quote,
+                        "request": request,
+                        "response": response
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(
+            settle_response.status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        let body = response_json(settle_response).await?;
+        assert!(
+            body.pointer("/message")
+                .and_then(Value::as_str)
+                .is_some_and(|msg| msg.contains("expired"))
+        );
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_rejects_unsupported_currency() -> Result<()> {
+        let app = test_router();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "lowest_total_cost_v1",
+            "idempotency_key": "router:test",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-a","total_price_msats":1200,"currency":"usd"}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+        let json = response_json(resp).await?;
+        assert!(
+            json.pointer("/message")
+                .and_then(Value::as_str)
+                .is_some_and(|msg| msg.contains("unsupported currency"))
+        );
         Ok(())
     }
 
