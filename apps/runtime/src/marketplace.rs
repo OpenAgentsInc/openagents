@@ -1,0 +1,94 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::types::{RuntimeWorker, WorkerOwner, WorkerStatus};
+use crate::workers::WorkerSnapshot;
+
+pub const PROVIDER_CATALOG_SCHEMA_V1: &str = "openagents.marketplace.provider_catalog.v1";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProviderCatalogEntry {
+    pub schema: String,
+    pub provider_id: String,
+    pub worker_id: String,
+    pub adapter: String,
+    pub owner: WorkerOwner,
+    pub status: WorkerStatus,
+    pub heartbeat_state: String,
+    pub heartbeat_age_ms: Option<i64>,
+    #[serde(default)]
+    pub roles: Vec<String>,
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub min_price_msats: Option<u64>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ProviderCatalogEntry {
+    fn from_snapshot(snapshot: &WorkerSnapshot) -> Option<Self> {
+        let worker = &snapshot.worker;
+        let meta = &worker.metadata;
+        let roles = metadata_string_array(meta, "roles");
+        if !roles.iter().any(|role| role == "provider") {
+            return None;
+        }
+
+        let provider_id = metadata_string(meta, "provider_id").unwrap_or_else(|| worker.worker_id.clone());
+        let base_url = metadata_string(meta, "provider_base_url");
+        let capabilities = metadata_string_array(meta, "capabilities");
+        let min_price_msats = metadata_u64(meta, "min_price_msats");
+
+        Some(Self {
+            schema: PROVIDER_CATALOG_SCHEMA_V1.to_string(),
+            provider_id,
+            worker_id: worker.worker_id.clone(),
+            adapter: worker.adapter.clone(),
+            owner: worker.owner.clone(),
+            status: worker.status.clone(),
+            heartbeat_state: snapshot.liveness.heartbeat_state.clone(),
+            heartbeat_age_ms: snapshot.liveness.heartbeat_age_ms,
+            roles,
+            base_url,
+            capabilities,
+            min_price_msats,
+            updated_at: worker.updated_at,
+        })
+    }
+}
+
+pub fn build_provider_catalog(workers: &[WorkerSnapshot]) -> Vec<ProviderCatalogEntry> {
+    let mut out = workers
+        .iter()
+        .filter_map(ProviderCatalogEntry::from_snapshot)
+        .collect::<Vec<_>>();
+    out.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+    out
+}
+
+fn metadata_string(metadata: &Value, key: &str) -> Option<String> {
+    metadata.get(key)?.as_str().map(|v| v.to_string())
+}
+
+fn metadata_u64(metadata: &Value, key: &str) -> Option<u64> {
+    metadata.get(key)?.as_u64()
+}
+
+fn metadata_string_array(metadata: &Value, key: &str) -> Vec<String> {
+    match metadata.get(key).and_then(|value| value.as_array()) {
+        Some(values) => values
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(|value| value.to_string())
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+pub fn is_provider_worker(worker: &RuntimeWorker) -> bool {
+    metadata_string_array(&worker.metadata, "roles")
+        .iter()
+        .any(|role| role == "provider")
+}
+

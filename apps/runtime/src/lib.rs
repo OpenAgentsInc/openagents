@@ -24,6 +24,7 @@ pub mod config;
 pub mod event_log;
 pub mod fanout;
 pub mod history_compat;
+pub mod marketplace;
 pub mod orchestration;
 pub mod projectors;
 pub mod run_state_machine;

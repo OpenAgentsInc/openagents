@@ -27,6 +27,7 @@ use uuid::Uuid;
 use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
+    marketplace::{ProviderCatalogEntry, build_provider_catalog},
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
@@ -309,6 +310,23 @@ struct OwnerQuery {
     owner_guest_scope: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct WorkersListResponse {
+    workers: Vec<WorkerSnapshot>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderCatalogQuery {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    capability: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderCatalogResponse {
+    providers: Vec<ProviderCatalogEntry>,
+}
+
 #[derive(Debug, Deserialize)]
 struct DriftQuery {
     topic: String,
@@ -376,7 +394,7 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/projectors/run-summary/:run_id",
             get(get_projector_run_summary),
         )
-        .route("/internal/v1/workers", post(register_worker))
+        .route("/internal/v1/workers", get(list_workers).post(register_worker))
         .route("/internal/v1/workers/:worker_id", get(get_worker))
         .route(
             "/internal/v1/workers/:worker_id/heartbeat",
@@ -389,6 +407,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/workers/:worker_id/checkpoint",
             get(get_worker_checkpoint),
+        )
+        .route(
+            "/internal/v1/marketplace/catalog/providers",
+            get(get_provider_catalog),
         )
         .with_state(state)
 }
@@ -1114,6 +1136,61 @@ async fn get_worker(
         .await
         .map_err(ApiError::from_worker)?;
     Ok(Json(WorkerResponse { worker: snapshot }))
+}
+
+async fn list_workers(
+    State(state): State<AppState>,
+    Query(query): Query<OwnerQuery>,
+) -> Result<Json<WorkersListResponse>, ApiError> {
+    let owner = owner_from_parts(query.owner_user_id, query.owner_guest_scope)?;
+    let workers = state
+        .workers
+        .list_workers(&owner)
+        .await
+        .map_err(ApiError::from_worker)?;
+    Ok(Json(WorkersListResponse { workers }))
+}
+
+async fn get_provider_catalog(
+    State(state): State<AppState>,
+    Query(query): Query<ProviderCatalogQuery>,
+) -> Result<Json<ProviderCatalogResponse>, ApiError> {
+    let guest_scope = query
+        .owner_guest_scope
+        .clone()
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+    let owner_filter = match (query.owner_user_id, guest_scope) {
+        (None, None) => None,
+        (user_id, guest_scope) => Some(owner_from_parts(user_id, guest_scope)?),
+    };
+
+    let workers = match owner_filter.as_ref() {
+        Some(owner) => state
+            .workers
+            .list_workers(owner)
+            .await
+            .map_err(ApiError::from_worker)?,
+        None => state.workers.list_all_workers().await,
+    };
+
+    let mut providers = build_provider_catalog(&workers);
+    if let Some(capability) = query
+        .capability
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        providers.retain(|provider| provider.capabilities.iter().any(|cap| cap == capability));
+    }
+
+    Ok(Json(ProviderCatalogResponse { providers }))
 }
 
 async fn heartbeat_worker(
@@ -3704,6 +3781,97 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| anyhow!("missing worker checkpoint event type"))?;
         assert_eq!(event_type, "worker.heartbeat");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn worker_list_and_provider_catalog_surface_expected_entries() -> Result<()> {
+        let app = test_router();
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:catalog-worker-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-local-1",
+                            "provider_base_url": "http://127.0.0.1:9999",
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let create_client_only = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:catalog-worker-2",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client"]
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_client_only.status(), axum::http::StatusCode::CREATED);
+
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/workers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(list_response.status(), axum::http::StatusCode::OK);
+        let list_json = response_json(list_response).await?;
+        let workers = list_json
+            .get("workers")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| anyhow!("missing workers array"))?;
+        assert_eq!(workers.len(), 2);
+
+        let catalog_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11&capability=oa.sandbox_run.v1")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .get("providers")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers array"))?;
+        assert_eq!(providers.len(), 1);
+
+        let provider_id = providers[0]
+            .get("provider_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing provider_id"))?;
+        assert_eq!(provider_id, "provider-local-1");
+
+        let base_url = providers[0]
+            .get("base_url")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing base_url"))?;
+        assert_eq!(base_url, "http://127.0.0.1:9999");
 
         Ok(())
     }

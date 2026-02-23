@@ -265,6 +265,33 @@ impl InMemoryWorkerRegistry {
         ))
     }
 
+    pub async fn list_workers(&self, owner: &WorkerOwner) -> Result<Vec<WorkerSnapshot>, WorkerError> {
+        if !owner.is_valid() {
+            return Err(WorkerError::InvalidOwner);
+        }
+
+        let now = Utc::now();
+        let workers = self.workers.read().await;
+        let mut out = workers
+            .values()
+            .filter(|record| owners_match(&record.worker.owner, owner))
+            .map(|record| build_snapshot(&record.worker, now, self.heartbeat_stale_after_ms))
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| a.worker.worker_id.cmp(&b.worker.worker_id));
+        Ok(out)
+    }
+
+    pub async fn list_all_workers(&self) -> Vec<WorkerSnapshot> {
+        let now = Utc::now();
+        let workers = self.workers.read().await;
+        let mut out = workers
+            .values()
+            .map(|record| build_snapshot(&record.worker, now, self.heartbeat_stale_after_ms))
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| a.worker.worker_id.cmp(&b.worker.worker_id));
+        out
+    }
+
     pub async fn checkpoint_for_worker(
         &self,
         worker_id: &str,
