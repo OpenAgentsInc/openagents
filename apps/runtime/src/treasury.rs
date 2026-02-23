@@ -169,6 +169,7 @@ impl Treasury {
         job_hash: &str,
         verification_passed: bool,
         exit_code: i32,
+        release_allowed: bool,
     ) -> Result<(ComputeJobSettlement, bool), TreasuryError> {
         let now = Utc::now();
         let mut inner = self.inner.lock().await;
@@ -178,10 +179,18 @@ impl Treasury {
             .cloned()
             .ok_or(TreasuryError::NotReserved)?;
 
+        let should_release = verification_passed && release_allowed;
+        let desired_status = if should_release {
+            SettlementStatus::Released
+        } else {
+            SettlementStatus::Withheld
+        };
+
         match existing.status {
             SettlementStatus::Released | SettlementStatus::Withheld => {
                 if existing.verification_passed == Some(verification_passed)
                     && existing.exit_code == Some(exit_code)
+                    && existing.status == desired_status
                 {
                     return Ok((existing, false));
                 }
@@ -203,7 +212,7 @@ impl Treasury {
         updated.settled_at = Some(now);
         updated.updated_at = now;
 
-        if verification_passed {
+        if should_release {
             // Consume reservation.
             account.reserved_msats = account.reserved_msats.saturating_sub(amount_msats);
             account.spent_msats = account.spent_msats.saturating_add(amount_msats);

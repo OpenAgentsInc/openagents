@@ -85,6 +85,12 @@ pub struct ProviderAdV1 {
     pub heartbeat_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub caps: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_integrity_samples: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_integrity_violations: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_price_variance_bps: Option<u64>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub min_price_msats: u64,
@@ -242,6 +248,15 @@ pub fn build_provider_ad_event(
         let caps_json = serde_json::to_string(caps)
             .map_err(|err| BridgeError::Serialization(err.to_string()))?;
         info = info.add_custom_tag("oa_caps", caps_json);
+    }
+    if let Some(samples) = payload.price_integrity_samples {
+        info = info.add_custom_tag("oa_price_integrity_samples", samples.to_string());
+    }
+    if let Some(violations) = payload.price_integrity_violations {
+        info = info.add_custom_tag("oa_price_integrity_violations", violations.to_string());
+    }
+    if let Some(bps) = payload.last_price_variance_bps {
+        info = info.add_custom_tag("oa_price_variance_bps_last", bps.to_string());
     }
 
     for cap in &payload.capabilities {
@@ -521,6 +536,9 @@ mod tests {
             worker_status: Some("running".to_string()),
             heartbeat_state: Some("fresh".to_string()),
             caps: Some(serde_json::json!({"max_timeout_secs": 120})),
+            price_integrity_samples: Some(10),
+            price_integrity_violations: Some(1),
+            last_price_variance_bps: Some(25),
             capabilities: vec!["oa.sandbox_run.v1".to_string()],
             min_price_msats: 1000,
             pricing_stage: PricingStageV1::Fixed,
@@ -588,6 +606,24 @@ mod tests {
                 .any(|t| t.len() >= 2 && t[0] == "oa_heartbeat_state" && t[1] == "fresh")
         );
         assert!(event.tags.iter().any(|t| t.len() >= 2 && t[0] == "oa_caps"));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_price_integrity_samples" && t[1] == "10")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_price_integrity_violations" && t[1] == "1")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_price_variance_bps_last" && t[1] == "25")
+        );
     }
 
     #[test]

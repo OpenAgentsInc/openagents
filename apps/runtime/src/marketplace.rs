@@ -99,6 +99,12 @@ pub struct ProviderCatalogEntry {
     pub failure_strikes: u64,
     #[serde(default)]
     pub success_count: u64,
+    #[serde(default)]
+    pub price_integrity_samples: u64,
+    #[serde(default)]
+    pub price_integrity_violations: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_price_variance_bps: Option<u64>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -130,6 +136,10 @@ impl ProviderCatalogEntry {
         let quarantine_reason = metadata_string(meta, "quarantine_reason");
         let failure_strikes = metadata_u64(meta, "failure_strikes").unwrap_or(0);
         let success_count = metadata_u64(meta, "success_count").unwrap_or(0);
+        let price_integrity_samples = metadata_u64(meta, "price_integrity_samples").unwrap_or(0);
+        let price_integrity_violations =
+            metadata_u64(meta, "price_integrity_violations").unwrap_or(0);
+        let last_price_variance_bps = metadata_u64(meta, "last_price_variance_bps");
         let tier = provider_tier_from_metadata(meta, success_count, failure_strikes);
 
         Some(Self {
@@ -156,6 +166,9 @@ impl ProviderCatalogEntry {
             tier,
             failure_strikes,
             success_count,
+            price_integrity_samples,
+            price_integrity_violations,
+            last_price_variance_bps,
             updated_at: worker.updated_at,
         })
     }
@@ -426,6 +439,7 @@ pub fn select_provider_for_capability_excluding(
 
 const PROVIDER_STRIKE_PRICE_PENALTY_MSATS: u64 = 500;
 const PROVIDER_PROVISIONAL_PENALTY_MSATS: u64 = 1_000;
+const PROVIDER_PRICE_INTEGRITY_PENALTY_MSATS: u64 = 2_000;
 const OPERATOR_FEE_BPS: u64 = 50;
 const POLICY_ADDER_INSTANCE_MARKET_MSATS: u64 = 250;
 const POLICY_ADDER_RESERVE_POOL_MSATS: u64 = 500;
@@ -443,9 +457,13 @@ fn provider_rank_key(provider: &ProviderCatalogEntry, capability: &str) -> (u64,
         ProviderTier::Provisional => PROVIDER_PROVISIONAL_PENALTY_MSATS,
         ProviderTier::Qualified | ProviderTier::Preferred => 0,
     };
+    let price_integrity_penalty = provider
+        .price_integrity_violations
+        .saturating_mul(PROVIDER_PRICE_INTEGRITY_PENALTY_MSATS);
     let effective_price = base_price
         .saturating_add(strike_penalty)
         .saturating_add(tier_penalty);
+    let effective_price = effective_price.saturating_add(price_integrity_penalty);
 
     (
         effective_price,

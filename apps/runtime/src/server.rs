@@ -645,6 +645,8 @@ struct SettleSandboxRunBody {
     provider_id: String,
     provider_worker_id: String,
     amount_msats: u64,
+    #[serde(default)]
+    quote: Option<ComputeAllInQuoteV1>,
     request: protocol::SandboxRunRequest,
     response: protocol::SandboxRunResponse,
 }
@@ -2205,6 +2207,170 @@ async fn settle_sandbox_run(
     let job_hash = protocol::hash::canonical_hash(&body.request)
         .map_err(|error| ApiError::InvalidRequest(format!("invalid sandbox request: {error}")))?;
 
+    let mut price_integrity_passed = true;
+    let mut price_integrity_violation = false;
+    let mut price_integrity_variance_msats: i64 = 0;
+    let mut price_integrity_variance_bps: u64 = 0;
+    let mut quote_sha256: Option<String> = None;
+    let mut quote_id: Option<String> = None;
+    let mut quoted_provider_price_msats: Option<u64> = None;
+    let mut quoted_total_price_msats: Option<u64> = None;
+
+    if let Some(quote) = body.quote.as_ref() {
+        if quote.provider_id.as_str() != body.provider_id.trim() {
+            return Err(ApiError::InvalidRequest(
+                "quote.provider_id does not match provider_id".to_string(),
+            ));
+        }
+        if quote.provider_worker_id.as_str() != body.provider_worker_id.trim() {
+            return Err(ApiError::InvalidRequest(
+                "quote.provider_worker_id does not match provider_worker_id".to_string(),
+            ));
+        }
+        if quote.capability.as_str() != PHASE0_REQUIRED_PROVIDER_CAPABILITY {
+            return Err(ApiError::InvalidRequest(format!(
+                "quote.capability must be {}",
+                PHASE0_REQUIRED_PROVIDER_CAPABILITY
+            )));
+        }
+        if quote.objective_hash.as_str() != job_hash.as_str() {
+            return Err(ApiError::InvalidRequest(
+                "quote.objective_hash does not match job_hash".to_string(),
+            ));
+        }
+
+        let now_unix = Utc::now().timestamp().max(0) as u64;
+        if quote.valid_until_unix > 0 && quote.valid_until_unix < now_unix {
+            return Err(ApiError::InvalidRequest("quote has expired".to_string()));
+        }
+
+        let workers = state.workers.list_all_workers().await;
+        let providers = build_provider_catalog(&workers);
+        let provider = providers
+            .iter()
+            .find(|provider| provider.worker_id == body.provider_worker_id.trim())
+            .ok_or_else(|| {
+                ApiError::InvalidRequest(format!(
+                    "unknown provider_worker_id {}",
+                    body.provider_worker_id.trim()
+                ))
+            })?;
+
+        let expected = compute_all_in_quote_v1(
+            provider,
+            PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+            job_hash.as_str(),
+            quote.issued_at_unix,
+        )
+        .ok_or_else(|| ApiError::Internal("unable to compute expected quote".to_string()))?;
+        if expected.quote_sha256 != quote.quote_sha256 || expected.quote_id != quote.quote_id {
+            return Err(ApiError::InvalidRequest(
+                "quote does not match current provider terms".to_string(),
+            ));
+        }
+
+        quote_sha256 = Some(quote.quote_sha256.clone());
+        quote_id = Some(quote.quote_id.clone());
+        quoted_provider_price_msats = Some(quote.provider_price_msats);
+        quoted_total_price_msats = Some(quote.total_price_msats);
+
+        let quoted = quote.provider_price_msats as i64;
+        let delivered = body.amount_msats as i64;
+        price_integrity_variance_msats = delivered.saturating_sub(quoted);
+        let abs_variance_msats = if price_integrity_variance_msats < 0 {
+            price_integrity_variance_msats
+                .checked_abs()
+                .unwrap_or(i64::MAX) as u64
+        } else {
+            price_integrity_variance_msats as u64
+        };
+        price_integrity_variance_bps = if quote.provider_price_msats == 0 {
+            0
+        } else {
+            abs_variance_msats
+                .saturating_mul(10_000)
+                .saturating_div(quote.provider_price_msats)
+        };
+        price_integrity_passed = abs_variance_msats <= PRICE_INTEGRITY_TOLERANCE_MSATS;
+        price_integrity_violation = price_integrity_variance_msats > 0
+            && abs_variance_msats > PRICE_INTEGRITY_TOLERANCE_MSATS;
+
+        state
+            .orchestrator
+            .append_run_event(
+                body.run_id,
+                AppendRunEventRequest {
+                    event_type: "receipt".to_string(),
+                    payload: serde_json::json!({
+                        "receipt_type": "QuoteCommitted",
+                        "payload": {
+                            "job_hash": job_hash.clone(),
+                            "quote_id": quote.quote_id.clone(),
+                            "quote_sha256": quote.quote_sha256.clone(),
+                            "issued_at_unix": quote.issued_at_unix,
+                            "valid_until_unix": quote.valid_until_unix,
+                            "provider_id": quote.provider_id.clone(),
+                            "provider_worker_id": quote.provider_worker_id.clone(),
+                            "quoted_provider_price_msats": quote.provider_price_msats,
+                            "quoted_total_price_msats": quote.total_price_msats,
+                        }
+                    }),
+                    idempotency_key: Some(format!(
+                        "quote-commit:{job_hash}:{}",
+                        quote.quote_sha256
+                    )),
+                    expected_previous_seq: None,
+                },
+            )
+            .await
+            .map_err(ApiError::from_orchestration)?;
+
+        state
+            .orchestrator
+            .append_run_event(
+                body.run_id,
+                AppendRunEventRequest {
+                    event_type: "receipt".to_string(),
+                    payload: serde_json::json!({
+                        "receipt_type": if price_integrity_passed { "PriceIntegrityPassed" } else { "PriceIntegrityFailed" },
+                        "payload": {
+                            "job_hash": job_hash.clone(),
+                            "quote_id": quote_id.clone(),
+                            "quote_sha256": quote_sha256.clone(),
+                            "quoted_provider_price_msats": quote.provider_price_msats,
+                            "quoted_total_price_msats": quote.total_price_msats,
+                            "delivered_provider_amount_msats": body.amount_msats,
+                            "delivered_total_price_msats_estimate": body.amount_msats.saturating_add(quote.operator_fee_msats).saturating_add(quote.policy_adder_msats),
+                            "variance_msats": price_integrity_variance_msats,
+                            "variance_bps": price_integrity_variance_bps,
+                            "tolerance_msats": PRICE_INTEGRITY_TOLERANCE_MSATS,
+                        }
+                    }),
+                    idempotency_key: Some(format!("price-integrity:{job_hash}:{}", quote.quote_sha256)),
+                    expected_previous_seq: None,
+                },
+            )
+            .await
+            .map_err(ApiError::from_orchestration)?;
+    }
+
+    if let Some(quoted_provider_price_msats) = quoted_provider_price_msats {
+        apply_provider_price_integrity_signal(
+            &state,
+            body.provider_worker_id.trim(),
+            job_hash.as_str(),
+            quote_id.as_deref(),
+            quote_sha256.as_deref(),
+            quoted_provider_price_msats,
+            body.amount_msats,
+            price_integrity_variance_msats,
+            price_integrity_variance_bps,
+            price_integrity_violation,
+        )
+        .await?;
+    }
+
+    let settle_amount_msats = quoted_provider_price_msats.unwrap_or(body.amount_msats);
     let (reservation, _created) = state
         .treasury
         .reserve_compute_job(
@@ -2212,7 +2378,7 @@ async fn settle_sandbox_run(
             job_hash.as_str(),
             body.provider_id.trim(),
             body.provider_worker_id.trim(),
-            body.amount_msats,
+            settle_amount_msats,
         )
         .await
         .map_err(ApiError::from_treasury)?;
@@ -2244,8 +2410,14 @@ async fn settle_sandbox_run(
     let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
     let violations = outcome.violations.clone();
     if violations.is_empty() {
-        apply_provider_success_signal(&state, body.provider_worker_id.trim(), job_hash.as_str())
+        if price_integrity_passed {
+            apply_provider_success_signal(
+                &state,
+                body.provider_worker_id.trim(),
+                job_hash.as_str(),
+            )
             .await?;
+        }
     } else {
         apply_provider_violation_strike(
             &state,
@@ -2304,7 +2476,12 @@ async fn settle_sandbox_run(
 
     let (settled, _changed) = state
         .treasury
-        .settle_compute_job(job_hash.as_str(), outcome.passed, outcome.exit_code)
+        .settle_compute_job(
+            job_hash.as_str(),
+            outcome.passed,
+            outcome.exit_code,
+            price_integrity_passed,
+        )
         .await
         .map_err(ApiError::from_treasury)?;
 
@@ -2314,7 +2491,8 @@ async fn settle_sandbox_run(
         crate::treasury::SettlementStatus::Reserved => "reserved",
     };
 
-    let payment_amount = if outcome.passed {
+    let payment_released = settled.status == crate::treasury::SettlementStatus::Released;
+    let payment_amount = if payment_released {
         settled.amount_msats
     } else {
         0
@@ -2323,11 +2501,21 @@ async fn settle_sandbox_run(
     let settled_reservation_id = settled.reservation_id.clone();
     let settled_provider_id = settled.provider_id.clone();
 
+    let withheld_reason = if payment_released {
+        None
+    } else if !outcome.passed {
+        Some("verification_failed")
+    } else if !price_integrity_passed {
+        Some("price_integrity_failed")
+    } else {
+        Some("withheld")
+    };
+
     let payment_event = serde_json::json!({
         "rail": "lightning",
         "asset_id": "BTC_LN",
         "amount_msats": payment_amount,
-        "payment_proof": if outcome.passed {
+        "payment_proof": if payment_released {
             serde_json::json!({
                 "type": "internal_ledger",
                 "reservation_id": settled_reservation_id.clone(),
@@ -2337,6 +2525,7 @@ async fn settle_sandbox_run(
             serde_json::json!({
                 "type": "withheld",
                 "reservation_id": settled_reservation_id.clone(),
+                "reason": withheld_reason,
                 "exit_code": outcome.exit_code,
             })
         },
@@ -2365,10 +2554,16 @@ async fn settle_sandbox_run(
             AppendRunEventRequest {
                 event_type: "receipt".to_string(),
                 payload: serde_json::json!({
-                    "receipt_type": if outcome.passed { "PaymentReleased" } else { "PaymentWithheld" },
+                    "receipt_type": if payment_released { "PaymentReleased" } else { "PaymentWithheld" },
                     "payload": {
                         "job_hash": job_hash.clone(),
-                        "amount_msats": settled.amount_msats,
+                        "amount_msats": payment_amount,
+                        "reason": withheld_reason,
+                        "quoted_provider_price_msats": quoted_provider_price_msats,
+                        "quoted_total_price_msats": quoted_total_price_msats,
+                        "delivered_provider_amount_msats": body.amount_msats,
+                        "price_integrity_variance_msats": price_integrity_variance_msats,
+                        "price_integrity_variance_bps": price_integrity_variance_bps,
                         "reservation_id": settled_reservation_id,
                         "provider_id": settled_provider_id,
                     }
@@ -3113,6 +3308,8 @@ async fn dispatch_sandbox_request_to_provider(
 
 const PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD: u64 = 3;
 const PROVIDER_FAILURE_STRIKE_QUARANTINE_THRESHOLD: u64 = 5;
+const PROVIDER_PRICE_INTEGRITY_QUARANTINE_THRESHOLD: u64 = 3;
+const PRICE_INTEGRITY_TOLERANCE_MSATS: u64 = 0;
 
 async fn apply_provider_violation_strike(
     state: &AppState,
@@ -3344,6 +3541,122 @@ async fn apply_provider_success_signal(
         .await
         .map_err(ApiError::from_worker)?;
     publish_worker_snapshot(state, &updated).await?;
+    Ok(())
+}
+
+async fn apply_provider_price_integrity_signal(
+    state: &AppState,
+    worker_id: &str,
+    job_hash: &str,
+    quote_id: Option<&str>,
+    quote_sha256: Option<&str>,
+    quoted_provider_price_msats: u64,
+    delivered_provider_amount_msats: u64,
+    variance_msats: i64,
+    variance_bps: u64,
+    violation: bool,
+) -> Result<(), ApiError> {
+    ensure_runtime_write_authority(state)?;
+
+    let snapshot = state
+        .workers
+        .list_all_workers()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.worker.worker_id == worker_id)
+        .ok_or_else(|| {
+            ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}"))
+        })?;
+
+    if snapshot
+        .worker
+        .metadata
+        .get("last_price_integrity_job_hash")
+        .and_then(serde_json::Value::as_str)
+        == Some(job_hash)
+    {
+        return Ok(());
+    }
+
+    let current_samples = snapshot
+        .worker
+        .metadata
+        .get("price_integrity_samples")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let current_violations = snapshot
+        .worker
+        .metadata
+        .get("price_integrity_violations")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+
+    let next_samples = current_samples.saturating_add(1);
+    let next_violations = if violation {
+        current_violations.saturating_add(1)
+    } else {
+        current_violations
+    };
+
+    let mut patch = serde_json::json!({
+        "price_integrity_samples": next_samples,
+        "price_integrity_violations": next_violations,
+        "last_price_variance_bps": variance_bps,
+        "last_price_integrity_at": Utc::now().to_rfc3339(),
+        "last_price_integrity_job_hash": job_hash,
+        "last_price_integrity_quote_id": quote_id,
+        "last_price_integrity_quote_sha256": quote_sha256,
+        "last_price_integrity_quoted_provider_price_msats": quoted_provider_price_msats,
+        "last_price_integrity_delivered_provider_amount_msats": delivered_provider_amount_msats,
+        "last_price_integrity_variance_msats": variance_msats,
+    });
+
+    let should_quarantine = next_violations >= PROVIDER_PRICE_INTEGRITY_QUARANTINE_THRESHOLD;
+    if should_quarantine {
+        if let Some(map) = patch.as_object_mut() {
+            map.insert("quarantined".to_string(), serde_json::Value::Bool(true));
+            map.insert(
+                "quarantine_reason".to_string(),
+                serde_json::Value::String("price_integrity".to_string()),
+            );
+            map.insert(
+                "quarantined_at".to_string(),
+                serde_json::Value::String(Utc::now().to_rfc3339()),
+            );
+        }
+    }
+
+    let updated = state
+        .workers
+        .heartbeat(
+            worker_id,
+            WorkerHeartbeatRequest {
+                owner: snapshot.worker.owner.clone(),
+                metadata_patch: patch,
+            },
+        )
+        .await
+        .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(state, &updated).await?;
+    maybe_spawn_nostr_provider_ad_mirror(state, &updated);
+
+    if should_quarantine && updated.worker.status != WorkerStatus::Failed {
+        let transitioned = state
+            .workers
+            .transition_status(
+                worker_id,
+                WorkerStatusTransitionRequest {
+                    owner: updated.worker.owner.clone(),
+                    status: WorkerStatus::Failed,
+                    reason: Some("quarantined".to_string()),
+                },
+            )
+            .await
+            .map_err(ApiError::from_worker)?;
+        publish_worker_snapshot(state, &transitioned).await?;
+        maybe_spawn_nostr_provider_ad_mirror(state, &transitioned);
+    }
+
     Ok(())
 }
 
@@ -3633,6 +3946,15 @@ fn provider_ad_payload_from_snapshot(snapshot: &WorkerSnapshot) -> Option<Provid
         .or_else(|| pricing_bands.iter().map(|band| band.min_price_msats).min())
         .unwrap_or(1000);
     let caps = meta.get("caps").cloned().filter(|value| !value.is_null());
+    let price_integrity_samples = meta
+        .get("price_integrity_samples")
+        .and_then(serde_json::Value::as_u64);
+    let price_integrity_violations = meta
+        .get("price_integrity_violations")
+        .and_then(serde_json::Value::as_u64);
+    let last_price_variance_bps = meta
+        .get("last_price_variance_bps")
+        .and_then(serde_json::Value::as_u64);
     let worker_status = match snapshot.worker.status {
         WorkerStatus::Starting => "starting",
         WorkerStatus::Running => "running",
@@ -3661,6 +3983,9 @@ fn provider_ad_payload_from_snapshot(snapshot: &WorkerSnapshot) -> Option<Provid
         worker_status: Some(worker_status),
         heartbeat_state: Some(heartbeat_state),
         caps,
+        price_integrity_samples,
+        price_integrity_violations,
+        last_price_variance_bps,
         capabilities,
         min_price_msats,
         pricing_stage,
@@ -6670,6 +6995,423 @@ mod tests {
             .unwrap_or_default();
         assert!(issued_at > 0);
         assert!(valid_until >= issued_at);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settle_sandbox_run_releases_when_quote_matches() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-provider-ok",
+                        "owner_user_id": 11,
+                        "adapter": "test",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-settle-ok",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let run_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+        let run_json = response_json(run_response).await?;
+        let run_id = run_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let quote_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/compute/quote/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(quote_response.status(), axum::http::StatusCode::OK);
+        let quote_json = response_json(quote_response).await?;
+        let quote = quote_json
+            .get("quote")
+            .cloned()
+            .ok_or_else(|| anyhow!("missing quote"))?;
+        let provider_price = quote
+            .pointer("/provider_price_msats")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| anyhow!("missing provider_price_msats"))?;
+
+        let response = protocol::SandboxRunResponse {
+            env_info: protocol::jobs::sandbox::EnvInfo {
+                image_digest: "sha256:test".to_string(),
+                hostname: None,
+                system_info: None,
+            },
+            runs: vec![protocol::jobs::sandbox::CommandResult {
+                cmd: "echo hi".to_string(),
+                exit_code: 0,
+                duration_ms: 10,
+                stdout_sha256: "stdout".to_string(),
+                stderr_sha256: "stderr".to_string(),
+                stdout_preview: None,
+                stderr_preview: None,
+            }],
+            artifacts: Vec::new(),
+            status: protocol::jobs::sandbox::SandboxStatus::Success,
+            error: None,
+            provenance: protocol::Provenance::new("stub-success"),
+        };
+
+        let settle_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "run_id": run_id,
+                        "provider_id": "provider-settle-ok",
+                        "provider_worker_id": "desktop:settle-provider-ok",
+                        "amount_msats": provider_price,
+                        "quote": quote,
+                        "request": request,
+                        "response": response
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(settle_response.status(), axum::http::StatusCode::OK);
+        let settle_json = response_json(settle_response).await?;
+        assert_eq!(
+            settle_json
+                .pointer("/settlement_status")
+                .and_then(Value::as_str),
+            Some("released")
+        );
+
+        let catalog_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .pointer("/providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers list"))?;
+        let provider_entry = providers
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("worker_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == "desktop:settle-provider-ok")
+            })
+            .ok_or_else(|| anyhow!("missing provider entry"))?;
+        assert_eq!(
+            provider_entry
+                .get("price_integrity_samples")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            provider_entry
+                .get("price_integrity_violations")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            provider_entry.get("success_count").and_then(Value::as_u64),
+            Some(1)
+        );
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settle_sandbox_run_withholds_and_labels_on_price_integrity_violation() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-provider-bad",
+                        "owner_user_id": 11,
+                        "adapter": "test",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-settle-bad",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let run_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+        let run_json = response_json(run_response).await?;
+        let run_id = run_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let quote_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/compute/quote/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(quote_response.status(), axum::http::StatusCode::OK);
+        let quote_json = response_json(quote_response).await?;
+        let quote = quote_json
+            .get("quote")
+            .cloned()
+            .ok_or_else(|| anyhow!("missing quote"))?;
+        let provider_price = quote
+            .pointer("/provider_price_msats")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| anyhow!("missing provider_price_msats"))?;
+
+        let response = protocol::SandboxRunResponse {
+            env_info: protocol::jobs::sandbox::EnvInfo {
+                image_digest: "sha256:test".to_string(),
+                hostname: None,
+                system_info: None,
+            },
+            runs: vec![protocol::jobs::sandbox::CommandResult {
+                cmd: "echo hi".to_string(),
+                exit_code: 0,
+                duration_ms: 10,
+                stdout_sha256: "stdout".to_string(),
+                stderr_sha256: "stderr".to_string(),
+                stdout_preview: None,
+                stderr_preview: None,
+            }],
+            artifacts: Vec::new(),
+            status: protocol::jobs::sandbox::SandboxStatus::Success,
+            error: None,
+            provenance: protocol::Provenance::new("stub-success"),
+        };
+
+        let settle_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "run_id": run_id,
+                        "provider_id": "provider-settle-bad",
+                        "provider_worker_id": "desktop:settle-provider-bad",
+                        "amount_msats": provider_price + 500,
+                        "quote": quote,
+                        "request": request,
+                        "response": response
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(settle_response.status(), axum::http::StatusCode::OK);
+        let settle_json = response_json(settle_response).await?;
+        assert_eq!(
+            settle_json
+                .pointer("/settlement_status")
+                .and_then(Value::as_str),
+            Some("withheld")
+        );
+        assert_eq!(
+            settle_json.pointer("/amount_msats").and_then(Value::as_u64),
+            Some(provider_price)
+        );
+
+        let run_get = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(format!("/internal/v1/runs/{run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(run_get.status(), axum::http::StatusCode::OK);
+        let run_state = response_json(run_get).await?;
+        let events = run_state
+            .pointer("/run/events")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing run events"))?;
+        assert!(events.iter().any(|event| {
+            event
+                .get("event_type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t == "receipt")
+                && event
+                    .pointer("/payload/receipt_type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|t| t == "PriceIntegrityFailed")
+        }));
+        let payment_event = events.iter().find(|event| {
+            event
+                .get("event_type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t == "payment")
+        });
+        let Some(payment_event) = payment_event else {
+            return Err(anyhow!("missing payment event"));
+        };
+        assert_eq!(
+            payment_event
+                .pointer("/payload/amount_msats")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            payment_event
+                .pointer("/payload/payment_proof/reason")
+                .and_then(Value::as_str),
+            Some("price_integrity_failed")
+        );
+
+        let catalog_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .pointer("/providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers list"))?;
+        let provider_entry = providers
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("worker_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == "desktop:settle-provider-bad")
+            })
+            .ok_or_else(|| anyhow!("missing provider entry"))?;
+        assert_eq!(
+            provider_entry
+                .get("price_integrity_samples")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            provider_entry
+                .get("price_integrity_violations")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            provider_entry
+                .get("last_price_variance_bps")
+                .and_then(Value::as_u64),
+            Some(5_000)
+        );
+        assert_eq!(
+            provider_entry.get("success_count").and_then(Value::as_u64),
+            Some(0)
+        );
 
         let _ = shutdown.send(());
         Ok(())
