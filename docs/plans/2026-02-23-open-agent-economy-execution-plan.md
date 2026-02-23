@@ -63,6 +63,23 @@ Execution priority (highest first):
 3. Budget + receipts + idempotency baseline (only what (1) and (2) require).
 4. Then: treasury/exchange depth, sovereign protocol breadth, skills/data/coalitions expansion, decentralization hardening, ecosystem scale.
 
+### 4.1) OpenAgents Compute (Definition)
+
+OpenAgents Compute is the public-facing name of our compute network and compute marketplace.
+
+Minimum definition (Phase 0):
+
+- A provider runs an OpenAgents Compute daemon/agent that can accept jobs and run them in a sandbox.
+- Providers register/announce capacity to a centralized runtime registry over authenticated HTTP + WS authority lanes (Phase 0).
+- The scheduler routes jobs with a simple policy surface (Cheapest/Balanced/Fastest) and a reserve-pool fallback.
+- Providers execute objective workloads (especially `oa.sandbox_run.v1`) and emit verification artifacts (exit code + artifact hashes).
+- Payments are pay-after-verify: verification pass is the condition to release payment, and all state transitions are idempotent with receipts.
+- Providers are gated by health checks + qualification, and are automatically quarantined/penalized on repeated failures.
+
+Next (externalization):
+
+- Provider discovery/announcements move off the centralized registry into protocol lanes (e.g., NIP-89/NIP-90) without changing the pay-after-verify semantics.
+
 ## 5) Synthesis Coverage Map
 
 | Synthesis Scope | Implementation Coverage | Issue Range | Priority |
@@ -73,7 +90,7 @@ Execution priority (highest first):
 | Neobank Treasury Layer | TreasuryRouter, multi-currency budgets, mint trust, quote/proof lifecycle, reconciliation | `OA-ECON-040` to `OA-ECON-065` | Later |
 | Exchange Layer | RFQ/orderflow, NIP-69/NIP-60/NIP-61 stack, settlement v0/v1/v2, liquidity/reputation | `OA-ECON-066` to `OA-ECON-089` | Later |
 | Part Four: Sovereign Agent Protocol | NIP-SA lifecycle, tick/trajectory events, agent capability publication | `OA-ECON-090` to `OA-ECON-099` | Later |
-| Part Five: Unified Wallet Application | CLI/WGPUI wallet parity, NIP-47, account management, recovery | `OA-ECON-100` to `OA-ECON-119` | Next (minimal) / Later (breadth) |
+| Part Five: Unified Wallet Application | CLI/WGPUI wallet parity, NIP-47, account management, recovery (user-managed custody) | `OA-ECON-100` to `OA-ECON-119` | Next (minimal) / Later (breadth) |
 | Part Six: Agent Git Platform | Optional bonus surface moved out of this plan | `docs/plans/optional/gitafter-bonus.md` | Optional (moved out) |
 | Part Seven: Unified Marketplace | Compute liquidity lane now; skills/data/coalitions later | `OA-ECON-120` to `OA-ECON-169` | Now (compute) / Later (skills/data/coalitions) |
 | Part Eight: Autonomous Operation | Autopilot wedge + procurement + proof artifacts; maturity later | `OA-ECON-170` to `OA-ECON-189` | Now (wedge + proof) / Next (maturity) |
@@ -113,9 +130,19 @@ Notes:
 
 Autopilot is the guaranteed buyer. OpenAgents Compute is the fastest path to supply-side liquidity.
 
+#### Coding Agent MVP Capabilities (Non-Negotiable)
+
+When this plan says "Autopilot coding agent", Phase 0 is only considered complete if the following capabilities exist end-to-end:
+
+- Repo lifecycle control: checkout at a known base, create a working branch, apply patches, and produce a clean diff. (Primarily `OA-ECON-003`, `OA-ECON-004`.)
+- Sandbox execution: run build/test/lint deterministically and attach artifacts/hashes to the run. (Primarily `OA-ECON-123`, `OA-ECON-004`.)
+- PR/update + status reporting: publish results back to the issue surface (at minimum: link to artifacts + pass/fail + next action). (Primarily `OA-ECON-003`, `OA-ECON-002`.)
+- Deterministic proof artifacts: Verified Patch Bundles + replay logs are emitted for every run, including failures. (Primarily `OA-ECON-004`, `OA-ECON-179`.)
+- Failure taxonomy + retry boundaries: retries are bounded, resumable, and do not duplicate side effects. (Primarily `OA-ECON-003`, `OA-ECON-170`, `OA-ECON-049`.)
+
 - `OA-ECON-001` - Define parity contract and verified patch artifact schema. - Create authoritative success contract for wedge execution with replayable evidence.
 - `OA-ECON-002` - Instrument wedge baseline metrics. - Add telemetry for leverage, quality, cost, and completion across autonomous loops.
-- `OA-ECON-003` - Harden autonomous issue intake and execution loop. - Ensure claim, execute, verify, and close cycle is resilient under retries and crashes.
+- `OA-ECON-003` - Harden autonomous issue intake and execution loop. - Ensure claim -> checkout -> patch -> sandbox run -> report/PR update -> verify -> close cycle is resilient under retries and crashes.
 - `OA-ECON-004` - Ship Verified Patch Bundle pipeline. - Emit signed action logs, diffs, tests, and receipts for each autonomous run.
 - `OA-ECON-005` - Implement Autopilot demand-floor compute procurement. - Route autopilot workload as guaranteed buyer demand for marketplace providers.
 - `OA-ECON-006` - Enforce org/repo/issue budget reservation pipeline. - Add hierarchical reservation and settlement for every compute purchase.
@@ -130,19 +157,29 @@ Autopilot is the guaranteed buyer. OpenAgents Compute is the fastest path to sup
 - `OA-ECON-207` - Implement hierarchical budget enforcement for org/repo/issue. - Maintain hard spend limits across nested scopes.
 
 - `OA-ECON-120` - Implement marketplace core catalog service. - Unify listing, discovery, and metadata contracts.
-- `OA-ECON-121` - Implement provider announcements with NIP-89. - Standardize provider capability publication and discovery.
+- `OA-ECON-121` - Implement provider announcements via runtime registry. - Standardize provider capability publication and discovery over authenticated HTTP + WS authority lanes (Phase 0); later externalize via NIP-89.
 - `OA-ECON-122` - Implement job-type registry with verification metadata. - Define objective vs subjective verification semantics per job.
 - `OA-ECON-123` - Implement SandboxRun objective verification pipeline. - Verify build/test/lint workloads deterministically.
 - `OA-ECON-128` - Implement reserve provider pool manager. - Guarantee fill path when market liquidity is insufficient.
 - `OA-ECON-129` - Implement provider qualification suite. - Gate new providers with capability and health validation.
 - `OA-ECON-131` - Implement supply class taxonomy in routing layer. - Distinguish SingleNode, LocalCluster (OpenAgents Compute multi-device local clusters), BundleRack, InstanceMarket, ReservePool.
 - `OA-ECON-132` - Implement OpenAgents Compute local-cluster provider support. - Support multi-device local clusters presented as one market supplier (fastest supply-side liquidity path).
-- `OA-ECON-134` - Implement topology-aware routing. - Route by interconnect, throughput, and stability characteristics.
-- `OA-ECON-135` - Implement cost/reliability policy optimizer. - Balance spend, latency, and success probability.
 - `OA-ECON-136` - Implement pay-after-verify settlement for compute jobs. - Release payment only after verification pass.
 - `OA-ECON-167` - Build market telemetry and liquidity dashboards. - Expose fill, latency, churn, and breadth metrics.
 
-### Phase 1: Compute Marketplace MVP
+#### Phase 0 Settlement Model (Minimum)
+
+To make "pay-after-verify" testable in Phase 0 (Gate L), the minimum settlement model is:
+
+1. The buyer reserves budget up-front (internal idempotent ledger reservation; no funds are released yet). (`OA-ECON-006`, `OA-ECON-207`.)
+2. The provider executes and returns artifacts (and, when needed, an invoice/payment intent).
+3. Verification runs deterministically on the artifacts/hashes. (`OA-ECON-123`.)
+4. On verification pass: treasury releases payment and emits a cryptographic receipt linked to the job + artifacts + policy. (`OA-ECON-136`, `OA-ECON-054`.)
+5. On verification fail: payment is not released; provider scoring/quarantine updates are applied and the run is replay-auditable.
+
+Phase 0 assumes platform-managed settlement (OpenAgents-controlled treasury/wallet executor). The sovereign wallet surfaces are "Next" because Phase 0 does not require end-users to run their own treasury to bootstrap liquidity.
+
+### Phase 1: Marketplace Expansion — Subjective Workloads + Abuse Controls
 
 - `OA-ECON-124` - Implement RepoIndex objective verification pipeline. - Verify index artifact correctness and consistency.
 - `OA-ECON-125` - Implement subjective inference tiering engine. - Route inference by risk and verification cost.
@@ -151,6 +188,12 @@ Autopilot is the guaranteed buyer. OpenAgents Compute is the fastest path to sup
 - `OA-ECON-130` - Implement provider tiering and penalty automation. - Apply quota and routing changes from quality signals.
 - `OA-ECON-133` - Implement BundleRack and InstanceMarket adapters. - Integrate datacenter/rented capacity as supply classes.
 - `OA-ECON-137` - Implement pricing bands and staged bidding controls. - Move from fixed pricing to market bidding safely.
+
+- `OA-ECON-163` - Implement anti-abuse controls for marketplace lanes. - Minimum baseline: quotas/rate limits, job payload constraints, and automatic quarantine on repeated failures.
+- `OA-ECON-164` - Implement fraud response automation. - Minimum baseline: containment triggers, evidence capture, and operator escalation paths.
+
+- `OA-ECON-134` - Implement topology-aware routing. - Post-traffic: route by interconnect, throughput, and stability characteristics.
+- `OA-ECON-135` - Implement cost/reliability policy optimizer. - Post-traffic: balance spend, latency, and success probability using real marketplace data.
 
 ### Phase 2: Authority Baseline (As Required for Phases 0-1)
 
@@ -178,7 +221,11 @@ Next (full authority baseline expansion):
 - `OA-ECON-021` - Expose identity proof and attestation APIs. - Provide verifiable identity/economic-lane linkage endpoints.
 - `OA-ECON-024` - Publish cryptographic operations runbook and threat controls. - Document and automate key lifecycle operations.
 
-- `OA-ECON-025` - Build prioritized NIP coverage plan in code. - Implement and gate required NIP set for commerce-grade operation.
+#### Communication Substrate (Next; Not Required for Phase 0 Centralized Registry)
+
+Phase 0 bootstraps liquidity using a centralized runtime registry + WS authority lanes for provider discovery and job dispatch. This section is the "Next" externalization path: move discovery, contracts, and receipts onto Nostr/relay protocol lanes without changing the commerce semantics.
+
+- `OA-ECON-025` - Build prioritized NIP coverage plan in code. - Implement and gate the minimal NIP set for OpenAgents Compute discovery + payments (including NIP-89 and NIP-90), then expand toward full coverage.
 - `OA-ECON-026` - Implement resilient multi-relay client strategy. - Support fan-out subscriptions, dedupe, and reconnection behavior.
 - `OA-ECON-027` - Ship operator relay package. - Provide hardened relay deployment with persistence and observability.
 - `OA-ECON-028` - Add protocol compatibility validator. - Enforce schema and version compatibility at relay/client boundaries.
@@ -355,8 +402,7 @@ Next (full authority baseline expansion):
 - `OA-ECON-161` - Implement coalition merge/split governance workflow. - Support structural evolution with policy integrity.
 - `OA-ECON-162` - Expose coalition APIs and SDK surfaces. - Provide integrator-grade interfaces for coalition operations.
 
-- `OA-ECON-163` - Implement anti-abuse controls for marketplace lanes. - Detect spam/fraud and enforce policy actions.
-- `OA-ECON-164` - Implement fraud response automation. - Trigger containment, evidence capture, and recovery actions.
+Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`OA-ECON-163`, `OA-ECON-164`) because supply onboarding makes abuse a Phase 0/1 concern.
 - `OA-ECON-165` - Implement cross-provider interoperability lanes. - Ensure neutral routing across model/provider ecosystems.
 - `OA-ECON-166` - Build marketplace e2e conformance suite. - Validate complete transaction flows with replay evidence.
 - `OA-ECON-168` - Publish marketplace operator runbooks. - Document deployment, policy, and incident operations.
@@ -435,7 +481,7 @@ Next (full authority baseline expansion):
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; liquidity dashboard shows fill rate, median latency, cost, and provider breadth.
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live authority lanes remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
