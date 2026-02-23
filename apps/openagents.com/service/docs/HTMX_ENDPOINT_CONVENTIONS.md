@@ -43,6 +43,12 @@ For GET route handlers:
 
 These conventions apply to:
 - Login/logout web handlers
-- Chat thread create/send web handlers
+- Chat thread create/select/send web handlers
 - Feed shout web handlers
 - New HTMX web surfaces as they are added
+
+Current chat partial route contract:
+- `GET /chat/fragments/thread/:thread_id` returns:
+  - target fragment: `#chat-thread-content-panel`
+  - out-of-band swap: `#chat-thread-list-panel` (`hx-swap-oob="outerHTML"`)
+  - URL coherence via `HX-Push-Url`

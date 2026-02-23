@@ -219,71 +219,129 @@ fn chat_panel(
     messages: &[ChatMessageView],
 ) -> Markup {
     html! {
-        section class="oa-grid chat" {
-            aside class="oa-card oa-thread-list" {
-                h2 { "Threads" }
-                (status_slot("chat-status", status))
-                @if session.is_none() {
-                    p class="oa-muted" { "Sign in to start and view Codex threads." }
-                    a class="oa-btn primary" href="/login" { "Log in" }
-                } @else {
-                    form method="post" action="/chat/new"
-                        hx-post="/chat/new"
-                        hx-target="#chat-status"
-                        hx-swap="outerHTML" {
-                        button type="submit" class="oa-btn primary" { "New thread" }
-                        span class="htmx-indicator oa-indicator" { "Creating..." }
-                    }
-                    ul class="oa-thread-items" {
-                        @if threads.is_empty() {
-                            li class="oa-thread-empty" { "No threads yet." }
-                        }
-                        @for thread in threads {
-                            li {
-                                a
-                                    href={(format!("/chat/{}", thread.thread_id))}
-                                    class={(if thread.is_active { "oa-thread-link active" } else { "oa-thread-link" })} {
-                                    span class="oa-thread-title" { (thread.title) }
-                                    span class="oa-thread-meta" {
-                                        (thread.updated_at) " · " (thread.message_count) " msg"
-                                    }
-                                }
+        section id="chat-surface" class="oa-grid chat" {
+            (chat_thread_list_panel(session, status, threads, false))
+            (chat_content_panel(session, active_thread_id, messages))
+        }
+    }
+}
+
+pub fn render_chat_thread_select_fragment(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    threads: &[ChatThreadView],
+    active_thread_id: Option<&str>,
+    messages: &[ChatMessageView],
+) -> String {
+    html! {
+        (chat_content_panel(session, active_thread_id, messages))
+        (chat_thread_list_panel(session, status, threads, true))
+    }
+    .into_string()
+}
+
+fn chat_thread_list_panel(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    threads: &[ChatThreadView],
+    out_of_band: bool,
+) -> Markup {
+    html! {
+        @if out_of_band {
+            aside id="chat-thread-list-panel" hx-swap-oob="outerHTML" class="oa-card oa-thread-list" {
+                (chat_thread_list_panel_body(session, status, threads))
+            }
+        } @else {
+            aside id="chat-thread-list-panel" class="oa-card oa-thread-list" {
+                (chat_thread_list_panel_body(session, status, threads))
+            }
+        }
+    }
+}
+
+fn chat_thread_list_panel_body(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    threads: &[ChatThreadView],
+) -> Markup {
+    html! {
+        h2 { "Threads" }
+        (status_slot("chat-status", status))
+        @if session.is_none() {
+            p class="oa-muted" { "Sign in to start and view Codex threads." }
+            a class="oa-btn primary" href="/login" { "Log in" }
+        } @else {
+            form method="post" action="/chat/new"
+                hx-post="/chat/new"
+                hx-target="#chat-thread-content-panel"
+                hx-swap="outerHTML" {
+                button type="submit" class="oa-btn primary" { "New thread" }
+                span class="htmx-indicator oa-indicator" { "Creating..." }
+            }
+            ul class="oa-thread-items" {
+                @if threads.is_empty() {
+                    li class="oa-thread-empty" { "No threads yet." }
+                }
+                @for thread in threads {
+                    @let thread_url = format!("/chat/{}", thread.thread_id);
+                    @let fragment_url = format!("/chat/fragments/thread/{}", thread.thread_id);
+                    li {
+                        a
+                            href=(thread_url.clone())
+                            hx-get=(fragment_url)
+                            hx-target="#chat-thread-content-panel"
+                            hx-swap="outerHTML"
+                            hx-push-url=(thread_url)
+                            hx-boost="false"
+                            class={(if thread.is_active { "oa-thread-link active" } else { "oa-thread-link" })} {
+                            span class="oa-thread-title" { (thread.title) }
+                            span class="oa-thread-meta" {
+                                (thread.updated_at) " · " (thread.message_count) " msg"
                             }
                         }
                     }
                 }
             }
-            article class="oa-card oa-chat-main" {
-                h2 { "Codex" }
-                @if session.is_none() {
-                    p class="oa-muted" {
-                        "Codex access requires a ChatGPT-linked account for this first-pass policy."
+        }
+    }
+}
+
+fn chat_content_panel(
+    session: Option<&SessionView>,
+    active_thread_id: Option<&str>,
+    messages: &[ChatMessageView],
+) -> Markup {
+    html! {
+        article id="chat-thread-content-panel" class="oa-card oa-chat-main" {
+            h2 { "Codex" }
+            @if session.is_none() {
+                p class="oa-muted" {
+                    "Codex access requires a ChatGPT-linked account for this first-pass policy."
+                }
+            } @else if let Some(active_thread_id) = active_thread_id {
+                p class="oa-muted" { "Thread: " code { (active_thread_id) } }
+                div class="oa-message-list" {
+                    @if messages.is_empty() {
+                        div class="oa-message-empty" { "No messages yet. Send a message to start." }
                     }
-                } @else if let Some(active_thread_id) = active_thread_id {
-                    p class="oa-muted" { "Thread: " code { (active_thread_id) } }
-                    div class="oa-message-list" {
-                        @if messages.is_empty() {
-                            div class="oa-message-empty" { "No messages yet. Send a message to start." }
+                    @for message in messages {
+                        article class={(if message.role == "user" { "oa-msg user" } else { "oa-msg assistant" })} {
+                            header { (message.role) " · " (message.created_at) }
+                            pre { (message.text) }
                         }
-                        @for message in messages {
-                            article class={(if message.role == "user" { "oa-msg user" } else { "oa-msg assistant" })} {
-                                header { (message.role) " · " (message.created_at) }
-                                pre { (message.text) }
-                            }
-                        }
                     }
-                    form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send"
-                        hx-post={(format!("/chat/{active_thread_id}/send"))}
-                        hx-target="#chat-status"
-                        hx-swap="outerHTML" {
-                        textarea name="text" rows="4" placeholder="Message Codex" required {}
-                        button type="submit" class="oa-btn primary" { "Send" }
-                        span class="htmx-indicator oa-indicator" { "Sending..." }
-                    }
-                } @else {
-                    p class="oa-muted" {
-                        "Create a thread to begin. Live worker events remain WS-only."
-                    }
+                }
+                form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send"
+                    hx-post={(format!("/chat/{active_thread_id}/send"))}
+                    hx-target="#chat-status"
+                    hx-swap="outerHTML" {
+                    textarea name="text" rows="4" placeholder="Message Codex" required {}
+                    button type="submit" class="oa-btn primary" { "Send" }
+                    span class="htmx-indicator oa-indicator" { "Sending..." }
+                }
+            } @else {
+                p class="oa-muted" {
+                    "Create a thread to begin. Live worker events remain WS-only."
                 }
             }
         }
@@ -598,7 +656,7 @@ input:focus, textarea:focus {
 #[cfg(test)]
 mod tests {
     use super::{
-        HTMX_ASSET_PATH, SessionView, WebBody, WebPage,
+        ChatMessageView, ChatThreadView, HTMX_ASSET_PATH, SessionView, WebBody, WebPage,
         render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
     };
 
@@ -661,5 +719,41 @@ mod tests {
         assert!(!fragment.contains("<html"));
         assert!(!fragment.contains("<head"));
         assert!(!fragment.contains("<body"));
+    }
+
+    #[test]
+    fn render_chat_threads_include_partial_select_attributes() {
+        let page = WebPage {
+            title: "Codex".to_string(),
+            path: "/chat/thread_abc".to_string(),
+            session: Some(SessionView {
+                email: "tester@openagents.com".to_string(),
+                display_name: "Tester".to_string(),
+            }),
+            body: WebBody::Chat {
+                status: None,
+                threads: vec![ChatThreadView {
+                    thread_id: "thread_abc".to_string(),
+                    title: "Thread thread_abc".to_string(),
+                    updated_at: "2026-02-23T00:00:00Z".to_string(),
+                    message_count: 1,
+                    is_active: true,
+                }],
+                active_thread_id: Some("thread_abc".to_string()),
+                messages: vec![ChatMessageView {
+                    role: "user".to_string(),
+                    text: "hello".to_string(),
+                    created_at: "2026-02-23T00:00:00Z".to_string(),
+                }],
+            },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains("id=\"chat-surface\""));
+        assert!(html.contains("id=\"chat-thread-list-panel\""));
+        assert!(html.contains("id=\"chat-thread-content-panel\""));
+        assert!(html.contains("hx-get=\"/chat/fragments/thread/thread_abc\""));
+        assert!(html.contains("hx-target=\"#chat-thread-content-panel\""));
+        assert!(html.contains("hx-push-url=\"/chat/thread_abc\""));
     }
 }

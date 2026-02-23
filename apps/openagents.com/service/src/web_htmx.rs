@@ -6,6 +6,7 @@ use crate::web_maud::render_notice_fragment as render_maud_notice_fragment;
 
 const CACHE_NO_STORE: &str = "no-store";
 const HX_REDIRECT_HEADER: &str = "HX-Redirect";
+const HX_PUSH_URL_HEADER: &str = "HX-Push-Url";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HtmxRequest {
@@ -64,6 +65,12 @@ pub fn redirect_response(location: &str) -> Response {
     response
 }
 
+pub fn set_push_url_header(response: &mut Response, url: &str) {
+    if let Ok(value) = HeaderValue::from_str(url) {
+        response.headers_mut().insert(HX_PUSH_URL_HEADER, value);
+    }
+}
+
 fn header_text(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -81,7 +88,7 @@ fn header_is_true(headers: &HeaderMap, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_request, fragment_response, redirect_response};
+    use super::{classify_request, fragment_response, redirect_response, set_push_url_header};
     use axum::body::to_bytes;
     use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
     use axum::http::{HeaderMap, StatusCode};
@@ -150,6 +157,19 @@ mod tests {
                 .get("HX-Redirect")
                 .and_then(|value| value.to_str().ok()),
             Some("/chat/thread-123")
+        );
+    }
+
+    #[test]
+    fn set_push_url_header_sets_hx_push_url() {
+        let mut response = fragment_response("<div>ok</div>".to_string(), StatusCode::OK);
+        set_push_url_header(&mut response, "/chat/thread-xyz");
+        assert_eq!(
+            response
+                .headers()
+                .get("HX-Push-Url")
+                .and_then(|value| value.to_str().ok()),
+            Some("/chat/thread-xyz")
         );
     }
 }

@@ -105,10 +105,11 @@ use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeR
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 use crate::web_htmx::{
     classify_request as classify_htmx_request, notice_response as htmx_notice_response,
-    redirect_response as htmx_redirect_response,
+    redirect_response as htmx_redirect_response, set_push_url_header as htmx_set_push_url_header,
 };
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
+    render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
     render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
 };
 
@@ -1387,6 +1388,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/feed", get(feed_page))
         .route("/feed/shout", post(web_feed_shout))
         .route("/chat/new", post(web_chat_new_thread))
+        .route(
+            "/chat/fragments/thread/:thread_id",
+            get(web_chat_thread_fragment),
+        )
         .route("/chat/:thread_id/send", post(web_chat_send_message))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
@@ -2511,50 +2516,16 @@ async fn render_web_page(
     let session = session_bundle.as_ref().map(session_view_from_bundle);
 
     if path == "/" || path == "/chat" || path.starts_with("/chat/") {
-        let mut active_thread_id = chat_thread_id_from_path(&path);
+        let requested_thread_id = chat_thread_id_from_path(&path);
         let mut threads = Vec::new();
         let mut messages = Vec::new();
+        let mut active_thread_id = requested_thread_id.clone();
 
         if let Some(bundle) = session_bundle.as_ref() {
-            let thread_rows = state
-                .codex_thread_store
-                .list_threads_for_user(&bundle.user.id, Some(&bundle.session.active_org_id))
-                .await
-                .map_err(map_thread_store_error)?;
-            if active_thread_id.is_none() {
-                active_thread_id = thread_rows.first().map(|thread| thread.thread_id.clone());
-            }
-            let active_lookup = active_thread_id.clone();
-            threads = thread_rows
-                .into_iter()
-                .map(|thread| {
-                    let thread_id = thread.thread_id.clone();
-                    let is_active = active_lookup.as_deref() == Some(thread_id.as_str());
-                    ChatThreadView {
-                        title: thread_title(&thread_id, thread.message_count),
-                        thread_id,
-                        updated_at: timestamp(thread.updated_at),
-                        message_count: thread.message_count,
-                        is_active,
-                    }
-                })
-                .collect();
-
-            if let Some(active_id) = active_thread_id.as_deref() {
-                let message_rows = state
-                    .codex_thread_store
-                    .list_thread_messages_for_user(&bundle.user.id, active_id)
-                    .await
-                    .map_err(map_thread_store_error)?;
-                messages = message_rows
-                    .into_iter()
-                    .map(|message| ChatMessageView {
-                        role: message.role,
-                        text: message.text,
-                        created_at: timestamp(message.created_at),
-                    })
-                    .collect();
-            }
+            let views = chat_views_for_bundle(state, bundle, requested_thread_id).await?;
+            threads = views.threads;
+            active_thread_id = views.active_thread_id;
+            messages = views.messages;
         }
 
         let page = WebPage {
@@ -2605,6 +2576,80 @@ fn chat_thread_id_from_path(path: &str) -> Option<String> {
     } else {
         Some(segment.to_string())
     }
+}
+
+struct ChatWebViews {
+    threads: Vec<ChatThreadView>,
+    active_thread_id: Option<String>,
+    messages: Vec<ChatMessageView>,
+}
+
+async fn chat_views_for_bundle(
+    state: &AppState,
+    bundle: &SessionBundle,
+    requested_active_thread_id: Option<String>,
+) -> Result<ChatWebViews, (StatusCode, Json<ApiErrorResponse>)> {
+    let thread_rows = state
+        .codex_thread_store
+        .list_threads_for_user(&bundle.user.id, Some(&bundle.session.active_org_id))
+        .await
+        .map_err(map_thread_store_error)?;
+
+    let mut active_thread_id = requested_active_thread_id;
+    if active_thread_id.is_none() {
+        active_thread_id = thread_rows.first().map(|thread| thread.thread_id.clone());
+    }
+    if active_thread_id
+        .as_ref()
+        .map(|candidate| {
+            !thread_rows
+                .iter()
+                .any(|thread| thread.thread_id.as_str() == candidate.as_str())
+        })
+        .unwrap_or(false)
+    {
+        active_thread_id = thread_rows.first().map(|thread| thread.thread_id.clone());
+    }
+
+    let active_lookup = active_thread_id.clone();
+    let threads = thread_rows
+        .into_iter()
+        .map(|thread| {
+            let thread_id = thread.thread_id.clone();
+            let is_active = active_lookup.as_deref() == Some(thread_id.as_str());
+            ChatThreadView {
+                title: thread_title(&thread_id, thread.message_count),
+                thread_id,
+                updated_at: timestamp(thread.updated_at),
+                message_count: thread.message_count,
+                is_active,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let messages = if let Some(active_id) = active_thread_id.as_deref() {
+        let message_rows = state
+            .codex_thread_store
+            .list_thread_messages_for_user(&bundle.user.id, active_id)
+            .await
+            .map_err(map_thread_store_error)?;
+        message_rows
+            .into_iter()
+            .map(|message| ChatMessageView {
+                role: message.role,
+                text: message.text,
+                created_at: timestamp(message.created_at),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(ChatWebViews {
+        threads,
+        active_thread_id,
+        messages,
+    })
 }
 
 fn web_placeholder_for_path(path: &str) -> (String, String) {
@@ -2670,6 +2715,31 @@ fn web_html_response(page: WebPage) -> Response {
 fn web_fragment_response(page: &WebPage) -> Response {
     let mut response =
         crate::web_htmx::fragment_response(render_maud_main_fragment(page), StatusCode::OK);
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn chat_thread_select_fragment_response(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    threads: &[ChatThreadView],
+    active_thread_id: Option<&str>,
+    messages: &[ChatMessageView],
+    push_url: Option<&str>,
+) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_chat_thread_select_fragment(
+            session,
+            status,
+            threads,
+            active_thread_id,
+            messages,
+        ),
+        StatusCode::OK,
+    );
+    if let Some(push_url) = push_url {
+        htmx_set_push_url_header(&mut response, push_url);
+    }
     apply_html_security_headers(response.headers_mut());
     response
 }
@@ -3468,7 +3538,26 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
         Ok(thread) => {
             let location = format!("/chat/{}?status=thread-created", thread.thread_id);
             if htmx.is_hx_request {
-                htmx_redirect_response(&location)
+                match chat_views_for_bundle(&state, &session, Some(thread.thread_id.clone())).await
+                {
+                    Ok(views) => {
+                        let session_view = session_view_from_bundle(&session);
+                        chat_thread_select_fragment_response(
+                            Some(&session_view),
+                            Some("thread-created"),
+                            &views.threads,
+                            views.active_thread_id.as_deref(),
+                            &views.messages,
+                            Some(&format!("/chat/{}", thread.thread_id)),
+                        )
+                    }
+                    Err(_) => htmx_notice_response(
+                        "chat-status",
+                        "thread-create-failed",
+                        true,
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                    ),
+                }
             } else {
                 Redirect::temporary(&location).into_response()
             }
@@ -3486,6 +3575,61 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
             }
         }
     }
+}
+
+async fn web_chat_thread_fragment(
+    State(state): State<AppState>,
+    Path(thread_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let normalized_thread_id = thread_id.trim().to_string();
+    if !htmx.is_hx_request {
+        let location = if normalized_thread_id.is_empty() {
+            "/chat".to_string()
+        } else {
+            format!("/chat/{normalized_thread_id}")
+        };
+        return Redirect::temporary(&location).into_response();
+    }
+    let session_bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(session) => session,
+        Err(_) => return htmx_redirect_response("/login"),
+    };
+    if normalized_thread_id.is_empty() {
+        return htmx_notice_response(
+            "chat-status",
+            "message-send-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        );
+    }
+
+    let views =
+        match chat_views_for_bundle(&state, &session_bundle, Some(normalized_thread_id)).await {
+            Ok(views) => views,
+            Err(_) => {
+                return htmx_notice_response(
+                    "chat-status",
+                    "message-send-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+        };
+    let session_view = session_view_from_bundle(&session_bundle);
+    let push_url = views
+        .active_thread_id
+        .as_deref()
+        .map(|thread_id| format!("/chat/{thread_id}"));
+    chat_thread_select_fragment_response(
+        Some(&session_view),
+        None,
+        &views.threads,
+        views.active_thread_id.as_deref(),
+        &views.messages,
+        push_url.as_deref(),
+    )
 }
 
 async fn web_chat_send_message(
@@ -17767,6 +17911,151 @@ mod tests {
             set_cookies
                 .iter()
                 .any(|value| value.starts_with(&format!("{}=;", super::AUTH_REFRESH_COOKIE_NAME)))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_new_thread_hx_returns_partial_fragment_and_push_url() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-hx-new@openagents.com").await?;
+        let app = build_router(config);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let push_url = response
+            .headers()
+            .get("HX-Push-Url")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(push_url.starts_with("/chat/thread_"));
+
+        let body = read_text(response).await?;
+        assert!(body.contains("id=\"chat-thread-content-panel\""));
+        assert!(body.contains("id=\"chat-thread-list-panel\""));
+        assert!(body.contains("hx-swap-oob=\"outerHTML\""));
+        assert!(body.contains("Thread created."));
+        assert!(!body.contains("<html"));
+        assert!(!body.contains("<body"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_thread_select_hx_updates_partial_and_non_hx_redirects() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-hx-select@openagents.com").await?;
+        let app = build_router(config);
+
+        let first_create = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let first_create_response = app.clone().oneshot(first_create).await?;
+        assert_eq!(
+            first_create_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        let first_location = first_create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let first_thread_id = first_location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(first_thread_id.starts_with("thread_"));
+
+        let second_create = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let second_create_response = app.clone().oneshot(second_create).await?;
+        assert_eq!(
+            second_create_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        let second_location = second_create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let second_thread_id = second_location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(second_thread_id.starts_with("thread_"));
+        assert_ne!(second_thread_id, first_thread_id);
+
+        let select_request = Request::builder()
+            .method("GET")
+            .uri(format!("/chat/fragments/thread/{second_thread_id}"))
+            .header("hx-request", "true")
+            .header("hx-target", "chat-thread-content-panel")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let select_response = app.clone().oneshot(select_request).await?;
+        assert_eq!(select_response.status(), StatusCode::OK);
+        let expected_push_url = format!("/chat/{second_thread_id}");
+        assert_eq!(
+            select_response
+                .headers()
+                .get("HX-Push-Url")
+                .and_then(|value| value.to_str().ok()),
+            Some(expected_push_url.as_str())
+        );
+        let select_body = read_text(select_response).await?;
+        assert!(select_body.contains("id=\"chat-thread-content-panel\""));
+        assert!(select_body.contains("hx-swap-oob=\"outerHTML\""));
+        assert!(select_body.contains(&format!("Thread: <code>{second_thread_id}</code>")));
+        assert!(select_body.contains("oa-thread-link active"));
+        assert!(!select_body.contains("<html"));
+
+        let non_hx_request = Request::builder()
+            .method("GET")
+            .uri(format!("/chat/fragments/thread/{second_thread_id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let non_hx_response = app.oneshot(non_hx_request).await?;
+        assert_eq!(non_hx_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let expected_location = format!("/chat/{second_thread_id}");
+        assert_eq!(
+            non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some(expected_location.as_str())
         );
 
         Ok(())
