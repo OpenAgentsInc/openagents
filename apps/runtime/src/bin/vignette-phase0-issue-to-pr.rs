@@ -22,6 +22,7 @@ use openagents_runtime_service::bridge::{
     receipt_sha256_from_utf8, validate_phase0_bridge_event,
 };
 use openagents_runtime_service::config::{AuthorityWriteMode, Config as RuntimeConfig};
+use openagents_runtime_service::marketplace::ProviderSelection;
 use openagents_runtime_service::types::RuntimeRun;
 use openagents_runtime_service::workers::WorkerSnapshot;
 use protocol::hash::canonical_hash;
@@ -161,14 +162,18 @@ async fn main() -> Result<()> {
         owner_user_id,
         "device:vignette-provider-a",
         &provider_a,
+        false,
+        1000,
     )
     .await?;
     enroll_provider(
         &client,
         &runtime.base_url,
-        owner_user_id,
+        999,
         "device:vignette-provider-b",
         &provider_b,
+        true,
+        1500,
     )
     .await?;
 
@@ -759,6 +764,8 @@ async fn enroll_provider(
     owner_user_id: u64,
     worker_id: &str,
     provider: &ProviderHandle,
+    reserve_pool: bool,
+    min_price_msats: u64,
 ) -> Result<WorkerSnapshot> {
     let url = format!("{runtime_base}/internal/v1/workers");
     let body = json!({
@@ -769,6 +776,9 @@ async fn enroll_provider(
             "roles": ["client", "provider"],
             "provider_id": provider.state.id,
             "provider_base_url": provider.base_url,
+            "capabilities": ["oa.sandbox_run.v1"],
+            "min_price_msats": min_price_msats,
+            "reserve_pool": reserve_pool,
             "caps": {
                 "max_timeout_secs": provider.state.caps.max_timeout_secs
             }
@@ -791,7 +801,7 @@ async fn enroll_provider(
 async fn run_happy_path(
     client: &reqwest::Client,
     runtime_base: &str,
-    _owner_user_id: u64,
+    owner_user_id: u64,
     fixture: &FixtureRepo,
     provider: &ProviderHandle,
     out_dir: &Path,
@@ -856,20 +866,34 @@ async fn run_happy_path(
     );
     let job_hash = request.compute_hash().context("compute sandbox job hash")?;
 
+    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
+    if routed.provider.provider_id != provider.state.id {
+        return Err(anyhow!(
+            "unexpected routed provider: expected {}, got {}",
+            provider.state.id,
+            routed.provider.provider_id
+        ));
+    }
+    let provider_base_url = routed
+        .provider
+        .base_url
+        .clone()
+        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
+
     let started = std::time::Instant::now();
-    let response = call_sandbox_provider(client, &provider.base_url, &request, &job_hash).await?;
+    let response = call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
     let latency_ms = started.elapsed().as_millis() as u64;
 
     // Retry dispatch: same idempotency key must not re-execute.
     let response_retry =
-        call_sandbox_provider(client, &provider.base_url, &request, &job_hash).await?;
+        call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
     assert_same_sandbox_response(&response, &response_retry)?;
     assert_provider_idempotency(client, provider, 1, 1).await?;
 
     let job_dispatched_receipt = json!({
         "job_type": SandboxRunRequest::JOB_TYPE,
         "job_hash": job_hash,
-        "provider_id": provider.state.id,
+        "provider_id": routed.provider.provider_id,
         "idempotency_key": job_hash
     });
     append_receipt_event(
@@ -1068,7 +1092,7 @@ async fn run_happy_path(
 async fn run_verification_fail(
     client: &reqwest::Client,
     runtime_base: &str,
-    _owner_user_id: u64,
+    owner_user_id: u64,
     fixture: &FixtureRepo,
     provider: &ProviderHandle,
     out_dir: &Path,
@@ -1102,7 +1126,21 @@ async fn run_verification_fail(
         vec!["cargo test".to_string()],
     );
     let job_hash = request.compute_hash().context("compute job hash")?;
-    let response = call_sandbox_provider(client, &provider.base_url, &request, &job_hash).await?;
+    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
+    if routed.provider.provider_id != provider.state.id {
+        return Err(anyhow!(
+            "unexpected routed provider: expected {}, got {}",
+            provider.state.id,
+            routed.provider.provider_id
+        ));
+    }
+    let provider_base_url = routed
+        .provider
+        .base_url
+        .clone()
+        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
+
+    let response = call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
 
     let verification = verify_sandbox_with_runtime(client, runtime_base, &request, &response).await?;
     if verification.passed {
@@ -1197,7 +1235,7 @@ async fn run_verification_fail(
 async fn run_provider_offline_mid_run(
     client: &reqwest::Client,
     runtime_base: &str,
-    _owner_user_id: u64,
+    owner_user_id: u64,
     fixture: &FixtureRepo,
     provider_a: &ProviderHandle,
     provider_b: &ProviderHandle,
@@ -1239,6 +1277,20 @@ async fn run_provider_offline_mid_run(
     );
     let job_hash = request.compute_hash().context("compute job hash")?;
 
+    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
+    if routed.provider.provider_id != provider_a.state.id {
+        return Err(anyhow!(
+            "unexpected routed provider: expected {}, got {}",
+            provider_a.state.id,
+            routed.provider.provider_id
+        ));
+    }
+    let provider_a_url = routed
+        .provider
+        .base_url
+        .clone()
+        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
+
     // Disable provider A while it is mid-run (during sleep).
     let disable_url = format!("{}/v1/disable", provider_a.base_url);
     let disable_task = {
@@ -1249,7 +1301,7 @@ async fn run_provider_offline_mid_run(
         })
     };
 
-    let response_a = call_sandbox_provider(client, &provider_a.base_url, &request, &job_hash).await;
+    let response_a = call_sandbox_provider(client, &provider_a_url, &request, &job_hash).await;
     let _ = disable_task.await;
 
     let response_a = match response_a {
@@ -1274,6 +1326,19 @@ async fn run_provider_offline_mid_run(
         ));
     }
 
+    // Mark provider A unavailable for routing (so we can fall back immediately).
+    let transition_url =
+        format!("{runtime_base}/internal/v1/workers/device:vignette-provider-a/status");
+    let _ = client
+        .post(transition_url)
+        .json(&json!({
+            "owner_user_id": owner_user_id,
+            "status": "failed",
+            "reason": "offline_mid_run"
+        }))
+        .send()
+        .await;
+
     append_receipt_event(
         client,
         runtime_base,
@@ -1285,9 +1350,29 @@ async fn run_provider_offline_mid_run(
     .await?;
 
     // Fallback to reserve provider B (must succeed).
+    let routed_fallback =
+        route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
+    if routed_fallback.provider.provider_id != provider_b.state.id {
+        return Err(anyhow!(
+            "unexpected routed fallback provider: expected {}, got {}",
+            provider_b.state.id,
+            routed_fallback.provider.provider_id
+        ));
+    }
+    if routed_fallback.tier
+        != openagents_runtime_service::marketplace::ProviderSelectionTier::ReservePool
+    {
+        return Err(anyhow!("expected reserve_pool fallback tier"));
+    }
+    let provider_b_url = routed_fallback
+        .provider
+        .base_url
+        .clone()
+        .ok_or_else(|| anyhow!("routed fallback provider missing base_url"))?;
+
     let started = std::time::Instant::now();
     let response_b =
-        call_sandbox_provider(client, &provider_b.base_url, &request, &job_hash).await?;
+        call_sandbox_provider(client, &provider_b_url, &request, &job_hash).await?;
     let latency_ms = started.elapsed().as_millis() as u64;
     let verification =
         verify_sandbox_with_runtime(client, runtime_base, &request, &response_b).await?;
@@ -1300,7 +1385,7 @@ async fn run_provider_offline_mid_run(
         runtime_base,
         run.id,
         "JobDispatched",
-        json!({"job_type": SandboxRunRequest::JOB_TYPE, "job_hash": job_hash, "provider_id": provider_b.state.id, "idempotency_key": job_hash}),
+        json!({"job_type": SandboxRunRequest::JOB_TYPE, "job_hash": job_hash, "provider_id": routed_fallback.provider.provider_id, "idempotency_key": job_hash}),
         Some(format!("job-dispatched:{job_hash}")),
     )
     .await?;
@@ -1344,7 +1429,7 @@ async fn run_provider_offline_mid_run(
         runtime_base,
         run.id,
         "PaymentReleased",
-        json!({"job_hash": job_hash, "amount_msats": 1000, "provider_id": provider_b.state.id}),
+        json!({"job_hash": job_hash, "amount_msats": 1000, "provider_id": routed_fallback.provider.provider_id}),
         Some("receipt-payment-released".to_string()),
     )
     .await?;
@@ -1576,6 +1661,31 @@ async fn verify_sandbox_with_runtime(
         passed: parsed.passed,
         exit_code: parsed.exit_code,
     })
+}
+
+async fn route_provider(
+    client: &reqwest::Client,
+    runtime_base: &str,
+    owner_user_id: u64,
+    capability: &str,
+) -> Result<ProviderSelection> {
+    let url = format!("{runtime_base}/internal/v1/marketplace/route/provider");
+    let resp = client
+        .post(url)
+        .json(&json!({
+            "owner_user_id": owner_user_id,
+            "capability": capability
+        }))
+        .send()
+        .await
+        .context("route provider")?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("route provider failed: {}", text));
+    }
+    resp.json::<ProviderSelection>()
+        .await
+        .context("parse provider selection")
 }
 
 async fn call_sandbox_provider(

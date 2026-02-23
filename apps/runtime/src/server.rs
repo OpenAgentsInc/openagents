@@ -28,7 +28,10 @@ use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     bridge::{BridgeNostrPublisher, ProviderAdV1, build_provider_ad_event},
-    marketplace::{ProviderCatalogEntry, build_provider_catalog, is_provider_worker},
+    marketplace::{
+        ProviderCatalogEntry, ProviderSelection, build_provider_catalog,
+        is_provider_worker, select_provider_for_capability,
+    },
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
@@ -336,6 +339,13 @@ struct JobTypesResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct RouteProviderBody {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    capability: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SandboxVerificationBody {
     request: protocol::SandboxRunRequest,
     response: protocol::SandboxRunResponse,
@@ -436,6 +446,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/catalog/job-types",
             get(get_job_types),
+        )
+        .route(
+            "/internal/v1/marketplace/route/provider",
+            post(route_provider),
         )
         .route(
             "/internal/v1/verifications/sandbox-run",
@@ -1223,6 +1237,17 @@ async fn get_provider_catalog(
     }
 
     Ok(Json(ProviderCatalogResponse { providers }))
+}
+
+async fn route_provider(
+    State(state): State<AppState>,
+    Json(body): Json<RouteProviderBody>,
+) -> Result<Json<ProviderSelection>, ApiError> {
+    let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let workers = state.workers.list_all_workers().await;
+    let selection =
+        select_provider_for_capability(&workers, Some(&owner), &body.capability).ok_or(ApiError::NotFound)?;
+    Ok(Json(selection))
 }
 
 async fn get_job_types() -> Json<JobTypesResponse> {
@@ -4056,6 +4081,125 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| anyhow!("missing base_url"))?;
         assert_eq!(base_url, "http://127.0.0.1:9999");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_provider_prefers_owned_and_falls_back_to_reserve_pool() -> Result<()> {
+        let app = test_router();
+
+        let create_owned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:routing-owned",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-owned",
+                            "provider_base_url": "http://127.0.0.1:9999",
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_owned.status(), axum::http::StatusCode::CREATED);
+
+        let create_reserve = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:routing-reserve",
+                        "owner_user_id": 99,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-reserve",
+                            "provider_base_url": "http://127.0.0.1:9998",
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 2000,
+                            "reserve_pool": true
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_reserve.status(), axum::http::StatusCode::CREATED);
+
+        let route_owned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/route/provider")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "capability": "oa.sandbox_run.v1"
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(route_owned.status(), axum::http::StatusCode::OK);
+        let route_owned_json = response_json(route_owned).await?;
+        assert_eq!(
+            route_owned_json
+                .pointer("/provider/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-owned")
+        );
+        assert_eq!(
+            route_owned_json.get("tier").and_then(Value::as_str),
+            Some("owned")
+        );
+
+        let stop_owned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers/desktop:routing-owned/status")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "status": "failed",
+                        "reason": "offline"
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(stop_owned.status(), axum::http::StatusCode::OK);
+
+        let route_reserve = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/route/provider")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "capability": "oa.sandbox_run.v1"
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(route_reserve.status(), axum::http::StatusCode::OK);
+        let route_reserve_json = response_json(route_reserve).await?;
+        assert_eq!(
+            route_reserve_json
+                .pointer("/provider/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-reserve")
+        );
+        assert_eq!(
+            route_reserve_json.get("tier").and_then(Value::as_str),
+            Some("reserve_pool")
+        );
 
         Ok(())
     }
