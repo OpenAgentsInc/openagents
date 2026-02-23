@@ -24,6 +24,7 @@ use agent_client_protocol_schema as acp;
 use chrono::Local;
 use dsrs::callbacks::DspyCallback;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -950,19 +951,23 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         }
     }
 
-    fn build_step_description(&self, todo: &TodoTask, total_todos: usize) -> String {
+    fn build_step_description(
+        &self,
+        base_description: &str,
+        todo: &TodoTask,
+        total_todos: usize,
+    ) -> String {
         format!(
             "Original task:\n{}\n\nStep {}/{}: {}\n\nFollow the original task requirements and output format.",
-            self.original_task.description, todo.index, total_todos, todo.description
+            base_description, todo.index, total_todos, todo.description
         )
     }
 
     /// Run the autopilot loop until completion.
     pub async fn run(mut self) -> AutopilotResult {
-        let mut iteration = 0;
         let mut last_result: Option<TaskResult> = None;
 
-        // Start session tracking for self-improvement
+        // Start session tracking for self-improvement.
         if let Some(store) = &self.session_store {
             if let Ok(mut store) = store.lock() {
                 store.start_session(
@@ -981,13 +986,13 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         // DSPy Planning Stages (before main execution loop)
         // ============================================================
 
-        // Initialize the decision LM before creating orchestrator (required for streaming)
+        // Initialize the decision LM before creating orchestrator (required for streaming).
         let decision_lm = self.adjutant.get_or_create_decision_lm().await;
 
-        // Create orchestrator for DSPy stages
+        // Create orchestrator for DSPy stages.
         let orchestrator = DspyOrchestrator::new(decision_lm, self.adjutant.tools().clone());
 
-        // Stage 1: Environment Assessment
+        // Stage 1: Environment Assessment (best-effort).
         let assessment = match orchestrator
             .assess_environment(self.adjutant.manifest(), &self.output)
             .await
@@ -995,7 +1000,6 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             Ok(a) => a,
             Err(e) => {
                 tracing::warn!("Environment assessment failed: {}", e);
-                // Continue with default assessment
                 crate::dspy_orchestrator::AssessmentResult {
                     priority_action: "WORK_ISSUE".to_string(),
                     urgency: "NORMAL".to_string(),
@@ -1005,91 +1009,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         };
         tracing::debug!("Assessment: {:?}", assessment);
 
-        // Stage 2 & 3: Planning and Todo List
-        // First plan the task to get relevant files
-        let plan = match self.adjutant.plan_task(&self.original_task).await {
-            Ok(p) => p,
-            Err(e) => {
-                self.output.error(&format!("Planning failed: {}", e));
-                self.complete_session(SessionOutcome::Error(format!("Planning failed: {}", e)), 0);
-                return AutopilotResult::Error(format!("Planning failed: {}", e));
-            }
-        };
+        let mut iteration = 0usize;
 
-        // Run DSPy planning pipeline to get implementation steps
-        tracing::info!("Autopilot: starting DSPy planning pipeline...");
-        let callback = self.output.dspy_callback();
-        let test_strategy_override =
-            (!self.config.verify_completion).then(|| self.test_strategy_hint());
-        let dspy_plan = match orchestrator
-            .create_plan_with_callback(
-                &self.original_task,
-                &plan,
-                &self.output,
-                callback,
-                test_strategy_override,
-            )
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                let err_msg = e.to_string();
-                if err_msg.contains("DSPy settings not initialized") {
-                    tracing::debug!("DSPy planning skipped: {}", err_msg);
-                } else {
-                    tracing::warn!("DSPy planning failed, using original task: {}", err_msg);
-                }
-                // Emit a basic planning stage with just the original task
-                self.output.emit_stage(DspyStage::Planning {
-                    analysis: "Using original task description".to_string(),
-                    files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
-                    implementation_steps: vec![self.original_task.description.clone()],
-                    test_strategy: self.test_strategy_hint(),
-                    complexity: format!("{:?}", plan.complexity),
-                    confidence: 0.5,
-                });
-                // Create a minimal planning result
-                autopilot_core::PlanningResult {
-                    analysis: "Using original task description".to_string(),
-                    files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
-                    implementation_steps: vec![self.original_task.description.clone()],
-                    test_strategy: self.test_strategy_hint(),
-                    risk_factors: vec![],
-                    complexity: autopilot_core::Complexity::Medium,
-                    confidence: 0.5,
-                }
-            }
-        };
-        tracing::info!(
-            "Autopilot: DSPy planning complete, {} implementation steps",
-            dspy_plan.implementation_steps.len()
-        );
-
-        // Create todo list from the plan
-        let mut todos = orchestrator.create_todo_list(&dspy_plan, &self.output);
-
-        // If no todos were generated, add the original task as a single todo
-        if todos.is_empty() {
-            todos.push(TodoTask {
-                index: 1,
-                description: self.original_task.description.clone(),
-                status: TodoStatus::Pending,
-            });
-            self.output.emit_stage(DspyStage::TodoList {
-                tasks: todos.clone(),
-            });
-        }
-
-        // ============================================================
-        // Stage 4: Execution - Work through todo items
-        // ============================================================
-
-        let total_todos = todos.len();
-        let mut successful_todos = 0;
-        let mut failed_todos = 0;
-
-        for todo in todos.iter_mut() {
-            // Check for user interrupt
+        loop {
+            // Check for user interrupt.
             if self.interrupt_flag.load(Ordering::Relaxed) {
                 self.output.interrupted();
                 self.complete_session(SessionOutcome::UserInterrupted, iteration);
@@ -1098,160 +1021,315 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 };
             }
 
-            iteration += 1;
+            iteration = iteration.saturating_add(1);
 
-            // Check max iterations
+            // Enforce max iterations.
             if iteration > self.config.max_iterations {
                 self.output.max_iterations(self.config.max_iterations);
                 let outcome = SessionOutcome::MaxIterationsReached {
                     last_summary: last_result.as_ref().map(|r| r.summary.clone()),
                 };
-                self.complete_session(outcome, iteration - 1);
+                self.complete_session(outcome, self.config.max_iterations);
                 return AutopilotResult::MaxIterationsReached {
-                    iterations: iteration - 1,
+                    iterations: self.config.max_iterations,
                     last_result,
                 };
             }
 
-            // Emit task start
-            self.output.emit_stage(DspyStage::ExecutingTask {
-                task_index: todo.index,
-                total_tasks: total_todos,
-                task_description: todo.description.clone(),
-            });
-            todo.status = TodoStatus::InProgress;
+            self.output
+                .iteration_start(iteration, self.config.max_iterations);
 
-            // Create task for this todo item
-            let mut task = Task::new(
-                format!("{}-step{}", self.original_task.id, todo.index),
-                format!("Step {} of {}", todo.index, total_todos),
-                self.build_step_description(todo, total_todos),
+            // Stage 2 & 3: Planning and Todo List (per-iteration).
+            let prompt = self.build_iteration_prompt(iteration, &last_result);
+            let mut planning_task = Task::new(
+                format!("{}-iter{}", self.original_task.id, iteration),
+                self.original_task.title.clone(),
+                prompt,
             );
-            task.acceptance_criteria = self.original_task.acceptance_criteria.clone();
-            self.apply_test_policy(&mut task);
+            planning_task.acceptance_criteria = self.original_task.acceptance_criteria.clone();
+            self.apply_test_policy(&mut planning_task);
 
-            // Execute the task with streaming
-            let result = if let Some(token_sender) = self.output.token_sender() {
-                let acp_sender = self.output.acp_sender();
-                match self
-                    .adjutant
-                    .execute_streaming(&task, token_sender, acp_sender)
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        self.output.error(&e.to_string());
-                        todo.status = TodoStatus::Failed;
-                        failed_todos += 1;
-                        self.output.emit_stage(DspyStage::TaskComplete {
-                            task_index: todo.index,
-                            success: false,
-                        });
-                        continue; // Try next todo
-                    }
-                }
-            } else {
-                // CLI context: create channel and print tokens immediately
-                let (iter_token_tx, mut iter_token_rx) = mpsc::unbounded_channel::<String>();
-
-                let print_handle = tokio::spawn(async move {
-                    while let Some(token) = iter_token_rx.recv().await {
-                        print!("{}", token);
-                        let _ = std::io::stdout().flush();
-                    }
-                });
-
-                let exec_result = self
-                    .adjutant
-                    .execute_streaming(&task, iter_token_tx, None)
-                    .await;
-                let _ = print_handle.await;
-
-                match exec_result {
-                    Ok(r) => r,
-                    Err(e) => {
-                        self.output.error(&e.to_string());
-                        todo.status = TodoStatus::Failed;
-                        failed_todos += 1;
-                        self.output.emit_stage(DspyStage::TaskComplete {
-                            task_index: todo.index,
-                            success: false,
-                        });
-                        continue;
-                    }
+            // First plan the task to get relevant files.
+            let plan = match self.adjutant.plan_task(&planning_task).await {
+                Ok(p) => p,
+                Err(e) => {
+                    let msg = format!("Planning failed: {}", e);
+                    self.output.error(&msg);
+                    self.complete_session(SessionOutcome::Error(msg.clone()), iteration);
+                    return AutopilotResult::Error(msg);
                 }
             };
 
-            // Update todo status based on result
-            if result.success {
-                todo.status = TodoStatus::Complete;
-                successful_todos += 1;
-            } else {
-                todo.status = TodoStatus::Failed;
-                failed_todos += 1;
+            // Run DSPy planning pipeline to get implementation steps.
+            tracing::info!("Autopilot: starting DSPy planning pipeline...");
+            let callback = self.output.dspy_callback();
+            let test_strategy_override =
+                (!self.config.verify_completion).then(|| self.test_strategy_hint());
+            let dspy_plan = match orchestrator
+                .create_plan_with_callback(
+                    &planning_task,
+                    &plan,
+                    &self.output,
+                    callback,
+                    test_strategy_override,
+                )
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("DSPy settings not initialized") {
+                        tracing::debug!("DSPy planning skipped: {}", err_msg);
+                    } else {
+                        tracing::warn!("DSPy planning failed, using task description: {}", err_msg);
+                    }
+                    // Emit a basic planning stage with just the iteration prompt.
+                    self.output.emit_stage(DspyStage::Planning {
+                        analysis: "Using task description (DSPy planning unavailable)".to_string(),
+                        files_to_modify: plan
+                            .files
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect(),
+                        implementation_steps: vec![planning_task.description.clone()],
+                        test_strategy: self.test_strategy_hint(),
+                        complexity: format!("{:?}", plan.complexity),
+                        confidence: 0.5,
+                    });
+                    autopilot_core::PlanningResult {
+                        analysis: "Using task description (DSPy planning unavailable)".to_string(),
+                        files_to_modify: plan
+                            .files
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect(),
+                        implementation_steps: vec![planning_task.description.clone()],
+                        test_strategy: self.test_strategy_hint(),
+                        risk_factors: vec![],
+                        complexity: autopilot_core::Complexity::Medium,
+                        confidence: 0.5,
+                    }
+                }
+            };
+            tracing::info!(
+                "Autopilot: DSPy planning complete, {} implementation steps",
+                dspy_plan.implementation_steps.len()
+            );
+
+            // Create todo list from the plan.
+            let mut todos = orchestrator.create_todo_list(&dspy_plan, &self.output);
+
+            // If no todos were generated, add the iteration task as a single todo.
+            if todos.is_empty() {
+                todos.push(TodoTask {
+                    index: 1,
+                    description: planning_task.description.clone(),
+                    status: TodoStatus::Pending,
+                });
+                self.output.emit_stage(DspyStage::TodoList {
+                    tasks: todos.clone(),
+                });
             }
 
-            self.output.emit_stage(DspyStage::TaskComplete {
-                task_index: todo.index,
-                success: result.success,
+            // ============================================================
+            // Stage 4: Execution - Work through todo items
+            // ============================================================
+
+            let total_todos = todos.len();
+            let mut successful_todos = 0;
+            let mut failed_todos = 0;
+
+            // Aggregate across step tasks so verification sees the full change-set.
+            let mut modified_files: BTreeSet<String> = BTreeSet::new();
+            let mut summaries: Vec<String> = Vec::new();
+            let mut commit_hash: Option<String> = None;
+            let mut session_id: Option<String> = None;
+            let mut last_error: Option<String> = None;
+
+            for todo in todos.iter_mut() {
+                if self.interrupt_flag.load(Ordering::Relaxed) {
+                    self.output.interrupted();
+                    self.complete_session(SessionOutcome::UserInterrupted, iteration);
+                    return AutopilotResult::UserInterrupted {
+                        iterations: iteration,
+                    };
+                }
+
+                self.output.emit_stage(DspyStage::ExecutingTask {
+                    task_index: todo.index,
+                    total_tasks: total_todos,
+                    task_description: todo.description.clone(),
+                });
+                todo.status = TodoStatus::InProgress;
+
+                // Create task for this todo item.
+                let mut task = Task::new(
+                    format!(
+                        "{}-iter{}-step{}",
+                        self.original_task.id, iteration, todo.index
+                    ),
+                    format!("Step {} of {}", todo.index, total_todos),
+                    self.build_step_description(&planning_task.description, todo, total_todos),
+                );
+                task.acceptance_criteria = planning_task.acceptance_criteria.clone();
+                self.apply_test_policy(&mut task);
+
+                // Execute the task with streaming.
+                let result = if let Some(token_sender) = self.output.token_sender() {
+                    let acp_sender = self.output.acp_sender();
+                    match self
+                        .adjutant
+                        .execute_streaming(&task, token_sender, acp_sender)
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            self.output.error(&msg);
+                            todo.status = TodoStatus::Failed;
+                            failed_todos += 1;
+                            last_error = Some(msg);
+                            self.output.emit_stage(DspyStage::TaskComplete {
+                                task_index: todo.index,
+                                success: false,
+                            });
+                            continue; // Try next todo.
+                        }
+                    }
+                } else {
+                    // CLI context: create channel and print tokens immediately.
+                    let (iter_token_tx, mut iter_token_rx) = mpsc::unbounded_channel::<String>();
+
+                    let print_handle = tokio::spawn(async move {
+                        while let Some(token) = iter_token_rx.recv().await {
+                            print!("{}", token);
+                            let _ = std::io::stdout().flush();
+                        }
+                    });
+
+                    let exec_result = self
+                        .adjutant
+                        .execute_streaming(&task, iter_token_tx, None)
+                        .await;
+                    let _ = print_handle.await;
+
+                    match exec_result {
+                        Ok(r) => r,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            self.output.error(&msg);
+                            todo.status = TodoStatus::Failed;
+                            failed_todos += 1;
+                            last_error = Some(msg);
+                            self.output.emit_stage(DspyStage::TaskComplete {
+                                task_index: todo.index,
+                                success: false,
+                            });
+                            continue;
+                        }
+                    }
+                };
+
+                summaries.push(result.summary.clone());
+                for file in &result.modified_files {
+                    modified_files.insert(file.clone());
+                }
+                if result.commit_hash.is_some() {
+                    commit_hash = result.commit_hash.clone();
+                }
+                if result.session_id.is_some() {
+                    session_id = result.session_id.clone();
+                }
+                if result.error.is_some() {
+                    last_error = result.error.clone();
+                }
+
+                // Update todo status based on result.
+                if result.success {
+                    todo.status = TodoStatus::Complete;
+                    successful_todos += 1;
+                } else {
+                    todo.status = TodoStatus::Failed;
+                    failed_todos += 1;
+                }
+
+                self.output.emit_stage(DspyStage::TaskComplete {
+                    task_index: todo.index,
+                    success: result.success,
+                });
+            }
+
+            // Emit completion summary.
+            self.output.emit_stage(DspyStage::Complete {
+                total_tasks: total_todos,
+                successful: successful_todos,
+                failed: failed_todos,
             });
 
-            last_result = Some(result);
-        }
+            let mut iteration_result = TaskResult {
+                success: failed_todos == 0,
+                summary: summaries.join("\n"),
+                modified_files: modified_files.into_iter().collect(),
+                commit_hash,
+                error: last_error,
+                session_id,
+            };
 
-        // Emit completion summary
-        self.output.emit_stage(DspyStage::Complete {
-            total_tasks: total_todos,
-            successful: successful_todos,
-            failed: failed_todos,
-        });
+            // Final verification if all todos completed successfully.
+            if iteration_result.success {
+                if self.config.verify_completion {
+                    self.output.verification_start();
+                    let verification = self.verify_completion(&iteration_result, iteration).await;
+                    self.output
+                        .verification_result(verification.passed, &verification.reason);
 
-        // Final verification if all todos completed successfully
-        if failed_todos == 0 && self.config.verify_completion {
-            if let Some(ref result) = last_result {
-                self.output.verification_start();
-                let verification = self.verify_completion(result, iteration).await;
-                self.output
-                    .verification_result(verification.passed, &verification.reason);
+                    if verification.passed {
+                        let outcome = SessionOutcome::Success {
+                            summary: iteration_result.summary.clone(),
+                            modified_files: iteration_result.modified_files.clone(),
+                            verification_passed: true,
+                        };
+                        self.complete_session(outcome, iteration);
+                        return AutopilotResult::Success(iteration_result);
+                    }
 
-                if verification.passed {
+                    // Verification failed: continue the loop with feedback (no "success" return).
+                    iteration_result.success = false;
+                    iteration_result.error = Some(verification.reason.clone());
+                    iteration_result.summary = format!(
+                        "LLM reported success but verification failed: {}.
+{}",
+                        verification.reason, iteration_result.summary
+                    );
+                } else {
                     let outcome = SessionOutcome::Success {
-                        summary: result.summary.clone(),
-                        modified_files: result.modified_files.clone(),
-                        verification_passed: true,
+                        summary: iteration_result.summary.clone(),
+                        modified_files: iteration_result.modified_files.clone(),
+                        verification_passed: false,
                     };
                     self.complete_session(outcome, iteration);
-                    return AutopilotResult::Success(result.clone());
+                    return AutopilotResult::Success(iteration_result);
                 }
             }
-        }
 
-        // Return based on overall success
-        if failed_todos == 0 {
-            if let Some(result) = last_result {
-                let outcome = SessionOutcome::Success {
-                    summary: result.summary.clone(),
-                    modified_files: result.modified_files.clone(),
-                    verification_passed: false,
+            // Check for definitive failure.
+            if self.is_definitive_failure(&iteration_result) {
+                self.output.token(
+                    "
+
+--- Definitive failure detected ---
+",
+                );
+                let outcome = SessionOutcome::Failed {
+                    reason: "Definitive failure detected".to_string(),
+                    error: iteration_result.error.clone(),
                 };
                 self.complete_session(outcome, iteration);
-                return AutopilotResult::Success(result);
+                return AutopilotResult::Failed(iteration_result);
             }
-        }
 
-        // Some todos failed
-        self.complete_session(
-            SessionOutcome::Failed {
-                reason: format!("{} of {} tasks failed", failed_todos, total_todos),
-                error: last_result.as_ref().and_then(|r| r.error.clone()),
-            },
-            iteration,
-        );
-
-        if let Some(result) = last_result {
-            AutopilotResult::Failed(result)
-        } else {
-            AutopilotResult::Error("No results from execution".to_string())
+            // Continue to next iteration.
+            last_result = Some(iteration_result);
         }
     }
 
