@@ -4,9 +4,12 @@ FROM rust:bookworm AS builder
 
 WORKDIR /workspace
 
+# Runtime is a workspace member and depends on other workspace crates.
+# Copy the full workspace sources required for Cargo path deps and member manifests.
 COPY Cargo.toml Cargo.lock ./
-COPY apps/runtime apps/runtime
-COPY proto proto
+COPY proto ./proto
+COPY crates ./crates
+COPY apps ./apps
 
 RUN cargo build --release \
   --manifest-path apps/runtime/Cargo.toml \
