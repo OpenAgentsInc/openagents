@@ -152,6 +152,7 @@ pub fn render_page(page: &WebPage) -> String {
                 title { (page.title) " | OpenAgents" }
                 style { (PreEscaped(styles())) }
                 script src=(HTMX_ASSET_PATH) defer {}
+                script { (PreEscaped(accessibility_script())) }
             }
             body {
                 div class="oa-bg" {}
@@ -178,7 +179,13 @@ pub fn render_main_fragment(page: &WebPage) -> String {
 
 pub fn render_notice_fragment(target_id: &str, status: &str, is_error: bool) -> String {
     let markup = html! {
-        div id=(target_id) class={(if is_error { "oa-notice error" } else { "oa-notice" })} {
+        div
+            id=(target_id)
+            class={(if is_error { "oa-notice error" } else { "oa-notice" })}
+            role="status"
+            aria-live={(if is_error { "assertive" } else { "polite" })}
+            aria-atomic="true"
+            tabindex="-1" {
             (status_message(status))
         }
     };
@@ -1123,10 +1130,25 @@ fn placeholder_panel(heading: &str, description: &str) -> Markup {
 fn status_slot(target_id: &str, status: Option<&str>) -> Markup {
     match status {
         Some(status) => html! {
-            div id=(target_id) class="oa-notice" { (status_message(status)) }
+            div
+                id=(target_id)
+                class="oa-notice"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                tabindex="-1" {
+                (status_message(status))
+            }
         },
         None => html! {
-            div id=(target_id) class="oa-notice hidden" {}
+            div
+                id=(target_id)
+                class="oa-notice hidden"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                aria-hidden="true"
+                tabindex="-1" {}
         },
     }
 }
@@ -1406,12 +1428,61 @@ input:focus, textarea:focus {
 "#
 }
 
+fn accessibility_script() -> &'static str {
+    r#"
+(() => {
+  const focusNode = (node) => {
+    if (!(node instanceof HTMLElement)) return;
+    if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "-1");
+    node.focus({ preventScroll: false });
+  };
+
+  const resolveStatusNode = (target) => {
+    if (!(target instanceof HTMLElement)) return null;
+    if (target.classList.contains("oa-notice") && !target.classList.contains("hidden")) {
+      return target;
+    }
+    return target.querySelector(".oa-notice:not(.hidden)");
+  };
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    const target = event.detail && event.detail.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    if (target.id === "oa-main-shell") {
+      const heading = target.querySelector("h1, h2");
+      if (heading instanceof HTMLElement) {
+        focusNode(heading);
+      }
+      return;
+    }
+
+    const statusNode = resolveStatusNode(target);
+    if (statusNode instanceof HTMLElement) {
+      statusNode.removeAttribute("aria-hidden");
+      focusNode(statusNode);
+    }
+  });
+
+  document.body.addEventListener("htmx:responseError", (event) => {
+    const target = event.detail && event.detail.target;
+    const statusNode = resolveStatusNode(target);
+    if (!(statusNode instanceof HTMLElement)) return;
+    statusNode.classList.add("error");
+    statusNode.setAttribute("aria-live", "assertive");
+    statusNode.removeAttribute("aria-hidden");
+    focusNode(statusNode);
+  });
+})();
+"#
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, HTMX_ASSET_PATH, SessionView,
         WebBody, WebPage, render_main_fragment as render_maud_main_fragment,
-        render_page as render_maud_page,
+        render_notice_fragment as render_maud_notice_fragment, render_page as render_maud_page,
     };
 
     #[test]
@@ -1473,6 +1544,20 @@ mod tests {
         assert!(!fragment.contains("<html"));
         assert!(!fragment.contains("<head"));
         assert!(!fragment.contains("<body"));
+    }
+
+    #[test]
+    fn render_notice_fragment_includes_live_region_and_focus_attributes() {
+        let success = render_maud_notice_fragment("admin-status", "admin-action-completed", false);
+        assert!(success.contains("id=\"admin-status\""));
+        assert!(success.contains("role=\"status\""));
+        assert!(success.contains("aria-live=\"polite\""));
+        assert!(success.contains("aria-atomic=\"true\""));
+        assert!(success.contains("tabindex=\"-1\""));
+
+        let error = render_maud_notice_fragment("admin-status", "admin-action-failed", true);
+        assert!(error.contains("class=\"oa-notice error\""));
+        assert!(error.contains("aria-live=\"assertive\""));
     }
 
     #[test]
@@ -1561,5 +1646,23 @@ mod tests {
             )
         );
         assert!(html.contains("hx-swap=\"beforeend\""));
+    }
+
+    #[test]
+    fn render_page_includes_htmx_focus_management_script() {
+        let page = WebPage {
+            title: "Admin".to_string(),
+            path: "/admin".to_string(),
+            session: None,
+            body: WebBody::Placeholder {
+                heading: "Admin".to_string(),
+                description: "Control plane".to_string(),
+            },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains("htmx:afterSwap"));
+        assert!(html.contains("htmx:responseError"));
+        assert!(html.contains("querySelector(\"h1, h2\")"));
     }
 }

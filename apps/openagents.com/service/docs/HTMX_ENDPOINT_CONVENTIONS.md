@@ -108,6 +108,27 @@ Current admin/control-plane web contract:
   - update `#admin-status` via out-of-band swap
   - redirect to `/admin?status=...` for non-HTMX requests
 
+## Accessibility + Focus Checklist
+
+For each HTMX surface (login/chat/feed/settings/billing/admin):
+- Status fragments must use:
+  - `role="status"`
+  - `aria-live="polite"` for success
+  - `aria-live="assertive"` for error
+  - `aria-atomic="true"`
+  - focusable target (`tabindex="-1"`)
+- HTMX after-swap behavior should:
+  - focus the swapped status region when present
+  - focus primary heading on route shell swaps (`#oa-main-shell`)
+- Response error behavior should:
+  - mark status as error
+  - ensure assertive announcement
+  - focus the error region
+- Keyboard QA pass:
+  - tab order remains stable before/after swaps
+  - Enter submits form and focus stays in-context
+  - no keyboard trap introduced by fragment updates
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:
