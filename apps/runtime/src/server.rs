@@ -5,16 +5,21 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{
+        Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
 };
 use chrono::Utc;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -251,6 +256,34 @@ struct FanoutPollResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum KhalaWsFrame {
+    Hello {
+        topic: String,
+        after_seq: u64,
+        limit: usize,
+        recommended_reconnect_backoff_ms: u64,
+    },
+    Message {
+        message: FanoutMessage,
+    },
+    StaleCursor {
+        topic: String,
+        requested_cursor: u64,
+        oldest_available_cursor: u64,
+        head_cursor: u64,
+        reason_codes: Vec<String>,
+        replay_lag: u64,
+        replay_budget_events: u64,
+        qos_tier: String,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
 struct FanoutHooksResponse {
     driver: String,
     hooks: Vec<ExternalFanoutHook>,
@@ -321,6 +354,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/khala/topics/:topic/messages",
             get(get_khala_topic_messages),
+        )
+        .route(
+            "/internal/v1/khala/topics/:topic/ws",
+            get(get_khala_topic_ws),
         )
         .route(
             "/internal/v1/khala/fanout/hooks",
@@ -636,6 +673,235 @@ async fn get_khala_topic_messages(
         slow_consumer_max_strikes: state.config.khala_slow_consumer_max_strikes,
         recommended_reconnect_backoff_ms: reconnect_backoff_ms,
     }))
+}
+
+async fn get_khala_topic_ws(
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Path(topic): Path<String>,
+    Query(query): Query<FanoutPollQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    if topic.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "topic is required for khala websocket".to_string(),
+        ));
+    }
+    enforce_khala_origin_policy(&state, &headers)?;
+    let principal = authorize_khala_topic_access(&state, &headers, &topic).await?;
+    let after_seq = query.after_seq.unwrap_or(0);
+    let requested_limit = query
+        .limit
+        .unwrap_or(state.config.khala_poll_default_limit)
+        .max(1);
+
+    let state_for_socket = state.clone();
+    let topic_for_socket = topic.clone();
+    Ok(ws.on_upgrade(move |socket| {
+        khala_ws_stream(
+            state_for_socket,
+            socket,
+            principal,
+            topic_for_socket,
+            after_seq,
+            requested_limit,
+        )
+    }))
+}
+
+async fn khala_ws_stream(
+    state: AppState,
+    mut socket: WebSocket,
+    principal: SyncPrincipal,
+    topic: String,
+    mut after_seq: u64,
+    requested_limit: usize,
+) {
+    let principal_key = khala_principal_key(&principal);
+    let consumer_key = khala_consumer_key(&principal, topic.as_str());
+    {
+        let mut consumers = state.khala_delivery.consumers.lock().await;
+        if !consumers.contains_key(&consumer_key)
+            && consumers.len() >= state.config.khala_consumer_registry_capacity
+            && let Some(oldest_key) = consumers
+                .iter()
+                .min_by_key(|(_, value)| value.last_poll_at)
+                .map(|(key, _)| key.clone())
+        {
+            let _ = consumers.remove(&oldest_key);
+        }
+        consumers.entry(consumer_key.clone()).or_default();
+    }
+
+    let jitter_ms = deterministic_jitter_ms(
+        consumer_key.as_str(),
+        after_seq,
+        state.config.khala_reconnect_jitter_ms,
+    );
+    let reconnect_backoff_ms = state
+        .config
+        .khala_reconnect_base_backoff_ms
+        .saturating_add(jitter_ms);
+
+    let hello = KhalaWsFrame::Hello {
+        topic: topic.clone(),
+        after_seq,
+        limit: requested_limit,
+        recommended_reconnect_backoff_ms: reconnect_backoff_ms,
+    };
+    if let Ok(payload) = serde_json::to_string(&hello) {
+        let _ = socket.send(Message::Text(payload)).await;
+    }
+
+    let mut slow_consumer_strikes = 0u32;
+    let mut last_head_cursor = None::<u64>;
+
+    loop {
+        let active_topic_count = {
+            let prefix = format!("{principal_key}|");
+            let consumers = state.khala_delivery.consumers.lock().await;
+            consumers
+                .keys()
+                .filter(|key| key.starts_with(prefix.as_str()))
+                .count()
+        };
+
+        let mut limit = requested_limit
+            .min(state.config.khala_poll_max_limit)
+            .min(state.config.khala_outbound_queue_limit);
+        if active_topic_count >= 2 && limit > state.config.khala_fair_topic_slice_limit {
+            limit = state.config.khala_fair_topic_slice_limit;
+            state.khala_delivery.record_fairness_limited();
+        }
+
+        let window = state.fanout.topic_window(&topic).await.ok().flatten();
+        let (_oldest_available_cursor, head_cursor, _queue_depth, _dropped_messages) =
+            fanout_window_details(window.as_ref());
+        if head_cursor != last_head_cursor {
+            last_head_cursor = head_cursor;
+        }
+        let consumer_lag = head_cursor.map(|head| head.saturating_sub(after_seq));
+
+        if consumer_lag.unwrap_or(0) > state.config.khala_slow_consumer_lag_threshold {
+            slow_consumer_strikes = slow_consumer_strikes.saturating_add(1);
+        } else {
+            slow_consumer_strikes = 0;
+        }
+        if slow_consumer_strikes >= state.config.khala_slow_consumer_max_strikes {
+            state.khala_delivery.record_slow_consumer_eviction();
+            state
+                .khala_delivery
+                .record_disconnect_cause("slow_consumer_evicted")
+                .await;
+            let frame = KhalaWsFrame::Error {
+                code: "slow_consumer_evicted".to_string(),
+                message: format!(
+                    "topic={} lag={} threshold={} strikes={} max_strikes={}",
+                    topic,
+                    consumer_lag.unwrap_or(0),
+                    state.config.khala_slow_consumer_lag_threshold,
+                    slow_consumer_strikes,
+                    state.config.khala_slow_consumer_max_strikes
+                ),
+            };
+            if let Ok(payload) = serde_json::to_string(&frame) {
+                let _ = socket.send(Message::Text(payload)).await;
+            }
+            break;
+        }
+
+        match state.fanout.poll(&topic, after_seq, limit).await {
+            Ok(messages) => {
+                state.khala_delivery.record_total_poll(messages.len());
+                let next_cursor = messages
+                    .last()
+                    .map_or(after_seq, |message| message.sequence);
+                {
+                    let mut consumers = state.khala_delivery.consumers.lock().await;
+                    if let Some(consumer_state) = consumers.get_mut(&consumer_key) {
+                        consumer_state.last_cursor = next_cursor;
+                        consumer_state.last_poll_at = Some(Utc::now());
+                    }
+                }
+                after_seq = next_cursor;
+
+                for message in messages {
+                    let frame = KhalaWsFrame::Message { message };
+                    let Ok(payload) = serde_json::to_string(&frame) else {
+                        continue;
+                    };
+                    if socket.send(Message::Text(payload)).await.is_err() {
+                        state
+                            .khala_delivery
+                            .record_disconnect_cause("send_failed")
+                            .await;
+                        break;
+                    }
+                }
+            }
+            Err(FanoutError::StaleCursor {
+                topic: stale_topic,
+                requested_cursor,
+                oldest_available_cursor,
+                head_cursor,
+                reason_codes,
+                replay_lag,
+                replay_budget_events,
+                qos_tier,
+            }) => {
+                state
+                    .khala_delivery
+                    .record_disconnect_cause("stale_cursor")
+                    .await;
+                let frame = KhalaWsFrame::StaleCursor {
+                    topic: stale_topic,
+                    requested_cursor,
+                    oldest_available_cursor,
+                    head_cursor,
+                    reason_codes,
+                    replay_lag,
+                    replay_budget_events,
+                    qos_tier,
+                };
+                if let Ok(payload) = serde_json::to_string(&frame) {
+                    let _ = socket.send(Message::Text(payload)).await;
+                }
+                break;
+            }
+            Err(error) => {
+                state
+                    .khala_delivery
+                    .record_disconnect_cause("fanout_error")
+                    .await;
+                let frame = KhalaWsFrame::Error {
+                    code: "fanout_error".to_string(),
+                    message: error.to_string(),
+                };
+                if let Ok(payload) = serde_json::to_string(&frame) {
+                    let _ = socket.send(Message::Text(payload)).await;
+                }
+                break;
+            }
+        }
+
+        tokio::select! {
+            biased;
+            next = socket.next() => {
+                match next {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Ping(payload))) => {
+                        let _ = socket.send(Message::Pong(payload)).await;
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) => break,
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {}
+        }
+    }
+
+    let mut consumers = state.khala_delivery.consumers.lock().await;
+    consumers.remove(&consumer_key);
 }
 
 async fn get_khala_fanout_hooks(
@@ -1395,12 +1661,18 @@ mod tests {
     use anyhow::{Result, anyhow};
     use axum::{
         body::Body,
-        http::{Method, Request},
+        http::{HeaderValue, Method, Request},
     };
     use chrono::Utc;
+    use futures::StreamExt;
     use http_body_util::BodyExt;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use serde_json::Value;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::Message as WsMessage;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::{Error as WsError, http::StatusCode as WsStatusCode};
     use tower::ServiceExt;
 
     use super::{AppState, build_router};
@@ -1511,6 +1783,21 @@ mod tests {
 
     fn test_router() -> axum::Router {
         test_router_with_mode(AuthorityWriteMode::RustActive)
+    }
+
+    async fn spawn_http_server(
+        app: axum::Router,
+    ) -> Result<(std::net::SocketAddr, tokio::sync::oneshot::Sender<()>)> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            });
+            let _ = server.await;
+        });
+        Ok((addr, shutdown_tx))
     }
 
     async fn response_json(response: axum::response::Response) -> Result<Value> {
@@ -2850,6 +3137,117 @@ mod tests {
             "origin_not_allowed"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_ws_origin_policy_denies_untrusted_browser_origins() -> Result<()> {
+        let app = test_router();
+        let (addr, shutdown) = spawn_http_server(app).await?;
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "ws-origin-deny",
+            300,
+        );
+
+        let url = format!(
+            "ws://{addr}/internal/v1/khala/topics/run:ws_test:events/ws?after_seq=0&limit=10"
+        );
+        let mut request = url.into_client_request()?;
+        request.headers_mut().insert(
+            "authorization",
+            HeaderValue::from_str(&format!("Bearer {sync_token}"))?,
+        );
+        request
+            .headers_mut()
+            .insert("origin", HeaderValue::from_str("https://evil.example.com")?);
+
+        let err = connect_async(request).await.expect_err("expected denial");
+        match err {
+            WsError::Http(response) => {
+                assert_eq!(response.status(), WsStatusCode::FORBIDDEN);
+            }
+            other => return Err(anyhow!("unexpected ws error: {other:?}")),
+        }
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_ws_requires_valid_sync_token() -> Result<()> {
+        let app = test_router();
+        let (addr, shutdown) = spawn_http_server(app).await?;
+
+        let url = format!(
+            "ws://{addr}/internal/v1/khala/topics/run:ws_test:events/ws?after_seq=0&limit=10"
+        );
+        let request = url.into_client_request()?;
+        let err = connect_async(request).await.expect_err("expected denial");
+        match err {
+            WsError::Http(response) => {
+                assert_eq!(response.status(), WsStatusCode::UNAUTHORIZED);
+                if let Some(body) = response.body() {
+                    if let Ok(value) = serde_json::from_slice::<Value>(body) {
+                        assert_eq!(
+                            value
+                                .pointer("/reason_code")
+                                .and_then(Value::as_str)
+                                .unwrap_or(""),
+                            "missing_authorization"
+                        );
+                    }
+                }
+            }
+            other => return Err(anyhow!("unexpected ws error: {other:?}")),
+        }
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_ws_upgrade_succeeds_for_authorized_origin() -> Result<()> {
+        let app = test_router();
+        let (addr, shutdown) = spawn_http_server(app).await?;
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "ws-origin-allow",
+            300,
+        );
+
+        let url = format!(
+            "ws://{addr}/internal/v1/khala/topics/run:ws_test:events/ws?after_seq=0&limit=10"
+        );
+        let mut request = url.into_client_request()?;
+        request.headers_mut().insert(
+            "authorization",
+            HeaderValue::from_str(&format!("Bearer {sync_token}"))?,
+        );
+        request
+            .headers_mut()
+            .insert("origin", HeaderValue::from_str("https://openagents.com")?);
+
+        let (mut stream, response) = connect_async(request).await?;
+        assert_eq!(response.status(), WsStatusCode::SWITCHING_PROTOCOLS);
+
+        let next = tokio::time::timeout(Duration::from_secs(1), stream.next()).await?;
+        let Some(frame) = next else {
+            return Err(anyhow!("expected hello frame"));
+        };
+        let frame = frame?;
+        let text = match frame {
+            WsMessage::Text(text) => text,
+            other => return Err(anyhow!("unexpected ws frame: {other:?}")),
+        };
+        let value: Value = serde_json::from_str(&text)?;
+        assert_eq!(value.get("type").and_then(Value::as_str), Some("hello"));
+
+        let _ = shutdown.send(());
         Ok(())
     }
 

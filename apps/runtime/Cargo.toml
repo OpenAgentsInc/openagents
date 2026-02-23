@@ -9,9 +9,10 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 chrono.workspace = true
 clap.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -32,6 +33,7 @@ anyhow.workspace = true
 http-body-util = "0.1"
 tempfile.workspace = true
 tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = { workspace = true }
 
 [[bin]]
 name = "openagents-runtime-service"
