@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use bitcoin::secp256k1::{Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
+use nostr::get_public_key_hex;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,6 +12,10 @@ use crate::types::{RunEvent, RunStatus, RuntimeRun};
 pub enum ArtifactError {
     #[error("artifact serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("canonical hash error: {0}")]
+    Hash(String),
+    #[error("receipt signature error: {0}")]
+    Signature(String),
     #[error("invalid replay jsonl: {0}")]
     InvalidReplay(String),
     #[error("invalid tool receipt payload: {0}")]
@@ -26,6 +32,9 @@ pub struct RuntimeReceipt {
     pub session_id: String,
     pub trajectory_hash: String,
     pub policy_bundle_id: String,
+    pub canonical_json_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ReceiptSignatureV1>,
     pub created_at: String,
     pub event_count: usize,
     pub first_seq: u64,
@@ -76,6 +85,18 @@ pub struct PaymentReceipt {
     pub policy_bundle_id: String,
     pub job_hash: Option<String>,
     pub status: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ReceiptSignatureV1 {
+    pub schema: String,
+    pub scheme: String,
+    /// X-only public key hex (32 bytes) for the signing key.
+    pub signer_pubkey: String,
+    /// Hex-encoded sha256 digest of the canonical receipt payload (64 hex chars).
+    pub signed_sha256: String,
+    /// Hex-encoded schnorr signature over `signed_sha256` (64 bytes => 128 hex chars).
+    pub signature_hex: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -171,12 +192,51 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         payments_msats_total: payments.iter().map(|payment| payment.amount_msats).sum(),
     };
 
+    let created_at = run.created_at.to_rfc3339();
+
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        session_id: &'a str,
+        trajectory_hash: &'a str,
+        policy_bundle_id: &'a str,
+        created_at: &'a str,
+        event_count: usize,
+        first_seq: u64,
+        last_seq: u64,
+        metrics: &'a ReceiptMetrics,
+        tool_calls: &'a [ToolCallReceipt],
+        verification: &'a [VerificationReceipt],
+        payments: &'a [PaymentReceipt],
+    }
+
+    let hash_input = ReceiptHashInput {
+        schema: "openagents.receipt.v1",
+        session_id: session_id.as_str(),
+        trajectory_hash: trajectory_hash.as_str(),
+        policy_bundle_id: policy_bundle_id.as_str(),
+        created_at: created_at.as_str(),
+        event_count: run.events.len(),
+        first_seq,
+        last_seq,
+        metrics: &metrics,
+        tool_calls: &tool_calls,
+        verification: &verification,
+        payments: &payments,
+    };
+    let canonical_json = protocol::hash::canonical_json(&hash_input)
+        .map_err(|error| ArtifactError::Hash(error.to_string()))?;
+    let digest = Sha256::digest(canonical_json.as_bytes());
+    let canonical_json_sha256 = hex::encode(digest);
+
     Ok(RuntimeReceipt {
         schema: "openagents.receipt.v1".to_string(),
         session_id,
         trajectory_hash,
         policy_bundle_id,
-        created_at: run.created_at.to_rfc3339(),
+        canonical_json_sha256,
+        signature: None,
+        created_at,
         event_count: run.events.len(),
         first_seq,
         last_seq,
@@ -185,6 +245,71 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         verification,
         payments,
     })
+}
+
+fn decode_sha256_hex(value: &str) -> Result<[u8; 32], ArtifactError> {
+    let bytes = hex::decode(value).map_err(|error| ArtifactError::Signature(error.to_string()))?;
+    if bytes.len() != 32 {
+        return Err(ArtifactError::Signature(
+            "expected 32-byte sha256 digest".to_string(),
+        ));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
+/// Sign a canonical receipt digest with a Nostr-compatible schnorr key.
+///
+/// The signature is deterministic (`sign_schnorr_no_aux_rand`) and therefore replay-verifiable.
+pub fn sign_receipt_sha256(
+    secret_key: &[u8; 32],
+    receipt_sha256_hex: &str,
+) -> Result<ReceiptSignatureV1, ArtifactError> {
+    let digest = decode_sha256_hex(receipt_sha256_hex)?;
+
+    let signer_pubkey = get_public_key_hex(secret_key)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+
+    let message = Message::from_digest_slice(&digest)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+    let secp = Secp256k1::new();
+    let sk = SecretKey::from_slice(secret_key)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+    let keypair = bitcoin::secp256k1::Keypair::from_secret_key(&secp, &sk);
+    let sig = secp.sign_schnorr_no_aux_rand(&message, &keypair);
+
+    Ok(ReceiptSignatureV1 {
+        schema: "openagents.receipt_signature.v1".to_string(),
+        scheme: "secp256k1_schnorr_no_aux_rand".to_string(),
+        signer_pubkey,
+        signed_sha256: receipt_sha256_hex.to_string(),
+        signature_hex: hex::encode(sig.serialize()),
+    })
+}
+
+pub fn verify_receipt_signature(signature: &ReceiptSignatureV1) -> Result<bool, ArtifactError> {
+    let digest = decode_sha256_hex(signature.signed_sha256.as_str())?;
+    let message = Message::from_digest_slice(&digest)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+
+    let pubkey_bytes = hex::decode(signature.signer_pubkey.as_str())
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+    if pubkey_bytes.len() != 32 {
+        return Err(ArtifactError::Signature(
+            "expected 32-byte xonly pubkey".to_string(),
+        ));
+    }
+    let xonly = XOnlyPublicKey::from_slice(&pubkey_bytes)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+
+    let sig_bytes = hex::decode(signature.signature_hex.as_str())
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+    let sig = schnorr::Signature::from_slice(&sig_bytes)
+        .map_err(|error| ArtifactError::Signature(error.to_string()))?;
+
+    let secp = Secp256k1::verification_only();
+    Ok(secp.verify_schnorr(&sig, &message, &xonly).is_ok())
 }
 
 fn push_replay_line(lines: &mut Vec<String>, event: &ReplayEvent) -> Result<(), ArtifactError> {

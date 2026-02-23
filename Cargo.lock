@@ -7221,6 +7221,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum 0.7.9",
+ "bitcoin",
  "chrono",
  "clap",
  "futures",

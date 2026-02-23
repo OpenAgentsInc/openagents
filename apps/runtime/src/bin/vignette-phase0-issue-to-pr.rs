@@ -19,7 +19,7 @@ use chrono::Utc;
 use clap::Parser;
 use openagents_runtime_service::bridge::{
     PricingBandV1, PricingStageV1, ProviderAdV1, ReceiptPointerV1, build_provider_ad_event,
-    build_receipt_pointer_event, receipt_sha256_from_utf8, validate_phase0_bridge_event,
+    build_receipt_pointer_event, validate_phase0_bridge_event,
 };
 use openagents_runtime_service::config::{AuthorityWriteMode, Config as RuntimeConfig};
 use openagents_runtime_service::marketplace::ProviderSelection;
@@ -1907,7 +1907,12 @@ fn write_bridge_events(
 ) -> Result<()> {
     let receipt_json =
         std::fs::read_to_string(out_dir.join("RECEIPT.json")).context("read RECEIPT.json")?;
-    let receipt_sha256 = receipt_sha256_from_utf8(&receipt_json);
+    let receipt_value: Value = serde_json::from_str(&receipt_json).context("parse RECEIPT.json")?;
+    let receipt_sha256 = receipt_value
+        .get("canonical_json_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("RECEIPT.json missing canonical_json_sha256"))?
+        .to_string();
     let receipt_url = format!("{runtime_base}/internal/v1/runs/{run_id}/receipt");
 
     let provider_ad = ProviderAdV1 {

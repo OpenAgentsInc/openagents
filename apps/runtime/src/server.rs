@@ -919,7 +919,16 @@ async fn get_run_receipt(
         .await
         .map_err(ApiError::from_orchestration)?
         .ok_or(ApiError::NotFound)?;
-    let receipt = build_receipt(&run).map_err(ApiError::from_artifacts)?;
+    let mut receipt = build_receipt(&run).map_err(ApiError::from_artifacts)?;
+    if let Some(secret_key) = state.config.bridge_nostr_secret_key {
+        receipt.signature = Some(
+            crate::artifacts::sign_receipt_sha256(
+                &secret_key,
+                receipt.canonical_json_sha256.as_str(),
+            )
+            .map_err(ApiError::from_artifacts)?,
+        );
+    }
     Ok(Json(receipt))
 }
 
@@ -5016,7 +5025,11 @@ mod tests {
 
     #[tokio::test]
     async fn run_artifact_endpoints_return_receipt_and_replay() -> Result<()> {
-        let app = test_router();
+        let secret = nostr::generate_secret_key();
+        let app =
+            build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+                c.bridge_nostr_secret_key = Some(secret);
+            });
         let create_response = app
             .clone()
             .oneshot(
@@ -5053,6 +5066,83 @@ mod tests {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or(""),
             "openagents.receipt.v1"
+        );
+        let receipt_sha256 = receipt_json
+            .get("canonical_json_sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing canonical_json_sha256"))?;
+        assert_eq!(receipt_sha256.len(), 64);
+
+        let signature_value = receipt_json
+            .get("signature")
+            .cloned()
+            .ok_or_else(|| anyhow!("missing receipt signature"))?;
+        let signer_pubkey = signature_value
+            .get("signer_pubkey")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing signature signer_pubkey"))?
+            .to_string();
+        let signed_sha256 = signature_value
+            .get("signed_sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing signature signed_sha256"))?
+            .to_string();
+        let signature_hex = signature_value
+            .get("signature_hex")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing signature signature_hex"))?
+            .to_string();
+        let scheme = signature_value
+            .get("scheme")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let signature_schema = signature_value
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        assert_eq!(signed_sha256, receipt_sha256);
+        assert_eq!(scheme, "secp256k1_schnorr_no_aux_rand");
+        assert_eq!(signature_schema, "openagents.receipt_signature.v1");
+
+        let signature = crate::artifacts::ReceiptSignatureV1 {
+            schema: signature_schema,
+            scheme,
+            signer_pubkey,
+            signed_sha256,
+            signature_hex,
+        };
+        assert!(
+            crate::artifacts::verify_receipt_signature(&signature)?,
+            "receipt signature should verify"
+        );
+
+        // Receipt generation should be deterministic for identical run facts.
+        let receipt_retry = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/runs/{run_id}/receipt"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(receipt_retry.status(), axum::http::StatusCode::OK);
+        let retry_json = response_json(receipt_retry).await?;
+        assert_eq!(
+            retry_json
+                .get("canonical_json_sha256")
+                .and_then(serde_json::Value::as_str),
+            Some(receipt_sha256)
+        );
+        assert_eq!(
+            retry_json
+                .get("signature")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|obj| obj.get("signature_hex"))
+                .and_then(serde_json::Value::as_str),
+            Some(signature.signature_hex.as_str())
         );
 
         let replay_response = app

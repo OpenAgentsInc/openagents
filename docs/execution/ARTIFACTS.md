@@ -34,10 +34,12 @@ Required top-level fields:
 - `session_id`
 - `trajectory_hash`
 - `policy_bundle_id`
+- `canonical_json_sha256` (sha256 hex over canonical receipt payload; excludes signature fields)
 
 Optional/recommended:
 
 - `created_at`
+- `signature` (deterministic signature over `canonical_json_sha256` when a receipt signer is configured)
 - repo metadata
 - `metrics` (summary values derived from receipts/replay)
 - `tool_calls[]`
