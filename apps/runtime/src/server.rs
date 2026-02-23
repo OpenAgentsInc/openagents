@@ -336,6 +336,19 @@ struct JobTypesResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct SandboxVerificationBody {
+    request: protocol::SandboxRunRequest,
+    response: protocol::SandboxRunResponse,
+}
+
+#[derive(Debug, Serialize)]
+struct SandboxVerificationResponse {
+    passed: bool,
+    exit_code: i32,
+    violations: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct DriftQuery {
     topic: String,
 }
@@ -423,6 +436,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/catalog/job-types",
             get(get_job_types),
+        )
+        .route(
+            "/internal/v1/verifications/sandbox-run",
+            post(verify_sandbox_run),
         )
         .with_state(state)
 }
@@ -1211,6 +1228,17 @@ async fn get_provider_catalog(
 async fn get_job_types() -> Json<JobTypesResponse> {
     let job_types = protocol::jobs::registered_job_types();
     Json(JobTypesResponse { job_types })
+}
+
+async fn verify_sandbox_run(
+    Json(body): Json<SandboxVerificationBody>,
+) -> Json<SandboxVerificationResponse> {
+    let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
+    Json(SandboxVerificationResponse {
+        passed: outcome.passed,
+        exit_code: outcome.exit_code,
+        violations: outcome.violations,
+    })
 }
 
 async fn heartbeat_worker(
@@ -4067,6 +4095,93 @@ mod tests {
             .ok_or_else(|| anyhow!("missing sandbox default verification mode"))?;
         assert_eq!(default_verification_mode, "objective");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sandbox_verification_endpoint_matches_objective_semantics() -> Result<()> {
+        let app = test_router();
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let response = protocol::SandboxRunResponse {
+            env_info: protocol::jobs::sandbox::EnvInfo {
+                image_digest: "sha256:test".to_string(),
+                hostname: None,
+                system_info: None,
+            },
+            runs: vec![protocol::jobs::sandbox::CommandResult {
+                cmd: "echo hi".to_string(),
+                exit_code: 0,
+                duration_ms: 1,
+                stdout_sha256: "stdout".to_string(),
+                stderr_sha256: "stderr".to_string(),
+                stdout_preview: None,
+                stderr_preview: None,
+            }],
+            artifacts: Vec::new(),
+            status: protocol::jobs::sandbox::SandboxStatus::Success,
+            error: None,
+            provenance: protocol::Provenance::new("test"),
+        };
+
+        let ok_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/verifications/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "request": request.clone(),
+                        "response": response.clone()
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(ok_response.status(), axum::http::StatusCode::OK);
+        let ok_json = response_json(ok_response).await?;
+        assert_eq!(
+            ok_json.get("passed").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            ok_json.get("exit_code").and_then(Value::as_i64),
+            Some(0)
+        );
+
+        let mut failing_response = response;
+        failing_response.runs[0].exit_code = 2;
+        failing_response.status = protocol::jobs::sandbox::SandboxStatus::Failed;
+
+        let fail_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/verifications/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "request": request,
+                        "response": failing_response
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(fail_response.status(), axum::http::StatusCode::OK);
+        let fail_json = response_json(fail_response).await?;
+        assert_eq!(
+            fail_json.get("passed").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            fail_json.get("exit_code").and_then(Value::as_i64),
+            Some(2)
+        );
         Ok(())
     }
 

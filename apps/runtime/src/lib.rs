@@ -33,6 +33,7 @@ pub mod shadow;
 pub mod shadow_control_khala;
 pub mod sync_auth;
 pub mod types;
+pub mod verification;
 pub mod workers;
 
 pub fn build_runtime_state(config: Config) -> AppState {

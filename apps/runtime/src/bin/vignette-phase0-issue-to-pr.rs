@@ -921,7 +921,7 @@ async fn run_happy_path(
     )
     .await?;
 
-    let verification = verify_sandbox_response(&request, &response)?;
+    let verification = verify_sandbox_with_runtime(client, runtime_base, &request, &response).await?;
     append_verification_event(
         client,
         runtime_base,
@@ -1104,7 +1104,7 @@ async fn run_verification_fail(
     let job_hash = request.compute_hash().context("compute job hash")?;
     let response = call_sandbox_provider(client, &provider.base_url, &request, &job_hash).await?;
 
-    let verification = verify_sandbox_response(&request, &response)?;
+    let verification = verify_sandbox_with_runtime(client, runtime_base, &request, &response).await?;
     if verification.passed {
         return Err(anyhow!("verification-fail scenario unexpectedly passed"));
     }
@@ -1289,7 +1289,8 @@ async fn run_provider_offline_mid_run(
     let response_b =
         call_sandbox_provider(client, &provider_b.base_url, &request, &job_hash).await?;
     let latency_ms = started.elapsed().as_millis() as u64;
-    let verification = verify_sandbox_response(&request, &response_b)?;
+    let verification =
+        verify_sandbox_with_runtime(client, runtime_base, &request, &response_b).await?;
     if !verification.passed {
         return Err(anyhow!("reserve provider B failed verification"));
     }
@@ -1537,25 +1538,44 @@ struct VerificationOutcome {
     exit_code: i32,
 }
 
-fn verify_sandbox_response(
-    _request: &SandboxRunRequest,
+#[derive(Debug, Deserialize)]
+struct SandboxVerifyResponse {
+    passed: bool,
+    exit_code: i32,
+    #[serde(default)]
+    violations: Vec<String>,
+}
+
+async fn verify_sandbox_with_runtime(
+    client: &reqwest::Client,
+    runtime_base: &str,
+    request: &SandboxRunRequest,
     response: &SandboxRunResponse,
 ) -> Result<VerificationOutcome> {
-    let mut passed = response.status == SandboxStatus::Success;
-    let mut exit_code = 0;
-    for run in &response.runs {
-        if run.exit_code != 0 {
-            passed = false;
-            exit_code = run.exit_code;
-            break;
-        }
+    let url = format!("{runtime_base}/internal/v1/verifications/sandbox-run");
+    let resp = client
+        .post(url)
+        .json(&json!({ "request": request, "response": response }))
+        .send()
+        .await
+        .context("verify sandbox run with runtime")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("runtime sandbox verification failed: {}", text));
     }
-    if passed {
-        exit_code = 0;
-    } else if exit_code == 0 {
-        exit_code = 1;
+
+    let parsed: SandboxVerifyResponse = resp.json().await.context("parse sandbox verify")?;
+    if !parsed.passed && !parsed.violations.is_empty() {
+        tracing::info!(
+            violations = ?parsed.violations,
+            "runtime reported sandbox verification violations"
+        );
     }
-    Ok(VerificationOutcome { passed, exit_code })
+    Ok(VerificationOutcome {
+        passed: parsed.passed,
+        exit_code: parsed.exit_code,
+    })
 }
 
 async fn call_sandbox_provider(
