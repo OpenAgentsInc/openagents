@@ -936,6 +936,45 @@ struct WebL402PaywallCreateForm {
     enabled: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct WebRouteSplitEvaluateForm {
+    path: String,
+    #[serde(default)]
+    cohort_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WebRouteSplitOverrideForm {
+    target: String,
+    #[serde(default)]
+    domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WebRuntimeRoutingEvaluateForm {
+    thread_id: String,
+    #[serde(default)]
+    autopilot_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WebRuntimeRoutingOverrideForm {
+    scope_type: String,
+    scope_id: String,
+    driver: String,
+    #[serde(default)]
+    is_active: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct WebLightningOpsForm {
+    function_name: String,
+    #[serde(default)]
+    args_json: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RuntimeCodexWorkerControlRequestEnvelope {
     request: RuntimeCodexWorkerControlRequest,
@@ -1443,6 +1482,30 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(
             "/l402/paywalls/web/:paywall_id/delete",
             post(web_l402_paywall_delete),
+        )
+        .route(
+            "/admin/route-split/evaluate",
+            post(web_admin_route_split_evaluate),
+        )
+        .route(
+            "/admin/route-split/override",
+            post(web_admin_route_split_override),
+        )
+        .route(
+            "/admin/runtime-routing/evaluate",
+            post(web_admin_runtime_routing_evaluate),
+        )
+        .route(
+            "/admin/runtime-routing/override",
+            post(web_admin_runtime_routing_override),
+        )
+        .route(
+            "/admin/lightning-ops/query",
+            post(web_admin_lightning_ops_query),
+        )
+        .route(
+            "/admin/lightning-ops/mutation",
+            post(web_admin_lightning_ops_mutation),
         )
         .route("/chat/new", post(web_chat_new_thread))
         .route(
@@ -2631,6 +2694,46 @@ async fn render_web_page(
                 profile_email: bundle.user.email.clone(),
                 resend,
                 google,
+            },
+        };
+        if should_render_hx_get_fragment(headers) {
+            return Ok(web_fragment_response(&page));
+        }
+        return Ok(web_html_response(page));
+    }
+
+    if path.starts_with("/admin") {
+        let htmx = classify_htmx_request(headers);
+        let bundle = if let Some(bundle) = session_bundle.as_ref() {
+            bundle
+        } else {
+            if htmx.is_hx_request {
+                return Ok(htmx_redirect_response("/login"));
+            }
+            return Ok(Redirect::temporary("/login").into_response());
+        };
+        let is_admin = is_admin_email(&bundle.user.email, &state.config.admin_emails);
+        let route_split_status_json =
+            serde_json::to_string_pretty(&state.route_split.status().await)
+                .unwrap_or_else(|_| "{}".to_string());
+        let runtime_routing_status_json =
+            serde_json::to_string_pretty(&state.runtime_routing.status(&state._domain_store).await)
+                .unwrap_or_else(|_| "{}".to_string());
+        let effective_status = if !is_admin && status.is_none() {
+            Some("admin-forbidden".to_string())
+        } else {
+            status
+        };
+
+        let page = WebPage {
+            title: "Admin".to_string(),
+            path,
+            session,
+            body: WebBody::Admin {
+                status: effective_status,
+                is_admin,
+                route_split_status_json,
+                runtime_routing_status_json,
             },
         };
         if should_render_hx_get_fragment(headers) {
@@ -4916,6 +5019,584 @@ async fn web_l402_paywall_delete(
             "l402-action-failed",
             true,
             StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    }
+}
+
+fn web_admin_status_response(
+    is_hx_request: bool,
+    status: &str,
+    is_error: bool,
+    status_code: StatusCode,
+) -> Response {
+    if is_hx_request {
+        return htmx_notice_response("admin-status", status, is_error, status_code);
+    }
+    Redirect::temporary(&format!("/admin?status={status}")).into_response()
+}
+
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn web_admin_result_fragment_response(
+    is_hx_request: bool,
+    status: &str,
+    is_error: bool,
+    status_code: StatusCode,
+    payload: serde_json::Value,
+) -> Response {
+    if is_hx_request {
+        let pretty = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string());
+        let status_text = match status {
+            "admin-action-completed" => "Admin action completed.",
+            "admin-action-failed" => "Admin action failed.",
+            "admin-forbidden" => "Admin role required.",
+            _ => "Action completed.",
+        };
+        let status_class = if is_error {
+            "oa-notice error"
+        } else {
+            "oa-notice"
+        };
+        let fragment = format!(
+            "<article id=\"admin-result\" class=\"oa-card\"><h3>Result</h3><pre class=\"oa-json\">{}</pre></article><div id=\"admin-status\" class=\"{}\" hx-swap-oob=\"outerHTML\">{}</div>",
+            html_escape(&pretty),
+            status_class,
+            html_escape(status_text)
+        );
+        let mut response = crate::web_htmx::fragment_response(fragment, status_code);
+        apply_html_security_headers(response.headers_mut());
+        return response;
+    }
+
+    Redirect::temporary(&format!("/admin?status={status}")).into_response()
+}
+
+async fn web_admin_bundle(
+    state: &AppState,
+    headers: &HeaderMap,
+    is_hx_request: bool,
+) -> Result<SessionBundle, Response> {
+    let bundle = session_bundle_from_headers(state, headers)
+        .await
+        .map_err(|_| {
+            if is_hx_request {
+                htmx_redirect_response("/login")
+            } else {
+                Redirect::temporary("/login").into_response()
+            }
+        })?;
+    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
+        return Err(web_admin_status_response(
+            is_hx_request,
+            "admin-forbidden",
+            true,
+            StatusCode::FORBIDDEN,
+        ));
+    }
+    Ok(bundle)
+}
+
+fn parse_web_lightning_ops_args(
+    args_json: Option<String>,
+) -> Result<serde_json::Map<String, serde_json::Value>, serde_json::Value> {
+    let raw = args_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("{}");
+    let value = serde_json::from_str::<serde_json::Value>(raw).map_err(|_| {
+        serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "invalid_args_json",
+                "message": "args_json must be a valid JSON object",
+            }
+        })
+    })?;
+    let object = value.as_object().cloned().ok_or_else(|| {
+        serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "invalid_args_json",
+                "message": "args_json must decode to a JSON object",
+            }
+        })
+    })?;
+    Ok(object)
+}
+
+async fn web_admin_route_split_evaluate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebRouteSplitEvaluateForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    if let Err(response) = web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        return response;
+    }
+
+    let path = payload.path.trim().to_string();
+    if path.is_empty() {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_path",
+                    "message": "Path is required.",
+                }
+            }),
+        );
+    }
+
+    let cohort_key = payload
+        .cohort_key
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| resolve_route_cohort_key(&headers));
+    let decision = state.route_split.evaluate(&path, &cohort_key).await;
+    web_admin_result_fragment_response(
+        htmx.is_hx_request,
+        "admin-action-completed",
+        false,
+        StatusCode::OK,
+        serde_json::json!({
+            "ok": true,
+            "action": "route_split.evaluate",
+            "decision": decision,
+        }),
+    )
+}
+
+async fn web_admin_route_split_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebRouteSplitOverrideForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        Ok(bundle) => bundle,
+        Err(response) => return response,
+    };
+    let request_id = request_id(&headers);
+
+    let normalized_target = payload.target.trim().to_ascii_lowercase();
+    let normalized_domain = payload
+        .domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_lowercase());
+
+    let apply = match normalized_target.as_str() {
+        "legacy" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, Some(RouteTarget::Legacy))
+                    .await
+            } else {
+                state
+                    .route_split
+                    .set_override_target(Some(RouteTarget::Legacy))
+                    .await;
+                Ok(())
+            }
+        }
+        "rust" | "rust_shell" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, Some(RouteTarget::RustShell))
+                    .await
+            } else {
+                state
+                    .route_split
+                    .set_override_target(Some(RouteTarget::RustShell))
+                    .await;
+                Ok(())
+            }
+        }
+        "clear" | "default" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                state
+                    .route_split
+                    .set_domain_override_target(domain, None)
+                    .await
+            } else {
+                state.route_split.set_override_target(None).await;
+                Ok(())
+            }
+        }
+        "rollback" => {
+            if let Some(domain) = normalized_domain.as_deref() {
+                if let Some(rollback_target) =
+                    state.route_split.rollback_target_for_domain(Some(domain))
+                {
+                    state
+                        .route_split
+                        .set_domain_override_target(domain, Some(rollback_target))
+                        .await
+                } else {
+                    Err("Unknown route domain.".to_string())
+                }
+            } else {
+                if let Some(global_target) = state.route_split.rollback_target_for_domain(None) {
+                    state
+                        .route_split
+                        .set_override_target(Some(global_target))
+                        .await;
+                } else {
+                    state
+                        .route_split
+                        .set_override_target(Some(RouteTarget::Legacy))
+                        .await;
+                }
+                Ok(())
+            }
+        }
+        _ => Err("Target must be one of: legacy, rust, rollback, clear.".to_string()),
+    };
+
+    if let Err(message) = apply {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_target",
+                    "message": message,
+                }
+            }),
+        );
+    }
+
+    let status = state.route_split.status().await;
+    let scope = normalized_domain
+        .clone()
+        .map(|domain| format!("domain:{domain}"))
+        .unwrap_or_else(|| "global".to_string());
+    state.observability.audit(
+        AuditEvent::new("route.split.override.updated", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("target", normalized_target)
+            .with_attribute("scope", scope),
+    );
+    state
+        .observability
+        .increment_counter("route.split.override.updated", &request_id);
+
+    web_admin_result_fragment_response(
+        htmx.is_hx_request,
+        "admin-action-completed",
+        false,
+        StatusCode::OK,
+        serde_json::json!({
+            "ok": true,
+            "action": "route_split.override",
+            "status": status,
+        }),
+    )
+}
+
+async fn web_admin_runtime_routing_evaluate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebRuntimeRoutingEvaluateForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        Ok(bundle) => bundle,
+        Err(response) => return response,
+    };
+    let thread_id = payload.thread_id.trim().to_string();
+    if thread_id.is_empty() {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_thread_id",
+                    "message": "Thread id is required.",
+                }
+            }),
+        );
+    }
+
+    let decision = state
+        .runtime_routing
+        .resolve(
+            &state._domain_store,
+            &state.codex_thread_store,
+            RuntimeRoutingResolveInput {
+                user_id: bundle.user.id.clone(),
+                thread_id,
+                autopilot_id: payload.autopilot_id,
+            },
+        )
+        .await;
+    web_admin_result_fragment_response(
+        htmx.is_hx_request,
+        "admin-action-completed",
+        false,
+        StatusCode::OK,
+        serde_json::json!({
+            "ok": true,
+            "action": "runtime_routing.evaluate",
+            "decision": decision,
+        }),
+    )
+}
+
+async fn web_admin_runtime_routing_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebRuntimeRoutingOverrideForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        Ok(bundle) => bundle,
+        Err(response) => return response,
+    };
+    let request_id = request_id(&headers);
+
+    let scope_type = payload.scope_type.trim().to_ascii_lowercase();
+    if !matches!(scope_type.as_str(), "user" | "autopilot") {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_scope_type",
+                    "message": "Scope type must be one of: user, autopilot.",
+                }
+            }),
+        );
+    }
+
+    let scope_id = payload.scope_id.trim().to_string();
+    if scope_id.is_empty() || scope_id.chars().count() > 160 {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_scope_id",
+                    "message": "Scope id is required and must be <= 160 characters.",
+                }
+            }),
+        );
+    }
+
+    let Some(driver) = RuntimeDriver::parse(&payload.driver) else {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_driver",
+                    "message": "Driver must be one of: legacy, elixir.",
+                }
+            }),
+        );
+    };
+
+    let reason = payload
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    if reason
+        .as_deref()
+        .map(|value| value.chars().count() > 255)
+        .unwrap_or(false)
+    {
+        return web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({
+                "ok": false,
+                "error": {
+                    "code": "invalid_reason",
+                    "message": "Reason may not be greater than 255 characters.",
+                }
+            }),
+        );
+    }
+
+    let override_record = match state
+        ._domain_store
+        .upsert_runtime_driver_override(UpsertRuntimeDriverOverrideInput {
+            scope_type,
+            scope_id,
+            driver: driver.as_str().to_string(),
+            is_active: payload.is_active.is_some(),
+            reason,
+            meta: None,
+        })
+        .await
+    {
+        Ok(record) => record,
+        Err(error) => {
+            return web_admin_result_fragment_response(
+                htmx.is_hx_request,
+                "admin-action-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                serde_json::json!({
+                    "ok": false,
+                    "error": {
+                        "code": "runtime_override_failed",
+                        "message": error.to_string(),
+                    }
+                }),
+            );
+        }
+    };
+
+    state.observability.audit(
+        AuditEvent::new("runtime.routing.override.updated", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("scope_type", override_record.scope_type.clone())
+            .with_attribute("scope_id", override_record.scope_id.clone())
+            .with_attribute("driver", override_record.driver.clone())
+            .with_attribute("is_active", override_record.is_active.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("runtime.routing.override.updated", &request_id);
+
+    let status = state.runtime_routing.status(&state._domain_store).await;
+    web_admin_result_fragment_response(
+        htmx.is_hx_request,
+        "admin-action-completed",
+        false,
+        StatusCode::OK,
+        serde_json::json!({
+            "ok": true,
+            "action": "runtime_routing.override",
+            "override": override_record,
+            "status": status,
+        }),
+    )
+}
+
+async fn web_admin_lightning_ops_query(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebLightningOpsForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    if let Err(response) = web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        return response;
+    }
+    let args = match parse_web_lightning_ops_args(payload.args_json) {
+        Ok(args) => args,
+        Err(error_payload) => {
+            return web_admin_result_fragment_response(
+                htmx.is_hx_request,
+                "admin-action-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error_payload,
+            );
+        }
+    };
+    let request_payload = serde_json::json!({
+        "functionName": payload.function_name,
+        "args": args,
+    });
+
+    match lightning_ops_control_plane_query(State(state), Json(request_payload)).await {
+        Ok((status_code, Json(body))) => web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-completed",
+            false,
+            status_code,
+            body,
+        ),
+        Err((status_code, Json(body))) => web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            status_code,
+            body,
+        ),
+    }
+}
+
+async fn web_admin_lightning_ops_mutation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebLightningOpsForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    if let Err(response) = web_admin_bundle(&state, &headers, htmx.is_hx_request).await {
+        return response;
+    }
+    let args = match parse_web_lightning_ops_args(payload.args_json) {
+        Ok(args) => args,
+        Err(error_payload) => {
+            return web_admin_result_fragment_response(
+                htmx.is_hx_request,
+                "admin-action-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error_payload,
+            );
+        }
+    };
+    let request_payload = serde_json::json!({
+        "functionName": payload.function_name,
+        "args": args,
+    });
+
+    match lightning_ops_control_plane_mutation(State(state), Json(request_payload)).await {
+        Ok((status_code, Json(body))) => web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-completed",
+            false,
+            status_code,
+            body,
+        ),
+        Err((status_code, Json(body))) => web_admin_result_fragment_response(
+            htmx.is_hx_request,
+            "admin-action-failed",
+            true,
+            status_code,
+            body,
         ),
     }
 }
@@ -19471,6 +20152,164 @@ mod tests {
             .find(|row| row.id == paywall_id)
             .expect("deleted paywall present");
         assert!(deleted.deleted_at.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_admin_page_shows_forbidden_state_for_members_and_controls_for_admins() -> Result<()>
+    {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let member_token =
+            seed_local_test_token(&config, "member-web-admin@openagents.com").await?;
+        let app = build_router(config);
+
+        let member_request = Request::builder()
+            .method("GET")
+            .uri("/admin")
+            .header("authorization", format!("Bearer {member_token}"))
+            .body(Body::empty())?;
+        let member_response = app.clone().oneshot(member_request).await?;
+        assert_eq!(member_response.status(), StatusCode::OK);
+        let member_body = read_text(member_response).await?;
+        assert!(member_body.contains("Admin role required for control-plane actions."));
+        assert!(member_body.contains("Control actions are blocked for non-admin accounts."));
+
+        let admin_request = Request::builder()
+            .method("GET")
+            .uri("/admin")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let admin_response = app.oneshot(admin_request).await?;
+        assert_eq!(admin_response.status(), StatusCode::OK);
+        let admin_body = read_text(admin_response).await?;
+        assert!(admin_body.contains("Route Split Status"));
+        assert!(admin_body.contains("Runtime Routing Status"));
+        assert!(admin_body.contains("/admin/route-split/evaluate"));
+        assert!(admin_body.contains("/admin/lightning-ops/query"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_admin_route_split_and_runtime_override_render_htmx_result_fragments() -> Result<()>
+    {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let member_token =
+            seed_local_test_token(&config, "member-web-admin-gate@openagents.com").await?;
+        let app = build_router(config);
+
+        let forbidden_request = Request::builder()
+            .method("POST")
+            .uri("/admin/route-split/evaluate")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {member_token}"))
+            .body(Body::from("path=%2Fchat"))?;
+        let forbidden_response = app.clone().oneshot(forbidden_request).await?;
+        assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
+        let forbidden_body = read_text(forbidden_response).await?;
+        assert!(forbidden_body.contains("Admin role required."));
+
+        let evaluate_request = Request::builder()
+            .method("POST")
+            .uri("/admin/route-split/evaluate")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("path=%2Fchat%2Fthread_123&cohort_key=user%3A1"))?;
+        let evaluate_response = app.clone().oneshot(evaluate_request).await?;
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let evaluate_body = read_text(evaluate_response).await?;
+        assert!(evaluate_body.contains("id=\"admin-result\""));
+        assert!(evaluate_body.contains("&quot;action&quot;: &quot;route_split.evaluate&quot;"));
+
+        let invalid_override_request = Request::builder()
+            .method("POST")
+            .uri("/admin/runtime-routing/override")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("scope_type=user&scope_id=usr_1&driver=invalid"))?;
+        let invalid_override_response = app.clone().oneshot(invalid_override_request).await?;
+        assert_eq!(
+            invalid_override_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_override_body = read_text(invalid_override_response).await?;
+        assert!(invalid_override_body.contains("id=\"admin-result\""));
+        assert!(invalid_override_body.contains("invalid_driver"));
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/admin/runtime-routing/override")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "scope_type=user&scope_id=usr_1&driver=legacy&is_active=on&reason=manual",
+            ))?;
+        let override_response = app.oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+        let override_body = read_text(override_response).await?;
+        assert!(override_body.contains("id=\"admin-result\""));
+        assert!(override_body.contains("&quot;action&quot;: &quot;runtime_routing.override&quot;"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_admin_lightning_ops_forms_render_query_and_validation_results() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let app = build_router(config);
+
+        let invalid_args_request = Request::builder()
+            .method("POST")
+            .uri("/admin/lightning-ops/query")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "function_name=lightning%2Fops%3AlistPaywallControlPlaneState&args_json=not-json",
+            ))?;
+        let invalid_args_response = app.clone().oneshot(invalid_args_request).await?;
+        assert_eq!(
+            invalid_args_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        let invalid_args_body = read_text(invalid_args_response).await?;
+        assert!(invalid_args_body.contains("id=\"admin-result\""));
+        assert!(invalid_args_body.contains("invalid_args_json"));
+
+        let query_request = Request::builder()
+            .method("POST")
+            .uri("/admin/lightning-ops/query")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "function_name=lightning%2Fops%3AlistPaywallControlPlaneState&args_json=%7B%22secret%22%3A%22ops-secret-test%22%7D",
+            ))?;
+        let query_response = app.oneshot(query_request).await?;
+        assert_eq!(query_response.status(), StatusCode::OK);
+        let query_body = read_text(query_response).await?;
+        assert!(query_body.contains("id=\"admin-result\""));
+        assert!(query_body.contains("&quot;ok&quot;: true"));
 
         Ok(())
     }

@@ -121,6 +121,12 @@ pub enum WebBody {
         paywalls: Vec<L402PaywallView>,
         deployments: Vec<L402DeploymentView>,
     },
+    Admin {
+        status: Option<String>,
+        is_admin: bool,
+        route_split_status_json: String,
+        runtime_routing_status_json: String,
+    },
     Placeholder {
         heading: String,
         description: String,
@@ -285,6 +291,19 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                         transactions,
                         paywalls,
                         deployments
+                    ))
+                }
+                WebBody::Admin {
+                    status,
+                    is_admin,
+                    route_split_status_json,
+                    runtime_routing_status_json,
+                } => {
+                    (admin_panel(
+                        status.as_deref(),
+                        *is_admin,
+                        route_split_status_json,
+                        runtime_routing_status_json
                     ))
                 }
                 WebBody::Placeholder { heading, description } => {
@@ -976,6 +995,119 @@ fn l402_panel(
     }
 }
 
+fn admin_panel(
+    status: Option<&str>,
+    is_admin: bool,
+    route_split_status_json: &str,
+    runtime_routing_status_json: &str,
+) -> Markup {
+    html! {
+        section id="admin-main-panel" class="oa-grid settings" {
+            article class="oa-card" {
+                h2 { "Control Plane" }
+                (status_slot("admin-status", status))
+                @if !is_admin {
+                    p class="oa-muted" { "Admin role required for control-plane actions." }
+                }
+                h3 { "Route Split Status" }
+                pre class="oa-json" { (route_split_status_json) }
+                h3 { "Runtime Routing Status" }
+                pre class="oa-json" { (runtime_routing_status_json) }
+            }
+            article class="oa-card" {
+                h2 { "Admin Actions" }
+                @if is_admin {
+                    form method="post" action="/admin/route-split/evaluate" class="oa-form"
+                        hx-post="/admin/route-split/evaluate"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Route Split Evaluate" }
+                        label for="route_path" { "Path" }
+                        input id="route_path" type="text" name="path" placeholder="/chat/thread_123" required;
+                        label for="route_cohort_key" { "Cohort key (optional)" }
+                        input id="route_cohort_key" type="text" name="cohort_key";
+                        button type="submit" class="oa-btn primary" { "Evaluate route split" }
+                    }
+
+                    form method="post" action="/admin/route-split/override" class="oa-form"
+                        hx-post="/admin/route-split/override"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Route Split Override" }
+                        label for="route_target" { "Target" }
+                        input id="route_target" type="text" name="target" placeholder="legacy|rust|rollback|clear" required;
+                        label for="route_domain" { "Domain (optional)" }
+                        input id="route_domain" type="text" name="domain" placeholder="billing_l402";
+                        button type="submit" class="oa-btn primary" { "Apply route split override" }
+                    }
+
+                    form method="post" action="/admin/runtime-routing/evaluate" class="oa-form"
+                        hx-post="/admin/runtime-routing/evaluate"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Runtime Routing Evaluate" }
+                        label for="runtime_thread_id" { "Thread id" }
+                        input id="runtime_thread_id" type="text" name="thread_id" required;
+                        label for="runtime_autopilot_id" { "Autopilot id (optional)" }
+                        input id="runtime_autopilot_id" type="text" name="autopilot_id";
+                        button type="submit" class="oa-btn primary" { "Evaluate runtime routing" }
+                    }
+
+                    form method="post" action="/admin/runtime-routing/override" class="oa-form"
+                        hx-post="/admin/runtime-routing/override"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Runtime Routing Override" }
+                        label for="override_scope_type" { "Scope type" }
+                        input id="override_scope_type" type="text" name="scope_type" placeholder="user|autopilot" required;
+                        label for="override_scope_id" { "Scope id" }
+                        input id="override_scope_id" type="text" name="scope_id" required;
+                        label for="override_driver" { "Driver" }
+                        input id="override_driver" type="text" name="driver" placeholder="legacy|elixir" required;
+                        label for="override_reason" { "Reason (optional)" }
+                        input id="override_reason" type="text" name="reason";
+                        label for="override_active" {
+                            input id="override_active" type="checkbox" name="is_active" checked;
+                            " Active"
+                        }
+                        button type="submit" class="oa-btn primary" { "Apply runtime override" }
+                    }
+
+                    form method="post" action="/admin/lightning-ops/query" class="oa-form"
+                        hx-post="/admin/lightning-ops/query"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Lightning Ops Query" }
+                        label for="ops_query_function" { "Function" }
+                        input id="ops_query_function" type="text" name="function_name" placeholder="lightning/ops:listPaywallControlPlaneState" required;
+                        label for="ops_query_args" { "Args JSON object" }
+                        textarea id="ops_query_args" name="args_json" rows="5" { "{\"secret\":\"ops-secret-test\"}" }
+                        button type="submit" class="oa-btn primary" { "Run query" }
+                    }
+
+                    form method="post" action="/admin/lightning-ops/mutation" class="oa-form"
+                        hx-post="/admin/lightning-ops/mutation"
+                        hx-target="#admin-result"
+                        hx-swap="outerHTML" {
+                        h3 { "Lightning Ops Mutation" }
+                        label for="ops_mutation_function" { "Function" }
+                        input id="ops_mutation_function" type="text" name="function_name" placeholder="lightning/security:updateGlobalSecurityState" required;
+                        label for="ops_mutation_args" { "Args JSON object" }
+                        textarea id="ops_mutation_args" name="args_json" rows="7" { "{\"secret\":\"ops-secret-test\",\"globalPause\":false}" }
+                        button type="submit" class="oa-btn primary" { "Run mutation" }
+                    }
+                } @else {
+                    p class="oa-muted" { "Control actions are blocked for non-admin accounts." }
+                }
+            }
+            article id="admin-result" class="oa-card" {
+                h3 { "Result" }
+                p class="oa-muted" { "Submit an admin action to view response payloads here." }
+            }
+        }
+    }
+}
+
 fn placeholder_panel(heading: &str, description: &str) -> Markup {
     html! {
         section class="oa-card oa-placeholder" {
@@ -1042,6 +1174,9 @@ fn status_message(status: &str) -> &'static str {
         "l402-paywall-deleted" => "L402 paywall deleted.",
         "l402-admin-required" => "Admin role required for this action.",
         "l402-action-failed" => "Could not complete L402 action.",
+        "admin-action-completed" => "Admin action completed.",
+        "admin-action-failed" => "Admin action failed.",
+        "admin-forbidden" => "Admin role required.",
         "settings-action-failed" => "Settings action failed.",
         _ => "Action completed.",
     }
@@ -1127,6 +1262,16 @@ body {
 .oa-kv dt { color: var(--muted); }
 .oa-kv dd { margin: 0; font-weight: 600; }
 .oa-scroll { overflow: auto; }
+.oa-json {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid rgba(126, 150, 187, 0.24);
+  border-radius: 10px;
+  background: rgba(6, 12, 24, 0.7);
+  padding: 0.6rem;
+  font-size: 0.82rem;
+}
 .oa-table {
   width: 100%;
   border-collapse: collapse;

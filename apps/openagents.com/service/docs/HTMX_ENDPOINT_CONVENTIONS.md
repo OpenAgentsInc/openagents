@@ -94,6 +94,20 @@ Current billing/L402 web contract:
   - return `#billing-status` fragments in HTMX mode
   - redirect to `/l402?status=...` in non-HTMX mode
 
+Current admin/control-plane web contract:
+- `GET /admin` renders control-plane status snapshots from Rust authority state.
+- `POST /admin/route-split/evaluate`
+- `POST /admin/route-split/override`
+- `POST /admin/runtime-routing/evaluate`
+- `POST /admin/runtime-routing/override`
+- `POST /admin/lightning-ops/query`
+- `POST /admin/lightning-ops/mutation`
+- All admin actions:
+  - enforce admin email authorization server-side
+  - return `#admin-result` fragments (with payload JSON) for HTMX requests
+  - update `#admin-status` via out-of-band swap
+  - redirect to `/admin?status=...` for non-HTMX requests
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:
