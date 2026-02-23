@@ -24,6 +24,7 @@ pub mod bridge;
 pub mod config;
 pub mod event_log;
 pub mod fanout;
+pub mod fraud;
 pub mod history_compat;
 pub mod human_qa;
 pub mod inference_tiering;

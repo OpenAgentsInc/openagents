@@ -33,6 +33,7 @@ use crate::{
     },
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
+    fraud::FraudIncidentLog,
     marketplace::{
         ComputeAllInQuoteV1, PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection,
         build_provider_catalog, compute_all_in_quote_v1, is_provider_worker,
@@ -60,7 +61,9 @@ pub struct AppState {
     compute_abuse: Arc<ComputeAbuseControls>,
     compute_telemetry: Arc<ComputeTelemetry>,
     treasury: Arc<Treasury>,
+    fraud: Arc<FraudIncidentLog>,
     fleet_seq: Arc<AtomicU64>,
+    fraud_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
 }
 
@@ -83,7 +86,9 @@ impl AppState {
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
             treasury: Arc::new(Treasury::default()),
+            fraud: Arc::new(FraudIncidentLog::default()),
             fleet_seq: Arc::new(AtomicU64::new(0)),
+            fraud_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
         };
 
@@ -489,6 +494,18 @@ struct ComputeTelemetryQuery {
     capability: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct FraudIncidentsQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+struct FraudIncidentsResponse {
+    schema: String,
+    incidents: Vec<crate::fraud::FraudIncident>,
+}
+
 #[derive(Debug, Serialize)]
 struct ProviderCatalogResponse {
     providers: Vec<ProviderCatalogEntry>,
@@ -791,6 +808,7 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/treasury/compute/settle/sandbox-run",
             post(settle_sandbox_run),
         )
+        .route("/internal/v1/fraud/incidents", get(get_fraud_incidents))
         .with_state(state)
 }
 
@@ -2160,6 +2178,18 @@ async fn get_compute_treasury_summary(
     Ok(Json(summary))
 }
 
+async fn get_fraud_incidents(
+    State(state): State<AppState>,
+    Query(query): Query<FraudIncidentsQuery>,
+) -> Result<Json<FraudIncidentsResponse>, ApiError> {
+    let limit = query.limit.unwrap_or(50).min(200);
+    let incidents = state.fraud.list(limit).await;
+    Ok(Json(FraudIncidentsResponse {
+        schema: "openagents.fraud.incident_list.v1".to_string(),
+        incidents,
+    }))
+}
+
 async fn verify_sandbox_run(
     State(_state): State<AppState>,
     Json(body): Json<SandboxVerificationBody>,
@@ -2574,6 +2604,117 @@ async fn settle_sandbox_run(
         )
         .await
         .map_err(ApiError::from_orchestration)?;
+
+    let run_receipt_path = format!("/internal/v1/runs/{}/receipt", body.run_id);
+    let run_replay_path = format!("/internal/v1/runs/{}/replay", body.run_id);
+    let run_id_string = body.run_id.to_string();
+
+    if !violations.is_empty() {
+        if let Some(incident) = crate::fraud::FraudIncident::new(
+            "compute_verification_violation",
+            "medium",
+            Some(body.provider_id.trim().to_string()),
+            Some(body.provider_worker_id.trim().to_string()),
+            Some(job_hash.clone()),
+            Some(run_id_string.clone()),
+            quote_sha256.clone(),
+            vec!["payment_withheld".to_string(), "strike_applied".to_string()],
+            serde_json::json!({
+                "job_hash": job_hash.clone(),
+                "run_id": run_id_string.clone(),
+                "settlement_status": settlement_status,
+                "withheld_reason": withheld_reason,
+                "exit_code": outcome.exit_code,
+                "violations": violations.clone(),
+                "paths": {
+                    "run_receipt": run_receipt_path.as_str(),
+                    "run_replay": run_replay_path.as_str(),
+                }
+            }),
+        ) {
+            let _created = record_fraud_incident(&state, incident.clone()).await;
+            let run = state
+                .orchestrator
+                .append_run_event(
+                    body.run_id,
+                    AppendRunEventRequest {
+                        event_type: "fraud".to_string(),
+                        payload: serde_json::json!({
+                            "schema": "openagents.fraud.incident_pointer.v1",
+                            "incident_id": incident.incident_id,
+                            "incident_type": incident.incident_type,
+                            "severity": incident.severity,
+                            "job_hash": job_hash.clone(),
+                        }),
+                        idempotency_key: Some(format!(
+                            "fraud:{job_hash}:compute_verification_violation"
+                        )),
+                        expected_previous_seq: None,
+                    },
+                )
+                .await
+                .map_err(ApiError::from_orchestration)?;
+            publish_latest_run_event(&state, &run).await?;
+        }
+    }
+
+    if price_integrity_violation {
+        if let Some(incident) = crate::fraud::FraudIncident::new(
+            "compute_price_integrity_violation",
+            "high",
+            Some(body.provider_id.trim().to_string()),
+            Some(body.provider_worker_id.trim().to_string()),
+            Some(job_hash.clone()),
+            Some(run_id_string.clone()),
+            quote_sha256.clone(),
+            vec![
+                "payment_withheld".to_string(),
+                "price_integrity_penalty".to_string(),
+            ],
+            serde_json::json!({
+                "job_hash": job_hash.clone(),
+                "run_id": run_id_string.clone(),
+                "settlement_status": settlement_status,
+                "withheld_reason": withheld_reason,
+                "quote_id": quote_id,
+                "quote_sha256": quote_sha256,
+                "quoted_provider_price_msats": quoted_provider_price_msats,
+                "quoted_total_price_msats": quoted_total_price_msats,
+                "delivered_provider_amount_msats": body.amount_msats,
+                "variance_msats": price_integrity_variance_msats,
+                "variance_bps": price_integrity_variance_bps,
+                "tolerance_msats": PRICE_INTEGRITY_TOLERANCE_MSATS,
+                "paths": {
+                    "run_receipt": run_receipt_path.as_str(),
+                    "run_replay": run_replay_path.as_str(),
+                }
+            }),
+        ) {
+            let _created = record_fraud_incident(&state, incident.clone()).await;
+            let run = state
+                .orchestrator
+                .append_run_event(
+                    body.run_id,
+                    AppendRunEventRequest {
+                        event_type: "fraud".to_string(),
+                        payload: serde_json::json!({
+                            "schema": "openagents.fraud.incident_pointer.v1",
+                            "incident_id": incident.incident_id,
+                            "incident_type": incident.incident_type,
+                            "severity": incident.severity,
+                            "job_hash": job_hash.clone(),
+                        }),
+                        idempotency_key: Some(format!(
+                            "fraud:{job_hash}:compute_price_integrity_violation"
+                        )),
+                        expected_previous_seq: None,
+                    },
+                )
+                .await
+                .map_err(ApiError::from_orchestration)?;
+            publish_latest_run_event(&state, &run).await?;
+        }
+    }
 
     Ok(Json(SettleSandboxRunResponse {
         job_hash,
@@ -3397,6 +3538,36 @@ async fn apply_provider_violation_strike(
         publish_worker_snapshot(state, &transitioned).await?;
     }
 
+    if should_quarantine {
+        let provider_id = snapshot
+            .worker
+            .metadata
+            .get("provider_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        if let Some(incident) = crate::fraud::FraudIncident::new(
+            "provider_quarantined",
+            "critical",
+            provider_id,
+            Some(worker_id.to_string()),
+            Some(job_hash.to_string()),
+            None,
+            None,
+            vec![
+                "quarantined".to_string(),
+                "verification_violations".to_string(),
+            ],
+            serde_json::json!({
+                "reason_code": "verification_violations",
+                "failure_strikes": next_strikes,
+                "threshold": PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD,
+                "violations": violations,
+            }),
+        ) {
+            let _created = record_fraud_incident(state, incident).await;
+        }
+    }
+
     Ok(())
 }
 
@@ -3484,6 +3655,33 @@ async fn apply_provider_failure_strike(
             .await
             .map_err(ApiError::from_worker)?;
         publish_worker_snapshot(state, &transitioned).await?;
+    }
+
+    if should_quarantine {
+        let provider_id = snapshot
+            .worker
+            .metadata
+            .get("provider_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        if let Some(incident) = crate::fraud::FraudIncident::new(
+            "provider_quarantined",
+            "critical",
+            provider_id,
+            Some(worker_id.to_string()),
+            Some(job_hash.to_string()),
+            None,
+            None,
+            vec!["quarantined".to_string(), "provider_failures".to_string()],
+            serde_json::json!({
+                "reason_code": "provider_failures",
+                "failure_strikes": next_strikes,
+                "threshold": PROVIDER_FAILURE_STRIKE_QUARANTINE_THRESHOLD,
+                "reason": reason,
+            }),
+        ) {
+            let _created = record_fraud_incident(state, incident).await;
+        }
     }
 
     Ok(())
@@ -3657,7 +3855,74 @@ async fn apply_provider_price_integrity_signal(
         maybe_spawn_nostr_provider_ad_mirror(state, &transitioned);
     }
 
+    if should_quarantine {
+        let provider_id = snapshot
+            .worker
+            .metadata
+            .get("provider_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        if let Some(incident) = crate::fraud::FraudIncident::new(
+            "provider_quarantined",
+            "critical",
+            provider_id,
+            Some(worker_id.to_string()),
+            Some(job_hash.to_string()),
+            None,
+            quote_sha256.map(str::to_string),
+            vec!["quarantined".to_string(), "price_integrity".to_string()],
+            serde_json::json!({
+                "reason_code": "price_integrity",
+                "price_integrity_samples": next_samples,
+                "price_integrity_violations": next_violations,
+                "threshold": PROVIDER_PRICE_INTEGRITY_QUARANTINE_THRESHOLD,
+                "quoted_provider_price_msats": quoted_provider_price_msats,
+                "delivered_provider_amount_msats": delivered_provider_amount_msats,
+                "variance_msats": variance_msats,
+                "variance_bps": variance_bps,
+                "quote_id": quote_id,
+                "violation": violation,
+            }),
+        ) {
+            let _created = record_fraud_incident(state, incident).await;
+        }
+    }
+
     Ok(())
+}
+
+async fn record_fraud_incident(state: &AppState, incident: crate::fraud::FraudIncident) -> bool {
+    let created = state.fraud.record(incident.clone()).await;
+    if !created {
+        return false;
+    }
+
+    let topic = "fraud:incidents";
+    let seq = state
+        .fraud_seq
+        .fetch_add(1, Ordering::Relaxed)
+        .saturating_add(1);
+    let payload = serde_json::to_value(&incident)
+        .unwrap_or_else(|_| serde_json::json!({"error": "incident_serialization_failed"}));
+
+    if let Err(error) = state
+        .fanout
+        .publish(
+            topic,
+            FanoutMessage {
+                topic: topic.to_string(),
+                sequence: seq,
+                kind: incident.incident_type.clone(),
+                payload,
+                published_at: Utc::now(),
+            },
+        )
+        .await
+    {
+        tracing::warn!(reason = %error, "fraud incident publish failed");
+    }
+
+    created
 }
 
 async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<(), ApiError> {
@@ -6452,6 +6717,7 @@ mod tests {
         assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
 
         let catalog_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
@@ -6537,6 +6803,7 @@ mod tests {
         assert_eq!(instance_market.status(), axum::http::StatusCode::CREATED);
 
         let catalog_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
@@ -8250,6 +8517,7 @@ mod tests {
         }
 
         let catalog_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
@@ -8266,6 +8534,39 @@ mod tests {
         assert_eq!(
             providers[0].get("quarantined").and_then(Value::as_bool),
             Some(true)
+        );
+
+        let incidents_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/fraud/incidents?limit=10")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(incidents_response.status(), axum::http::StatusCode::OK);
+        let incidents_json = response_json(incidents_response).await?;
+        let incidents = incidents_json
+            .get("incidents")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing incidents array"))?;
+        assert!(
+            incidents.iter().any(|incident| {
+                incident
+                    .get("incident_type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == "compute_verification_violation")
+            }),
+            "expected compute_verification_violation incident"
+        );
+        assert!(
+            incidents.iter().any(|incident| {
+                incident
+                    .get("incident_type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == "provider_quarantined")
+            }),
+            "expected provider_quarantined incident"
         );
 
         let _ = shutdown.send(());
