@@ -1150,6 +1150,11 @@ async fn register_worker(
 ) -> Result<(StatusCode, Json<WorkerResponse>), ApiError> {
     ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let mut metadata = body.metadata;
+    if metadata_has_role(&metadata, "provider") {
+        qualify_provider_metadata(&metadata).await?;
+        annotate_provider_metadata(&mut metadata);
+    }
     let snapshot = state
         .workers
         .register_worker(RegisterWorkerRequest {
@@ -1158,7 +1163,7 @@ async fn register_worker(
             workspace_ref: body.workspace_ref,
             codex_home_ref: body.codex_home_ref,
             adapter: body.adapter,
-            metadata: body.metadata,
+            metadata,
         })
         .await
         .map_err(ApiError::from_worker)?;
@@ -1570,6 +1575,86 @@ fn ensure_runtime_write_authority(state: &AppState) -> Result<(), ApiError> {
     }
 }
 
+const PHASE0_REQUIRED_PROVIDER_CAPABILITY: &str = "oa.sandbox_run.v1";
+
+fn metadata_has_role(metadata: &serde_json::Value, role: &str) -> bool {
+    metadata_string_array(metadata, "roles")
+        .iter()
+        .any(|value| value == role)
+}
+
+fn metadata_string(metadata: &serde_json::Value, key: &str) -> Option<String> {
+    metadata.get(key)?.as_str().map(|value| value.to_string())
+}
+
+fn metadata_string_array(metadata: &serde_json::Value, key: &str) -> Vec<String> {
+    match metadata.get(key).and_then(|value| value.as_array()) {
+        Some(values) => values
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(|value| value.to_string())
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
+    if let Some(map) = metadata.as_object_mut() {
+        map.insert("qualified".to_string(), serde_json::Value::Bool(true));
+        map.insert(
+            "qualified_at".to_string(),
+            serde_json::Value::String(Utc::now().to_rfc3339()),
+        );
+    }
+}
+
+async fn qualify_provider_metadata(metadata: &serde_json::Value) -> Result<(), ApiError> {
+    let provider_base_url = metadata_string(metadata, "provider_base_url")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ApiError::InvalidRequest("provider_base_url is required for provider role".to_string())
+        })?;
+
+    let capabilities = metadata_string_array(metadata, "capabilities");
+    if capabilities.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "capabilities[] is required for provider role".to_string(),
+        ));
+    }
+    if !capabilities
+        .iter()
+        .any(|capability| capability == PHASE0_REQUIRED_PROVIDER_CAPABILITY)
+    {
+        return Err(ApiError::InvalidRequest(format!(
+            "provider must advertise capability {PHASE0_REQUIRED_PROVIDER_CAPABILITY} for Phase 0"
+        )));
+    }
+
+    probe_provider_health(provider_base_url.as_str()).await?;
+    Ok(())
+}
+
+async fn probe_provider_health(base_url: &str) -> Result<(), ApiError> {
+    let trimmed = base_url.trim_end_matches('/');
+    let url = format!("{trimmed}/healthz");
+    let resp = reqwest::Client::new()
+        .get(url.as_str())
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .map_err(|error| {
+            ApiError::InvalidRequest(format!("provider health check failed ({url}): {error}"))
+        })?;
+    if !resp.status().is_success() {
+        return Err(ApiError::InvalidRequest(format!(
+            "provider health check returned {} ({url})",
+            resp.status()
+        )));
+    }
+    Ok(())
+}
+
 async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<(), ApiError> {
     let Some(event) = run.events.last() else {
         return Ok(());
@@ -1609,6 +1694,8 @@ async fn publish_worker_snapshot(
         .get("provider_base_url")
         .and_then(serde_json::Value::as_str);
     let min_price_msats = meta.get("min_price_msats").and_then(serde_json::Value::as_u64);
+    let reserve_pool = meta.get("reserve_pool").and_then(serde_json::Value::as_bool);
+    let qualified = meta.get("qualified").and_then(serde_json::Value::as_bool);
 
     let payload = serde_json::json!({
         "worker_id": snapshot.worker.worker_id,
@@ -1621,6 +1708,8 @@ async fn publish_worker_snapshot(
         "provider_base_url": provider_base_url,
         "capabilities": capabilities,
         "min_price_msats": min_price_msats,
+        "reserve_pool": reserve_pool,
+        "qualified": qualified,
         "owner_user_id": snapshot.worker.owner.user_id,
         "owner_guest_scope": snapshot.worker.owner.guest_scope,
     });
@@ -2084,6 +2173,16 @@ mod tests {
             let _ = server.await;
         });
         Ok((addr, shutdown_tx))
+    }
+
+    async fn spawn_provider_stub(
+    ) -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
+        let app = axum::Router::new().route(
+            "/healthz",
+            axum::routing::get(|| async { (axum::http::StatusCode::OK, "ok") }),
+        );
+        let (addr, shutdown) = spawn_http_server(app).await?;
+        Ok((format!("http://{addr}"), shutdown))
     }
 
     async fn response_json(response: axum::response::Response) -> Result<Value> {
@@ -3997,6 +4096,7 @@ mod tests {
     #[tokio::test]
     async fn worker_list_and_provider_catalog_surface_expected_entries() -> Result<()> {
         let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
 
         let create_provider = app
             .clone()
@@ -4011,7 +4111,7 @@ mod tests {
                         "metadata": {
                             "roles": ["client", "provider"],
                             "provider_id": "provider-local-1",
-                            "provider_base_url": "http://127.0.0.1:9999",
+                            "provider_base_url": provider_base_url.clone(),
                             "capabilities": ["oa.sandbox_run.v1"],
                             "min_price_msats": 1000
                         }
@@ -4080,14 +4180,16 @@ mod tests {
             .get("base_url")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| anyhow!("missing base_url"))?;
-        assert_eq!(base_url, "http://127.0.0.1:9999");
+        assert_eq!(base_url, provider_base_url);
 
+        let _ = shutdown.send(());
         Ok(())
     }
 
     #[tokio::test]
     async fn route_provider_prefers_owned_and_falls_back_to_reserve_pool() -> Result<()> {
         let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
 
         let create_owned = app
             .clone()
@@ -4102,7 +4204,7 @@ mod tests {
                         "metadata": {
                             "roles": ["client", "provider"],
                             "provider_id": "provider-owned",
-                            "provider_base_url": "http://127.0.0.1:9999",
+                            "provider_base_url": provider_base_url.clone(),
                             "capabilities": ["oa.sandbox_run.v1"],
                             "min_price_msats": 1000
                         }
@@ -4124,7 +4226,7 @@ mod tests {
                         "metadata": {
                             "roles": ["client", "provider"],
                             "provider_id": "provider-reserve",
-                            "provider_base_url": "http://127.0.0.1:9998",
+                            "provider_base_url": provider_base_url.clone(),
                             "capabilities": ["oa.sandbox_run.v1"],
                             "min_price_msats": 2000,
                             "reserve_pool": true
@@ -4201,6 +4303,7 @@ mod tests {
             Some("reserve_pool")
         );
 
+        let _ = shutdown.send(());
         Ok(())
     }
 
