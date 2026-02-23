@@ -577,6 +577,10 @@ struct NormalizedCandidateQuoteV1 {
     quote_sha256: Option<String>,
 }
 
+const ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS: u64 = 1;
+const ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS: u64 = 20;
+const ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS: u64 = 250;
+
 #[derive(Debug, Deserialize)]
 struct RouterSelectComputeBody {
     owner_user_id: Option<u64>,
@@ -1676,7 +1680,10 @@ async fn router_select_compute(
         .filter(|value| !value.is_empty())
         .unwrap_or("lowest_total_cost_v1")
         .to_string();
-    if policy != "lowest_total_cost_v1" {
+    if !matches!(
+        policy.as_str(),
+        "lowest_total_cost_v1" | "balanced_v1" | "reliability_first_v1"
+    ) {
         return Err(ApiError::InvalidRequest(format!(
             "unsupported policy: {policy}"
         )));
@@ -1754,17 +1761,72 @@ async fn router_select_compute(
         });
     }
 
-    candidates.sort_by(|left, right| {
-        left.total_price_msats
-            .cmp(&right.total_price_msats)
-            .then_with(|| {
-                left.latency_ms
-                    .unwrap_or(u64::MAX)
-                    .cmp(&right.latency_ms.unwrap_or(u64::MAX))
-            })
-            .then_with(|| right.reliability_bps.cmp(&left.reliability_bps))
-            .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
-            .then_with(|| left.provider_id.cmp(&right.provider_id))
+    candidates.sort_by(|left, right| match policy.as_str() {
+        "reliability_first_v1" => {
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+            left_gap
+                .cmp(&right_gap)
+                .then_with(|| left.total_price_msats.cmp(&right.total_price_msats))
+                .then_with(|| {
+                    left.latency_ms
+                        .unwrap_or(u64::MAX)
+                        .cmp(&right.latency_ms.unwrap_or(u64::MAX))
+                })
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
+        "balanced_v1" => {
+            let left_latency = left
+                .latency_ms
+                .unwrap_or(ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS);
+            let right_latency = right
+                .latency_ms
+                .unwrap_or(ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS);
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+
+            let left_latency_penalty =
+                left_latency.saturating_mul(ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS);
+            let right_latency_penalty =
+                right_latency.saturating_mul(ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS);
+            let left_rel_penalty = left_gap
+                .saturating_div(100)
+                .saturating_mul(ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS);
+            let right_rel_penalty = right_gap
+                .saturating_div(100)
+                .saturating_mul(ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS);
+            let left_score = left
+                .total_price_msats
+                .saturating_add(left_latency_penalty)
+                .saturating_add(left_rel_penalty);
+            let right_score = right
+                .total_price_msats
+                .saturating_add(right_latency_penalty)
+                .saturating_add(right_rel_penalty);
+
+            left_score
+                .cmp(&right_score)
+                .then_with(|| left.total_price_msats.cmp(&right.total_price_msats))
+                .then_with(|| left_latency.cmp(&right_latency))
+                .then_with(|| left_gap.cmp(&right_gap))
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
+        _ => {
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+            left.total_price_msats
+                .cmp(&right.total_price_msats)
+                .then_with(|| {
+                    left.latency_ms
+                        .unwrap_or(u64::MAX)
+                        .cmp(&right.latency_ms.unwrap_or(u64::MAX))
+                })
+                .then_with(|| left_gap.cmp(&right_gap))
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
     });
 
     let selected = candidates
@@ -7914,6 +7976,122 @@ mod tests {
             json.pointer("/message")
                 .and_then(Value::as_str)
                 .is_some_and(|msg| msg.contains("unsupported currency"))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_reliability_first_policy_prefers_high_reliability() -> Result<()>
+    {
+        let app = test_router();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "reliability_first_v1",
+            "idempotency_key": "router:reliability-first",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-cheap","total_price_msats":1000,"latency_ms":50,"reliability_bps":6000},
+                {"marketplace_id":"market-b","provider_id":"provider-reliable","total_price_msats":1200,"latency_ms":200,"reliability_bps":9900}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let json = response_json(resp).await?;
+        assert_eq!(
+            json.pointer("/selected/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-reliable")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_balanced_policy_penalizes_latency_and_low_reliability()
+    -> Result<()> {
+        let app = test_router();
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "balanced_v1",
+            "idempotency_key": "router:balanced",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-slow","total_price_msats":1000,"latency_ms":800,"reliability_bps":9000},
+                {"marketplace_id":"market-b","provider_id":"provider-fast","total_price_msats":1300,"latency_ms":50,"reliability_bps":9900}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let json = response_json(resp).await?;
+        assert_eq!(
+            json.pointer("/selected/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-fast")
         );
         Ok(())
     }
