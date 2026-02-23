@@ -315,7 +315,7 @@ fn chat_content_panel(
         @if let Some(active_thread_id) = active_thread_id {
             article id="chat-thread-content-panel" class="oa-card oa-chat-main"
                 hx-get={(format!("/chat/fragments/thread/{active_thread_id}"))}
-                hx-trigger="chat-message-sent from:body"
+                hx-trigger="chat-message-sent from:body, every 2s"
                 hx-target="#chat-thread-content-panel"
                 hx-swap="outerHTML" {
                 (chat_content_panel_body(session, Some(active_thread_id), messages))
@@ -775,6 +775,6 @@ mod tests {
         assert!(html.contains("hx-get=\"/chat/fragments/thread/thread_abc\""));
         assert!(html.contains("hx-target=\"#chat-thread-content-panel\""));
         assert!(html.contains("hx-push-url=\"/chat/thread_abc\""));
-        assert!(html.contains("hx-trigger=\"chat-message-sent from:body\""));
+        assert!(html.contains("hx-trigger=\"chat-message-sent from:body, every 2s\""));
     }
 }

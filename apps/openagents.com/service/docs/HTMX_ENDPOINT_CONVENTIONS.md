@@ -56,3 +56,11 @@ Current chat partial route contract:
   - returns `#chat-status` fragment
   - emits `HX-Trigger: chat-message-sent`
   - `#chat-thread-content-panel` listens for the trigger and reloads via HTMX GET
+
+WS event -> HTML bridge (no SSE authority):
+- Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
+- Chat fragments read stored worker events and map them to rendered lines:
+  - `turn.start` -> `Turn started...`
+  - `turn.finish` -> `Turn finished...` (includes output text when available)
+  - `turn.error` -> `Turn error: ...`
+  - `turn.tool` -> `Tool <name>: <status>`

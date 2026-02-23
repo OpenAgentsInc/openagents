@@ -2634,14 +2634,16 @@ async fn chat_views_for_bundle(
             .list_thread_messages_for_user(&bundle.user.id, active_id)
             .await
             .map_err(map_thread_store_error)?;
-        message_rows
+        let mut messages = message_rows
             .into_iter()
             .map(|message| ChatMessageView {
                 role: message.role,
                 text: message.text,
                 created_at: timestamp(message.created_at),
             })
-            .collect()
+            .collect::<Vec<_>>();
+        messages.extend(runtime_event_messages_for_thread(state, active_id).await);
+        messages
     } else {
         Vec::new()
     };
@@ -2651,6 +2653,127 @@ async fn chat_views_for_bundle(
         active_thread_id,
         messages,
     })
+}
+
+async fn runtime_event_messages_for_thread(
+    state: &AppState,
+    thread_id: &str,
+) -> Vec<ChatMessageView> {
+    let event_log = state.runtime_workers.events.lock().await;
+    let mut mapped = Vec::new();
+
+    for (worker_id, worker_events) in event_log.iter() {
+        for event in worker_events {
+            let payload_thread_id = worker_event_thread_id(&event.payload);
+            let event_matches_thread =
+                worker_id == thread_id || payload_thread_id.as_deref() == Some(thread_id);
+            if !event_matches_thread {
+                continue;
+            }
+
+            if let Some(message) = runtime_event_to_chat_message(event) {
+                mapped.push((event.occurred_at, event.seq, message));
+            }
+        }
+    }
+
+    mapped.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    mapped.into_iter().map(|(_, _, message)| message).collect()
+}
+
+fn runtime_event_to_chat_message(event: &RuntimeWorkerEventRecord) -> Option<ChatMessageView> {
+    let event_kind = worker_event_kind(event)?;
+    let text = match event_kind.as_str() {
+        "turn.start" => {
+            let turn_id = json_pointer_string(&event.payload, "/turn/id")
+                .or_else(|| json_pointer_string(&event.payload, "/turn_id"));
+            match turn_id {
+                Some(turn_id) => format!("Turn started: {turn_id}"),
+                None => "Turn started.".to_string(),
+            }
+        }
+        "turn.finish" => {
+            let output = json_pointer_string(&event.payload, "/output/text")
+                .or_else(|| json_pointer_string(&event.payload, "/response/output_text"))
+                .or_else(|| json_pointer_string(&event.payload, "/output_text"))
+                .or_else(|| json_pointer_string(&event.payload, "/text"));
+            match output {
+                Some(output) => format!("Turn finished: {output}"),
+                None => "Turn finished.".to_string(),
+            }
+        }
+        "turn.error" => {
+            let error_message = json_pointer_string(&event.payload, "/error/message")
+                .or_else(|| json_pointer_string(&event.payload, "/error"))
+                .or_else(|| json_pointer_string(&event.payload, "/message"))
+                .unwrap_or_else(|| "unknown error".to_string());
+            format!("Turn error: {error_message}")
+        }
+        "turn.tool" => {
+            let tool_name = json_pointer_string(&event.payload, "/tool/name")
+                .or_else(|| json_pointer_string(&event.payload, "/toolName"))
+                .or_else(|| json_pointer_string(&event.payload, "/name"))
+                .unwrap_or_else(|| "unknown_tool".to_string());
+            let tool_status = json_pointer_string(&event.payload, "/tool/status")
+                .or_else(|| json_pointer_string(&event.payload, "/status"))
+                .unwrap_or_else(|| "invoked".to_string());
+            format!("Tool {tool_name}: {tool_status}")
+        }
+        _ => return None,
+    };
+
+    Some(ChatMessageView {
+        role: "assistant".to_string(),
+        text,
+        created_at: timestamp(event.occurred_at),
+    })
+}
+
+fn worker_event_kind(event: &RuntimeWorkerEventRecord) -> Option<String> {
+    let raw = if event.event_type == "worker.event" || event.event_type == "worker.response" {
+        json_pointer_string(&event.payload, "/method")
+            .or_else(|| json_pointer_string(&event.payload, "/event/type"))
+            .or_else(|| json_pointer_string(&event.payload, "/type"))
+            .or_else(|| json_pointer_string(&event.payload, "/event_type"))?
+    } else {
+        return None;
+    };
+
+    let normalized = raw
+        .trim()
+        .to_ascii_lowercase()
+        .replace('/', ".")
+        .replace('-', ".");
+
+    let canonical = match normalized.as_str() {
+        "turn.started" => "turn.start",
+        "turn.completed" => "turn.finish",
+        "turn.failed" => "turn.error",
+        "turn.toolcall" | "turn.tool.call" => "turn.tool",
+        _ => normalized.as_str(),
+    };
+    if matches!(
+        canonical,
+        "turn.start" | "turn.finish" | "turn.error" | "turn.tool"
+    ) {
+        Some(canonical.to_string())
+    } else {
+        None
+    }
+}
+
+fn worker_event_thread_id(payload: &serde_json::Value) -> Option<String> {
+    json_pointer_string(payload, "/thread_id")
+        .or_else(|| json_pointer_string(payload, "/thread/id"))
+}
+
+fn json_pointer_string(payload: &serde_json::Value, pointer: &str) -> Option<String> {
+    payload
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn web_placeholder_for_path(path: &str) -> (String, String) {
@@ -18281,6 +18404,127 @@ mod tests {
         assert!(send_response.headers().get("HX-Trigger").is_none());
         let send_body = read_text(send_response).await?;
         assert!(send_body.contains("Could not send message."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_fragment_renders_turn_finish_error_tool_from_worker_event_store() -> Result<()>
+    {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-worker-bridge@openagents.com").await?;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        let location = create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let thread_id = location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let events = [
+            serde_json::json!({
+                "event": {
+                    "event_type": "worker.event",
+                    "payload": {
+                        "method": "turn/start",
+                        "thread_id": thread_id.clone(),
+                        "turn": { "id": "turn_1" },
+                        "occurred_at": "2026-02-22T00:00:00Z"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "event": {
+                    "event_type": "worker.event",
+                    "payload": {
+                        "method": "turn/tool",
+                        "thread_id": thread_id.clone(),
+                        "tool": { "name": "search", "status": "running" },
+                        "occurred_at": "2026-02-22T00:00:01Z"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "event": {
+                    "event_type": "worker.event",
+                    "payload": {
+                        "method": "turn/error",
+                        "thread_id": thread_id.clone(),
+                        "error": { "message": "network" },
+                        "occurred_at": "2026-02-22T00:00:02Z"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "event": {
+                    "event_type": "worker.event",
+                    "payload": {
+                        "method": "turn/finish",
+                        "thread_id": thread_id.clone(),
+                        "output_text": "final answer",
+                        "occurred_at": "2026-02-22T00:00:03Z"
+                    }
+                }
+            }),
+        ];
+
+        for event in events {
+            let request = Request::builder()
+                .method("POST")
+                .uri(format!("/api/runtime/codex/workers/{thread_id}/events"))
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(event.to_string()))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+        }
+
+        let fragment_request = Request::builder()
+            .method("GET")
+            .uri(format!("/chat/fragments/thread/{thread_id}"))
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let fragment_response = app.oneshot(fragment_request).await?;
+        assert_eq!(fragment_response.status(), StatusCode::OK);
+        let fragment = read_text(fragment_response).await?;
+
+        let start_index = fragment
+            .find("Turn started: turn_1")
+            .expect("missing turn.start render");
+        let tool_index = fragment
+            .find("Tool search: running")
+            .expect("missing turn.tool render");
+        let error_index = fragment
+            .find("Turn error: network")
+            .expect("missing turn.error render");
+        let finish_index = fragment
+            .find("Turn finished: final answer")
+            .expect("missing turn.finish render");
+        assert!(start_index < tool_index);
+        assert!(tool_index < error_index);
+        assert!(error_index < finish_index);
 
         Ok(())
     }
