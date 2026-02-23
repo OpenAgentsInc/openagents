@@ -27,6 +27,11 @@ Validation evidence should be archived in backroom (not committed into `docs/`).
 ```bash
 apps/openagents.com/service/scripts/htmx_perf_check.sh
 ```
+- HTMX browser smoke checks (`chat/feed/settings` on staging/prod token lanes) via:
+
+```bash
+apps/openagents.com/service/scripts/htmx_browser_smoke.sh
+```
 
 2. Runtime lane
 - runtime health + authority API smoke
@@ -68,6 +73,7 @@ Optional authenticated smoke tokens:
 HTMX perf lane toggle:
 
 - `RUN_HTMX_PERF_CHECKS=1` (default)
+- `RUN_HTMX_BROWSER_SMOKE=1` (default)
 
 ## Go/No-Go Policy
 

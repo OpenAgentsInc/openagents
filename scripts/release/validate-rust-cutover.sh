@@ -27,6 +27,7 @@ RUN_KHALA_CONTRACT_TESTS="${RUN_KHALA_CONTRACT_TESTS:-1}"
 RUN_CROSS_SURFACE="${RUN_CROSS_SURFACE:-0}"
 RUN_LOG_PROBES="${RUN_LOG_PROBES:-1}"
 RUN_HTMX_PERF_CHECKS="${RUN_HTMX_PERF_CHECKS:-1}"
+RUN_HTMX_BROWSER_SMOKE="${RUN_HTMX_BROWSER_SMOKE:-1}"
 FAIL_ON_REQUIRED_FAILURE="${FAIL_ON_REQUIRED_FAILURE:-1}"
 
 mkdir -p "${LOG_DIR}"
@@ -146,6 +147,63 @@ else
     "required" \
     "production HTMX perf budget check (login/feed/settings/chat)" \
     "RUN_HTMX_PERF_CHECKS=0"
+fi
+
+# A3) HTMX browser smoke lane (staging + production).
+if [[ "${RUN_HTMX_BROWSER_SMOKE}" == "1" ]]; then
+  if command -v node >/dev/null 2>&1; then
+    if [[ -n "${STAGING_CONTROL_ACCESS_TOKEN}" ]]; then
+      run_check \
+        "control-staging-htmx-browser-smoke" \
+        "required" \
+        "staging browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+        env BASE_URL="${STAGING_CONTROL_BASE_URL}" OA_BROWSER_SMOKE_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" OA_BROWSER_SMOKE_REQUIRE_LOGIN_FLOW=0 OA_BROWSER_SMOKE_ARTIFACT_DIR="${OUTPUT_DIR}/artifacts/control-staging-htmx-browser-smoke" \
+        "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_browser_smoke.sh"
+    else
+      skip_check \
+        "control-staging-htmx-browser-smoke" \
+        "required" \
+        "staging browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+        "STAGING_CONTROL_ACCESS_TOKEN unset"
+    fi
+
+    if [[ -n "${PROD_CONTROL_ACCESS_TOKEN}" ]]; then
+      run_check \
+        "control-prod-htmx-browser-smoke" \
+        "required" \
+        "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+        env BASE_URL="${PROD_CONTROL_BASE_URL}" OA_BROWSER_SMOKE_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" OA_BROWSER_SMOKE_REQUIRE_LOGIN_FLOW=0 OA_BROWSER_SMOKE_ARTIFACT_DIR="${OUTPUT_DIR}/artifacts/control-prod-htmx-browser-smoke" \
+        "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_browser_smoke.sh"
+    else
+      skip_check \
+        "control-prod-htmx-browser-smoke" \
+        "required" \
+        "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+        "PROD_CONTROL_ACCESS_TOKEN unset"
+    fi
+  else
+    skip_check \
+      "control-staging-htmx-browser-smoke" \
+      "required" \
+      "staging browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+      "node not installed"
+    skip_check \
+      "control-prod-htmx-browser-smoke" \
+      "required" \
+      "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+      "node not installed"
+  fi
+else
+  skip_check \
+    "control-staging-htmx-browser-smoke" \
+    "required" \
+    "staging browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+    "RUN_HTMX_BROWSER_SMOKE=0"
+  skip_check \
+    "control-prod-htmx-browser-smoke" \
+    "required" \
+    "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
+    "RUN_HTMX_BROWSER_SMOKE=0"
 fi
 
 # B) Runtime service checks.

@@ -185,6 +185,16 @@ curl -i http://127.0.0.1:8787/assets/app-<contenthash>.js
 cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ```
 
+Browser-level HTMX smoke suite:
+
+```bash
+BASE_URL=http://127.0.0.1:8787 apps/openagents.com/service/scripts/htmx_browser_smoke.sh
+```
+
+See run modes and env vars:
+
+- `apps/openagents.com/service/docs/HTMX_BROWSER_SMOKE.md`
+
 ## Static cache policy
 
 - Build the web-shell static dist with: `apps/openagents.com/web-shell/build-dist.sh`
