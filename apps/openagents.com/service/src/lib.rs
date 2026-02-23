@@ -110,7 +110,8 @@ use crate::web_htmx::{
 };
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, IntegrationStatusView,
-    SessionView, WebBody, WebPage,
+    L402DeploymentView, L402PaywallView, L402TransactionView, L402WalletSummaryView, SessionView,
+    WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
     render_feed_items_append_fragment as render_maud_feed_items_append_fragment,
     render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
@@ -924,6 +925,17 @@ struct WebShoutForm {
     zone: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct WebL402PaywallCreateForm {
+    name: String,
+    host_regexp: String,
+    path_regexp: String,
+    price_msats: String,
+    upstream: String,
+    #[serde(default)]
+    enabled: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RuntimeCodexWorkerControlRequestEnvelope {
     request: RuntimeCodexWorkerControlRequest,
@@ -1422,6 +1434,15 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route(
             "/settings/integrations/google/disconnect",
             post(web_settings_google_disconnect),
+        )
+        .route("/l402/paywalls/web/create", post(web_l402_paywall_create))
+        .route(
+            "/l402/paywalls/web/:paywall_id/toggle",
+            post(web_l402_paywall_toggle),
+        )
+        .route(
+            "/l402/paywalls/web/:paywall_id/delete",
+            post(web_l402_paywall_delete),
         )
         .route("/chat/new", post(web_chat_new_thread))
         .route(
@@ -2618,6 +2639,41 @@ async fn render_web_page(
         return Ok(web_html_response(page));
     }
 
+    if path.starts_with("/billing") || path.starts_with("/l402") {
+        let htmx = classify_htmx_request(headers);
+        let bundle = if let Some(bundle) = session_bundle.as_ref() {
+            bundle
+        } else {
+            if htmx.is_hx_request {
+                return Ok(htmx_redirect_response("/login"));
+            }
+            return Ok(Redirect::temporary("/login").into_response());
+        };
+        let views = l402_web_views_for_bundle(state, bundle).await?;
+
+        let page = WebPage {
+            title: if path.starts_with("/billing") {
+                "Billing".to_string()
+            } else {
+                "L402".to_string()
+            },
+            path,
+            session,
+            body: WebBody::L402 {
+                status,
+                is_admin: views.is_admin,
+                wallet: views.wallet,
+                transactions: views.transactions,
+                paywalls: views.paywalls,
+                deployments: views.deployments,
+            },
+        };
+        if should_render_hx_get_fragment(headers) {
+            return Ok(web_fragment_response(&page));
+        }
+        return Ok(web_html_response(page));
+    }
+
     let (heading, description) = web_placeholder_for_path(&path);
     let page = WebPage {
         title: heading.clone(),
@@ -2680,6 +2736,101 @@ fn integration_status_view(
         secret_last4: integration.secret_last4.clone(),
         connected_at: integration.connected_at.map(timestamp),
     }
+}
+
+struct L402WebViews {
+    is_admin: bool,
+    wallet: L402WalletSummaryView,
+    transactions: Vec<L402TransactionView>,
+    paywalls: Vec<L402PaywallView>,
+    deployments: Vec<L402DeploymentView>,
+}
+
+async fn l402_web_views_for_bundle(
+    state: &AppState,
+    bundle: &SessionBundle,
+) -> Result<L402WebViews, (StatusCode, Json<ApiErrorResponse>)> {
+    let receipts = state
+        ._domain_store
+        .list_l402_receipts_for_user(&bundle.user.id, None, 200, 0)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(map_l402_receipt_row)
+        .collect::<Vec<_>>();
+    let total_paid_msats: i64 = receipts
+        .iter()
+        .filter(|receipt| receipt.paid)
+        .filter_map(|receipt| receipt.amount_msats)
+        .sum();
+
+    let wallet = L402WalletSummaryView {
+        total_attempts: receipts.len(),
+        paid_count: receipts.iter().filter(|receipt| receipt.paid).count(),
+        total_paid_sats: l402_msats_to_sats(Some(total_paid_msats)).unwrap_or(0.0),
+    };
+    let transactions = receipts
+        .iter()
+        .take(60)
+        .map(|receipt| L402TransactionView {
+            event_id: receipt.event_id,
+            host: receipt.host.clone(),
+            scope: receipt.scope.clone().unwrap_or_else(|| "none".to_string()),
+            status: receipt.status.clone(),
+            paid: receipt.paid,
+            amount_sats: l402_msats_to_sats(receipt.amount_msats),
+            created_at: receipt.created_at.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let paywalls = state
+        ._domain_store
+        .list_l402_paywalls_for_owner(&bundle.user.id, false)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .map(|paywall| L402PaywallView {
+            id: paywall.id,
+            name: paywall.name,
+            host_regexp: paywall.host_regexp,
+            path_regexp: paywall.path_regexp,
+            price_msats: paywall.price_msats,
+            upstream: paywall.upstream,
+            enabled: paywall.enabled,
+            updated_at: timestamp(paywall.updated_at),
+        })
+        .collect::<Vec<_>>();
+
+    let allowed_types = [
+        "l402_gateway_deployment",
+        "l402_gateway_event",
+        "l402_executor_heartbeat",
+        "l402_paywall_created",
+        "l402_paywall_updated",
+        "l402_paywall_deleted",
+    ];
+    let deployments = state
+        ._domain_store
+        .list_l402_gateway_events_for_user(&bundle.user.id, None, 80)
+        .await
+        .map_err(map_domain_store_error)?
+        .into_iter()
+        .filter(|event| allowed_types.contains(&event.event_type.as_str()))
+        .take(40)
+        .map(|event| L402DeploymentView {
+            event_id: event.id,
+            event_type: event.event_type,
+            created_at: timestamp(event.created_at),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(L402WebViews {
+        is_admin: is_admin_email(&bundle.user.email, &state.config.admin_emails),
+        wallet,
+        transactions,
+        paywalls,
+        deployments,
+    })
 }
 
 fn chat_thread_id_from_path(path: &str) -> Option<String> {
@@ -4581,6 +4732,192 @@ async fn web_settings_google_disconnect(
     }
 
     Redirect::temporary("/settings/profile?status=google-disconnected").into_response()
+}
+
+fn web_l402_status_response(
+    is_hx_request: bool,
+    status: &str,
+    is_error: bool,
+    status_code: StatusCode,
+) -> Response {
+    if is_hx_request {
+        return htmx_notice_response("billing-status", status, is_error, status_code);
+    }
+    Redirect::temporary(&format!("/l402?status={status}")).into_response()
+}
+
+async fn web_l402_paywall_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<WebL402PaywallCreateForm>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
+        return web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-admin-required",
+            true,
+            StatusCode::FORBIDDEN,
+        );
+    }
+
+    let price_msats = payload
+        .price_msats
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0);
+    let Some(price_msats) = price_msats else {
+        return web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        );
+    };
+
+    let api_payload = L402PaywallCreateRequestPayload {
+        name: payload.name,
+        host_regexp: payload.host_regexp,
+        path_regexp: payload.path_regexp,
+        price_msats,
+        upstream: payload.upstream,
+        enabled: Some(payload.enabled.is_some()),
+        meta: None,
+    };
+
+    match l402_paywall_create(State(state), headers.clone(), Json(api_payload)).await {
+        Ok(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-paywall-created",
+            false,
+            StatusCode::OK,
+        ),
+        Err(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    }
+}
+
+async fn web_l402_paywall_toggle(
+    State(state): State<AppState>,
+    Path(paywall_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
+        return web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-admin-required",
+            true,
+            StatusCode::FORBIDDEN,
+        );
+    }
+
+    let existing = match state
+        ._domain_store
+        .list_l402_paywalls_for_owner(&bundle.user.id, false)
+        .await
+    {
+        Ok(rows) => rows.into_iter().find(|row| row.id == paywall_id),
+        Err(_) => None,
+    };
+    let Some(existing) = existing else {
+        return web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        );
+    };
+
+    let update_payload = L402PaywallUpdateRequestPayload {
+        enabled: Some(!existing.enabled),
+        ..L402PaywallUpdateRequestPayload::default()
+    };
+
+    match l402_paywall_update(
+        State(state),
+        Path(existing.id),
+        headers.clone(),
+        Json(update_payload),
+    )
+    .await
+    {
+        Ok(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-paywall-updated",
+            false,
+            StatusCode::OK,
+        ),
+        Err(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    }
+}
+
+async fn web_l402_paywall_delete(
+    State(state): State<AppState>,
+    Path(paywall_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
+        return web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-admin-required",
+            true,
+            StatusCode::FORBIDDEN,
+        );
+    }
+
+    match l402_paywall_delete(State(state), Path(paywall_id), headers.clone()).await {
+        Ok(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-paywall-deleted",
+            false,
+            StatusCode::OK,
+        ),
+        Err(_) => web_l402_status_response(
+            htmx.is_hx_request,
+            "l402-action-failed",
+            true,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    }
 }
 
 async fn local_test_login(
@@ -18984,6 +19321,156 @@ mod tests {
         assert_eq!(hx_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let hx_body = read_text(hx_response).await?;
         assert!(hx_body.contains("Settings action failed."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_l402_and_billing_routes_render_l402_surface_for_authenticated_user() -> Result<()>
+    {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let fixture = seed_l402_fixture(&config, "web-l402-reader@openagents.com").await?;
+        let app = build_router(config);
+
+        let l402_request = Request::builder()
+            .method("GET")
+            .uri("/l402")
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let l402_response = app.clone().oneshot(l402_request).await?;
+        assert_eq!(l402_response.status(), StatusCode::OK);
+        let l402_body = read_text(l402_response).await?;
+        assert!(l402_body.contains("id=\"l402-main-panel\""));
+        assert!(l402_body.contains("Billing + L402"));
+        assert!(l402_body.contains("sats4ai.com"));
+        assert!(l402_body.contains("Recent transactions"));
+
+        let billing_request = Request::builder()
+            .method("GET")
+            .uri("/billing")
+            .header("authorization", format!("Bearer {}", fixture.token))
+            .body(Body::empty())?;
+        let billing_response = app.clone().oneshot(billing_request).await?;
+        assert_eq!(billing_response.status(), StatusCode::OK);
+        let billing_body = read_text(billing_response).await?;
+        assert!(billing_body.contains("id=\"l402-main-panel\""));
+        assert!(billing_body.contains("Paywalls"));
+
+        let unauth_request = Request::builder()
+            .method("GET")
+            .uri("/l402")
+            .body(Body::empty())?;
+        let unauth_response = app.oneshot(unauth_request).await?;
+        assert_eq!(unauth_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            unauth_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/login")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_l402_paywall_mutations_require_admin_and_support_htmx_flows() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let config_for_lookup = config.clone();
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let member_token = seed_local_test_token(&config, "member-web-l402@openagents.com").await?;
+        let app = build_router(config);
+
+        let forbidden_create_request = Request::builder()
+            .method("POST")
+            .uri("/l402/paywalls/web/create")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {member_token}"))
+            .body(Body::from(
+                "name=Default&host_regexp=sats4ai%5C.com&path_regexp=%5E%2Fapi%2F.*&price_msats=1000&upstream=https%3A%2F%2Fupstream.openagents.com&enabled=on",
+            ))?;
+        let forbidden_create_response = app.clone().oneshot(forbidden_create_request).await?;
+        assert_eq!(forbidden_create_response.status(), StatusCode::FORBIDDEN);
+        let forbidden_create_body = read_text(forbidden_create_response).await?;
+        assert!(forbidden_create_body.contains("Admin role required for this action."));
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/l402/paywalls/web/create")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "name=Default&host_regexp=sats4ai%5C.com&path_regexp=%5E%2Fapi%2F.*&price_msats=1000&upstream=https%3A%2F%2Fupstream.openagents.com&enabled=on",
+            ))?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let create_body = read_text(create_response).await?;
+        assert!(create_body.contains("L402 paywall created."));
+
+        let auth = super::AuthService::from_config(&config_for_lookup);
+        let admin_bundle = auth
+            .session_from_access_token(&admin_token)
+            .await
+            .expect("admin session");
+        let store_after_create = super::DomainStore::from_config(&config_for_lookup);
+        let created_paywalls = store_after_create
+            .list_l402_paywalls_for_owner(&admin_bundle.user.id, false)
+            .await
+            .expect("created paywalls");
+        assert_eq!(created_paywalls.len(), 1);
+        let paywall_id = created_paywalls[0].id.clone();
+        assert!(created_paywalls[0].enabled);
+
+        let toggle_request = Request::builder()
+            .method("POST")
+            .uri(format!("/l402/paywalls/web/{paywall_id}/toggle"))
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let toggle_response = app.clone().oneshot(toggle_request).await?;
+        assert_eq!(toggle_response.status(), StatusCode::OK);
+        let toggle_body = read_text(toggle_response).await?;
+        assert!(toggle_body.contains("L402 paywall updated."));
+
+        let store_after_toggle = super::DomainStore::from_config(&config_for_lookup);
+        let toggled_paywalls = store_after_toggle
+            .list_l402_paywalls_for_owner(&admin_bundle.user.id, false)
+            .await
+            .expect("toggled paywalls");
+        assert_eq!(toggled_paywalls.len(), 1);
+        assert!(!toggled_paywalls[0].enabled);
+
+        let delete_request = Request::builder()
+            .method("POST")
+            .uri(format!("/l402/paywalls/web/{paywall_id}/delete"))
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let delete_response = app.clone().oneshot(delete_request).await?;
+        assert_eq!(delete_response.status(), StatusCode::OK);
+        let delete_body = read_text(delete_response).await?;
+        assert!(delete_body.contains("L402 paywall deleted."));
+
+        let store_after_delete = super::DomainStore::from_config(&config_for_lookup);
+        let deleted_paywalls = store_after_delete
+            .list_l402_paywalls_for_owner(&admin_bundle.user.id, true)
+            .await
+            .expect("deleted paywalls");
+        let deleted = deleted_paywalls
+            .iter()
+            .find(|row| row.id == paywall_id)
+            .expect("deleted paywall present");
+        assert!(deleted.deleted_at.is_some());
 
         Ok(())
     }

@@ -50,6 +50,43 @@ pub struct IntegrationStatusView {
 }
 
 #[derive(Debug, Clone)]
+pub struct L402WalletSummaryView {
+    pub total_attempts: usize,
+    pub paid_count: usize,
+    pub total_paid_sats: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct L402TransactionView {
+    pub event_id: u64,
+    pub host: String,
+    pub scope: String,
+    pub status: String,
+    pub paid: bool,
+    pub amount_sats: Option<f64>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct L402PaywallView {
+    pub id: String,
+    pub name: String,
+    pub host_regexp: String,
+    pub path_regexp: String,
+    pub price_msats: u64,
+    pub upstream: String,
+    pub enabled: bool,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct L402DeploymentView {
+    pub event_id: u64,
+    pub event_type: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum WebBody {
     Login {
         status: Option<String>,
@@ -75,6 +112,14 @@ pub enum WebBody {
         profile_email: String,
         resend: IntegrationStatusView,
         google: IntegrationStatusView,
+    },
+    L402 {
+        status: Option<String>,
+        is_admin: bool,
+        wallet: L402WalletSummaryView,
+        transactions: Vec<L402TransactionView>,
+        paywalls: Vec<L402PaywallView>,
+        deployments: Vec<L402DeploymentView>,
     },
     Placeholder {
         heading: String,
@@ -223,6 +268,23 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                         profile_email,
                         resend,
                         google
+                    ))
+                }
+                WebBody::L402 {
+                    status,
+                    is_admin,
+                    wallet,
+                    transactions,
+                    paywalls,
+                    deployments,
+                } => {
+                    (l402_panel(
+                        status.as_deref(),
+                        *is_admin,
+                        wallet,
+                        transactions,
+                        paywalls,
+                        deployments
                     ))
                 }
                 WebBody::Placeholder { heading, description } => {
@@ -752,6 +814,168 @@ fn settings_panel(
     }
 }
 
+fn l402_panel(
+    status: Option<&str>,
+    is_admin: bool,
+    wallet: &L402WalletSummaryView,
+    transactions: &[L402TransactionView],
+    paywalls: &[L402PaywallView],
+    deployments: &[L402DeploymentView],
+) -> Markup {
+    html! {
+        section id="l402-main-panel" class="oa-grid feed" {
+            aside class="oa-card" {
+                h2 { "Billing + L402" }
+                (status_slot("billing-status", status))
+                dl class="oa-kv" {
+                    dt { "Attempts" }
+                    dd { (wallet.total_attempts) }
+                    dt { "Paid" }
+                    dd { (wallet.paid_count) }
+                    dt { "Total paid (sats)" }
+                    dd { (format!("{:.3}", wallet.total_paid_sats)) }
+                }
+                @if is_admin {
+                    h3 { "Create paywall" }
+                    form method="post" action="/l402/paywalls/web/create" class="oa-form"
+                        hx-post="/l402/paywalls/web/create"
+                        hx-target="#billing-status"
+                        hx-swap="outerHTML" {
+                        label for="paywall_name" { "Name" }
+                        input id="paywall_name" type="text" name="name" maxlength="120" required;
+                        label for="host_regexp" { "Host regexp" }
+                        input id="host_regexp" type="text" name="host_regexp" placeholder="^sats4ai\\.com$" required;
+                        label for="path_regexp" { "Path regexp" }
+                        input id="path_regexp" type="text" name="path_regexp" placeholder="^/v1/.*" required;
+                        label for="price_msats" { "Price msats" }
+                        input id="price_msats" type="number" min="1" name="price_msats" required;
+                        label for="upstream" { "Upstream URL" }
+                        input id="upstream" type="url" name="upstream" placeholder="https://api.example.com" required;
+                        label for="enabled" {
+                            input id="enabled" type="checkbox" name="enabled" checked;
+                            " Enabled"
+                        }
+                        button type="submit" class="oa-btn primary" { "Create paywall" }
+                    }
+                } @else {
+                    p class="oa-muted" { "Admin role required for paywall mutations." }
+                }
+            }
+            article class="oa-card" {
+                h2 { "Paywalls" }
+                @if paywalls.is_empty() {
+                    p class="oa-muted" { "No paywalls configured." }
+                } @else {
+                    div class="oa-scroll" {
+                        table class="oa-table" {
+                            thead {
+                                tr {
+                                    th { "Name" }
+                                    th { "Host" }
+                                    th { "Path" }
+                                    th { "Price" }
+                                    th { "State" }
+                                    th { "Updated" }
+                                    th { "Actions" }
+                                }
+                            }
+                            tbody {
+                                @for paywall in paywalls {
+                                    tr {
+                                        td { (paywall.name) }
+                                        td { code { (paywall.host_regexp) } }
+                                        td { code { (paywall.path_regexp) } }
+                                        td { (paywall.price_msats) }
+                                        td { (if paywall.enabled { "enabled" } else { "disabled" }) }
+                                        td { (paywall.updated_at) }
+                                        td {
+                                            @if is_admin {
+                                                form method="post" action=(format!("/l402/paywalls/web/{}/toggle", paywall.id))
+                                                    hx-post=(format!("/l402/paywalls/web/{}/toggle", paywall.id))
+                                                    hx-target="#billing-status"
+                                                    hx-swap="outerHTML" {
+                                                    button type="submit" class="oa-btn subtle" {
+                                                        (if paywall.enabled { "Disable" } else { "Enable" })
+                                                    }
+                                                }
+                                                form method="post" action=(format!("/l402/paywalls/web/{}/delete", paywall.id))
+                                                    hx-post=(format!("/l402/paywalls/web/{}/delete", paywall.id))
+                                                    hx-target="#billing-status"
+                                                    hx-swap="outerHTML" {
+                                                    button type="submit" class="oa-btn subtle" { "Delete" }
+                                                }
+                                            } @else {
+                                                span class="oa-muted" { "Admin only" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                h2 { "Recent transactions" }
+                @if transactions.is_empty() {
+                    p class="oa-muted" { "No L402 transactions yet." }
+                } @else {
+                    div class="oa-scroll" {
+                        table class="oa-table" {
+                            thead {
+                                tr {
+                                    th { "Event" }
+                                    th { "Host" }
+                                    th { "Scope" }
+                                    th { "Status" }
+                                    th { "Paid" }
+                                    th { "Amount (sats)" }
+                                    th { "Created" }
+                                }
+                            }
+                            tbody {
+                                @for tx in transactions {
+                                    tr {
+                                        td { code { (tx.event_id) } }
+                                        td { (tx.host) }
+                                        td { (tx.scope) }
+                                        td { (tx.status) }
+                                        td { (if tx.paid { "yes" } else { "no" }) }
+                                        td {
+                                            @if let Some(amount) = tx.amount_sats {
+                                                (format!("{amount:.3}"))
+                                            } @else {
+                                                "-"
+                                            }
+                                        }
+                                        td { (tx.created_at) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                h2 { "Deployments" }
+                @if deployments.is_empty() {
+                    p class="oa-muted" { "No deployment events recorded." }
+                } @else {
+                    ul class="oa-thread-items" {
+                        @for deployment in deployments {
+                            li class="oa-thread-link" {
+                                span class="oa-thread-title" {
+                                    code { "#" (deployment.event_id) }
+                                    " " (deployment.event_type)
+                                }
+                                span class="oa-thread-meta" { (deployment.created_at) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn placeholder_panel(heading: &str, description: &str) -> Markup {
     html! {
         section class="oa-card oa-placeholder" {
@@ -813,6 +1037,11 @@ fn status_message(status: &str) -> &'static str {
         "google-rotated" => "Google token rotated.",
         "google-updated" => "Google integration updated.",
         "google-disconnected" => "Google disconnected.",
+        "l402-paywall-created" => "L402 paywall created.",
+        "l402-paywall-updated" => "L402 paywall updated.",
+        "l402-paywall-deleted" => "L402 paywall deleted.",
+        "l402-admin-required" => "Admin role required for this action.",
+        "l402-action-failed" => "Could not complete L402 action.",
         "settings-action-failed" => "Settings action failed.",
         _ => "Action completed.",
     }
@@ -894,6 +1123,29 @@ body {
 .oa-grid.feed { grid-template-columns: minmax(220px, 280px) 1fr; }
 .oa-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .oa-grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.oa-kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.75rem; }
+.oa-kv dt { color: var(--muted); }
+.oa-kv dd { margin: 0; font-weight: 600; }
+.oa-scroll { overflow: auto; }
+.oa-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+  margin-bottom: 1rem;
+}
+.oa-table th,
+.oa-table td {
+  border-bottom: 1px solid rgba(126, 150, 187, 0.22);
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.oa-table th {
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .oa-btn {
   appearance: none;
   border: 1px solid rgba(105, 126, 166, 0.4);

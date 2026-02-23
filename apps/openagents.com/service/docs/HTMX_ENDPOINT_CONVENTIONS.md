@@ -84,6 +84,16 @@ Current settings/profile/integrations contract:
 - `GET /settings/integrations/google/connect`
 - `POST /settings/integrations/google/disconnect`
 
+Current billing/L402 web contract:
+- `GET /billing` and `GET /l402` render the same HTMX-capable L402 surface.
+- `POST /l402/paywalls/web/create`
+- `POST /l402/paywalls/web/:paywall_id/toggle`
+- `POST /l402/paywalls/web/:paywall_id/delete`
+- Mutation endpoints:
+  - require authenticated admin email server-side
+  - return `#billing-status` fragments in HTMX mode
+  - redirect to `/l402?status=...` in non-HTMX mode
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:
