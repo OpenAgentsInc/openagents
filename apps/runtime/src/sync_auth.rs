@@ -49,6 +49,7 @@ pub struct SyncPrincipal {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthorizedKhalaTopic {
     WorkerLifecycle { worker_id: String },
+    FleetWorkers { user_id: u64 },
     RunEvents { run_id: String },
     CodexWorkerEvents,
 }
@@ -217,6 +218,21 @@ impl SyncAuthorizer {
                     ],
                 )?;
             }
+            AuthorizedKhalaTopic::FleetWorkers { user_id } => {
+                ensure_scope(
+                    principal,
+                    normalized_topic,
+                    &[
+                        "runtime.codex_worker_events",
+                        "runtime.worker_lifecycle_events",
+                    ],
+                )?;
+                if principal.user_id != Some(*user_id) {
+                    return Err(SyncAuthError::ForbiddenTopic {
+                        topic: normalized_topic.to_string(),
+                    });
+                }
+            }
             AuthorizedKhalaTopic::RunEvents { .. } => {
                 ensure_scope(principal, normalized_topic, &["runtime.run_events"])?;
             }
@@ -253,6 +269,15 @@ fn parse_topic(topic: &str) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
                 return Ok(AuthorizedKhalaTopic::WorkerLifecycle {
                     worker_id: worker_id.to_string(),
                 });
+            }
+        }
+    }
+
+    if let Some(rest) = topic.strip_prefix("fleet:user:") {
+        if let Some(user_id) = rest.strip_suffix(":workers") {
+            let trimmed = user_id.trim();
+            if let Ok(user_id) = trimmed.parse::<u64>() {
+                return Ok(AuthorizedKhalaTopic::FleetWorkers { user_id });
             }
         }
     }
@@ -423,6 +448,19 @@ mod tests {
                 worker_id: "desktopw:shared".to_string(),
             }
         );
+
+        let fleet_allowed = authorizer
+            .authorize_topic(&principal, "fleet:user:1:workers")
+            .expect("fleet topic should be allowed for bound user");
+        assert_eq!(fleet_allowed, AuthorizedKhalaTopic::FleetWorkers { user_id: 1 });
+
+        let fleet_denied = authorizer
+            .authorize_topic(&principal, "fleet:user:2:workers")
+            .expect_err("fleet topic should be denied for other users");
+        match fleet_denied {
+            SyncAuthError::ForbiddenTopic { .. } => {}
+            other => panic!("expected forbidden topic, got {other:?}"),
+        }
 
         let denied = authorizer
             .authorize_topic(&principal, "run:019c7f93:events")

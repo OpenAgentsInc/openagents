@@ -7,6 +7,7 @@ use std::{
 use thiserror::Error;
 
 use crate::fanout::{FanoutLimitConfig, FanoutTierLimits, QosTier};
+use nostr::nsec_to_private_key;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -46,6 +47,8 @@ pub struct Config {
     pub sync_token_require_jti: bool,
     pub sync_token_max_age_seconds: u64,
     pub sync_revoked_jtis: HashSet<String>,
+    pub bridge_nostr_relays: Vec<String>,
+    pub bridge_nostr_secret_key: Option<[u8; 32]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -111,6 +114,10 @@ pub enum ConfigError {
     InvalidSyncTokenRequireJti(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS: {0}")]
     InvalidSyncTokenMaxAgeSeconds(String),
+    #[error("invalid RUNTIME_BRIDGE_NOSTR_RELAYS: {0}")]
+    InvalidBridgeNostrRelays(String),
+    #[error("invalid RUNTIME_BRIDGE_NOSTR_SECRET_KEY: {0}")]
+    InvalidBridgeNostrSecretKey(String),
 }
 
 impl Config {
@@ -190,6 +197,29 @@ impl Config {
             .filter(|value| !value.is_empty())
             .map(normalize_origin_value)
             .collect::<HashSet<_>>();
+
+        let bridge_nostr_relays = env::var("RUNTIME_BRIDGE_NOSTR_RELAYS")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let bridge_nostr_secret_key_raw = env::var("RUNTIME_BRIDGE_NOSTR_SECRET_KEY")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let bridge_nostr_secret_key = if bridge_nostr_secret_key_raw.is_empty() {
+            None
+        } else {
+            Some(parse_bridge_nostr_secret_key(&bridge_nostr_secret_key_raw)?)
+        };
+        if !bridge_nostr_relays.is_empty() && bridge_nostr_secret_key.is_none() {
+            return Err(ConfigError::InvalidBridgeNostrSecretKey(
+                "bridge relays configured but secret key missing".to_string(),
+            ));
+        }
+
         let parse_publish_rate = |key: &str, default: &str| -> Result<u32, ConfigError> {
             env::var(key)
                 .unwrap_or_else(|_| default.to_string())
@@ -319,6 +349,8 @@ impl Config {
             sync_token_require_jti,
             sync_token_max_age_seconds,
             sync_revoked_jtis,
+            bridge_nostr_relays,
+            bridge_nostr_secret_key,
         })
     }
 
@@ -379,4 +411,23 @@ fn parse_authority_write_mode(raw: &str) -> Result<AuthorityWriteMode, ConfigErr
         "read_only" => Ok(AuthorityWriteMode::ReadOnly),
         other => Err(ConfigError::InvalidAuthorityWriteMode(other.to_string())),
     }
+}
+
+fn parse_bridge_nostr_secret_key(value: &str) -> Result<[u8; 32], ConfigError> {
+    let trimmed = value.trim();
+    if trimmed.starts_with("nsec1") {
+        return nsec_to_private_key(trimmed)
+            .map_err(|err| ConfigError::InvalidBridgeNostrSecretKey(err.to_string()));
+    }
+
+    let bytes = hex::decode(trimmed)
+        .map_err(|err| ConfigError::InvalidBridgeNostrSecretKey(err.to_string()))?;
+    if bytes.len() != 32 {
+        return Err(ConfigError::InvalidBridgeNostrSecretKey(
+            "expected 32-byte hex secret".to_string(),
+        ));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
 }

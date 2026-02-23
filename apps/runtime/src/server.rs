@@ -27,7 +27,8 @@ use uuid::Uuid;
 use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
-    marketplace::{ProviderCatalogEntry, build_provider_catalog},
+    bridge::{BridgeNostrPublisher, ProviderAdV1, build_provider_ad_event},
+    marketplace::{ProviderCatalogEntry, build_provider_catalog, is_provider_worker},
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
@@ -48,6 +49,7 @@ pub struct AppState {
     fanout: Arc<FanoutHub>,
     sync_auth: Arc<SyncAuthorizer>,
     khala_delivery: Arc<KhalaDeliveryControl>,
+    fleet_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
 }
 
@@ -67,6 +69,7 @@ impl AppState {
             fanout,
             sync_auth,
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
+            fleet_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
         }
     }
@@ -1046,7 +1049,9 @@ async fn authorize_khala_topic_access(
                 }
             }
         }
-        AuthorizedKhalaTopic::RunEvents { .. } | AuthorizedKhalaTopic::CodexWorkerEvents => {}
+        AuthorizedKhalaTopic::FleetWorkers { .. }
+        | AuthorizedKhalaTopic::RunEvents { .. }
+        | AuthorizedKhalaTopic::CodexWorkerEvents => {}
     }
 
     Ok(principal)
@@ -1118,6 +1123,7 @@ async fn register_worker(
         .await
         .map_err(ApiError::from_worker)?;
     publish_worker_snapshot(&state, &snapshot).await?;
+    maybe_spawn_nostr_provider_ad_mirror(&state, &snapshot);
     Ok((
         StatusCode::CREATED,
         Json(WorkerResponse { worker: snapshot }),
@@ -1522,6 +1528,36 @@ async fn publish_worker_snapshot(
     state: &AppState,
     snapshot: &WorkerSnapshot,
 ) -> Result<(), ApiError> {
+    let meta = &snapshot.worker.metadata;
+    let roles = meta
+        .get("roles")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let capabilities = meta
+        .get("capabilities")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let provider_id = meta.get("provider_id").and_then(serde_json::Value::as_str);
+    let provider_base_url = meta
+        .get("provider_base_url")
+        .and_then(serde_json::Value::as_str);
+    let min_price_msats = meta.get("min_price_msats").and_then(serde_json::Value::as_u64);
+
+    let payload = serde_json::json!({
+        "worker_id": snapshot.worker.worker_id,
+        "status": snapshot.worker.status,
+        "latest_seq": snapshot.worker.latest_seq,
+        "heartbeat_state": snapshot.liveness.heartbeat_state,
+        "heartbeat_age_ms": snapshot.liveness.heartbeat_age_ms,
+        "roles": roles,
+        "provider_id": provider_id,
+        "provider_base_url": provider_base_url,
+        "capabilities": capabilities,
+        "min_price_msats": min_price_msats,
+        "owner_user_id": snapshot.worker.owner.user_id,
+        "owner_guest_scope": snapshot.worker.owner.guest_scope,
+    });
+
     let topic = format!("worker:{}:lifecycle", snapshot.worker.worker_id);
     state
         .fanout
@@ -1531,17 +1567,121 @@ async fn publish_worker_snapshot(
                 topic: topic.clone(),
                 sequence: snapshot.worker.latest_seq,
                 kind: snapshot.worker.status.as_event_label().to_string(),
-                payload: serde_json::json!({
-                    "worker_id": snapshot.worker.worker_id,
-                    "status": snapshot.worker.status,
-                    "latest_seq": snapshot.worker.latest_seq,
-                    "heartbeat_state": snapshot.liveness.heartbeat_state,
-                }),
+                payload: payload.clone(),
                 published_at: Utc::now(),
             },
         )
         .await
-        .map_err(ApiError::from_fanout)
+        .map_err(ApiError::from_fanout)?;
+
+    if let Some(user_id) = snapshot.worker.owner.user_id {
+        let fleet_topic = format!("fleet:user:{user_id}:workers");
+        let fleet_seq = state.fleet_seq.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        state
+            .fanout
+            .publish(
+                &fleet_topic,
+                FanoutMessage {
+                    topic: fleet_topic.clone(),
+                    sequence: fleet_seq,
+                    kind: snapshot.worker.status.as_event_label().to_string(),
+                    payload,
+                    published_at: Utc::now(),
+                },
+            )
+            .await
+            .map_err(ApiError::from_fanout)?;
+    }
+
+    Ok(())
+}
+
+fn maybe_spawn_nostr_provider_ad_mirror(state: &AppState, snapshot: &WorkerSnapshot) {
+    if state.config.bridge_nostr_relays.is_empty() {
+        return;
+    }
+    let Some(secret_key) = state.config.bridge_nostr_secret_key else {
+        return;
+    };
+    if !is_provider_worker(&snapshot.worker) {
+        return;
+    }
+
+    let meta = &snapshot.worker.metadata;
+    let provider_id = meta
+        .get("provider_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| snapshot.worker.worker_id.clone());
+    let name = meta
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("OpenAgents Compute Provider")
+        .to_string();
+    let description = meta
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("OpenAgents Compute provider enrolled in Nexus registry")
+        .to_string();
+    let website = meta
+        .get("website")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let capabilities = meta
+        .get("capabilities")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let min_price_msats = meta
+        .get("min_price_msats")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(1000);
+
+    let relays = state.config.bridge_nostr_relays.clone();
+    let payload = ProviderAdV1 {
+        provider_id: provider_id.clone(),
+        name,
+        description,
+        website,
+        capabilities,
+        min_price_msats,
+    };
+
+    tokio::spawn(async move {
+        let event = match build_provider_ad_event(&secret_key, None, &payload) {
+            Ok(event) => event,
+            Err(error) => {
+                tracing::warn!(
+                    provider_id,
+                    reason = %error,
+                    "bridge nostr mirror failed to build provider ad"
+                );
+                return;
+            }
+        };
+        let publisher = BridgeNostrPublisher::new(relays);
+        if let Err(error) = publisher.connect().await {
+            tracing::warn!(
+                provider_id,
+                reason = %error,
+                "bridge nostr mirror failed to connect to relays"
+            );
+            return;
+        }
+        if let Err(error) = publisher.publish(&event).await {
+            tracing::warn!(
+                provider_id,
+                reason = %error,
+                "bridge nostr mirror failed to publish provider ad"
+            );
+        }
+    });
 }
 
 impl IntoResponse for ApiError {
@@ -1818,6 +1958,8 @@ mod tests {
             sync_token_require_jti: true,
             sync_token_max_age_seconds: 300,
             sync_revoked_jtis: revoked_for_config,
+            bridge_nostr_relays: Vec::new(),
+            bridge_nostr_secret_key: None,
         };
         mutate_config(&mut config);
         let fanout_limits = config.khala_fanout_limits();
@@ -3873,6 +4015,74 @@ mod tests {
             .ok_or_else(|| anyhow!("missing base_url"))?;
         assert_eq!(base_url, "http://127.0.0.1:9999");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_fleet_topic_surfaces_worker_presence_stream() -> Result<()> {
+        let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.worker_lifecycle_events"],
+            Some(11),
+            Some("user:11"),
+            "fleet-presence",
+            300,
+        );
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:fleet-worker-1",
+                        "owner_user_id": 11,
+                        "metadata": {"roles": ["client"]}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+
+        let poll = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/fleet:user:11:workers/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(poll.status(), axum::http::StatusCode::OK);
+        let poll_json = response_json(poll).await?;
+        let messages = poll_json
+            .get("messages")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing messages array"))?;
+        assert!(!messages.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_fleet_topic_enforces_user_binding() -> Result<()> {
+        let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.worker_lifecycle_events"],
+            Some(11),
+            Some("user:11"),
+            "fleet-binding",
+            300,
+        );
+
+        let poll = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/fleet:user:12:workers/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(poll.status(), axum::http::StatusCode::FORBIDDEN);
         Ok(())
     }
 }

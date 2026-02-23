@@ -139,6 +139,11 @@ impl TopicClass {
         if topic.starts_with("worker:") && topic.ends_with(":lifecycle") {
             return Self::WorkerLifecycle;
         }
+        if (topic.starts_with("fleet:user:") || topic.starts_with("fleet:guest:"))
+            && topic.ends_with(":workers")
+        {
+            return Self::WorkerLifecycle;
+        }
         Self::Other
     }
 

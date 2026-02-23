@@ -46,6 +46,7 @@ Purpose:
 Event:
 - Kind: **31990** (NIP-89 handler information)
 - `["handler","compute_provider"]`
+- `["d","openagents:compute_provider:<provider_id>"]` (handler identifier)
 - One or more `["capability", "..."]` tags
 - Optional `["price", "<msats>", "<model>", "<currency>"]`
 
@@ -106,4 +107,3 @@ See:
 
 - `docs/plans/active/vignette-phase0-issue-to-pr.md`
 - `scripts/vignette-phase0-issue-to-pr.sh`
-

@@ -50,6 +50,7 @@ Required receipts:
 Required assertions:
 
 - device is visible as connected/online in the Nexus registry view (API is sufficient in Phase 0 harness)
+- presence stream exists via Khala delivery on `fleet:user:<user_id>:workers` (WS/poll), emitting worker snapshots as devices enroll/heartbeat/stop
 - provider enable/disable is instant and blocks new work
 
 ### 2) Create run from issue
@@ -137,4 +138,3 @@ Required assertions:
 - verification pass rate (overall + by provider)
 - rework rate (accepted then reverted/fails downstream) (may be 0 in Phase 0 fixture)
 - caps enforced proof: provider reports caps + observed usage and emits an enforcement receipt/event
-

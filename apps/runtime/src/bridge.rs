@@ -103,6 +103,8 @@ pub fn build_provider_ad_event(
             .with_model("per-job")
             .with_currency("msats"),
     )
+    // NIP-89 handler info is parameterized replaceable (kind 31990); `d` identifies the handler.
+    .add_custom_tag("d", format!("openagents:compute_provider:{}", payload.provider_id))
     .add_custom_tag("oa_schema", "openagents.bridge.provider_ad.v1")
     .add_custom_tag("oa_provider_id", payload.provider_id.clone());
 
@@ -264,6 +266,7 @@ mod tests {
             .tags
             .iter()
             .any(|t| t.len() >= 2 && t[0] == "handler" && t[1] == "compute_provider"));
+        assert!(event.tags.iter().any(|t| t.len() >= 2 && t[0] == "d"));
         assert!(event
             .tags
             .iter()
