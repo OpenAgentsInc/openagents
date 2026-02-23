@@ -9,7 +9,7 @@ Surfaces (explicit non-parity):
 - Web (control/history): `apps/openagents.com/web-shell/`
 - iOS (control/monitor): `apps/autopilot-ios/`
 
-Optional: desktop can contribute compute to **OpenAgents Compute** by running provider mode (Pylon), earning credits and strengthening supply liquidity.
+Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning credits and strengthening supply liquidity.
 
 Core services:
 - Runtime authority: `apps/runtime/`

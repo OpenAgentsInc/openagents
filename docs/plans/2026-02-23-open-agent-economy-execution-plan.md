@@ -108,7 +108,7 @@ Nexus is a superset of a Nostr relay: it supports a Nostr-compatible event surfa
 #### Trust Zones
 
 - **Zone 0 (inside operator Nexus boundary):** control/runtime services and workers authenticated strongly (mTLS/Noise/session keys/attestation as appropriate).
-- **Zone 0.5 (account-attached devices/providers):** user-owned devices enrolled to the account (Linux/macOS/cloud). Authenticated and quota/resource-capped, but not assumed correct; objective verification and pay-after-verify still apply.
+- **Zone 0.5 (account-attached devices/providers):** user-owned devices enrolled to the account (any platform: desktop/server/mobile). Authenticated and quota/resource-capped, but not assumed correct; objective verification and pay-after-verify still apply.
 - **Zone 1 (outside/semi-trusted):** any user-run agent, external provider, or third-party operator domain.
 
 Zone 1 ingress is treated as hostile by default: signed, rate-limited, replay-safe, and schema-validated.
@@ -154,8 +154,8 @@ Built-in powers (Phase 0 where needed; expanded later):
 - **Codex-backed coding:** Codex app-server is the Phase 0 interactive backend (requires a ChatGPT-linked account).
 - **Tooling with proof:** tools are policy-gated and produce deterministic receipts + replay logs.
 - **Cross-surface control:** one identity across surfaces; capabilities differ per surface (desktop executes; web/mobile control and review).
-- **Personal fleet connectivity:** connect your devices (Linux/macOS/cloud) to your Autopilot account as OpenAgents Compute providers and see live connected devices on openagents.com (online/offline, capabilities, earnings, and emergency disable).
-- **Optional compute contribution (desktop):** desktop can run a provider mode (Pylon/OpenAgents Compute) to earn credits and strengthen supply liquidity. Default is off and must be resource-capped and instantly disableable.
+- **Personal fleet connectivity:** connect your devices to your Autopilot account (any platform). Devices may be enrolled as clients and/or OpenAgents Compute providers, and you can see live connected devices on openagents.com (online/offline, capabilities, earnings, and emergency disable).
+- **Optional resource contribution (any device):** enrolled devices can run OpenAgents Compute provider mode (Pylon) to contribute resources under hard caps, earn credits, and strengthen supply liquidity. Desktop bundling is a convenience, not a requirement. Default is off and must be instantly disableable.
 
 What Autopilot is not (Phase 0):
 
@@ -253,7 +253,7 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-025` - Define Bridge boundary + minimal Nostr interop event kinds. - Codify message classes + signing policy and implement a minimal Nexus<->Nostr gateway for provider ads + receipts so interop is Nostr-verifiable without pushing high-rate chatter onto Nostr.
 
 - `OA-ECON-120` - Implement marketplace core catalog service. - Unify listing, discovery, and metadata contracts.
-- `OA-ECON-121` - Implement provider/device enrollment + announcements in Nexus registry + optional Nostr mirror. - Let users connect devices (Linux/macOS/cloud) as providers under their account; publish capability ads via authenticated HTTP mutations; stream discovery/health/presence via WS delivery; optionally mirror to Nostr (NIP-89) through the Bridge.
+- `OA-ECON-121` - Implement provider/device enrollment + announcements in Nexus registry + optional Nostr mirror. - Let users connect devices (any platform) under their account; devices declare roles (client/provider) and capabilities; publish capability ads via authenticated HTTP mutations; stream discovery/health/presence via WS delivery; optionally mirror to Nostr (NIP-89) through the Bridge.
 - `OA-ECON-122` - Implement job-type registry with verification metadata. - Define objective vs subjective verification semantics per job.
 - `OA-ECON-123` - Implement SandboxRun objective verification pipeline. - Verify build/test/lint workloads deterministically.
 - `OA-ECON-128` - Implement reserve provider pool manager. - Guarantee fill path when market liquidity is insufficient.
@@ -573,7 +573,7 @@ Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (b
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); abuse baseline is enforced (submission rate limits, payload caps, sandbox defaults, quarantine on repeated failures); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices as providers and **see live connected devices on openagents.com** (online/offline, capabilities, earnings, emergency disable); if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); abuse baseline is enforced (submission rate limits, payload caps, sandbox defaults, quarantine on repeated failures); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices (clients and providers) and **see live connected devices on openagents.com** (online/offline, roles, capabilities, earnings, emergency disable); if a device is enrolled as a provider, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
