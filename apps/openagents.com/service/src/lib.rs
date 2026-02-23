@@ -109,7 +109,8 @@ use crate::web_htmx::{
     set_trigger_header as htmx_set_trigger_header,
 };
 use crate::web_maud::{
-    ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
+    ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, IntegrationStatusView,
+    SessionView, WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
     render_feed_items_append_fragment as render_maud_feed_items_append_fragment,
     render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
@@ -1394,6 +1395,34 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/feed/fragments/main", get(feed_main_fragment))
         .route("/feed/fragments/items", get(feed_items_fragment))
         .route("/feed/shout", post(web_feed_shout))
+        .route(
+            "/settings/profile/update",
+            post(web_settings_profile_update),
+        )
+        .route(
+            "/settings/profile/delete",
+            post(web_settings_profile_delete),
+        )
+        .route(
+            "/settings/integrations/resend/upsert",
+            post(web_settings_resend_upsert),
+        )
+        .route(
+            "/settings/integrations/resend/test-request",
+            post(web_settings_resend_test),
+        )
+        .route(
+            "/settings/integrations/resend/disconnect",
+            post(web_settings_resend_disconnect),
+        )
+        .route(
+            "/settings/integrations/google/connect",
+            get(web_settings_google_connect),
+        )
+        .route(
+            "/settings/integrations/google/disconnect",
+            post(web_settings_google_disconnect),
+        )
         .route("/chat/new", post(web_chat_new_thread))
         .route(
             "/chat/fragments/thread/:thread_id",
@@ -2552,6 +2581,43 @@ async fn render_web_page(
         return Ok(web_html_response(page));
     }
 
+    if path.starts_with("/settings") {
+        let htmx = classify_htmx_request(headers);
+        let bundle = if let Some(bundle) = session_bundle.as_ref() {
+            bundle
+        } else {
+            if htmx.is_hx_request {
+                return Ok(htmx_redirect_response("/login"));
+            }
+            return Ok(Redirect::temporary("/login").into_response());
+        };
+
+        let integrations = state
+            ._domain_store
+            .list_integrations_for_user(&bundle.user.id)
+            .await
+            .map_err(map_domain_store_error)?;
+        let resend = integration_status_view_for_provider(&integrations, "resend");
+        let google = integration_status_view_for_provider(&integrations, "google");
+
+        let page = WebPage {
+            title: "Settings".to_string(),
+            path,
+            session,
+            body: WebBody::Settings {
+                status,
+                profile_name: bundle.user.name.clone(),
+                profile_email: bundle.user.email.clone(),
+                resend,
+                google,
+            },
+        };
+        if should_render_hx_get_fragment(headers) {
+            return Ok(web_fragment_response(&page));
+        }
+        return Ok(web_html_response(page));
+    }
+
     let (heading, description) = web_placeholder_for_path(&path);
     let page = WebPage {
         title: heading.clone(),
@@ -2572,6 +2638,47 @@ fn session_view_from_bundle(bundle: &SessionBundle) -> SessionView {
     SessionView {
         email: bundle.user.email.clone(),
         display_name: bundle.user.name.clone(),
+    }
+}
+
+fn integration_status_view_for_provider(
+    integrations: &[UserIntegrationRecord],
+    provider: &str,
+) -> IntegrationStatusView {
+    let integration = integrations
+        .iter()
+        .find(|row| row.provider.eq_ignore_ascii_case(provider));
+    integration_status_view(provider, integration)
+}
+
+fn integration_status_view(
+    provider: &str,
+    integration: Option<&UserIntegrationRecord>,
+) -> IntegrationStatusView {
+    let Some(integration) = integration else {
+        return IntegrationStatusView {
+            provider: provider.to_string(),
+            connected: false,
+            status: "inactive".to_string(),
+            secret_last4: None,
+            connected_at: None,
+        };
+    };
+
+    let connected = integration.status == "active"
+        && integration
+            .encrypted_secret
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some();
+
+    IntegrationStatusView {
+        provider: integration.provider.clone(),
+        connected,
+        status: integration.status.clone(),
+        secret_last4: integration.secret_last4.clone(),
+        connected_at: integration.connected_at.map(timestamp),
     }
 }
 
@@ -3990,6 +4097,490 @@ async fn web_feed_shout(
     } else {
         Redirect::temporary("/feed?status=shout-posted").into_response()
     }
+}
+
+async fn web_settings_profile_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<UpdateProfileRequestPayload>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let normalized_name = payload.name.trim().to_string();
+    if normalized_name.is_empty() || normalized_name.chars().count() > 255 {
+        if htmx.is_hx_request {
+            return htmx_notice_response(
+                "settings-status",
+                "profile-update-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
+        return Redirect::temporary("/settings/profile?status=profile-update-failed")
+            .into_response();
+    }
+
+    let updated_user = match state
+        .auth
+        .update_profile_name(&bundle.user.id, normalized_name)
+        .await
+    {
+        Ok(user) => user,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "profile-update-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=profile-update-failed")
+                .into_response();
+        }
+    };
+
+    state.observability.audit(
+        AuditEvent::new("profile.updated", request_id.clone())
+            .with_user_id(updated_user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("field_updated", "name".to_string())
+            .with_attribute("source", "web".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("profile.updated", &request_id);
+
+    if htmx.is_hx_request {
+        return htmx_notice_response("settings-status", "profile-updated", false, StatusCode::OK);
+    }
+
+    Redirect::temporary("/settings/profile?status=profile-updated").into_response()
+}
+
+async fn web_settings_profile_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<DeleteProfileRequestPayload>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let normalized_email = payload.email.trim().to_lowercase();
+    let user_email = bundle.user.email.trim().to_lowercase();
+    if normalized_email.is_empty() || normalized_email != user_email {
+        if htmx.is_hx_request {
+            return htmx_notice_response(
+                "settings-status",
+                "profile-delete-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
+        return Redirect::temporary("/settings/profile?status=profile-delete-failed")
+            .into_response();
+    }
+
+    let deleted_user = match state.auth.delete_profile(&bundle.user.id).await {
+        Ok(user) => user,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "profile-delete-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=profile-delete-failed")
+                .into_response();
+        }
+    };
+
+    state.observability.audit(
+        AuditEvent::new("profile.deleted", request_id.clone())
+            .with_user_id(deleted_user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("source", "web".to_string()),
+    );
+    state
+        .observability
+        .increment_counter("profile.deleted", &request_id);
+
+    let mut response = if htmx.is_hx_request {
+        htmx_redirect_response("/login?status=profile-deleted")
+    } else {
+        Redirect::temporary("/login?status=profile-deleted").into_response()
+    };
+    let _ = append_set_cookie_header(&mut response, &clear_cookie(AUTH_ACCESS_COOKIE_NAME));
+    let _ = append_set_cookie_header(&mut response, &clear_cookie(AUTH_REFRESH_COOKIE_NAME));
+    let _ = append_set_cookie_header(&mut response, &clear_cookie(LOCAL_TEST_AUTH_COOKIE_NAME));
+    response
+}
+
+async fn web_settings_resend_upsert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(payload): Form<UpsertResendIntegrationRequestPayload>,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let api_key = payload
+        .resend_api_key
+        .and_then(non_empty)
+        .filter(|value| value.chars().count() >= 8 && value.chars().count() <= 4096);
+    let Some(api_key) = api_key else {
+        if htmx.is_hx_request {
+            return htmx_notice_response(
+                "settings-status",
+                "settings-action-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
+        return Redirect::temporary("/settings/profile?status=settings-action-failed")
+            .into_response();
+    };
+    let sender_email = match normalize_optional_email(payload.sender_email, "sender_email") {
+        Ok(value) => value,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                .into_response();
+        }
+    };
+    let sender_name =
+        match normalize_optional_bounded_trimmed_string(payload.sender_name, "sender_name", 255) {
+            Ok(value) => value,
+            Err(_) => {
+                if htmx.is_hx_request {
+                    return htmx_notice_response(
+                        "settings-status",
+                        "settings-action-failed",
+                        true,
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                    );
+                }
+                return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                    .into_response();
+            }
+        };
+
+    let result = match state
+        ._domain_store
+        .upsert_resend_integration(UpsertResendIntegrationInput {
+            user_id: bundle.user.id.clone(),
+            api_key,
+            sender_email,
+            sender_name,
+        })
+        .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                .into_response();
+        }
+    };
+    let status = match result.action.as_str() {
+        "secret_created" => "resend-connected",
+        "secret_rotated" => "resend-rotated",
+        _ => "resend-updated",
+    };
+
+    state.observability.audit(
+        AuditEvent::new("settings.integrations.resend.upserted", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("action", result.action)
+            .with_attribute("status", status.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.upserted", &request_id);
+
+    if htmx.is_hx_request {
+        return htmx_notice_response("settings-status", status, false, StatusCode::OK);
+    }
+
+    Redirect::temporary(&format!("/settings/profile?status={status}")).into_response()
+}
+
+async fn web_settings_resend_test(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let integration = match state
+        ._domain_store
+        .find_active_integration_secret(&bundle.user.id, "resend")
+        .await
+    {
+        Ok(Some(integration)) => integration,
+        _ => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                .into_response();
+        }
+    };
+
+    if state
+        ._domain_store
+        .audit_integration_test_request(&bundle.user.id, "resend")
+        .await
+        .is_err()
+    {
+        if htmx.is_hx_request {
+            return htmx_notice_response(
+                "settings-status",
+                "settings-action-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
+        return Redirect::temporary("/settings/profile?status=settings-action-failed")
+            .into_response();
+    }
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.resend.test_requested",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("integration_id", integration.id.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.test_requested", &request_id);
+
+    if htmx.is_hx_request {
+        return htmx_notice_response(
+            "settings-status",
+            "resend-test-queued",
+            false,
+            StatusCode::OK,
+        );
+    }
+
+    Redirect::temporary("/settings/profile?status=resend-test-queued").into_response()
+}
+
+async fn web_settings_resend_disconnect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let revoked = match state
+        ._domain_store
+        .revoke_integration(&bundle.user.id, "resend")
+        .await
+    {
+        Ok(revoked) => revoked,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                .into_response();
+        }
+    };
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.resend.disconnected",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("had_integration", revoked.is_some().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.resend.disconnected", &request_id);
+
+    if htmx.is_hx_request {
+        return htmx_notice_response(
+            "settings-status",
+            "resend-disconnected",
+            false,
+            StatusCode::OK,
+        );
+    }
+
+    Redirect::temporary("/settings/profile?status=resend-disconnected").into_response()
+}
+
+async fn web_settings_google_connect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    match settings_integrations_google_redirect(State(state), headers.clone()).await {
+        Ok(response) => response,
+        Err(_) => {
+            if htmx.is_hx_request {
+                htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                )
+            } else {
+                Redirect::temporary("/settings/profile?status=settings-action-failed")
+                    .into_response()
+            }
+        }
+    }
+}
+
+async fn web_settings_google_disconnect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let htmx = classify_htmx_request(&headers);
+    let request_id = request_id(&headers);
+    let bundle = match session_bundle_from_headers(&state, &headers).await {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
+    };
+
+    let revoked = match state
+        ._domain_store
+        .revoke_integration(&bundle.user.id, "google")
+        .await
+    {
+        Ok(revoked) => revoked,
+        Err(_) => {
+            if htmx.is_hx_request {
+                return htmx_notice_response(
+                    "settings-status",
+                    "settings-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/settings/profile?status=settings-action-failed")
+                .into_response();
+        }
+    };
+
+    state.observability.audit(
+        AuditEvent::new(
+            "settings.integrations.google.disconnected",
+            request_id.clone(),
+        )
+        .with_user_id(bundle.user.id)
+        .with_session_id(bundle.session.session_id)
+        .with_org_id(bundle.session.active_org_id)
+        .with_device_id(bundle.session.device_id)
+        .with_attribute("had_integration", revoked.is_some().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("settings.integrations.google.disconnected", &request_id);
+
+    if htmx.is_hx_request {
+        return htmx_notice_response(
+            "settings-status",
+            "google-disconnected",
+            false,
+            StatusCode::OK,
+        );
+    }
+
+    Redirect::temporary("/settings/profile?status=google-disconnected").into_response()
 }
 
 async fn local_test_login(
@@ -18215,6 +18806,184 @@ mod tests {
                 .iter()
                 .any(|value| value.starts_with(&format!("{}=;", super::AUTH_REFRESH_COOKIE_NAME)))
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_settings_profile_requires_auth_and_renders_settings_panel() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let unauth_request = Request::builder()
+            .method("GET")
+            .uri("/settings/profile")
+            .body(Body::empty())?;
+        let unauth_response = app.clone().oneshot(unauth_request).await?;
+        assert_eq!(unauth_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            unauth_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/login")
+        );
+
+        let unauth_hx_request = Request::builder()
+            .method("GET")
+            .uri("/settings/profile")
+            .header("hx-request", "true")
+            .header("hx-target", "oa-main-shell")
+            .body(Body::empty())?;
+        let unauth_hx_response = app.clone().oneshot(unauth_hx_request).await?;
+        assert_eq!(unauth_hx_response.status(), StatusCode::OK);
+        assert_eq!(
+            unauth_hx_response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|value| value.to_str().ok()),
+            Some("/login")
+        );
+
+        let token = authenticate_token(app.clone(), "settings-web@openagents.com").await?;
+        let auth_request = Request::builder()
+            .method("GET")
+            .uri("/settings/profile")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let auth_response = app.oneshot(auth_request).await?;
+        assert_eq!(auth_response.status(), StatusCode::OK);
+        let body = read_text(auth_response).await?;
+        assert!(body.contains("id=\"settings-main-panel\""));
+        assert!(body.contains("Save profile"));
+        assert!(body.contains("Connect or rotate Resend"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_settings_profile_update_supports_hx_and_redirect_modes() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "settings-profile-form@openagents.com").await?;
+
+        let hx_update_request = Request::builder()
+            .method("POST")
+            .uri("/settings/profile/update")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("name=Updated+Name"))?;
+        let hx_update_response = app.clone().oneshot(hx_update_request).await?;
+        assert_eq!(hx_update_response.status(), StatusCode::OK);
+        let hx_body = read_text(hx_update_response).await?;
+        assert!(hx_body.contains("id=\"settings-status\""));
+        assert!(hx_body.contains("Profile updated."));
+
+        let show_request = Request::builder()
+            .method("GET")
+            .uri("/settings/profile")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let show_response = app.clone().oneshot(show_request).await?;
+        assert_eq!(show_response.status(), StatusCode::OK);
+        let show_body = read_text(show_response).await?;
+        assert!(show_body.contains("value=\"Updated Name\""));
+
+        let redirect_update_request = Request::builder()
+            .method("POST")
+            .uri("/settings/profile/update")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("name=Updated+Again"))?;
+        let redirect_update_response = app.oneshot(redirect_update_request).await?;
+        assert_eq!(
+            redirect_update_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        assert_eq!(
+            redirect_update_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/settings/profile?status=profile-updated")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_settings_resend_forms_support_hx_lifecycle() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "settings-resend-form@openagents.com").await?;
+
+        let connect_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend/upsert")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                "resend_api_key=re_live_1234567890&sender_email=bot%40openagents.com&sender_name=OpenAgents",
+            ))?;
+        let connect_response = app.clone().oneshot(connect_request).await?;
+        assert_eq!(connect_response.status(), StatusCode::OK);
+        let connect_body = read_text(connect_response).await?;
+        assert!(connect_body.contains("Resend connected."));
+
+        let test_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend/test-request")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let test_response = app.clone().oneshot(test_request).await?;
+        assert_eq!(test_response.status(), StatusCode::OK);
+        let test_body = read_text(test_response).await?;
+        assert!(test_body.contains("Resend test event queued."));
+
+        let disconnect_request = Request::builder()
+            .method("POST")
+            .uri("/settings/integrations/resend/disconnect")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let disconnect_response = app.oneshot(disconnect_request).await?;
+        assert_eq!(disconnect_response.status(), StatusCode::OK);
+        let disconnect_body = read_text(disconnect_response).await?;
+        assert!(disconnect_body.contains("Resend disconnected."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_settings_google_connect_unconfigured_returns_web_friendly_failure() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+        let token = authenticate_token(app.clone(), "settings-google-form@openagents.com").await?;
+
+        let non_hx_request = Request::builder()
+            .method("GET")
+            .uri("/settings/integrations/google/connect")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let non_hx_response = app.clone().oneshot(non_hx_request).await?;
+        assert_eq!(non_hx_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/settings/profile?status=settings-action-failed")
+        );
+
+        let hx_request = Request::builder()
+            .method("GET")
+            .uri("/settings/integrations/google/connect")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let hx_response = app.oneshot(hx_request).await?;
+        assert_eq!(hx_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let hx_body = read_text(hx_response).await?;
+        assert!(hx_body.contains("Settings action failed."));
 
         Ok(())
     }

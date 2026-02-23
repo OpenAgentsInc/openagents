@@ -41,6 +41,15 @@ pub struct FeedZoneView {
 }
 
 #[derive(Debug, Clone)]
+pub struct IntegrationStatusView {
+    pub provider: String,
+    pub connected: bool,
+    pub status: String,
+    pub secret_last4: Option<String>,
+    pub connected_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub enum WebBody {
     Login {
         status: Option<String>,
@@ -59,6 +68,13 @@ pub enum WebBody {
         current_zone: Option<String>,
         page_limit: u64,
         since: Option<String>,
+    },
+    Settings {
+        status: Option<String>,
+        profile_name: String,
+        profile_email: String,
+        resend: IntegrationStatusView,
+        google: IntegrationStatusView,
     },
     Placeholder {
         heading: String,
@@ -192,6 +208,21 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                         current_zone.as_deref(),
                         *page_limit,
                         since.as_deref(),
+                    ))
+                }
+                WebBody::Settings {
+                    status,
+                    profile_name,
+                    profile_email,
+                    resend,
+                    google,
+                } => {
+                    (settings_panel(
+                        status.as_deref(),
+                        profile_name,
+                        profile_email,
+                        resend,
+                        google
                     ))
                 }
                 WebBody::Placeholder { heading, description } => {
@@ -631,6 +662,96 @@ fn feed_items_fragment_route(
     route
 }
 
+fn settings_panel(
+    status: Option<&str>,
+    profile_name: &str,
+    profile_email: &str,
+    resend: &IntegrationStatusView,
+    google: &IntegrationStatusView,
+) -> Markup {
+    html! {
+        section id="settings-main-panel" class="oa-grid settings" {
+            article class="oa-card" {
+                h2 { "Profile" }
+                (status_slot("settings-status", status))
+                form method="post" action="/settings/profile/update" class="oa-form"
+                    hx-post="/settings/profile/update"
+                    hx-target="#settings-status"
+                    hx-swap="outerHTML" {
+                    label for="settings-name" { "Display name" }
+                    input id="settings-name" type="text" name="name" value=(profile_name) maxlength="255" required;
+                    label for="settings-email" { "Email" }
+                    input id="settings-email" type="email" value=(profile_email) disabled;
+                    button type="submit" class="oa-btn primary" { "Save profile" }
+                    span class="htmx-indicator oa-indicator" { "Saving..." }
+                }
+                form method="post" action="/settings/profile/delete" class="oa-form"
+                    hx-post="/settings/profile/delete"
+                    hx-target="#settings-status"
+                    hx-swap="outerHTML" {
+                    label for="confirm-email" { "Confirm email to delete profile" }
+                    input id="confirm-email" type="email" name="email" placeholder=(profile_email) required;
+                    button type="submit" class="oa-btn subtle" { "Delete profile" }
+                }
+            }
+            article class="oa-card" {
+                h2 { "Integrations" }
+                h3 { "Resend" }
+                p class="oa-muted" {
+                    (if resend.connected { "Connected" } else { "Not connected" })
+                    " · status=" (resend.status)
+                    @if let Some(last4) = &resend.secret_last4 {
+                        " · ****" (last4)
+                    }
+                }
+                form method="post" action="/settings/integrations/resend/upsert" class="oa-form"
+                    hx-post="/settings/integrations/resend/upsert"
+                    hx-target="#settings-status"
+                    hx-swap="outerHTML" {
+                    label for="resend_api_key" { "Resend API key" }
+                    input id="resend_api_key" type="password" name="resend_api_key" minlength="8" required;
+                    label for="sender_email" { "Sender email (optional)" }
+                    input id="sender_email" type="email" name="sender_email";
+                    label for="sender_name" { "Sender name (optional)" }
+                    input id="sender_name" type="text" name="sender_name" maxlength="255";
+                    button type="submit" class="oa-btn primary" { "Connect or rotate Resend" }
+                }
+                div class="oa-grid two" {
+                    form method="post" action="/settings/integrations/resend/test-request"
+                        hx-post="/settings/integrations/resend/test-request"
+                        hx-target="#settings-status"
+                        hx-swap="outerHTML" {
+                        button type="submit" class="oa-btn subtle" { "Send test event" }
+                    }
+                    form method="post" action="/settings/integrations/resend/disconnect"
+                        hx-post="/settings/integrations/resend/disconnect"
+                        hx-target="#settings-status"
+                        hx-swap="outerHTML" {
+                        button type="submit" class="oa-btn subtle" { "Disconnect Resend" }
+                    }
+                }
+                h3 { "Google" }
+                p class="oa-muted" {
+                    (if google.connected { "Connected" } else { "Not connected" })
+                    " · status=" (google.status)
+                    @if let Some(connected_at) = &google.connected_at {
+                        " · connected " (connected_at)
+                    }
+                }
+                a class="oa-btn primary" href="/settings/integrations/google/connect" hx-boost="false" {
+                    "Connect Google"
+                }
+                form method="post" action="/settings/integrations/google/disconnect"
+                    hx-post="/settings/integrations/google/disconnect"
+                    hx-target="#settings-status"
+                    hx-swap="outerHTML" {
+                    button type="submit" class="oa-btn subtle" { "Disconnect Google" }
+                }
+            }
+        }
+    }
+}
+
 fn placeholder_panel(heading: &str, description: &str) -> Markup {
     html! {
         section class="oa-card oa-placeholder" {
@@ -658,6 +779,9 @@ fn nav_active(path: &str, href: &str) -> bool {
     if href == "/" {
         return path == "/" || path == "/chat" || path.starts_with("/chat/");
     }
+    if href == "/settings/profile" {
+        return path == "/settings" || path.starts_with("/settings/");
+    }
     path == href || path.starts_with(&format!("{href}/"))
 }
 
@@ -676,6 +800,20 @@ fn status_message(status: &str) -> &'static str {
         "shout-post-failed" => "Could not post shout.",
         "invalid-zone" => "Zone format is invalid.",
         "empty-body" => "Message body cannot be empty.",
+        "profile-updated" => "Profile updated.",
+        "profile-deleted" => "Profile deleted.",
+        "profile-update-failed" => "Could not update profile.",
+        "profile-delete-failed" => "Could not delete profile.",
+        "resend-connected" => "Resend connected.",
+        "resend-rotated" => "Resend key rotated.",
+        "resend-updated" => "Resend settings updated.",
+        "resend-disconnected" => "Resend disconnected.",
+        "resend-test-queued" => "Resend test event queued.",
+        "google-connected" => "Google connected.",
+        "google-rotated" => "Google token rotated.",
+        "google-updated" => "Google integration updated.",
+        "google-disconnected" => "Google disconnected.",
+        "settings-action-failed" => "Settings action failed.",
         _ => "Action completed.",
     }
 }
@@ -755,6 +893,7 @@ body {
 .oa-grid.chat { grid-template-columns: minmax(260px, 320px) 1fr; }
 .oa-grid.feed { grid-template-columns: minmax(220px, 280px) 1fr; }
 .oa-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.oa-grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .oa-btn {
   appearance: none;
   border: 1px solid rgba(105, 126, 166, 0.4);

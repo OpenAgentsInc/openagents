@@ -70,6 +70,20 @@ Current feed partial route contract:
   - emits `HX-Trigger: feed-shout-posted`
   - `#feed-main-panel` listens for the trigger and reloads via HTMX GET
 
+Current settings/profile/integrations contract:
+- `GET /settings/*`
+  - authenticated requests render `#settings-main-panel`
+  - unauthenticated non-HTMX requests redirect to `/login`
+  - unauthenticated HTMX requests return `HX-Redirect: /login`
+- `POST /settings/profile/update` and `POST /settings/profile/delete`:
+  - HTMX mode returns `#settings-status` fragment
+  - non-HTMX mode redirects with status query (`/settings/profile?status=...`)
+- `POST /settings/integrations/resend/upsert`
+- `POST /settings/integrations/resend/test-request`
+- `POST /settings/integrations/resend/disconnect`
+- `GET /settings/integrations/google/connect`
+- `POST /settings/integrations/google/disconnect`
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:
