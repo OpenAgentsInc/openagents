@@ -5510,6 +5510,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_catalog_infers_supply_class_from_adapter() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let bundle_rack = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:bundle-rack-provider-1",
+                        "owner_user_id": 11,
+                        "adapter": "bundle_rack_adapter",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-br-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1500
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(bundle_rack.status(), axum::http::StatusCode::CREATED);
+
+        let instance_market = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:instance-market-provider-1",
+                        "owner_user_id": 11,
+                        "adapter": "instance_market_adapter",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-im-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1700
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(instance_market.status(), axum::http::StatusCode::CREATED);
+
+        let catalog_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .get("providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers array"))?;
+        assert_eq!(providers.len(), 2);
+
+        let by_id = |id: &str| -> Option<&Value> {
+            providers
+                .iter()
+                .find(|provider| provider.get("provider_id").and_then(Value::as_str) == Some(id))
+        };
+
+        assert_eq!(
+            by_id("provider-br-1")
+                .and_then(|provider| provider.get("supply_class"))
+                .and_then(Value::as_str),
+            Some("bundle_rack")
+        );
+        assert_eq!(
+            by_id("provider-im-1")
+                .and_then(|provider| provider.get("supply_class"))
+                .and_then(Value::as_str),
+            Some("instance_market")
+        );
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn dispatch_sandbox_run_calls_provider_and_enforces_phase0_hardening() -> Result<()> {
         let app = test_router();
         let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;

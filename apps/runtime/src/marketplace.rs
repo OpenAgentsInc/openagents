@@ -90,7 +90,8 @@ impl ProviderCatalogEntry {
         let min_price_msats = metadata_u64(meta, "min_price_msats");
         let reserve_pool_flag = metadata_bool(meta, "reserve_pool").unwrap_or(false)
             || roles.iter().any(|role| role == "reserve_pool");
-        let supply_class = supply_class_from_metadata(meta, reserve_pool_flag);
+        let supply_class =
+            supply_class_from_metadata(worker.adapter.as_str(), meta, reserve_pool_flag);
         let reserve_pool = reserve_pool_flag || supply_class == SupplyClass::ReservePool;
         let cluster_id = metadata_string(meta, "cluster_id");
         let cluster_members = metadata_string_array(meta, "cluster_members");
@@ -193,7 +194,7 @@ fn provider_tier_from_metadata(
     ProviderTier::Qualified
 }
 
-fn supply_class_from_metadata(metadata: &Value, reserve_pool: bool) -> SupplyClass {
+fn supply_class_from_metadata(adapter: &str, metadata: &Value, reserve_pool: bool) -> SupplyClass {
     if reserve_pool {
         return SupplyClass::ReservePool;
     }
@@ -210,6 +211,17 @@ fn supply_class_from_metadata(metadata: &Value, reserve_pool: bool) -> SupplyCla
             "instance_market" => return SupplyClass::InstanceMarket,
             "reserve_pool" => return SupplyClass::ReservePool,
             _ => {}
+        }
+    }
+
+    let adapter = adapter.trim();
+    if !adapter.is_empty() {
+        let normalized = adapter.to_ascii_lowercase();
+        if normalized.contains("bundle_rack") {
+            return SupplyClass::BundleRack;
+        }
+        if normalized.contains("instance_market") {
+            return SupplyClass::InstanceMarket;
         }
     }
 
@@ -384,6 +396,7 @@ mod tests {
         min_price_msats: u64,
         failure_strikes: u64,
         success_count: u64,
+        adapter: &str,
         reserve_pool: bool,
     ) -> WorkerSnapshot {
         let now = Utc::now();
@@ -398,7 +411,7 @@ mod tests {
                 owner,
                 workspace_ref: None,
                 codex_home_ref: None,
-                adapter: "test".to_string(),
+                adapter: adapter.to_string(),
                 status: WorkerStatus::Running,
                 latest_seq: 1,
                 metadata: serde_json::json!({
@@ -432,8 +445,8 @@ mod tests {
             guest_scope: None,
         };
         let workers = vec![
-            snapshot_provider("worker:a", 11, "provider-a", 1000, 2, 0, false),
-            snapshot_provider("worker:b", 11, "provider-b", 1200, 0, 0, false),
+            snapshot_provider("worker:a", 11, "provider-a", 1000, 2, 0, "test", false),
+            snapshot_provider("worker:b", 11, "provider-b", 1200, 0, 0, "test", false),
         ];
         let selection = select_provider_for_capability(&workers, Some(&owner), "oa.sandbox_run.v1")
             .expect("expected selection");
@@ -454,6 +467,7 @@ mod tests {
                 1000,
                 0,
                 5,
+                "test",
                 false,
             ),
             snapshot_provider(
@@ -463,6 +477,7 @@ mod tests {
                 1000,
                 0,
                 0,
+                "test",
                 false,
             ),
         ];
@@ -479,8 +494,8 @@ mod tests {
             guest_scope: None,
         };
         let workers = vec![
-            snapshot_provider("worker:a", 11, "provider-a", 1000, 0, 0, false),
-            snapshot_provider("worker:b", 11, "provider-b", 1100, 0, 0, false),
+            snapshot_provider("worker:a", 11, "provider-a", 1000, 0, 0, "test", false),
+            snapshot_provider("worker:b", 11, "provider-b", 1100, 0, 0, "test", false),
         ];
         let selection = select_provider_for_capability_excluding(
             &workers,
@@ -490,5 +505,39 @@ mod tests {
         )
         .expect("expected selection");
         assert_eq!(selection.provider.provider_id, "provider-b");
+    }
+
+    #[test]
+    fn adapter_infers_bundle_rack_supply_class() {
+        let workers = vec![snapshot_provider(
+            "worker:br",
+            11,
+            "provider-br",
+            1000,
+            0,
+            0,
+            "bundle_rack_adapter",
+            false,
+        )];
+        let catalog = build_provider_catalog(&workers);
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].supply_class, SupplyClass::BundleRack);
+    }
+
+    #[test]
+    fn adapter_infers_instance_market_supply_class() {
+        let workers = vec![snapshot_provider(
+            "worker:im",
+            11,
+            "provider-im",
+            1000,
+            0,
+            0,
+            "instance_market_adapter",
+            false,
+        )];
+        let catalog = build_provider_catalog(&workers);
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].supply_class, SupplyClass::InstanceMarket);
     }
 }
