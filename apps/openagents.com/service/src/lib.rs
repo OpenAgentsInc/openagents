@@ -109,7 +109,7 @@ use crate::web_htmx::{
 };
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
-    render_page as render_maud_page,
+    render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
 };
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -2568,6 +2568,9 @@ async fn render_web_page(
                 messages,
             },
         };
+        if should_render_hx_get_fragment(headers) {
+            return Ok(web_fragment_response(&page));
+        }
         return Ok(web_html_response(page));
     }
 
@@ -2581,6 +2584,9 @@ async fn render_web_page(
             description,
         },
     };
+    if should_render_hx_get_fragment(headers) {
+        return Ok(web_fragment_response(&page));
+    }
     Ok(web_html_response(page))
 }
 
@@ -2659,6 +2665,22 @@ fn web_html_response(page: WebPage) -> Response {
         .into_response();
     apply_html_security_headers(response.headers_mut());
     response
+}
+
+fn web_fragment_response(page: &WebPage) -> Response {
+    let mut response =
+        crate::web_htmx::fragment_response(render_maud_main_fragment(page), StatusCode::OK);
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn should_render_hx_get_fragment(headers: &HeaderMap) -> bool {
+    let htmx = classify_htmx_request(headers);
+    htmx.is_hx_request
+        && (htmx.boosted
+            || htmx.history_restore_request
+            || htmx.target.as_deref() == Some("oa-main-shell")
+            || htmx.current_url.is_some())
 }
 
 fn apply_html_security_headers(headers: &mut HeaderMap) {
@@ -3238,6 +3260,9 @@ async fn login_page(
         session: None,
         body: WebBody::Login { status },
     };
+    if should_render_hx_get_fragment(&headers) {
+        return Ok(web_fragment_response(&page));
+    }
     Ok(web_html_response(page))
 }
 
@@ -6706,6 +6731,9 @@ async fn feed_page(
         },
     };
 
+    if should_render_hx_get_fragment(&headers) {
+        return Ok(web_fragment_response(&page));
+    }
     Ok(web_html_response(page))
 }
 
@@ -23652,7 +23680,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feed_page_hx_boost_request_serves_shell_swap_target() -> Result<()> {
+    async fn feed_page_hx_boost_request_returns_main_fragment() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
             static_dir.path().join("index.html"),
@@ -23677,10 +23705,54 @@ mod tests {
 
         let body = response.into_body().collect().await?.to_bytes();
         let html = String::from_utf8_lossy(&body);
-        assert!(html.contains("id=\"oa-shell\""));
-        assert!(html.contains("id=\"oa-main-shell\""));
-        assert!(html.contains("hx-boost=\"true\""));
-        assert!(html.contains("href=\"/feed\""));
+        assert!(html.starts_with("<main id=\"oa-main-shell\""));
+        assert!(html.contains("oa-feed"));
+        assert!(!html.contains("<html"));
+        assert!(!html.contains("<head"));
+        assert!(!html.contains("<body"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn htmx_get_routes_return_fragment_while_direct_get_returns_shell() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let app = build_router(config);
+
+        for path in ["/", "/login", "/feed"] {
+            let hx_request = Request::builder()
+                .method("GET")
+                .uri(path)
+                .header("hx-request", "true")
+                .header("hx-boosted", "true")
+                .header("hx-target", "oa-main-shell")
+                .body(Body::empty())?;
+            let hx_response = app.clone().oneshot(hx_request).await?;
+            assert_eq!(hx_response.status(), StatusCode::OK);
+            let hx_body = hx_response.into_body().collect().await?.to_bytes();
+            let hx_html = String::from_utf8_lossy(&hx_body);
+            assert!(hx_html.starts_with("<main id=\"oa-main-shell\""));
+            assert!(!hx_html.contains("<html"));
+
+            let direct_request = Request::builder()
+                .method("GET")
+                .uri(path)
+                .body(Body::empty())?;
+            let direct_response = app.clone().oneshot(direct_request).await?;
+            assert_eq!(direct_response.status(), StatusCode::OK);
+            let direct_body = direct_response.into_body().collect().await?.to_bytes();
+            let direct_html = String::from_utf8_lossy(&direct_body);
+            assert!(direct_html.contains("<html"));
+            assert!(direct_html.contains("id=\"oa-shell\""));
+            assert!(direct_html.contains("id=\"oa-main-shell\""));
+        }
 
         Ok(())
     }

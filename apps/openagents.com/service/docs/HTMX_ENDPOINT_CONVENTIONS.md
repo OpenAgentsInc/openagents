@@ -16,6 +16,11 @@ For mutation handlers that are reachable from forms:
 2. Non-HTMX request: return normal HTTP redirect.
 3. Keep the same server-side validation and authority path in both modes.
 
+For GET route handlers:
+1. HTMX boosted/history GET: return only the route fragment rooted at `#oa-main-shell`.
+2. Non-HTMX/direct GET: return the full document shell (`<!doctype html>...`).
+3. Fragment and shell rendering must share the same route body component logic.
+
 ## Fragment Contract
 
 - Fragments must be valid for the declared swap target.

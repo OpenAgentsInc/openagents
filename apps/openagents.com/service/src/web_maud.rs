@@ -92,39 +92,17 @@ pub fn render_page(page: &WebPage) -> String {
                     hx-select="#oa-main-shell"
                     hx-push-url="true" {
                     (topbar(&page.path, page.session.as_ref()))
-                    main id="oa-main-shell" class="oa-main" {
-                        @match &page.body {
-                            WebBody::Login { status } => {
-                                (login_panel(status.as_deref()))
-                            }
-                            WebBody::Chat {
-                                status,
-                                threads,
-                                active_thread_id,
-                                messages,
-                            } => {
-                                (chat_panel(
-                                    page.session.as_ref(),
-                                    status.as_deref(),
-                                    threads,
-                                    active_thread_id.as_deref(),
-                                    messages
-                                ))
-                            }
-                            WebBody::Feed { status, items, zones } => {
-                                (feed_panel(page.session.as_ref(), status.as_deref(), items, zones))
-                            }
-                            WebBody::Placeholder { heading, description } => {
-                                (placeholder_panel(heading, description))
-                            }
-                        }
-                    }
+                    (render_main_fragment_markup(page))
                 }
             }
         }
     };
 
     markup.into_string()
+}
+
+pub fn render_main_fragment(page: &WebPage) -> String {
+    render_main_fragment_markup(page).into_string()
 }
 
 pub fn render_notice_fragment(target_id: &str, status: &str, is_error: bool) -> String {
@@ -165,6 +143,38 @@ fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
                     }
                 } @else {
                     a class="oa-btn" href="/login" { "Log in" }
+                }
+            }
+        }
+    }
+}
+
+fn render_main_fragment_markup(page: &WebPage) -> Markup {
+    html! {
+        main id="oa-main-shell" class="oa-main" {
+            @match &page.body {
+                WebBody::Login { status } => {
+                    (login_panel(status.as_deref()))
+                }
+                WebBody::Chat {
+                    status,
+                    threads,
+                    active_thread_id,
+                    messages,
+                } => {
+                    (chat_panel(
+                        page.session.as_ref(),
+                        status.as_deref(),
+                        threads,
+                        active_thread_id.as_deref(),
+                        messages
+                    ))
+                }
+                WebBody::Feed { status, items, zones } => {
+                    (feed_panel(page.session.as_ref(), status.as_deref(), items, zones))
+                }
+                WebBody::Placeholder { heading, description } => {
+                    (placeholder_panel(heading, description))
                 }
             }
         }
@@ -587,7 +597,10 @@ input:focus, textarea:focus {
 
 #[cfg(test)]
 mod tests {
-    use super::{HTMX_ASSET_PATH, SessionView, WebBody, WebPage, render_page as render_maud_page};
+    use super::{
+        HTMX_ASSET_PATH, SessionView, WebBody, WebPage,
+        render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
+    };
 
     #[test]
     fn render_page_uses_first_party_pinned_htmx_asset() {
@@ -629,5 +642,24 @@ mod tests {
         assert!(html.contains("hx-push-url=\"true\""));
         assert!(html.contains("id=\"oa-main-shell\""));
         assert!(html.contains("href=\"/feed\""));
+    }
+
+    #[test]
+    fn render_main_fragment_returns_swap_target_without_html_shell() {
+        let page = WebPage {
+            title: "Login".to_string(),
+            path: "/login".to_string(),
+            session: None,
+            body: WebBody::Login {
+                status: Some("code-sent".to_string()),
+            },
+        };
+
+        let fragment = render_maud_main_fragment(&page);
+        assert!(fragment.starts_with("<main id=\"oa-main-shell\""));
+        assert!(fragment.contains("id=\"login-status\""));
+        assert!(!fragment.contains("<html"));
+        assert!(!fragment.contains("<head"));
+        assert!(!fragment.contains("<body"));
     }
 }
