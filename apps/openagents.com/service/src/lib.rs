@@ -16550,6 +16550,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pinned_htmx_asset_is_served_with_cache_compression_and_etag() -> Result<()> {
+        let static_dir = tempdir()?;
+        let assets_dir = static_dir.path().join("assets");
+        std::fs::create_dir_all(&assets_dir)?;
+
+        let asset_name = "htmx-2_0_8-22283ef6.js";
+        let asset_path = assets_dir.join(asset_name);
+        std::fs::write(&asset_path, "window.htmxVersion='2.0.8';")?;
+
+        let mut br_path = asset_path.as_os_str().to_os_string();
+        br_path.push(".br");
+        std::fs::write(std::path::PathBuf::from(br_path), "htmx-br-bytes")?;
+
+        let mut gz_path = asset_path.as_os_str().to_os_string();
+        gz_path.push(".gz");
+        std::fs::write(std::path::PathBuf::from(gz_path), "htmx-gzip-bytes")?;
+
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let first_request = Request::builder()
+            .uri(format!("/assets/{asset_name}"))
+            .header(ACCEPT_ENCODING, "br, gzip")
+            .body(Body::empty())?;
+        let first_response = app.clone().oneshot(first_request).await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        assert_eq!(
+            first_response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_IMMUTABLE_ONE_YEAR)
+        );
+        assert_eq!(
+            first_response
+                .headers()
+                .get(CONTENT_ENCODING)
+                .and_then(|value| value.to_str().ok()),
+            Some("br")
+        );
+        let content_type = first_response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/javascript"));
+        let etag = first_response
+            .headers()
+            .get(ETAG)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!etag.is_empty());
+        let first_body = first_response.into_body().collect().await?.to_bytes();
+        assert_eq!(first_body.as_ref(), b"htmx-br-bytes");
+
+        let conditional_request = Request::builder()
+            .uri(format!("/assets/{asset_name}"))
+            .header(ACCEPT_ENCODING, "br, gzip")
+            .header(IF_NONE_MATCH, etag.clone())
+            .body(Body::empty())?;
+        let conditional_response = app.oneshot(conditional_request).await?;
+        assert_eq!(conditional_response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok()),
+            Some(etag.as_str())
+        );
+        assert_eq!(
+            conditional_response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_IMMUTABLE_ONE_YEAR)
+        );
+        let body = conditional_response.into_body().collect().await?.to_bytes();
+        assert_eq!(body.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn manifest_uses_no_store_cache_header() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(

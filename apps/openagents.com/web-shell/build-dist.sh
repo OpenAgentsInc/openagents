@@ -8,6 +8,8 @@ ASSETS_DIR="${OUT_DIR}/assets"
 HOST_SHIM_TEMPLATE="${APP_DIR}/host/host-shim.js"
 CAPABILITY_POLICY_TEMPLATE="${APP_DIR}/host/capability-policy.js"
 SW_TEMPLATE="${APP_DIR}/host/sw-template.js"
+HTMX_VENDOR_TEMPLATE="${APP_DIR}/vendor/htmx-2.0.8.min.js"
+HTMX_ASSET_FILENAME="htmx-2_0_8-22283ef6.js"
 
 rm -rf "${OUT_DIR}"
 mkdir -p "${ASSETS_DIR}"
@@ -24,6 +26,21 @@ fi
 
 if [[ ! -f "${SW_TEMPLATE}" ]]; then
   echo "error: service worker template not found at ${SW_TEMPLATE}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${HTMX_VENDOR_TEMPLATE}" ]]; then
+  echo "error: pinned HTMX vendor asset not found at ${HTMX_VENDOR_TEMPLATE}" >&2
+  exit 1
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  HTMX_VENDOR_SHA="$(sha256sum "${HTMX_VENDOR_TEMPLATE}" | awk '{print $1}')"
+else
+  HTMX_VENDOR_SHA="$(shasum -a 256 "${HTMX_VENDOR_TEMPLATE}" | awk '{print $1}')"
+fi
+if [[ "${HTMX_VENDOR_SHA}" != "22283ef68cb7545914f0a88a1bdedc7256a703d1d580c1d255217d0a50d31313" ]]; then
+  echo "error: pinned HTMX vendor asset hash mismatch (${HTMX_VENDOR_SHA})" >&2
   exit 1
 fi
 
@@ -44,7 +61,7 @@ SYNC_SCHEMA_MAX="${OA_SYNC_SCHEMA_MAX:-1}"
 ROLLBACK_BUILD_IDS="${OA_ROLLBACK_BUILD_IDS:-}"
 export ROLLBACK_BUILD_IDS
 
-PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js","/assets/capability-policy.js","/assets/update-policy.js"]'
+PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js","/assets/capability-policy.js","/assets/update-policy.js","/assets/htmx-2_0_8-22283ef6.js"]'
 
 ROLLBACK_CACHE_NAMES_JSON="$(python3 - <<'PY'
 import json
@@ -71,6 +88,7 @@ PY
 
 cp "${CAPABILITY_POLICY_TEMPLATE}" "${ASSETS_DIR}/capability-policy.js"
 cp "${APP_DIR}/host/update-policy.js" "${ASSETS_DIR}/update-policy.js"
+cp "${HTMX_VENDOR_TEMPLATE}" "${ASSETS_DIR}/${HTMX_ASSET_FILENAME}"
 
 python3 - <<'PY' "${SW_TEMPLATE}" "${OUT_DIR}/sw.js" "${BUILD_ID}" "${PINNED_ASSETS_JSON}" "${ROLLBACK_CACHE_NAMES_JSON}"
 import pathlib

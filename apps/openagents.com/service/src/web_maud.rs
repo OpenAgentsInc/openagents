@@ -1,5 +1,7 @@
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
+const HTMX_ASSET_PATH: &str = "/assets/htmx-2_0_8-22283ef6.js";
+
 #[derive(Debug, Clone)]
 pub struct SessionView {
     pub email: String,
@@ -78,7 +80,7 @@ pub fn render_page(page: &WebPage) -> String {
                 meta name="openagents-runtime" content="rust shell";
                 title { (page.title) " | OpenAgents" }
                 style { (PreEscaped(styles())) }
-                script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" defer {}
+                script src=(HTMX_ASSET_PATH) defer {}
             }
             body {
                 div class="oa-bg" {}
@@ -576,4 +578,29 @@ input:focus, textarea:focus {
   .oa-grid.chat, .oa-grid.feed, .oa-grid.two { grid-template-columns: 1fr; }
 }
 "#
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HTMX_ASSET_PATH, SessionView, WebBody, WebPage, render_page as render_maud_page};
+
+    #[test]
+    fn render_page_uses_first_party_pinned_htmx_asset() {
+        let page = WebPage {
+            title: "Codex".to_string(),
+            path: "/".to_string(),
+            session: Some(SessionView {
+                email: "tester@openagents.com".to_string(),
+                display_name: "Tester".to_string(),
+            }),
+            body: WebBody::Placeholder {
+                heading: "Test".to_string(),
+                description: "Description".to_string(),
+            },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains(&format!("src=\"{HTMX_ASSET_PATH}\"")));
+        assert!(!html.contains("cdn.jsdelivr.net/npm/htmx.org"));
+    }
 }
