@@ -116,6 +116,11 @@ const CACHE_API_NO_STORE: &str = "no-store";
 const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
+const HTML_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
+const HTML_REFERRER_POLICY: &str = "strict-origin-when-cross-origin";
+const HTML_X_FRAME_OPTIONS: &str = "DENY";
+const HTML_PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=()";
+const X_CONTENT_TYPE_OPTIONS_NOSNIFF: &str = "nosniff";
 const CORS_ALLOW_HEADERS: &str = "authorization,content-type,x-request-id,x-xsrf-token,x-client";
 const CORS_ALLOW_METHODS: &str = "GET,POST,PATCH,DELETE,OPTIONS";
 const CORS_MAX_AGE_SECONDS: &str = "600";
@@ -135,11 +140,16 @@ const HEADER_OA_SMOKE_SECRET: &str = "x-oa-smoke-secret";
 const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
 const HEADER_X_FORWARDED_FOR: &str = "x-forwarded-for";
 const HEADER_X_REAL_IP: &str = "x-real-ip";
+const HEADER_CONTENT_SECURITY_POLICY: &str = "content-security-policy";
+const HEADER_PERMISSIONS_POLICY: &str = "permissions-policy";
+const HEADER_REFERRER_POLICY: &str = "referrer-policy";
 const RUNTIME_INTERNAL_BODY_HASH_HEADER: &str = "x-oa-internal-body-sha256";
 const RUNTIME_INTERNAL_KEY_ID_HEADER: &str = "x-oa-internal-key-id";
 const RUNTIME_INTERNAL_NONCE_HEADER: &str = "x-oa-internal-nonce";
 const RUNTIME_INTERNAL_SIGNATURE_HEADER: &str = "x-oa-internal-signature";
 const RUNTIME_INTERNAL_TIMESTAMP_HEADER: &str = "x-oa-internal-timestamp";
+const HEADER_X_CONTENT_TYPE_OPTIONS: &str = "x-content-type-options";
+const HEADER_X_FRAME_OPTIONS: &str = "x-frame-options";
 const MAINTENANCE_BYPASS_QUERY_PARAM: &str = "maintenance_bypass";
 const MAINTENANCE_CACHE_CONTROL: &str = "no-store, no-cache, must-revalidate";
 const THROTTLE_AUTH_EMAIL_LIMIT: usize = 30;
@@ -2633,7 +2643,7 @@ fn web_placeholder_for_path(path: &str) -> (String, String) {
 }
 
 fn web_html_response(page: WebPage) -> Response {
-    (
+    let mut response = (
         StatusCode::OK,
         [
             (CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -2641,7 +2651,9 @@ fn web_html_response(page: WebPage) -> Response {
         ],
         render_maud_page(&page),
     )
-        .into_response()
+        .into_response();
+    apply_html_security_headers(response.headers_mut());
+    response
 }
 
 fn is_hx_request(headers: &HeaderMap) -> bool {
@@ -2672,6 +2684,36 @@ fn htmx_redirect_response(location: &str) -> Response {
         response.headers_mut().insert("HX-Redirect", value);
     }
     response
+}
+
+fn apply_html_security_headers(headers: &mut HeaderMap) {
+    headers.insert(
+        HEADER_CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(HTML_CONTENT_SECURITY_POLICY),
+    );
+    headers.insert(
+        HEADER_REFERRER_POLICY,
+        HeaderValue::from_static(HTML_REFERRER_POLICY),
+    );
+    headers.insert(
+        HEADER_X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static(X_CONTENT_TYPE_OPTIONS_NOSNIFF),
+    );
+    headers.insert(
+        HEADER_X_FRAME_OPTIONS,
+        HeaderValue::from_static(HTML_X_FRAME_OPTIONS),
+    );
+    headers.insert(
+        HEADER_PERMISSIONS_POLICY,
+        HeaderValue::from_static(HTML_PERMISSIONS_POLICY),
+    );
+}
+
+fn apply_static_security_headers(headers: &mut HeaderMap) {
+    headers.insert(
+        HEADER_X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static(X_CONTENT_TYPE_OPTIONS_NOSNIFF),
+    );
 }
 
 async fn route_split_status(
@@ -3022,6 +3064,7 @@ async fn build_static_response(
             HeaderValue::from_str(&etag)
                 .map_err(|_| StaticResponseError::InvalidHeader(etag.clone()))?,
         );
+        apply_static_security_headers(response.headers_mut());
         return Ok(response);
     }
 
@@ -3048,6 +3091,7 @@ async fn build_static_response(
         ETAG,
         HeaderValue::from_str(&etag).map_err(|_| StaticResponseError::InvalidHeader(etag))?,
     );
+    apply_static_security_headers(response.headers_mut());
 
     Ok(response)
 }
@@ -16381,6 +16425,13 @@ mod tests {
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default();
         assert!(content_type.starts_with("text/javascript"));
+        assert_eq!(
+            response
+                .headers()
+                .get(super::HEADER_X_CONTENT_TYPE_OPTIONS)
+                .and_then(|value| value.to_str().ok()),
+            Some(super::X_CONTENT_TYPE_OPTIONS_NOSNIFF)
+        );
 
         Ok(())
     }
@@ -23621,6 +23672,63 @@ mod tests {
         let body = response.into_body().collect().await?.to_bytes();
         let html = String::from_utf8_lossy(&body);
         assert!(html.contains("rust shell"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn html_routes_include_csp_and_security_headers() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let app = build_router(config);
+
+        for path in ["/", "/login", "/feed"] {
+            let request = Request::builder().uri(path).body(Body::empty())?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+
+            assert_eq!(
+                response
+                    .headers()
+                    .get(super::HEADER_CONTENT_SECURITY_POLICY)
+                    .and_then(|value| value.to_str().ok()),
+                Some(super::HTML_CONTENT_SECURITY_POLICY)
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(super::HEADER_X_CONTENT_TYPE_OPTIONS)
+                    .and_then(|value| value.to_str().ok()),
+                Some(super::X_CONTENT_TYPE_OPTIONS_NOSNIFF)
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(super::HEADER_REFERRER_POLICY)
+                    .and_then(|value| value.to_str().ok()),
+                Some(super::HTML_REFERRER_POLICY)
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(super::HEADER_X_FRAME_OPTIONS)
+                    .and_then(|value| value.to_str().ok()),
+                Some(super::HTML_X_FRAME_OPTIONS)
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(super::HEADER_PERMISSIONS_POLICY)
+                    .and_then(|value| value.to_str().ok()),
+                Some(super::HTML_PERMISSIONS_POLICY)
+            );
+        }
 
         Ok(())
     }
