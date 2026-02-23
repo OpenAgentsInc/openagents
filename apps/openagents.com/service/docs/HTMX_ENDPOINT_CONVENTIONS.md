@@ -57,6 +57,12 @@ Current chat partial route contract:
   - emits `HX-Trigger: chat-message-sent`
   - `#chat-thread-content-panel` listens for the trigger and reloads via HTMX GET
 
+Current feed partial route contract:
+- `GET /feed/fragments/main?zone=<zone>` returns:
+  - target fragment: `#feed-main-panel`
+  - out-of-band swap: `#feed-zone-panel` (`hx-swap-oob=\"outerHTML\"`)
+  - links use `hx-push-url` for deep-linkable query state
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:

@@ -111,6 +111,7 @@ use crate::web_htmx::{
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
+    render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
     render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
 };
 
@@ -1387,6 +1388,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     Router::new()
         .route("/", get(web_shell_entry))
         .route("/feed", get(feed_page))
+        .route("/feed/fragments/main", get(feed_main_fragment))
         .route("/feed/shout", post(web_feed_shout))
         .route("/chat/new", post(web_chat_new_thread))
         .route(
@@ -2864,6 +2866,20 @@ fn chat_thread_select_fragment_response(
     if let Some(push_url) = push_url {
         htmx_set_push_url_header(&mut response, push_url);
     }
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn feed_main_select_fragment_response(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    items: &[FeedItemView],
+    zones: &[FeedZoneView],
+) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_feed_main_select_fragment(session, status, items, zones),
+        StatusCode::OK,
+    );
     apply_html_security_headers(response.headers_mut());
     response
 }
@@ -7006,6 +7022,55 @@ async fn feed_page(
         return Ok(web_fragment_response(&page));
     }
     Ok(web_html_response(page))
+}
+
+async fn feed_main_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    Query(query): Query<FeedPageQuery>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    if !classify_htmx_request(&headers).is_hx_request {
+        let suffix = uri
+            .query()
+            .map(|query| format!("?{query}"))
+            .unwrap_or_default();
+        return Ok(Redirect::temporary(&format!("/feed{suffix}")).into_response());
+    }
+
+    let zone = normalize_shout_zone(query.zone.as_deref(), "zone").and_then(|zone| match zone {
+        Some(value) if value == "all" => Ok(None),
+        _ => Ok(zone),
+    })?;
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let since = parse_feed_since(query.since.as_deref())?;
+    let rows = state
+        ._domain_store
+        .list_shouts(zone.as_deref(), limit, None, since)
+        .await
+        .map_err(map_domain_store_error)?;
+    let zones = state
+        ._domain_store
+        .top_shout_zones(20)
+        .await
+        .map_err(map_domain_store_error)?;
+    let status = query_param_value(uri.query(), "status");
+    let items = feed_items_for_web(&state, &rows).await;
+    let zone_views = feed_zones_for_web(&zones, zone.as_deref());
+    let session = session_bundle_from_headers(&state, &headers)
+        .await
+        .ok()
+        .map(|bundle| SessionView {
+            display_name: bundle.user.name.clone(),
+            email: bundle.user.email.clone(),
+        });
+
+    Ok(feed_main_select_fragment_response(
+        session.as_ref(),
+        status.as_deref(),
+        &items,
+        &zone_views,
+    ))
 }
 
 async fn shouts_zones(
@@ -24432,6 +24497,89 @@ mod tests {
         let body = response.into_body().collect().await?.to_bytes();
         let html = String::from_utf8_lossy(&body);
         assert!(html.contains("rust shell"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_main_fragment_zone_transitions_support_named_and_all() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let token = seed_local_test_token(&config, "feed-fragment-zone@openagents.com").await?;
+        let app = build_router(config);
+
+        for payload in [
+            r#"{"body":"Zone-L402-only","zone":"l402"}"#,
+            r#"{"body":"Zone-Dev-only","zone":"dev"}"#,
+            r#"{"body":"Zone-Global-only"}"#,
+        ] {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(payload.to_string()))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
+
+        let named_zone_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=l402")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let named_zone_response = app.clone().oneshot(named_zone_request).await?;
+        assert_eq!(named_zone_response.status(), StatusCode::OK);
+        let named_zone_body = read_text(named_zone_response).await?;
+        assert!(named_zone_body.contains("id=\"feed-main-panel\""));
+        assert!(named_zone_body.contains("id=\"feed-zone-panel\""));
+        assert!(named_zone_body.contains("hx-swap-oob=\"outerHTML\""));
+        assert!(named_zone_body.contains("Zone-L402-only"));
+        assert!(!named_zone_body.contains("Zone-Dev-only"));
+        assert!(!named_zone_body.contains("Zone-Global-only"));
+
+        let all_zone_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=all")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let all_zone_response = app.clone().oneshot(all_zone_request).await?;
+        assert_eq!(all_zone_response.status(), StatusCode::OK);
+        let all_zone_body = read_text(all_zone_response).await?;
+        assert!(all_zone_body.contains("Zone-L402-only"));
+        assert!(all_zone_body.contains("Zone-Dev-only"));
+        assert!(all_zone_body.contains("Zone-Global-only"));
+
+        let non_hx_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=l402")
+            .body(Body::empty())?;
+        let non_hx_response = app.clone().oneshot(non_hx_request).await?;
+        assert_eq!(non_hx_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/feed?zone=l402")
+        );
+
+        let direct_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=l402")
+            .body(Body::empty())?;
+        let direct_response = app.oneshot(direct_request).await?;
+        assert_eq!(direct_response.status(), StatusCode::OK);
+        let direct_body = read_text(direct_response).await?;
+        assert!(direct_body.contains("Zone-L402-only"));
+        assert!(!direct_body.contains("Zone-Dev-only"));
+        assert!(!direct_body.contains("Zone-Global-only"));
 
         Ok(())
     }

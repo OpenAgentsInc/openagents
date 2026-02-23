@@ -376,57 +376,110 @@ fn feed_panel(
 ) -> Markup {
     html! {
         section class="oa-grid feed" {
-            aside class="oa-card oa-feed-zones" {
-                h2 { "Zones" }
-                ul class="oa-feed-zone-list" {
-                    li {
-                        a class={(if zones.iter().all(|zone| !zone.is_active) { "oa-zone-link active" } else { "oa-zone-link" })}
-                          href="/feed?zone=all" {
-                            "all"
-                        }
-                    }
-                    @for zone in zones {
-                        li {
-                            a class={(if zone.is_active { "oa-zone-link active" } else { "oa-zone-link" })}
-                              href={(format!("/feed?zone={}", zone.zone))} {
-                                (zone.zone) " · " (zone.count_24h)
-                            }
-                        }
+            (feed_zone_panel(zones, false))
+            (feed_main_panel(session, status, items))
+        }
+    }
+}
+
+pub fn render_feed_main_select_fragment(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    items: &[FeedItemView],
+    zones: &[FeedZoneView],
+) -> String {
+    html! {
+        (feed_main_panel(session, status, items))
+        (feed_zone_panel(zones, true))
+    }
+    .into_string()
+}
+
+fn feed_zone_panel(zones: &[FeedZoneView], out_of_band: bool) -> Markup {
+    html! {
+        @if out_of_band {
+            aside id="feed-zone-panel" hx-swap-oob="outerHTML" class="oa-card oa-feed-zones" {
+                (feed_zone_panel_body(zones))
+            }
+        } @else {
+            aside id="feed-zone-panel" class="oa-card oa-feed-zones" {
+                (feed_zone_panel_body(zones))
+            }
+        }
+    }
+}
+
+fn feed_zone_panel_body(zones: &[FeedZoneView]) -> Markup {
+    html! {
+        h2 { "Zones" }
+        ul class="oa-feed-zone-list" {
+            li {
+                a class={(if zones.iter().all(|zone| !zone.is_active) { "oa-zone-link active" } else { "oa-zone-link" })}
+                  href="/feed?zone=all"
+                  hx-get="/feed/fragments/main?zone=all"
+                  hx-target="#feed-main-panel"
+                  hx-swap="outerHTML"
+                  hx-push-url="/feed?zone=all"
+                  hx-boost="false" {
+                    "all"
+                }
+            }
+            @for zone in zones {
+                @let zone_route = format!("/feed?zone={}", zone.zone);
+                @let zone_fragment_route = format!("/feed/fragments/main?zone={}", zone.zone);
+                li {
+                    a class={(if zone.is_active { "oa-zone-link active" } else { "oa-zone-link" })}
+                      href=(zone_route.clone())
+                      hx-get=(zone_fragment_route)
+                      hx-target="#feed-main-panel"
+                      hx-swap="outerHTML"
+                      hx-push-url=(zone_route)
+                      hx-boost="false" {
+                        (zone.zone) " · " (zone.count_24h)
                     }
                 }
             }
-            article class="oa-card oa-feed-main" {
-                h2 { "Feed" }
-                (status_slot("feed-status", status))
-                @if session.is_some() {
-                    form method="post" action="/feed/shout" class="oa-form feed-compose"
-                        hx-post="/feed/shout"
-                        hx-target="#feed-status"
-                        hx-swap="outerHTML" {
-                        label for="zone" { "Zone" }
-                        input id="zone" type="text" name="zone" placeholder="global";
-                        label for="body" { "Shout" }
-                        textarea id="body" name="body" rows="3" maxlength="2000" required {}
-                        button type="submit" class="oa-btn primary" { "Post shout" }
-                        span class="htmx-indicator oa-indicator" { "Posting..." }
-                    }
-                } @else {
-                    p class="oa-muted" { "Log in to post shouts." }
+        }
+    }
+}
+
+fn feed_main_panel(
+    session: Option<&SessionView>,
+    status: Option<&str>,
+    items: &[FeedItemView],
+) -> Markup {
+    html! {
+        article id="feed-main-panel" class="oa-card oa-feed-main" {
+            h2 { "Feed" }
+            (status_slot("feed-status", status))
+            @if session.is_some() {
+                form method="post" action="/feed/shout" class="oa-form feed-compose"
+                    hx-post="/feed/shout"
+                    hx-target="#feed-status"
+                    hx-swap="outerHTML" {
+                    label for="zone" { "Zone" }
+                    input id="zone" type="text" name="zone" placeholder="global";
+                    label for="body" { "Shout" }
+                    textarea id="body" name="body" rows="3" maxlength="2000" required {}
+                    button type="submit" class="oa-btn primary" { "Post shout" }
+                    span class="htmx-indicator oa-indicator" { "Posting..." }
                 }
-                div class="oa-feed-items" {
-                    @if items.is_empty() {
-                        div class="oa-feed-empty" { "No feed items yet." }
-                    }
-                    @for item in items {
-                        article class="oa-feed-item" {
-                            header {
-                                span { "#" (item.id) }
-                                span { (item.zone) }
-                                span { "@" (item.author_handle) }
-                                span { (item.created_at) }
-                            }
-                            p { (item.body) }
+            } @else {
+                p class="oa-muted" { "Log in to post shouts." }
+            }
+            div class="oa-feed-items" {
+                @if items.is_empty() {
+                    div class="oa-feed-empty" { "No feed items yet." }
+                }
+                @for item in items {
+                    article class="oa-feed-item" {
+                        header {
+                            span { "#" (item.id) }
+                            span { (item.zone) }
+                            span { "@" (item.author_handle) }
+                            span { (item.created_at) }
                         }
+                        p { (item.body) }
                     }
                 }
             }
@@ -676,8 +729,9 @@ input:focus, textarea:focus {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatMessageView, ChatThreadView, HTMX_ASSET_PATH, SessionView, WebBody, WebPage,
-        render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
+        ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, HTMX_ASSET_PATH, SessionView,
+        WebBody, WebPage, render_main_fragment as render_maud_main_fragment,
+        render_page as render_maud_page,
     };
 
     #[test]
@@ -776,5 +830,44 @@ mod tests {
         assert!(html.contains("hx-target=\"#chat-thread-content-panel\""));
         assert!(html.contains("hx-push-url=\"/chat/thread_abc\""));
         assert!(html.contains("hx-trigger=\"chat-message-sent from:body, every 2s\""));
+    }
+
+    #[test]
+    fn render_feed_zones_include_hx_partial_navigation_attributes() {
+        let page = WebPage {
+            title: "Feed".to_string(),
+            path: "/feed".to_string(),
+            session: None,
+            body: WebBody::Feed {
+                status: None,
+                items: vec![FeedItemView {
+                    id: "42".to_string(),
+                    zone: "l402".to_string(),
+                    author_handle: "tester".to_string(),
+                    body: "hello".to_string(),
+                    created_at: "2026-02-23T00:00:00Z".to_string(),
+                }],
+                zones: vec![
+                    FeedZoneView {
+                        zone: "l402".to_string(),
+                        count_24h: 3,
+                        is_active: true,
+                    },
+                    FeedZoneView {
+                        zone: "dev".to_string(),
+                        count_24h: 1,
+                        is_active: false,
+                    },
+                ],
+            },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains("id=\"feed-zone-panel\""));
+        assert!(html.contains("id=\"feed-main-panel\""));
+        assert!(html.contains("hx-get=\"/feed/fragments/main?zone=all\""));
+        assert!(html.contains("hx-target=\"#feed-main-panel\""));
+        assert!(html.contains("hx-push-url=\"/feed?zone=l402\""));
+        assert!(html.contains("hx-boost=\"false\""));
     }
 }
