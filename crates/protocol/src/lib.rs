@@ -15,6 +15,7 @@
 //! |----------|-------------|--------------|
 //! | `oa.code_chunk_analysis.v1` | Analyze code chunks | Subjective + Judge |
 //! | `oa.retrieval_rerank.v1` | Rerank retrieval candidates | Subjective + Majority |
+//! | `oa.repo_index.v1` | Index and snapshot repository contents | Objective |
 //! | `oa.sandbox_run.v1` | Run commands in sandbox | Objective |
 //!
 //! # Example
@@ -49,7 +50,8 @@ pub mod version;
 pub use hash::{HashError, Hashable, canonical_hash, canonical_json};
 pub use jobs::{
     ChunkAnalysisRequest, ChunkAnalysisResponse, JobEnvelope, JobRequest, JobResponse,
-    RerankRequest, RerankResponse, SandboxRunRequest, SandboxRunResponse,
+    RepoIndexRequest, RepoIndexResponse, RerankRequest, RerankResponse, SandboxRunRequest,
+    SandboxRunResponse,
 };
 pub use provenance::{Provenance, SamplingParams, TokenCounts};
 pub use verification::{AdjudicationStrategy, Verification, VerificationMode};

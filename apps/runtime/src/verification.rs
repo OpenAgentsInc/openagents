@@ -1,10 +1,18 @@
+use protocol::jobs::repo_index::compute_tree_sha256;
 use protocol::jobs::sandbox::SandboxStatus;
-use protocol::{SandboxRunRequest, SandboxRunResponse};
+use protocol::{RepoIndexRequest, RepoIndexResponse, SandboxRunRequest, SandboxRunResponse};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxRunVerification {
     pub passed: bool,
     pub exit_code: i32,
+    pub violations: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoIndexVerification {
+    pub passed: bool,
+    pub tree_sha256: String,
     pub violations: Vec<String>,
 }
 
@@ -133,6 +141,79 @@ pub fn verify_sandbox_run(
     }
 }
 
+pub fn verify_repo_index(
+    request: &RepoIndexRequest,
+    response: &RepoIndexResponse,
+) -> RepoIndexVerification {
+    let mut violations = Vec::new();
+
+    if request.expected_tree_sha256.trim().is_empty() {
+        violations.push("expected_tree_sha256 missing".to_string());
+    }
+
+    let mut seen_paths = std::collections::HashSet::new();
+    for digest in &response.digests {
+        if digest.path.trim().is_empty() {
+            violations.push("digest path is empty".to_string());
+        }
+        if digest.path.starts_with('/') || digest.path.contains('\\') {
+            violations.push(format!("invalid digest path: {}", digest.path));
+        }
+        if digest.path.contains("..") {
+            violations.push(format!("digest path contains '..': {}", digest.path));
+        }
+        if !seen_paths.insert(digest.path.clone()) {
+            violations.push(format!("duplicate digest path: {}", digest.path));
+        }
+        if !is_sha256_hex(digest.sha256.as_str()) {
+            violations.push(format!(
+                "invalid digest sha256 for {}: {}",
+                digest.path, digest.sha256
+            ));
+        }
+    }
+
+    let computed = match compute_tree_sha256(&response.digests) {
+        Ok(value) => value,
+        Err(error) => {
+            violations.push(format!("tree hash compute failed: {error}"));
+            String::new()
+        }
+    };
+
+    if !computed.is_empty() {
+        if response.tree_sha256 != computed {
+            violations.push(format!(
+                "tree_sha256 mismatch: response={} computed={}",
+                response.tree_sha256, computed
+            ));
+        }
+        if !request.expected_tree_sha256.trim().is_empty()
+            && request.expected_tree_sha256 != computed
+        {
+            violations.push(format!(
+                "expected_tree_sha256 mismatch: request={} computed={}",
+                request.expected_tree_sha256, computed
+            ));
+        }
+    }
+
+    let passed = violations.is_empty();
+    RepoIndexVerification {
+        passed,
+        tree_sha256: computed,
+        violations,
+    }
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.len() != 64 {
+        return false;
+    }
+    trimmed.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +280,37 @@ mod tests {
         let outcome = verify_sandbox_run(&request(), &response);
         assert!(!outcome.passed);
         assert!(!outcome.violations.is_empty());
+    }
+
+    #[test]
+    fn repo_index_verification_passes_on_consistent_tree_hash() {
+        let digests = vec![
+            protocol::jobs::repo_index::RepoFileDigest {
+                path: "README.md".to_string(),
+                sha256: "0".repeat(64),
+                bytes: 1,
+            },
+            protocol::jobs::repo_index::RepoFileDigest {
+                path: "src/lib.rs".to_string(),
+                sha256: "1".repeat(64),
+                bytes: 2,
+            },
+        ];
+        let tree = compute_tree_sha256(&digests).expect("tree hash");
+
+        let request = RepoIndexRequest {
+            expected_tree_sha256: tree.clone(),
+            ..Default::default()
+        };
+        let response = RepoIndexResponse {
+            tree_sha256: tree,
+            digests,
+            artifacts: Vec::new(),
+            provenance: protocol::provenance::Provenance::new("test"),
+        };
+
+        let outcome = verify_repo_index(&request, &response);
+        assert!(outcome.passed);
+        assert_eq!(outcome.violations, Vec::<String>::new());
     }
 }

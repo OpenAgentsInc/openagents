@@ -10,11 +10,15 @@
 
 pub mod chunk_analysis;
 pub mod embeddings;
+pub mod repo_index;
 pub mod rerank;
 pub mod sandbox;
 
 pub use chunk_analysis::{ChunkAnalysisRequest, ChunkAnalysisResponse};
 pub use embeddings::{EmbeddingsRequest, EmbeddingsResponse};
+pub use repo_index::{
+    RepoFileDigest, RepoIndexArtifact, RepoIndexRequest, RepoIndexResponse, RepoIndexType,
+};
 pub use rerank::{RerankRequest, RerankResponse};
 pub use sandbox::{SandboxRunRequest, SandboxRunResponse};
 
@@ -151,6 +155,12 @@ pub fn registered_job_types() -> Vec<JobTypeInfo> {
             description: "Rerank retrieval candidates by relevance",
         },
         JobTypeInfo {
+            job_type: RepoIndexRequest::JOB_TYPE,
+            schema_version: RepoIndexRequest::SCHEMA_VERSION,
+            default_verification: Verification::objective(),
+            description: "Generate a verifiable repository index snapshot (digests + artifacts)",
+        },
+        JobTypeInfo {
             job_type: SandboxRunRequest::JOB_TYPE,
             schema_version: SandboxRunRequest::SCHEMA_VERSION,
             default_verification: Verification::objective(),
@@ -176,13 +186,22 @@ mod tests {
     #[test]
     fn test_registered_job_types() {
         let types = registered_job_types();
-        assert_eq!(types.len(), 4);
+        assert_eq!(types.len(), 5);
 
         let chunk_type = types.iter().find(|t| t.job_type.contains("chunk")).unwrap();
         assert_eq!(chunk_type.default_verification.redundancy, 2);
 
         let embed_type = types.iter().find(|t| t.job_type.contains("embed")).unwrap();
         assert_eq!(embed_type.default_verification.redundancy, 1);
+
+        let repo_index = types
+            .iter()
+            .find(|t| t.job_type.contains("repo_index"))
+            .unwrap();
+        assert_eq!(
+            repo_index.default_verification.mode,
+            crate::verification::VerificationMode::Objective
+        );
     }
 
     #[test]

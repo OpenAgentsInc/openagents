@@ -531,6 +531,21 @@ struct SandboxVerificationResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct RepoIndexVerificationBody {
+    request: protocol::RepoIndexRequest,
+    response: protocol::RepoIndexResponse,
+    #[serde(default)]
+    provider_worker_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RepoIndexVerificationResponse {
+    passed: bool,
+    tree_sha256: String,
+    violations: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SettleSandboxRunBody {
     owner_user_id: Option<u64>,
     owner_guest_scope: Option<String>,
@@ -661,6 +676,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/verifications/sandbox-run",
             post(verify_sandbox_run),
+        )
+        .route(
+            "/internal/v1/verifications/repo-index",
+            post(verify_repo_index),
         )
         .route(
             "/internal/v1/treasury/compute/summary",
@@ -1692,6 +1711,29 @@ async fn verify_sandbox_run(
     Ok(Json(SandboxVerificationResponse {
         passed: outcome.passed,
         exit_code: outcome.exit_code,
+        violations: outcome.violations,
+    }))
+}
+
+async fn verify_repo_index(
+    State(state): State<AppState>,
+    Json(body): Json<RepoIndexVerificationBody>,
+) -> Result<Json<RepoIndexVerificationResponse>, ApiError> {
+    let outcome = crate::verification::verify_repo_index(&body.request, &body.response);
+    if let Some(worker_id) = body
+        .provider_worker_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !outcome.violations.is_empty() {
+            apply_provider_violation_strike(&state, worker_id, &outcome.violations).await?;
+        }
+    }
+
+    Ok(Json(RepoIndexVerificationResponse {
+        passed: outcome.passed,
+        tree_sha256: outcome.tree_sha256,
         violations: outcome.violations,
     }))
 }
@@ -5806,6 +5848,96 @@ mod tests {
             Some(false)
         );
         assert_eq!(fail_json.get("exit_code").and_then(Value::as_i64), Some(2));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn repo_index_verification_endpoint_matches_objective_semantics() -> Result<()> {
+        let app = test_router();
+
+        let digests = vec![
+            protocol::jobs::repo_index::RepoFileDigest {
+                path: "README.md".to_string(),
+                sha256: "0".repeat(64),
+                bytes: 1,
+            },
+            protocol::jobs::repo_index::RepoFileDigest {
+                path: "src/lib.rs".to_string(),
+                sha256: "1".repeat(64),
+                bytes: 2,
+            },
+        ];
+        let tree = protocol::jobs::repo_index::compute_tree_sha256(&digests)?;
+
+        let request = protocol::RepoIndexRequest {
+            expected_tree_sha256: tree.clone(),
+            ..Default::default()
+        };
+        let response = protocol::RepoIndexResponse {
+            tree_sha256: tree.clone(),
+            digests: digests.clone(),
+            artifacts: Vec::new(),
+            provenance: protocol::Provenance::new("test"),
+        };
+
+        let ok_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/verifications/repo-index")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "request": request.clone(),
+                        "response": response.clone()
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(ok_response.status(), axum::http::StatusCode::OK);
+        let ok_json = response_json(ok_response).await?;
+        assert_eq!(ok_json.get("passed").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            ok_json.get("tree_sha256").and_then(Value::as_str),
+            Some(tree.as_str())
+        );
+        assert_eq!(
+            ok_json
+                .get("violations")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
+
+        let mut failing_request = request;
+        failing_request.expected_tree_sha256 = "f".repeat(64);
+
+        let fail_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/verifications/repo-index")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "request": failing_request,
+                        "response": response
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(fail_response.status(), axum::http::StatusCode::OK);
+        let fail_json = response_json(fail_response).await?;
+        assert_eq!(
+            fail_json.get("passed").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert!(
+            fail_json
+                .get("violations")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0)
+                > 0
+        );
+
         Ok(())
     }
 
