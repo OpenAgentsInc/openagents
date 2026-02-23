@@ -117,7 +117,7 @@ impl<T: JobResponse> JobEnvelope<T> {
 /// Registry of known job types.
 ///
 /// This provides a way to look up job type metadata.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct JobTypeInfo {
     /// The job type identifier.
     pub job_type: &'static str,

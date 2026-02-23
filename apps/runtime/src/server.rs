@@ -330,6 +330,11 @@ struct ProviderCatalogResponse {
     providers: Vec<ProviderCatalogEntry>,
 }
 
+#[derive(Debug, Serialize)]
+struct JobTypesResponse {
+    job_types: Vec<protocol::jobs::JobTypeInfo>,
+}
+
 #[derive(Debug, Deserialize)]
 struct DriftQuery {
     topic: String,
@@ -414,6 +419,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/catalog/providers",
             get(get_provider_catalog),
+        )
+        .route(
+            "/internal/v1/marketplace/catalog/job-types",
+            get(get_job_types),
         )
         .with_state(state)
 }
@@ -1197,6 +1206,11 @@ async fn get_provider_catalog(
     }
 
     Ok(Json(ProviderCatalogResponse { providers }))
+}
+
+async fn get_job_types() -> Json<JobTypesResponse> {
+    let job_types = protocol::jobs::registered_job_types();
+    Json(JobTypesResponse { job_types })
 }
 
 async fn heartbeat_worker(
@@ -4014,6 +4028,44 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| anyhow!("missing base_url"))?;
         assert_eq!(base_url, "http://127.0.0.1:9999");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn job_type_registry_surfaces_verification_metadata() -> Result<()> {
+        let app = test_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/job-types")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let json = response_json(response).await?;
+        let job_types = json
+            .get("job_types")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| anyhow!("missing job_types array"))?;
+
+        let sandbox = job_types
+            .iter()
+            .find(|value| {
+                value
+                    .get("job_type")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(<protocol::SandboxRunRequest as protocol::JobRequest>::JOB_TYPE)
+            })
+            .ok_or_else(|| anyhow!("missing sandbox job type info"))?;
+
+        let default_verification_mode = sandbox
+            .pointer("/default_verification/mode")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing sandbox default verification mode"))?;
+        assert_eq!(default_verification_mode, "objective");
 
         Ok(())
     }
