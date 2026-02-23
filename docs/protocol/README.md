@@ -13,6 +13,7 @@ This directory is the Rust-era protocol system-of-record.
 - `docs/protocol/codex-khala-vercel-sse-mapping-v1.md`
 - `docs/protocol/client-telemetry-v1.md`
 - `docs/protocol/nexus-nostr-bridge-v1.md`
+- `docs/protocol/marketplace-commerce-grammar-v1.md`
 - `docs/protocol/onyx-integration-contract-v1.md`
 - `docs/protocol/lightning-wallet-executor-receipt-v1.md`
 
@@ -25,6 +26,7 @@ This directory is the Rust-era protocol system-of-record.
 
 - `proto/openagents/control/v1/auth.proto`
 - `proto/openagents/runtime/v1/orchestration.proto`
+- `proto/openagents/runtime/v1/commerce.proto`
 - `proto/openagents/codex/v1/events.proto`
 - `proto/openagents/codex/v1/workers.proto`
 - `proto/openagents/codex/v1/auth.proto`

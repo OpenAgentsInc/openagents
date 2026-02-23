@@ -87,6 +87,34 @@ Notes:
 - Receipt pointers are not an authority source. The authoritative receipt remains in the runtime receipt artifact.
 - Canonical receipt hashing rules for treasury receipts are governed by `ADR-0006` (this bridge pointer is a Phase-0 minimal interop affordance).
 
+## Phase-1+ Nostr Event Surface (Marketplace Commerce)
+
+Phase 1 may mirror **low-rate marketplace commerce messages** to Nostr to enable
+cross-domain interop (agents/providers that do not run inside a single operator
+domain).
+
+These are portable contract surfaces (RFQ/Offer/Quote/Accept/Cancel/Receipt/Refund/Dispute),
+not streaming/orchestration chatter.
+
+Canonical grammar:
+
+- `docs/protocol/marketplace-commerce-grammar-v1.md`
+- `proto/openagents/runtime/v1/commerce.proto` (`openagents.runtime.v1`)
+
+Recommended Nostr encoding:
+
+- Kind: **30078** (NIP-78 application data)
+- `["d","openagents:commerce:<kind>:<message_id>"]`
+- Tags include:
+  - `oa_schema=openagents.bridge.commerce_message.v1`
+  - `oa_commerce_kind=rfq|offer|quote|accept|cancel|receipt|refund|dispute`
+  - linkage tags (`oa_rfq_id`, `oa_quote_id`, `oa_order_id`, etc.) when applicable
+
+Important constraint:
+
+- Commerce events mirrored to Nostr do not mutate authority directly; authority
+  application remains authenticated HTTP (`INV-02`) and produces receipts.
+
 ## Explicit Non-Goals (Phase 0)
 
 - No job streaming, token streams, or internal coordination mirrored to Nostr.

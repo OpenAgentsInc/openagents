@@ -22,14 +22,20 @@ pub enum BridgeError {
     Serialization(String),
 }
 
-/// Phase-0 Bridge boundary (v1) produces only:
+/// Bridge boundary (v1) surfaces.
+///
+/// Phase 0 mirrors only:
 /// - NIP-89 handler info events for provider ads (kind 31990)
 /// - NIP-78 app data events for receipt pointers (kind 30078)
+///
+/// Phase 1+ may additionally mirror low-rate marketplace commerce messages via NIP-78
+/// (see `docs/protocol/marketplace-commerce-grammar-v1.md`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BridgeEventKind {
     ProviderAd,
     ReceiptPointer,
+    CommerceMessage,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,6 +94,60 @@ pub struct ReceiptPointerV1 {
     pub receipt_sha256: String,
     pub settlement_status: String,
     pub receipt_url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CommerceMessageKindV1 {
+    Rfq,
+    Offer,
+    Quote,
+    Accept,
+    Cancel,
+    Receipt,
+    Refund,
+    Dispute,
+}
+
+impl CommerceMessageKindV1 {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Rfq => "rfq",
+            Self::Offer => "offer",
+            Self::Quote => "quote",
+            Self::Accept => "accept",
+            Self::Cancel => "cancel",
+            Self::Receipt => "receipt",
+            Self::Refund => "refund",
+            Self::Dispute => "dispute",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommerceMessageV1 {
+    pub message_id: String,
+    pub kind: CommerceMessageKindV1,
+    pub marketplace_id: String,
+    pub actor_id: String,
+    pub created_at_unix: u64,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rfq_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+
+    pub body: serde_json::Value,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -240,6 +300,77 @@ pub fn build_receipt_pointer_event(
     Ok(event)
 }
 
+pub fn build_commerce_message_event(
+    secret_key: &[u8; 32],
+    created_at: Option<u64>,
+    payload: &CommerceMessageV1,
+) -> Result<Event, BridgeError> {
+    if payload.message_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "message_id must not be empty".to_string(),
+        ));
+    }
+    if payload.marketplace_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "marketplace_id must not be empty".to_string(),
+        ));
+    }
+    if payload.actor_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "actor_id must not be empty".to_string(),
+        ));
+    }
+
+    let identifier = format!(
+        "openagents:commerce:{}:{}",
+        payload.kind.as_str(),
+        payload.message_id
+    );
+    let content = serde_json::to_string(payload)
+        .map_err(|err| BridgeError::Serialization(err.to_string()))?;
+    let body_sha256 = receipt_sha256_from_utf8(&content);
+
+    let mut app = AppData::new(identifier, content);
+    app.add_tag(vec![
+        "oa_schema".to_string(),
+        "openagents.bridge.commerce_message.v1".to_string(),
+    ]);
+    app.add_tag(vec![
+        "oa_commerce_kind".to_string(),
+        payload.kind.as_str().to_string(),
+    ]);
+    app.add_tag(vec![
+        "oa_marketplace_id".to_string(),
+        payload.marketplace_id.clone(),
+    ]);
+    app.add_tag(vec!["oa_actor_id".to_string(), payload.actor_id.clone()]);
+    app.add_tag(vec!["oa_body_sha256".to_string(), body_sha256.clone()]);
+
+    let linkage_tags: [(&str, &Option<String>); 7] = [
+        ("oa_rfq_id", &payload.rfq_id),
+        ("oa_offer_id", &payload.offer_id),
+        ("oa_quote_id", &payload.quote_id),
+        ("oa_order_id", &payload.order_id),
+        ("oa_receipt_id", &payload.receipt_id),
+        ("oa_objective_hash", &payload.objective_hash),
+        ("oa_run_id", &payload.run_id),
+    ];
+    for (tag, value) in linkage_tags {
+        if let Some(value) = value.as_ref().filter(|v| !v.trim().is_empty()) {
+            app.add_tag(vec![tag.to_string(), value.clone()]);
+        }
+    }
+
+    let template = EventTemplate {
+        created_at: created_at.unwrap_or_else(now_unix_seconds),
+        kind: KIND_APP_DATA as u16,
+        tags: app.to_tags(),
+        content: app.content.clone(),
+    };
+    let event = finalize_event(&template, secret_key)?;
+    Ok(event)
+}
+
 pub struct BridgeNostrPublisher {
     relays: Vec<String>,
     pool: RelayPool,
@@ -287,13 +418,56 @@ pub fn validate_phase0_bridge_event(event: &Event) -> Result<BridgeEventKind, Br
         return Ok(BridgeEventKind::ProviderAd);
     }
     if u64::from(event.kind) == KIND_APP_DATA {
-        return Ok(BridgeEventKind::ReceiptPointer);
+        if event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.receipt_ptr.v1"
+        }) {
+            return Ok(BridgeEventKind::ReceiptPointer);
+        }
+        return Err(BridgeError::InvalidInput(
+            "unsupported Phase-0 app-data schema (expected receipt_ptr)".to_string(),
+        ));
     }
 
     Err(BridgeError::InvalidInput(format!(
         "unsupported Phase-0 bridge event kind: {}",
         event.kind
     )))
+}
+
+pub fn validate_bridge_event_v1(event: &Event) -> Result<BridgeEventKind, BridgeError> {
+    if !verify_event(event)? {
+        return Err(BridgeError::InvalidInput(
+            "event signature/id verification failed".to_string(),
+        ));
+    }
+
+    if event.kind == KIND_HANDLER_INFO {
+        return Ok(BridgeEventKind::ProviderAd);
+    }
+
+    if u64::from(event.kind) != KIND_APP_DATA {
+        return Err(BridgeError::InvalidInput(format!(
+            "unsupported bridge event kind: {}",
+            event.kind
+        )));
+    }
+
+    if event
+        .tags
+        .iter()
+        .any(|t| t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.receipt_ptr.v1")
+    {
+        return Ok(BridgeEventKind::ReceiptPointer);
+    }
+    if event.tags.iter().any(|t| {
+        t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.commerce_message.v1"
+    }) {
+        return Ok(BridgeEventKind::CommerceMessage);
+    }
+
+    Err(BridgeError::InvalidInput(
+        "unsupported bridge app-data schema".to_string(),
+    ))
 }
 
 #[cfg(test)]
@@ -393,6 +567,64 @@ mod tests {
                 .tags
                 .iter()
                 .any(|t| t.len() >= 2 && t[0] == "oa_receipt_sha256" && t[1] == receipt_sha256)
+        );
+    }
+
+    #[test]
+    fn commerce_message_event_is_signed_and_v1_valid() {
+        let secret = nostr::generate_secret_key();
+        let payload = CommerceMessageV1 {
+            message_id: "msg-1".to_string(),
+            kind: CommerceMessageKindV1::Quote,
+            marketplace_id: "market-openagents".to_string(),
+            actor_id: "provider-local-1".to_string(),
+            created_at_unix: 1_700_000_002,
+            rfq_id: Some("rfq-1".to_string()),
+            offer_id: Some("offer-1".to_string()),
+            quote_id: Some("quote-1".to_string()),
+            order_id: None,
+            receipt_id: None,
+            objective_hash: Some("sha256:jobhash".to_string()),
+            run_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
+            body: serde_json::json!({
+                "total_msats": 1234,
+                "valid_until_unix": 1_700_000_999
+            }),
+        };
+
+        let event = match build_commerce_message_event(&secret, Some(1_700_000_002), &payload) {
+            Ok(event) => event,
+            Err(err) => panic!("build_commerce_message_event failed: {err}"),
+        };
+
+        assert!(
+            validate_phase0_bridge_event(&event).is_err(),
+            "Phase-0 validator must reject commerce messages"
+        );
+
+        let kind = match validate_bridge_event_v1(&event) {
+            Ok(kind) => kind,
+            Err(err) => panic!("validate_bridge_event_v1 failed: {err}"),
+        };
+
+        assert!(matches!(kind, BridgeEventKind::CommerceMessage));
+        assert_eq!(u64::from(event.kind), KIND_APP_DATA);
+        assert!(event.tags.iter().any(|t| t.len() >= 2
+            && t[0] == "d"
+            && t[1].starts_with("openagents:commerce:quote:")));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_quote_id" && t[1] == "quote-1")
+        );
+
+        let content_sha = receipt_sha256_from_utf8(&event.content);
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_body_sha256" && t[1] == content_sha)
         );
     }
 }
