@@ -22,6 +22,12 @@ For mutation handlers that are reachable from forms:
 - Status/error slots should use stable IDs so swaps are deterministic.
 - Fragment responses are `text/html; charset=utf-8` with `Cache-Control: no-store`.
 
+## Boosted Navigation Contract
+
+- Shell container uses `hx-boost="true"` with a stable target (`#oa-main-shell`).
+- Internal route links keep plain `href` for no-JS fallback and direct loads.
+- Exclusion list (must opt out with `hx-boost="false"`): external absolute URLs, download/file links, and links opened in new tabs.
+
 ## Redirect Contract
 
 - HTMX redirects: HTTP 200 + `HX-Redirect`.

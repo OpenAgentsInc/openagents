@@ -85,9 +85,14 @@ pub fn render_page(page: &WebPage) -> String {
             body {
                 div class="oa-bg" {}
                 div class="oa-noise" {}
-                div class="oa-app" {
+                div class="oa-app"
+                    id="oa-shell"
+                    hx-boost="true"
+                    hx-target="#oa-main-shell"
+                    hx-select="#oa-main-shell"
+                    hx-push-url="true" {
                     (topbar(&page.path, page.session.as_ref()))
-                    main class="oa-main" {
+                    main id="oa-main-shell" class="oa-main" {
                         @match &page.body {
                             WebBody::Login { status } => {
                                 (login_panel(status.as_deref()))
@@ -602,5 +607,27 @@ mod tests {
         let html = render_maud_page(&page);
         assert!(html.contains(&format!("src=\"{HTMX_ASSET_PATH}\"")));
         assert!(!html.contains("cdn.jsdelivr.net/npm/htmx.org"));
+    }
+
+    #[test]
+    fn render_page_enables_hx_boosted_navigation_on_shell() {
+        let page = WebPage {
+            title: "Feed".to_string(),
+            path: "/feed".to_string(),
+            session: None,
+            body: WebBody::Placeholder {
+                heading: "Feed".to_string(),
+                description: "Feed body".to_string(),
+            },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains("id=\"oa-shell\""));
+        assert!(html.contains("hx-boost=\"true\""));
+        assert!(html.contains("hx-target=\"#oa-main-shell\""));
+        assert!(html.contains("hx-select=\"#oa-main-shell\""));
+        assert!(html.contains("hx-push-url=\"true\""));
+        assert!(html.contains("id=\"oa-main-shell\""));
+        assert!(html.contains("href=\"/feed\""));
     }
 }

@@ -23652,6 +23652,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn feed_page_hx_boost_request_serves_shell_swap_target() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/feed")
+            .header("hx-request", "true")
+            .header("hx-boosted", "true")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/html"));
+
+        let body = response.into_body().collect().await?.to_bytes();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("id=\"oa-shell\""));
+        assert!(html.contains("id=\"oa-main-shell\""));
+        assert!(html.contains("hx-boost=\"true\""));
+        assert!(html.contains("href=\"/feed\""));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn html_routes_include_csp_and_security_headers() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
