@@ -78,9 +78,9 @@ Cloud Run deploy + migrate (required sequence):
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/<project>/openagents-runtime/runtime:<tag> \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
+IMAGE=us-central1-docker.pkg.dev/<project>/openagents-runtime/runtime-rust:<tag> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
 
@@ -89,8 +89,8 @@ Mandatory post-deploy migration rerun command:
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
 apps/runtime/deploy/cloudrun/run-migrate-job.sh
 ```
 

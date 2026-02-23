@@ -33,7 +33,7 @@ gcloud builds submit \
 
 Expected outcome:
 - Image pushed to Artifact Registry:
-  - `us-central1-docker.pkg.dev/<PROJECT_ID>/openagents-runtime/runtime:<TAG>`
+  - `us-central1-docker.pkg.dev/<PROJECT_ID>/openagents-runtime/runtime-rust:<TAG>`
 
 ## 3. Deploy manifests
 
@@ -61,7 +61,7 @@ Use the post-deploy gate runner:
 
 ```bash
 NAMESPACE=<NAMESPACE> \
-IMAGE=us-central1-docker.pkg.dev/<PROJECT_ID>/openagents-runtime/runtime:<TAG> \
+IMAGE=us-central1-docker.pkg.dev/<PROJECT_ID>/openagents-runtime/runtime-rust:<TAG> \
 apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 ```
 

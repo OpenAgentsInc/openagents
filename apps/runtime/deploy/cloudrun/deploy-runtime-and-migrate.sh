@@ -22,8 +22,8 @@ require_command gcloud
 
 GCP_PROJECT="${GCP_PROJECT:-openagentsgemini}"
 GCP_REGION="${GCP_REGION:-us-central1}"
-RUNTIME_SERVICE="${RUNTIME_SERVICE:-openagents-runtime}"
-MIGRATE_JOB="${MIGRATE_JOB:-openagents-runtime-migrate}"
+RUNTIME_SERVICE="${RUNTIME_SERVICE:-runtime}"
+MIGRATE_JOB="${MIGRATE_JOB:-runtime-migrate}"
 IMAGE="${IMAGE:-}"
 DEPLOY_NO_TRAFFIC="${DEPLOY_NO_TRAFFIC:-0}"
 RUNTIME_DEPLOY_EXTRA_ARGS="${RUNTIME_DEPLOY_EXTRA_ARGS:-}"

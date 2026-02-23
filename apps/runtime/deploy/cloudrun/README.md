@@ -5,9 +5,9 @@ Canonical deploy path (required):
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime:<TAG> \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime-rust:<TAG> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
 
@@ -24,7 +24,7 @@ Manual guard checks:
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
 apps/runtime/deploy/cloudrun/check-migration-drift.sh
 ```

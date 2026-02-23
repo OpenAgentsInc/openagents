@@ -17,7 +17,7 @@ From repo root:
 
 ```bash
 NAMESPACE=staging \
-IMAGE=us-central1-docker.pkg.dev/<project>/openagents-runtime/runtime:<tag> \
+IMAGE=us-central1-docker.pkg.dev/<project>/openagents-runtime/runtime-rust:<tag> \
 apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 ```
 

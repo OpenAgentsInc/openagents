@@ -27,11 +27,11 @@ Cross-environment release validation gate:
      - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service-staging IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/service/deploy/deploy-staging.sh`
    - Runbook:
      - `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
-3. `openagents-runtime`
+3. `runtime` (Rust)
    - Build image:
      - `gcloud builds submit --config apps/runtime/deploy/cloudbuild.yaml --substitutions _TAG=\"$(git rev-parse --short HEAD)\" .`
    - Deploy + mandatory migration:
-     - `GCP_PROJECT=openagentsgemini GCP_REGION=us-central1 RUNTIME_SERVICE=openagents-runtime MIGRATE_JOB=openagents-runtime-migrate IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime:<TAG> apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`
+     - `GCP_PROJECT=openagentsgemini GCP_REGION=us-central1 RUNTIME_SERVICE=runtime MIGRATE_JOB=runtime-migrate IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime-rust:<TAG> apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`
    - Mandatory migrate rerun helper:
      - `apps/runtime/deploy/cloudrun/run-migrate-job.sh`
 4. `lightning-ops`

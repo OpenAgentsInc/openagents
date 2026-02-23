@@ -17,24 +17,24 @@ steps:
       - -f
       - apps/runtime/Dockerfile
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:${_TAG}
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:latest-rust
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:${_TAG}
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:latest-rust
 
 images:
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime-rust:latest-rust
 
 options:
   logging: CLOUD_LOGGING_ONLY
