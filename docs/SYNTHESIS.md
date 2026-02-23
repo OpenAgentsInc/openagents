@@ -13,6 +13,11 @@
 - **Budgets**: Autonomy levels, spending caps, approval workflows
 - **Transparency**: Trajectory logging with cryptographic proofs
 
+**Autopilot (product):**
+- **Primary job:** a cross-platform coding agent that turns repo issues into verified PRs within a budget (receipts + replay artifacts).
+- **Surface roles:** desktop executes runs (Codex + tools + sandbox verification); web and iOS are control/history/approvals surfaces (capabilities differ by surface).
+- **Compute tie-in:** Autopilot is the guaranteed buyer for OpenAgents Compute; desktop can optionally contribute compute (Pylon/provider mode) to earn credits and strengthen the supply side.
+
 **The wedge → platform path:**
 1. Autopilot for repositories (shipping now) — the wedge
 2. Trajectory + issue infrastructure (moat) — data flywheel

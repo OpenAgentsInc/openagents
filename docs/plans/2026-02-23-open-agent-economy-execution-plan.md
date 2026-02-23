@@ -135,6 +135,40 @@ Examples:
 
 Class 2 traffic is protected by authenticated transports + per-session keys. Optional audit hooks (future): sign a Merkle root per N messages to provide tamper evidence without per-message signature cost.
 
+### 4.3) Autopilot (Product Definition)
+
+Autopilot is the flagship product and the liquidity bootstrap wedge.
+
+Product one-liner:
+
+- **Autopilot turns repo issues into verified PRs, within a budget, with receipts and replay artifacts.**
+
+Primary job (Phase 0):
+
+- **Coding agent wedge:** issue -> patch -> sandbox verify -> verified artifacts -> PR/update -> close.
+- **Guaranteed buyer:** Autopilot buys OpenAgents Compute jobs by default to create a demand floor.
+
+Built-in powers (Phase 0 where needed; expanded later):
+
+- **Codex-backed coding:** Codex app-server is the Phase 0 interactive backend (requires a ChatGPT-linked account).
+- **Tooling with proof:** tools are policy-gated and produce deterministic receipts + replay logs.
+- **Cross-surface control:** one identity across surfaces; capabilities differ per surface (desktop executes; web/mobile control and review).
+- **Optional compute contribution (desktop):** desktop can run a provider mode (Pylon/OpenAgents Compute) to earn credits and strengthen supply liquidity. Default is off and must be resource-capped and instantly disableable.
+
+What Autopilot is not (Phase 0):
+
+- Not a generalized "personal life agent" with open-ended memory/goals. That is a later expansion built on the same identity + budget + receipts model.
+
+### 4.4) Surface Capability Matrix (Explicit Non-Parity)
+
+Autopilot is multi-surface, but parity is not promised. One identity, different roles:
+
+| Surface | Role | Must-Do in Phase 0 | Later |
+|---|---|---|---|
+| Desktop (`apps/autopilot-desktop/`) | Execute + admin | Codex tool harness; repo ops; sandbox verification; artifact/receipt emission; optional compute provider toggle | local-model backends; fleet ops; deep policy UX |
+| Web (`apps/openagents.com/*`) | Control + history | Run/thread list; artifacts; receipts; budgets; replay explorer | org/team admin; billing; marketplace ops |
+| Mobile (`apps/autopilot-ios/`) | Approvals + alerts | Notifications + status; lightweight review; emergency stop/disable | richer remote ops; delegated approvals; fleet dashboards |
+
 ## 5) Synthesis Coverage Map
 
 | Synthesis Scope | Implementation Coverage | Issue Range | Priority |
@@ -199,6 +233,8 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-002` - Instrument wedge baseline metrics. - Add telemetry for leverage, quality, cost, and completion across autonomous loops.
 - `OA-ECON-003` - Harden autonomous issue intake and execution loop. - Ensure claim -> checkout -> patch -> sandbox run -> report/PR update -> verify -> close cycle is resilient under retries and crashes.
 - `OA-ECON-004` - Ship Verified Patch Bundle pipeline. - Emit signed action logs, diffs, tests, and receipts for each autonomous run.
+- `OA-ECON-198` - Harden Codex app-server protocol integration. - Codex is the Phase 0 coding backend; ensure robust tool, event, approval, and persistence semantics.
+- `OA-ECON-200` - Finalize Codex tool-harness adapter boundary policy (minimal). - Bound external adapter lanes for Codex + tools with receipts/idempotency; keep migration-safe interfaces for future non-Codex backends.
 - `OA-ECON-005` - Implement Autopilot demand-floor compute procurement. - Route autopilot workload as guaranteed buyer demand for marketplace providers.
 - `OA-ECON-006` - Enforce org/repo/issue budget reservation pipeline. - Add hierarchical reservation and settlement for every compute purchase.
 - `OA-ECON-007` - Add routing modes for user packaging. - Implement Cheapest/Balanced/Fastest policy paths without exposing market complexity to end users.
@@ -324,9 +360,7 @@ Phase 0 ships Nexus intra-domain live lanes + a minimal Bridge that makes provid
 - `OA-ECON-195` - Implement agent-requested escalation API. - Allow self-escalation when confidence or risk thresholds trip.
 - `OA-ECON-196` - Implement sub-agent lifecycle manager. - Manage spawned specialist agent runs under one orchestrator session.
 - `OA-ECON-197` - Complete ACP adapter parity. - Support editor-to-agent JSON-RPC lanes with replay compatibility.
-- `OA-ECON-198` - Harden Codex app-server protocol integration. - Ensure robust tool, event, and persistence semantics.
 - `OA-ECON-199` - Complete local backend parity lane. - Support on-device/open-weight backends through common runtime interfaces.
-- `OA-ECON-200` - Finalize external provider adapter boundary policy. - Keep adapter lanes bounded and migration-safe.
 - `OA-ECON-201` - Implement fleet leaderboard and performance overlays. - Surface operator-relevant comparative performance views.
 - `OA-ECON-202` - Implement earnings HUD and minimap visuals. - Show economic and operational state in one command surface.
 - `OA-ECON-203` - Implement control groups and hotkey workflows. - Enable rapid fleet operations from native UI.
@@ -537,7 +571,7 @@ Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`O
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.

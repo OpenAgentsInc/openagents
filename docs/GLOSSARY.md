@@ -160,6 +160,8 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 | Term | Definition |
 |------|------------|
+| **Autopilot** | Flagship product: cross-platform coding agent that turns repo issues into verified PRs within a budget, emitting receipts + replay artifacts. Desktop is the execution surface; web and iOS are control/history/monitor surfaces (capabilities differ by surface). |
+| **OpenAgents Compute** | Public-facing name of the compute network + marketplace. Providers run sandbox/inference workloads and get paid after verification; Autopilot is the initial guaranteed buyer to bootstrap liquidity. |
 | **Autonomy-as-a-Service (AaaS)** | Bounded, auditable delegation sold as a contracted outcome over time. Defined by scope, horizon, constraints, verification, and escalation behavior. |
 | **Predictable Autonomy** | The product promise of AaaS: reliable throughput with known failure modes and objective verification, not just “model output.” |
 | **Autonomy SLA** | The explicit service contract for predictable autonomy (scope + horizon + constraints + verification + escalation). |

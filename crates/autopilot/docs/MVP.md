@@ -5,6 +5,10 @@ with a CLI that shares the same app-server runtime, so the UI and command line
 experience stay aligned while still supporting a fully autonomous mode through
 Adjutant and DSPy.
 
+Autopilot is a multi-surface product, but the MVP is intentionally desktop-first:
+- Desktop is the execution surface (Codex + tools + sandbox verification).
+- Web and iOS surfaces are control/history/monitor lanes (capabilities differ; no parity promise).
+
 For the full MVP reference, see `MVP_COMPREHENSIVE.md` in this folder.
 
 ## User experience

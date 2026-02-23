@@ -15,7 +15,7 @@ It does NOT run agents. For that, you need a **runtime**:
 | Runtime | Description |
 |---------|-------------|
 | [**Pylon**](../pylon) | Local runtime - runs on your device |
-| [**Nexus**](../nexus) | Cloud runtime - runs on our infrastructure |
+| **Nexus** | Hosted operator-domain fabric (relay + runtime). Not a crate in this repo; see `../pylon/README.md` ("Pylon vs Nexus") and `../../docs/transcripts/203-pylon-and-nexus.md`. |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

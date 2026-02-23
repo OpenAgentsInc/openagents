@@ -1,18 +1,20 @@
 # OpenAgents
 
-OpenAgents is an open platform for running and supervising AI agents across web, desktop, and iOS.
+OpenAgents builds **Autopilot**: a cross-platform coding agent that turns repo issues into verified PRs, within a budget, with receipts + replay artifacts.
 
-The system is built around a shared runtime/control model so agent sessions can be observed, replayed, and administered across surfaces instead of being tied to one client.
+Under the hood, the system is built around a shared runtime/control model so agent sessions can be observed, replayed, and administered across surfaces instead of being tied to one client.
 
-Use OpenAgents:
-- Web: [openagents.com](https://openagents.com)
-- Desktop client: `apps/autopilot-desktop/`
-- iOS client: `apps/autopilot-ios/`
+Surfaces (explicit non-parity):
+- Desktop (execution): `apps/autopilot-desktop/`
+- Web (control/history): `apps/openagents.com/web-shell/`
+- iOS (control/monitor): `apps/autopilot-ios/`
+
+Optional: desktop can contribute compute to **OpenAgents Compute** by running provider mode (Pylon), earning credits and strengthening supply liquidity.
 
 Core services:
 - Runtime authority: `apps/runtime/`
 - Control service + site host: `apps/openagents.com/service/`
-- Web shell: `apps/openagents.com/web-shell/`
+- Web shell bundle: `apps/openagents.com/web-shell/`
 
 ## Run Locally
 

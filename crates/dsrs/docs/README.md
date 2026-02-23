@@ -268,7 +268,7 @@ and result interpretation.
 dsrs integrates with the OpenAgents stack:
 
 1. **Pylon** - Provides inference (local/swarm) and sandbox execution
-2. **Nexus** - Nostr relay for job coordination
+2. **Nexus** - Intra-domain fabric (Nostr-compatible) for job coordination + streaming; Nostr is the interop substrate across operator domains
 3. **Runtime** - HUD callbacks for real-time observability
 4. **Protocol** - Canonical hashing for compiled module IDs
 
