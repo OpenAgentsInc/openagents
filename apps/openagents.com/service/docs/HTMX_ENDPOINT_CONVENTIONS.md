@@ -62,6 +62,9 @@ Current feed partial route contract:
   - target fragment: `#feed-main-panel`
   - out-of-band swap: `#feed-zone-panel` (`hx-swap-oob=\"outerHTML\"`)
   - links use `hx-push-url` for deep-linkable query state
+- `GET /feed/fragments/items?zone=<zone>&limit=<n>&before_id=<cursor>` returns:
+  - append-only item cards (for `#feed-items-panel`)
+  - out-of-band `#feed-more-panel` update with next cursor or terminal `No more items.`
 - `POST /feed/shout` (HTMX mode):
   - returns `#feed-status` fragment
   - emits `HX-Trigger: feed-shout-posted`

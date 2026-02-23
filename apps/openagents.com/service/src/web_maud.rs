@@ -55,6 +55,10 @@ pub enum WebBody {
         status: Option<String>,
         items: Vec<FeedItemView>,
         zones: Vec<FeedZoneView>,
+        next_cursor: Option<String>,
+        current_zone: Option<String>,
+        page_limit: u64,
+        since: Option<String>,
     },
     Placeholder {
         heading: String,
@@ -170,8 +174,25 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                         messages
                     ))
                 }
-                WebBody::Feed { status, items, zones } => {
-                    (feed_panel(page.session.as_ref(), status.as_deref(), items, zones))
+                WebBody::Feed {
+                    status,
+                    items,
+                    zones,
+                    next_cursor,
+                    current_zone,
+                    page_limit,
+                    since,
+                } => {
+                    (feed_panel(
+                        page.session.as_ref(),
+                        status.as_deref(),
+                        items,
+                        zones,
+                        next_cursor.as_deref(),
+                        current_zone.as_deref(),
+                        *page_limit,
+                        since.as_deref(),
+                    ))
                 }
                 WebBody::Placeholder { heading, description } => {
                     (placeholder_panel(heading, description))
@@ -373,12 +394,24 @@ fn feed_panel(
     status: Option<&str>,
     items: &[FeedItemView],
     zones: &[FeedZoneView],
+    next_cursor: Option<&str>,
+    current_zone: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
 ) -> Markup {
-    let active_zone = active_feed_zone(zones);
+    let active_zone = current_zone.or_else(|| active_feed_zone(zones));
     html! {
         section class="oa-grid feed" {
             (feed_zone_panel(zones, false))
-            (feed_main_panel(session, status, items, active_zone))
+            (feed_main_panel(
+                session,
+                status,
+                items,
+                active_zone,
+                next_cursor,
+                page_limit,
+                since
+            ))
         }
     }
 }
@@ -388,11 +421,53 @@ pub fn render_feed_main_select_fragment(
     status: Option<&str>,
     items: &[FeedItemView],
     zones: &[FeedZoneView],
+    next_cursor: Option<&str>,
+    current_zone: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
 ) -> String {
-    let active_zone = active_feed_zone(zones);
+    let active_zone = current_zone.or_else(|| active_feed_zone(zones));
     html! {
-        (feed_main_panel(session, status, items, active_zone))
+        (feed_main_panel(
+            session,
+            status,
+            items,
+            active_zone,
+            next_cursor,
+            page_limit,
+            since
+        ))
         (feed_zone_panel(zones, true))
+    }
+    .into_string()
+}
+
+pub fn render_feed_items_append_fragment(
+    items: &[FeedItemView],
+    next_cursor: Option<&str>,
+    current_zone: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
+) -> String {
+    let zone_query = current_zone.unwrap_or("all");
+    html! {
+        @for item in items {
+            (feed_item_card(item))
+        }
+        div id="feed-more-panel" hx-swap-oob="outerHTML" class="oa-feed-more" {
+            @if let Some(cursor) = next_cursor {
+                @let route = feed_items_fragment_route(zone_query, page_limit, since, cursor);
+                button class="oa-btn subtle"
+                    type="button"
+                    hx-get=(route)
+                    hx-target="#feed-items-panel"
+                    hx-swap="beforeend" {
+                    "Load more"
+                }
+            } @else {
+                span class="oa-muted" { "No more items." }
+            }
+        }
     }
     .into_string()
 }
@@ -450,10 +525,14 @@ fn feed_main_panel(
     status: Option<&str>,
     items: &[FeedItemView],
     active_zone: Option<&str>,
+    next_cursor: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
 ) -> Markup {
     let refresh_route = active_zone
         .map(|zone| format!("/feed/fragments/main?zone={zone}"))
         .unwrap_or_else(|| "/feed/fragments/main?zone=all".to_string());
+    let zone_query = active_zone.unwrap_or("all");
     html! {
         article id="feed-main-panel" class="oa-card oa-feed-main"
             hx-get=(refresh_route)
@@ -477,22 +556,15 @@ fn feed_main_panel(
             } @else {
                 p class="oa-muted" { "Log in to post shouts." }
             }
-            div class="oa-feed-items" {
+            div id="feed-items-panel" class="oa-feed-items" {
                 @if items.is_empty() {
                     div class="oa-feed-empty" { "No feed items yet." }
                 }
                 @for item in items {
-                    article class="oa-feed-item" {
-                        header {
-                            span { "#" (item.id) }
-                            span { (item.zone) }
-                            span { "@" (item.author_handle) }
-                            span { (item.created_at) }
-                        }
-                        p { (item.body) }
-                    }
+                    (feed_item_card(item))
                 }
             }
+            (feed_load_more_panel(next_cursor, zone_query, page_limit, since))
         }
     }
 }
@@ -502,6 +574,61 @@ fn active_feed_zone(zones: &[FeedZoneView]) -> Option<&str> {
         .iter()
         .find(|zone| zone.is_active)
         .map(|zone| zone.zone.as_str())
+}
+
+fn feed_item_card(item: &FeedItemView) -> Markup {
+    html! {
+        article class="oa-feed-item" {
+            header {
+                span { "#" (item.id) }
+                span { (item.zone) }
+                span { "@" (item.author_handle) }
+                span { (item.created_at) }
+            }
+            p { (item.body) }
+        }
+    }
+}
+
+fn feed_load_more_panel(
+    next_cursor: Option<&str>,
+    zone: &str,
+    page_limit: u64,
+    since: Option<&str>,
+) -> Markup {
+    html! {
+        div id="feed-more-panel" class="oa-feed-more" {
+            @if let Some(cursor) = next_cursor {
+                @let route = feed_items_fragment_route(zone, page_limit, since, cursor);
+                button class="oa-btn subtle"
+                    type="button"
+                    hx-get=(route)
+                    hx-target="#feed-items-panel"
+                    hx-swap="beforeend" {
+                    "Load more"
+                }
+            } @else {
+                span class="oa-muted" { "No more items." }
+            }
+        }
+    }
+}
+
+fn feed_items_fragment_route(
+    zone: &str,
+    page_limit: u64,
+    since: Option<&str>,
+    cursor: &str,
+) -> String {
+    let mut route =
+        format!("/feed/fragments/items?zone={zone}&limit={page_limit}&before_id={cursor}");
+    if let Some(since) = since {
+        if !since.trim().is_empty() {
+            route.push_str("&since=");
+            route.push_str(since.trim());
+        }
+    }
+    route
 }
 
 fn placeholder_panel(heading: &str, description: &str) -> Markup {
@@ -876,6 +1003,10 @@ mod tests {
                         is_active: false,
                     },
                 ],
+                next_cursor: Some("41".to_string()),
+                current_zone: Some("l402".to_string()),
+                page_limit: 50,
+                since: None,
             },
         };
 
@@ -887,5 +1018,12 @@ mod tests {
         assert!(html.contains("hx-push-url=\"/feed?zone=l402\""));
         assert!(html.contains("hx-trigger=\"feed-shout-posted from:body\""));
         assert!(html.contains("hx-boost=\"false\""));
+        assert!(html.contains("id=\"feed-more-panel\""));
+        assert!(
+            html.contains(
+                "hx-get=\"/feed/fragments/items?zone=l402&amp;limit=50&amp;before_id=41\""
+            )
+        );
+        assert!(html.contains("hx-swap=\"beforeend\""));
     }
 }

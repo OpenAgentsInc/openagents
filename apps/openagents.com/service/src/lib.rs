@@ -111,6 +111,7 @@ use crate::web_htmx::{
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
+    render_feed_items_append_fragment as render_maud_feed_items_append_fragment,
     render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
     render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
 };
@@ -670,6 +671,8 @@ struct FeedPageQuery {
     zone: Option<String>,
     #[serde(default)]
     limit: Option<String>,
+    #[serde(default, alias = "beforeId")]
+    before_id: Option<String>,
     #[serde(default)]
     since: Option<String>,
 }
@@ -1389,6 +1392,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/", get(web_shell_entry))
         .route("/feed", get(feed_page))
         .route("/feed/fragments/main", get(feed_main_fragment))
+        .route("/feed/fragments/items", get(feed_items_fragment))
         .route("/feed/shout", post(web_feed_shout))
         .route("/chat/new", post(web_chat_new_thread))
         .route(
@@ -2875,9 +2879,37 @@ fn feed_main_select_fragment_response(
     status: Option<&str>,
     items: &[FeedItemView],
     zones: &[FeedZoneView],
+    next_cursor: Option<&str>,
+    current_zone: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
 ) -> Response {
     let mut response = crate::web_htmx::fragment_response(
-        render_maud_feed_main_select_fragment(session, status, items, zones),
+        render_maud_feed_main_select_fragment(
+            session,
+            status,
+            items,
+            zones,
+            next_cursor,
+            current_zone,
+            page_limit,
+            since,
+        ),
+        StatusCode::OK,
+    );
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn feed_items_append_fragment_response(
+    items: &[FeedItemView],
+    next_cursor: Option<&str>,
+    current_zone: Option<&str>,
+    page_limit: u64,
+    since: Option<&str>,
+) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_feed_items_append_fragment(items, next_cursor, current_zone, page_limit, since),
         StatusCode::OK,
     );
     apply_html_security_headers(response.headers_mut());
@@ -6982,11 +7014,12 @@ async fn feed_page(
         _ => Ok(zone),
     })?;
     let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let before_id = parse_shout_optional_u64(query.before_id.as_deref(), "before_id")?;
     let since = parse_feed_since(query.since.as_deref())?;
 
     let rows = state
         ._domain_store
-        .list_shouts(zone.as_deref(), limit, None, since)
+        .list_shouts(zone.as_deref(), limit, before_id, since)
         .await
         .map_err(map_domain_store_error)?;
     let zones = state
@@ -6996,6 +7029,17 @@ async fn feed_page(
         .map_err(map_domain_store_error)?;
 
     let status = query_param_value(uri.query(), "status");
+    let next_cursor = if rows.len() == limit {
+        rows.last().map(|row| row.id.to_string())
+    } else {
+        None
+    };
+    let since_query = query
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     let items = feed_items_for_web(&state, &rows).await;
     let zone_views = feed_zones_for_web(&zones, zone.as_deref());
     let session = session_bundle_from_headers(&state, &headers)
@@ -7014,6 +7058,10 @@ async fn feed_page(
             status,
             items,
             zones: zone_views,
+            next_cursor,
+            current_zone: zone,
+            page_limit: limit as u64,
+            since: since_query,
         },
     };
 
@@ -7042,10 +7090,11 @@ async fn feed_main_fragment(
         _ => Ok(zone),
     })?;
     let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let before_id = parse_shout_optional_u64(query.before_id.as_deref(), "before_id")?;
     let since = parse_feed_since(query.since.as_deref())?;
     let rows = state
         ._domain_store
-        .list_shouts(zone.as_deref(), limit, None, since)
+        .list_shouts(zone.as_deref(), limit, before_id, since)
         .await
         .map_err(map_domain_store_error)?;
     let zones = state
@@ -7054,6 +7103,17 @@ async fn feed_main_fragment(
         .await
         .map_err(map_domain_store_error)?;
     let status = query_param_value(uri.query(), "status");
+    let next_cursor = if rows.len() == limit {
+        rows.last().map(|row| row.id.to_string())
+    } else {
+        None
+    };
+    let since_query = query
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     let items = feed_items_for_web(&state, &rows).await;
     let zone_views = feed_zones_for_web(&zones, zone.as_deref());
     let session = session_bundle_from_headers(&state, &headers)
@@ -7069,6 +7129,58 @@ async fn feed_main_fragment(
         status.as_deref(),
         &items,
         &zone_views,
+        next_cursor.as_deref(),
+        zone.as_deref(),
+        limit as u64,
+        since_query.as_deref(),
+    ))
+}
+
+async fn feed_items_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    Query(query): Query<FeedPageQuery>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    if !classify_htmx_request(&headers).is_hx_request {
+        let suffix = uri
+            .query()
+            .map(|query| format!("?{query}"))
+            .unwrap_or_default();
+        return Ok(Redirect::temporary(&format!("/feed{suffix}")).into_response());
+    }
+
+    let zone = normalize_shout_zone(query.zone.as_deref(), "zone").and_then(|zone| match zone {
+        Some(value) if value == "all" => Ok(None),
+        _ => Ok(zone),
+    })?;
+    let limit = parse_shout_limit(query.limit.as_deref(), "limit", 50, 200)?;
+    let before_id = parse_shout_optional_u64(query.before_id.as_deref(), "before_id")?;
+    let since = parse_feed_since(query.since.as_deref())?;
+    let rows = state
+        ._domain_store
+        .list_shouts(zone.as_deref(), limit, before_id, since)
+        .await
+        .map_err(map_domain_store_error)?;
+    let next_cursor = if rows.len() == limit {
+        rows.last().map(|row| row.id.to_string())
+    } else {
+        None
+    };
+    let since_query = query
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let items = feed_items_for_web(&state, &rows).await;
+
+    Ok(feed_items_append_fragment_response(
+        &items,
+        next_cursor.as_deref(),
+        zone.as_deref(),
+        limit as u64,
+        since_query.as_deref(),
     ))
 }
 
@@ -24579,6 +24691,176 @@ mod tests {
         assert!(direct_body.contains("Zone-L402-only"));
         assert!(!direct_body.contains("Zone-Dev-only"));
         assert!(!direct_body.contains("Zone-Global-only"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_items_fragment_supports_multi_page_loading_without_duplicates() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let token = seed_local_test_token(&config, "feed-pagination-multi@openagents.com").await?;
+        let app = build_router(config);
+
+        for idx in 0..120 {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(format!(
+                    r#"{{"body":"inc-{idx}","zone":"global"}}"#
+                )))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
+
+        let main_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=all&limit=50")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let main_response = app.clone().oneshot(main_request).await?;
+        assert_eq!(main_response.status(), StatusCode::OK);
+        let main_body = read_text(main_response).await?;
+        assert!(main_body.contains("inc-119"));
+        assert!(main_body.contains("inc-70"));
+        assert!(!main_body.contains("inc-69"));
+        let cursor_one = main_body
+            .split("before_id=")
+            .nth(1)
+            .and_then(|tail| tail.split('"').next())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!cursor_one.is_empty());
+
+        let page_two_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/feed/fragments/items?zone=all&limit=50&before_id={cursor_one}"
+            ))
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let page_two_response = app.clone().oneshot(page_two_request).await?;
+        assert_eq!(page_two_response.status(), StatusCode::OK);
+        let page_two_body = read_text(page_two_response).await?;
+        assert!(!page_two_body.contains("inc-119"));
+        assert!(page_two_body.contains("inc-69"));
+        assert!(page_two_body.contains("inc-20"));
+        assert!(!page_two_body.contains("inc-19"));
+        let cursor_two = page_two_body
+            .split("before_id=")
+            .nth(1)
+            .and_then(|tail| tail.split('"').next())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!cursor_two.is_empty());
+
+        let page_three_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/feed/fragments/items?zone=all&limit=50&before_id={cursor_two}"
+            ))
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let page_three_response = app.oneshot(page_three_request).await?;
+        assert_eq!(page_three_response.status(), StatusCode::OK);
+        let page_three_body = read_text(page_three_response).await?;
+        assert!(page_three_body.contains("inc-19"));
+        assert!(page_three_body.contains("inc-0"));
+        assert!(!page_three_body.contains("inc-20"));
+        assert!(page_three_body.contains("No more items."));
+        assert!(!page_three_body.contains("before_id="));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_items_fragment_partial_page_returns_no_more_marker() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let token =
+            seed_local_test_token(&config, "feed-pagination-partial@openagents.com").await?;
+        let app = build_router(config);
+
+        for idx in 0..60 {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(format!(
+                    r#"{{"body":"partial-{idx}","zone":"global"}}"#
+                )))?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
+
+        let main_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=all&limit=50")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let main_response = app.clone().oneshot(main_request).await?;
+        let main_body = read_text(main_response).await?;
+        let cursor = main_body
+            .split("before_id=")
+            .nth(1)
+            .and_then(|tail| tail.split('"').next())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!cursor.is_empty());
+
+        let partial_request = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/feed/fragments/items?zone=all&limit=50&before_id={cursor}"
+            ))
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let partial_response = app.oneshot(partial_request).await?;
+        assert_eq!(partial_response.status(), StatusCode::OK);
+        let partial_body = read_text(partial_response).await?;
+        assert!(partial_body.contains("partial-9"));
+        assert!(partial_body.contains("partial-0"));
+        assert!(partial_body.contains("No more items."));
+        assert!(!partial_body.contains("before_id="));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn feed_items_fragment_empty_result_is_explicit() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/items?zone=all&limit=50&before_id=999999")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = read_text(response).await?;
+        assert!(body.contains("No more items."));
+        assert!(!body.contains("oa-feed-item"));
+        assert!(!body.contains("before_id="));
 
         Ok(())
     }
