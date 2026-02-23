@@ -42,6 +42,7 @@ use crate::{
         WorkerStatus, WorkerStatusTransitionRequest,
     },
     workers::{InMemoryWorkerRegistry, WorkerError, WorkerSnapshot},
+    treasury::Treasury,
 };
 
 #[derive(Clone)]
@@ -53,6 +54,7 @@ pub struct AppState {
     sync_auth: Arc<SyncAuthorizer>,
     khala_delivery: Arc<KhalaDeliveryControl>,
     compute_abuse: Arc<ComputeAbuseControls>,
+    treasury: Arc<Treasury>,
     fleet_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
 }
@@ -74,6 +76,7 @@ impl AppState {
             sync_auth,
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
+            treasury: Arc::new(Treasury::default()),
             fleet_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
         }
@@ -409,6 +412,30 @@ struct SandboxVerificationResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct SettleSandboxRunBody {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    run_id: Uuid,
+    provider_id: String,
+    provider_worker_id: String,
+    amount_msats: u64,
+    request: protocol::SandboxRunRequest,
+    response: protocol::SandboxRunResponse,
+}
+
+#[derive(Debug, Serialize)]
+struct SettleSandboxRunResponse {
+    job_hash: String,
+    reservation_id: String,
+    amount_msats: u64,
+    verification_passed: bool,
+    exit_code: i32,
+    #[serde(default)]
+    violations: Vec<String>,
+    settlement_status: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct DriftQuery {
     topic: String,
 }
@@ -509,6 +536,10 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/verifications/sandbox-run",
             post(verify_sandbox_run),
         )
+        .route(
+            "/internal/v1/treasury/compute/settle/sandbox-run",
+            post(settle_sandbox_run),
+        )
         .with_state(state)
 }
 
@@ -570,6 +601,11 @@ async fn append_run_event(
     Json(body): Json<AppendRunEventBody>,
 ) -> Result<Json<RunResponse>, ApiError> {
     ensure_runtime_write_authority(&state)?;
+    if body.event_type.trim() == "payment" {
+        return Err(ApiError::InvalidRequest(
+            "payment events must be emitted via treasury settlement endpoints".to_string(),
+        ));
+    }
     let run = state
         .orchestrator
         .append_run_event(
@@ -1431,6 +1467,205 @@ async fn verify_sandbox_run(
     }))
 }
 
+async fn settle_sandbox_run(
+    State(state): State<AppState>,
+    Json(body): Json<SettleSandboxRunBody>,
+) -> Result<Json<SettleSandboxRunResponse>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    if body.provider_id.trim().is_empty() || body.provider_worker_id.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "provider_id and provider_worker_id are required".to_string(),
+        ));
+    }
+    if body.amount_msats == 0 {
+        return Err(ApiError::InvalidRequest(
+            "amount_msats must be greater than zero".to_string(),
+        ));
+    }
+
+    validate_sandbox_request_phase0(&body.request)?;
+    let job_hash = protocol::hash::canonical_hash(&body.request)
+        .map_err(|error| ApiError::InvalidRequest(format!("invalid sandbox request: {error}")))?;
+
+    let (reservation, _created) = state
+        .treasury
+        .reserve_compute_job(
+            owner_key.as_str(),
+            job_hash.as_str(),
+            body.provider_id.trim(),
+            body.provider_worker_id.trim(),
+            body.amount_msats,
+        )
+        .await
+        .map_err(ApiError::from_treasury)?;
+
+    // Emit reservation receipt into the run for replay evidence (idempotent).
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "receipt".to_string(),
+                payload: serde_json::json!({
+                    "receipt_type": "BudgetReserved",
+                    "payload": {
+                        "scope": "compute_job",
+                        "amount_msats": reservation.amount_msats,
+                        "reservation_id": reservation.reservation_id,
+                        "job_hash": job_hash.clone(),
+                        "provider_id": reservation.provider_id.clone(),
+                    }
+                }),
+                idempotency_key: Some(format!("budget-reserved:{job_hash}")),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
+    let violations = outcome.violations.clone();
+    if !violations.is_empty() {
+        apply_provider_violation_strike(&state, body.provider_worker_id.trim(), &violations).await?;
+    }
+
+    // Record verification receipt evidence (idempotent).
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "receipt".to_string(),
+                payload: serde_json::json!({
+                    "receipt_type": if outcome.passed { "VerificationPassed" } else { "VerificationFailed" },
+                    "payload": { "job_hash": job_hash.clone(), "exit_code": outcome.exit_code, "violations": violations.clone() },
+                }),
+                idempotency_key: Some(format!("verify:{job_hash}")),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    let verification_command = body
+        .request
+        .commands
+        .last()
+        .map(|command| command.cmd.clone())
+        .unwrap_or_else(|| "sandbox_run".to_string());
+    let verification_duration_ms = body.response.runs.last().map(|run| run.duration_ms);
+
+    // Emit verification event into the receipt bundle (idempotent).
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "verification".to_string(),
+                payload: serde_json::json!({
+                    "command": verification_command,
+                    "exit_code": outcome.exit_code,
+                    "cwd": body.request.repo.mount_path,
+                    "duration_ms": verification_duration_ms,
+                }),
+                idempotency_key: Some(format!("verification:{job_hash}")),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    let (settled, _changed) = state
+        .treasury
+        .settle_compute_job(job_hash.as_str(), outcome.passed, outcome.exit_code)
+        .await
+        .map_err(ApiError::from_treasury)?;
+
+    let settlement_status = match settled.status {
+        crate::treasury::SettlementStatus::Released => "released",
+        crate::treasury::SettlementStatus::Withheld => "withheld",
+        crate::treasury::SettlementStatus::Reserved => "reserved",
+    };
+
+    let payment_amount = if outcome.passed {
+        settled.amount_msats
+    } else {
+        0
+    };
+
+    let settled_reservation_id = settled.reservation_id.clone();
+    let settled_provider_id = settled.provider_id.clone();
+
+    let payment_event = serde_json::json!({
+        "rail": "lightning",
+        "asset_id": "BTC_LN",
+        "amount_msats": payment_amount,
+        "payment_proof": if outcome.passed {
+            serde_json::json!({
+                "type": "internal_ledger",
+                "reservation_id": settled_reservation_id.clone(),
+                "provider_id": settled_provider_id.clone(),
+            })
+        } else {
+            serde_json::json!({
+                "type": "withheld",
+                "reservation_id": settled_reservation_id.clone(),
+                "exit_code": outcome.exit_code,
+            })
+        },
+        "job_hash": job_hash.clone(),
+        "status": settlement_status,
+    });
+
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "payment".to_string(),
+                payload: payment_event,
+                idempotency_key: Some(format!("payment:{job_hash}:{settlement_status}")),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "receipt".to_string(),
+                payload: serde_json::json!({
+                    "receipt_type": if outcome.passed { "PaymentReleased" } else { "PaymentWithheld" },
+                    "payload": {
+                        "job_hash": job_hash.clone(),
+                        "amount_msats": settled.amount_msats,
+                        "reservation_id": settled_reservation_id,
+                        "provider_id": settled_provider_id,
+                    }
+                }),
+                idempotency_key: Some(format!("receipt-payment:{job_hash}:{settlement_status}")),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    Ok(Json(SettleSandboxRunResponse {
+        job_hash,
+        reservation_id: settled.reservation_id,
+        amount_msats: settled.amount_msats,
+        verification_passed: outcome.passed,
+        exit_code: outcome.exit_code,
+        violations,
+        settlement_status: settlement_status.to_string(),
+    }))
+}
+
 async fn heartbeat_worker(
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
@@ -1571,6 +1806,21 @@ impl ApiError {
                 Self::InvalidRequest(format!("invalid worker transition from {from:?} to {to:?}"))
             }
             other => Self::Internal(other.to_string()),
+        }
+    }
+
+    fn from_treasury(error: crate::treasury::TreasuryError) -> Self {
+        match error {
+            crate::treasury::TreasuryError::NotReserved => Self::NotFound,
+            crate::treasury::TreasuryError::InsufficientBudget => {
+                Self::Forbidden("insufficient budget".to_string())
+            }
+            crate::treasury::TreasuryError::OwnerMismatch
+            | crate::treasury::TreasuryError::AmountMismatch
+            | crate::treasury::TreasuryError::AlreadySettled
+            | crate::treasury::TreasuryError::SettlementConflict => {
+                Self::Conflict(error.to_string())
+            }
         }
     }
 
@@ -4753,6 +5003,190 @@ mod tests {
             )
             .await?;
         assert_eq!(bad_response.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_settlement_is_pay_after_verify_and_idempotent() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settle-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-settle-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000,
+                            "caps": { "max_timeout_secs": 120 }
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let create_run = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:settlement-worker",
+                        "metadata": {"policy_bundle_id": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_run.status(), axum::http::StatusCode::CREATED);
+        let run_json = response_json(create_run).await?;
+        let run_id = run_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let dispatch = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/dispatch/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request.clone(),
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(dispatch.status(), axum::http::StatusCode::OK);
+        let dispatch_json = response_json(dispatch).await?;
+        let response_value = dispatch_json
+            .get("response")
+            .cloned()
+            .ok_or_else(|| anyhow!("missing dispatch response"))?;
+
+        let settle = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "run_id": run_id.clone(),
+                        "provider_id": "provider-settle-1",
+                        "provider_worker_id": "desktop:settle-provider-1",
+                        "amount_msats": 1000,
+                        "request": request.clone(),
+                        "response": response_value.clone(),
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(settle.status(), axum::http::StatusCode::OK);
+        let settle_json = response_json(settle).await?;
+        assert_eq!(
+            settle_json.pointer("/settlement_status").and_then(Value::as_str),
+            Some("released")
+        );
+        assert_eq!(
+            settle_json.pointer("/verification_passed").and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let receipt = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/runs/{run_id}/receipt"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(receipt.status(), axum::http::StatusCode::OK);
+        let receipt_json = response_json(receipt).await?;
+        assert_eq!(
+            receipt_json
+                .pointer("/metrics/payments_msats_total")
+                .and_then(Value::as_u64),
+            Some(1000)
+        );
+
+        // Idempotent settle should not add additional payment events.
+        let settle_retry = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "run_id": run_id.clone(),
+                        "provider_id": "provider-settle-1",
+                        "provider_worker_id": "desktop:settle-provider-1",
+                        "amount_msats": 1000,
+                        "request": request.clone(),
+                        "response": response_value.clone(),
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(settle_retry.status(), axum::http::StatusCode::OK);
+        let receipt_retry = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/runs/{run_id}/receipt"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let receipt_retry_json = response_json(receipt_retry).await?;
+        assert_eq!(
+            receipt_retry_json
+                .pointer("/metrics/payments_msats_total")
+                .and_then(Value::as_u64),
+            Some(1000)
+        );
+
+        // Append-run-events endpoint must reject direct payment writes.
+        let reject_payment = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "payment",
+                        "payload": {"rail":"lightning","asset_id":"BTC_LN","amount_msats":1,"payment_proof":{}}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(reject_payment.status(), axum::http::StatusCode::BAD_REQUEST);
 
         let _ = shutdown.send(());
         Ok(())

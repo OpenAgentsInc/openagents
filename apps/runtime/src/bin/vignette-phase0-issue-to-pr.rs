@@ -947,118 +947,76 @@ async fn run_happy_path(
     )
     .await?;
 
-    let verification = verify_sandbox_with_runtime(
+    let settle_before = fetch_run(client, runtime_base, run.id).await?.events.len();
+    let settlement = settle_sandbox_with_runtime(
         client,
         runtime_base,
-        Some(selection.provider.worker_id.clone()),
+        owner_user_id,
+        run.id,
+        &selection,
         &request,
         &response,
     )
     .await?;
-    append_verification_event(
-        client,
-        runtime_base,
-        run.id,
-        "cargo test",
-        verification.exit_code,
-        Some(repo.path.to_string_lossy().to_string()),
-        Some(latency_ms),
-    )
-    .await?;
-    let verification_receipt = json!({"job_hash": job_hash, "exit_code": verification.exit_code});
-    append_receipt_event(
-        client,
-        runtime_base,
-        run.id,
-        if verification.passed {
-            "VerificationPassed"
-        } else {
-            "VerificationFailed"
-        },
-        verification_receipt.clone(),
-        Some(format!("verify:{job_hash}")),
-    )
-    .await?;
-    assert_runtime_idempotent_key(
-        client,
-        runtime_base,
-        run.id,
-        "receipt",
-        json!({
-            "receipt_type": if verification.passed { "VerificationPassed" } else { "VerificationFailed" },
-            "payload": verification_receipt
-        }),
-        format!("verify:{job_hash}"),
-    )
-    .await?;
+    let expected_amount_msats = selection.provider.min_price_msats.unwrap_or(1_000);
+    if settlement.job_hash != job_hash {
+        return Err(anyhow!(
+            "runtime settlement job_hash mismatch: expected {}, got {}",
+            job_hash,
+            settlement.job_hash
+        ));
+    }
+    if settlement.amount_msats != expected_amount_msats {
+        return Err(anyhow!(
+            "runtime settlement amount mismatch: expected {}, got {}",
+            expected_amount_msats,
+            settlement.amount_msats
+        ));
+    }
+    if !settlement.reservation_id.starts_with("rsv_") {
+        return Err(anyhow!(
+            "runtime settlement reservation_id missing rsv_ prefix: {}",
+            settlement.reservation_id
+        ));
+    }
+    if !settlement.verification_passed || settlement.settlement_status != "released" {
+        return Err(anyhow!(
+            "expected verification pass + settlement release, got passed={} status={}",
+            settlement.verification_passed,
+            settlement.settlement_status
+        ));
+    }
+    if settlement.exit_code != 0 {
+        return Err(anyhow!(
+            "expected exit_code=0 for happy path, got {}",
+            settlement.exit_code
+        ));
+    }
+    if !settlement.violations.is_empty() {
+        return Err(anyhow!(
+            "happy path unexpectedly contained provider violations: {:?}",
+            settlement.violations
+        ));
+    }
 
-    let budget_reserved_receipt =
-        json!({"scope": "repo:fixture", "amount_msats": 1000, "reservation_id": "rsv_vignette_1"});
-    append_receipt_event(
+    // Settlement must be idempotent (no double-spend, no duplicate receipts/events).
+    let _settlement_retry = settle_sandbox_with_runtime(
         client,
         runtime_base,
+        owner_user_id,
         run.id,
-        "BudgetReserved",
-        budget_reserved_receipt.clone(),
-        Some("budget-reserved".to_string()),
+        &selection,
+        &request,
+        &response,
     )
     .await?;
-    assert_runtime_idempotent_key(
-        client,
-        runtime_base,
-        run.id,
-        "receipt",
-        json!({"receipt_type": "BudgetReserved", "payload": budget_reserved_receipt}),
-        "budget-reserved".to_string(),
-    )
-    .await?;
-    if verification.passed {
-        let payment_event = json!({
-            "rail": "lightning",
-            "asset_id": "BTC_LN",
-            "amount_msats": 1000,
-            "payment_proof": {"type": "lightning_preimage", "value": "vignette"},
-            "job_hash": job_hash,
-            "status": "released"
-        });
-        append_payment_event(
-            client,
-            runtime_base,
-            run.id,
-            payment_event.clone(),
-            Some("payment-released".to_string()),
-        )
-        .await?;
-        assert_runtime_idempotent_key(
-            client,
-            runtime_base,
-            run.id,
-            "payment",
-            payment_event,
-            "payment-released".to_string(),
-        )
-        .await?;
-        let payment_released_receipt = json!({"job_hash": job_hash, "amount_msats": 1000});
-        append_receipt_event(
-            client,
-            runtime_base,
-            run.id,
-            "PaymentReleased",
-            payment_released_receipt.clone(),
-            Some("receipt-payment-released".to_string()),
-        )
-        .await?;
-        assert_runtime_idempotent_key(
-            client,
-            runtime_base,
-            run.id,
-            "receipt",
-            json!({"receipt_type": "PaymentReleased", "payload": payment_released_receipt}),
-            "receipt-payment-released".to_string(),
-        )
-        .await?;
-    } else {
-        return Err(anyhow!("happy path verification unexpectedly failed"));
+    let settle_after = fetch_run(client, runtime_base, run.id).await?.events.len();
+    if settle_after != settle_before + 5 {
+        return Err(anyhow!(
+            "unexpected settlement event count delta: before={} after={}",
+            settle_before,
+            settle_after
+        ));
     }
 
     append_receipt_event(
@@ -1154,62 +1112,63 @@ async fn run_verification_fail(
     }
     let response = dispatch.response;
 
-    let verification = verify_sandbox_with_runtime(
+    let settle_before = fetch_run(client, runtime_base, run.id).await?.events.len();
+    let settlement = settle_sandbox_with_runtime(
         client,
         runtime_base,
-        Some(selection.provider.worker_id.clone()),
+        owner_user_id,
+        run.id,
+        &selection,
         &request,
         &response,
     )
     .await?;
-    if verification.passed {
-        return Err(anyhow!("verification-fail scenario unexpectedly passed"));
+    let expected_amount_msats = selection.provider.min_price_msats.unwrap_or(1_000);
+    if settlement.job_hash != job_hash {
+        return Err(anyhow!(
+            "runtime settlement job_hash mismatch: expected {}, got {}",
+            job_hash,
+            settlement.job_hash
+        ));
+    }
+    if settlement.amount_msats != expected_amount_msats {
+        return Err(anyhow!(
+            "runtime settlement amount mismatch: expected {}, got {}",
+            expected_amount_msats,
+            settlement.amount_msats
+        ));
+    }
+    if settlement.verification_passed || settlement.settlement_status != "withheld" {
+        return Err(anyhow!(
+            "expected verification fail + settlement withheld, got passed={} status={}",
+            settlement.verification_passed,
+            settlement.settlement_status
+        ));
+    }
+    if settlement.exit_code == 0 {
+        return Err(anyhow!(
+            "expected non-zero exit_code for verification-fail scenario"
+        ));
     }
 
-    append_receipt_event(
+    let _settlement_retry = settle_sandbox_with_runtime(
         client,
         runtime_base,
+        owner_user_id,
         run.id,
-        "VerificationFailed",
-        json!({"job_hash": job_hash, "exit_code": verification.exit_code}),
-        Some(format!("verify:{job_hash}")),
+        &selection,
+        &request,
+        &response,
     )
     .await?;
-
-    append_receipt_event(
-        client,
-        runtime_base,
-        run.id,
-        "PaymentWithheld",
-        json!({"job_hash": job_hash, "amount_msats": 1000, "reason": "verification_failed"}),
-        Some("payment-withheld".to_string()),
-    )
-    .await?;
-    let payment_event = json!({
-        "rail": "lightning",
-        "asset_id": "BTC_LN",
-        "amount_msats": 1000,
-        "payment_proof": {"type": "lightning_preimage", "value": "withheld"},
-        "job_hash": job_hash,
-        "status": "withheld"
-    });
-    append_payment_event(
-        client,
-        runtime_base,
-        run.id,
-        payment_event.clone(),
-        Some("payment-withheld-json".to_string()),
-    )
-    .await?;
-    assert_runtime_idempotent_key(
-        client,
-        runtime_base,
-        run.id,
-        "payment",
-        payment_event,
-        "payment-withheld-json".to_string(),
-    )
-    .await?;
+    let settle_after = fetch_run(client, runtime_base, run.id).await?.events.len();
+    if settle_after != settle_before + 5 {
+        return Err(anyhow!(
+            "unexpected settlement event count delta: before={} after={}",
+            settle_before,
+            settle_after
+        ));
+    }
 
     append_receipt_event(
         client,
@@ -1343,17 +1302,6 @@ async fn run_provider_offline_mid_run(
         latency_ms,
         ..
     } = dispatch;
-    let verification = verify_sandbox_with_runtime(
-        client,
-        runtime_base,
-        Some(selection.provider.worker_id.clone()),
-        &request,
-        &response_b,
-    )
-    .await?;
-    if !verification.passed {
-        return Err(anyhow!("reserve provider B failed verification"));
-    }
 
     append_receipt_event(
         client,
@@ -1374,40 +1322,64 @@ async fn run_provider_offline_mid_run(
         latency_ms,
     )
     .await?;
-    append_verification_event(
+    let settle_before = fetch_run(client, runtime_base, run.id).await?.events.len();
+    let settlement = settle_sandbox_with_runtime(
         client,
         runtime_base,
+        owner_user_id,
         run.id,
-        "cargo test",
-        verification.exit_code,
-        Some(repo.path.to_string_lossy().to_string()),
-        Some(latency_ms),
+        &selection,
+        &request,
+        &response_b,
     )
     .await?;
-    append_payment_event(
+    let expected_amount_msats = selection.provider.min_price_msats.unwrap_or(1_000);
+    if settlement.job_hash != job_hash {
+        return Err(anyhow!(
+            "runtime settlement job_hash mismatch: expected {}, got {}",
+            job_hash,
+            settlement.job_hash
+        ));
+    }
+    if settlement.amount_msats != expected_amount_msats {
+        return Err(anyhow!(
+            "runtime settlement amount mismatch: expected {}, got {}",
+            expected_amount_msats,
+            settlement.amount_msats
+        ));
+    }
+    if !settlement.verification_passed || settlement.settlement_status != "released" {
+        return Err(anyhow!(
+            "expected verification pass + settlement release, got passed={} status={}",
+            settlement.verification_passed,
+            settlement.settlement_status
+        ));
+    }
+    if settlement.exit_code != 0 {
+        return Err(anyhow!(
+            "expected exit_code=0 for fallback scenario, got {}",
+            settlement.exit_code
+        ));
+    }
+
+    let _settlement_retry = settle_sandbox_with_runtime(
         client,
         runtime_base,
+        owner_user_id,
         run.id,
-        json!({
-            "rail": "lightning",
-            "asset_id": "BTC_LN",
-            "amount_msats": 1000,
-            "payment_proof": {"type": "lightning_preimage", "value": "vignette-fallback"},
-            "job_hash": job_hash,
-            "status": "released"
-        }),
-        Some("payment-released".to_string()),
+        &selection,
+        &request,
+        &response_b,
     )
     .await?;
-    append_receipt_event(
-        client,
-        runtime_base,
-        run.id,
-        "PaymentReleased",
-        json!({"job_hash": job_hash, "amount_msats": 1000, "provider_id": selection.provider.provider_id}),
-        Some("receipt-payment-released".to_string()),
-    )
-    .await?;
+    let settle_after = fetch_run(client, runtime_base, run.id).await?.events.len();
+    if settle_after != settle_before + 5 {
+        return Err(anyhow!(
+            "unexpected settlement event count delta: before={} after={}",
+            settle_before,
+            settle_after
+        ));
+    }
 
     append_receipt_event(
         client,
@@ -1592,55 +1564,54 @@ fn sandbox_request(
     }
 }
 
-#[derive(Debug)]
-struct VerificationOutcome {
-    passed: bool,
-    exit_code: i32,
-}
-
 #[derive(Debug, Deserialize)]
-struct SandboxVerifyResponse {
-    passed: bool,
+struct SandboxSettleResponse {
+    job_hash: String,
+    reservation_id: String,
+    amount_msats: u64,
+    verification_passed: bool,
     exit_code: i32,
     #[serde(default)]
     violations: Vec<String>,
+    settlement_status: String,
 }
 
-async fn verify_sandbox_with_runtime(
+async fn settle_sandbox_with_runtime(
     client: &reqwest::Client,
     runtime_base: &str,
-    provider_worker_id: Option<String>,
+    owner_user_id: u64,
+    run_id: uuid::Uuid,
+    selection: &ProviderSelection,
     request: &SandboxRunRequest,
     response: &SandboxRunResponse,
-) -> Result<VerificationOutcome> {
-    let url = format!("{runtime_base}/internal/v1/verifications/sandbox-run");
+) -> Result<SandboxSettleResponse> {
+    let url = format!("{runtime_base}/internal/v1/treasury/compute/settle/sandbox-run");
+    let amount_msats = selection
+        .provider
+        .min_price_msats
+        .unwrap_or(1_000);
     let resp = client
         .post(url)
         .json(&json!({
+            "owner_user_id": owner_user_id,
+            "run_id": run_id,
+            "provider_id": selection.provider.provider_id,
+            "provider_worker_id": selection.provider.worker_id,
+            "amount_msats": amount_msats,
             "request": request,
             "response": response,
-            "provider_worker_id": provider_worker_id
         }))
         .send()
         .await
-        .context("verify sandbox run with runtime")?;
+        .context("settle sandbox run with runtime")?;
 
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(anyhow!("runtime sandbox verification failed: {}", text));
+        return Err(anyhow!("runtime sandbox settlement failed: {}", text));
     }
 
-    let parsed: SandboxVerifyResponse = resp.json().await.context("parse sandbox verify")?;
-    if !parsed.passed && !parsed.violations.is_empty() {
-        tracing::info!(
-            violations = ?parsed.violations,
-            "runtime reported sandbox verification violations"
-        );
-    }
-    Ok(VerificationOutcome {
-        passed: parsed.passed,
-        exit_code: parsed.exit_code,
-    })
+    let parsed: SandboxSettleResponse = resp.json().await.context("parse sandbox settle")?;
+    Ok(parsed)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1875,49 +1846,6 @@ async fn append_tool_event(
             "side_effects": []
         }),
         Some(format!("tool:{tool}")),
-    )
-    .await
-}
-
-async fn append_verification_event(
-    client: &reqwest::Client,
-    runtime_base: &str,
-    run_id: uuid::Uuid,
-    command: &str,
-    exit_code: i32,
-    cwd: Option<String>,
-    duration_ms: Option<u64>,
-) -> Result<()> {
-    append_event(
-        client,
-        runtime_base,
-        run_id,
-        "verification",
-        json!({
-            "command": command,
-            "exit_code": exit_code,
-            "cwd": cwd,
-            "duration_ms": duration_ms
-        }),
-        Some(format!("verification:{command}")),
-    )
-    .await
-}
-
-async fn append_payment_event(
-    client: &reqwest::Client,
-    runtime_base: &str,
-    run_id: uuid::Uuid,
-    payment: Value,
-    idempotency_key: Option<String>,
-) -> Result<()> {
-    append_event(
-        client,
-        runtime_base,
-        run_id,
-        "payment",
-        payment,
-        idempotency_key,
     )
     .await
 }

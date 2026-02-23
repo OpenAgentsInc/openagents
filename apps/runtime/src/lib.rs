@@ -32,6 +32,7 @@ pub mod server;
 pub mod shadow;
 pub mod shadow_control_khala;
 pub mod sync_auth;
+pub mod treasury;
 pub mod types;
 pub mod verification;
 pub mod workers;
