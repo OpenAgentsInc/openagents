@@ -920,16 +920,79 @@ async fn get_run_receipt(
         .map_err(ApiError::from_orchestration)?
         .ok_or(ApiError::NotFound)?;
     let mut receipt = build_receipt(&run).map_err(ApiError::from_artifacts)?;
-    if let Some(secret_key) = state.config.bridge_nostr_secret_key {
-        receipt.signature = Some(
-            crate::artifacts::sign_receipt_sha256(
-                &secret_key,
-                receipt.canonical_json_sha256.as_str(),
-            )
-            .map_err(ApiError::from_artifacts)?,
-        );
+
+    let Some(secret_key) = state.config.bridge_nostr_secret_key else {
+        if state.config.verifier_strict {
+            return Err(ApiError::Internal(
+                "receipt signer missing (RUNTIME_VERIFIER_STRICT=true)".to_string(),
+            ));
+        }
+        return Ok(Json(receipt));
+    };
+
+    let signature =
+        crate::artifacts::sign_receipt_sha256(&secret_key, receipt.canonical_json_sha256.as_str())
+            .map_err(ApiError::from_artifacts)?;
+    if !state.config.verifier_allowed_signer_pubkeys.is_empty()
+        && !state
+            .config
+            .verifier_allowed_signer_pubkeys
+            .contains(signature.signer_pubkey.as_str())
+    {
+        return Err(ApiError::Internal(
+            "receipt signer pubkey is not in active key graph".to_string(),
+        ));
     }
+    if !crate::artifacts::verify_receipt_signature(&signature).map_err(ApiError::from_artifacts)? {
+        return Err(ApiError::Internal(
+            "receipt signature verification failed".to_string(),
+        ));
+    }
+    receipt.signature = Some(signature);
     Ok(Json(receipt))
+}
+
+async fn verify_contract_critical_run_receipt(
+    state: &AppState,
+    run_id: Uuid,
+) -> Result<(), ApiError> {
+    let run = state
+        .orchestrator
+        .get_run(run_id)
+        .await
+        .map_err(ApiError::from_orchestration)?
+        .ok_or(ApiError::NotFound)?;
+    let receipt = build_receipt(&run).map_err(ApiError::from_artifacts)?;
+
+    let Some(secret_key) = state.config.bridge_nostr_secret_key else {
+        if state.config.verifier_strict {
+            return Err(ApiError::Internal(
+                "receipt signer missing (RUNTIME_VERIFIER_STRICT=true)".to_string(),
+            ));
+        }
+        return Ok(());
+    };
+
+    let signature =
+        crate::artifacts::sign_receipt_sha256(&secret_key, receipt.canonical_json_sha256.as_str())
+            .map_err(ApiError::from_artifacts)?;
+    if !state.config.verifier_allowed_signer_pubkeys.is_empty()
+        && !state
+            .config
+            .verifier_allowed_signer_pubkeys
+            .contains(signature.signer_pubkey.as_str())
+    {
+        return Err(ApiError::Internal(
+            "receipt signer pubkey is not in active key graph".to_string(),
+        ));
+    }
+    if !crate::artifacts::verify_receipt_signature(&signature).map_err(ApiError::from_artifacts)? {
+        return Err(ApiError::Internal(
+            "receipt signature verification failed".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn get_run_replay(
@@ -1943,6 +2006,8 @@ async fn router_select_compute(
         .await
         .map_err(ApiError::from_orchestration)?;
 
+    verify_contract_critical_run_receipt(&state, body.run_id).await?;
+
     Ok(Json(RouterSelectComputeResponse {
         schema: "openagents.marketplace.router_decision.v1".to_string(),
         decision_sha256,
@@ -2786,6 +2851,8 @@ async fn settle_sandbox_run(
             publish_latest_run_event(&state, &run).await?;
         }
     }
+
+    verify_contract_critical_run_receipt(&state, body.run_id).await?;
 
     Ok(Json(SettleSandboxRunResponse {
         job_hash,
@@ -4603,6 +4670,8 @@ mod tests {
             sync_token_require_jti: true,
             sync_token_max_age_seconds: 300,
             sync_revoked_jtis: revoked_for_config,
+            verifier_strict: false,
+            verifier_allowed_signer_pubkeys: HashSet::new(),
             bridge_nostr_relays: Vec::new(),
             bridge_nostr_secret_key: None,
         };
@@ -8183,6 +8252,176 @@ mod tests {
                 .and_then(Value::as_str),
             Some("provider-fast")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_verifier_strict_rejects_missing_signer_key() -> Result<()> {
+        let app =
+            build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+                c.verifier_strict = true;
+            });
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "lowest_total_cost_v1",
+            "idempotency_key": "router:strict-missing-signer",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-a","total_price_msats":1200,"latency_ms":50,"reliability_bps":9000},
+                {"marketplace_id":"market-b","provider_id":"provider-b","total_price_msats":1100,"latency_ms":200,"reliability_bps":8000}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_verifier_rejects_signer_not_in_key_graph() -> Result<()> {
+        let secret = nostr::generate_secret_key();
+        let app =
+            build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+                c.bridge_nostr_secret_key = Some(secret);
+                c.verifier_strict = true;
+                c.verifier_allowed_signer_pubkeys = HashSet::from(["0".repeat(64)]);
+            });
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "lowest_total_cost_v1",
+            "idempotency_key": "router:key-graph-deny",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-a","total_price_msats":1200,"latency_ms":50,"reliability_bps":9000},
+                {"marketplace_id":"market-b","provider_id":"provider-b","total_price_msats":1100,"latency_ms":200,"reliability_bps":8000}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_verifier_accepts_active_signer_key_graph() -> Result<()> {
+        let secret = nostr::generate_secret_key();
+        let pubkey =
+            nostr::get_public_key_hex(&secret).map_err(|error| anyhow!(error.to_string()))?;
+        let app =
+            build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+                c.bridge_nostr_secret_key = Some(secret);
+                c.verifier_strict = true;
+                c.verifier_allowed_signer_pubkeys = HashSet::from([pubkey]);
+            });
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "marketplace_id": "openagents",
+            "policy": "lowest_total_cost_v1",
+            "idempotency_key": "router:key-graph-allow",
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-a","total_price_msats":1200,"latency_ms":50,"reliability_bps":9000},
+                {"marketplace_id":"market-b","provider_id":"provider-b","total_price_msats":1100,"latency_ms":200,"reliability_bps":8000}
+            ]
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
         Ok(())
     }
 

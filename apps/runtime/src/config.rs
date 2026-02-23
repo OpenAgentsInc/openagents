@@ -47,6 +47,8 @@ pub struct Config {
     pub sync_token_require_jti: bool,
     pub sync_token_max_age_seconds: u64,
     pub sync_revoked_jtis: HashSet<String>,
+    pub verifier_strict: bool,
+    pub verifier_allowed_signer_pubkeys: HashSet<String>,
     pub bridge_nostr_relays: Vec<String>,
     pub bridge_nostr_secret_key: Option<[u8; 32]>,
 }
@@ -114,6 +116,10 @@ pub enum ConfigError {
     InvalidSyncTokenRequireJti(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS: {0}")]
     InvalidSyncTokenMaxAgeSeconds(String),
+    #[error("invalid RUNTIME_VERIFIER_STRICT: {0}")]
+    InvalidVerifierStrict(String),
+    #[error("invalid RUNTIME_VERIFIER_ALLOWED_SIGNER_PUBKEYS: {0}")]
+    InvalidVerifierAllowedSignerPubkeys(String),
     #[error("invalid RUNTIME_BRIDGE_NOSTR_RELAYS: {0}")]
     InvalidBridgeNostrRelays(String),
     #[error("invalid RUNTIME_BRIDGE_NOSTR_SECRET_KEY: {0}")]
@@ -312,6 +318,27 @@ impl Config {
                     .collect::<HashSet<_>>()
             })
             .unwrap_or_default();
+
+        let verifier_strict =
+            parse_bool_env("RUNTIME_VERIFIER_STRICT", false).map_err(|error| {
+                ConfigError::InvalidVerifierStrict(format!("RUNTIME_VERIFIER_STRICT: {error}"))
+            })?;
+        let verifier_allowed_signer_pubkeys_raw =
+            env::var("RUNTIME_VERIFIER_ALLOWED_SIGNER_PUBKEYS").unwrap_or_default();
+        let mut verifier_allowed_signer_pubkeys = HashSet::new();
+        for raw in verifier_allowed_signer_pubkeys_raw.split(',') {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = trimmed.to_ascii_lowercase();
+            if normalized.len() != 64 || !normalized.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(ConfigError::InvalidVerifierAllowedSignerPubkeys(format!(
+                    "expected 64-char hex pubkey, got: {trimmed}"
+                )));
+            }
+            verifier_allowed_signer_pubkeys.insert(normalized);
+        }
         Ok(Self {
             service_name,
             bind_addr,
@@ -349,6 +376,8 @@ impl Config {
             sync_token_require_jti,
             sync_token_max_age_seconds,
             sync_revoked_jtis,
+            verifier_strict,
+            verifier_allowed_signer_pubkeys,
             bridge_nostr_relays,
             bridge_nostr_secret_key,
         })
