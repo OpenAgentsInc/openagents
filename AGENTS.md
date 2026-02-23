@@ -127,6 +127,10 @@ Canonical references:
 - Do not create `git worktree` without explicit user approval.
 - Do not use `git stash` without explicit user approval.
 - If clean-state work is needed, present options: commit, discard, or approved temporary worktree.
+- In multi-agent repos, unrelated modified/staged files are expected.
+- Do not pause work to ask for direction solely because unrelated files changed.
+- Ignore unrelated files and commit only the files you edited for the requested task.
+- Never revert or rewrite unrelated files unless the user explicitly requests it.
 
 ## Output Expectations
 

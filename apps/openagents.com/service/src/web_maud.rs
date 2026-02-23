@@ -78,6 +78,7 @@ pub fn render_page(page: &WebPage) -> String {
                 meta name="openagents-runtime" content="rust shell";
                 title { (page.title) " | OpenAgents" }
                 style { (PreEscaped(styles())) }
+                script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" defer {}
             }
             body {
                 div class="oa-bg" {}
@@ -119,6 +120,15 @@ pub fn render_page(page: &WebPage) -> String {
     markup.into_string()
 }
 
+pub fn render_notice_fragment(target_id: &str, status: &str, is_error: bool) -> String {
+    let markup = html! {
+        div id=(target_id) class={(if is_error { "oa-notice error" } else { "oa-notice" })} {
+            (status_message(status))
+        }
+    };
+    markup.into_string()
+}
+
 fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
     let nav = [
         ("/", "Codex"),
@@ -141,7 +151,9 @@ fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
             div class="oa-session" {
                 @if let Some(session) = session {
                     span class="oa-session-label" { (session.display_name) " · " (session.email) }
-                    form method="post" action="/logout" {
+                    form method="post" action="/logout"
+                        hx-post="/logout"
+                        hx-swap="none" {
                         button type="submit" class="oa-btn subtle" { "Log out" }
                     }
                 } @else {
@@ -157,19 +169,25 @@ fn login_panel(status: Option<&str>) -> Markup {
         section class="oa-card oa-login" {
             h1 { "Sign in to OpenAgents" }
             p class="oa-muted" { "Use your email code to access Codex and account surfaces." }
-            @if let Some(status) = status {
-                div class="oa-notice" { (status_message(status)) }
-            }
+            (status_slot("login-status", status))
             div class="oa-grid two" {
-                form method="post" action="/login/email" class="oa-form" {
+                form method="post" action="/login/email" class="oa-form"
+                    hx-post="/login/email"
+                    hx-target="#login-status"
+                    hx-swap="outerHTML" {
                     label for="email" { "Email" }
                     input id="email" type="email" name="email" placeholder="you@example.com" required;
                     button type="submit" class="oa-btn primary" { "Send code" }
+                    span class="htmx-indicator oa-indicator" { "Sending code..." }
                 }
-                form method="post" action="/login/verify" class="oa-form" {
+                form method="post" action="/login/verify" class="oa-form"
+                    hx-post="/login/verify"
+                    hx-target="#login-status"
+                    hx-swap="outerHTML" {
                     label for="code" { "Code" }
                     input id="code" type="text" name="code" placeholder="123456" minlength="6" maxlength="12" required;
                     button type="submit" class="oa-btn primary" { "Verify and continue" }
+                    span class="htmx-indicator oa-indicator" { "Verifying..." }
                 }
             }
         }
@@ -187,15 +205,17 @@ fn chat_panel(
         section class="oa-grid chat" {
             aside class="oa-card oa-thread-list" {
                 h2 { "Threads" }
-                @if let Some(status) = status {
-                    div class="oa-notice" { (status_message(status)) }
-                }
+                (status_slot("chat-status", status))
                 @if session.is_none() {
                     p class="oa-muted" { "Sign in to start and view Codex threads." }
                     a class="oa-btn primary" href="/login" { "Log in" }
                 } @else {
-                    form method="post" action="/chat/new" {
+                    form method="post" action="/chat/new"
+                        hx-post="/chat/new"
+                        hx-target="#chat-status"
+                        hx-swap="outerHTML" {
                         button type="submit" class="oa-btn primary" { "New thread" }
+                        span class="htmx-indicator oa-indicator" { "Creating..." }
                     }
                     ul class="oa-thread-items" {
                         @if threads.is_empty() {
@@ -235,9 +255,13 @@ fn chat_panel(
                             }
                         }
                     }
-                    form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send" {
+                    form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send"
+                        hx-post={(format!("/chat/{active_thread_id}/send"))}
+                        hx-target="#chat-status"
+                        hx-swap="outerHTML" {
                         textarea name="text" rows="4" placeholder="Message Codex" required {}
                         button type="submit" class="oa-btn primary" { "Send" }
+                        span class="htmx-indicator oa-indicator" { "Sending..." }
                     }
                 } @else {
                     p class="oa-muted" {
@@ -278,16 +302,18 @@ fn feed_panel(
             }
             article class="oa-card oa-feed-main" {
                 h2 { "Feed" }
-                @if let Some(status) = status {
-                    div class="oa-notice" { (status_message(status)) }
-                }
+                (status_slot("feed-status", status))
                 @if session.is_some() {
-                    form method="post" action="/feed/shout" class="oa-form feed-compose" {
+                    form method="post" action="/feed/shout" class="oa-form feed-compose"
+                        hx-post="/feed/shout"
+                        hx-target="#feed-status"
+                        hx-swap="outerHTML" {
                         label for="zone" { "Zone" }
                         input id="zone" type="text" name="zone" placeholder="global";
                         label for="body" { "Shout" }
                         textarea id="body" name="body" rows="3" maxlength="2000" required {}
                         button type="submit" class="oa-btn primary" { "Post shout" }
+                        span class="htmx-indicator oa-indicator" { "Posting..." }
                     }
                 } @else {
                     p class="oa-muted" { "Log in to post shouts." }
@@ -325,6 +351,17 @@ fn placeholder_panel(heading: &str, description: &str) -> Markup {
     }
 }
 
+fn status_slot(target_id: &str, status: Option<&str>) -> Markup {
+    match status {
+        Some(status) => html! {
+            div id=(target_id) class="oa-notice" { (status_message(status)) }
+        },
+        None => html! {
+            div id=(target_id) class="oa-notice hidden" {}
+        },
+    }
+}
+
 fn nav_active(path: &str, href: &str) -> bool {
     if href == "/" {
         return path == "/" || path == "/chat" || path.starts_with("/chat/");
@@ -335,6 +372,9 @@ fn nav_active(path: &str, href: &str) -> bool {
 fn status_message(status: &str) -> &'static str {
     match status {
         "code-sent" => "A verification code was sent. Enter it to sign in.",
+        "code-expired" => "Your sign-in code expired. Request a new code.",
+        "invalid-code" => "Invalid sign-in code. Try again.",
+        "verify-failed" => "Could not verify code. Try again.",
         "signed-out" => "Signed out.",
         "thread-created" => "Thread created.",
         "message-sent" => "Message queued in thread.",
@@ -461,6 +501,16 @@ input:focus, textarea:focus {
   border-radius: 10px;
   padding: 0.6rem 0.72rem;
   font-size: 0.9rem;
+}
+.oa-notice.error {
+  border-color: rgba(255, 117, 137, 0.52);
+  background: rgba(117, 24, 42, 0.35);
+  color: #ffdce3;
+}
+.hidden { display: none; }
+.oa-indicator {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 .oa-muted { color: var(--muted); line-height: 1.5; }
 .oa-thread-items, .oa-feed-zone-list { list-style: none; padding: 0; margin: 0.8rem 0 0; display: grid; gap: 0.45rem; }

@@ -104,7 +104,7 @@ use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeR
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
-    render_page as render_maud_page,
+    render_notice_fragment as render_maud_notice_fragment, render_page as render_maud_page,
 };
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -2644,6 +2644,36 @@ fn web_html_response(page: WebPage) -> Response {
         .into_response()
 }
 
+fn is_hx_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("hx-request")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn htmx_notice_response(
+    target_id: &str,
+    status: &str,
+    is_error: bool,
+    http_status: StatusCode,
+) -> Response {
+    (
+        http_status,
+        [(CONTENT_TYPE, "text/html; charset=utf-8")],
+        render_maud_notice_fragment(target_id, status, is_error),
+    )
+        .into_response()
+}
+
+fn htmx_redirect_response(location: &str) -> Response {
+    let mut response = StatusCode::OK.into_response();
+    if let Ok(value) = HeaderValue::from_str(location) {
+        response.headers_mut().insert("HX-Redirect", value);
+    }
+    response
+}
+
 async fn route_split_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3197,7 +3227,11 @@ async fn login_email(
     headers: HeaderMap,
     Form(payload): Form<LoginEmailForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let hx_request = is_hx_request(&headers);
     if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        if hx_request {
+            return Ok(htmx_redirect_response("/"));
+        }
         return Ok(Redirect::temporary("/").into_response());
     }
 
@@ -3225,7 +3259,11 @@ async fn login_email(
         state.config.auth_challenge_ttl_seconds,
     );
 
-    let mut response = Redirect::temporary("/login?status=code-sent").into_response();
+    let mut response = if hx_request {
+        htmx_notice_response("login-status", "code-sent", false, StatusCode::OK)
+    } else {
+        Redirect::temporary("/login?status=code-sent").into_response()
+    };
     append_set_cookie_header(&mut response, &cookie)?;
     Ok(response)
 }
@@ -3235,7 +3273,11 @@ async fn login_verify(
     headers: HeaderMap,
     Form(payload): Form<LoginVerifyForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let hx_request = is_hx_request(&headers);
     if session_bundle_from_headers(&state, &headers).await.is_ok() {
+        if hx_request {
+            return Ok(htmx_redirect_response("/"));
+        }
         return Ok(Redirect::temporary("/").into_response());
     }
 
@@ -3248,6 +3290,14 @@ async fn login_verify(
     let challenge_id = match challenge_id {
         Some(value) => value,
         None => {
+            if hx_request {
+                return Ok(htmx_notice_response(
+                    "login-status",
+                    "code-expired",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                ));
+            }
             return Err(validation_error(
                 "code",
                 "Your sign-in code expired. Request a new code.",
@@ -3257,7 +3307,7 @@ async fn login_verify(
 
     let ip_address = header_string(&headers, HEADER_X_FORWARDED_FOR).unwrap_or_default();
     let user_agent = header_string(&headers, "user-agent").unwrap_or_default();
-    let verified = state
+    let verified = match state
         .auth
         .verify_challenge(
             &challenge_id,
@@ -3268,7 +3318,20 @@ async fn login_verify(
             &user_agent,
         )
         .await
-        .map_err(map_auth_error)?;
+    {
+        Ok(verified) => verified,
+        Err(error) => {
+            if hx_request {
+                return Ok(htmx_notice_response(
+                    "login-status",
+                    "invalid-code",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                ));
+            }
+            return Err(map_auth_error(error));
+        }
+    };
 
     state.observability.audit(
         AuditEvent::new("auth.web.verify.completed", request_id.clone())
@@ -3283,7 +3346,11 @@ async fn login_verify(
         .observability
         .increment_counter("auth.web.verify.completed", &request_id);
 
-    let mut response = Redirect::temporary("/").into_response();
+    let mut response = if hx_request {
+        htmx_redirect_response("/")
+    } else {
+        Redirect::temporary("/").into_response()
+    };
     append_set_cookie_header(
         &mut response,
         &auth_access_cookie(&verified.access_token, state.config.auth_access_ttl_seconds),
@@ -3303,6 +3370,7 @@ async fn web_logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let hx_request = is_hx_request(&headers);
     let request_id = request_id(&headers);
     let access_token = access_token_from_headers(&headers);
 
@@ -3323,7 +3391,11 @@ async fn web_logout(
         }
     }
 
-    let mut response = Redirect::temporary("/").into_response();
+    let mut response = if hx_request {
+        htmx_redirect_response("/")
+    } else {
+        Redirect::temporary("/").into_response()
+    };
     append_set_cookie_header(&mut response, &clear_cookie(AUTH_ACCESS_COOKIE_NAME))?;
     append_set_cookie_header(&mut response, &clear_cookie(AUTH_REFRESH_COOKIE_NAME))?;
     append_set_cookie_header(&mut response, &clear_cookie(LOCAL_TEST_AUTH_COOKIE_NAME))?;
@@ -3332,9 +3404,15 @@ async fn web_logout(
 }
 
 async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let hx_request = is_hx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
-        Err(_) => return Redirect::temporary("/login").into_response(),
+        Err(_) => {
+            if hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
     };
 
     let thread_id = format!("thread_{}", Uuid::new_v4().simple());
@@ -3344,10 +3422,25 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
         .await
     {
         Ok(thread) => {
-            Redirect::temporary(&format!("/chat/{}?status=thread-created", thread.thread_id))
-                .into_response()
+            let location = format!("/chat/{}?status=thread-created", thread.thread_id);
+            if hx_request {
+                htmx_redirect_response(&location)
+            } else {
+                Redirect::temporary(&location).into_response()
+            }
         }
-        Err(_) => Redirect::temporary("/chat?status=thread-create-failed").into_response(),
+        Err(_) => {
+            if hx_request {
+                htmx_notice_response(
+                    "chat-status",
+                    "thread-create-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                )
+            } else {
+                Redirect::temporary("/chat?status=thread-create-failed").into_response()
+            }
+        }
     }
 }
 
@@ -3357,22 +3450,52 @@ async fn web_chat_send_message(
     headers: HeaderMap,
     Form(payload): Form<WebChatSendForm>,
 ) -> Response {
+    let hx_request = is_hx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
-        Err(_) => return Redirect::temporary("/login").into_response(),
+        Err(_) => {
+            if hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
     };
 
     let normalized_thread_id = thread_id.trim().to_string();
     if normalized_thread_id.is_empty() {
+        if hx_request {
+            return htmx_notice_response(
+                "chat-status",
+                "message-send-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary("/chat?status=message-send-failed").into_response();
     }
 
     let text = payload.text.trim().to_string();
     if text.is_empty() {
+        if hx_request {
+            return htmx_notice_response(
+                "chat-status",
+                "empty-body",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary(&format!("/chat/{normalized_thread_id}?status=empty-body"))
             .into_response();
     }
     if text.chars().count() > 20_000 {
+        if hx_request {
+            return htmx_notice_response(
+                "chat-status",
+                "message-send-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary(&format!(
             "/chat/{normalized_thread_id}?status=message-send-failed"
         ))
@@ -3389,12 +3512,29 @@ async fn web_chat_send_message(
         )
         .await
     {
-        Ok(_) => Redirect::temporary(&format!("/chat/{normalized_thread_id}?status=message-sent"))
-            .into_response(),
-        Err(_) => Redirect::temporary(&format!(
-            "/chat/{normalized_thread_id}?status=message-send-failed"
-        ))
-        .into_response(),
+        Ok(_) => {
+            let location = format!("/chat/{normalized_thread_id}?status=message-sent");
+            if hx_request {
+                htmx_redirect_response(&location)
+            } else {
+                Redirect::temporary(&location).into_response()
+            }
+        }
+        Err(_) => {
+            if hx_request {
+                htmx_notice_response(
+                    "chat-status",
+                    "message-send-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                )
+            } else {
+                Redirect::temporary(&format!(
+                    "/chat/{normalized_thread_id}?status=message-send-failed"
+                ))
+                .into_response()
+            }
+        }
     }
 }
 
@@ -3403,22 +3543,54 @@ async fn web_feed_shout(
     headers: HeaderMap,
     Form(payload): Form<WebShoutForm>,
 ) -> Response {
+    let hx_request = is_hx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
-        Err(_) => return Redirect::temporary("/login").into_response(),
+        Err(_) => {
+            if hx_request {
+                return htmx_redirect_response("/login");
+            }
+            return Redirect::temporary("/login").into_response();
+        }
     };
 
     let body = payload.body.trim().to_string();
     if body.is_empty() {
+        if hx_request {
+            return htmx_notice_response(
+                "feed-status",
+                "empty-body",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary("/feed?status=empty-body").into_response();
     }
     if body.chars().count() > 2000 {
+        if hx_request {
+            return htmx_notice_response(
+                "feed-status",
+                "shout-post-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary("/feed?status=shout-post-failed").into_response();
     }
 
     let zone = match normalize_shout_zone(payload.zone.as_deref(), "zone") {
         Ok(zone) => zone,
-        Err(_) => return Redirect::temporary("/feed?status=invalid-zone").into_response(),
+        Err(_) => {
+            if hx_request {
+                return htmx_notice_response(
+                    "feed-status",
+                    "invalid-zone",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                );
+            }
+            return Redirect::temporary("/feed?status=invalid-zone").into_response();
+        }
     };
 
     let result = state
@@ -3431,13 +3603,30 @@ async fn web_feed_shout(
         .await;
 
     if result.is_err() {
+        if hx_request {
+            return htmx_notice_response(
+                "feed-status",
+                "shout-post-failed",
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+            );
+        }
         return Redirect::temporary("/feed?status=shout-post-failed").into_response();
     }
 
     if let Some(zone) = zone {
-        Redirect::temporary(&format!("/feed?zone={zone}&status=shout-posted")).into_response()
+        let location = format!("/feed?zone={zone}&status=shout-posted");
+        if hx_request {
+            htmx_redirect_response(&location)
+        } else {
+            Redirect::temporary(&location).into_response()
+        }
     } else {
-        Redirect::temporary("/feed?status=shout-posted").into_response()
+        if hx_request {
+            htmx_redirect_response("/feed?status=shout-posted")
+        } else {
+            Redirect::temporary("/feed?status=shout-posted").into_response()
+        }
     }
 }
 
@@ -17134,6 +17323,120 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn web_login_email_hx_request_returns_notice_fragment() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .body(Body::from("email=web-login-hx%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::OK);
+        assert_eq!(
+            send_response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/html; charset=utf-8")
+        );
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+        assert!(!challenge_cookie.is_empty());
+        let body = read_text(send_response).await?;
+        assert!(body.contains("id=\"login-status\""));
+        assert!(body.contains("A verification code was sent."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_login_verify_hx_request_returns_hx_redirect_and_auth_cookies() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=web-login-hx-verify%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=123456"))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::OK);
+        assert_eq!(
+            verify_response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        let set_cookies = all_set_cookie_values(&verify_response);
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=", super::AUTH_ACCESS_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=", super::AUTH_REFRESH_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::CHALLENGE_COOKIE_NAME)))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_login_verify_hx_request_invalid_code_returns_error_fragment() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=web-login-hx-invalid%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=000000"))?;
+        let verify_response = app.oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = read_text(verify_response).await?;
+        assert!(body.contains("id=\"login-status\""));
+        assert!(body.contains("Invalid sign-in code. Try again."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn web_auth_cookies_include_secure_same_site_and_host_scope() -> Result<()> {
         let app = build_router(test_config(std::env::temp_dir()));
 
@@ -17246,6 +17549,73 @@ mod tests {
             logout_response
                 .headers()
                 .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/")
+        );
+
+        let set_cookies = all_set_cookie_values(&logout_response);
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::AUTH_ACCESS_COOKIE_NAME)))
+        );
+        assert!(
+            set_cookies
+                .iter()
+                .any(|value| value.starts_with(&format!("{}=;", super::AUTH_REFRESH_COOKIE_NAME)))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_logout_hx_request_returns_hx_redirect_and_clears_cookies() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/login/email")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("email=logout-hx-user%40openagents.com"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let challenge_cookie = cookie_value_for_name(&send_response, super::CHALLENGE_COOKIE_NAME)
+            .expect("missing challenge cookie");
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/login/verify")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header(
+                "cookie",
+                format!("{}={challenge_cookie}", super::CHALLENGE_COOKIE_NAME),
+            )
+            .body(Body::from("code=123456"))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let access_cookie = cookie_value_for_name(&verify_response, super::AUTH_ACCESS_COOKIE_NAME)
+            .expect("missing access cookie");
+        let refresh_cookie =
+            cookie_value_for_name(&verify_response, super::AUTH_REFRESH_COOKIE_NAME)
+                .expect("missing refresh cookie");
+
+        let logout_request = Request::builder()
+            .method("POST")
+            .uri("/logout")
+            .header("hx-request", "true")
+            .header(
+                "cookie",
+                format!(
+                    "{}={access_cookie}; {}={refresh_cookie}",
+                    super::AUTH_ACCESS_COOKIE_NAME,
+                    super::AUTH_REFRESH_COOKIE_NAME
+                ),
+            )
+            .body(Body::empty())?;
+        let logout_response = app.oneshot(logout_request).await?;
+        assert_eq!(logout_response.status(), StatusCode::OK);
+        assert_eq!(
+            logout_response
+                .headers()
+                .get("HX-Redirect")
                 .and_then(|value| value.to_str().ok()),
             Some("/")
         );
