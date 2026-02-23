@@ -387,6 +387,47 @@ fn test_compute_new_usage_and_idempotency() {
 }
 
 #[test]
+fn test_compute_budget_exceeded_blocks_submit() {
+    let mut router = ComputeRouter::new();
+    router.register(Arc::new(TestProvider::new()));
+    let policy = ComputePolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ComputePolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 1,
+        per_day_usd: 1,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let compute = ComputeFs::new(
+        AgentId::from("agent-compute-budget"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    let request = ComputeRequest {
+        model: "test-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: false,
+        timeout_ms: None,
+        idempotency_key: Some("req-over".to_string()),
+        max_cost_usd: Some(5),
+    };
+
+    let mut handle = compute.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
+}
+
+#[test]
 fn test_compute_stream_watch() {
     let mut router = ComputeRouter::new();
     router.register(Arc::new(TestProvider::new()));
@@ -589,6 +630,54 @@ fn test_container_new_usage_and_idempotency() {
     let response_again = submit_container(&containers, &request);
     let session_id_again = response_again["session_id"].as_str().expect("session_id");
     assert_eq!(session_id_again, session_id);
+}
+
+#[test]
+fn test_container_budget_exceeded_blocks_submit() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::new()));
+    let policy = ContainerPolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ContainerPolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 1,
+        per_day_usd: 1,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let containers = ContainerFs::new(
+        AgentId::from("agent-containers-budget"),
+        router,
+        policy,
+        budget,
+        journal,
+        storage,
+        signer,
+    );
+
+    let request = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(5),
+        idempotency_key: Some("req-over".to_string()),
+        timeout_ms: None,
+    };
+
+    let mut handle = containers.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
 }
 
 #[test]
