@@ -32,7 +32,7 @@ use crate::{
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     marketplace::{
         ProviderCatalogEntry, ProviderSelection, build_provider_catalog, is_provider_worker,
-        select_provider_for_capability,
+        select_provider_for_capability, select_provider_for_capability_excluding,
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
@@ -519,8 +519,6 @@ struct DispatchSandboxRunResponse {
 struct SandboxVerificationBody {
     request: protocol::SandboxRunRequest,
     response: protocol::SandboxRunResponse,
-    #[serde(default)]
-    provider_worker_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -534,8 +532,6 @@ struct SandboxVerificationResponse {
 struct RepoIndexVerificationBody {
     request: protocol::RepoIndexRequest,
     response: protocol::RepoIndexResponse,
-    #[serde(default)]
-    provider_worker_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1531,12 +1527,59 @@ async fn dispatch_sandbox_run(
                     | protocol::jobs::sandbox::SandboxStatus::Cancelled
                     | protocol::jobs::sandbox::SandboxStatus::Error
             );
+            if provider_failed {
+                let reason = format!("dispatch_status:{:?}", response.status);
+                if let Err(error) = apply_provider_failure_strike(
+                    &state,
+                    selection.provider.worker_id.as_str(),
+                    job_hash.as_str(),
+                    reason.as_str(),
+                )
+                .await
+                {
+                    tracing::warn!(
+                        worker_id = %selection.provider.worker_id,
+                        err = ?error,
+                        "provider failure strike update failed"
+                    );
+                }
+            }
             if provider_failed && selection.tier == crate::marketplace::ProviderSelectionTier::Owned
             {
-                if let Some(reserve) = select_provider_for_capability(
+                if let Some(alt) = select_provider_for_capability_excluding(
+                    &workers,
+                    Some(&owner),
+                    PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                    Some(selection.provider.worker_id.as_str()),
+                ) {
+                    if alt.provider.worker_id != selection.provider.worker_id {
+                        let fallback_from_provider_id =
+                            Some(selection.provider.provider_id.clone());
+                        let (response, latency_ms) = dispatch_sandbox_request_to_provider(
+                            &alt,
+                            &workers,
+                            &job_hash,
+                            &body.request,
+                        )
+                        .await?;
+                        state
+                            .compute_telemetry
+                            .record_dispatch_success(owner_key.as_str(), latency_ms, true)
+                            .await;
+                        return Ok(Json(DispatchSandboxRunResponse {
+                            job_hash,
+                            selection: alt,
+                            response,
+                            latency_ms,
+                            fallback_from_provider_id,
+                        }));
+                    }
+                }
+                if let Some(reserve) = select_provider_for_capability_excluding(
                     &workers,
                     None,
                     PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                    Some(selection.provider.worker_id.as_str()),
                 ) {
                     if reserve.provider.worker_id != selection.provider.worker_id {
                         let fallback_from_provider_id =
@@ -1576,11 +1619,55 @@ async fn dispatch_sandbox_run(
             }))
         }
         Err(error) => {
+            if let Err(err) = apply_provider_failure_strike(
+                &state,
+                selection.provider.worker_id.as_str(),
+                job_hash.as_str(),
+                "dispatch_error",
+            )
+            .await
+            {
+                tracing::warn!(
+                    worker_id = %selection.provider.worker_id,
+                    err = ?err,
+                    "provider dispatch failure strike update failed"
+                );
+            }
             if selection.tier == crate::marketplace::ProviderSelectionTier::Owned {
-                if let Some(reserve) = select_provider_for_capability(
+                if let Some(alt) = select_provider_for_capability_excluding(
+                    &workers,
+                    Some(&owner),
+                    PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                    Some(selection.provider.worker_id.as_str()),
+                ) {
+                    if alt.provider.worker_id != selection.provider.worker_id {
+                        let fallback_from_provider_id =
+                            Some(selection.provider.provider_id.clone());
+                        let (response, latency_ms) = dispatch_sandbox_request_to_provider(
+                            &alt,
+                            &workers,
+                            &job_hash,
+                            &body.request,
+                        )
+                        .await?;
+                        state
+                            .compute_telemetry
+                            .record_dispatch_success(owner_key.as_str(), latency_ms, true)
+                            .await;
+                        return Ok(Json(DispatchSandboxRunResponse {
+                            job_hash,
+                            selection: alt,
+                            response,
+                            latency_ms,
+                            fallback_from_provider_id,
+                        }));
+                    }
+                }
+                if let Some(reserve) = select_provider_for_capability_excluding(
                     &workers,
                     None,
                     PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                    Some(selection.provider.worker_id.as_str()),
                 ) {
                     if reserve.provider.worker_id != selection.provider.worker_id {
                         let fallback_from_provider_id =
@@ -1694,20 +1781,10 @@ async fn get_compute_treasury_summary(
 }
 
 async fn verify_sandbox_run(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Json(body): Json<SandboxVerificationBody>,
 ) -> Result<Json<SandboxVerificationResponse>, ApiError> {
     let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
-    if let Some(worker_id) = body
-        .provider_worker_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if !outcome.violations.is_empty() {
-            apply_provider_violation_strike(&state, worker_id, &outcome.violations).await?;
-        }
-    }
     Ok(Json(SandboxVerificationResponse {
         passed: outcome.passed,
         exit_code: outcome.exit_code,
@@ -1716,20 +1793,10 @@ async fn verify_sandbox_run(
 }
 
 async fn verify_repo_index(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Json(body): Json<RepoIndexVerificationBody>,
 ) -> Result<Json<RepoIndexVerificationResponse>, ApiError> {
     let outcome = crate::verification::verify_repo_index(&body.request, &body.response);
-    if let Some(worker_id) = body
-        .provider_worker_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if !outcome.violations.is_empty() {
-            apply_provider_violation_strike(&state, worker_id, &outcome.violations).await?;
-        }
-    }
 
     Ok(Json(RepoIndexVerificationResponse {
         passed: outcome.passed,
@@ -1798,9 +1865,17 @@ async fn settle_sandbox_run(
 
     let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
     let violations = outcome.violations.clone();
-    if !violations.is_empty() {
-        apply_provider_violation_strike(&state, body.provider_worker_id.trim(), &violations)
+    if violations.is_empty() {
+        apply_provider_success_signal(&state, body.provider_worker_id.trim(), job_hash.as_str())
             .await?;
+    } else {
+        apply_provider_violation_strike(
+            &state,
+            body.provider_worker_id.trim(),
+            job_hash.as_str(),
+            &violations,
+        )
+        .await?;
     }
 
     // Record verification receipt evidence (idempotent).
@@ -1996,6 +2071,7 @@ async fn get_worker_checkpoint(
     Ok(Json(CheckpointResponse { checkpoint }))
 }
 
+#[derive(Debug)]
 enum ApiError {
     NotFound,
     Forbidden(String),
@@ -2296,6 +2372,12 @@ fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
         if !map.contains_key("quarantined") {
             map.insert("quarantined".to_string(), serde_json::Value::Bool(false));
         }
+        if !map.contains_key("success_count") {
+            map.insert(
+                "success_count".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(0_u64)),
+            );
+        }
     }
 }
 
@@ -2498,10 +2580,12 @@ async fn dispatch_sandbox_request_to_provider(
 }
 
 const PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD: u64 = 3;
+const PROVIDER_FAILURE_STRIKE_QUARANTINE_THRESHOLD: u64 = 5;
 
 async fn apply_provider_violation_strike(
     state: &AppState,
     worker_id: &str,
+    job_hash: &str,
     violations: &[String],
 ) -> Result<(), ApiError> {
     ensure_runtime_write_authority(state)?;
@@ -2522,11 +2606,23 @@ async fn apply_provider_violation_strike(
         .get("failure_strikes")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
+
+    if snapshot
+        .worker
+        .metadata
+        .get("last_violation_job_hash")
+        .and_then(serde_json::Value::as_str)
+        == Some(job_hash)
+    {
+        return Ok(());
+    }
+
     let next_strikes = current_strikes.saturating_add(1);
     let mut patch = serde_json::json!({
         "failure_strikes": next_strikes,
         "last_violation_at": Utc::now().to_rfc3339(),
         "last_violation_reason": violations.first().cloned().unwrap_or_else(|| "violation".to_string()),
+        "last_violation_job_hash": job_hash,
     });
     let should_quarantine = next_strikes >= PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD;
     if should_quarantine {
@@ -2572,6 +2668,150 @@ async fn apply_provider_violation_strike(
         publish_worker_snapshot(state, &transitioned).await?;
     }
 
+    Ok(())
+}
+
+async fn apply_provider_failure_strike(
+    state: &AppState,
+    worker_id: &str,
+    job_hash: &str,
+    reason: &str,
+) -> Result<(), ApiError> {
+    ensure_runtime_write_authority(state)?;
+
+    let snapshot = state
+        .workers
+        .list_all_workers()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.worker.worker_id == worker_id)
+        .ok_or_else(|| {
+            ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}"))
+        })?;
+
+    if snapshot
+        .worker
+        .metadata
+        .get("last_failure_job_hash")
+        .and_then(serde_json::Value::as_str)
+        == Some(job_hash)
+    {
+        return Ok(());
+    }
+
+    let current_strikes = snapshot
+        .worker
+        .metadata
+        .get("failure_strikes")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let next_strikes = current_strikes.saturating_add(1);
+    let mut patch = serde_json::json!({
+        "failure_strikes": next_strikes,
+        "last_failure_at": Utc::now().to_rfc3339(),
+        "last_failure_reason": reason,
+        "last_failure_job_hash": job_hash,
+    });
+
+    let should_quarantine = next_strikes >= PROVIDER_FAILURE_STRIKE_QUARANTINE_THRESHOLD;
+    if should_quarantine {
+        if let Some(map) = patch.as_object_mut() {
+            map.insert("quarantined".to_string(), serde_json::Value::Bool(true));
+            map.insert(
+                "quarantine_reason".to_string(),
+                serde_json::Value::String("provider_failures".to_string()),
+            );
+            map.insert(
+                "quarantined_at".to_string(),
+                serde_json::Value::String(Utc::now().to_rfc3339()),
+            );
+        }
+    }
+
+    let updated = state
+        .workers
+        .heartbeat(
+            worker_id,
+            WorkerHeartbeatRequest {
+                owner: snapshot.worker.owner.clone(),
+                metadata_patch: patch,
+            },
+        )
+        .await
+        .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(state, &updated).await?;
+
+    if should_quarantine && updated.worker.status != WorkerStatus::Failed {
+        let transitioned = state
+            .workers
+            .transition_status(
+                worker_id,
+                WorkerStatusTransitionRequest {
+                    owner: updated.worker.owner.clone(),
+                    status: WorkerStatus::Failed,
+                    reason: Some("quarantined".to_string()),
+                },
+            )
+            .await
+            .map_err(ApiError::from_worker)?;
+        publish_worker_snapshot(state, &transitioned).await?;
+    }
+
+    Ok(())
+}
+
+async fn apply_provider_success_signal(
+    state: &AppState,
+    worker_id: &str,
+    job_hash: &str,
+) -> Result<(), ApiError> {
+    ensure_runtime_write_authority(state)?;
+
+    let snapshot = state
+        .workers
+        .list_all_workers()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.worker.worker_id == worker_id)
+        .ok_or_else(|| {
+            ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}"))
+        })?;
+
+    if snapshot
+        .worker
+        .metadata
+        .get("last_success_job_hash")
+        .and_then(serde_json::Value::as_str)
+        == Some(job_hash)
+    {
+        return Ok(());
+    }
+
+    let current_success = snapshot
+        .worker
+        .metadata
+        .get("success_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let next_success = current_success.saturating_add(1);
+    let patch = serde_json::json!({
+        "success_count": next_success,
+        "last_success_at": Utc::now().to_rfc3339(),
+        "last_success_job_hash": job_hash,
+    });
+
+    let updated = state
+        .workers
+        .heartbeat(
+            worker_id,
+            WorkerHeartbeatRequest {
+                owner: snapshot.worker.owner.clone(),
+                metadata_patch: patch,
+            },
+        )
+        .await
+        .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(state, &updated).await?;
     Ok(())
 }
 
@@ -3149,6 +3389,48 @@ mod tests {
                 status: protocol::jobs::sandbox::SandboxStatus::Success,
                 error: None,
                 provenance: protocol::Provenance::new("stub"),
+            })
+        }
+
+        let app = axum::Router::new()
+            .route(
+                "/healthz",
+                axum::routing::get(|| async { (axum::http::StatusCode::OK, "ok") }),
+            )
+            .route("/v1/sandbox_run", axum::routing::post(sandbox_run));
+        let (addr, shutdown) = spawn_http_server(app).await?;
+        Ok((format!("http://{addr}"), shutdown))
+    }
+
+    async fn spawn_cancelled_compute_provider_stub()
+    -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
+        async fn sandbox_run(
+            axum::Json(request): axum::Json<protocol::SandboxRunRequest>,
+        ) -> axum::Json<protocol::SandboxRunResponse> {
+            let runs = request
+                .commands
+                .iter()
+                .map(|cmd| protocol::jobs::sandbox::CommandResult {
+                    cmd: cmd.cmd.clone(),
+                    exit_code: 1,
+                    duration_ms: 1,
+                    stdout_sha256: "stdout".to_string(),
+                    stderr_sha256: "stderr".to_string(),
+                    stdout_preview: None,
+                    stderr_preview: None,
+                })
+                .collect::<Vec<_>>();
+            axum::Json(protocol::SandboxRunResponse {
+                env_info: protocol::jobs::sandbox::EnvInfo {
+                    image_digest: request.sandbox.image_digest.clone(),
+                    hostname: None,
+                    system_info: None,
+                },
+                runs,
+                artifacts: Vec::new(),
+                status: protocol::jobs::sandbox::SandboxStatus::Cancelled,
+                error: None,
+                provenance: protocol::Provenance::new("stub-cancelled"),
             })
         }
 
@@ -5320,6 +5602,170 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_failure_applies_strike_and_reroutes_owned_provider() -> Result<()> {
+        let app = test_router();
+        let (failing_base_url, failing_shutdown) = spawn_cancelled_compute_provider_stub().await?;
+        let (ok_base_url, ok_shutdown) = spawn_compute_provider_stub().await?;
+        let (reserve_base_url, reserve_shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_failing = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:dispatch-fail-provider",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-fail",
+                            "provider_base_url": failing_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 900,
+                            "caps": { "max_timeout_secs": 120 }
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_failing.status(), axum::http::StatusCode::CREATED);
+
+        let create_ok_owned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:dispatch-ok-provider",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-ok-owned",
+                            "provider_base_url": ok_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1200,
+                            "caps": { "max_timeout_secs": 120 }
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_ok_owned.status(), axum::http::StatusCode::CREATED);
+
+        let create_reserve = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:dispatch-reserve-provider",
+                        "owner_user_id": 999,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-reserve",
+                            "provider_base_url": reserve_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1500,
+                            "reserve_pool": true,
+                            "caps": { "max_timeout_secs": 120 }
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_reserve.status(), axum::http::StatusCode::CREATED);
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let dispatch = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/dispatch/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request.clone(),
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(dispatch.status(), axum::http::StatusCode::OK);
+        let dispatch_json = response_json(dispatch).await?;
+        assert_eq!(
+            dispatch_json
+                .pointer("/selection/provider/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-ok-owned")
+        );
+        assert_eq!(
+            dispatch_json
+                .pointer("/fallback_from_provider_id")
+                .and_then(Value::as_str),
+            Some("provider-fail")
+        );
+
+        let failing_worker = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/workers/desktop:dispatch-fail-provider?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(failing_worker.status(), axum::http::StatusCode::OK);
+        let failing_worker_json = response_json(failing_worker).await?;
+        assert_eq!(
+            failing_worker_json
+                .pointer("/worker/worker/metadata/failure_strikes")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+
+        let route = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/route/provider")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "capability": "oa.sandbox_run.v1",
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(route.status(), axum::http::StatusCode::OK);
+        let route_json = response_json(route).await?;
+        assert_eq!(
+            route_json
+                .pointer("/provider/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-ok-owned")
+        );
+
+        let _ = failing_shutdown.send(());
+        let _ = ok_shutdown.send(());
+        let _ = reserve_shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn treasury_settlement_is_pay_after_verify_and_idempotent() -> Result<()> {
         let app = test_router();
         let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
@@ -5435,6 +5881,23 @@ mod tests {
             Some(true)
         );
 
+        let worker_after_settle = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/workers/desktop:settle-provider-1?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(worker_after_settle.status(), axum::http::StatusCode::OK);
+        let worker_after_settle_json = response_json(worker_after_settle).await?;
+        assert_eq!(
+            worker_after_settle_json
+                .pointer("/worker/worker/metadata/success_count")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+
         let receipt = app
             .clone()
             .oneshot(
@@ -5488,6 +5951,23 @@ mod tests {
             Some(1000)
         );
 
+        let worker_after_retry = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/workers/desktop:settle-provider-1?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(worker_after_retry.status(), axum::http::StatusCode::OK);
+        let worker_after_retry_json = response_json(worker_after_retry).await?;
+        assert_eq!(
+            worker_after_retry_json
+                .pointer("/worker/worker/metadata/success_count")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+
         // Append-run-events endpoint must reject direct payment writes.
         let reject_payment = app
             .oneshot(
@@ -5534,51 +6014,79 @@ mod tests {
             .await?;
         assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
 
-        let request = protocol::SandboxRunRequest {
-            sandbox: protocol::jobs::sandbox::SandboxConfig {
-                image_digest: "sha256:test".to_string(),
-                ..Default::default()
-            },
-            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
-            ..Default::default()
-        };
-        let bad_response = protocol::SandboxRunResponse {
-            env_info: protocol::jobs::sandbox::EnvInfo {
-                image_digest: "sha256:test".to_string(),
-                hostname: None,
-                system_info: None,
-            },
-            runs: vec![protocol::jobs::sandbox::CommandResult {
-                cmd: "echo bye".to_string(),
-                exit_code: 0,
-                duration_ms: 1,
-                stdout_sha256: "stdout".to_string(),
-                stderr_sha256: "stderr".to_string(),
-                stdout_preview: None,
-                stderr_preview: None,
-            }],
-            artifacts: Vec::new(),
-            status: protocol::jobs::sandbox::SandboxStatus::Success,
-            error: None,
-            provenance: protocol::Provenance::new("test"),
-        };
+        let create_run = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:quarantine-runner",
+                        "metadata": {"policy_bundle_id": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_run.status(), axum::http::StatusCode::CREATED);
+        let run_json = response_json(create_run).await?;
+        let run_id = run_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
 
-        for _ in 0..3 {
-            let verify_response = app
+        for idx in 0..3 {
+            let request = protocol::SandboxRunRequest {
+                sandbox: protocol::jobs::sandbox::SandboxConfig {
+                    image_digest: "sha256:test".to_string(),
+                    network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                    ..Default::default()
+                },
+                commands: vec![protocol::jobs::sandbox::SandboxCommand::new(format!(
+                    "echo hi {idx}"
+                ))],
+                ..Default::default()
+            };
+            let bad_response = protocol::SandboxRunResponse {
+                env_info: protocol::jobs::sandbox::EnvInfo {
+                    image_digest: "sha256:test".to_string(),
+                    hostname: None,
+                    system_info: None,
+                },
+                runs: vec![protocol::jobs::sandbox::CommandResult {
+                    cmd: "echo bye".to_string(),
+                    exit_code: 0,
+                    duration_ms: 1,
+                    stdout_sha256: "stdout".to_string(),
+                    stderr_sha256: "stderr".to_string(),
+                    stdout_preview: None,
+                    stderr_preview: None,
+                }],
+                artifacts: Vec::new(),
+                status: protocol::jobs::sandbox::SandboxStatus::Success,
+                error: None,
+                provenance: protocol::Provenance::new("test"),
+            };
+
+            let settle_response = app
                 .clone()
                 .oneshot(
                     Request::builder()
                         .method(Method::POST)
-                        .uri("/internal/v1/verifications/sandbox-run")
+                        .uri("/internal/v1/treasury/compute/settle/sandbox-run")
                         .header("content-type", "application/json")
                         .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "owner_user_id": 11,
+                            "run_id": run_id.clone(),
+                            "provider_id": "provider-quarantine-1",
                             "provider_worker_id": "desktop:quarantine-provider-1",
-                            "request": request.clone(),
-                            "response": bad_response.clone()
+                            "amount_msats": 1000,
+                            "request": request,
+                            "response": bad_response,
                         }))?))?,
                 )
                 .await?;
-            assert_eq!(verify_response.status(), axum::http::StatusCode::OK);
+            assert_eq!(settle_response.status(), axum::http::StatusCode::OK);
         }
 
         let catalog_response = app

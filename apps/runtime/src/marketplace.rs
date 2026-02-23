@@ -23,6 +23,20 @@ impl Default for SupplyClass {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTier {
+    Provisional,
+    Qualified,
+    Preferred,
+}
+
+impl Default for ProviderTier {
+    fn default() -> Self {
+        Self::Qualified
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderCatalogEntry {
     pub schema: String,
@@ -51,6 +65,12 @@ pub struct ProviderCatalogEntry {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub min_price_msats: Option<u64>,
+    #[serde(default)]
+    pub tier: ProviderTier,
+    #[serde(default)]
+    pub failure_strikes: u64,
+    #[serde(default)]
+    pub success_count: u64,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -76,6 +96,9 @@ impl ProviderCatalogEntry {
         let cluster_members = metadata_string_array(meta, "cluster_members");
         let quarantined = metadata_bool(meta, "quarantined").unwrap_or(false);
         let quarantine_reason = metadata_string(meta, "quarantine_reason");
+        let failure_strikes = metadata_u64(meta, "failure_strikes").unwrap_or(0);
+        let success_count = metadata_u64(meta, "success_count").unwrap_or(0);
+        let tier = provider_tier_from_metadata(meta, success_count, failure_strikes);
 
         Some(Self {
             schema: PROVIDER_CATALOG_SCHEMA_V1.to_string(),
@@ -96,6 +119,9 @@ impl ProviderCatalogEntry {
             base_url,
             capabilities,
             min_price_msats,
+            tier,
+            failure_strikes,
+            success_count,
             updated_at: worker.updated_at,
         })
     }
@@ -137,6 +163,34 @@ pub fn is_provider_worker(worker: &RuntimeWorker) -> bool {
     metadata_string_array(&worker.metadata, "roles")
         .iter()
         .any(|role| role == "provider")
+}
+
+fn provider_tier_from_metadata(
+    metadata: &Value,
+    success_count: u64,
+    failure_strikes: u64,
+) -> ProviderTier {
+    if let Some(value) = metadata_string(metadata, "tier")
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        match value {
+            "provisional" => return ProviderTier::Provisional,
+            "qualified" => return ProviderTier::Qualified,
+            "preferred" => return ProviderTier::Preferred,
+            _ => {}
+        }
+    }
+
+    if failure_strikes >= 2 {
+        return ProviderTier::Provisional;
+    }
+    if success_count >= 5 && failure_strikes == 0 {
+        return ProviderTier::Preferred;
+    }
+
+    ProviderTier::Qualified
 }
 
 fn supply_class_from_metadata(metadata: &Value, reserve_pool: bool) -> SupplyClass {
@@ -190,13 +244,34 @@ pub fn select_provider_for_capability(
     owner_filter: Option<&WorkerOwner>,
     capability: &str,
 ) -> Option<ProviderSelection> {
+    select_provider_for_capability_excluding(workers, owner_filter, capability, None)
+}
+
+pub fn select_provider_for_capability_excluding(
+    workers: &[WorkerSnapshot],
+    owner_filter: Option<&WorkerOwner>,
+    capability: &str,
+    exclude_worker_id: Option<&str>,
+) -> Option<ProviderSelection> {
     let capability = capability.trim();
     if capability.is_empty() {
         return None;
     }
 
+    let exclude_worker_id = exclude_worker_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
     let mut providers = build_provider_catalog(workers);
-    providers.retain(|provider| is_provider_available(provider, capability));
+    providers.retain(|provider| {
+        if let Some(exclude) = exclude_worker_id {
+            if provider.worker_id == exclude {
+                return false;
+            }
+        }
+        is_provider_available(provider, capability)
+    });
 
     if let Some(owner) = owner_filter {
         let mut owned = providers
@@ -227,11 +302,36 @@ pub fn select_provider_for_capability(
         })
 }
 
-fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, String) {
+const PROVIDER_STRIKE_PRICE_PENALTY_MSATS: u64 = 500;
+const PROVIDER_PROVISIONAL_PENALTY_MSATS: u64 = 1_000;
+
+fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, u8, u64, String) {
+    let base_price = provider.min_price_msats.unwrap_or(u64::MAX);
+    let strike_penalty = provider
+        .failure_strikes
+        .saturating_mul(PROVIDER_STRIKE_PRICE_PENALTY_MSATS);
+    let tier_penalty = match provider.tier {
+        ProviderTier::Provisional => PROVIDER_PROVISIONAL_PENALTY_MSATS,
+        ProviderTier::Qualified | ProviderTier::Preferred => 0,
+    };
+    let effective_price = base_price
+        .saturating_add(strike_penalty)
+        .saturating_add(tier_penalty);
+
     (
-        provider.min_price_msats.unwrap_or(u64::MAX),
+        effective_price,
+        provider_tier_rank(&provider.tier),
+        provider.failure_strikes,
         provider.provider_id.clone(),
     )
+}
+
+fn provider_tier_rank(tier: &ProviderTier) -> u8 {
+    match tier {
+        ProviderTier::Preferred => 0,
+        ProviderTier::Qualified => 1,
+        ProviderTier::Provisional => 2,
+    }
 }
 
 fn owners_match(left: &WorkerOwner, right: &WorkerOwner) -> bool {
@@ -269,4 +369,126 @@ fn is_provider_available(provider: &ProviderCatalogEntry, capability: &str) -> b
     }
 
     provider.capabilities.iter().any(|cap| cap == capability)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{RuntimeWorker, WorkerLiveness, WorkerStatus};
+    use chrono::Utc;
+
+    fn snapshot_provider(
+        worker_id: &str,
+        owner_user_id: u64,
+        provider_id: &str,
+        min_price_msats: u64,
+        failure_strikes: u64,
+        success_count: u64,
+        reserve_pool: bool,
+    ) -> WorkerSnapshot {
+        let now = Utc::now();
+        let owner = WorkerOwner {
+            user_id: Some(owner_user_id),
+            guest_scope: None,
+        };
+
+        WorkerSnapshot {
+            worker: RuntimeWorker {
+                worker_id: worker_id.to_string(),
+                owner,
+                workspace_ref: None,
+                codex_home_ref: None,
+                adapter: "test".to_string(),
+                status: WorkerStatus::Running,
+                latest_seq: 1,
+                metadata: serde_json::json!({
+                    "roles": ["provider"],
+                    "provider_id": provider_id,
+                    "provider_base_url": "http://127.0.0.1:1",
+                    "capabilities": ["oa.sandbox_run.v1"],
+                    "min_price_msats": min_price_msats,
+                    "reserve_pool": reserve_pool,
+                    "quarantined": false,
+                    "failure_strikes": failure_strikes,
+                    "success_count": success_count,
+                }),
+                started_at: now,
+                stopped_at: None,
+                last_heartbeat_at: Some(now),
+                updated_at: now,
+            },
+            liveness: WorkerLiveness {
+                heartbeat_age_ms: Some(0),
+                heartbeat_stale_after_ms: 120_000,
+                heartbeat_state: "fresh".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn routing_prefers_lower_effective_price_after_strikes() {
+        let owner = WorkerOwner {
+            user_id: Some(11),
+            guest_scope: None,
+        };
+        let workers = vec![
+            snapshot_provider("worker:a", 11, "provider-a", 1000, 2, 0, false),
+            snapshot_provider("worker:b", 11, "provider-b", 1200, 0, 0, false),
+        ];
+        let selection = select_provider_for_capability(&workers, Some(&owner), "oa.sandbox_run.v1")
+            .expect("expected selection");
+        assert_eq!(selection.provider.provider_id, "provider-b");
+    }
+
+    #[test]
+    fn routing_prefers_preferred_tier_on_equal_price() {
+        let owner = WorkerOwner {
+            user_id: Some(11),
+            guest_scope: None,
+        };
+        let workers = vec![
+            snapshot_provider(
+                "worker:preferred",
+                11,
+                "provider-preferred",
+                1000,
+                0,
+                5,
+                false,
+            ),
+            snapshot_provider(
+                "worker:qualified",
+                11,
+                "provider-qualified",
+                1000,
+                0,
+                0,
+                false,
+            ),
+        ];
+        let selection = select_provider_for_capability(&workers, Some(&owner), "oa.sandbox_run.v1")
+            .expect("expected selection");
+        assert_eq!(selection.provider.provider_id, "provider-preferred");
+        assert_eq!(selection.provider.tier, ProviderTier::Preferred);
+    }
+
+    #[test]
+    fn excluding_worker_id_skips_provider() {
+        let owner = WorkerOwner {
+            user_id: Some(11),
+            guest_scope: None,
+        };
+        let workers = vec![
+            snapshot_provider("worker:a", 11, "provider-a", 1000, 0, 0, false),
+            snapshot_provider("worker:b", 11, "provider-b", 1100, 0, 0, false),
+        ];
+        let selection = select_provider_for_capability_excluding(
+            &workers,
+            Some(&owner),
+            "oa.sandbox_run.v1",
+            Some("worker:a"),
+        )
+        .expect("expected selection");
+        assert_eq!(selection.provider.provider_id, "provider-b");
+    }
 }
