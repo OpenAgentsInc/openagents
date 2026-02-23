@@ -374,10 +374,11 @@ fn feed_panel(
     items: &[FeedItemView],
     zones: &[FeedZoneView],
 ) -> Markup {
+    let active_zone = active_feed_zone(zones);
     html! {
         section class="oa-grid feed" {
             (feed_zone_panel(zones, false))
-            (feed_main_panel(session, status, items))
+            (feed_main_panel(session, status, items, active_zone))
         }
     }
 }
@@ -388,8 +389,9 @@ pub fn render_feed_main_select_fragment(
     items: &[FeedItemView],
     zones: &[FeedZoneView],
 ) -> String {
+    let active_zone = active_feed_zone(zones);
     html! {
-        (feed_main_panel(session, status, items))
+        (feed_main_panel(session, status, items, active_zone))
         (feed_zone_panel(zones, true))
     }
     .into_string()
@@ -447,9 +449,17 @@ fn feed_main_panel(
     session: Option<&SessionView>,
     status: Option<&str>,
     items: &[FeedItemView],
+    active_zone: Option<&str>,
 ) -> Markup {
+    let refresh_route = active_zone
+        .map(|zone| format!("/feed/fragments/main?zone={zone}"))
+        .unwrap_or_else(|| "/feed/fragments/main?zone=all".to_string());
     html! {
-        article id="feed-main-panel" class="oa-card oa-feed-main" {
+        article id="feed-main-panel" class="oa-card oa-feed-main"
+            hx-get=(refresh_route)
+            hx-trigger="feed-shout-posted from:body"
+            hx-target="#feed-main-panel"
+            hx-swap="outerHTML" {
             h2 { "Feed" }
             (status_slot("feed-status", status))
             @if session.is_some() {
@@ -485,6 +495,13 @@ fn feed_main_panel(
             }
         }
     }
+}
+
+fn active_feed_zone(zones: &[FeedZoneView]) -> Option<&str> {
+    zones
+        .iter()
+        .find(|zone| zone.is_active)
+        .map(|zone| zone.zone.as_str())
 }
 
 fn placeholder_panel(heading: &str, description: &str) -> Markup {
@@ -868,6 +885,7 @@ mod tests {
         assert!(html.contains("hx-get=\"/feed/fragments/main?zone=all\""));
         assert!(html.contains("hx-target=\"#feed-main-panel\""));
         assert!(html.contains("hx-push-url=\"/feed?zone=l402\""));
+        assert!(html.contains("hx-trigger=\"feed-shout-posted from:body\""));
         assert!(html.contains("hx-boost=\"false\""));
     }
 }

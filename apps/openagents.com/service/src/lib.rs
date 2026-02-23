@@ -3945,19 +3945,18 @@ async fn web_feed_shout(
         return Redirect::temporary("/feed?status=shout-post-failed").into_response();
     }
 
+    if htmx.is_hx_request {
+        let mut response =
+            htmx_notice_response("feed-status", "shout-posted", false, StatusCode::OK);
+        htmx_set_trigger_header(&mut response, "feed-shout-posted");
+        return response;
+    }
+
     if let Some(zone) = zone {
         let location = format!("/feed?zone={zone}&status=shout-posted");
-        if htmx.is_hx_request {
-            htmx_redirect_response(&location)
-        } else {
-            Redirect::temporary(&location).into_response()
-        }
+        Redirect::temporary(&location).into_response()
     } else {
-        if htmx.is_hx_request {
-            htmx_redirect_response("/feed?status=shout-posted")
-        } else {
-            Redirect::temporary("/feed?status=shout-posted").into_response()
-        }
+        Redirect::temporary("/feed?status=shout-posted").into_response()
     }
 }
 
@@ -24580,6 +24579,100 @@ mod tests {
         assert!(direct_body.contains("Zone-L402-only"));
         assert!(!direct_body.contains("Zone-Dev-only"));
         assert!(!direct_body.contains("Zone-Global-only"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_feed_shout_hx_success_emits_trigger_and_refreshes_list() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let token = seed_local_test_token(&config, "feed-shout-hx@openagents.com").await?;
+        let app = build_router(config);
+
+        let post_request = Request::builder()
+            .method("POST")
+            .uri("/feed/shout")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("body=HTMX+zone+post&zone=l402"))?;
+        let post_response = app.clone().oneshot(post_request).await?;
+        assert_eq!(post_response.status(), StatusCode::OK);
+        assert_eq!(
+            post_response
+                .headers()
+                .get("HX-Trigger")
+                .and_then(|value| value.to_str().ok()),
+            Some("feed-shout-posted")
+        );
+        let post_body = read_text(post_response).await?;
+        assert!(post_body.contains("id=\"feed-status\""));
+        assert!(post_body.contains("Shout posted."));
+
+        let fragment_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=l402")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let fragment_response = app.oneshot(fragment_request).await?;
+        assert_eq!(fragment_response.status(), StatusCode::OK);
+        let fragment_body = read_text(fragment_response).await?;
+        assert!(fragment_body.contains("HTMX zone post"));
+        assert!(fragment_body.contains("id=\"feed-main-panel\""));
+        assert!(!fragment_body.contains("<html"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_feed_shout_hx_validation_errors_render_inline_without_trigger() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        let token = seed_local_test_token(&config, "feed-shout-hx-errors@openagents.com").await?;
+        let app = build_router(config);
+
+        let empty_request = Request::builder()
+            .method("POST")
+            .uri("/feed/shout")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("body=%20%20"))?;
+        let empty_response = app.clone().oneshot(empty_request).await?;
+        assert_eq!(empty_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(empty_response.headers().get("HX-Trigger").is_none());
+        let empty_body = read_text(empty_response).await?;
+        assert!(empty_body.contains("Message body cannot be empty."));
+
+        let invalid_zone_request = Request::builder()
+            .method("POST")
+            .uri("/feed/shout")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("body=hello&zone=bad%20zone"))?;
+        let invalid_zone_response = app.oneshot(invalid_zone_request).await?;
+        assert_eq!(
+            invalid_zone_response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert!(invalid_zone_response.headers().get("HX-Trigger").is_none());
+        let invalid_zone_body = read_text(invalid_zone_response).await?;
+        assert!(invalid_zone_body.contains("Zone format is invalid."));
 
         Ok(())
     }

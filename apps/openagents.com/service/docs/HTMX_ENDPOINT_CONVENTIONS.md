@@ -62,6 +62,10 @@ Current feed partial route contract:
   - target fragment: `#feed-main-panel`
   - out-of-band swap: `#feed-zone-panel` (`hx-swap-oob=\"outerHTML\"`)
   - links use `hx-push-url` for deep-linkable query state
+- `POST /feed/shout` (HTMX mode):
+  - returns `#feed-status` fragment
+  - emits `HX-Trigger: feed-shout-posted`
+  - `#feed-main-panel` listens for the trigger and reloads via HTMX GET
 
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
