@@ -99,6 +99,7 @@ Required assertions:
 
 - verification failure implies no release
 - retries do not double-spend / double-release
+- stuck reservations are reconciled: if a job remains `Reserved` beyond the configured TTL, treasury reconciliation withholds and releases the reservation (no budget gets permanently locked)
 
 ### 7) Autopilot updates PR + posts status
 

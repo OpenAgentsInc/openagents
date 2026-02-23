@@ -93,6 +93,7 @@ impl AppState {
         };
 
         maybe_spawn_provider_multihoming_autopilot(&state);
+        maybe_spawn_treasury_reconciliation_worker(&state);
 
         state
     }
@@ -807,6 +808,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/treasury/compute/summary",
             get(get_compute_treasury_summary),
+        )
+        .route(
+            "/internal/v1/treasury/compute/reconcile",
+            post(reconcile_compute_treasury),
         )
         .route(
             "/internal/v1/treasury/compute/settle/sandbox-run",
@@ -2362,6 +2367,33 @@ async fn get_compute_treasury_summary(
     let summary = state
         .treasury
         .summarize_compute_owner(owner_key.as_str(), 50)
+        .await;
+    Ok(Json(summary))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReconcileComputeTreasuryBody {
+    #[serde(default)]
+    max_age_seconds: Option<i64>,
+    #[serde(default)]
+    max_jobs: Option<usize>,
+}
+
+async fn reconcile_compute_treasury(
+    State(state): State<AppState>,
+    Json(body): Json<ReconcileComputeTreasuryBody>,
+) -> Result<Json<crate::treasury::ComputeTreasuryReconcileSummary>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let max_age_seconds = body.max_age_seconds.unwrap_or_else(|| {
+        i64::try_from(state.config.treasury_reservation_ttl_seconds).unwrap_or(i64::MAX)
+    });
+    let max_jobs = body
+        .max_jobs
+        .unwrap_or(state.config.treasury_reconciliation_max_jobs);
+    let summary = state
+        .treasury
+        .reconcile_reserved_compute_jobs(max_age_seconds, max_jobs)
         .await;
     Ok(Json(summary))
 }
@@ -4330,6 +4362,33 @@ fn maybe_spawn_provider_multihoming_autopilot(state: &AppState) {
     });
 }
 
+fn maybe_spawn_treasury_reconciliation_worker(state: &AppState) {
+    if !state.config.treasury_reconciliation_enabled {
+        return;
+    }
+    let treasury = state.treasury.clone();
+    let ttl_seconds =
+        i64::try_from(state.config.treasury_reservation_ttl_seconds).unwrap_or(i64::MAX);
+    let interval_seconds = state.config.treasury_reconciliation_interval_seconds.max(1);
+    let max_jobs = state.config.treasury_reconciliation_max_jobs;
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(interval_seconds)).await;
+            let summary = treasury
+                .reconcile_reserved_compute_jobs(ttl_seconds, max_jobs)
+                .await;
+            if summary.expired_reservations > 0 {
+                tracing::info!(
+                    expired_reservations = summary.expired_reservations,
+                    freed_msats_total = summary.freed_msats_total,
+                    "treasury reconciliation released expired reservations"
+                );
+            }
+        }
+    });
+}
+
 fn provider_ad_payload_from_snapshot(snapshot: &WorkerSnapshot) -> Option<ProviderAdV1> {
     if !is_provider_worker(&snapshot.worker) {
         return None;
@@ -4726,6 +4785,10 @@ mod tests {
             verifier_allowed_signer_pubkeys: HashSet::new(),
             bridge_nostr_relays: Vec::new(),
             bridge_nostr_secret_key: None,
+            treasury_reconciliation_enabled: false,
+            treasury_reservation_ttl_seconds: 3600,
+            treasury_reconciliation_interval_seconds: 60,
+            treasury_reconciliation_max_jobs: 200,
         };
         mutate_config(&mut config);
         let fanout_limits = config.khala_fanout_limits();

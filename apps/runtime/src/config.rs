@@ -51,6 +51,10 @@ pub struct Config {
     pub verifier_allowed_signer_pubkeys: HashSet<String>,
     pub bridge_nostr_relays: Vec<String>,
     pub bridge_nostr_secret_key: Option<[u8; 32]>,
+    pub treasury_reconciliation_enabled: bool,
+    pub treasury_reservation_ttl_seconds: u64,
+    pub treasury_reconciliation_interval_seconds: u64,
+    pub treasury_reconciliation_max_jobs: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,6 +128,14 @@ pub enum ConfigError {
     InvalidBridgeNostrRelays(String),
     #[error("invalid RUNTIME_BRIDGE_NOSTR_SECRET_KEY: {0}")]
     InvalidBridgeNostrSecretKey(String),
+    #[error("invalid RUNTIME_TREASURY_RECONCILIATION_ENABLED: {0}")]
+    InvalidTreasuryReconciliationEnabled(String),
+    #[error("invalid RUNTIME_TREASURY_RESERVATION_TTL_SECONDS: {0}")]
+    InvalidTreasuryReservationTtlSeconds(String),
+    #[error("invalid RUNTIME_TREASURY_RECONCILIATION_INTERVAL_SECONDS: {0}")]
+    InvalidTreasuryReconciliationIntervalSeconds(String),
+    #[error("invalid RUNTIME_TREASURY_RECONCILIATION_MAX_JOBS: {0}")]
+    InvalidTreasuryReconciliationMaxJobs(String),
 }
 
 impl Config {
@@ -339,6 +351,33 @@ impl Config {
             }
             verifier_allowed_signer_pubkeys.insert(normalized);
         }
+
+        let treasury_reconciliation_enabled =
+            parse_bool_env("RUNTIME_TREASURY_RECONCILIATION_ENABLED", false).map_err(|error| {
+                ConfigError::InvalidTreasuryReconciliationEnabled(format!(
+                    "RUNTIME_TREASURY_RECONCILIATION_ENABLED: {error}"
+                ))
+            })?;
+        let treasury_reservation_ttl_seconds = env::var("RUNTIME_TREASURY_RESERVATION_TTL_SECONDS")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse::<u64>()
+            .map_err(|error| {
+                ConfigError::InvalidTreasuryReservationTtlSeconds(error.to_string())
+            })?
+            .max(1);
+        let treasury_reconciliation_interval_seconds =
+            env::var("RUNTIME_TREASURY_RECONCILIATION_INTERVAL_SECONDS")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidTreasuryReconciliationIntervalSeconds(error.to_string())
+                })?
+                .max(1);
+        let treasury_reconciliation_max_jobs = env::var("RUNTIME_TREASURY_RECONCILIATION_MAX_JOBS")
+            .unwrap_or_else(|_| "200".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidTreasuryReconciliationMaxJobs(error.to_string()))?
+            .clamp(1, 2000);
         Ok(Self {
             service_name,
             bind_addr,
@@ -380,6 +419,10 @@ impl Config {
             verifier_allowed_signer_pubkeys,
             bridge_nostr_relays,
             bridge_nostr_secret_key,
+            treasury_reconciliation_enabled,
+            treasury_reservation_ttl_seconds,
+            treasury_reconciliation_interval_seconds,
+            treasury_reconciliation_max_jobs,
         })
     }
 
