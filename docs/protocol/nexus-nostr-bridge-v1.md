@@ -54,6 +54,12 @@ OpenAgents Bridge-required tags:
 - `["oa_schema","openagents.bridge.provider_ad.v1"]`
 - `["oa_provider_id","<provider_id>"]`
 
+Optional OpenAgents tags (Phase 1+ multi-homing sync):
+- `["oa_availability","available|unavailable"]`
+- `["oa_worker_status","starting|running|stopping|stopped|failed"]`
+- `["oa_heartbeat_state","fresh|stale|..."]`
+- `["oa_caps","<json>"]` (resource caps/policy hints)
+
 Content:
 - NIP-89 handler metadata JSON (name/description/website/icon)
 

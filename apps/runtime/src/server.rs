@@ -73,7 +73,7 @@ impl AppState {
         fanout: Arc<FanoutHub>,
         sync_auth: Arc<SyncAuthorizer>,
     ) -> Self {
-        Self {
+        let state = Self {
             config,
             orchestrator,
             workers,
@@ -85,7 +85,11 @@ impl AppState {
             treasury: Arc::new(Treasury::default()),
             fleet_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
-        }
+        };
+
+        maybe_spawn_provider_multihoming_autopilot(&state);
+
+        state
     }
 }
 
@@ -2394,6 +2398,7 @@ async fn heartbeat_worker(
 ) -> Result<Json<WorkerResponse>, ApiError> {
     ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let listing_patch = metadata_patch_touches_provider_listing(&body.metadata_patch);
     if body.metadata_patch.get("pricing_stage").is_some()
         || body.metadata_patch.get("pricing_bands").is_some()
     {
@@ -2421,6 +2426,9 @@ async fn heartbeat_worker(
         .await
         .map_err(ApiError::from_worker)?;
     publish_worker_snapshot(&state, &snapshot).await?;
+    if listing_patch {
+        maybe_spawn_nostr_provider_ad_mirror(&state, &snapshot);
+    }
     Ok(Json(WorkerResponse { worker: snapshot }))
 }
 
@@ -2444,6 +2452,7 @@ async fn transition_worker(
         .await
         .map_err(ApiError::from_worker)?;
     publish_worker_snapshot(&state, &snapshot).await?;
+    maybe_spawn_nostr_provider_ad_mirror(&state, &snapshot);
     Ok(Json(WorkerResponse { worker: snapshot }))
 }
 
@@ -2761,6 +2770,30 @@ fn merge_metadata_patch_shallow(
         target_map.insert(key.clone(), value.clone());
     }
     Ok(())
+}
+
+fn metadata_patch_touches_provider_listing(patch: &serde_json::Value) -> bool {
+    let Some(map) = patch.as_object() else {
+        return false;
+    };
+
+    let listing_keys = [
+        "name",
+        "description",
+        "website",
+        "capabilities",
+        "min_price_msats",
+        "pricing_stage",
+        "pricing_bands",
+        "caps",
+        "reserve_pool",
+        "supply_class",
+        "tier",
+        "quarantined",
+        "quarantine_reason",
+    ];
+
+    listing_keys.iter().any(|key| map.contains_key(*key))
 }
 
 fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
@@ -3435,11 +3468,110 @@ fn maybe_spawn_nostr_provider_ad_mirror(state: &AppState, snapshot: &WorkerSnaps
     let Some(secret_key) = state.config.bridge_nostr_secret_key else {
         return;
     };
-    if !is_provider_worker(&snapshot.worker) {
+
+    let Some(payload) = provider_ad_payload_from_snapshot(snapshot) else {
         return;
+    };
+    let provider_id = payload.provider_id.clone();
+    let relays = state.config.bridge_nostr_relays.clone();
+
+    tokio::spawn(async move {
+        let event = match build_provider_ad_event(&secret_key, None, &payload) {
+            Ok(event) => event,
+            Err(error) => {
+                tracing::warn!(
+                    provider_id,
+                    reason = %error,
+                    "bridge nostr mirror failed to build provider ad"
+                );
+                return;
+            }
+        };
+        let publisher = BridgeNostrPublisher::new(relays);
+        if let Err(error) = publisher.connect().await {
+            tracing::warn!(
+                provider_id,
+                reason = %error,
+                "bridge nostr mirror failed to connect to relays"
+            );
+            return;
+        }
+        if let Err(error) = publisher.publish(&event).await {
+            tracing::warn!(
+                provider_id,
+                reason = %error,
+                "bridge nostr mirror failed to publish provider ad"
+            );
+        }
+    });
+}
+
+const PROVIDER_MULTIHOMING_REFRESH_SECS: u64 = 60;
+
+fn maybe_spawn_provider_multihoming_autopilot(state: &AppState) {
+    if state.config.bridge_nostr_relays.is_empty() {
+        return;
+    }
+    let Some(secret_key) = state.config.bridge_nostr_secret_key else {
+        return;
+    };
+
+    let workers = state.workers.clone();
+    let relays = state.config.bridge_nostr_relays.clone();
+
+    tokio::spawn(async move {
+        let publisher = BridgeNostrPublisher::new(relays);
+        if let Err(error) = publisher.connect().await {
+            tracing::warn!(
+                reason = %error,
+                "provider multihoming autopilot failed to connect to relays"
+            );
+            return;
+        }
+
+        loop {
+            let snapshots = workers.list_all_workers().await;
+            for snapshot in &snapshots {
+                let Some(payload) = provider_ad_payload_from_snapshot(snapshot) else {
+                    continue;
+                };
+                let provider_id = payload.provider_id.clone();
+                let event = match build_provider_ad_event(&secret_key, None, &payload) {
+                    Ok(event) => event,
+                    Err(error) => {
+                        tracing::warn!(
+                            provider_id,
+                            reason = %error,
+                            "provider multihoming autopilot failed to build provider ad"
+                        );
+                        continue;
+                    }
+                };
+
+                if let Err(error) = publisher.publish(&event).await {
+                    tracing::warn!(
+                        provider_id,
+                        reason = %error,
+                        "provider multihoming autopilot failed to publish provider ad"
+                    );
+                }
+            }
+
+            tokio::time::sleep(Duration::from_secs(PROVIDER_MULTIHOMING_REFRESH_SECS)).await;
+        }
+    });
+}
+
+fn provider_ad_payload_from_snapshot(snapshot: &WorkerSnapshot) -> Option<ProviderAdV1> {
+    if !is_provider_worker(&snapshot.worker) {
+        return None;
     }
 
     let meta = &snapshot.worker.metadata;
+    let quarantined = meta
+        .get("quarantined")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     let provider_id = meta
         .get("provider_id")
         .and_then(serde_json::Value::as_str)
@@ -3500,48 +3632,40 @@ fn maybe_spawn_nostr_provider_ad_mirror(state: &AppState, snapshot: &WorkerSnaps
         .and_then(serde_json::Value::as_u64)
         .or_else(|| pricing_bands.iter().map(|band| band.min_price_msats).min())
         .unwrap_or(1000);
+    let caps = meta.get("caps").cloned().filter(|value| !value.is_null());
+    let worker_status = match snapshot.worker.status {
+        WorkerStatus::Starting => "starting",
+        WorkerStatus::Running => "running",
+        WorkerStatus::Stopping => "stopping",
+        WorkerStatus::Stopped => "stopped",
+        WorkerStatus::Failed => "failed",
+    }
+    .to_string();
+    let heartbeat_state = snapshot.liveness.heartbeat_state.clone();
+    let availability = if snapshot.worker.status == WorkerStatus::Running
+        && snapshot.liveness.heartbeat_state == "fresh"
+        && !quarantined
+    {
+        "available"
+    } else {
+        "unavailable"
+    }
+    .to_string();
 
-    let relays = state.config.bridge_nostr_relays.clone();
-    let payload = ProviderAdV1 {
-        provider_id: provider_id.clone(),
+    Some(ProviderAdV1 {
+        provider_id,
         name,
         description,
         website,
+        availability: Some(availability),
+        worker_status: Some(worker_status),
+        heartbeat_state: Some(heartbeat_state),
+        caps,
         capabilities,
         min_price_msats,
         pricing_stage,
         pricing_bands,
-    };
-
-    tokio::spawn(async move {
-        let event = match build_provider_ad_event(&secret_key, None, &payload) {
-            Ok(event) => event,
-            Err(error) => {
-                tracing::warn!(
-                    provider_id,
-                    reason = %error,
-                    "bridge nostr mirror failed to build provider ad"
-                );
-                return;
-            }
-        };
-        let publisher = BridgeNostrPublisher::new(relays);
-        if let Err(error) = publisher.connect().await {
-            tracing::warn!(
-                provider_id,
-                reason = %error,
-                "bridge nostr mirror failed to connect to relays"
-            );
-            return;
-        }
-        if let Err(error) = publisher.publish(&event).await {
-            tracing::warn!(
-                provider_id,
-                reason = %error,
-                "bridge nostr mirror failed to publish provider ad"
-            );
-        }
-    });
+    })
 }
 
 impl IntoResponse for ApiError {

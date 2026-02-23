@@ -77,6 +77,14 @@ pub struct ProviderAdV1 {
     pub name: String,
     pub description: String,
     pub website: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub availability: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heartbeat_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub caps: Option<serde_json::Value>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub min_price_msats: u64,
@@ -208,6 +216,33 @@ pub fn build_provider_ad_event(
     .add_custom_tag("oa_schema", "openagents.bridge.provider_ad.v1")
     .add_custom_tag("oa_provider_id", payload.provider_id.clone())
     .add_custom_tag("oa_pricing_stage", payload.pricing_stage.as_str());
+
+    if let Some(value) = payload
+        .availability
+        .as_ref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        info = info.add_custom_tag("oa_availability", value.clone());
+    }
+    if let Some(value) = payload
+        .worker_status
+        .as_ref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        info = info.add_custom_tag("oa_worker_status", value.clone());
+    }
+    if let Some(value) = payload
+        .heartbeat_state
+        .as_ref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        info = info.add_custom_tag("oa_heartbeat_state", value.clone());
+    }
+    if let Some(caps) = payload.caps.as_ref().filter(|value| !value.is_null()) {
+        let caps_json = serde_json::to_string(caps)
+            .map_err(|err| BridgeError::Serialization(err.to_string()))?;
+        info = info.add_custom_tag("oa_caps", caps_json);
+    }
 
     for cap in &payload.capabilities {
         if !cap.trim().is_empty() {
@@ -482,6 +517,10 @@ mod tests {
             name: "OpenAgents Compute Provider".to_string(),
             description: "Local sandbox provider for Phase 0".to_string(),
             website: Some("https://openagents.com".to_string()),
+            availability: Some("available".to_string()),
+            worker_status: Some("running".to_string()),
+            heartbeat_state: Some("fresh".to_string()),
+            caps: Some(serde_json::json!({"max_timeout_secs": 120})),
             capabilities: vec!["oa.sandbox_run.v1".to_string()],
             min_price_msats: 1000,
             pricing_stage: PricingStageV1::Fixed,
@@ -530,6 +569,25 @@ mod tests {
                 .iter()
                 .any(|t| t.len() >= 2 && t[0] == "oa_pricing_band")
         );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_availability" && t[1] == "available")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_worker_status" && t[1] == "running")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_heartbeat_state" && t[1] == "fresh")
+        );
+        assert!(event.tags.iter().any(|t| t.len() >= 2 && t[0] == "oa_caps"));
     }
 
     #[test]
