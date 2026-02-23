@@ -7227,6 +7227,8 @@ dependencies = [
  "hex",
  "http-body-util",
  "jsonwebtoken 9.3.1",
+ "nostr 0.1.0",
+ "nostr-client",
  "protocol",
  "reqwest",
  "serde",

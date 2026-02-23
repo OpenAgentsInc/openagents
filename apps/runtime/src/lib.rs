@@ -19,6 +19,7 @@ use crate::{
 
 pub mod artifacts;
 pub mod authority;
+pub mod bridge;
 pub mod config;
 pub mod event_log;
 pub mod fanout;

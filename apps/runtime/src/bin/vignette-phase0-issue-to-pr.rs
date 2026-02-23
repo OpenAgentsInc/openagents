@@ -17,6 +17,10 @@ use axum::{
 };
 use chrono::Utc;
 use clap::Parser;
+use openagents_runtime_service::bridge::{
+    ProviderAdV1, ReceiptPointerV1, build_provider_ad_event, build_receipt_pointer_event,
+    receipt_sha256_from_utf8, validate_phase0_bridge_event,
+};
 use openagents_runtime_service::config::{AuthorityWriteMode, Config as RuntimeConfig};
 use openagents_runtime_service::types::RuntimeRun;
 use openagents_runtime_service::workers::WorkerSnapshot;
@@ -1049,7 +1053,14 @@ async fn run_happy_path(
     ))
     .await?;
 
-    write_bridge_events(out_dir, &provider.state.id, &job_hash, "released")?;
+    write_bridge_events(
+        out_dir,
+        runtime_base,
+        run.id,
+        &provider.state.id,
+        &job_hash,
+        "released",
+    )?;
     write_metrics(out_dir, true)?;
     Ok(())
 }
@@ -1171,7 +1182,14 @@ async fn run_verification_fail(
         "# PR Summary (Vignette Phase 0)\n\nVerification intentionally failed.\n",
     )
     .await?;
-    write_bridge_events(out_dir, &provider.state.id, &job_hash, "withheld")?;
+    write_bridge_events(
+        out_dir,
+        runtime_base,
+        run.id,
+        &provider.state.id,
+        &job_hash,
+        "withheld",
+    )?;
     write_metrics(out_dir, false)?;
     Ok(())
 }
@@ -1354,7 +1372,14 @@ async fn run_provider_offline_mid_run(
         "# PR Summary (Vignette Phase 0)\n\nProvider A went offline mid-run; fallback to Provider B succeeded.\n\n- Commit: {commit}\n"
     ))
     .await?;
-    write_bridge_events(out_dir, &provider_b.state.id, &job_hash, "released")?;
+    write_bridge_events(
+        out_dir,
+        runtime_base,
+        run.id,
+        &provider_b.state.id,
+        &job_hash,
+        "released",
+    )?;
     write_metrics(out_dir, true)?;
 
     // Re-enable provider A for subsequent tests.
@@ -1457,7 +1482,14 @@ async fn run_emergency_disable(
         "# PR Summary (Vignette Phase 0)\n\nEmergency disable blocks new jobs.\n",
     )
     .await?;
-    write_bridge_events(out_dir, &provider.state.id, &job_hash, "withheld")?;
+    write_bridge_events(
+        out_dir,
+        runtime_base,
+        run.id,
+        &provider.state.id,
+        &job_hash,
+        "withheld",
+    )?;
     write_metrics(out_dir, true)?;
 
     // Re-enable for safety if operator wants to keep using provider afterwards.
@@ -1823,35 +1855,52 @@ fn assert_replay_jsonl(path: PathBuf) -> Result<()> {
 
 fn write_bridge_events(
     out_dir: &Path,
+    runtime_base: &str,
+    run_id: Uuid,
     provider_id: &str,
     job_hash: &str,
     settlement_status: &str,
 ) -> Result<()> {
-    #[derive(Serialize)]
-    struct BridgeEvent<'a> {
-        kind: &'a str,
-        provider_id: &'a str,
-        job_hash: Option<&'a str>,
-        status: Option<&'a str>,
-    }
+    let receipt_json =
+        std::fs::read_to_string(out_dir.join("RECEIPT.json")).context("read RECEIPT.json")?;
+    let receipt_sha256 = receipt_sha256_from_utf8(&receipt_json);
+    let receipt_url = format!("{runtime_base}/internal/v1/runs/{run_id}/receipt");
 
-    let events = vec![
-        BridgeEvent {
-            kind: "provider_ad",
-            provider_id,
-            job_hash: None,
-            status: None,
-        },
-        BridgeEvent {
-            kind: "receipt_pointer",
-            provider_id,
-            job_hash: Some(job_hash),
-            status: Some(settlement_status),
-        },
-    ];
+    let provider_ad = ProviderAdV1 {
+        provider_id: provider_id.to_string(),
+        name: "OpenAgents Compute Provider".to_string(),
+        description: "Phase-0 vignette provider ad".to_string(),
+        website: Some("https://openagents.com".to_string()),
+        capabilities: vec!["oa.sandbox_run.v1".to_string()],
+        min_price_msats: 1000,
+    };
+
+    let receipt_ptr = ReceiptPointerV1 {
+        provider_id: provider_id.to_string(),
+        run_id: run_id.to_string(),
+        job_hash: job_hash.to_string(),
+        receipt_sha256,
+        settlement_status: settlement_status.to_string(),
+        receipt_url,
+    };
+
+    // Deterministic harness secret, so output is stable across runs for the same provider id.
+    let mut hasher = Sha256::new();
+    hasher.update(b"openagents:vignette:bridge:");
+    hasher.update(provider_id.as_bytes());
+    let digest = hasher.finalize();
+    let mut secret = [0u8; 32];
+    secret.copy_from_slice(&digest[..32]);
+
+    let provider_event = build_provider_ad_event(&secret, None, &provider_ad)?;
+    let receipt_event = build_receipt_pointer_event(&secret, None, &receipt_ptr)?;
+
+    // Ensure emitted events are Phase-0 boundary compliant and Nostr-verifiable.
+    validate_phase0_bridge_event(&provider_event)?;
+    validate_phase0_bridge_event(&receipt_event)?;
 
     let mut out = String::new();
-    for event in events {
+    for event in [provider_event, receipt_event] {
         out.push_str(&serde_json::to_string(&event)?);
         out.push('\n');
     }

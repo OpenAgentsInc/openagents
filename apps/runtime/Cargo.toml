@@ -27,6 +27,8 @@ hex.workspace = true
 jsonwebtoken = "9"
 reqwest.workspace = true
 protocol = { path = "../../crates/protocol" }
+nostr.workspace = true
+nostr-client = { path = "../../crates/nostr/client" }
 
 [dev-dependencies]
 anyhow.workspace = true
