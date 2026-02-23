@@ -217,7 +217,7 @@ fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
                     form method="post" action="/logout"
                         hx-post="/logout"
                         hx-swap="none" {
-                        button type="submit" class="oa-btn subtle" { "Log out" }
+                        (form_submit_action("Log out", "Signing out...", false))
                     }
                 } @else {
                     a class="oa-btn" href="/login" { "Log in" }
@@ -334,8 +334,7 @@ fn login_panel(status: Option<&str>) -> Markup {
                     hx-swap="outerHTML" {
                     label for="email" { "Email" }
                     input id="email" type="email" name="email" placeholder="you@example.com" required;
-                    button type="submit" class="oa-btn primary" { "Send code" }
-                    span class="htmx-indicator oa-indicator" { "Sending code..." }
+                    (form_submit_action("Send code", "Sending code...", true))
                 }
                 form method="post" action="/login/verify" class="oa-form"
                     hx-post="/login/verify"
@@ -343,8 +342,7 @@ fn login_panel(status: Option<&str>) -> Markup {
                     hx-swap="outerHTML" {
                     label for="code" { "Code" }
                     input id="code" type="text" name="code" placeholder="123456" minlength="6" maxlength="12" required;
-                    button type="submit" class="oa-btn primary" { "Verify and continue" }
-                    span class="htmx-indicator oa-indicator" { "Verifying..." }
+                    (form_submit_action("Verify and continue", "Verifying...", true))
                 }
             }
         }
@@ -415,8 +413,7 @@ fn chat_thread_list_panel_body(
                 hx-post="/chat/new"
                 hx-target="#chat-thread-content-panel"
                 hx-swap="outerHTML" {
-                button type="submit" class="oa-btn primary" { "New thread" }
-                span class="htmx-indicator oa-indicator" { "Creating..." }
+                (form_submit_action("New thread", "Creating...", true))
             }
             ul class="oa-thread-items" {
                 @if threads.is_empty() {
@@ -497,8 +494,7 @@ fn chat_content_panel_body(
                 hx-target="#chat-status"
                 hx-swap="outerHTML" {
                 textarea name="text" rows="4" placeholder="Message Codex" required {}
-                button type="submit" class="oa-btn primary" { "Send" }
-                span class="htmx-indicator oa-indicator" { "Sending..." }
+                (form_submit_action("Send", "Sending...", true))
             }
         } @else {
             p class="oa-muted" {
@@ -669,8 +665,7 @@ fn feed_main_panel(
                     input id="zone" type="text" name="zone" placeholder="global";
                     label for="body" { "Shout" }
                     textarea id="body" name="body" rows="3" maxlength="2000" required {}
-                    button type="submit" class="oa-btn primary" { "Post shout" }
-                    span class="htmx-indicator oa-indicator" { "Posting..." }
+                    (form_submit_action("Post shout", "Posting...", true))
                 }
             } @else {
                 p class="oa-muted" { "Log in to post shouts." }
@@ -770,8 +765,7 @@ fn settings_panel(
                     input id="settings-name" type="text" name="name" value=(profile_name) maxlength="255" required;
                     label for="settings-email" { "Email" }
                     input id="settings-email" type="email" value=(profile_email) disabled;
-                    button type="submit" class="oa-btn primary" { "Save profile" }
-                    span class="htmx-indicator oa-indicator" { "Saving..." }
+                    (form_submit_action("Save profile", "Saving...", true))
                 }
                 form method="post" action="/settings/profile/delete" class="oa-form"
                     hx-post="/settings/profile/delete"
@@ -779,7 +773,7 @@ fn settings_panel(
                     hx-swap="outerHTML" {
                     label for="confirm-email" { "Confirm email to delete profile" }
                     input id="confirm-email" type="email" name="email" placeholder=(profile_email) required;
-                    button type="submit" class="oa-btn subtle" { "Delete profile" }
+                    (form_submit_action("Delete profile", "Deleting...", false))
                 }
             }
             article class="oa-card" {
@@ -802,20 +796,20 @@ fn settings_panel(
                     input id="sender_email" type="email" name="sender_email";
                     label for="sender_name" { "Sender name (optional)" }
                     input id="sender_name" type="text" name="sender_name" maxlength="255";
-                    button type="submit" class="oa-btn primary" { "Connect or rotate Resend" }
+                    (form_submit_action("Connect or rotate Resend", "Updating...", true))
                 }
                 div class="oa-grid two" {
                     form method="post" action="/settings/integrations/resend/test-request"
                         hx-post="/settings/integrations/resend/test-request"
                         hx-target="#settings-status"
                         hx-swap="outerHTML" {
-                        button type="submit" class="oa-btn subtle" { "Send test event" }
+                        (form_submit_action("Send test event", "Queueing...", false))
                     }
                     form method="post" action="/settings/integrations/resend/disconnect"
                         hx-post="/settings/integrations/resend/disconnect"
                         hx-target="#settings-status"
                         hx-swap="outerHTML" {
-                        button type="submit" class="oa-btn subtle" { "Disconnect Resend" }
+                        (form_submit_action("Disconnect Resend", "Disconnecting...", false))
                     }
                 }
                 h3 { "Google" }
@@ -833,7 +827,7 @@ fn settings_panel(
                     hx-post="/settings/integrations/google/disconnect"
                     hx-target="#settings-status"
                     hx-swap="outerHTML" {
-                    button type="submit" class="oa-btn subtle" { "Disconnect Google" }
+                    (form_submit_action("Disconnect Google", "Disconnecting...", false))
                 }
             }
         }
@@ -881,7 +875,7 @@ fn l402_panel(
                             input id="enabled" type="checkbox" name="enabled" checked;
                             " Enabled"
                         }
-                        button type="submit" class="oa-btn primary" { "Create paywall" }
+                        (form_submit_action("Create paywall", "Creating...", true))
                     }
                 } @else {
                     p class="oa-muted" { "Admin role required for paywall mutations." }
@@ -920,15 +914,14 @@ fn l402_panel(
                                                     hx-post=(format!("/l402/paywalls/web/{}/toggle", paywall.id))
                                                     hx-target="#billing-status"
                                                     hx-swap="outerHTML" {
-                                                    button type="submit" class="oa-btn subtle" {
-                                                        (if paywall.enabled { "Disable" } else { "Enable" })
-                                                    }
+                                                    @let toggle_label = if paywall.enabled { "Disable" } else { "Enable" };
+                                                    (form_submit_action(toggle_label, "Updating...", false))
                                                 }
                                                 form method="post" action=(format!("/l402/paywalls/web/{}/delete", paywall.id))
                                                     hx-post=(format!("/l402/paywalls/web/{}/delete", paywall.id))
                                                     hx-target="#billing-status"
                                                     hx-swap="outerHTML" {
-                                                    button type="submit" class="oa-btn subtle" { "Delete" }
+                                                    (form_submit_action("Delete", "Deleting...", false))
                                                 }
                                             } @else {
                                                 span class="oa-muted" { "Admin only" }
@@ -1033,7 +1026,7 @@ fn admin_panel(
                         input id="route_path" type="text" name="path" placeholder="/chat/thread_123" required;
                         label for="route_cohort_key" { "Cohort key (optional)" }
                         input id="route_cohort_key" type="text" name="cohort_key";
-                        button type="submit" class="oa-btn primary" { "Evaluate route split" }
+                        (form_submit_action("Evaluate route split", "Evaluating...", true))
                     }
 
                     form method="post" action="/admin/route-split/override" class="oa-form"
@@ -1045,7 +1038,7 @@ fn admin_panel(
                         input id="route_target" type="text" name="target" placeholder="legacy|rust|rollback|clear" required;
                         label for="route_domain" { "Domain (optional)" }
                         input id="route_domain" type="text" name="domain" placeholder="billing_l402";
-                        button type="submit" class="oa-btn primary" { "Apply route split override" }
+                        (form_submit_action("Apply route split override", "Applying...", true))
                     }
 
                     form method="post" action="/admin/runtime-routing/evaluate" class="oa-form"
@@ -1057,7 +1050,7 @@ fn admin_panel(
                         input id="runtime_thread_id" type="text" name="thread_id" required;
                         label for="runtime_autopilot_id" { "Autopilot id (optional)" }
                         input id="runtime_autopilot_id" type="text" name="autopilot_id";
-                        button type="submit" class="oa-btn primary" { "Evaluate runtime routing" }
+                        (form_submit_action("Evaluate runtime routing", "Evaluating...", true))
                     }
 
                     form method="post" action="/admin/runtime-routing/override" class="oa-form"
@@ -1077,7 +1070,7 @@ fn admin_panel(
                             input id="override_active" type="checkbox" name="is_active" checked;
                             " Active"
                         }
-                        button type="submit" class="oa-btn primary" { "Apply runtime override" }
+                        (form_submit_action("Apply runtime override", "Applying...", true))
                     }
 
                     form method="post" action="/admin/lightning-ops/query" class="oa-form"
@@ -1089,7 +1082,7 @@ fn admin_panel(
                         input id="ops_query_function" type="text" name="function_name" placeholder="lightning/ops:listPaywallControlPlaneState" required;
                         label for="ops_query_args" { "Args JSON object" }
                         textarea id="ops_query_args" name="args_json" rows="5" { "{\"secret\":\"ops-secret-test\"}" }
-                        button type="submit" class="oa-btn primary" { "Run query" }
+                        (form_submit_action("Run query", "Running...", true))
                     }
 
                     form method="post" action="/admin/lightning-ops/mutation" class="oa-form"
@@ -1101,7 +1094,7 @@ fn admin_panel(
                         input id="ops_mutation_function" type="text" name="function_name" placeholder="lightning/security:updateGlobalSecurityState" required;
                         label for="ops_mutation_args" { "Args JSON object" }
                         textarea id="ops_mutation_args" name="args_json" rows="7" { "{\"secret\":\"ops-secret-test\",\"globalPause\":false}" }
-                        button type="submit" class="oa-btn primary" { "Run mutation" }
+                        (form_submit_action("Run mutation", "Running...", true))
                     }
                 } @else {
                     p class="oa-muted" { "Control actions are blocked for non-admin accounts." }
@@ -1161,6 +1154,19 @@ fn nav_active(path: &str, href: &str) -> bool {
         return path == "/settings" || path.starts_with("/settings/");
     }
     path == href || path.starts_with(&format!("{href}/"))
+}
+
+fn form_submit_action(label: &str, pending_label: &str, primary: bool) -> Markup {
+    html! {
+        div class="oa-action-row" {
+            button
+                type="submit"
+                class={(if primary { "oa-btn primary" } else { "oa-btn subtle" })} {
+                (label)
+            }
+            span class="htmx-indicator oa-indicator" { (pending_label) }
+        }
+    }
 }
 
 fn status_message(status: &str) -> &'static str {
@@ -1328,6 +1334,12 @@ body {
 .oa-btn.primary { background: linear-gradient(180deg, #1a6ea5 0%, #0f4f7b 100%); border-color: rgba(75, 188, 255, 0.6); }
 .oa-btn.subtle { background: rgba(16, 28, 51, 0.38); }
 .oa-form { display: grid; gap: 0.55rem; margin-top: 0.8rem; }
+.oa-action-row { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
+.oa-form[aria-busy="true"] button[type="submit"] {
+  opacity: 0.58;
+  cursor: progress;
+  pointer-events: none;
+}
 label { font-size: 0.82rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 input, textarea {
   width: 100%;
@@ -1437,6 +1449,22 @@ fn accessibility_script() -> &'static str {
     node.focus({ preventScroll: false });
   };
 
+  const setFormPending = (form, isPending) => {
+    if (!(form instanceof HTMLFormElement)) return;
+    if (isPending) {
+      form.setAttribute("aria-busy", "true");
+      form.classList.add("is-loading");
+    } else {
+      form.removeAttribute("aria-busy");
+      form.classList.remove("is-loading");
+    }
+
+    form.querySelectorAll("button[type='submit']").forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      button.disabled = isPending;
+    });
+  };
+
   const resolveStatusNode = (target) => {
     if (!(target instanceof HTMLElement)) return null;
     if (target.classList.contains("oa-notice") && !target.classList.contains("hidden")) {
@@ -1464,8 +1492,23 @@ fn accessibility_script() -> &'static str {
     }
   });
 
+  document.body.addEventListener("htmx:beforeRequest", (event) => {
+    const source = event.detail && event.detail.elt;
+    const form = source instanceof HTMLElement ? source.closest("form") : null;
+    setFormPending(form, true);
+  });
+
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const source = event.detail && event.detail.elt;
+    const form = source instanceof HTMLElement ? source.closest("form") : null;
+    setFormPending(form, false);
+  });
+
   document.body.addEventListener("htmx:responseError", (event) => {
     const target = event.detail && event.detail.target;
+    const source = event.detail && event.detail.elt;
+    const form = source instanceof HTMLElement ? source.closest("form") : null;
+    setFormPending(form, false);
     const statusNode = resolveStatusNode(target);
     if (!(statusNode instanceof HTMLElement)) return;
     statusNode.classList.add("error");
@@ -1662,7 +1705,25 @@ mod tests {
 
         let html = render_maud_page(&page);
         assert!(html.contains("htmx:afterSwap"));
+        assert!(html.contains("htmx:beforeRequest"));
+        assert!(html.contains("htmx:afterRequest"));
         assert!(html.contains("htmx:responseError"));
+        assert!(html.contains("setFormPending"));
         assert!(html.contains("querySelector(\"h1, h2\")"));
+    }
+
+    #[test]
+    fn render_login_forms_use_shared_action_row_and_indicator_pattern() {
+        let page = WebPage {
+            title: "Login".to_string(),
+            path: "/login".to_string(),
+            session: None,
+            body: WebBody::Login { status: None },
+        };
+
+        let html = render_maud_page(&page);
+        assert!(html.contains("class=\"oa-action-row\""));
+        assert!(html.contains("class=\"htmx-indicator oa-indicator\""));
+        assert!(html.contains("aria-busy"));
     }
 }

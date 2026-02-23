@@ -129,6 +129,17 @@ For each HTMX surface (login/chat/feed/settings/billing/admin):
   - Enter submits form and focus stays in-context
   - no keyboard trap introduced by fragment updates
 
+## Request-State UX Contract
+
+- Form submit controls use a shared action-row pattern:
+  - submit button + `.htmx-indicator` label in a consistent layout
+- HTMX lifecycle hooks enforce in-flight behavior:
+  - `htmx:beforeRequest` marks form `aria-busy="true"` and disables submit buttons
+  - `htmx:afterRequest` clears busy state and re-enables submit buttons
+  - `htmx:responseError` also clears busy state and routes focus to the error status region
+- Status/error rendering remains server-authoritative (`status_slot` + notice fragments), so
+  no client-only validation bypasses server responses.
+
 WS event -> HTML bridge (no SSE authority):
 - Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
 - Chat fragments read stored worker events and map them to rendered lines:
