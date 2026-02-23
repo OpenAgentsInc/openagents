@@ -25,6 +25,7 @@ uuid.workspace = true
 hex.workspace = true
 jsonwebtoken = "9"
 reqwest.workspace = true
+protocol = { path = "../../crates/protocol" }
 
 [dev-dependencies]
 anyhow.workspace = true
@@ -43,3 +44,7 @@ path = "src/bin/runtime-migrate.rs"
 [[bin]]
 name = "runtime-smoke"
 path = "src/bin/runtime-smoke.rs"
+
+[[bin]]
+name = "vignette-phase0-issue-to-pr"
+path = "src/bin/vignette-phase0-issue-to-pr.rs"

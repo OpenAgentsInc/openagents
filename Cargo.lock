@@ -7223,6 +7223,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "jsonwebtoken 9.3.1",
+ "protocol",
  "reqwest",
  "serde",
  "serde_json",

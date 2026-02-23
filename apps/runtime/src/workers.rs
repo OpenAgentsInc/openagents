@@ -32,7 +32,7 @@ pub enum WorkerError {
     Projector(#[from] ProjectorError),
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WorkerSnapshot {
     pub worker: RuntimeWorker,
     pub liveness: WorkerLiveness,

@@ -10,6 +10,12 @@ use crate::types::{RunEvent, RunStatus, RuntimeRun};
 pub enum ArtifactError {
     #[error("artifact serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("invalid tool receipt payload: {0}")]
+    InvalidToolReceipt(String),
+    #[error("invalid verification receipt payload: {0}")]
+    InvalidVerificationReceipt(String),
+    #[error("invalid payment receipt payload: {0}")]
+    InvalidPaymentReceipt(String),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -24,6 +30,7 @@ pub struct RuntimeReceipt {
     pub last_seq: u64,
     pub tool_calls: Vec<ToolCallReceipt>,
     pub verification: Vec<VerificationReceipt>,
+    pub payments: Vec<PaymentReceipt>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -41,6 +48,19 @@ pub struct VerificationReceipt {
     pub exit_code: i32,
     pub cwd: Option<String>,
     pub duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PaymentReceipt {
+    pub rail: String,
+    pub asset_id: String,
+    pub amount_msats: u64,
+    pub payment_proof: Value,
+    pub session_id: String,
+    pub trajectory_hash: String,
+    pub policy_bundle_id: String,
+    pub job_hash: Option<String>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -86,6 +106,7 @@ pub struct SessionEnd {
 
 pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> {
     let trajectory_hash = trajectory_hash(&run.events)?;
+    let session_id = run.id.to_string();
     let policy_bundle_id = run
         .metadata
         .get("policy_bundle_id")
@@ -94,18 +115,27 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         .unwrap_or_else(|| "runtime.default".to_string());
     let first_seq = run.events.first().map_or(0, |event| event.seq);
     let last_seq = run.events.last().map_or(0, |event| event.seq);
+    let tool_calls = extract_tool_receipts(&run.events)?;
+    let verification = extract_verification_receipts(&run.events)?;
+    let payments = extract_payment_receipts(
+        &run.events,
+        &trajectory_hash,
+        &policy_bundle_id,
+        &session_id,
+    )?;
 
     Ok(RuntimeReceipt {
         schema: "openagents.receipt.v1".to_string(),
-        session_id: run.id.to_string(),
+        session_id,
         trajectory_hash,
         policy_bundle_id,
         created_at: run.created_at.to_rfc3339(),
         event_count: run.events.len(),
         first_seq,
         last_seq,
-        tool_calls: Vec::new(),
-        verification: Vec::new(),
+        tool_calls,
+        verification,
+        payments,
     })
 }
 
@@ -221,6 +251,157 @@ fn sort_json_value(value: &Value) -> Value {
 fn sha256_prefixed(input: &str) -> String {
     let digest = Sha256::digest(input.as_bytes());
     format!("sha256:{}", hex::encode(digest))
+}
+
+fn extract_tool_receipts(events: &[RunEvent]) -> Result<Vec<ToolCallReceipt>, ArtifactError> {
+    let mut receipts = Vec::new();
+    for event in events {
+        if event.event_type != "tool" {
+            continue;
+        }
+        let payload = event.payload.as_object().ok_or_else(|| {
+            ArtifactError::InvalidToolReceipt("payload must be object".to_string())
+        })?;
+        let tool = payload
+            .get("tool")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ArtifactError::InvalidToolReceipt("missing tool".to_string()))?
+            .to_string();
+        let params_hash = payload
+            .get("params_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ArtifactError::InvalidToolReceipt("missing params_hash".to_string()))?
+            .to_string();
+        let output_hash = payload
+            .get("output_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ArtifactError::InvalidToolReceipt("missing output_hash".to_string()))?
+            .to_string();
+        let latency_ms = payload
+            .get("latency_ms")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| ArtifactError::InvalidToolReceipt("missing latency_ms".to_string()))?;
+        let side_effects = payload
+            .get("side_effects")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        receipts.push(ToolCallReceipt {
+            tool,
+            params_hash,
+            output_hash,
+            latency_ms,
+            side_effects,
+        });
+    }
+    Ok(receipts)
+}
+
+fn extract_verification_receipts(
+    events: &[RunEvent],
+) -> Result<Vec<VerificationReceipt>, ArtifactError> {
+    let mut receipts = Vec::new();
+    for event in events {
+        if event.event_type != "verification" {
+            continue;
+        }
+        let payload = event.payload.as_object().ok_or_else(|| {
+            ArtifactError::InvalidVerificationReceipt("payload must be object".to_string())
+        })?;
+        let command = payload
+            .get("command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ArtifactError::InvalidVerificationReceipt("missing command".to_string())
+            })?
+            .to_string();
+        let exit_code = payload
+            .get("exit_code")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| {
+                ArtifactError::InvalidVerificationReceipt("missing exit_code".to_string())
+            })?
+            .try_into()
+            .map_err(|_| {
+                ArtifactError::InvalidVerificationReceipt("exit_code out of range".to_string())
+            })?;
+        let cwd = payload
+            .get("cwd")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string());
+        let duration_ms = payload.get("duration_ms").and_then(Value::as_u64);
+        receipts.push(VerificationReceipt {
+            command,
+            exit_code,
+            cwd,
+            duration_ms,
+        });
+    }
+    Ok(receipts)
+}
+
+fn extract_payment_receipts(
+    events: &[RunEvent],
+    trajectory_hash: &str,
+    policy_bundle_id: &str,
+    session_id: &str,
+) -> Result<Vec<PaymentReceipt>, ArtifactError> {
+    let mut receipts = Vec::new();
+    for event in events {
+        if event.event_type != "payment" {
+            continue;
+        }
+        let payload = event.payload.as_object().ok_or_else(|| {
+            ArtifactError::InvalidPaymentReceipt("payload must be object".to_string())
+        })?;
+
+        let rail = payload
+            .get("rail")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ArtifactError::InvalidPaymentReceipt("missing rail".to_string()))?
+            .to_string();
+        let asset_id = payload
+            .get("asset_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ArtifactError::InvalidPaymentReceipt("missing asset_id".to_string()))?
+            .to_string();
+        let amount_msats = payload
+            .get("amount_msats")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                ArtifactError::InvalidPaymentReceipt("missing amount_msats".to_string())
+            })?;
+        let payment_proof = payload.get("payment_proof").cloned().ok_or_else(|| {
+            ArtifactError::InvalidPaymentReceipt("missing payment_proof".to_string())
+        })?;
+        let job_hash = payload
+            .get("job_hash")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string());
+        let status = payload
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("released")
+            .to_string();
+
+        receipts.push(PaymentReceipt {
+            rail,
+            asset_id,
+            amount_msats,
+            payment_proof,
+            session_id: session_id.to_string(),
+            trajectory_hash: trajectory_hash.to_string(),
+            policy_bundle_id: policy_bundle_id.to_string(),
+            job_hash,
+            status,
+        });
+    }
+    Ok(receipts)
 }
 
 #[cfg(test)]
