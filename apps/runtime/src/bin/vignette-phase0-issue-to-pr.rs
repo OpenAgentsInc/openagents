@@ -1816,13 +1816,8 @@ async fn write_bundle(
 fn assert_replay_jsonl(path: PathBuf) -> Result<()> {
     let content =
         std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-    for (idx, line) in content.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        serde_json::from_str::<Value>(line)
-            .with_context(|| format!("invalid JSONL at line {}", idx + 1))?;
-    }
+    openagents_runtime_service::artifacts::validate_replay_jsonl(&content)
+        .map_err(|err| anyhow!("invalid REPLAY.jsonl: {}", err))?;
     Ok(())
 }
 

@@ -32,7 +32,7 @@
       ],
       "expected": {
         "final_status": "succeeded",
-        "replay_hash": "sha256:d0f58fa2c0aef7d87ac809d6420852c6fd8f37b8e24fb489b551867323beec69",
+        "replay_hash": "sha256:d4e7362dfad2ffe1a3e88ac544c32337298ee25829d2c6307845358c05f2958c",
         "trajectory_hash": "sha256:d694384b3f1f8c08b9c855256dd8aa0e3bd954ea77d72e7ee45c8aa1f48da288",
         "runtime_event_count": 2
       }
@@ -75,7 +75,7 @@
       ],
       "expected": {
         "final_status": "canceled",
-        "replay_hash": "sha256:8c091d9c93711189e51ca37c8f313e3749b0adb8ba7982c7c4e78ba8641c8010",
+        "replay_hash": "sha256:8c3d66d584b50f7ddf9382d84fc9069d8f8262f54d299f36e011dcf1738e29ec",
         "trajectory_hash": "sha256:54bdc13b9b6a5ab38f6011dd015efb55c538146b0435fd12de7b5994a7705395",
         "runtime_event_count": 3
       }
@@ -119,7 +119,7 @@
       ],
       "expected": {
         "final_status": "failed",
-        "replay_hash": "sha256:70e021633e2df2e1b5cf0919934f60f1a4bc3e4eac1321dd40d858a78f911a31",
+        "replay_hash": "sha256:8a031059df5c8ce33ffd5b26b583618bc39455c1b1f86e1578b2beccc2dfb5fd",
         "trajectory_hash": "sha256:1cef2cc15a31dd60cce2a6cf3cfc2851da685e3701a8c67ceaaab7a7de80b751",
         "runtime_event_count": 3
       }

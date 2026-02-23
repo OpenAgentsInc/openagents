@@ -186,7 +186,7 @@ fn load_snapshot(
     let replay_bytes = fs::read_to_string(resolve_relative(&base, &manifest.replay_path))?;
     let replay_runtime_event_count = replay_bytes
         .lines()
-        .filter(|line| line.contains("\"type\":\"RuntimeEvent\""))
+        .filter(|line| line.contains("\"event\":\"RuntimeEvent\""))
         .count();
     let replay_hash = format!(
         "sha256:{}",
@@ -497,7 +497,7 @@ mod tests {
         )?;
         fs::write(
             &replay_path,
-            r#"{"type":"ReplayHeader"}{"type":"SessionStart"}{"type":"RuntimeEvent"}{"type":"SessionEnd"}"#,
+            "{\"event\":\"ReplayHeader\"}\n{\"event\":\"SessionStart\"}\n{\"event\":\"RuntimeEvent\"}\n{\"event\":\"SessionEnd\"}\n",
         )?;
         fs::write(
             &summary_path,

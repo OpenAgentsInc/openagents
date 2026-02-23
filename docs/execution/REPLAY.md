@@ -7,6 +7,8 @@
 1. First event: `ReplayHeader`
 2. Remaining events: replay events for session lifecycle and tool execution
 
+Each line is a JSON object tagged with an `"event"` discriminator (string).
+
 ## Core Event Types
 
 - `ReplayHeader`
@@ -14,13 +16,15 @@
 - `ToolCall`
 - `ToolResult`
 - `Verification`
+- `Payment` (optional)
+- `RuntimeEvent` (optional; runtime authority surfaces)
 - `SessionEnd`
 
 ## Normative Rules
 
 1. `ToolCall.params` must validate against tool schema before execution.
 2. `params_hash` and `output_hash` must be deterministic.
-3. `ToolResult.step_id` must match a prior `ToolCall.step_id`.
+3. `ToolResult.id` must match a prior `ToolCall.id`.
 4. Replay publication/export must apply privacy redaction policy.
 
 ## Privacy Layering

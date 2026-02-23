@@ -1837,11 +1837,8 @@ mod tests {
                 .to_bytes()
                 .to_vec(),
         )?;
-        if !replay_text.contains("\"type\":\"ReplayHeader\"")
-            || !replay_text.contains("\"type\":\"SessionEnd\"")
-        {
-            return Err(anyhow!("replay output missing required sections"));
-        }
+        crate::artifacts::validate_replay_jsonl(&replay_text)
+            .map_err(|err| anyhow!("replay output missing required sections: {}", err))?;
 
         Ok(())
     }
