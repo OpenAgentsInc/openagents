@@ -23758,6 +23758,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn htmx_history_restore_preserves_feed_zone_and_status_queries() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let author_token = seed_local_test_token(&config, "history-author@openagents.com").await?;
+        let app = build_router(config);
+
+        for payload in [
+            r#"{"body":"History-L402 shout","zone":"l402"}"#,
+            r#"{"body":"History-Dev shout","zone":"dev"}"#,
+        ] {
+            let create_request = Request::builder()
+                .method("POST")
+                .uri("/api/shouts")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {author_token}"))
+                .body(Body::from(payload.to_string()))?;
+            let create_response = app.clone().oneshot(create_request).await?;
+            assert_eq!(create_response.status(), StatusCode::CREATED);
+        }
+
+        let l402_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=l402&status=shout-posted")
+            .header("hx-request", "true")
+            .header("hx-boosted", "true")
+            .header("hx-target", "oa-main-shell")
+            .body(Body::empty())?;
+        let l402_response = app.clone().oneshot(l402_request).await?;
+        assert_eq!(l402_response.status(), StatusCode::OK);
+        let l402_body = l402_response.into_body().collect().await?.to_bytes();
+        let l402_html = String::from_utf8_lossy(&l402_body);
+        assert!(l402_html.contains("History-L402 shout"));
+        assert!(!l402_html.contains("History-Dev shout"));
+        assert!(l402_html.contains("Shout posted."));
+
+        let dev_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=dev")
+            .header("hx-request", "true")
+            .header("hx-boosted", "true")
+            .header("hx-target", "oa-main-shell")
+            .body(Body::empty())?;
+        let dev_response = app.clone().oneshot(dev_request).await?;
+        assert_eq!(dev_response.status(), StatusCode::OK);
+        let dev_body = dev_response.into_body().collect().await?.to_bytes();
+        let dev_html = String::from_utf8_lossy(&dev_body);
+        assert!(!dev_html.contains("History-L402 shout"));
+        assert!(dev_html.contains("History-Dev shout"));
+
+        let history_restore_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=l402&status=shout-posted")
+            .header("hx-request", "true")
+            .header("hx-history-restore-request", "true")
+            .header("hx-target", "oa-main-shell")
+            .body(Body::empty())?;
+        let history_restore_response = app.clone().oneshot(history_restore_request).await?;
+        assert_eq!(history_restore_response.status(), StatusCode::OK);
+        let history_restore_body = history_restore_response
+            .into_body()
+            .collect()
+            .await?
+            .to_bytes();
+        let history_restore_html = String::from_utf8_lossy(&history_restore_body);
+        assert!(history_restore_html.starts_with("<main id=\"oa-main-shell\""));
+        assert!(history_restore_html.contains("History-L402 shout"));
+        assert!(!history_restore_html.contains("History-Dev shout"));
+        assert!(history_restore_html.contains("Shout posted."));
+
+        let refresh_request = Request::builder()
+            .method("GET")
+            .uri("/feed?zone=l402&status=shout-posted")
+            .body(Body::empty())?;
+        let refresh_response = app.oneshot(refresh_request).await?;
+        assert_eq!(refresh_response.status(), StatusCode::OK);
+        let refresh_body = refresh_response.into_body().collect().await?.to_bytes();
+        let refresh_html = String::from_utf8_lossy(&refresh_body);
+        assert!(refresh_html.contains("<html"));
+        assert!(refresh_html.contains("History-L402 shout"));
+        assert!(refresh_html.contains("Shout posted."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn html_routes_include_csp_and_security_headers() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(

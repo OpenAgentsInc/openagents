@@ -31,6 +31,7 @@ For GET route handlers:
 
 - Shell container uses `hx-boost="true"` with a stable target (`#oa-main-shell`).
 - Internal route links keep plain `href` for no-JS fallback and direct loads.
+- History restore (`HX-History-Restore-Request: true`) must return the same fragment shape as boosted GET for the requested URL/query.
 - Exclusion list (must opt out with `hx-boost="false"`): external absolute URLs, download/file links, and links opened in new tabs.
 
 ## Redirect Contract
