@@ -38,6 +38,7 @@ For GET route handlers:
 
 - HTMX redirects: HTTP 200 + `HX-Redirect`.
 - Non-HTMX redirects: standard `302/307` redirect responses.
+- When HTMX route-group mode is `full_page`, boosted/history GETs must return `HX-Redirect` so the browser performs a full-page navigation instead of fragment swap.
 
 ## Scope
 
@@ -147,3 +148,16 @@ WS event -> HTML bridge (no SSE authority):
   - `turn.finish` -> `Turn finished...` (includes output text when available)
   - `turn.error` -> `Turn error: ...`
   - `turn.tool` -> `Tool <name>: <status>`
+
+## Route-Group HTMX Controls
+
+- Control endpoint: `POST /api/v1/control/route-split/override`
+- HTMX mode targets (require `domain`):
+  - `htmx_fragment`
+  - `htmx_full_page`
+  - `htmx_rollback`
+  - `htmx_clear`
+- Status visibility:
+  - `GET /api/v1/control/route-split/status` exposes `htmx_rollback_matrix` and `htmx_domain_overrides`
+- Operational runbook:
+  - `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`

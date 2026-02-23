@@ -16,6 +16,13 @@ pub enum RouteTarget {
     RustShell,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HtmxModeTarget {
+    Fragment,
+    FullPage,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RouteMode {
     Legacy,
@@ -37,11 +44,23 @@ pub struct RouteSplitDecision {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct HtmxModeDecision {
+    pub path: String,
+    pub route_domain: String,
+    pub mode: HtmxModeTarget,
+    pub reason: String,
+    pub rollback_mode: HtmxModeTarget,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct RouteGroupStatus {
     pub domain: String,
     pub route_prefixes: Vec<String>,
     pub rollback_target: RouteTarget,
     pub override_target: Option<RouteTarget>,
+    pub htmx_default_mode: HtmxModeTarget,
+    pub htmx_rollback_mode: HtmxModeTarget,
+    pub htmx_override_mode: Option<HtmxModeTarget>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -56,6 +75,8 @@ pub struct RouteSplitStatus {
     pub route_groups: Vec<RouteGroupStatus>,
     pub rollback_matrix: HashMap<String, RouteTarget>,
     pub domain_overrides: HashMap<String, RouteTarget>,
+    pub htmx_rollback_matrix: HashMap<String, HtmxModeTarget>,
+    pub htmx_domain_overrides: HashMap<String, HtmxModeTarget>,
 }
 
 #[derive(Clone)]
@@ -63,6 +84,7 @@ pub struct RouteSplitService {
     config: RouteSplitConfig,
     override_target: Arc<RwLock<Option<RouteTarget>>>,
     domain_overrides: Arc<RwLock<HashMap<String, RouteTarget>>>,
+    htmx_domain_overrides: Arc<RwLock<HashMap<String, HtmxModeTarget>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +98,7 @@ struct RouteSplitConfig {
     legacy_base_url: Option<String>,
     route_groups: Vec<RouteGroupConfig>,
     rollback_matrix: HashMap<String, RouteTarget>,
+    htmx_rollback_matrix: HashMap<String, HtmxModeTarget>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +106,8 @@ struct RouteGroupConfig {
     domain: String,
     route_prefixes: Vec<String>,
     rollback_target: RouteTarget,
+    htmx_default_mode: HtmxModeTarget,
+    htmx_rollback_mode: HtmxModeTarget,
 }
 
 impl RouteSplitService {
@@ -91,6 +116,7 @@ impl RouteSplitService {
             config: RouteSplitConfig::from_config(config),
             override_target: Arc::new(RwLock::new(None)),
             domain_overrides: Arc::new(RwLock::new(HashMap::new())),
+            htmx_domain_overrides: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -258,6 +284,25 @@ impl RouteSplitService {
         Ok(())
     }
 
+    pub async fn set_domain_htmx_mode(
+        &self,
+        domain: &str,
+        mode: Option<HtmxModeTarget>,
+    ) -> Result<(), String> {
+        let normalized = normalize_domain(domain);
+        if !self.config.htmx_rollback_matrix.contains_key(&normalized) {
+            return Err(format!("Unknown route domain '{domain}'."));
+        }
+
+        let mut lock = self.htmx_domain_overrides.write().await;
+        if let Some(mode) = mode {
+            lock.insert(normalized, mode);
+        } else {
+            lock.remove(&normalized);
+        }
+        Ok(())
+    }
+
     pub fn rollback_target_for_domain(&self, domain: Option<&str>) -> Option<RouteTarget> {
         let Some(domain) = domain else {
             return Some(RouteTarget::Legacy);
@@ -267,9 +312,70 @@ impl RouteSplitService {
         self.config.rollback_matrix.get(&normalized).copied()
     }
 
+    pub fn htmx_rollback_mode_for_domain(&self, domain: Option<&str>) -> Option<HtmxModeTarget> {
+        let Some(domain) = domain else {
+            return Some(HtmxModeTarget::FullPage);
+        };
+
+        let normalized = normalize_domain(domain);
+        self.config.htmx_rollback_matrix.get(&normalized).copied()
+    }
+
+    pub async fn htmx_mode_for_path(&self, path: &str) -> HtmxModeDecision {
+        let normalized_path = normalize_path(path);
+        if is_api_path(&normalized_path) || is_codex_worker_control_path(&normalized_path) {
+            return HtmxModeDecision {
+                path: normalized_path,
+                route_domain: "api_rust_authority".to_string(),
+                mode: HtmxModeTarget::FullPage,
+                reason: "api_non_htmx_surface".to_string(),
+                rollback_mode: HtmxModeTarget::FullPage,
+            };
+        }
+
+        let route_domain = self
+            .route_domain_for_path(&normalized_path)
+            .unwrap_or_else(|| "unclassified".to_string());
+        let default_mode = self
+            .config
+            .route_groups
+            .iter()
+            .find(|group| group.domain == route_domain)
+            .map(|group| group.htmx_default_mode)
+            .unwrap_or(HtmxModeTarget::Fragment);
+        let rollback_mode = self
+            .htmx_rollback_mode_for_domain(Some(&route_domain))
+            .unwrap_or(HtmxModeTarget::FullPage);
+        let override_mode = self
+            .htmx_domain_overrides
+            .read()
+            .await
+            .get(&route_domain)
+            .copied();
+
+        if let Some(mode) = override_mode {
+            return HtmxModeDecision {
+                path: normalized_path,
+                route_domain,
+                mode,
+                reason: "domain_override".to_string(),
+                rollback_mode,
+            };
+        }
+
+        HtmxModeDecision {
+            path: normalized_path,
+            route_domain,
+            mode: default_mode,
+            reason: "domain_default".to_string(),
+            rollback_mode,
+        }
+    }
+
     pub async fn status(&self) -> RouteSplitStatus {
         let override_target = *self.override_target.read().await;
         let domain_overrides = self.domain_overrides.read().await.clone();
+        let htmx_domain_overrides = self.htmx_domain_overrides.read().await.clone();
         let route_groups = self
             .config
             .route_groups
@@ -279,6 +385,9 @@ impl RouteSplitService {
                 route_prefixes: group.route_prefixes.clone(),
                 rollback_target: group.rollback_target,
                 override_target: domain_overrides.get(&group.domain).copied(),
+                htmx_default_mode: group.htmx_default_mode,
+                htmx_rollback_mode: group.htmx_rollback_mode,
+                htmx_override_mode: htmx_domain_overrides.get(&group.domain).copied(),
             })
             .collect();
 
@@ -293,6 +402,8 @@ impl RouteSplitService {
             route_groups,
             rollback_matrix: self.config.rollback_matrix.clone(),
             domain_overrides,
+            htmx_rollback_matrix: self.config.htmx_rollback_matrix.clone(),
+            htmx_domain_overrides,
         }
     }
 
@@ -338,6 +449,10 @@ impl RouteSplitConfig {
             .iter()
             .map(|group| (group.domain.clone(), group.rollback_target))
             .collect();
+        let htmx_rollback_matrix = route_groups
+            .iter()
+            .map(|group| (group.domain.clone(), group.htmx_rollback_mode))
+            .collect();
 
         Self {
             enabled: config.route_split_enabled,
@@ -349,6 +464,7 @@ impl RouteSplitConfig {
             legacy_base_url: config.route_split_legacy_base_url.clone(),
             route_groups,
             rollback_matrix,
+            htmx_rollback_matrix,
         }
     }
 }
@@ -445,6 +561,8 @@ fn default_route_groups() -> Vec<RouteGroupConfig> {
                 "/onboarding".to_string(),
             ],
             rollback_target: RouteTarget::Legacy,
+            htmx_default_mode: HtmxModeTarget::Fragment,
+            htmx_rollback_mode: HtmxModeTarget::FullPage,
         },
         RouteGroupConfig {
             domain: "account_settings_admin".to_string(),
@@ -454,16 +572,22 @@ fn default_route_groups() -> Vec<RouteGroupConfig> {
                 "/admin".to_string(),
             ],
             rollback_target: RouteTarget::Legacy,
+            htmx_default_mode: HtmxModeTarget::Fragment,
+            htmx_rollback_mode: HtmxModeTarget::FullPage,
         },
         RouteGroupConfig {
             domain: "billing_l402".to_string(),
             route_prefixes: vec!["/billing".to_string(), "/l402".to_string()],
             rollback_target: RouteTarget::Legacy,
+            htmx_default_mode: HtmxModeTarget::Fragment,
+            htmx_rollback_mode: HtmxModeTarget::FullPage,
         },
         RouteGroupConfig {
             domain: "chat_pilot".to_string(),
             route_prefixes: vec!["/chat".to_string(), "/feed".to_string(), "/".to_string()],
             rollback_target: RouteTarget::RustShell,
+            htmx_default_mode: HtmxModeTarget::Fragment,
+            htmx_rollback_mode: HtmxModeTarget::FullPage,
         },
     ]
 }
@@ -791,5 +915,46 @@ mod tests {
 
         assert_eq!(decision.route_domain, "account_settings_admin");
         assert_eq!(decision.rollback_target, Some(RouteTarget::Legacy));
+    }
+
+    #[tokio::test]
+    async fn htmx_domain_override_applies_only_to_matching_route_group() {
+        let service = RouteSplitService::from_config(&test_config());
+        service
+            .set_domain_htmx_mode("billing_l402", Some(HtmxModeTarget::FullPage))
+            .await
+            .expect("set htmx override");
+
+        let billing_decision = service.htmx_mode_for_path("/l402/paywalls").await;
+        assert_eq!(billing_decision.mode, HtmxModeTarget::FullPage);
+        assert_eq!(billing_decision.reason, "domain_override");
+        assert_eq!(billing_decision.route_domain, "billing_l402");
+
+        let settings_decision = service.htmx_mode_for_path("/settings/profile").await;
+        assert_eq!(settings_decision.mode, HtmxModeTarget::Fragment);
+        assert_eq!(settings_decision.reason, "domain_default");
+    }
+
+    #[tokio::test]
+    async fn status_exposes_htmx_rollback_matrix_and_domain_overrides() {
+        let service = RouteSplitService::from_config(&test_config());
+        service
+            .set_domain_htmx_mode("chat_pilot", Some(HtmxModeTarget::FullPage))
+            .await
+            .expect("set htmx override");
+        let status = service.status().await;
+
+        assert_eq!(
+            status.htmx_rollback_matrix.get("auth_entry"),
+            Some(&HtmxModeTarget::FullPage)
+        );
+        assert_eq!(
+            status.htmx_rollback_matrix.get("chat_pilot"),
+            Some(&HtmxModeTarget::FullPage)
+        );
+        assert_eq!(
+            status.htmx_domain_overrides.get("chat_pilot"),
+            Some(&HtmxModeTarget::FullPage)
+        );
     }
 }

@@ -195,6 +195,18 @@ See run modes and env vars:
 
 - `apps/openagents.com/service/docs/HTMX_BROWSER_SMOKE.md`
 
+HTMX route-group staged canary:
+
+```bash
+BASE_URL=https://staging.openagents.com \
+CONTROL_ACCESS_TOKEN=<admin-token> \
+apps/openagents.com/service/scripts/htmx-route-group-canary.sh
+```
+
+Runbook:
+
+- `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
+
 ## Static cache policy
 
 - Build the web-shell static dist with: `apps/openagents.com/web-shell/build-dist.sh`

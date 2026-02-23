@@ -119,6 +119,7 @@ gcloud logging read \
    - `auth.verify.completed`
    - `sync.token.issued`
    - `route.split.decision`
+   - `route.htmx.mode.decision`
 
 ## Deterministic Rollback Procedure
 

@@ -1713,7 +1713,7 @@ fn request_example(key: &str) -> Option<Value> {
             }
         })),
         "route_split_override" => Some(json!({
-            "target": "rollback",
+            "target": "htmx_full_page",
             "domain": "billing_l402"
         })),
         "route_split_evaluate" => Some(json!({
@@ -2914,12 +2914,23 @@ fn response_example(key: &str) -> Option<Value> {
                     "billing_l402": "legacy",
                     "chat_pilot": "rust_shell"
                 },
+                "htmx_rollback_matrix": {
+                    "auth_entry": "full_page",
+                    "billing_l402": "full_page",
+                    "chat_pilot": "full_page"
+                },
+                "htmx_domain_overrides": {
+                    "billing_l402": "full_page"
+                },
                 "route_groups": [
                     {
                         "domain": "billing_l402",
                         "route_prefixes": ["/billing", "/l402"],
                         "rollback_target": "legacy",
-                        "override_target": null
+                        "override_target": null,
+                        "htmx_default_mode": "fragment",
+                        "htmx_rollback_mode": "full_page",
+                        "htmx_override_mode": "full_page"
                     }
                 ]
             }

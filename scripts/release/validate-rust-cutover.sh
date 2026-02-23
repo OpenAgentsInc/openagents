@@ -28,6 +28,7 @@ RUN_CROSS_SURFACE="${RUN_CROSS_SURFACE:-0}"
 RUN_LOG_PROBES="${RUN_LOG_PROBES:-1}"
 RUN_HTMX_PERF_CHECKS="${RUN_HTMX_PERF_CHECKS:-1}"
 RUN_HTMX_BROWSER_SMOKE="${RUN_HTMX_BROWSER_SMOKE:-1}"
+RUN_HTMX_ROUTE_GROUP_CANARY="${RUN_HTMX_ROUTE_GROUP_CANARY:-1}"
 FAIL_ON_REQUIRED_FAILURE="${FAIL_ON_REQUIRED_FAILURE:-1}"
 
 mkdir -p "${LOG_DIR}"
@@ -204,6 +205,30 @@ else
     "required" \
     "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
     "RUN_HTMX_BROWSER_SMOKE=0"
+fi
+
+# A4) HTMX route-group staged canary lane (staging only).
+if [[ "${RUN_HTMX_ROUTE_GROUP_CANARY}" == "1" ]]; then
+  if [[ -n "${STAGING_CONTROL_ACCESS_TOKEN}" ]]; then
+    run_check \
+      "control-staging-htmx-route-group-canary" \
+      "required" \
+      "staging route-group HTMX staged rollout/rollback canary" \
+      env BASE_URL="${STAGING_CONTROL_BASE_URL}" CONTROL_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" \
+      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx-route-group-canary.sh"
+  else
+    skip_check \
+      "control-staging-htmx-route-group-canary" \
+      "required" \
+      "staging route-group HTMX staged rollout/rollback canary" \
+      "STAGING_CONTROL_ACCESS_TOKEN unset"
+  fi
+else
+  skip_check \
+    "control-staging-htmx-route-group-canary" \
+    "required" \
+    "staging route-group HTMX staged rollout/rollback canary" \
+    "RUN_HTMX_ROUTE_GROUP_CANARY=0"
 fi
 
 # B) Runtime service checks.

@@ -100,13 +100,15 @@ use crate::openapi::{
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
     ROUTE_WEBHOOKS_RESEND, ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
 };
-use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
+use crate::route_split::{
+    HtmxModeDecision, HtmxModeTarget, RouteSplitDecision, RouteSplitService, RouteTarget,
+};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 use crate::web_htmx::{
-    classify_request as classify_htmx_request, notice_response as htmx_notice_response,
-    redirect_response as htmx_redirect_response, set_push_url_header as htmx_set_push_url_header,
-    set_trigger_header as htmx_set_trigger_header,
+    HtmxRequest, classify_request as classify_htmx_request,
+    notice_response as htmx_notice_response, redirect_response as htmx_redirect_response,
+    set_push_url_header as htmx_set_push_url_header, set_trigger_header as htmx_set_trigger_header,
 };
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, IntegrationStatusView,
@@ -2659,10 +2661,7 @@ async fn render_web_page(
                 messages,
             },
         };
-        if should_render_hx_get_fragment(headers) {
-            return Ok(web_fragment_response(&page));
-        }
-        return Ok(web_html_response(page));
+        return Ok(web_response_for_page(state, headers, uri, page).await);
     }
 
     if path.starts_with("/settings") {
@@ -2696,10 +2695,7 @@ async fn render_web_page(
                 google,
             },
         };
-        if should_render_hx_get_fragment(headers) {
-            return Ok(web_fragment_response(&page));
-        }
-        return Ok(web_html_response(page));
+        return Ok(web_response_for_page(state, headers, uri, page).await);
     }
 
     if path.starts_with("/admin") {
@@ -2736,10 +2732,7 @@ async fn render_web_page(
                 runtime_routing_status_json,
             },
         };
-        if should_render_hx_get_fragment(headers) {
-            return Ok(web_fragment_response(&page));
-        }
-        return Ok(web_html_response(page));
+        return Ok(web_response_for_page(state, headers, uri, page).await);
     }
 
     if path.starts_with("/billing") || path.starts_with("/l402") {
@@ -2771,10 +2764,7 @@ async fn render_web_page(
                 deployments: views.deployments,
             },
         };
-        if should_render_hx_get_fragment(headers) {
-            return Ok(web_fragment_response(&page));
-        }
-        return Ok(web_html_response(page));
+        return Ok(web_response_for_page(state, headers, uri, page).await);
     }
 
     let (heading, description) = web_placeholder_for_path(&path);
@@ -2787,10 +2777,7 @@ async fn render_web_page(
             description,
         },
     };
-    if should_render_hx_get_fragment(headers) {
-        return Ok(web_fragment_response(&page));
-    }
-    Ok(web_html_response(page))
+    Ok(web_response_for_page(state, headers, uri, page).await)
 }
 
 fn session_view_from_bundle(bundle: &SessionBundle) -> SessionView {
@@ -3189,14 +3176,14 @@ fn web_placeholder_for_path(path: &str) -> (String, String) {
     )
 }
 
-fn web_html_response(page: WebPage) -> Response {
+fn web_html_response(page: WebPage, htmx_enabled: bool) -> Response {
     let mut response = (
         StatusCode::OK,
         [
             (CONTENT_TYPE, "text/html; charset=utf-8"),
             (CACHE_CONTROL, CACHE_MANIFEST),
         ],
-        render_maud_page(&page),
+        render_maud_page(&page, htmx_enabled),
     )
         .into_response();
     apply_html_security_headers(response.headers_mut());
@@ -3277,13 +3264,45 @@ fn feed_items_append_fragment_response(
     response
 }
 
-fn should_render_hx_get_fragment(headers: &HeaderMap) -> bool {
+fn should_render_hx_get_fragment(headers: &HeaderMap, mode: HtmxModeTarget) -> bool {
+    if mode == HtmxModeTarget::FullPage {
+        return false;
+    }
     let htmx = classify_htmx_request(headers);
     htmx.is_hx_request
         && (htmx.boosted
             || htmx.history_restore_request
             || htmx.target.as_deref() == Some("oa-main-shell")
             || htmx.current_url.is_some())
+}
+
+fn request_path_with_query(uri: &axum::http::Uri) -> String {
+    if let Some(query) = uri.query().filter(|query| !query.trim().is_empty()) {
+        return format!("{}?{query}", uri.path());
+    }
+    uri.path().to_string()
+}
+
+async fn web_response_for_page(
+    state: &AppState,
+    headers: &HeaderMap,
+    uri: &axum::http::Uri,
+    page: WebPage,
+) -> Response {
+    let htmx = classify_htmx_request(headers);
+    let request_id = request_id(headers);
+    let htmx_mode = state.route_split.htmx_mode_for_path(uri.path()).await;
+    emit_htmx_mode_decision_audit(state, &request_id, &htmx_mode, &htmx);
+
+    if should_render_hx_get_fragment(headers, htmx_mode.mode) {
+        return web_fragment_response(&page);
+    }
+
+    if htmx.is_hx_request && htmx_mode.mode == HtmxModeTarget::FullPage {
+        return htmx_redirect_response(&request_path_with_query(uri));
+    }
+
+    web_html_response(page, htmx_mode.mode == HtmxModeTarget::Fragment)
 }
 
 fn apply_html_security_headers(headers: &mut HeaderMap) {
@@ -3353,6 +3372,8 @@ async fn route_split_override(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_lowercase());
+    let mut override_kind = "route_target";
+    let mut htmx_mode: Option<&'static str> = None;
 
     match normalized_target.as_str() {
         "legacy" => {
@@ -3394,6 +3415,61 @@ async fn route_split_override(
                 state.route_split.set_override_target(None).await;
             }
         }
+        "htmx_fragment" | "htmx_on" => {
+            let domain = normalized_domain.as_deref().ok_or_else(|| {
+                validation_error("domain", "Domain is required for HTMX overrides.")
+            })?;
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(HtmxModeTarget::Fragment))
+                .await
+                .map_err(|message| validation_error("domain", &message))?;
+            override_kind = "htmx_mode";
+            htmx_mode = Some("fragment");
+        }
+        "htmx_full_page" | "htmx_off" => {
+            let domain = normalized_domain.as_deref().ok_or_else(|| {
+                validation_error("domain", "Domain is required for HTMX overrides.")
+            })?;
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(HtmxModeTarget::FullPage))
+                .await
+                .map_err(|message| validation_error("domain", &message))?;
+            override_kind = "htmx_mode";
+            htmx_mode = Some("full_page");
+        }
+        "htmx_rollback" => {
+            let domain = normalized_domain.as_deref().ok_or_else(|| {
+                validation_error("domain", "Domain is required for HTMX overrides.")
+            })?;
+            let rollback_mode = state
+                .route_split
+                .htmx_rollback_mode_for_domain(Some(domain))
+                .ok_or_else(|| validation_error("domain", "Unknown route domain."))?;
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(rollback_mode))
+                .await
+                .map_err(|message| validation_error("domain", &message))?;
+            override_kind = "htmx_mode";
+            htmx_mode = Some(match rollback_mode {
+                HtmxModeTarget::Fragment => "fragment",
+                HtmxModeTarget::FullPage => "full_page",
+            });
+        }
+        "htmx_clear" => {
+            let domain = normalized_domain.as_deref().ok_or_else(|| {
+                validation_error("domain", "Domain is required for HTMX overrides.")
+            })?;
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, None)
+                .await
+                .map_err(|message| validation_error("domain", &message))?;
+            override_kind = "htmx_mode";
+            htmx_mode = None;
+        }
         "rollback" => {
             if let Some(domain) = normalized_domain.as_deref() {
                 let rollback_target = state
@@ -3420,7 +3496,7 @@ async fn route_split_override(
         _ => {
             return Err(validation_error(
                 "target",
-                "Target must be one of: legacy, rust, rollback, clear.",
+                "Target must be one of: legacy, rust, rollback, clear, htmx_fragment, htmx_full_page, htmx_rollback, htmx_clear.",
             ));
         }
     }
@@ -3430,19 +3506,26 @@ async fn route_split_override(
         .clone()
         .map(|domain| format!("domain:{domain}"))
         .unwrap_or_else(|| "global".to_string());
+    let event_name = if override_kind == "htmx_mode" {
+        "route.split.htmx.override.updated"
+    } else {
+        "route.split.override.updated"
+    };
 
     state.observability.audit(
-        AuditEvent::new("route.split.override.updated", request_id.clone())
+        AuditEvent::new(event_name, request_id.clone())
             .with_user_id(session.user.id)
             .with_session_id(session.session.session_id)
             .with_org_id(session.session.active_org_id)
             .with_device_id(session.session.device_id)
             .with_attribute("target", normalized_target)
-            .with_attribute("scope", scope),
+            .with_attribute("scope", scope)
+            .with_attribute("override_kind", override_kind)
+            .with_attribute("htmx_mode", htmx_mode.unwrap_or("clear")),
     );
     state
         .observability
-        .increment_counter("route.split.override.updated", &request_id);
+        .increment_counter(event_name, &request_id);
 
     Ok(ok_data(status))
 }
@@ -3863,10 +3946,7 @@ async fn login_page(
         session: None,
         body: WebBody::Login { status },
     };
-    if should_render_hx_get_fragment(&headers) {
-        return Ok(web_fragment_response(&page));
-    }
-    Ok(web_html_response(page))
+    Ok(web_response_for_page(&state, &headers, &uri, page).await)
 }
 
 async fn login_email(
@@ -4052,10 +4132,13 @@ async fn web_logout(
 
 async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let htmx = classify_htmx_request(&headers);
+    let htmx_fragment_enabled =
+        state.route_split.htmx_mode_for_path("/chat").await.mode == HtmxModeTarget::Fragment;
+    let is_htmx = htmx.is_hx_request && htmx_fragment_enabled;
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -4070,7 +4153,7 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
     {
         Ok(thread) => {
             let location = format!("/chat/{}?status=thread-created", thread.thread_id);
-            if htmx.is_hx_request {
+            if is_htmx {
                 match chat_views_for_bundle(&state, &session, Some(thread.thread_id.clone())).await
                 {
                     Ok(views) => {
@@ -4096,7 +4179,7 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
             }
         }
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 htmx_notice_response(
                     "chat-status",
                     "thread-create-failed",
@@ -4116,8 +4199,11 @@ async fn web_chat_thread_fragment(
     headers: HeaderMap,
 ) -> Response {
     let htmx = classify_htmx_request(&headers);
+    let htmx_fragment_enabled =
+        state.route_split.htmx_mode_for_path("/chat").await.mode == HtmxModeTarget::Fragment;
+    let is_htmx = htmx.is_hx_request && htmx_fragment_enabled;
     let normalized_thread_id = thread_id.trim().to_string();
-    if !htmx.is_hx_request {
+    if !is_htmx {
         let location = if normalized_thread_id.is_empty() {
             "/chat".to_string()
         } else {
@@ -4172,10 +4258,13 @@ async fn web_chat_send_message(
     Form(payload): Form<WebChatSendForm>,
 ) -> Response {
     let htmx = classify_htmx_request(&headers);
+    let htmx_fragment_enabled =
+        state.route_split.htmx_mode_for_path("/chat").await.mode == HtmxModeTarget::Fragment;
+    let is_htmx = htmx.is_hx_request && htmx_fragment_enabled;
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -4184,7 +4273,7 @@ async fn web_chat_send_message(
 
     let normalized_thread_id = thread_id.trim().to_string();
     if normalized_thread_id.is_empty() {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "chat-status",
                 "message-send-failed",
@@ -4197,7 +4286,7 @@ async fn web_chat_send_message(
 
     let text = payload.text.trim().to_string();
     if text.is_empty() {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "chat-status",
                 "empty-body",
@@ -4209,7 +4298,7 @@ async fn web_chat_send_message(
             .into_response();
     }
     if text.chars().count() > 20_000 {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "chat-status",
                 "message-send-failed",
@@ -4235,7 +4324,7 @@ async fn web_chat_send_message(
     {
         Ok(_) => {
             let location = format!("/chat/{normalized_thread_id}?status=message-sent");
-            if htmx.is_hx_request {
+            if is_htmx {
                 let mut response =
                     htmx_notice_response("chat-status", "message-sent", false, StatusCode::OK);
                 htmx_set_trigger_header(&mut response, "chat-message-sent");
@@ -4245,7 +4334,7 @@ async fn web_chat_send_message(
             }
         }
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 htmx_notice_response(
                     "chat-status",
                     "message-send-failed",
@@ -4268,10 +4357,13 @@ async fn web_feed_shout(
     Form(payload): Form<WebShoutForm>,
 ) -> Response {
     let htmx = classify_htmx_request(&headers);
+    let htmx_fragment_enabled =
+        state.route_split.htmx_mode_for_path("/feed").await.mode == HtmxModeTarget::Fragment;
+    let is_htmx = htmx.is_hx_request && htmx_fragment_enabled;
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -4280,7 +4372,7 @@ async fn web_feed_shout(
 
     let body = payload.body.trim().to_string();
     if body.is_empty() {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "feed-status",
                 "empty-body",
@@ -4291,7 +4383,7 @@ async fn web_feed_shout(
         return Redirect::temporary("/feed?status=empty-body").into_response();
     }
     if body.chars().count() > 2000 {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "feed-status",
                 "shout-post-failed",
@@ -4305,7 +4397,7 @@ async fn web_feed_shout(
     let zone = match normalize_shout_zone(payload.zone.as_deref(), "zone") {
         Ok(zone) => zone,
         Err(_) => {
-            if htmx.is_hx_request {
+            if is_htmx {
                 return htmx_notice_response(
                     "feed-status",
                     "invalid-zone",
@@ -4327,7 +4419,7 @@ async fn web_feed_shout(
         .await;
 
     if result.is_err() {
-        if htmx.is_hx_request {
+        if is_htmx {
             return htmx_notice_response(
                 "feed-status",
                 "shout-post-failed",
@@ -4338,7 +4430,7 @@ async fn web_feed_shout(
         return Redirect::temporary("/feed?status=shout-post-failed").into_response();
     }
 
-    if htmx.is_hx_request {
+    if is_htmx {
         let mut response =
             htmx_notice_response("feed-status", "shout-posted", false, StatusCode::OK);
         htmx_set_trigger_header(&mut response, "feed-shout-posted");
@@ -5195,6 +5287,8 @@ async fn web_admin_route_split_override(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_lowercase());
+    let mut override_kind = "route_target";
+    let mut htmx_mode: Option<&'static str> = None;
 
     let apply = match normalized_target.as_str() {
         "legacy" => {
@@ -5236,6 +5330,114 @@ async fn web_admin_route_split_override(
                 Ok(())
             }
         }
+        "htmx_fragment" | "htmx_on" => {
+            let Some(domain) = normalized_domain.as_deref() else {
+                return web_admin_result_fragment_response(
+                    htmx.is_hx_request,
+                    "admin-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": {
+                            "code": "missing_domain",
+                            "message": "Domain is required for HTMX overrides.",
+                        }
+                    }),
+                );
+            };
+            override_kind = "htmx_mode";
+            htmx_mode = Some("fragment");
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(HtmxModeTarget::Fragment))
+                .await
+        }
+        "htmx_full_page" | "htmx_off" => {
+            let Some(domain) = normalized_domain.as_deref() else {
+                return web_admin_result_fragment_response(
+                    htmx.is_hx_request,
+                    "admin-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": {
+                            "code": "missing_domain",
+                            "message": "Domain is required for HTMX overrides.",
+                        }
+                    }),
+                );
+            };
+            override_kind = "htmx_mode";
+            htmx_mode = Some("full_page");
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(HtmxModeTarget::FullPage))
+                .await
+        }
+        "htmx_rollback" => {
+            let Some(domain) = normalized_domain.as_deref() else {
+                return web_admin_result_fragment_response(
+                    htmx.is_hx_request,
+                    "admin-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": {
+                            "code": "missing_domain",
+                            "message": "Domain is required for HTMX overrides.",
+                        }
+                    }),
+                );
+            };
+            let Some(rollback_mode) = state.route_split.htmx_rollback_mode_for_domain(Some(domain))
+            else {
+                return web_admin_result_fragment_response(
+                    htmx.is_hx_request,
+                    "admin-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": {
+                            "code": "invalid_domain",
+                            "message": "Unknown route domain.",
+                        }
+                    }),
+                );
+            };
+            override_kind = "htmx_mode";
+            htmx_mode = Some(match rollback_mode {
+                HtmxModeTarget::Fragment => "fragment",
+                HtmxModeTarget::FullPage => "full_page",
+            });
+            state
+                .route_split
+                .set_domain_htmx_mode(domain, Some(rollback_mode))
+                .await
+        }
+        "htmx_clear" => {
+            let Some(domain) = normalized_domain.as_deref() else {
+                return web_admin_result_fragment_response(
+                    htmx.is_hx_request,
+                    "admin-action-failed",
+                    true,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": {
+                            "code": "missing_domain",
+                            "message": "Domain is required for HTMX overrides.",
+                        }
+                    }),
+                );
+            };
+            override_kind = "htmx_mode";
+            htmx_mode = None;
+            state.route_split.set_domain_htmx_mode(domain, None).await
+        }
         "rollback" => {
             if let Some(domain) = normalized_domain.as_deref() {
                 if let Some(rollback_target) =
@@ -5263,7 +5465,7 @@ async fn web_admin_route_split_override(
                 Ok(())
             }
         }
-        _ => Err("Target must be one of: legacy, rust, rollback, clear.".to_string()),
+        _ => Err("Target must be one of: legacy, rust, rollback, clear, htmx_fragment, htmx_full_page, htmx_rollback, htmx_clear.".to_string()),
     };
 
     if let Err(message) = apply {
@@ -5287,18 +5489,25 @@ async fn web_admin_route_split_override(
         .clone()
         .map(|domain| format!("domain:{domain}"))
         .unwrap_or_else(|| "global".to_string());
+    let event_name = if override_kind == "htmx_mode" {
+        "route.split.htmx.override.updated"
+    } else {
+        "route.split.override.updated"
+    };
     state.observability.audit(
-        AuditEvent::new("route.split.override.updated", request_id.clone())
+        AuditEvent::new(event_name, request_id.clone())
             .with_user_id(bundle.user.id)
             .with_session_id(bundle.session.session_id)
             .with_org_id(bundle.session.active_org_id)
             .with_device_id(bundle.session.device_id)
             .with_attribute("target", normalized_target)
-            .with_attribute("scope", scope),
+            .with_attribute("scope", scope)
+            .with_attribute("override_kind", override_kind)
+            .with_attribute("htmx_mode", htmx_mode.unwrap_or("clear")),
     );
     state
         .observability
-        .increment_counter("route.split.override.updated", &request_id);
+        .increment_counter(event_name, &request_id);
 
     web_admin_result_fragment_response(
         htmx.is_hx_request,
@@ -8674,10 +8883,7 @@ async fn feed_page(
         },
     };
 
-    if should_render_hx_get_fragment(&headers) {
-        return Ok(web_fragment_response(&page));
-    }
-    Ok(web_html_response(page))
+    Ok(web_response_for_page(&state, &headers, &uri, page).await)
 }
 
 async fn feed_main_fragment(
@@ -8686,7 +8892,9 @@ async fn feed_main_fragment(
     uri: axum::http::Uri,
     Query(query): Query<FeedPageQuery>,
 ) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
-    if !classify_htmx_request(&headers).is_hx_request {
+    let htmx = classify_htmx_request(&headers);
+    let htmx_mode = state.route_split.htmx_mode_for_path("/feed").await;
+    if !htmx.is_hx_request || htmx_mode.mode == HtmxModeTarget::FullPage {
         let suffix = uri
             .query()
             .map(|query| format!("?{query}"))
@@ -8751,7 +8959,9 @@ async fn feed_items_fragment(
     uri: axum::http::Uri,
     Query(query): Query<FeedPageQuery>,
 ) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
-    if !classify_htmx_request(&headers).is_hx_request {
+    let htmx = classify_htmx_request(&headers);
+    let htmx_mode = state.route_split.htmx_mode_for_path("/feed").await;
+    if !htmx.is_hx_request || htmx_mode.mode == HtmxModeTarget::FullPage {
         let suffix = uri
             .query()
             .map(|query| format!("?{query}"))
@@ -15326,6 +15536,51 @@ fn emit_route_split_decision_audit(
         .increment_counter("route.split.decision", request_id);
 }
 
+fn htmx_mode_label(mode: HtmxModeTarget) -> &'static str {
+    match mode {
+        HtmxModeTarget::Fragment => "fragment",
+        HtmxModeTarget::FullPage => "full_page",
+    }
+}
+
+fn emit_htmx_mode_decision_audit(
+    state: &AppState,
+    request_id: &str,
+    decision: &HtmxModeDecision,
+    htmx: &HtmxRequest,
+) {
+    let mut event = AuditEvent::new("route.htmx.mode.decision", request_id.to_string())
+        .with_attribute("path", decision.path.clone())
+        .with_attribute("route_domain", decision.route_domain.clone())
+        .with_attribute("mode", htmx_mode_label(decision.mode).to_string())
+        .with_attribute("reason", decision.reason.clone())
+        .with_attribute(
+            "rollback_mode",
+            htmx_mode_label(decision.rollback_mode).to_string(),
+        )
+        .with_attribute("is_hx_request", htmx.is_hx_request.to_string())
+        .with_attribute("hx_boosted", htmx.boosted.to_string())
+        .with_attribute(
+            "hx_history_restore_request",
+            htmx.history_restore_request.to_string(),
+        );
+
+    if let Some(target) = htmx.target.as_ref() {
+        event = event.with_attribute("hx_target", target.clone());
+    }
+    if let Some(trigger) = htmx.trigger.as_ref() {
+        event = event.with_attribute("hx_trigger", trigger.clone());
+    }
+    if let Some(current_url) = htmx.current_url.as_ref() {
+        event = event.with_attribute("hx_current_url", current_url.clone());
+    }
+
+    state.observability.audit(event);
+    state
+        .observability
+        .increment_counter("route.htmx.mode.decision", request_id);
+}
+
 fn header_string(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(key)
@@ -18033,6 +18288,37 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "forbidden");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_htmx_override_requires_domain() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+        let token = authenticate_token(app.clone(), "routes@openagents.com").await?;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"target":"htmx_full_page"}"#))?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], json!("invalid_request"));
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Domain is required")
+        );
 
         Ok(())
     }
@@ -24696,17 +24982,40 @@ mod tests {
                 .header("x-oa-route-key", "user:route")
                 .body(Body::empty())?;
             let response = app.clone().oneshot(request).await?;
-            assert_eq!(
-                response.status(),
-                StatusCode::OK,
-                "unexpected status for {path}"
-            );
-            let body = response.into_body().collect().await?.to_bytes();
-            let html = String::from_utf8_lossy(&body);
-            assert!(
-                html.contains("rust shell"),
-                "management route was not served by rust shell: {path}"
-            );
+            if [
+                "/settings/profile",
+                "/l402/paywalls",
+                "/billing/deployments",
+                "/admin",
+            ]
+            .contains(&path)
+            {
+                assert_eq!(
+                    response.status(),
+                    StatusCode::TEMPORARY_REDIRECT,
+                    "unexpected status for {path}"
+                );
+                assert_eq!(
+                    response
+                        .headers()
+                        .get("location")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("/login"),
+                    "management route should remain rust-owned auth redirect: {path}"
+                );
+            } else {
+                assert_eq!(
+                    response.status(),
+                    StatusCode::OK,
+                    "unexpected status for {path}"
+                );
+                let body = response.into_body().collect().await?.to_bytes();
+                let html = String::from_utf8_lossy(&body);
+                assert!(
+                    html.contains("rust shell"),
+                    "management route was not served by rust shell: {path}"
+                );
+            }
         }
 
         Ok(())
@@ -24917,10 +25226,14 @@ mod tests {
             .header("x-oa-route-key", "user:route")
             .body(Body::empty())?;
         let settings_response = app.oneshot(settings_request).await?;
-        assert_eq!(settings_response.status(), StatusCode::OK);
-        let body = settings_response.into_body().collect().await?.to_bytes();
-        let html = String::from_utf8_lossy(&body);
-        assert!(html.contains("rust shell"));
+        assert_eq!(settings_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            settings_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/login")
+        );
 
         Ok(())
     }
@@ -24949,6 +25262,17 @@ mod tests {
         let override_response = app.clone().oneshot(override_request).await?;
         assert_eq!(override_response.status(), StatusCode::OK);
 
+        let htmx_override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"target":"htmx_full_page","domain":"billing_l402"}"#,
+            ))?;
+        let htmx_override_response = app.clone().oneshot(htmx_override_request).await?;
+        assert_eq!(htmx_override_response.status(), StatusCode::OK);
+
         let status_request = Request::builder()
             .method("GET")
             .uri("/api/v1/control/route-split/status")
@@ -24969,6 +25293,14 @@ mod tests {
         assert_eq!(
             body["data"]["domain_overrides"]["billing_l402"],
             json!("legacy")
+        );
+        assert_eq!(
+            body["data"]["htmx_rollback_matrix"]["billing_l402"],
+            json!("full_page")
+        );
+        assert_eq!(
+            body["data"]["htmx_domain_overrides"]["billing_l402"],
+            json!("full_page")
         );
 
         Ok(())
@@ -27365,6 +27697,77 @@ mod tests {
             assert!(direct_html.contains("id=\"oa-shell\""));
             assert!(direct_html.contains("id=\"oa-main-shell\""));
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn htmx_route_group_override_can_force_full_page_mode_per_domain() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.route_split_mode = "rust".to_string();
+        config.route_split_rust_routes = vec!["/".to_string()];
+        let app = build_router(config);
+        let token = authenticate_token(app.clone(), "routes@openagents.com").await?;
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"target":"htmx_full_page","domain":"chat_pilot"}"#,
+            ))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let hx_feed_request = Request::builder()
+            .method("GET")
+            .uri("/feed")
+            .header("hx-request", "true")
+            .header("hx-boosted", "true")
+            .header("hx-target", "oa-main-shell")
+            .body(Body::empty())?;
+        let hx_feed_response = app.clone().oneshot(hx_feed_request).await?;
+        assert_eq!(hx_feed_response.status(), StatusCode::OK);
+        assert_eq!(
+            hx_feed_response
+                .headers()
+                .get("HX-Redirect")
+                .and_then(|value| value.to_str().ok()),
+            Some("/feed")
+        );
+
+        let full_feed_request = Request::builder()
+            .method("GET")
+            .uri("/feed")
+            .body(Body::empty())?;
+        let full_feed_response = app.clone().oneshot(full_feed_request).await?;
+        assert_eq!(full_feed_response.status(), StatusCode::OK);
+        let full_feed_body = full_feed_response.into_body().collect().await?.to_bytes();
+        let full_feed_html = String::from_utf8_lossy(&full_feed_body);
+        assert!(full_feed_html.contains("<html"));
+        assert!(full_feed_html.contains("id=\"oa-shell\" hx-disable=\"true\""));
+        assert!(full_feed_html.contains("name=\"openagents-htmx-mode\" content=\"full_page\""));
+
+        let fragment_request = Request::builder()
+            .method("GET")
+            .uri("/feed/fragments/main?zone=all")
+            .header("hx-request", "true")
+            .body(Body::empty())?;
+        let fragment_response = app.clone().oneshot(fragment_request).await?;
+        assert_eq!(fragment_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            fragment_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/feed?zone=all")
+        );
 
         Ok(())
     }

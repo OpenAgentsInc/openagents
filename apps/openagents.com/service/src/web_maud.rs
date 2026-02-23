@@ -141,7 +141,12 @@ pub struct WebPage {
     pub body: WebBody,
 }
 
-pub fn render_page(page: &WebPage) -> String {
+pub fn render_page(page: &WebPage, htmx_enabled: bool) -> String {
+    let htmx_mode = if htmx_enabled {
+        "fragment"
+    } else {
+        "full_page"
+    };
     let markup = html! {
         (DOCTYPE)
         html lang="en" {
@@ -149,6 +154,7 @@ pub fn render_page(page: &WebPage) -> String {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 meta name="openagents-runtime" content="rust shell";
+                meta name="openagents-htmx-mode" content=(htmx_mode);
                 title { (page.title) " | OpenAgents" }
                 style { (PreEscaped(styles())) }
                 script src=(HTMX_ASSET_PATH) defer {}
@@ -157,14 +163,23 @@ pub fn render_page(page: &WebPage) -> String {
             body {
                 div class="oa-bg" {}
                 div class="oa-noise" {}
-                div class="oa-app"
-                    id="oa-shell"
-                    hx-boost="true"
-                    hx-target="#oa-main-shell"
-                    hx-select="#oa-main-shell"
-                    hx-push-url="true" {
-                    (topbar(&page.path, page.session.as_ref()))
-                    (render_main_fragment_markup(page))
+                @if htmx_enabled {
+                    div class="oa-app"
+                        id="oa-shell"
+                        hx-boost="true"
+                        hx-target="#oa-main-shell"
+                        hx-select="#oa-main-shell"
+                        hx-push-url="true" {
+                        (topbar(&page.path, page.session.as_ref()))
+                        (render_main_fragment_markup(page))
+                    }
+                } @else {
+                    div class="oa-app"
+                        id="oa-shell"
+                        hx-disable="true" {
+                        (topbar(&page.path, page.session.as_ref()))
+                        (render_main_fragment_markup(page))
+                    }
                 }
             }
         }
@@ -1035,9 +1050,10 @@ fn admin_panel(
                         hx-swap="outerHTML" {
                         h3 { "Route Split Override" }
                         label for="route_target" { "Target" }
-                        input id="route_target" type="text" name="target" placeholder="legacy|rust|rollback|clear" required;
+                        input id="route_target" type="text" name="target" placeholder="legacy|rust|rollback|clear|htmx_fragment|htmx_full_page|htmx_rollback|htmx_clear" required;
                         label for="route_domain" { "Domain (optional)" }
                         input id="route_domain" type="text" name="domain" placeholder="billing_l402";
+                        p class="oa-muted" { "HTMX targets require a domain." }
                         (form_submit_action("Apply route split override", "Applying...", true))
                     }
 
@@ -1388,7 +1404,7 @@ input:focus, textarea:focus {
 }
 .oa-thread-link:hover, .oa-zone-link:hover { border-color: rgba(94, 180, 242, 0.65); }
 .oa-thread-link.active, .oa-zone-link.active { border-color: rgba(58, 185, 255, 0.72); background: rgba(18, 57, 86, 0.56); }
-.oa-thread-title { font-weight: 600; }
+.oa-thread-title { font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
 .oa-thread-meta { font-size: 0.78rem; color: var(--muted); }
 .oa-message-list {
   margin-top: 0.8rem;
@@ -1543,7 +1559,7 @@ mod tests {
             },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains(&format!("src=\"{HTMX_ASSET_PATH}\"")));
         assert!(!html.contains("cdn.jsdelivr.net/npm/htmx.org"));
     }
@@ -1560,7 +1576,7 @@ mod tests {
             },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains("id=\"oa-shell\""));
         assert!(html.contains("hx-boost=\"true\""));
         assert!(html.contains("hx-target=\"#oa-main-shell\""));
@@ -1568,6 +1584,24 @@ mod tests {
         assert!(html.contains("hx-push-url=\"true\""));
         assert!(html.contains("id=\"oa-main-shell\""));
         assert!(html.contains("href=\"/feed\""));
+    }
+
+    #[test]
+    fn render_page_can_disable_htmx_processing_for_full_page_mode() {
+        let page = WebPage {
+            title: "Feed".to_string(),
+            path: "/feed".to_string(),
+            session: None,
+            body: WebBody::Placeholder {
+                heading: "Feed".to_string(),
+                description: "Feed body".to_string(),
+            },
+        };
+
+        let html = render_maud_page(&page, false);
+        assert!(html.contains("name=\"openagents-htmx-mode\" content=\"full_page\""));
+        assert!(html.contains("id=\"oa-shell\" hx-disable=\"true\""));
+        assert!(!html.contains("hx-boost=\"true\""));
     }
 
     #[test]
@@ -1630,7 +1664,7 @@ mod tests {
             },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains("id=\"chat-surface\""));
         assert!(html.contains("id=\"chat-thread-list-panel\""));
         assert!(html.contains("id=\"chat-thread-content-panel\""));
@@ -1674,7 +1708,7 @@ mod tests {
             },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains("id=\"feed-zone-panel\""));
         assert!(html.contains("id=\"feed-main-panel\""));
         assert!(html.contains("hx-get=\"/feed/fragments/main?zone=all\""));
@@ -1703,7 +1737,7 @@ mod tests {
             },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains("htmx:afterSwap"));
         assert!(html.contains("htmx:beforeRequest"));
         assert!(html.contains("htmx:afterRequest"));
@@ -1721,7 +1755,7 @@ mod tests {
             body: WebBody::Login { status: None },
         };
 
-        let html = render_maud_page(&page);
+        let html = render_maud_page(&page, true);
         assert!(html.contains("class=\"oa-action-row\""));
         assert!(html.contains("class=\"htmx-indicator oa-indicator\""));
         assert!(html.contains("aria-busy"));

@@ -32,6 +32,11 @@ apps/openagents.com/service/scripts/htmx_perf_check.sh
 ```bash
 apps/openagents.com/service/scripts/htmx_browser_smoke.sh
 ```
+- HTMX route-group staged rollout canary (staging token lane) via:
+
+```bash
+apps/openagents.com/service/scripts/htmx-route-group-canary.sh
+```
 
 2. Runtime lane
 - runtime health + authority API smoke
@@ -74,6 +79,7 @@ HTMX perf lane toggle:
 
 - `RUN_HTMX_PERF_CHECKS=1` (default)
 - `RUN_HTMX_BROWSER_SMOKE=1` (default)
+- `RUN_HTMX_ROUTE_GROUP_CANARY=1` (default)
 
 ## Go/No-Go Policy
 
@@ -85,5 +91,6 @@ HTMX perf lane toggle:
 ## Related Runbooks
 
 - `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
 - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
