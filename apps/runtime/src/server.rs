@@ -4187,6 +4187,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_catalog_surfaces_local_cluster_provider_metadata() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:cluster-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-cluster-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1500,
+                            "supply_class": "local_cluster",
+                            "cluster_id": "cluster-1",
+                            "cluster_members": ["node-a", "node-b"]
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let catalog_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .get("providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers array"))?;
+        assert_eq!(providers.len(), 1);
+        assert_eq!(
+            providers[0]
+                .pointer("/supply_class")
+                .and_then(Value::as_str),
+            Some("local_cluster")
+        );
+        assert_eq!(
+            providers[0].pointer("/cluster_id").and_then(Value::as_str),
+            Some("cluster-1")
+        );
+        let members = providers[0]
+            .pointer("/cluster_members")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing cluster_members"))?;
+        assert_eq!(members.len(), 2);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn route_provider_prefers_owned_and_falls_back_to_reserve_pool() -> Result<()> {
         let app = test_router();
         let (provider_base_url, shutdown) = spawn_provider_stub().await?;

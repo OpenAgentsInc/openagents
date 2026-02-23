@@ -35,6 +35,10 @@ pub struct ProviderCatalogEntry {
     pub heartbeat_age_ms: Option<i64>,
     #[serde(default)]
     pub supply_class: SupplyClass,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cluster_members: Vec<String>,
     #[serde(default)]
     pub reserve_pool: bool,
     #[serde(default)]
@@ -63,6 +67,8 @@ impl ProviderCatalogEntry {
             || roles.iter().any(|role| role == "reserve_pool");
         let supply_class = supply_class_from_metadata(meta, reserve_pool_flag);
         let reserve_pool = reserve_pool_flag || supply_class == SupplyClass::ReservePool;
+        let cluster_id = metadata_string(meta, "cluster_id");
+        let cluster_members = metadata_string_array(meta, "cluster_members");
 
         Some(Self {
             schema: PROVIDER_CATALOG_SCHEMA_V1.to_string(),
@@ -74,6 +80,8 @@ impl ProviderCatalogEntry {
             heartbeat_state: snapshot.liveness.heartbeat_state.clone(),
             heartbeat_age_ms: snapshot.liveness.heartbeat_age_ms,
             supply_class,
+            cluster_id,
+            cluster_members,
             reserve_pool,
             roles,
             base_url,
