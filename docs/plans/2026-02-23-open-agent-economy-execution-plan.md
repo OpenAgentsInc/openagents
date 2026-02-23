@@ -39,7 +39,7 @@ Out of scope:
 
 - Proto-first contracts (`INV-01`, `ADR-0002`).
 - Authenticated HTTP mutation authority (`INV-02`).
-- Khala WS-only live authority lanes (`INV-03`, `ADR-0003`).
+- Khala WS-only live sync transport (`INV-03`, `ADR-0003`).
 - Control/runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
 - Replay/idempotency guarantees (`INV-07`).
 - Service deploy isolation and migration discipline (`INV-08`, `INV-09`, `INV-10`).
@@ -70,7 +70,7 @@ OpenAgents Compute is the public-facing name of our compute network and compute 
 Minimum definition (Phase 0):
 
 - A provider runs an OpenAgents Compute daemon/agent that can accept jobs and run them in a sandbox.
-- Providers register/announce capacity to a centralized runtime registry over authenticated HTTP + WS authority lanes (Phase 0).
+- Providers register/announce capacity + pricing to the operator-domain Nexus registry via authenticated HTTP mutations (`INV-02`). Consumers subscribe to discovery/health streams over WebSocket delivery lanes (no authority mutations over WS).
 - The scheduler routes jobs with a simple policy surface (Cheapest/Balanced/Fastest) and a reserve-pool fallback.
 - Providers execute objective workloads (especially `oa.sandbox_run.v1`) and emit verification artifacts (exit code + artifact hashes).
 - Payments are pay-after-verify: verification pass is the condition to release payment, and all state transitions are idempotent with receipts.
@@ -78,14 +78,69 @@ Minimum definition (Phase 0):
 
 Next (externalization):
 
-- Provider discovery/announcements move off the centralized registry into protocol lanes (e.g., NIP-89/NIP-90) without changing the pay-after-verify semantics.
+- Nostr is the interop substrate between independently-run operator domains and external agents/providers. A Bridge/Gateway mirrors a constrained set of event kinds (provider ads, commerce receipts, reputation labels) between the operator-domain registry and Nostr without changing the pay-after-verify semantics.
+
+### 4.2) Nostr vs Nexus vs Bridge (Trust Zones + Message Classes)
+
+This plan assumes a stratified transport model to avoid "sign everything" overhead without creating silent security debt:
+
+- **Nostr** is the interop substrate: how independently-run systems and external agents/providers exchange portable, audit-friendly events.
+- **Nexus** is the high-throughput intra-domain fabric: how a single operator's swarm coordinates (routing, orchestration chatter, streaming) at high rate.
+- **Bridge** is the policy + translation layer: controls what crosses the boundary and ensures authority semantics are provable and verifiable.
+
+Nexus is a superset of a Nostr relay: it supports a Nostr-compatible event surface for interop, and adds internal high-throughput lanes for coordination and streaming.
+
+#### What Runs On Nostr (Interop, Portability, Audit)
+
+- Identity + capability publication (agent profiles, provider capability ads, pricing bands, routing hints).
+- Market contract surfaces (minimum commerce grammar for compute and exchange lanes).
+- Receipts that prove money/work (verified patch bundle receipt hashes, settlement receipts, dispute evidence pointers).
+- Reputation/labels (outcomes, reliability, "this provider delivered valid artifacts" attestations).
+- Cross-domain replication (messages intended to survive outside one operator's Nexus).
+
+#### What Stays Inside Nexus (Throughput, Latency, Private Coordination)
+
+- High-frequency orchestration (scheduler chatter, routing decisions, queue operations).
+- Streaming (token streams, logs, progress, heartbeats).
+- Internal state projections (materialized views, cursor fanout, multiplexed subscriptions).
+- Private/tenant-specific control-plane messages (not intended to be globally replicated).
+
+#### Trust Zones
+
+- **Zone 0 (inside operator Nexus boundary):** control/runtime services and workers authenticated strongly (mTLS/Noise/session keys/attestation as appropriate).
+- **Zone 1 (outside/semi-trusted):** any user-run agent, external provider, or third-party operator domain.
+
+Zone 1 ingress is treated as hostile by default: signed, rate-limited, replay-safe, and schema-validated.
+
+#### Message Classes (How We Avoid Per-Message Signatures Without Losing Safety)
+
+**Class 1: Authority mutations (MUST be attributable, signed, receipted, idempotent).**
+
+Examples:
+
+- reserve budget, spend, settle, refund
+- "job accepted as valid" / verification pass finalization
+- provider qualification changes, tier/penalty updates
+- any durable state transition that affects money, rights, or long-lived authority
+
+In this repo's Rust-era invariants, Class 1 mutations are expressed as authenticated HTTP commands (`INV-02`) that emit deterministic receipts, and may be mirrored onto Nostr by the Bridge for neutral verification and portability.
+
+**Class 2: Ephemeral coordination (may be session-authenticated, not per-message signed).**
+
+Examples:
+
+- progress updates, stream log chunks, token streams
+- route/shard instructions and internal fanout
+- worker heartbeats and backpressure signals
+
+Class 2 traffic is protected by authenticated transports + per-session keys. Optional audit hooks (future): sign a Merkle root per N messages to provide tamper evidence without per-message signature cost.
 
 ## 5) Synthesis Coverage Map
 
 | Synthesis Scope | Implementation Coverage | Issue Range | Priority |
 |---|---|---|---|
 | Part One: Cryptographic Foundation | FROSTR/FROST, key hierarchy, threshold ops, rotation/recovery, cryptographic receipts | `OA-ECON-010` to `OA-ECON-024` | Now (minimal subset) / Next (full) |
-| Part Two: Communication Substrate | Nostr/NIP stack, relay strategy, WS live lanes, protocol conformance | `OA-ECON-025` to `OA-ECON-039` | Next |
+| Part Two: Communication Substrate | Nostr interop gateway + Nexus intra-domain live lanes, relay strategy, protocol conformance | `OA-ECON-025` to `OA-ECON-039` | Now (Nexus core + Nostr interop gateway minimal) / Next (multi-relay hardening + broad NIP coverage) |
 | Part Three: Economic Layer | Spark/Lightning rails, unified key derivation, payment policy, value flow primitives | `OA-ECON-040` to `OA-ECON-065` | Next (minimal) / Later (depth) |
 | Neobank Treasury Layer | TreasuryRouter, multi-currency budgets, mint trust, quote/proof lifecycle, reconciliation | `OA-ECON-040` to `OA-ECON-065` | Later |
 | Exchange Layer | RFQ/orderflow, NIP-69/NIP-60/NIP-61 stack, settlement v0/v1/v2, liquidity/reputation | `OA-ECON-066` to `OA-ECON-089` | Later |
@@ -156,8 +211,11 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-187` - Integrate budget enforcer with tool execution hooks. - Block over-limit execution in real time.
 - `OA-ECON-207` - Implement hierarchical budget enforcement for org/repo/issue. - Maintain hard spend limits across nested scopes.
 
+- `OA-ECON-029` - Implement Nexus live lanes + trust-zone enforcement. - Provide high-throughput WS delivery lanes (cursor protocol, replay-safe where required) for intra-domain coordination and streaming; preserve `INV-02` (HTTP-only authority mutations) and `INV-03` (Khala WS-only sync).
+- `OA-ECON-025` - Define Bridge boundary + minimal Nostr interop event kinds. - Codify message classes + signing policy and implement a minimal Nexus<->Nostr gateway for provider ads + receipts so interop is Nostr-verifiable without pushing high-rate chatter onto Nostr.
+
 - `OA-ECON-120` - Implement marketplace core catalog service. - Unify listing, discovery, and metadata contracts.
-- `OA-ECON-121` - Implement provider announcements via runtime registry. - Standardize provider capability publication and discovery over authenticated HTTP + WS authority lanes (Phase 0); later externalize via NIP-89.
+- `OA-ECON-121` - Implement provider announcements in Nexus registry + optional Nostr mirror. - Publish capability ads to the operator-domain registry via authenticated HTTP mutations; stream discovery/health via WS delivery; optionally mirror to Nostr (NIP-89) through the Bridge.
 - `OA-ECON-122` - Implement job-type registry with verification metadata. - Define objective vs subjective verification semantics per job.
 - `OA-ECON-123` - Implement SandboxRun objective verification pipeline. - Verify build/test/lint workloads deterministically.
 - `OA-ECON-128` - Implement reserve provider pool manager. - Guarantee fill path when market liquidity is insufficient.
@@ -221,15 +279,13 @@ Next (full authority baseline expansion):
 - `OA-ECON-021` - Expose identity proof and attestation APIs. - Provide verifiable identity/economic-lane linkage endpoints.
 - `OA-ECON-024` - Publish cryptographic operations runbook and threat controls. - Document and automate key lifecycle operations.
 
-#### Communication Substrate (Next; Not Required for Phase 0 Centralized Registry)
+#### Communication Substrate (Next: Multi-Relay Hardening + Protocol Expansion)
 
-Phase 0 bootstraps liquidity using a centralized runtime registry + WS authority lanes for provider discovery and job dispatch. This section is the "Next" externalization path: move discovery, contracts, and receipts onto Nostr/relay protocol lanes without changing the commerce semantics.
+Phase 0 ships Nexus intra-domain live lanes + a minimal Bridge that makes provider ads and receipts Nostr-verifiable. This section is the expansion path: move more of discovery, contracts, and reputation onto Nostr/relay protocol lanes and harden multi-relay resilience without pushing high-rate coordination traffic onto Nostr.
 
-- `OA-ECON-025` - Build prioritized NIP coverage plan in code. - Implement and gate the minimal NIP set for OpenAgents Compute discovery + payments (including NIP-89 and NIP-90), then expand toward full coverage.
 - `OA-ECON-026` - Implement resilient multi-relay client strategy. - Support fan-out subscriptions, dedupe, and reconnection behavior.
 - `OA-ECON-027` - Ship operator relay package. - Provide hardened relay deployment with persistence and observability.
 - `OA-ECON-028` - Add protocol compatibility validator. - Enforce schema and version compatibility at relay/client boundaries.
-- `OA-ECON-029` - Enforce WS-only live authority stream lanes. - Ensure Khala and live sync traffic remains WebSocket-authoritative.
 - `OA-ECON-030` - Integrate NIP-57 zap payment flows. - Link event-driven payouts to verified work and reputation evidence.
 - `OA-ECON-031` - Integrate L402 pay-per-call rails. - Add HTTP payment challenge and settlement support for API lanes.
 - `OA-ECON-032` - Implement encrypted direct coordination lanes. - Support secure peer communication for sensitive agent workflows.
@@ -481,9 +537,9 @@ Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`O
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
-- Gate B: Live authority lanes remain WS-only, replay-safe, and idempotent.
+- Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
 - Gate D: Marketplace payouts are deterministic and conservation-safe.
 - Gate E: Threat-model controls have executable tests and drill evidence.

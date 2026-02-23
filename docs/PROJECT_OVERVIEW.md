@@ -41,6 +41,8 @@ This map reflects canonical Rust-only architecture boundaries.
 - Control plane authority: `control.*` domain (identity, sessions, org/device authorization state).
 - Runtime authority: `runtime.*` domain (execution events, projectors, sync journal, replay artifacts).
 - Khala is projection/replay delivery infrastructure; it does not perform authority mutations.
+- Nostr is the interop substrate for portable events across independently-run operator domains.
+- Nexus is the high-throughput intra-domain fabric for swarm coordination/streaming; a Bridge/Gateway controls what crosses between Nexus and Nostr.
 
 ## Canonical Documentation
 

@@ -78,6 +78,8 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 ## Nostr Protocols
 
 > **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are canonical identifiers for job types. Rust-era protocol mapping docs were archived to backroom during the 2026-02-11 deprecation.
+>
+> Nostr is the interop substrate: portable events intended to survive outside one operator domain. High-rate intra-domain coordination/streaming stays inside Nexus and is not carried on Nostr.
 
 | Term | Definition |
 |------|------------|
@@ -119,6 +121,12 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 |------|------------|
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
 | **Khala** | Codename for the runtime-owned sync engine: Postgres-backed projection delivery over WebSockets. Non-authoritative by design; runtime/Postgres remain the source of truth. |
+| **Nexus** | High-throughput intra-domain fabric for a single operator domain (swarm coordination + streaming). Superset of a Nostr relay: can expose a Nostr-compatible event surface for interop plus internal high-rate lanes. Does not carry authority mutations. |
+| **Bridge** | Policy + translation gateway between Nexus (intra-domain) and Nostr (interop). Controls what crosses the boundary; enforces signing/receipts; can mirror provider ads, receipts, and reputation labels. |
+| **Trust Zone** | Trust boundary class for transport/security. Zone 0 is inside operator-domain Nexus (strongly authenticated services/workers). Zone 1 is external/semi-trusted (user agents, external providers, other operator domains) and must be signed, rate-limited, replay-safe, and schema-validated. |
+| **Message Class** | Classification that determines signing/receipt requirements. Class 1 = authority mutations (attributable, signed, receipted, idempotent; HTTP-only). Class 2 = ephemeral coordination (session-authenticated; optional batch/Merkle audit). |
+| **Authority Mutation** | Durable state transition affecting money, rights, or long-lived authority. Must be expressed as authenticated HTTP commands (`INV-02`), emit deterministic receipts, and be replay-safe. |
+| **Ephemeral Coordination** | High-rate low-stakes coordination/streaming messages (progress/logs/heartbeats). May be session-authenticated without per-message signatures; must not mutate authority. |
 | **Lane** | Named routing bucket for inference/execution. Standard *classes* are **Local** (free, on-device), **Cloud** (hosted API), **Swarm** (NIP-90 marketplace). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. Note: "Datacenter" in supply class docs refers to Cloud lanes. |
 | **Dispatcher** | Component that sends NIP-90 jobs to the swarm (e.g., SwarmDispatcher). |
 | **DelegationTarget** | Where to route a task. Canonical enum: `local_tools` (simple edits), `rlm` (recursive analysis), `codex` (complex multi-file), `swarm_fanout` (parallel provider queries), `objective_job` (sandboxed verifiable jobs like tests/builds). |

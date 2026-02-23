@@ -149,6 +149,14 @@ The implementation spans three crates: nostr/core provides protocol types, event
 
 Priority goes to NIPs enabling the agent economy: NIP-01 for basic events and subscriptions, NIP-90 for compute job markets, NIP-57 for Lightning payments via Zaps, NIP-46 for remote signing, NIP-44 and NIP-17 for encrypted messages, NIP-34 for decentralized Git. Together these create a communication layer where agents discover each other, negotiate work, exchange payments, and collaborate on code—without any centralized platform that could censor or surveil them.
 
+### Nostr vs Nexus (Interop vs Intra-Domain)
+
+Nostr is the interop substrate: portable, audit-friendly events intended to be consumable by independently-run operator domains and external agents/providers. Nexus is the high-performance intra-domain fabric: the low-latency, high-throughput lanes used inside a single operator domain for swarm coordination and streaming. A Bridge/Gateway sits at the boundary to control which message kinds cross domains and to translate policies and proofs.
+
+The performance goal ("don't sign every message") is only safe if trust zones and message classes are explicit. Inside the operator trust boundary (Zone 0), ephemeral coordination traffic (progress, logs, heartbeats, routing chatter) can be protected with authenticated transports + per-session keys rather than per-message signatures. Across the boundary (Zone 1), everything is treated as hostile by default: signed, rate-limited, replay-safe, and schema-validated.
+
+Authority mutations (money/state/rights) are never "just messages" and must remain attributable, signed, receipted, and idempotent regardless of transport. In the Rust-era repo this means authenticated HTTP command authority, with receipts that can be mirrored onto Nostr by the Bridge so neutral third parties can verify work and settlement without Nexus-specific code.
+
 ## Part Three: The Economic Layer
 
 Identity and communication are necessary but not sufficient for autonomous agents. An agent that cannot hold money cannot pay for compute resources, cannot receive compensation for work, and cannot participate in markets. It remains a toy that produces output but has no skin in the game.
