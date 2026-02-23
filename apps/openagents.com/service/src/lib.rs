@@ -44,6 +44,7 @@ pub mod route_split;
 pub mod runtime_routing;
 pub mod sync_token;
 pub mod vercel_sse_adapter;
+pub mod web_htmx;
 pub mod web_maud;
 
 use crate::api_envelope::{
@@ -102,9 +103,13 @@ use crate::openapi::{
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
+use crate::web_htmx::{
+    classify_request as classify_htmx_request, notice_response as htmx_notice_response,
+    redirect_response as htmx_redirect_response,
+};
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
-    render_notice_fragment as render_maud_notice_fragment, render_page as render_maud_page,
+    render_page as render_maud_page,
 };
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -2656,36 +2661,6 @@ fn web_html_response(page: WebPage) -> Response {
     response
 }
 
-fn is_hx_request(headers: &HeaderMap) -> bool {
-    headers
-        .get("hx-request")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
-fn htmx_notice_response(
-    target_id: &str,
-    status: &str,
-    is_error: bool,
-    http_status: StatusCode,
-) -> Response {
-    (
-        http_status,
-        [(CONTENT_TYPE, "text/html; charset=utf-8")],
-        render_maud_notice_fragment(target_id, status, is_error),
-    )
-        .into_response()
-}
-
-fn htmx_redirect_response(location: &str) -> Response {
-    let mut response = StatusCode::OK.into_response();
-    if let Ok(value) = HeaderValue::from_str(location) {
-        response.headers_mut().insert("HX-Redirect", value);
-    }
-    response
-}
-
 fn apply_html_security_headers(headers: &mut HeaderMap) {
     headers.insert(
         HEADER_CONTENT_SECURITY_POLICY,
@@ -3271,9 +3246,9 @@ async fn login_email(
     headers: HeaderMap,
     Form(payload): Form<LoginEmailForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     if session_bundle_from_headers(&state, &headers).await.is_ok() {
-        if hx_request {
+        if htmx.is_hx_request {
             return Ok(htmx_redirect_response("/"));
         }
         return Ok(Redirect::temporary("/").into_response());
@@ -3303,7 +3278,7 @@ async fn login_email(
         state.config.auth_challenge_ttl_seconds,
     );
 
-    let mut response = if hx_request {
+    let mut response = if htmx.is_hx_request {
         htmx_notice_response("login-status", "code-sent", false, StatusCode::OK)
     } else {
         Redirect::temporary("/login?status=code-sent").into_response()
@@ -3317,9 +3292,9 @@ async fn login_verify(
     headers: HeaderMap,
     Form(payload): Form<LoginVerifyForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     if session_bundle_from_headers(&state, &headers).await.is_ok() {
-        if hx_request {
+        if htmx.is_hx_request {
             return Ok(htmx_redirect_response("/"));
         }
         return Ok(Redirect::temporary("/").into_response());
@@ -3334,7 +3309,7 @@ async fn login_verify(
     let challenge_id = match challenge_id {
         Some(value) => value,
         None => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return Ok(htmx_notice_response(
                     "login-status",
                     "code-expired",
@@ -3365,7 +3340,7 @@ async fn login_verify(
     {
         Ok(verified) => verified,
         Err(error) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return Ok(htmx_notice_response(
                     "login-status",
                     "invalid-code",
@@ -3390,7 +3365,7 @@ async fn login_verify(
         .observability
         .increment_counter("auth.web.verify.completed", &request_id);
 
-    let mut response = if hx_request {
+    let mut response = if htmx.is_hx_request {
         htmx_redirect_response("/")
     } else {
         Redirect::temporary("/").into_response()
@@ -3414,7 +3389,7 @@ async fn web_logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     let request_id = request_id(&headers);
     let access_token = access_token_from_headers(&headers);
 
@@ -3435,7 +3410,7 @@ async fn web_logout(
         }
     }
 
-    let mut response = if hx_request {
+    let mut response = if htmx.is_hx_request {
         htmx_redirect_response("/")
     } else {
         Redirect::temporary("/").into_response()
@@ -3448,11 +3423,11 @@ async fn web_logout(
 }
 
 async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -3467,14 +3442,14 @@ async fn web_chat_new_thread(State(state): State<AppState>, headers: HeaderMap) 
     {
         Ok(thread) => {
             let location = format!("/chat/{}?status=thread-created", thread.thread_id);
-            if hx_request {
+            if htmx.is_hx_request {
                 htmx_redirect_response(&location)
             } else {
                 Redirect::temporary(&location).into_response()
             }
         }
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 htmx_notice_response(
                     "chat-status",
                     "thread-create-failed",
@@ -3494,11 +3469,11 @@ async fn web_chat_send_message(
     headers: HeaderMap,
     Form(payload): Form<WebChatSendForm>,
 ) -> Response {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -3507,7 +3482,7 @@ async fn web_chat_send_message(
 
     let normalized_thread_id = thread_id.trim().to_string();
     if normalized_thread_id.is_empty() {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "chat-status",
                 "message-send-failed",
@@ -3520,7 +3495,7 @@ async fn web_chat_send_message(
 
     let text = payload.text.trim().to_string();
     if text.is_empty() {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "chat-status",
                 "empty-body",
@@ -3532,7 +3507,7 @@ async fn web_chat_send_message(
             .into_response();
     }
     if text.chars().count() > 20_000 {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "chat-status",
                 "message-send-failed",
@@ -3558,14 +3533,14 @@ async fn web_chat_send_message(
     {
         Ok(_) => {
             let location = format!("/chat/{normalized_thread_id}?status=message-sent");
-            if hx_request {
+            if htmx.is_hx_request {
                 htmx_redirect_response(&location)
             } else {
                 Redirect::temporary(&location).into_response()
             }
         }
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 htmx_notice_response(
                     "chat-status",
                     "message-send-failed",
@@ -3587,11 +3562,11 @@ async fn web_feed_shout(
     headers: HeaderMap,
     Form(payload): Form<WebShoutForm>,
 ) -> Response {
-    let hx_request = is_hx_request(&headers);
+    let htmx = classify_htmx_request(&headers);
     let session = match session_bundle_from_headers(&state, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return htmx_redirect_response("/login");
             }
             return Redirect::temporary("/login").into_response();
@@ -3600,7 +3575,7 @@ async fn web_feed_shout(
 
     let body = payload.body.trim().to_string();
     if body.is_empty() {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "feed-status",
                 "empty-body",
@@ -3611,7 +3586,7 @@ async fn web_feed_shout(
         return Redirect::temporary("/feed?status=empty-body").into_response();
     }
     if body.chars().count() > 2000 {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "feed-status",
                 "shout-post-failed",
@@ -3625,7 +3600,7 @@ async fn web_feed_shout(
     let zone = match normalize_shout_zone(payload.zone.as_deref(), "zone") {
         Ok(zone) => zone,
         Err(_) => {
-            if hx_request {
+            if htmx.is_hx_request {
                 return htmx_notice_response(
                     "feed-status",
                     "invalid-zone",
@@ -3647,7 +3622,7 @@ async fn web_feed_shout(
         .await;
 
     if result.is_err() {
-        if hx_request {
+        if htmx.is_hx_request {
             return htmx_notice_response(
                 "feed-status",
                 "shout-post-failed",
@@ -3660,13 +3635,13 @@ async fn web_feed_shout(
 
     if let Some(zone) = zone {
         let location = format!("/feed?zone={zone}&status=shout-posted");
-        if hx_request {
+        if htmx.is_hx_request {
             htmx_redirect_response(&location)
         } else {
             Redirect::temporary(&location).into_response()
         }
     } else {
-        if hx_request {
+        if htmx.is_hx_request {
             htmx_redirect_response("/feed?status=shout-posted")
         } else {
             Redirect::temporary("/feed?status=shout-posted").into_response()
