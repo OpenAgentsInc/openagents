@@ -312,37 +312,57 @@ fn chat_content_panel(
     messages: &[ChatMessageView],
 ) -> Markup {
     html! {
-        article id="chat-thread-content-panel" class="oa-card oa-chat-main" {
-            h2 { "Codex" }
-            @if session.is_none() {
-                p class="oa-muted" {
-                    "Codex access requires a ChatGPT-linked account for this first-pass policy."
+        @if let Some(active_thread_id) = active_thread_id {
+            article id="chat-thread-content-panel" class="oa-card oa-chat-main"
+                hx-get={(format!("/chat/fragments/thread/{active_thread_id}"))}
+                hx-trigger="chat-message-sent from:body"
+                hx-target="#chat-thread-content-panel"
+                hx-swap="outerHTML" {
+                (chat_content_panel_body(session, Some(active_thread_id), messages))
+            }
+        } @else {
+            article id="chat-thread-content-panel" class="oa-card oa-chat-main" {
+                (chat_content_panel_body(session, None, messages))
+            }
+        }
+    }
+}
+
+fn chat_content_panel_body(
+    session: Option<&SessionView>,
+    active_thread_id: Option<&str>,
+    messages: &[ChatMessageView],
+) -> Markup {
+    html! {
+        h2 { "Codex" }
+        @if session.is_none() {
+            p class="oa-muted" {
+                "Codex access requires a ChatGPT-linked account for this first-pass policy."
+            }
+        } @else if let Some(active_thread_id) = active_thread_id {
+            p class="oa-muted" { "Thread: " code { (active_thread_id) } }
+            div class="oa-message-list" {
+                @if messages.is_empty() {
+                    div class="oa-message-empty" { "No messages yet. Send a message to start." }
                 }
-            } @else if let Some(active_thread_id) = active_thread_id {
-                p class="oa-muted" { "Thread: " code { (active_thread_id) } }
-                div class="oa-message-list" {
-                    @if messages.is_empty() {
-                        div class="oa-message-empty" { "No messages yet. Send a message to start." }
+                @for message in messages {
+                    article class={(if message.role == "user" { "oa-msg user" } else { "oa-msg assistant" })} {
+                        header { (message.role) " · " (message.created_at) }
+                        pre { (message.text) }
                     }
-                    @for message in messages {
-                        article class={(if message.role == "user" { "oa-msg user" } else { "oa-msg assistant" })} {
-                            header { (message.role) " · " (message.created_at) }
-                            pre { (message.text) }
-                        }
-                    }
                 }
-                form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send"
-                    hx-post={(format!("/chat/{active_thread_id}/send"))}
-                    hx-target="#chat-status"
-                    hx-swap="outerHTML" {
-                    textarea name="text" rows="4" placeholder="Message Codex" required {}
-                    button type="submit" class="oa-btn primary" { "Send" }
-                    span class="htmx-indicator oa-indicator" { "Sending..." }
-                }
-            } @else {
-                p class="oa-muted" {
-                    "Create a thread to begin. Live worker events remain WS-only."
-                }
+            }
+            form method="post" action={(format!("/chat/{active_thread_id}/send"))} class="oa-form chat-send"
+                hx-post={(format!("/chat/{active_thread_id}/send"))}
+                hx-target="#chat-status"
+                hx-swap="outerHTML" {
+                textarea name="text" rows="4" placeholder="Message Codex" required {}
+                button type="submit" class="oa-btn primary" { "Send" }
+                span class="htmx-indicator oa-indicator" { "Sending..." }
+            }
+        } @else {
+            p class="oa-muted" {
+                "Create a thread to begin. Live worker events remain WS-only."
             }
         }
     }
@@ -755,5 +775,6 @@ mod tests {
         assert!(html.contains("hx-get=\"/chat/fragments/thread/thread_abc\""));
         assert!(html.contains("hx-target=\"#chat-thread-content-panel\""));
         assert!(html.contains("hx-push-url=\"/chat/thread_abc\""));
+        assert!(html.contains("hx-trigger=\"chat-message-sent from:body\""));
     }
 }

@@ -52,3 +52,7 @@ Current chat partial route contract:
   - target fragment: `#chat-thread-content-panel`
   - out-of-band swap: `#chat-thread-list-panel` (`hx-swap-oob="outerHTML"`)
   - URL coherence via `HX-Push-Url`
+- `POST /chat/:thread_id/send` (HTMX mode):
+  - returns `#chat-status` fragment
+  - emits `HX-Trigger: chat-message-sent`
+  - `#chat-thread-content-panel` listens for the trigger and reloads via HTMX GET

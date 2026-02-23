@@ -106,6 +106,7 @@ use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 use crate::web_htmx::{
     classify_request as classify_htmx_request, notice_response as htmx_notice_response,
     redirect_response as htmx_redirect_response, set_push_url_header as htmx_set_push_url_header,
+    set_trigger_header as htmx_set_trigger_header,
 };
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, FeedItemView, FeedZoneView, SessionView, WebBody, WebPage,
@@ -3703,7 +3704,10 @@ async fn web_chat_send_message(
         Ok(_) => {
             let location = format!("/chat/{normalized_thread_id}?status=message-sent");
             if htmx.is_hx_request {
-                htmx_redirect_response(&location)
+                let mut response =
+                    htmx_notice_response("chat-status", "message-sent", false, StatusCode::OK);
+                htmx_set_trigger_header(&mut response, "chat-message-sent");
+                response
             } else {
                 Redirect::temporary(&location).into_response()
             }
@@ -18057,6 +18061,226 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some(expected_location.as_str())
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_send_message_hx_success_triggers_incremental_refresh() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-send-success@openagents.com").await?;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        let location = create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let thread_id = location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("text=hello"))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::OK);
+        assert_eq!(
+            send_response
+                .headers()
+                .get("HX-Trigger")
+                .and_then(|value| value.to_str().ok()),
+            Some("chat-message-sent")
+        );
+        let send_body = read_text(send_response).await?;
+        assert!(send_body.contains("id=\"chat-status\""));
+        assert!(send_body.contains("Message queued in thread."));
+
+        let refresh_request = Request::builder()
+            .method("GET")
+            .uri(format!("/chat/fragments/thread/{thread_id}"))
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let refresh_response = app.oneshot(refresh_request).await?;
+        assert_eq!(refresh_response.status(), StatusCode::OK);
+        let refresh_body = read_text(refresh_response).await?;
+        assert!(refresh_body.contains("hello"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_send_message_hx_empty_body_returns_inline_error() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-send-empty@openagents.com").await?;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        let location = create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let thread_id = location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from("text=%20%20"))?;
+        let send_response = app.oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            send_response.headers().get("HX-Trigger").is_none(),
+            "validation error should not emit success trigger"
+        );
+        let send_body = read_text(send_response).await?;
+        assert!(send_body.contains("id=\"chat-status\""));
+        assert!(send_body.contains("Message body cannot be empty."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_send_message_hx_oversized_body_returns_inline_error() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let token = seed_local_test_token(&config, "chat-send-oversize@openagents.com").await?;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        let location = create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let thread_id = location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let oversized = "a".repeat(20_001);
+        let send_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!("text={oversized}")))?;
+        let send_response = app.oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(send_response.headers().get("HX-Trigger").is_none());
+        let send_body = read_text(send_response).await?;
+        assert!(send_body.contains("Could not send message."));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn web_chat_send_message_hx_store_failure_returns_inline_error() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+        let owner_token = seed_local_test_token(&config, "chat-send-owner@openagents.com").await?;
+        let other_token = seed_local_test_token(&config, "chat-send-other@openagents.com").await?;
+        let app = build_router(config);
+
+        let create_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {owner_token}"))
+            .body(Body::empty())?;
+        let create_response = app.clone().oneshot(create_request).await?;
+        let location = create_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let thread_id = location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {other_token}"))
+            .body(Body::from("text=hello"))?;
+        let send_response = app.oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(send_response.headers().get("HX-Trigger").is_none());
+        let send_body = read_text(send_response).await?;
+        assert!(send_body.contains("Could not send message."));
 
         Ok(())
     }
