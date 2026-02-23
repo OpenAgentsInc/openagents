@@ -1,3 +1,5 @@
+use crate::budget::BudgetScope;
+
 /// Kind of compute operation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -38,6 +40,9 @@ pub struct ComputeRequest {
     pub idempotency_key: Option<String>,
     /// Maximum cost in micro-USD.
     pub max_cost_usd: Option<u64>,
+    /// Budget scope for hierarchical enforcement.
+    #[serde(default)]
+    pub budget_scope: BudgetScope,
 }
 
 /// Compute response.
@@ -330,4 +335,3 @@ pub enum JobState {
         at: Timestamp,
     },
 }
-

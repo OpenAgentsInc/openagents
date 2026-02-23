@@ -657,16 +657,22 @@ Local agents have direct Docker access:
 
 ```rust
 // Local agent spawning Docker container
-let session_info: serde_json::Value = serde_json::from_slice(&env.call(
-    "/containers/new",
-    &serde_json::to_vec(&ContainerRequest {
-        kind: ContainerKind::Ephemeral,
-        image: Some("rust:1.75".to_string()),
-        commands: vec!["cargo test".to_string()],
-        limits: ResourceLimits::basic(),
-        ..Default::default()
-    })?,
-)?)?;
+	let session_info: serde_json::Value = serde_json::from_slice(&env.call(
+	    "/containers/new",
+	    &serde_json::to_vec(&ContainerRequest {
+	        kind: ContainerKind::Ephemeral,
+	        image: Some("rust:1.75".to_string()),
+	        repo: None,
+	        commands: vec!["cargo test".to_string()],
+	        workdir: None,
+	        env: HashMap::new(),
+	        limits: ResourceLimits::basic(),
+	        max_cost_usd: Some(100_000),
+	        budget_scope: BudgetScope::default(),
+	        idempotency_key: Some("example".to_string()),
+	        timeout_ms: None,
+	    })?,
+	)?)?;
 ```
 
 Local Docker is free (no auth required), but agents can also use cloud providers if authenticated.

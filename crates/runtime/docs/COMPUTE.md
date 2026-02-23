@@ -121,10 +121,14 @@ pub struct ComputeRequest {
     /// Full key is scoped: {agent_id}:{provider_id}:{idempotency_key}
     pub idempotency_key: Option<String>,
 
-    /// Maximum cost in micro-USD (1 micro-USD = $0.000001) the caller is willing to pay.
-    /// Budget check uses this value directly—no estimation guessing.
-    /// If omitted, uses policy default or rejects if policy.require_max_cost.
-    pub max_cost_usd: Option<u64>,
+	/// Maximum cost in micro-USD (1 micro-USD = $0.000001) the caller is willing to pay.
+	/// Budget check uses this value directly—no estimation guessing.
+	/// If omitted, uses policy default or rejects if policy.require_max_cost.
+	pub max_cost_usd: Option<u64>,
+
+	/// Budget scope for hierarchical enforcement (org/repo/issue).
+	#[serde(default)]
+	pub budget_scope: BudgetScope,
 }
 ```
 

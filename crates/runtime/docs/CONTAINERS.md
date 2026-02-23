@@ -195,18 +195,22 @@ pub struct ContainerRequest {
     #[serde(default = "ResourceLimits::basic")]
     pub limits: ResourceLimits,
 
-    /// Maximum cost in micro-USD the caller is willing to pay.
-    /// Budget check reserves this amount; actual cost reconciled on completion.
-    /// If omitted, uses policy default or rejects if policy.require_max_cost.
-    pub max_cost_usd: Option<u64>,
+	    /// Maximum cost in micro-USD the caller is willing to pay.
+	    /// Budget check reserves this amount; actual cost reconciled on completion.
+	    /// If omitted, uses policy default or rejects if policy.require_max_cost.
+	    pub max_cost_usd: Option<u64>,
+
+	    /// Budget scope for hierarchical enforcement (org/repo/issue).
+	    #[serde(default)]
+	    pub budget_scope: BudgetScope,
 
     /// Idempotency key for deduplication
     /// Full key is scoped: {agent_id}:{provider_id}:{idempotency_key}
     pub idempotency_key: Option<String>,
 
-    /// Timeout in milliseconds (default: 300000 = 5 min)
-    pub timeout_ms: Option<u64>,
-}
+	    /// Timeout in milliseconds (default: 300000 = 5 min)
+	    pub timeout_ms: Option<u64>,
+	}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoConfig {

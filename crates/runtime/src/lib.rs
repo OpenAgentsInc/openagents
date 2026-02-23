@@ -146,7 +146,10 @@ pub use ::compute::domain::UnifiedIdentity;
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
-pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
+pub use budget::{
+    BudgetError, BudgetPolicy, BudgetReservation, BudgetScope, BudgetScopeKey, BudgetState,
+    BudgetTracker,
+};
 #[cfg(feature = "cloudflare")]
 pub use cloudflare::{CloudflareAgent, set_cloudflare_agent_factory};
 #[cfg(feature = "cloudflare")]

@@ -32,6 +32,65 @@ impl BudgetPolicy {
     }
 }
 
+/// Budget scope context for hierarchical enforcement.
+///
+/// The `org`, `repo`, and `issue` identifiers are caller-provided stable IDs.
+/// Callers should use fully-qualified identifiers (for example, `"openagents/openagents"` for
+/// repo scope) to avoid collisions.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BudgetScope {
+    /// Organization scope identifier.
+    pub org: Option<String>,
+    /// Repository scope identifier.
+    pub repo: Option<String>,
+    /// Issue scope identifier.
+    pub issue: Option<String>,
+}
+
+impl BudgetScope {
+    /// Return scope keys in broad -> narrow order.
+    pub fn keys(&self) -> Vec<BudgetScopeKey> {
+        let mut keys = Vec::new();
+        if let Some(org) = self.org.clone() {
+            keys.push(BudgetScopeKey::Org(org));
+        }
+        if let Some(repo) = self.repo.clone() {
+            keys.push(BudgetScopeKey::Repo(repo));
+        }
+        if let Some(issue) = self.issue.clone() {
+            keys.push(BudgetScopeKey::Issue(issue));
+        }
+        keys
+    }
+
+    /// True if no scoped identifiers are set.
+    pub fn is_empty(&self) -> bool {
+        self.org.is_none() && self.repo.is_none() && self.issue.is_none()
+    }
+}
+
+/// Key for a scoped budget tracker.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BudgetScopeKey {
+    /// Organization budget key.
+    Org(String),
+    /// Repository budget key.
+    Repo(String),
+    /// Issue budget key.
+    Issue(String),
+}
+
+impl BudgetScopeKey {
+    /// Serialize this key into a stable string form used for lookup.
+    pub fn as_key(&self) -> String {
+        match self {
+            Self::Org(id) => format!("org:{id}"),
+            Self::Repo(id) => format!("repo:{id}"),
+            Self::Issue(id) => format!("issue:{id}"),
+        }
+    }
+}
+
 /// Dynamic budget counters (micro-USD).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BudgetState {

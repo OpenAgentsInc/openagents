@@ -1,3 +1,5 @@
+use crate::budget::BudgetScope;
+
 /// Kind of container operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +95,9 @@ pub struct ContainerRequest {
     pub limits: ResourceLimits,
     /// Maximum cost in micro-USD the caller is willing to pay.
     pub max_cost_usd: Option<u64>,
+    /// Budget scope for hierarchical enforcement.
+    #[serde(default)]
+    pub budget_scope: BudgetScope,
     /// Idempotency key for deduplication.
     pub idempotency_key: Option<String>,
     /// Timeout in milliseconds (default: 300000 = 5 min).
@@ -713,4 +718,3 @@ pub trait ContainerProvider: Send + Sync {
     /// Poll for output stream (internal use by ContainerFs).
     fn poll_output(&self, session_id: &str) -> Result<Option<OutputChunk>, ContainerError>;
 }
-

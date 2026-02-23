@@ -1,5 +1,5 @@
 use crate::agent::{Agent, AgentContext, AgentState};
-use crate::budget::BudgetPolicy;
+use crate::budget::{BudgetPolicy, BudgetScope, BudgetScopeKey};
 use crate::compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
     ComputeRequest, ComputeResponse, ComputeRouter, DvmProvider, JobState, ModelInfo, ProviderInfo,
@@ -358,6 +358,7 @@ fn test_compute_new_usage_and_idempotency() {
         timeout_ms: None,
         idempotency_key: Some("req-1".to_string()),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
     };
 
     let response = submit_compute(&compute, &request);
@@ -418,10 +419,115 @@ fn test_compute_budget_exceeded_blocks_submit() {
         timeout_ms: None,
         idempotency_key: Some("req-over".to_string()),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
     };
 
     let mut handle = compute.open("new", OpenFlags::write()).expect("open");
     let bytes = serde_json::to_vec(&request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
+}
+
+#[test]
+fn test_compute_budget_scopes_enforce_hierarchy() {
+    let mut router = ComputeRouter::new();
+    router.register(Arc::new(TestProvider::new()));
+    let policy = ComputePolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ComputePolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 100,
+        per_day_usd: 100,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let compute = ComputeFs::new(
+        AgentId::from("agent-compute-scoped-budget"),
+        router,
+        policy,
+        budget,
+        journal,
+    );
+
+    compute.set_budget_policy_for_scope(
+        BudgetScopeKey::Org("org-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 10,
+            per_day_usd: 10,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+    compute.set_budget_policy_for_scope(
+        BudgetScopeKey::Repo("repo-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 5,
+            per_day_usd: 5,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+    compute.set_budget_policy_for_scope(
+        BudgetScopeKey::Issue("issue-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 2,
+            per_day_usd: 2,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+
+    let scope = BudgetScope {
+        org: Some("org-1".to_string()),
+        repo: Some("repo-1".to_string()),
+        issue: Some("issue-1".to_string()),
+    };
+
+    let request_over = ComputeRequest {
+        model: "test-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: false,
+        timeout_ms: None,
+        idempotency_key: Some("req-over-scope".to_string()),
+        max_cost_usd: Some(3),
+        budget_scope: scope.clone(),
+    };
+
+    let mut handle = compute.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request_over).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
+
+    let request_ok = ComputeRequest {
+        model: "test-model".to_string(),
+        kind: ComputeKind::Complete,
+        input: json!({ "prompt": "hello" }),
+        stream: false,
+        timeout_ms: None,
+        idempotency_key: Some("req-ok-scope".to_string()),
+        max_cost_usd: Some(2),
+        budget_scope: scope.clone(),
+    };
+    let response = submit_compute(&compute, &request_ok);
+    let job_id = response["job_id"].as_str().expect("job_id").to_string();
+    let _result_bytes = read_handle(
+        compute
+            .open(&format!("jobs/{}/result", job_id), OpenFlags::read())
+            .unwrap(),
+    );
+
+    let request_ok2 = ComputeRequest {
+        idempotency_key: Some("req-ok-scope-2".to_string()),
+        ..request_ok.clone()
+    };
+    let mut handle = compute.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request_ok2).expect("serialize");
     handle.write(&bytes).expect("write");
     let err = handle.flush().expect_err("budget exceeded");
     assert!(matches!(err, FsError::BudgetExceeded));
@@ -459,6 +565,7 @@ fn test_compute_stream_watch() {
         timeout_ms: None,
         idempotency_key: Some("req-stream".to_string()),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
     };
 
     let response = submit_compute(&compute, &request);
@@ -537,6 +644,7 @@ fn test_compute_stream_fallback_for_non_streaming_provider() {
         timeout_ms: None,
         idempotency_key: Some("req-nostream".to_string()),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
     };
 
     let response = submit_compute(&compute, &request);
@@ -600,6 +708,7 @@ fn test_container_new_usage_and_idempotency() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: Some("req-1".to_string()),
         timeout_ms: None,
     };
@@ -669,12 +778,134 @@ fn test_container_budget_exceeded_blocks_submit() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: Some("req-over".to_string()),
         timeout_ms: None,
     };
 
     let mut handle = containers.open("new", OpenFlags::write()).expect("open");
     let bytes = serde_json::to_vec(&request).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
+}
+
+#[test]
+fn test_container_budget_scopes_enforce_hierarchy() {
+    let mut router = ContainerRouter::new();
+    router.register(Arc::new(TestContainerProvider::new()));
+    let policy = ContainerPolicy {
+        require_idempotency: true,
+        require_max_cost: true,
+        ..ContainerPolicy::default()
+    };
+    let budget = BudgetPolicy {
+        per_tick_usd: 100,
+        per_day_usd: 100,
+        approval_threshold_usd: 0,
+        approvers: Vec::new(),
+    };
+    let journal = Arc::new(MemoryJournal::new());
+    let storage = Arc::new(InMemoryStorage::new());
+    let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
+    let containers = ContainerFs::new(
+        AgentId::from("agent-containers-scoped-budget"),
+        router,
+        policy,
+        budget,
+        journal,
+        storage,
+        signer,
+    );
+
+    containers.set_budget_policy_for_scope(
+        BudgetScopeKey::Org("org-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 10,
+            per_day_usd: 10,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+    containers.set_budget_policy_for_scope(
+        BudgetScopeKey::Repo("repo-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 5,
+            per_day_usd: 5,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+    containers.set_budget_policy_for_scope(
+        BudgetScopeKey::Issue("issue-1".to_string()),
+        BudgetPolicy {
+            per_tick_usd: 3,
+            per_day_usd: 3,
+            approval_threshold_usd: 0,
+            approvers: Vec::new(),
+        },
+    );
+
+    let scope = BudgetScope {
+        org: Some("org-1".to_string()),
+        repo: Some("repo-1".to_string()),
+        issue: Some("issue-1".to_string()),
+    };
+
+    let request_over = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(4),
+        budget_scope: scope.clone(),
+        idempotency_key: Some("req-over-scope".to_string()),
+        timeout_ms: None,
+    };
+
+    let mut handle = containers.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request_over).expect("serialize");
+    handle.write(&bytes).expect("write");
+    let err = handle.flush().expect_err("budget exceeded");
+    assert!(matches!(err, FsError::BudgetExceeded));
+
+    let request_ok = ContainerRequest {
+        kind: ContainerKind::Ephemeral,
+        image: Some("test-image".to_string()),
+        repo: None,
+        commands: vec!["echo ok".to_string()],
+        workdir: None,
+        env: HashMap::new(),
+        limits: crate::containers::ResourceLimits::basic(),
+        max_cost_usd: Some(3),
+        budget_scope: scope.clone(),
+        idempotency_key: Some("req-ok-scope".to_string()),
+        timeout_ms: None,
+    };
+
+    let response = submit_container(&containers, &request_ok);
+    let session_id = response["session_id"]
+        .as_str()
+        .expect("session_id")
+        .to_string();
+    let _result_bytes = read_handle(
+        containers
+            .open(
+                &format!("sessions/{}/result", session_id),
+                OpenFlags::read(),
+            )
+            .unwrap(),
+    );
+
+    let request_ok2 = ContainerRequest {
+        idempotency_key: Some("req-ok-scope-2".to_string()),
+        ..request_ok.clone()
+    };
+    let mut handle = containers.open("new", OpenFlags::write()).expect("open");
+    let bytes = serde_json::to_vec(&request_ok2).expect("serialize");
     handle.write(&bytes).expect("write");
     let err = handle.flush().expect_err("budget exceeded");
     assert!(matches!(err, FsError::BudgetExceeded));
@@ -713,6 +944,7 @@ fn test_container_output_watch() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: Some("req-watch".to_string()),
         timeout_ms: None,
     };
@@ -784,6 +1016,7 @@ fn test_container_exec_and_files() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: Some("req-exec".to_string()),
         timeout_ms: None,
     };
@@ -908,6 +1141,7 @@ fn test_container_auth_token_credits_reconcile() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: Some("credits-1".to_string()),
         timeout_ms: None,
     };
@@ -971,6 +1205,7 @@ fn test_container_policy_selects_allowed_provider() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(5),
+        budget_scope: BudgetScope::default(),
         idempotency_key: None,
         timeout_ms: None,
     };
@@ -2301,6 +2536,7 @@ fn test_dvm_compute_payment_flow() {
         timeout_ms: None,
         idempotency_key: None,
         max_cost_usd: Some(100_000),
+        budget_scope: BudgetScope::default(),
     };
     let job_id = provider.submit(request).unwrap();
     let request_event_id = transport
@@ -2389,6 +2625,7 @@ fn test_dvm_compute_wallet_fx_source_bid() {
         timeout_ms: None,
         idempotency_key: None,
         max_cost_usd: Some(150_000),
+        budget_scope: BudgetScope::default(),
     };
     let _job_id = provider.submit(request).unwrap();
 
@@ -2438,6 +2675,7 @@ fn test_dvm_container_payment_flow() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(100_000),
+        budget_scope: BudgetScope::default(),
         idempotency_key: None,
         timeout_ms: None,
     };
@@ -2527,6 +2765,7 @@ fn test_dvm_container_wallet_fx_source_bid() {
         env: HashMap::new(),
         limits: crate::containers::ResourceLimits::basic(),
         max_cost_usd: Some(150_000),
+        budget_scope: BudgetScope::default(),
         idempotency_key: None,
         timeout_ms: None,
     };

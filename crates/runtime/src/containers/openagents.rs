@@ -936,6 +936,7 @@ impl OpenAgentsApiClient for HttpOpenAgentsApiClient {
 struct SessionRecord {
     provider_id: String,
     reservation: BudgetReservation,
+    scoped_reservations: Vec<(String, BudgetReservation)>,
     reconciled: bool,
     credits_reserved: u64,
 }

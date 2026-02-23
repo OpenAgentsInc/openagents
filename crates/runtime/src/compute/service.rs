@@ -1,8 +1,11 @@
+use crate::budget::BudgetScopeKey;
+
 /// Job record tracked by ComputeFs for budgeting.
 #[derive(Clone)]
 struct JobRecord {
     provider_id: String,
     reservation: BudgetReservation,
+    scoped_reservations: Vec<(String, BudgetReservation)>,
     reconciled: bool,
 }
 
@@ -12,6 +15,7 @@ pub struct ComputeFs {
     router: Arc<RwLock<ComputeRouter>>,
     policy: Arc<RwLock<ComputePolicy>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     journal: Arc<dyn IdempotencyJournal>,
     jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
 }
@@ -30,9 +34,17 @@ impl ComputeFs {
             router: Arc::new(RwLock::new(router)),
             policy: Arc::new(RwLock::new(policy)),
             budget: Arc::new(Mutex::new(BudgetTracker::new(budget_policy))),
+            scoped_budgets: Arc::new(Mutex::new(HashMap::new())),
             journal,
             jobs: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Install or replace a scoped budget policy. If the scope exists, its counters are reset.
+    pub fn set_budget_policy_for_scope(&self, scope: BudgetScopeKey, policy: BudgetPolicy) {
+        let key = scope.as_key();
+        let mut budgets = self.scoped_budgets.lock().unwrap_or_else(|e| e.into_inner());
+        budgets.insert(key, BudgetTracker::new(policy));
     }
 
     fn job_provider(&self, job_id: &str) -> FsResult<(Arc<dyn ComputeProvider>, String)> {
@@ -56,14 +68,30 @@ impl ComputeFs {
         }
 
         let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+        let mut scoped = self
+            .scoped_budgets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         match state {
             JobState::Complete(response) => {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker
+                            .reconcile(*reservation, response.cost_usd)
+                            .map_err(|_| FsError::BudgetExceeded)?;
+                    }
+                }
             }
             JobState::Failed { .. } => {
                 tracker.release(record.reservation);
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
             }
             _ => return Ok(()),
         }
@@ -105,6 +133,7 @@ impl FileService for ComputeFs {
                 self.router.clone(),
                 self.policy.clone(),
                 self.budget.clone(),
+                self.scoped_budgets.clone(),
                 self.jobs.clone(),
                 self.journal.clone(),
             ))),
@@ -282,6 +311,7 @@ impl FileService for ComputeFs {
                 self.router.clone(),
                 self.jobs.clone(),
                 self.budget.clone(),
+                self.scoped_budgets.clone(),
             ))));
         }
         Ok(None)
@@ -297,6 +327,7 @@ struct ComputeNewHandle {
     router: Arc<RwLock<ComputeRouter>>,
     policy: Arc<RwLock<ComputePolicy>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
     journal: Arc<dyn IdempotencyJournal>,
     buffer: BufferedFileState,
@@ -308,6 +339,7 @@ impl ComputeNewHandle {
         router: Arc<RwLock<ComputeRouter>>,
         policy: Arc<RwLock<ComputePolicy>>,
         budget: Arc<Mutex<BudgetTracker>>,
+        scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
         jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
         journal: Arc<dyn IdempotencyJournal>,
     ) -> Self {
@@ -316,6 +348,7 @@ impl ComputeNewHandle {
             router,
             policy,
             budget,
+            scoped_budgets,
             jobs,
             journal,
             buffer: BufferedFileState::new(),
@@ -392,6 +425,7 @@ impl ComputeNewHandle {
                             .or_insert(JobRecord {
                                 provider_id: provider_id.clone(),
                                 reservation: BudgetReservation { amount_usd: 0 },
+                                scoped_reservations: Vec::new(),
                                 reconciled: true,
                             });
                     }
@@ -401,7 +435,7 @@ impl ComputeNewHandle {
             }
         }
 
-        let reservation = {
+        let global_reservation = {
             let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
             let reservation = tracker
                 .reserve(max_cost_usd)
@@ -422,11 +456,53 @@ impl ComputeNewHandle {
             reservation
         };
 
+        let scope_keys = request
+            .budget_scope
+            .keys()
+            .into_iter()
+            .map(|key| key.as_key())
+            .collect::<Vec<_>>();
+        let mut scoped_reservations = Vec::new();
+        if !scope_keys.is_empty() {
+            let mut budgets = self
+                .scoped_budgets
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            for scope_key in scope_keys {
+                let Some(scope_tracker) = budgets.get_mut(&scope_key) else {
+                    continue;
+                };
+                match scope_tracker.reserve(max_cost_usd) {
+                    Ok(reservation) => scoped_reservations.push((scope_key, reservation)),
+                    Err(_) => {
+                        for (reserved_key, reservation) in &scoped_reservations {
+                            if let Some(existing) = budgets.get_mut(reserved_key) {
+                                existing.release(*reservation);
+                            }
+                        }
+                        drop(budgets);
+                        let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+                        tracker.release(global_reservation);
+                        return Err(FsError::BudgetExceeded);
+                    }
+                }
+            }
+        }
+
         let job_id = match provider.submit(request.clone()) {
             Ok(job_id) => job_id,
             Err(err) => {
                 let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
-                tracker.release(reservation);
+                tracker.release(global_reservation);
+                let mut budgets = self
+                    .scoped_budgets
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                for (scope_key, reservation) in &scoped_reservations {
+                    if let Some(scope_tracker) = budgets.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
                 return Err(FsError::Other(err.to_string()));
             }
         };
@@ -435,7 +511,8 @@ impl ComputeNewHandle {
             job_id.clone(),
             JobRecord {
                 provider_id,
-                reservation,
+                reservation: global_reservation,
+                scoped_reservations,
                 reconciled: false,
             },
         );
@@ -530,6 +607,7 @@ struct StreamWatchHandle {
     router: Arc<RwLock<ComputeRouter>>,
     jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     emitted_chunk: bool,
 }
 
@@ -540,6 +618,7 @@ impl StreamWatchHandle {
         router: Arc<RwLock<ComputeRouter>>,
         jobs: Arc<RwLock<HashMap<String, JobRecord>>>,
         budget: Arc<Mutex<BudgetTracker>>,
+        scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     ) -> Self {
         Self {
             job_id,
@@ -547,6 +626,7 @@ impl StreamWatchHandle {
             router,
             jobs,
             budget,
+            scoped_budgets,
             emitted_chunk: false,
         }
     }
@@ -561,14 +641,30 @@ impl StreamWatchHandle {
             return Ok(());
         }
         let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+        let mut scoped = self
+            .scoped_budgets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         match state {
             JobState::Complete(response) => {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker
+                            .reconcile(*reservation, response.cost_usd)
+                            .map_err(|_| FsError::BudgetExceeded)?;
+                    }
+                }
             }
             JobState::Failed { .. } => {
                 tracker.release(record.reservation);
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
             }
             _ => return Ok(()),
         }

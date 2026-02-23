@@ -1,3 +1,5 @@
+use crate::budget::BudgetScopeKey;
+
 /// Container filesystem service.
 pub struct ContainerFs {
     agent_id: AgentId,
@@ -5,6 +7,7 @@ pub struct ContainerFs {
     policy: Arc<RwLock<ContainerPolicy>>,
     auth: Arc<OpenAgentsAuth>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     journal: Arc<dyn IdempotencyJournal>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     execs: Arc<RwLock<HashMap<String, ExecRecord>>>,
@@ -74,10 +77,18 @@ impl ContainerFs {
             policy: Arc::new(RwLock::new(policy)),
             auth,
             budget: Arc::new(Mutex::new(BudgetTracker::new(budget_policy))),
+            scoped_budgets: Arc::new(Mutex::new(HashMap::new())),
             journal,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             execs: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Install or replace a scoped budget policy. If the scope exists, its counters are reset.
+    pub fn set_budget_policy_for_scope(&self, scope: BudgetScopeKey, policy: BudgetPolicy) {
+        let key = scope.as_key();
+        let mut budgets = self.scoped_budgets.lock().unwrap_or_else(|e| e.into_inner());
+        budgets.insert(key, BudgetTracker::new(policy));
     }
 
     fn usage_json(&self) -> FsResult<Vec<u8>> {
@@ -111,11 +122,22 @@ impl ContainerFs {
             return Ok(());
         }
         let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+        let mut scoped = self
+            .scoped_budgets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         match state {
             SessionState::Complete(response) => {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker
+                            .reconcile(*reservation, response.cost_usd)
+                            .map_err(|_| FsError::BudgetExceeded)?;
+                    }
+                }
                 if record.credits_reserved > 0 {
                     self.auth
                         .reconcile_credits(record.credits_reserved, response.cost_usd)
@@ -124,6 +146,11 @@ impl ContainerFs {
             }
             SessionState::Failed { .. } | SessionState::Expired { .. } => {
                 tracker.release(record.reservation);
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
                 if record.credits_reserved > 0 {
                     self.auth
                         .release_credits(record.credits_reserved)
@@ -168,6 +195,7 @@ impl FileService for ContainerFs {
                 self.policy.clone(),
                 self.auth.clone(),
                 self.budget.clone(),
+                self.scoped_budgets.clone(),
                 self.sessions.clone(),
                 self.journal.clone(),
             ))),
@@ -590,6 +618,7 @@ impl FileService for ContainerFs {
                 provider,
                 self.sessions.clone(),
                 self.budget.clone(),
+                self.scoped_budgets.clone(),
                 self.auth.clone(),
             ))));
         }
@@ -617,6 +646,7 @@ struct ContainerNewHandle {
     policy: Arc<RwLock<ContainerPolicy>>,
     auth: Arc<OpenAgentsAuth>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     journal: Arc<dyn IdempotencyJournal>,
     buffer: BufferedFileState,
@@ -629,6 +659,7 @@ impl ContainerNewHandle {
         policy: Arc<RwLock<ContainerPolicy>>,
         auth: Arc<OpenAgentsAuth>,
         budget: Arc<Mutex<BudgetTracker>>,
+        scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
         sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
         journal: Arc<dyn IdempotencyJournal>,
     ) -> Self {
@@ -638,6 +669,7 @@ impl ContainerNewHandle {
             policy,
             auth,
             budget,
+            scoped_budgets,
             sessions,
             journal,
             buffer: BufferedFileState::new(),
@@ -735,6 +767,7 @@ impl ContainerNewHandle {
                             .or_insert(SessionRecord {
                                 provider_id: provider_id.clone(),
                                 reservation: BudgetReservation { amount_usd: 0 },
+                                scoped_reservations: Vec::new(),
                                 reconciled: true,
                                 credits_reserved: 0,
                             });
@@ -751,7 +784,7 @@ impl ContainerNewHandle {
                 .map_err(|err| FsError::Other(err.to_string()))?;
         }
 
-        let reservation = {
+        let global_reservation = {
             let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
             let reservation = tracker
                 .reserve(max_cost_usd)
@@ -772,12 +805,54 @@ impl ContainerNewHandle {
             reservation
         };
 
+        let scope_keys = request
+            .budget_scope
+            .keys()
+            .into_iter()
+            .map(|key| key.as_key())
+            .collect::<Vec<_>>();
+        let mut scoped_reservations = Vec::new();
+        if !scope_keys.is_empty() {
+            let mut budgets = self
+                .scoped_budgets
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            for scope_key in scope_keys {
+                let Some(scope_tracker) = budgets.get_mut(&scope_key) else {
+                    continue;
+                };
+                match scope_tracker.reserve(max_cost_usd) {
+                    Ok(reservation) => scoped_reservations.push((scope_key, reservation)),
+                    Err(_) => {
+                        for (reserved_key, reservation) in &scoped_reservations {
+                            if let Some(existing) = budgets.get_mut(reserved_key) {
+                                existing.release(*reservation);
+                            }
+                        }
+                        drop(budgets);
+                        let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+                        tracker.release(global_reservation);
+                        return Err(FsError::BudgetExceeded);
+                    }
+                }
+            }
+        }
+
         let credits_reserved = if requires_credits {
             match self.auth.reserve_credits(max_cost_usd) {
                 Ok(reserved) => reserved,
                 Err(err) => {
                     let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
-                    tracker.release(reservation);
+                    tracker.release(global_reservation);
+                    let mut budgets = self
+                        .scoped_budgets
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    for (scope_key, reservation) in &scoped_reservations {
+                        if let Some(scope_tracker) = budgets.get_mut(scope_key) {
+                            scope_tracker.release(*reservation);
+                        }
+                    }
                     return Err(FsError::Other(err.to_string()));
                 }
             }
@@ -789,7 +864,16 @@ impl ContainerNewHandle {
             Ok(session_id) => session_id,
             Err(err) => {
                 let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
-                tracker.release(reservation);
+                tracker.release(global_reservation);
+                let mut budgets = self
+                    .scoped_budgets
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                for (scope_key, reservation) in &scoped_reservations {
+                    if let Some(scope_tracker) = budgets.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
                 if credits_reserved > 0 {
                     let _ = self.auth.release_credits(credits_reserved);
                 }
@@ -804,7 +888,8 @@ impl ContainerNewHandle {
                 session_id.clone(),
                 SessionRecord {
                     provider_id,
-                    reservation,
+                    reservation: global_reservation,
+                    scoped_reservations,
                     reconciled: false,
                     credits_reserved,
                 },
@@ -1191,6 +1276,7 @@ struct SessionWatchHandle {
     provider: Arc<dyn ContainerProvider>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     budget: Arc<Mutex<BudgetTracker>>,
+    scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
     auth: Arc<OpenAgentsAuth>,
 }
 
@@ -1200,6 +1286,7 @@ impl SessionWatchHandle {
         provider: Arc<dyn ContainerProvider>,
         sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
         budget: Arc<Mutex<BudgetTracker>>,
+        scoped_budgets: Arc<Mutex<HashMap<String, BudgetTracker>>>,
         auth: Arc<OpenAgentsAuth>,
     ) -> Self {
         Self {
@@ -1207,6 +1294,7 @@ impl SessionWatchHandle {
             provider,
             sessions,
             budget,
+            scoped_budgets,
             auth,
         }
     }
@@ -1221,11 +1309,22 @@ impl SessionWatchHandle {
             return Ok(());
         }
         let mut tracker = self.budget.lock().unwrap_or_else(|e| e.into_inner());
+        let mut scoped = self
+            .scoped_budgets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         match state {
             SessionState::Complete(response) => {
                 tracker
                     .reconcile(record.reservation, response.cost_usd)
                     .map_err(|_| FsError::BudgetExceeded)?;
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker
+                            .reconcile(*reservation, response.cost_usd)
+                            .map_err(|_| FsError::BudgetExceeded)?;
+                    }
+                }
                 if record.credits_reserved > 0 {
                     self.auth
                         .reconcile_credits(record.credits_reserved, response.cost_usd)
@@ -1234,6 +1333,11 @@ impl SessionWatchHandle {
             }
             SessionState::Failed { .. } | SessionState::Expired { .. } => {
                 tracker.release(record.reservation);
+                for (scope_key, reservation) in &record.scoped_reservations {
+                    if let Some(scope_tracker) = scoped.get_mut(scope_key) {
+                        scope_tracker.release(*reservation);
+                    }
+                }
                 if record.credits_reserved > 0 {
                     self.auth
                         .release_credits(record.credits_reserved)
