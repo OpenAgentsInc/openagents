@@ -6,6 +6,12 @@ Author: Codex
 Primary context sources:
 - `docs/local/hehehe.md` (read fully)
 - Product thesis from user note (Citrini spiral vs open market rerouting)
+- `docs/transcripts/194-the-trillion-dollar-question.md`
+- `docs/transcripts/199-introducing-autopilot.md`
+- `docs/transcripts/200-the-agent-network.md`
+- `docs/transcripts/201-fracking-apple-silicon.md`
+- `docs/transcripts/202-recursive-language-models.md`
+- `docs/transcripts/203-pylon-and-nexus.md`
 
 ## 1) Purpose
 
@@ -16,6 +22,7 @@ This plan translates the macro thesis into a concrete OpenAgents execution progr
 - Make coalition formation and contract execution latency approach zero.
 - Route income into machine-speed micro-contract markets with verifiable receipts and automatic settlement.
 - Encode default revenue splits so value is paid out to creators/providers/operators, not captured by a single platform balance sheet.
+- Minimize coalition latency (discovery + contracting + verification + settlement), treating it as the primary bottleneck rather than model IQ.
 
 ## 2) Problem Statement
 
@@ -32,7 +39,7 @@ OpenAgents must instead become an open economic substrate where:
 - Participation is paid by default.
 - Lower execution cost (deflation) and recurring payouts (dividends) offset displacement.
 
-## 3) Strategy Summary (Two-Track)
+## 3) Strategy Summary (Three-Track)
 
 Track A: Fast PMF wedge (prove real user pain relief)
 - Ship one persistent autonomous loop that saves operators measurable weekly time.
@@ -42,8 +49,13 @@ Track B: Protocol/economy substrate (make the wedge evolve into open markets)
 - Identity + policy + receipts + workflow + compute contracts + coalition primitives.
 - Payments and revenue-split rails that move value to participants continuously.
 
+Track C: Supply-demand flywheel bootstrap (prove market plumbing)
+- Supply bootstrapping: convert stranded edge compute into paid, routable provider capacity.
+- Demand bootstrapping: route high-fanout workloads (e.g., RLM async subcalls) into that capacity under strict budget controls.
+
 Track A validates demand quickly.
 Track B prevents local optimization into a closed assistant product.
+Track C prevents the market from becoming "architecture without liquidity."
 
 ## 4) Constraints and Invariants
 
@@ -57,9 +69,30 @@ The program must remain aligned with active architecture constraints:
 - Rust-first product architecture boundaries (`ADR-0001`, iOS WGPUI authority `INV-11`).
 - No `.github` workflow automation in-repo (`INV-12`).
 
+## 4.1) Execution Principles from Transcript Synthesis
+
+1. "Autopilot, not copilot" as product north star:
+- Persistent autonomous loops with bounded budgets and explicit escalation.
+
+2. Coalition latency is the battleground:
+- Optimize path length and failure rates for discover -> contract -> verify -> settle.
+
+3. Open default, optional containment:
+- Open market plane is default.
+- Optional containment plane exists for high-risk tools/workloads, with signed artifacts crossing back into open plane.
+
+4. Market plumbing over abstract abundance claims:
+- Stranded compute only becomes economic supply when discovery, packaging, trust, settlement, and operability are solved.
+
+5. Revenue sharing defaults, not afterthought:
+- Skills, workflows, compute, and verification should all have first-class payout paths.
+
+6. Mech-suit interoperability:
+- OpenAgents should orchestrate across best-in-class agents/models, not force monoculture lock-in.
+
 ## 5) Target System Shape
 
-OpenAgents evolves into 6 coordinated planes:
+OpenAgents evolves into 6 coordinated planes plus an optional containment overlay:
 
 1. Identity + Policy Plane
 - Agent and coalition identities.
@@ -80,6 +113,8 @@ OpenAgents evolves into 6 coordinated planes:
 - Capability ads.
 - RFQ/Offer/Order/RunTicket lifecycle.
 - Metered execution + settlement.
+- Edge provider onboarding path (Pylon-like node software) and relay fabric (Nexus-like market relay).
+- Dedicated high-fanout workload lanes for recursive/parallel orchestration patterns.
 
 5. Coalition Plane
 - Group identity + membership logs + epochs.
@@ -103,6 +138,13 @@ Runtime (`apps/runtime`):
 - Run broker, execution lifecycle, WS replay streams, event ingestion.
 - Add provider scheduling, metering, run settlement hooks, workflow ticks.
 
+Provider/edge supply (`crates/pylon`):
+- Provider mode onboarding, wallet, earnings, job lifecycle, reliability telemetry.
+- Expand provider policy, reputation, and operability controls for market-grade uptime.
+
+Relay and market transport (`crates/autopilot/src/app/nexus.rs` + runtime relay lanes):
+- High-throughput relay/indexing strategy for market events and async fanout workloads.
+
 Khala sync:
 - Continue WS-only delivery for live streams and replay cursors.
 - Add group stream cursor semantics and compute lifecycle stream topics.
@@ -113,6 +155,7 @@ Clients (web/desktop/iOS):
 
 Shared crates/proto:
 - Canonical schemas for contracts, receipts, workflows, coalition events.
+- Add schemas for provider capability ads, reputation/quality signals, and coalition-latency telemetry.
 
 ## 7) Program Phases
 
@@ -132,11 +175,13 @@ Issue batch:
 - `OA-ECON-003` Implement policy-aware action executor (safe auto-actions only).
 - `OA-ECON-004` Implement daily digest and escalation reports.
 - `OA-ECON-005` Add operator replay/audit UI for all autonomous actions.
+- `OA-ECON-006` Add "mech-suit" provider abstraction for multi-agent backends with uniform policy/replay controls.
 
 Exit criteria:
 - At least 5 weekly active operators report persistent value.
 - Median measured savings >= 5 hrs/week.
 - No critical trust failures without replay evidence.
+- At least one loop runs overnight unattended for 7 consecutive days with auditable outcomes.
 
 ## Phase 1: Contract and Receipt Core (30-90 days)
 
@@ -147,6 +192,8 @@ Deliverables:
 - Canonical proto schemas for RFQ/Offer/Order/RunTicket/Settlement.
 - Content-addressed receipt store and query API.
 - Idempotent command application and replay tooling.
+- Key-split custody and guardian policy for sovereign agent identity operations.
+- Capability-bound licensing primitives for paid skill/workflow invocation.
 
 Issue batch:
 - `OA-ECON-010` Add proto package for compute market contracts.
@@ -154,11 +201,14 @@ Issue batch:
 - `OA-ECON-012` Implement receipt writer/hasher/signature pipeline.
 - `OA-ECON-013` Implement receipt query/read APIs and index strategy.
 - `OA-ECON-014` Add deterministic replay harness for contract flows.
+- `OA-ECON-015` Implement guardian/key-split policy hooks for agent and coalition signing authority.
+- `OA-ECON-016` Implement paid capability binding to prevent unauthorized copy/use of licensed skills.
 
 Exit criteria:
 - Every contract transition emits signed receipt.
 - Replay reproduces state transitions from receipts/history.
 - Read APIs support dispute reconstruction end-to-end.
+- Sovereign identity policy can delegate, revoke, and rotate signing authority without state-loss.
 
 ## Phase 2: Open Compute Market v1 (60-150 days)
 
@@ -169,6 +219,8 @@ Deliverables:
 - Provider capability advertisement and discovery index.
 - RFQ/Offer/Order flow with budget constraints.
 - Run ticket issuance, metering, and settlement.
+- "Stranded compute to routable supply" bootstrap lane with provider operability guarantees.
+- RLM/async fanout demand lane with bounded spend and observability.
 
 Issue batch:
 - `OA-ECON-020` Provider capability schema and publish API.
@@ -178,11 +230,15 @@ Issue batch:
 - `OA-ECON-024` RunTicket issuance and short-lived auth model.
 - `OA-ECON-025` Metering and usage receipt emission.
 - `OA-ECON-026` Settlement/refund state machine for failed/partial runs.
+- `OA-ECON-027` Implement market plumbing completeness checks: discovery, packaging, trust, settlement, operability.
+- `OA-ECON-028` Launch wildcatter provider program: onboarding, reliability scoring, and payout transparency.
+- `OA-ECON-029` Implement RLM async fanout workload routing with concurrency and budget controls.
 
 Exit criteria:
 - Buyer/provider complete a full paid run with receipts and replay.
 - Duplicate and timeout paths are idempotent and compensated.
 - Provider churn does not break order safety.
+- Edge provider retention and quality metrics show stable liquidity, not one-off demos.
 
 ## Phase 3: Coalition Primitives (90-210 days)
 
@@ -278,6 +334,25 @@ Exit criteria:
 - Concentration drift triggers actionable policy changes.
 - Market health signals are integrated into product and ops decisions.
 
+## Phase 7: Open Plane + Optional Containment Plane (210-390 days)
+
+Goal:
+- Preserve permissionless open-market defaults while enabling optional high-risk containment workflows where economically required.
+
+Deliverables:
+- Policy contract that classifies workloads by risk tier.
+- Containment workflow adapters for high-risk tool access.
+- Signed artifact egress from containment plane back to open plane.
+
+Issue batch:
+- `OA-ECON-070` Risk-tier policy schema and enforcement hooks.
+- `OA-ECON-071` Containment workflow bridge with explicit IO ports and audit receipts.
+- `OA-ECON-072` Insurance/bond/fee primitives for containment-lane economics.
+
+Exit criteria:
+- High-risk workflows can be isolated without breaking open-plane market participation.
+- Every cross-plane transfer is signed, receipted, and replayable.
+
 ## 8) Macro Thesis -> Product Mechanism Mapping
 
 Payroll compression risk -> mechanism:
@@ -309,17 +384,22 @@ Market metrics:
 - Fill rate for RFQs.
 - Provider online reliability.
 - Buyer repeat rate.
+- Coalition latency (`discover -> contract -> verify -> settle`) p50/p95.
+- Async fanout completion rate and cost variance for recursive workloads.
 
 Distribution metrics:
 - Unique earners per period.
 - Top-1% and top-10% payout share.
 - Provider Herfindahl-Hirschman Index (HHI).
 - Royalty recipient breadth.
+- Wildcatter retention curve and earnings distribution.
+- Stranded-to-routable conversion rate (eligible edge devices -> active paid providers).
 
 Macro proxy metrics:
 - Dollar/sat velocity through the network.
 - Real cost index for common work units.
 - Dividend stream stability (variance and continuity).
+- Local/edge share of inference workload vs centralized cloud share.
 
 ## 10) Security, Abuse, and Reliability Requirements
 
@@ -329,6 +409,7 @@ Macro proxy metrics:
 - Poison-message quarantine and circuit breakers.
 - Domain and coalition-level kill switches.
 - Deterministic recovery drills for timer/orchestrator failures.
+- Relay-level overload and indexing degradation drills for high-throughput market lanes.
 
 ## 11) Sequencing Rules
 
@@ -337,6 +418,7 @@ Macro proxy metrics:
 3. Never add non-WS live authority lanes.
 4. Never rely on in-memory-only state for long-lived workflows.
 5. Never enable coalition spend without role+epoch authorization checks.
+6. Never claim market supply until discovery/packaging/trust/settlement/operability are all instrumented.
 
 ## 12) 90-Day Execution Focus
 
@@ -344,11 +426,14 @@ What we should do now:
 - Phase 0 complete (wedge PMF evidence).
 - Phase 1 started (contract + receipt schemas and store).
 - Phase 2 thin-slice started (one provider path, one buyer path, one settlement path).
+- Provider-market bootstrap instrumentation shipped (`stranded -> routable` conversion + wildcatter retention).
+- RLM/async fanout lane benchmarked with strict budget envelopes.
 
 What we should avoid now:
 - Broad coalition merge/split complexity.
 - Fully generalized discovery ranking markets.
 - Any narrative/feature not improving measurable leverage or verified payouts.
+- Mainnet-like growth claims without replayable payout and reliability evidence.
 
 ## 13) Immediate Next Issue Pack (ready to open)
 
@@ -360,6 +445,9 @@ What we should avoid now:
 - `OA-ECON-012` Receipt store/query service.
 - `OA-ECON-020` Provider capability publish/discovery API.
 - `OA-ECON-023` Spend-cap authorization and order issuance workflow.
+- `OA-ECON-027` Market plumbing completeness checks.
+- `OA-ECON-028` Wildcatter provider program and reliability scoring.
+- `OA-ECON-029` RLM async fanout routing with budget controls.
 
 ## 14) Final Definition of Success
 
@@ -371,5 +459,7 @@ OpenAgents reflects the thesis when all are true:
 - Revenue splits are default behavior, not optional afterthoughts.
 - Market participation and payout breadth improve over time, instead of concentrating.
 - The system demonstrates both lower execution cost (deflation) and recurring participant income (dividends).
+- Coalition latency trends down while trust/safety incident rates remain controlled.
+- Edge/local compute participation is measurable, economically real, and widely distributed.
 
 That is the concrete path from architecture to macro relevance.
