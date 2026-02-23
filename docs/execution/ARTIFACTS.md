@@ -39,6 +39,7 @@ Optional/recommended:
 
 - `created_at`
 - repo metadata
+- `metrics` (summary values derived from receipts/replay)
 - `tool_calls[]`
 - `verification[]`
 - `payments[]`

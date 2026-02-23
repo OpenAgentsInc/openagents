@@ -28,9 +28,22 @@ pub struct RuntimeReceipt {
     pub event_count: usize,
     pub first_seq: u64,
     pub last_seq: u64,
+    pub metrics: ReceiptMetrics,
     pub tool_calls: Vec<ToolCallReceipt>,
     pub verification: Vec<VerificationReceipt>,
     pub payments: Vec<PaymentReceipt>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ReceiptMetrics {
+    /// Total tool calls recorded in this session.
+    pub tool_calls: usize,
+    /// Sum of tool latency (ms) across tool calls.
+    pub tool_latency_ms_total: u64,
+    /// Verification pass/fail if any verification records exist.
+    pub verification_passed: Option<bool>,
+    /// Total payment amount (msats) across payment records.
+    pub payments_msats_total: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -123,6 +136,16 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         &policy_bundle_id,
         &session_id,
     )?;
+    let metrics = ReceiptMetrics {
+        tool_calls: tool_calls.len(),
+        tool_latency_ms_total: tool_calls.iter().map(|call| call.latency_ms).sum(),
+        verification_passed: if verification.is_empty() {
+            None
+        } else {
+            Some(verification.iter().all(|entry| entry.exit_code == 0))
+        },
+        payments_msats_total: payments.iter().map(|payment| payment.amount_msats).sum(),
+    };
 
     Ok(RuntimeReceipt {
         schema: "openagents.receipt.v1".to_string(),
@@ -133,6 +156,7 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         event_count: run.events.len(),
         first_seq,
         last_seq,
+        metrics,
         tool_calls,
         verification,
         payments,
