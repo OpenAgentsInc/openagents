@@ -25,6 +25,7 @@ pub mod config;
 pub mod event_log;
 pub mod fanout;
 pub mod history_compat;
+pub mod human_qa;
 pub mod inference_tiering;
 pub mod marketplace;
 pub mod orchestration;
