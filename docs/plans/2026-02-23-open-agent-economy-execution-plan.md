@@ -80,6 +80,23 @@ Next (externalization):
 
 - Nostr is the interop substrate between independently-run operator domains and external agents/providers. A Bridge/Gateway mirrors a constrained set of event kinds (provider ads, commerce receipts, reputation labels) between the operator-domain registry and Nostr without changing the pay-after-verify semantics.
 
+### 4.1.1) Agentic Commerce Implications (Legibility + Cross-Market Routing)
+
+In agentic commerce, **agents choose markets**. Users do not reliably pick apps based on brand, inertia, or familiarity. Network effects shift away from consumer habit and toward:
+
+- **Orderbook depth (fill probability):** can an agent get filled at the desired outcome function.
+- **All-in quote legibility:** total cost is machine-readable, comparable, and binding (no hidden fees).
+- **Terms legibility:** cancellation/refund/dispute semantics are explicit and consistent.
+- **Receipts:** delivered outcomes can be verified against quoted terms (and used for reputation/routing).
+- **Permissionless multi-homing:** suppliers can list everywhere with low coordination latency.
+
+As a result:
+
+- **Market disintermediation accelerates** once agents can cheaply build routers/aggregators and can compare offers across marketplaces.
+- The long-term moat is not "UI" or "code"; it is **liquidity + legibility + receipts + settlement** in an open, group-forming network.
+
+This plan makes "agentic commerce grammar" a first-class backlog item for all marketplace lanes (compute now; skills/data later), including cross-market routing and delivered-vs-quoted price integrity. See: `OA-ECON-280` to `OA-ECON-285`.
+
 ### 4.2) Nostr vs Nexus vs Bridge (Trust Zones + Message Classes)
 
 This plan assumes a stratified transport model to avoid "sign everything" overhead without creating silent security debt:
@@ -183,7 +200,7 @@ Autopilot is multi-surface, but parity is not promised. One identity, different 
 | Part Four: Sovereign Agent Protocol | NIP-SA lifecycle, tick/trajectory events, agent capability publication | `OA-ECON-090` to `OA-ECON-099` | Later |
 | Part Five: Unified Wallet Application | CLI/WGPUI wallet parity, NIP-47, account management, recovery (user-managed custody) | `OA-ECON-100` to `OA-ECON-119` | Next (minimal) / Later (breadth) |
 | Part Six: Agent Git Platform | Optional bonus surface moved out of this plan | `docs/plans/optional/gitafter-bonus.md` | Optional (moved out) |
-| Part Seven: Unified Marketplace | Compute liquidity lane now; skills/data/coalitions later | `OA-ECON-120` to `OA-ECON-169` | Now (compute) / Later (skills/data/coalitions) |
+| Part Seven: Unified Marketplace | Compute liquidity lane now; skills/data/coalitions later; agentic commerce legibility + cross-market routing | `OA-ECON-120` to `OA-ECON-169`, `OA-ECON-280` to `OA-ECON-285` | Now (compute) / Later (skills/data/coalitions) |
 | Part Eight: Autonomous Operation | Autopilot wedge + procurement + proof artifacts; maturity later | `OA-ECON-170` to `OA-ECON-189` | Now (wedge + proof) / Next (maturity) |
 | Part Nine: Multi-Agent Orchestration | Orchestrator/sub-agent lifecycle, autonomy graduation, budget controls | `OA-ECON-190` to `OA-ECON-199` | Next |
 | Part Ten: Tools to Entities | Entity continuity, economic alignment controls, accountability and liability rails | `OA-ECON-210` to `OA-ECON-214` | Later |
@@ -285,6 +302,15 @@ Phase 0 assumes platform-managed settlement (OpenAgents-controlled treasury/wall
 - `OA-ECON-130` - Implement provider tiering and penalty automation. - Apply quota and routing changes from quality signals.
 - `OA-ECON-133` - Implement BundleRack and InstanceMarket adapters. - Integrate datacenter/rented capacity as supply classes.
 - `OA-ECON-137` - Implement pricing bands and staged bidding controls. - Move from fixed pricing to market bidding safely.
+
+#### Agentic Commerce Legibility (All-In Offers + Cross-Market Routing)
+
+- `OA-ECON-280` - Define unified marketplace commerce grammar (v1). - Specify portable, machine-readable contract surfaces for marketplace lanes (compute now; skills/data later): RFQ/Offer/Quote (all-in)/Accept/Cancel/Receipt/Refund/Dispute. Include explicit fee surfaces, binding quote windows, and deterministic receipt linkages. Map the portable subset onto Bridge/Nostr event kinds without moving high-rate coordination onto Nostr.
+- `OA-ECON-281` - Implement all-in quote + terms model for OpenAgents Compute. - Add a compute quoting layer that produces binding, machine-comparable all-in quotes (provider price + operator fees + policy adders) with explicit cancellation/refund semantics and receipt hooks. Ensure routing (`OA-ECON-007`) can optimize for total cost, not just a provider's advertised unit price.
+- `OA-ECON-282` - Implement cross-market offer normalization + routing interface. - Build a router surface that can ingest offers/quotes from multiple markets (multiple operator domains and/or third-party markets), normalize them into a comparable vector (all-in price, latency, reliability, constraints), and produce a signed/receipted selection decision for auditability. This is the "order aggregator" class in agentic commerce.
+- `OA-ECON-283` - Implement supplier multi-homing autopilot (listing everywhere). - Create provider-side automation that publishes capacity/pricing/availability to multiple marketplaces and keeps listings synchronized (with policy + caps). Multi-homing is permissionless and is expected to compress incumbent margins once agents route on all-in outcomes.
+- `OA-ECON-284` - Implement price-integrity enforcement + delivered-vs-quoted reputation labels. - Detect bait-and-switch behavior (quoted vs delivered all-in cost/terms), enforce commit-to-terms receipts, apply penalties/quarantine, and publish reputation labels keyed to delivered-vs-quoted variance. Feed the result into routing policies (`OA-ECON-130`, `OA-ECON-134`, `OA-ECON-135`) and Bridge reputation surfaces (`OA-ECON-038`).
+- `OA-ECON-285` - Extend marketplace conformance to enforce agent legibility. - Expand marketplace e2e suites (`OA-ECON-166`, `OA-ECON-223`) with explicit tests for: all-in quote comparability, binding windows, cancellation/refund semantics, delivered-vs-quoted labels, cross-market router invariants, and anti-manipulation regression cases.
 
 - `OA-ECON-164` - Implement fraud response automation + evidence capture. - Trigger containment, capture replay/receipt evidence pointers, and route operator escalation paths.
 
@@ -586,7 +612,7 @@ Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (b
 
 The plan is complete only when:
 
-- Each issue in `OA-ECON-001` to `OA-ECON-279` is either shipped, explicitly superseded by a linked replacement, or explicitly marked optional in a pointer plan (e.g., `docs/plans/optional/gitafter-bonus.md`).
+- Each issue in `OA-ECON-001` to `OA-ECON-285` is either shipped, explicitly superseded by a linked replacement, or explicitly marked optional in a pointer plan (e.g., `docs/plans/optional/gitafter-bonus.md`).
 - Every synthesis concept is traceable to implemented issue outcomes.
 - End-to-end vignette suites (`OA-ECON-257`, `OA-ECON-258`, `OA-ECON-259`) pass with replay artifacts.
 - Decentralization migration controls (`OA-ECON-233` to `OA-ECON-239`) are operational and verified.
