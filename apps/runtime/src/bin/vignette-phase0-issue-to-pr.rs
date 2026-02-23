@@ -866,34 +866,36 @@ async fn run_happy_path(
     );
     let job_hash = request.compute_hash().context("compute sandbox job hash")?;
 
-    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
-    if routed.provider.provider_id != provider.state.id {
+    let dispatch =
+        dispatch_sandbox_via_runtime(client, runtime_base, owner_user_id, &request).await?;
+    if dispatch.job_hash != job_hash {
         return Err(anyhow!(
-            "unexpected routed provider: expected {}, got {}",
-            provider.state.id,
-            routed.provider.provider_id
+            "runtime dispatch job_hash mismatch: expected {}, got {}",
+            job_hash,
+            dispatch.job_hash
         ));
     }
-    let provider_base_url = routed
-        .provider
-        .base_url
-        .clone()
-        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
+    let selection = dispatch.selection;
+    if selection.provider.provider_id != provider.state.id {
+        return Err(anyhow!(
+            "unexpected dispatched provider: expected {}, got {}",
+            provider.state.id,
+            selection.provider.provider_id
+        ));
+    }
+    let response = dispatch.response;
+    let latency_ms = dispatch.latency_ms;
 
-    let started = std::time::Instant::now();
-    let response = call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
-    let latency_ms = started.elapsed().as_millis() as u64;
-
-    // Retry dispatch: same idempotency key must not re-execute.
-    let response_retry =
-        call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
-    assert_same_sandbox_response(&response, &response_retry)?;
+    // Retry dispatch: same idempotency key must not re-execute provider-side.
+    let dispatch_retry =
+        dispatch_sandbox_via_runtime(client, runtime_base, owner_user_id, &request).await?;
+    assert_same_sandbox_response(&response, &dispatch_retry.response)?;
     assert_provider_idempotency(client, provider, 1, 1).await?;
 
     let job_dispatched_receipt = json!({
         "job_type": SandboxRunRequest::JOB_TYPE,
         "job_hash": job_hash,
-        "provider_id": routed.provider.provider_id,
+        "provider_id": selection.provider.provider_id,
         "idempotency_key": job_hash
     });
     append_receipt_event(
@@ -945,7 +947,14 @@ async fn run_happy_path(
     )
     .await?;
 
-    let verification = verify_sandbox_with_runtime(client, runtime_base, &request, &response).await?;
+    let verification = verify_sandbox_with_runtime(
+        client,
+        runtime_base,
+        Some(selection.provider.worker_id.clone()),
+        &request,
+        &response,
+    )
+    .await?;
     append_verification_event(
         client,
         runtime_base,
@@ -1126,23 +1135,33 @@ async fn run_verification_fail(
         vec!["cargo test".to_string()],
     );
     let job_hash = request.compute_hash().context("compute job hash")?;
-    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
-    if routed.provider.provider_id != provider.state.id {
+    let dispatch =
+        dispatch_sandbox_via_runtime(client, runtime_base, owner_user_id, &request).await?;
+    if dispatch.job_hash != job_hash {
         return Err(anyhow!(
-            "unexpected routed provider: expected {}, got {}",
-            provider.state.id,
-            routed.provider.provider_id
+            "runtime dispatch job_hash mismatch: expected {}, got {}",
+            job_hash,
+            dispatch.job_hash
         ));
     }
-    let provider_base_url = routed
-        .provider
-        .base_url
-        .clone()
-        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
+    let selection = dispatch.selection;
+    if selection.provider.provider_id != provider.state.id {
+        return Err(anyhow!(
+            "unexpected dispatched provider: expected {}, got {}",
+            provider.state.id,
+            selection.provider.provider_id
+        ));
+    }
+    let response = dispatch.response;
 
-    let response = call_sandbox_provider(client, &provider_base_url, &request, &job_hash).await?;
-
-    let verification = verify_sandbox_with_runtime(client, runtime_base, &request, &response).await?;
+    let verification = verify_sandbox_with_runtime(
+        client,
+        runtime_base,
+        Some(selection.provider.worker_id.clone()),
+        &request,
+        &response,
+    )
+    .await?;
     if verification.passed {
         return Err(anyhow!("verification-fail scenario unexpectedly passed"));
     }
@@ -1277,20 +1296,6 @@ async fn run_provider_offline_mid_run(
     );
     let job_hash = request.compute_hash().context("compute job hash")?;
 
-    let routed = route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
-    if routed.provider.provider_id != provider_a.state.id {
-        return Err(anyhow!(
-            "unexpected routed provider: expected {}, got {}",
-            provider_a.state.id,
-            routed.provider.provider_id
-        ));
-    }
-    let provider_a_url = routed
-        .provider
-        .base_url
-        .clone()
-        .ok_or_else(|| anyhow!("routed provider missing base_url"))?;
-
     // Disable provider A while it is mid-run (during sleep).
     let disable_url = format!("{}/v1/disable", provider_a.base_url);
     let disable_task = {
@@ -1301,43 +1306,26 @@ async fn run_provider_offline_mid_run(
         })
     };
 
-    let response_a = call_sandbox_provider(client, &provider_a_url, &request, &job_hash).await;
+    let dispatch =
+        dispatch_sandbox_via_runtime(client, runtime_base, owner_user_id, &request).await?;
     let _ = disable_task.await;
-
-    let response_a = match response_a {
-        Ok(response) => response,
-        Err(err) => {
-            append_receipt_event(
-                client,
-                runtime_base,
-                run.id,
-                "JobFailed",
-                json!({"job_hash": job_hash, "provider_id": provider_a.state.id, "reason": err.to_string()}),
-                Some(format!("job-failed:{job_hash}")),
-            )
-            .await?;
-            response_from_error(err.to_string())
-        }
-    };
-
-    if response_a.status == SandboxStatus::Success {
+    if dispatch.job_hash != job_hash {
         return Err(anyhow!(
-            "offline-mid-run scenario unexpectedly succeeded on provider A"
+            "runtime dispatch job_hash mismatch: expected {}, got {}",
+            job_hash,
+            dispatch.job_hash
         ));
     }
-
-    // Mark provider A unavailable for routing (so we can fall back immediately).
-    let transition_url =
-        format!("{runtime_base}/internal/v1/workers/device:vignette-provider-a/status");
-    let _ = client
-        .post(transition_url)
-        .json(&json!({
-            "owner_user_id": owner_user_id,
-            "status": "failed",
-            "reason": "offline_mid_run"
-        }))
-        .send()
-        .await;
+    if dispatch.selection.provider.provider_id != provider_b.state.id {
+        return Err(anyhow!(
+            "expected reserve provider fallback to {}, got {}",
+            provider_b.state.id,
+            dispatch.selection.provider.provider_id
+        ));
+    }
+    if dispatch.fallback_from_provider_id.as_deref() != Some(provider_a.state.id.as_str()) {
+        return Err(anyhow!("expected fallback_from_provider_id to be provider A"));
+    }
 
     append_receipt_event(
         client,
@@ -1349,33 +1337,20 @@ async fn run_provider_offline_mid_run(
     )
     .await?;
 
-    // Fallback to reserve provider B (must succeed).
-    let routed_fallback =
-        route_provider(client, runtime_base, owner_user_id, SandboxRunRequest::JOB_TYPE).await?;
-    if routed_fallback.provider.provider_id != provider_b.state.id {
-        return Err(anyhow!(
-            "unexpected routed fallback provider: expected {}, got {}",
-            provider_b.state.id,
-            routed_fallback.provider.provider_id
-        ));
-    }
-    if routed_fallback.tier
-        != openagents_runtime_service::marketplace::ProviderSelectionTier::ReservePool
-    {
-        return Err(anyhow!("expected reserve_pool fallback tier"));
-    }
-    let provider_b_url = routed_fallback
-        .provider
-        .base_url
-        .clone()
-        .ok_or_else(|| anyhow!("routed fallback provider missing base_url"))?;
-
-    let started = std::time::Instant::now();
-    let response_b =
-        call_sandbox_provider(client, &provider_b_url, &request, &job_hash).await?;
-    let latency_ms = started.elapsed().as_millis() as u64;
-    let verification =
-        verify_sandbox_with_runtime(client, runtime_base, &request, &response_b).await?;
+    let DispatchSandboxRunRuntimeResponse {
+        selection,
+        response: response_b,
+        latency_ms,
+        ..
+    } = dispatch;
+    let verification = verify_sandbox_with_runtime(
+        client,
+        runtime_base,
+        Some(selection.provider.worker_id.clone()),
+        &request,
+        &response_b,
+    )
+    .await?;
     if !verification.passed {
         return Err(anyhow!("reserve provider B failed verification"));
     }
@@ -1385,7 +1360,7 @@ async fn run_provider_offline_mid_run(
         runtime_base,
         run.id,
         "JobDispatched",
-        json!({"job_type": SandboxRunRequest::JOB_TYPE, "job_hash": job_hash, "provider_id": routed_fallback.provider.provider_id, "idempotency_key": job_hash}),
+        json!({"job_type": SandboxRunRequest::JOB_TYPE, "job_hash": job_hash, "provider_id": selection.provider.provider_id, "idempotency_key": job_hash}),
         Some(format!("job-dispatched:{job_hash}")),
     )
     .await?;
@@ -1429,7 +1404,7 @@ async fn run_provider_offline_mid_run(
         runtime_base,
         run.id,
         "PaymentReleased",
-        json!({"job_hash": job_hash, "amount_msats": 1000, "provider_id": routed_fallback.provider.provider_id}),
+        json!({"job_hash": job_hash, "amount_msats": 1000, "provider_id": selection.provider.provider_id}),
         Some("receipt-payment-released".to_string()),
     )
     .await?;
@@ -1634,13 +1609,18 @@ struct SandboxVerifyResponse {
 async fn verify_sandbox_with_runtime(
     client: &reqwest::Client,
     runtime_base: &str,
+    provider_worker_id: Option<String>,
     request: &SandboxRunRequest,
     response: &SandboxRunResponse,
 ) -> Result<VerificationOutcome> {
     let url = format!("{runtime_base}/internal/v1/verifications/sandbox-run");
     let resp = client
         .post(url)
-        .json(&json!({ "request": request, "response": response }))
+        .json(&json!({
+            "request": request,
+            "response": response,
+            "provider_worker_id": provider_worker_id
+        }))
         .send()
         .await
         .context("verify sandbox run with runtime")?;
@@ -1663,29 +1643,36 @@ async fn verify_sandbox_with_runtime(
     })
 }
 
-async fn route_provider(
+#[derive(Debug, Deserialize)]
+struct DispatchSandboxRunRuntimeResponse {
+    job_hash: String,
+    selection: ProviderSelection,
+    response: SandboxRunResponse,
+    latency_ms: u64,
+    #[serde(default)]
+    fallback_from_provider_id: Option<String>,
+}
+
+async fn dispatch_sandbox_via_runtime(
     client: &reqwest::Client,
     runtime_base: &str,
     owner_user_id: u64,
-    capability: &str,
-) -> Result<ProviderSelection> {
-    let url = format!("{runtime_base}/internal/v1/marketplace/route/provider");
+    request: &SandboxRunRequest,
+) -> Result<DispatchSandboxRunRuntimeResponse> {
+    let url = format!("{runtime_base}/internal/v1/marketplace/dispatch/sandbox-run");
     let resp = client
         .post(url)
-        .json(&json!({
-            "owner_user_id": owner_user_id,
-            "capability": capability
-        }))
+        .json(&json!({ "owner_user_id": owner_user_id, "request": request }))
         .send()
         .await
-        .context("route provider")?;
+        .context("dispatch sandbox via runtime")?;
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(anyhow!("route provider failed: {}", text));
+        return Err(anyhow!("dispatch sandbox via runtime failed: {}", text));
     }
-    resp.json::<ProviderSelection>()
+    resp.json::<DispatchSandboxRunRuntimeResponse>()
         .await
-        .context("parse provider selection")
+        .context("parse dispatch response")
 }
 
 async fn call_sandbox_provider(
@@ -2053,19 +2040,4 @@ fn write_metrics(out_dir: &Path, succeeded: bool) -> Result<()> {
         serde_json::to_string_pretty(&metrics)?,
     )?;
     Ok(())
-}
-
-fn response_from_error(error: String) -> SandboxRunResponse {
-    SandboxRunResponse {
-        env_info: EnvInfo {
-            image_digest: "host".to_string(),
-            hostname: None,
-            system_info: None,
-        },
-        runs: Vec::new(),
-        artifacts: Vec::new(),
-        status: SandboxStatus::Error,
-        error: Some(error),
-        provenance: Provenance::new("sandbox-local"),
-    }
 }

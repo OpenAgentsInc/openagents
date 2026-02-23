@@ -43,27 +43,67 @@ pub fn verify_sandbox_run(request: &SandboxRunRequest, response: &SandboxRunResp
 
     let mut exit_code = 0;
     for run in &response.runs {
+        if let Some(preview) = run.stdout_preview.as_deref() {
+            if preview.len() > 16_384 {
+                violations.push("stdout_preview exceeds 16KiB cap".to_string());
+            }
+        }
+        if let Some(preview) = run.stderr_preview.as_deref() {
+            if preview.len() > 16_384 {
+                violations.push("stderr_preview exceeds 16KiB cap".to_string());
+            }
+        }
         if run.exit_code != 0 {
             exit_code = run.exit_code;
             break;
         }
     }
 
-    if response.status == SandboxStatus::Success {
-        if exit_code != 0 {
-            violations.push("status success but a command exit_code was non-zero".to_string());
+    if response.artifacts.len() > 128 {
+        violations.push("artifact count exceeds 128 cap".to_string());
+    }
+    for artifact in &response.artifacts {
+        if artifact.path.len() > 1_024 {
+            violations.push("artifact path exceeds 1024 byte cap".to_string());
         }
-        if response.error.is_some() {
-            violations.push("status success but error field was present".to_string());
+        if artifact.sha256.len() > 128 {
+            violations.push("artifact sha256 exceeds 128 byte cap".to_string());
         }
-    } else {
-        violations.push(format!("status not success: {:?}", response.status));
-        if exit_code == 0 {
-            violations.push("non-success status but no failing exit_code reported".to_string());
-            exit_code = 1;
-        }
+    }
 
-        if response.status == SandboxStatus::Error {
+    match response.status {
+        SandboxStatus::Success => {
+            if exit_code != 0 {
+                violations.push("status success but a command exit_code was non-zero".to_string());
+            }
+            if response.error.is_some() {
+                violations.push("status success but error field was present".to_string());
+            }
+        }
+        SandboxStatus::Failed => {
+            // Failed is a valid job outcome; only flag provider-level inconsistencies.
+            if exit_code == 0 {
+                violations.push("status failed but no failing exit_code reported".to_string());
+                exit_code = 1;
+            }
+            if response.error.is_some() {
+                violations.push("error message present but status was not error".to_string());
+            }
+        }
+        SandboxStatus::Timeout | SandboxStatus::Cancelled => {
+            violations.push(format!("provider status {:?}", response.status));
+            if exit_code == 0 {
+                exit_code = 1;
+            }
+            if response.error.is_some() {
+                violations.push("error message present but status was not error".to_string());
+            }
+        }
+        SandboxStatus::Error => {
+            violations.push("provider status error".to_string());
+            if exit_code == 0 {
+                exit_code = 1;
+            }
             if response
                 .error
                 .as_deref()
@@ -73,10 +113,8 @@ pub fn verify_sandbox_run(request: &SandboxRunRequest, response: &SandboxRunResp
             {
                 violations.push("status error but error message missing".to_string());
             }
-        } else if response.error.is_some() {
-            violations.push("error message present but status was not error".to_string());
         }
-    }
+    };
 
     let passed = violations.is_empty() && response.status == SandboxStatus::Success && exit_code == 0;
     if !passed && exit_code == 0 {
@@ -146,6 +184,15 @@ mod tests {
         let outcome = verify_sandbox_run(&request(), &response);
         assert!(!outcome.passed);
         assert_eq!(outcome.exit_code, 2);
+        assert!(outcome.violations.is_empty());
+    }
+
+    #[test]
+    fn sandbox_verification_flags_timeout_as_provider_violation() {
+        let mut response = response_success();
+        response.status = SandboxStatus::Timeout;
+        let outcome = verify_sandbox_run(&request(), &response);
+        assert!(!outcome.passed);
         assert!(!outcome.violations.is_empty());
     }
 }

@@ -42,6 +42,10 @@ pub struct ProviderCatalogEntry {
     #[serde(default)]
     pub reserve_pool: bool,
     #[serde(default)]
+    pub quarantined: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_reason: Option<String>,
+    #[serde(default)]
     pub roles: Vec<String>,
     pub base_url: Option<String>,
     #[serde(default)]
@@ -69,6 +73,8 @@ impl ProviderCatalogEntry {
         let reserve_pool = reserve_pool_flag || supply_class == SupplyClass::ReservePool;
         let cluster_id = metadata_string(meta, "cluster_id");
         let cluster_members = metadata_string_array(meta, "cluster_members");
+        let quarantined = metadata_bool(meta, "quarantined").unwrap_or(false);
+        let quarantine_reason = metadata_string(meta, "quarantine_reason");
 
         Some(Self {
             schema: PROVIDER_CATALOG_SCHEMA_V1.to_string(),
@@ -83,6 +89,8 @@ impl ProviderCatalogEntry {
             cluster_id,
             cluster_members,
             reserve_pool,
+            quarantined,
+            quarantine_reason,
             roles,
             base_url,
             capabilities,
@@ -233,6 +241,10 @@ fn owners_match(left: &WorkerOwner, right: &WorkerOwner) -> bool {
 
 fn is_provider_available(provider: &ProviderCatalogEntry, capability: &str) -> bool {
     if provider.base_url.as_deref().map(str::trim).unwrap_or("").is_empty() {
+        return false;
+    }
+
+    if provider.quarantined {
         return false;
     }
 

@@ -52,6 +52,7 @@ pub struct AppState {
     fanout: Arc<FanoutHub>,
     sync_auth: Arc<SyncAuthorizer>,
     khala_delivery: Arc<KhalaDeliveryControl>,
+    compute_abuse: Arc<ComputeAbuseControls>,
     fleet_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
 }
@@ -72,6 +73,7 @@ impl AppState {
             fanout,
             sync_auth,
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
+            compute_abuse: Arc::new(ComputeAbuseControls::default()),
             fleet_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
         }
@@ -105,6 +107,35 @@ struct KhalaDeliveryControl {
     fairness_limited_polls: AtomicU64,
     slow_consumer_evictions: AtomicU64,
     served_messages: AtomicU64,
+}
+
+#[derive(Default)]
+struct ComputeAbuseControls {
+    dispatch_window: Mutex<HashMap<String, VecDeque<chrono::DateTime<Utc>>>>,
+}
+
+const COMPUTE_DISPATCH_WINDOW_SECONDS: i64 = 60;
+const COMPUTE_DISPATCH_MAX_PER_WINDOW: usize = 30;
+
+impl ComputeAbuseControls {
+    async fn enforce_dispatch_rate(&self, owner_key: &str) -> Result<(), ApiError> {
+        let now = Utc::now();
+        let window_start = now - chrono::Duration::seconds(COMPUTE_DISPATCH_WINDOW_SECONDS);
+
+        let mut windows = self.dispatch_window.lock().await;
+        let entries = windows.entry(owner_key.to_string()).or_default();
+        while matches!(entries.front(), Some(front) if *front < window_start) {
+            entries.pop_front();
+        }
+        if entries.len() >= COMPUTE_DISPATCH_MAX_PER_WINDOW {
+            return Err(ApiError::RateLimited {
+                retry_after_ms: 1_000,
+                reason_code: "compute_dispatch_rate_limited".to_string(),
+            });
+        }
+        entries.push_back(now);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -346,9 +377,28 @@ struct RouteProviderBody {
 }
 
 #[derive(Debug, Deserialize)]
+struct DispatchSandboxRunBody {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    request: protocol::SandboxRunRequest,
+}
+
+#[derive(Debug, Serialize)]
+struct DispatchSandboxRunResponse {
+    job_hash: String,
+    selection: ProviderSelection,
+    response: protocol::SandboxRunResponse,
+    latency_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fallback_from_provider_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SandboxVerificationBody {
     request: protocol::SandboxRunRequest,
     response: protocol::SandboxRunResponse,
+    #[serde(default)]
+    provider_worker_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -450,6 +500,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/route/provider",
             post(route_provider),
+        )
+        .route(
+            "/internal/v1/marketplace/dispatch/sandbox-run",
+            post(dispatch_sandbox_run),
         )
         .route(
             "/internal/v1/verifications/sandbox-run",
@@ -1255,20 +1309,126 @@ async fn route_provider(
     Ok(Json(selection))
 }
 
+async fn dispatch_sandbox_run(
+    State(state): State<AppState>,
+    Json(body): Json<DispatchSandboxRunBody>,
+) -> Result<Json<DispatchSandboxRunResponse>, ApiError> {
+    let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    state
+        .compute_abuse
+        .enforce_dispatch_rate(owner_key.as_str())
+        .await?;
+
+    validate_sandbox_request_phase0(&body.request)?;
+    let job_hash = protocol::hash::canonical_hash(&body.request)
+        .map_err(|error| ApiError::InvalidRequest(format!("invalid sandbox request: {error}")))?;
+
+    let workers = state.workers.list_all_workers().await;
+    let selection =
+        select_provider_for_capability(&workers, Some(&owner), PHASE0_REQUIRED_PROVIDER_CAPABILITY)
+            .ok_or(ApiError::NotFound)?;
+
+    match dispatch_sandbox_request_to_provider(&selection, &workers, &job_hash, &body.request).await
+    {
+        Ok((response, latency_ms)) => {
+            let provider_failed = matches!(
+                response.status,
+                protocol::jobs::sandbox::SandboxStatus::Timeout
+                    | protocol::jobs::sandbox::SandboxStatus::Cancelled
+                    | protocol::jobs::sandbox::SandboxStatus::Error
+            );
+            if provider_failed && selection.tier == crate::marketplace::ProviderSelectionTier::Owned
+            {
+                if let Some(reserve) = select_provider_for_capability(
+                    &workers,
+                    None,
+                    PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                ) {
+                    if reserve.provider.worker_id != selection.provider.worker_id {
+                        let fallback_from_provider_id = Some(selection.provider.provider_id.clone());
+                        let (response, latency_ms) = dispatch_sandbox_request_to_provider(
+                            &reserve,
+                            &workers,
+                            &job_hash,
+                            &body.request,
+                        )
+                        .await?;
+                        return Ok(Json(DispatchSandboxRunResponse {
+                            job_hash,
+                            selection: reserve,
+                            response,
+                            latency_ms,
+                            fallback_from_provider_id,
+                        }));
+                    }
+                }
+            }
+
+            Ok(Json(DispatchSandboxRunResponse {
+                job_hash,
+                selection,
+                response,
+                latency_ms,
+                fallback_from_provider_id: None,
+            }))
+        }
+        Err(error) => {
+            if selection.tier == crate::marketplace::ProviderSelectionTier::Owned {
+                if let Some(reserve) = select_provider_for_capability(
+                    &workers,
+                    None,
+                    PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                ) {
+                    if reserve.provider.worker_id != selection.provider.worker_id {
+                        let fallback_from_provider_id = Some(selection.provider.provider_id.clone());
+                        let (response, latency_ms) = dispatch_sandbox_request_to_provider(
+                            &reserve,
+                            &workers,
+                            &job_hash,
+                            &body.request,
+                        )
+                        .await?;
+                        return Ok(Json(DispatchSandboxRunResponse {
+                            job_hash,
+                            selection: reserve,
+                            response,
+                            latency_ms,
+                            fallback_from_provider_id,
+                        }));
+                    }
+                }
+            }
+            Err(error)
+        }
+    }
+}
+
 async fn get_job_types() -> Json<JobTypesResponse> {
     let job_types = protocol::jobs::registered_job_types();
     Json(JobTypesResponse { job_types })
 }
 
 async fn verify_sandbox_run(
+    State(state): State<AppState>,
     Json(body): Json<SandboxVerificationBody>,
-) -> Json<SandboxVerificationResponse> {
+) -> Result<Json<SandboxVerificationResponse>, ApiError> {
     let outcome = crate::verification::verify_sandbox_run(&body.request, &body.response);
-    Json(SandboxVerificationResponse {
+    if let Some(worker_id) = body
+        .provider_worker_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !outcome.violations.is_empty() {
+            apply_provider_violation_strike(&state, worker_id, &outcome.violations).await?;
+        }
+    }
+    Ok(Json(SandboxVerificationResponse {
         passed: outcome.passed,
         exit_code: outcome.exit_code,
         violations: outcome.violations,
-    })
+    }))
 }
 
 async fn heartbeat_worker(
@@ -1605,6 +1765,15 @@ fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
             "qualified_at".to_string(),
             serde_json::Value::String(Utc::now().to_rfc3339()),
         );
+        if !map.contains_key("failure_strikes") {
+            map.insert(
+                "failure_strikes".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(0_u64)),
+            );
+        }
+        if !map.contains_key("quarantined") {
+            map.insert("quarantined".to_string(), serde_json::Value::Bool(false));
+        }
     }
 }
 
@@ -1655,6 +1824,203 @@ async fn probe_provider_health(base_url: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+fn owner_rate_key(owner: &WorkerOwner) -> String {
+    if let Some(user_id) = owner.user_id {
+        return format!("user:{user_id}");
+    }
+    owner
+        .guest_scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("guest:{value}"))
+        .unwrap_or_else(|| "guest:unknown".to_string())
+}
+
+fn validate_sandbox_request_phase0(request: &protocol::SandboxRunRequest) -> Result<(), ApiError> {
+    if request.commands.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "sandbox request must include at least one command".to_string(),
+        ));
+    }
+    if request.commands.len() > 20 {
+        return Err(ApiError::InvalidRequest(
+            "sandbox request exceeds 20 command cap".to_string(),
+        ));
+    }
+    for command in &request.commands {
+        if command.cmd.len() > 4096 {
+            return Err(ApiError::InvalidRequest(
+                "sandbox command exceeds 4096 byte cap".to_string(),
+            ));
+        }
+    }
+    if request.env.len() > 32 {
+        return Err(ApiError::InvalidRequest(
+            "sandbox env exceeds 32 entry cap".to_string(),
+        ));
+    }
+    if request.sandbox.network_policy != protocol::jobs::sandbox::NetworkPolicy::None {
+        return Err(ApiError::InvalidRequest(
+            "sandbox network_policy must be none in Phase 0".to_string(),
+        ));
+    }
+    if request.sandbox.resources.timeout_secs > 300 {
+        return Err(ApiError::InvalidRequest(
+            "sandbox timeout_secs exceeds 300 second cap".to_string(),
+        ));
+    }
+    if request.sandbox.resources.memory_mb > 8192 {
+        return Err(ApiError::InvalidRequest(
+            "sandbox memory_mb exceeds 8192 cap".to_string(),
+        ));
+    }
+    if request.sandbox.resources.cpus > 8.0 {
+        return Err(ApiError::InvalidRequest(
+            "sandbox cpus exceeds 8.0 cap".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn dispatch_sandbox_request_to_provider(
+    selection: &ProviderSelection,
+    workers: &[WorkerSnapshot],
+    job_hash: &str,
+    request: &protocol::SandboxRunRequest,
+) -> Result<(protocol::SandboxRunResponse, u64), ApiError> {
+    let base_url = selection
+        .provider
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ApiError::InvalidRequest("routed provider missing base_url".to_string())
+        })?;
+    let provider_snapshot = workers
+        .iter()
+        .find(|snapshot| snapshot.worker.worker_id == selection.provider.worker_id)
+        .ok_or_else(|| ApiError::Internal("missing provider snapshot".to_string()))?;
+    let max_timeout_secs = provider_snapshot
+        .worker
+        .metadata
+        .pointer("/caps/max_timeout_secs")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(60)
+        .max(1)
+        .min(3_600) as u32;
+    if request.sandbox.resources.timeout_secs > max_timeout_secs {
+        return Err(ApiError::InvalidRequest(format!(
+            "sandbox timeout_secs {} exceeds provider max_timeout_secs {}",
+            request.sandbox.resources.timeout_secs, max_timeout_secs
+        )));
+    }
+
+    let url = format!("{}/v1/sandbox_run", base_url.trim_end_matches('/'));
+    let timeout_secs = request.sandbox.resources.timeout_secs.saturating_add(5);
+    let started = std::time::Instant::now();
+    let resp = reqwest::Client::new()
+        .post(url.as_str())
+        .header("x-idempotency-key", job_hash)
+        .timeout(Duration::from_secs(timeout_secs as u64))
+        .json(request)
+        .send()
+        .await
+        .map_err(|error| ApiError::InvalidRequest(format!("provider dispatch failed: {error}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(ApiError::InvalidRequest(format!(
+            "provider dispatch returned {}: {}",
+            status,
+            text
+        )));
+    }
+    let parsed = resp
+        .json::<protocol::SandboxRunResponse>()
+        .await
+        .map_err(|error| ApiError::Internal(format!("parse sandbox response: {error}")))?;
+    let latency_ms = started.elapsed().as_millis() as u64;
+    Ok((parsed, latency_ms))
+}
+
+const PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD: u64 = 3;
+
+async fn apply_provider_violation_strike(
+    state: &AppState,
+    worker_id: &str,
+    violations: &[String],
+) -> Result<(), ApiError> {
+    ensure_runtime_write_authority(state)?;
+
+    let snapshot = state
+        .workers
+        .list_all_workers()
+        .await
+        .into_iter()
+        .find(|snapshot| snapshot.worker.worker_id == worker_id)
+        .ok_or_else(|| ApiError::InvalidRequest(format!("unknown provider worker_id {worker_id}")))?;
+
+    let current_strikes = snapshot
+        .worker
+        .metadata
+        .get("failure_strikes")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let next_strikes = current_strikes.saturating_add(1);
+    let mut patch = serde_json::json!({
+        "failure_strikes": next_strikes,
+        "last_violation_at": Utc::now().to_rfc3339(),
+        "last_violation_reason": violations.first().cloned().unwrap_or_else(|| "violation".to_string()),
+    });
+    let should_quarantine = next_strikes >= PROVIDER_VIOLATION_STRIKE_QUARANTINE_THRESHOLD;
+    if should_quarantine {
+        if let Some(map) = patch.as_object_mut() {
+            map.insert("quarantined".to_string(), serde_json::Value::Bool(true));
+            map.insert(
+                "quarantine_reason".to_string(),
+                serde_json::Value::String("verification_violations".to_string()),
+            );
+            map.insert(
+                "quarantined_at".to_string(),
+                serde_json::Value::String(Utc::now().to_rfc3339()),
+            );
+        }
+    }
+
+    let updated = state
+        .workers
+        .heartbeat(
+            worker_id,
+            WorkerHeartbeatRequest {
+                owner: snapshot.worker.owner.clone(),
+                metadata_patch: patch,
+            },
+        )
+        .await
+        .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(state, &updated).await?;
+
+    if should_quarantine && updated.worker.status != WorkerStatus::Failed {
+        let transitioned = state
+            .workers
+            .transition_status(
+                worker_id,
+                WorkerStatusTransitionRequest {
+                    owner: updated.worker.owner.clone(),
+                    status: WorkerStatus::Failed,
+                    reason: Some("quarantined".to_string()),
+                },
+            )
+            .await
+            .map_err(ApiError::from_worker)?;
+        publish_worker_snapshot(state, &transitioned).await?;
+    }
+
+    Ok(())
+}
+
 async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<(), ApiError> {
     let Some(event) = run.events.last() else {
         return Ok(());
@@ -1696,6 +2062,11 @@ async fn publish_worker_snapshot(
     let min_price_msats = meta.get("min_price_msats").and_then(serde_json::Value::as_u64);
     let reserve_pool = meta.get("reserve_pool").and_then(serde_json::Value::as_bool);
     let qualified = meta.get("qualified").and_then(serde_json::Value::as_bool);
+    let failure_strikes = meta.get("failure_strikes").and_then(serde_json::Value::as_u64);
+    let quarantined = meta.get("quarantined").and_then(serde_json::Value::as_bool);
+    let quarantine_reason = meta
+        .get("quarantine_reason")
+        .and_then(serde_json::Value::as_str);
 
     let payload = serde_json::json!({
         "worker_id": snapshot.worker.worker_id,
@@ -1710,6 +2081,9 @@ async fn publish_worker_snapshot(
         "min_price_msats": min_price_msats,
         "reserve_pool": reserve_pool,
         "qualified": qualified,
+        "failure_strikes": failure_strikes,
+        "quarantined": quarantined,
+        "quarantine_reason": quarantine_reason,
         "owner_user_id": snapshot.worker.owner.user_id,
         "owner_guest_scope": snapshot.worker.owner.guest_scope,
     });
@@ -2181,6 +2555,48 @@ mod tests {
             "/healthz",
             axum::routing::get(|| async { (axum::http::StatusCode::OK, "ok") }),
         );
+        let (addr, shutdown) = spawn_http_server(app).await?;
+        Ok((format!("http://{addr}"), shutdown))
+    }
+
+    async fn spawn_compute_provider_stub(
+    ) -> Result<(String, tokio::sync::oneshot::Sender<()>)> {
+        async fn sandbox_run(
+            axum::Json(request): axum::Json<protocol::SandboxRunRequest>,
+        ) -> axum::Json<protocol::SandboxRunResponse> {
+            let runs = request
+                .commands
+                .iter()
+                .map(|cmd| protocol::jobs::sandbox::CommandResult {
+                    cmd: cmd.cmd.clone(),
+                    exit_code: 0,
+                    duration_ms: 1,
+                    stdout_sha256: "stdout".to_string(),
+                    stderr_sha256: "stderr".to_string(),
+                    stdout_preview: None,
+                    stderr_preview: None,
+                })
+                .collect::<Vec<_>>();
+            axum::Json(protocol::SandboxRunResponse {
+                env_info: protocol::jobs::sandbox::EnvInfo {
+                    image_digest: request.sandbox.image_digest.clone(),
+                    hostname: None,
+                    system_info: None,
+                },
+                runs,
+                artifacts: Vec::new(),
+                status: protocol::jobs::sandbox::SandboxStatus::Success,
+                error: None,
+                provenance: protocol::Provenance::new("stub"),
+            })
+        }
+
+        let app = axum::Router::new()
+            .route(
+                "/healthz",
+                axum::routing::get(|| async { (axum::http::StatusCode::OK, "ok") }),
+            )
+            .route("/v1/sandbox_run", axum::routing::post(sandbox_run));
         let (addr, shutdown) = spawn_http_server(app).await?;
         Ok((format!("http://{addr}"), shutdown))
     }
@@ -4245,6 +4661,197 @@ mod tests {
             .and_then(Value::as_array)
             .ok_or_else(|| anyhow!("missing cluster_members"))?;
         assert_eq!(members.len(), 2);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispatch_sandbox_run_calls_provider_and_enforces_phase0_hardening() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:dispatch-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-dispatch-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000,
+                            "caps": { "max_timeout_secs": 120 }
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let ok_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/dispatch/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(ok_response.status(), axum::http::StatusCode::OK);
+        let ok_json = response_json(ok_response).await?;
+        assert_eq!(
+            ok_json.pointer("/selection/provider/provider_id").and_then(Value::as_str),
+            Some("provider-dispatch-1")
+        );
+        assert_eq!(
+            ok_json
+                .pointer("/response/status")
+                .and_then(Value::as_str),
+            Some("success")
+        );
+
+        let bad_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/dispatch/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": {
+                            "sandbox": {
+                                "image_digest": "sha256:test",
+                                "network_policy": "full"
+                            },
+                            "commands": [{"cmd":"echo hi"}]
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(bad_response.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_is_auto_quarantined_after_repeated_verification_violations() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:quarantine-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-quarantine-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+        let bad_response = protocol::SandboxRunResponse {
+            env_info: protocol::jobs::sandbox::EnvInfo {
+                image_digest: "sha256:test".to_string(),
+                hostname: None,
+                system_info: None,
+            },
+            runs: vec![protocol::jobs::sandbox::CommandResult {
+                cmd: "echo bye".to_string(),
+                exit_code: 0,
+                duration_ms: 1,
+                stdout_sha256: "stdout".to_string(),
+                stderr_sha256: "stderr".to_string(),
+                stdout_preview: None,
+                stderr_preview: None,
+            }],
+            artifacts: Vec::new(),
+            status: protocol::jobs::sandbox::SandboxStatus::Success,
+            error: None,
+            provenance: protocol::Provenance::new("test"),
+        };
+
+        for _ in 0..3 {
+            let verify_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/internal/v1/verifications/sandbox-run")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "provider_worker_id": "desktop:quarantine-provider-1",
+                            "request": request.clone(),
+                            "response": bad_response.clone()
+                        }))?))?,
+                )
+                .await?;
+            assert_eq!(verify_response.status(), axum::http::StatusCode::OK);
+        }
+
+        let catalog_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .get("providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers array"))?;
+        assert_eq!(providers.len(), 1);
+        assert_eq!(
+            providers[0]
+                .get("quarantined")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
 
         let _ = shutdown.send(());
         Ok(())
