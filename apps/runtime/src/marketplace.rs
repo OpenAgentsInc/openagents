@@ -37,6 +37,29 @@ impl Default for ProviderTier {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingStage {
+    Fixed,
+    Banded,
+    Bidding,
+}
+
+impl Default for PricingStage {
+    fn default() -> Self {
+        Self::Fixed
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PricingBand {
+    pub capability: String,
+    pub min_price_msats: u64,
+    pub max_price_msats: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step_msats: Option<u64>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderCatalogEntry {
     pub schema: String,
@@ -66,6 +89,10 @@ pub struct ProviderCatalogEntry {
     pub capabilities: Vec<String>,
     pub min_price_msats: Option<u64>,
     #[serde(default)]
+    pub pricing_stage: PricingStage,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pricing_bands: Vec<PricingBand>,
+    #[serde(default)]
     pub tier: ProviderTier,
     #[serde(default)]
     pub failure_strikes: u64,
@@ -87,7 +114,10 @@ impl ProviderCatalogEntry {
             metadata_string(meta, "provider_id").unwrap_or_else(|| worker.worker_id.clone());
         let base_url = metadata_string(meta, "provider_base_url");
         let capabilities = metadata_string_array(meta, "capabilities");
-        let min_price_msats = metadata_u64(meta, "min_price_msats");
+        let pricing_stage = pricing_stage_from_metadata(meta);
+        let pricing_bands = pricing_bands_from_metadata(meta);
+        let min_price_msats = metadata_u64(meta, "min_price_msats")
+            .or_else(|| derive_min_price_msats(&pricing_bands));
         let reserve_pool_flag = metadata_bool(meta, "reserve_pool").unwrap_or(false)
             || roles.iter().any(|role| role == "reserve_pool");
         let supply_class =
@@ -120,6 +150,8 @@ impl ProviderCatalogEntry {
             base_url,
             capabilities,
             min_price_msats,
+            pricing_stage,
+            pricing_bands,
             tier,
             failure_strikes,
             success_count,
@@ -192,6 +224,43 @@ fn provider_tier_from_metadata(
     }
 
     ProviderTier::Qualified
+}
+
+fn pricing_stage_from_metadata(metadata: &Value) -> PricingStage {
+    let Some(value) = metadata.get("pricing_stage").and_then(Value::as_str) else {
+        return PricingStage::Fixed;
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "fixed" => PricingStage::Fixed,
+        "banded" => PricingStage::Banded,
+        "bidding" => PricingStage::Bidding,
+        _ => PricingStage::Fixed,
+    }
+}
+
+fn pricing_bands_from_metadata(metadata: &Value) -> Vec<PricingBand> {
+    let Some(value) = metadata.get("pricing_bands") else {
+        return Vec::new();
+    };
+    match serde_json::from_value::<Vec<PricingBand>>(value.clone()) {
+        Ok(mut bands) => {
+            bands.retain(|band| {
+                !band.capability.trim().is_empty()
+                    && band.min_price_msats > 0
+                    && band.max_price_msats >= band.min_price_msats
+            });
+            bands
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+fn derive_min_price_msats(bands: &[PricingBand]) -> Option<u64> {
+    bands
+        .iter()
+        .map(|band| band.min_price_msats)
+        .min()
+        .filter(|value| *value > 0)
 }
 
 fn supply_class_from_metadata(adapter: &str, metadata: &Value, reserve_pool: bool) -> SupplyClass {

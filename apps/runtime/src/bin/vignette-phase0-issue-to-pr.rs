@@ -18,8 +18,8 @@ use axum::{
 use chrono::Utc;
 use clap::Parser;
 use openagents_runtime_service::bridge::{
-    ProviderAdV1, ReceiptPointerV1, build_provider_ad_event, build_receipt_pointer_event,
-    receipt_sha256_from_utf8, validate_phase0_bridge_event,
+    PricingBandV1, PricingStageV1, ProviderAdV1, ReceiptPointerV1, build_provider_ad_event,
+    build_receipt_pointer_event, receipt_sha256_from_utf8, validate_phase0_bridge_event,
 };
 use openagents_runtime_service::config::{AuthorityWriteMode, Config as RuntimeConfig};
 use openagents_runtime_service::marketplace::ProviderSelection;
@@ -1917,6 +1917,13 @@ fn write_bridge_events(
         website: Some("https://openagents.com".to_string()),
         capabilities: vec!["oa.sandbox_run.v1".to_string()],
         min_price_msats: 1000,
+        pricing_stage: PricingStageV1::Banded,
+        pricing_bands: vec![PricingBandV1 {
+            capability: "oa.sandbox_run.v1".to_string(),
+            min_price_msats: 1000,
+            max_price_msats: 2000,
+            step_msats: Some(100),
+        }],
     };
 
     let receipt_ptr = ReceiptPointerV1 {

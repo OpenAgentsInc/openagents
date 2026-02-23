@@ -32,6 +32,39 @@ pub enum BridgeEventKind {
     ReceiptPointer,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingStageV1 {
+    Fixed,
+    Banded,
+    Bidding,
+}
+
+impl Default for PricingStageV1 {
+    fn default() -> Self {
+        Self::Fixed
+    }
+}
+
+impl PricingStageV1 {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Fixed => "fixed",
+            Self::Banded => "banded",
+            Self::Bidding => "bidding",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PricingBandV1 {
+    pub capability: String,
+    pub min_price_msats: u64,
+    pub max_price_msats: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step_msats: Option<u64>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderAdV1 {
     pub provider_id: String,
@@ -41,6 +74,10 @@ pub struct ProviderAdV1 {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub min_price_msats: u64,
+    #[serde(default)]
+    pub pricing_stage: PricingStageV1,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pricing_bands: Vec<PricingBandV1>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -109,12 +146,22 @@ pub fn build_provider_ad_event(
         format!("openagents:compute_provider:{}", payload.provider_id),
     )
     .add_custom_tag("oa_schema", "openagents.bridge.provider_ad.v1")
-    .add_custom_tag("oa_provider_id", payload.provider_id.clone());
+    .add_custom_tag("oa_provider_id", payload.provider_id.clone())
+    .add_custom_tag("oa_pricing_stage", payload.pricing_stage.as_str());
 
     for cap in &payload.capabilities {
         if !cap.trim().is_empty() {
             info = info.add_capability(cap.clone());
         }
+    }
+
+    for band in &payload.pricing_bands {
+        if band.capability.trim().is_empty() {
+            continue;
+        }
+        let band_json = serde_json::to_string(band)
+            .map_err(|err| BridgeError::Serialization(err.to_string()))?;
+        info = info.add_custom_tag("oa_pricing_band", band_json);
     }
 
     let template = EventTemplate {
@@ -263,6 +310,13 @@ mod tests {
             website: Some("https://openagents.com".to_string()),
             capabilities: vec!["oa.sandbox_run.v1".to_string()],
             min_price_msats: 1000,
+            pricing_stage: PricingStageV1::Fixed,
+            pricing_bands: vec![PricingBandV1 {
+                capability: "oa.sandbox_run.v1".to_string(),
+                min_price_msats: 1000,
+                max_price_msats: 2000,
+                step_msats: Some(100),
+            }],
         };
 
         let event = match build_provider_ad_event(&secret, Some(1_700_000_000), &payload) {
@@ -289,6 +343,18 @@ mod tests {
                 .tags
                 .iter()
                 .any(|t| t.len() >= 2 && t[0] == "capability" && t[1] == "oa.sandbox_run.v1")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_pricing_stage" && t[1] == "fixed")
+        );
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_pricing_band")
         );
     }
 

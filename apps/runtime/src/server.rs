@@ -27,12 +27,15 @@ use uuid::Uuid;
 use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
-    bridge::{BridgeNostrPublisher, ProviderAdV1, build_provider_ad_event},
+    bridge::{
+        BridgeNostrPublisher, PricingBandV1, PricingStageV1, ProviderAdV1, build_provider_ad_event,
+    },
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     marketplace::{
-        ProviderCatalogEntry, ProviderSelection, build_provider_catalog, is_provider_worker,
-        select_provider_for_capability, select_provider_for_capability_excluding,
+        PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection, build_provider_catalog,
+        is_provider_worker, select_provider_for_capability,
+        select_provider_for_capability_excluding,
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
@@ -2020,6 +2023,21 @@ async fn heartbeat_worker(
 ) -> Result<Json<WorkerResponse>, ApiError> {
     ensure_runtime_write_authority(&state)?;
     let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    if body.metadata_patch.get("pricing_stage").is_some()
+        || body.metadata_patch.get("pricing_bands").is_some()
+    {
+        let existing = state
+            .workers
+            .get_worker(&worker_id, &owner)
+            .await
+            .map_err(ApiError::from_worker)?;
+        let mut merged = existing.worker.metadata.clone();
+        merge_metadata_patch_shallow(&mut merged, &body.metadata_patch)?;
+        if metadata_has_role(&merged, "provider") {
+            qualify_provider_pricing(&merged)?;
+        }
+    }
+
     let snapshot = state
         .workers
         .heartbeat(
@@ -2356,6 +2374,24 @@ fn metadata_string_array(metadata: &serde_json::Value, key: &str) -> Vec<String>
     }
 }
 
+fn merge_metadata_patch_shallow(
+    target: &mut serde_json::Value,
+    patch: &serde_json::Value,
+) -> Result<(), ApiError> {
+    let Some(patch_map) = patch.as_object() else {
+        return Err(ApiError::InvalidRequest(
+            "metadata_patch must be a JSON object".to_string(),
+        ));
+    };
+    let target_map = target
+        .as_object_mut()
+        .ok_or_else(|| ApiError::Internal("worker metadata must be a JSON object".to_string()))?;
+    for (key, value) in patch_map {
+        target_map.insert(key.clone(), value.clone());
+    }
+    Ok(())
+}
+
 fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
     if let Some(map) = metadata.as_object_mut() {
         map.insert("qualified".to_string(), serde_json::Value::Bool(true));
@@ -2381,6 +2417,97 @@ fn annotate_provider_metadata(metadata: &mut serde_json::Value) {
     }
 }
 
+const PROVIDER_PRICING_STAGE_MAX: PricingStage = PricingStage::Banded;
+
+fn pricing_stage_from_metadata(metadata: &serde_json::Value) -> PricingStage {
+    let Some(value) = metadata
+        .get("pricing_stage")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return PricingStage::Fixed;
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "fixed" => PricingStage::Fixed,
+        "banded" => PricingStage::Banded,
+        "bidding" => PricingStage::Bidding,
+        _ => PricingStage::Fixed,
+    }
+}
+
+fn pricing_stage_rank(stage: &PricingStage) -> u8 {
+    match stage {
+        PricingStage::Fixed => 0,
+        PricingStage::Banded => 1,
+        PricingStage::Bidding => 2,
+    }
+}
+
+fn qualify_provider_pricing(metadata: &serde_json::Value) -> Result<(), ApiError> {
+    let stage = pricing_stage_from_metadata(metadata);
+    if pricing_stage_rank(&stage) > pricing_stage_rank(&PROVIDER_PRICING_STAGE_MAX) {
+        return Err(ApiError::InvalidRequest(format!(
+            "pricing_stage {:?} is not enabled in this deployment",
+            stage
+        )));
+    }
+
+    if stage != PricingStage::Banded {
+        return Ok(());
+    }
+
+    let capabilities = metadata_string_array(metadata, "capabilities");
+    let bands_value = metadata
+        .get("pricing_bands")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            ApiError::InvalidRequest(
+                "pricing_bands[] is required when pricing_stage=banded".to_string(),
+            )
+        })?;
+    if bands_value.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "pricing_bands[] is required when pricing_stage=banded".to_string(),
+        ));
+    }
+
+    let bands: Vec<PricingBand> =
+        serde_json::from_value(serde_json::Value::Array(bands_value.clone()))
+            .map_err(|err| ApiError::InvalidRequest(format!("invalid pricing_bands: {err}")))?;
+
+    for (idx, band) in bands.iter().enumerate() {
+        if band.capability.trim().is_empty() {
+            return Err(ApiError::InvalidRequest(format!(
+                "pricing_bands[{idx}].capability is required"
+            )));
+        }
+        if !capabilities.iter().any(|cap| cap == band.capability.trim()) {
+            return Err(ApiError::InvalidRequest(format!(
+                "pricing_bands[{idx}].capability {} is not in capabilities[]",
+                band.capability
+            )));
+        }
+        if band.min_price_msats == 0 {
+            return Err(ApiError::InvalidRequest(format!(
+                "pricing_bands[{idx}].min_price_msats must be > 0"
+            )));
+        }
+        if band.max_price_msats < band.min_price_msats {
+            return Err(ApiError::InvalidRequest(format!(
+                "pricing_bands[{idx}].max_price_msats must be >= min_price_msats"
+            )));
+        }
+        if let Some(step) = band.step_msats {
+            if step == 0 {
+                return Err(ApiError::InvalidRequest(format!(
+                    "pricing_bands[{idx}].step_msats must be > 0"
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn qualify_provider_metadata(metadata: &serde_json::Value) -> Result<(), ApiError> {
     let provider_base_url = metadata_string(metadata, "provider_base_url")
         .map(|value| value.trim().to_string())
@@ -2404,6 +2531,7 @@ async fn qualify_provider_metadata(metadata: &serde_json::Value) -> Result<(), A
         )));
     }
 
+    qualify_provider_pricing(metadata)?;
     probe_provider_health(provider_base_url.as_str()).await?;
     Ok(())
 }
@@ -2971,9 +3099,35 @@ fn maybe_spawn_nostr_provider_ad_mirror(state: &AppState, snapshot: &WorkerSnaps
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let pricing_stage = match pricing_stage_from_metadata(meta) {
+        PricingStage::Fixed => PricingStageV1::Fixed,
+        PricingStage::Banded => PricingStageV1::Banded,
+        PricingStage::Bidding => PricingStageV1::Bidding,
+    };
+    let pricing_bands = meta
+        .get("pricing_bands")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|bands| {
+            serde_json::from_value::<Vec<PricingBand>>(serde_json::Value::Array(bands.clone())).ok()
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|band| {
+            !band.capability.trim().is_empty()
+                && band.min_price_msats > 0
+                && band.max_price_msats >= band.min_price_msats
+        })
+        .map(|band| PricingBandV1 {
+            capability: band.capability,
+            min_price_msats: band.min_price_msats,
+            max_price_msats: band.max_price_msats,
+            step_msats: band.step_msats,
+        })
+        .collect::<Vec<_>>();
     let min_price_msats = meta
         .get("min_price_msats")
         .and_then(serde_json::Value::as_u64)
+        .or_else(|| pricing_bands.iter().map(|band| band.min_price_msats).min())
         .unwrap_or(1000);
 
     let relays = state.config.bridge_nostr_relays.clone();
@@ -2984,6 +3138,8 @@ fn maybe_spawn_nostr_provider_ad_mirror(state: &AppState, snapshot: &WorkerSnaps
         website,
         capabilities,
         min_price_msats,
+        pricing_stage,
+        pricing_bands,
     };
 
     tokio::spawn(async move {
@@ -5593,6 +5749,193 @@ mod tests {
                 .and_then(Value::as_str),
             Some("instance_market")
         );
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_pricing_stage_controls_reject_bidding_until_enabled() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:pricing-stage-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-pricing-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000,
+                            "pricing_stage": "bidding",
+                            "pricing_bands": [{
+                                "capability": "oa.sandbox_run.v1",
+                                "min_price_msats": 1000,
+                                "max_price_msats": 2000,
+                                "step_msats": 100
+                            }]
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        let json = response_json(response).await?;
+        assert_eq!(
+            json.get("error").and_then(Value::as_str),
+            Some("invalid_request")
+        );
+        let message = json.get("message").and_then(Value::as_str).unwrap_or("");
+        assert!(message.contains("pricing_stage"));
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_pricing_stage_banded_requires_valid_bands_and_surfaces_in_catalog()
+    -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let missing_bands = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:pricing-stage-provider-2",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-pricing-2",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000,
+                            "pricing_stage": "banded"
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(missing_bands.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        let ok = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:pricing-stage-provider-3",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-pricing-3",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000,
+                            "pricing_stage": "banded",
+                            "pricing_bands": [{
+                                "capability": "oa.sandbox_run.v1",
+                                "min_price_msats": 1000,
+                                "max_price_msats": 2000,
+                                "step_msats": 100
+                            }]
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(ok.status(), axum::http::StatusCode::CREATED);
+
+        let catalog_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/marketplace/catalog/providers?owner_user_id=11")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(catalog_response.status(), axum::http::StatusCode::OK);
+        let catalog_json = response_json(catalog_response).await?;
+        let providers = catalog_json
+            .get("providers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing providers array"))?;
+        let provider = providers
+            .iter()
+            .find(|provider| {
+                provider.get("provider_id").and_then(Value::as_str) == Some("provider-pricing-3")
+            })
+            .ok_or_else(|| anyhow!("missing provider-pricing-3 entry"))?;
+        assert_eq!(
+            provider.get("pricing_stage").and_then(Value::as_str),
+            Some("banded")
+        );
+        let bands = provider
+            .get("pricing_bands")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("missing pricing_bands"))?;
+        assert_eq!(bands.len(), 1);
+        assert_eq!(
+            bands[0].get("capability").and_then(Value::as_str),
+            Some("oa.sandbox_run.v1")
+        );
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_pricing_updates_are_validated_on_heartbeat() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_provider_stub().await?;
+
+        let create_provider = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:pricing-heartbeat-provider-1",
+                        "owner_user_id": 11,
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-pricing-heartbeat-1",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+        let heartbeat = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers/desktop:pricing-heartbeat-provider-1/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "metadata_patch": {
+                            "pricing_stage": "bidding"
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat.status(), axum::http::StatusCode::BAD_REQUEST);
 
         let _ = shutdown.send(());
         Ok(())
