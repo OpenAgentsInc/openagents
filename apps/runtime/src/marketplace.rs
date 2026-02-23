@@ -7,6 +7,22 @@ use crate::workers::WorkerSnapshot;
 
 pub const PROVIDER_CATALOG_SCHEMA_V1: &str = "openagents.marketplace.provider_catalog.v1";
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SupplyClass {
+    SingleNode,
+    LocalCluster,
+    BundleRack,
+    InstanceMarket,
+    ReservePool,
+}
+
+impl Default for SupplyClass {
+    fn default() -> Self {
+        Self::SingleNode
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderCatalogEntry {
     pub schema: String,
@@ -17,6 +33,8 @@ pub struct ProviderCatalogEntry {
     pub status: WorkerStatus,
     pub heartbeat_state: String,
     pub heartbeat_age_ms: Option<i64>,
+    #[serde(default)]
+    pub supply_class: SupplyClass,
     #[serde(default)]
     pub reserve_pool: bool,
     #[serde(default)]
@@ -41,8 +59,10 @@ impl ProviderCatalogEntry {
         let base_url = metadata_string(meta, "provider_base_url");
         let capabilities = metadata_string_array(meta, "capabilities");
         let min_price_msats = metadata_u64(meta, "min_price_msats");
-        let reserve_pool = metadata_bool(meta, "reserve_pool").unwrap_or(false)
+        let reserve_pool_flag = metadata_bool(meta, "reserve_pool").unwrap_or(false)
             || roles.iter().any(|role| role == "reserve_pool");
+        let supply_class = supply_class_from_metadata(meta, reserve_pool_flag);
+        let reserve_pool = reserve_pool_flag || supply_class == SupplyClass::ReservePool;
 
         Some(Self {
             schema: PROVIDER_CATALOG_SCHEMA_V1.to_string(),
@@ -53,6 +73,7 @@ impl ProviderCatalogEntry {
             status: worker.status.clone(),
             heartbeat_state: snapshot.liveness.heartbeat_state.clone(),
             heartbeat_age_ms: snapshot.liveness.heartbeat_age_ms,
+            supply_class,
             reserve_pool,
             roles,
             base_url,
@@ -101,6 +122,39 @@ pub fn is_provider_worker(worker: &RuntimeWorker) -> bool {
         .any(|role| role == "provider")
 }
 
+fn supply_class_from_metadata(metadata: &Value, reserve_pool: bool) -> SupplyClass {
+    if reserve_pool {
+        return SupplyClass::ReservePool;
+    }
+
+    if let Some(value) = metadata_string(metadata, "supply_class")
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        match value {
+            "single_node" => return SupplyClass::SingleNode,
+            "local_cluster" => return SupplyClass::LocalCluster,
+            "bundle_rack" => return SupplyClass::BundleRack,
+            "instance_market" => return SupplyClass::InstanceMarket,
+            "reserve_pool" => return SupplyClass::ReservePool,
+            _ => {}
+        }
+    }
+
+    if metadata_bool(metadata, "local_cluster").unwrap_or(false) {
+        return SupplyClass::LocalCluster;
+    }
+    if metadata_bool(metadata, "bundle_rack").unwrap_or(false) {
+        return SupplyClass::BundleRack;
+    }
+    if metadata_bool(metadata, "instance_market").unwrap_or(false) {
+        return SupplyClass::InstanceMarket;
+    }
+
+    SupplyClass::SingleNode
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderSelectionTier {
@@ -144,7 +198,7 @@ pub fn select_provider_for_capability(
 
     let mut reserve_pool = providers
         .into_iter()
-        .filter(|provider| provider.reserve_pool)
+        .filter(|provider| provider.supply_class == SupplyClass::ReservePool)
         .collect::<Vec<_>>();
     reserve_pool.sort_by(|a, b| provider_rank_key(a).cmp(&provider_rank_key(b)));
     reserve_pool.into_iter().next().map(|provider| ProviderSelection {

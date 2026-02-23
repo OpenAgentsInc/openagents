@@ -4258,6 +4258,12 @@ mod tests {
             Some("provider-owned")
         );
         assert_eq!(
+            route_owned_json
+                .pointer("/provider/supply_class")
+                .and_then(Value::as_str),
+            Some("single_node")
+        );
+        assert_eq!(
             route_owned_json.get("tier").and_then(Value::as_str),
             Some("owned")
         );
@@ -4297,6 +4303,12 @@ mod tests {
                 .pointer("/provider/provider_id")
                 .and_then(Value::as_str),
             Some("provider-reserve")
+        );
+        assert_eq!(
+            route_reserve_json
+                .pointer("/provider/supply_class")
+                .and_then(Value::as_str),
+            Some("reserve_pool")
         );
         assert_eq!(
             route_reserve_json.get("tier").and_then(Value::as_str),
