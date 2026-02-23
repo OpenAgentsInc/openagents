@@ -2,8 +2,8 @@
 
 This is the canonical production deploy flow for the Cloud Run runtime stack:
 
-- Service: `runtime`
-- Migration job: `runtime-migrate`
+- Service: `openagents-runtime`
+- Migration job: `openagents-runtime-migrate`
 - Chained deploy wrapper: `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`
 - Migration drift check: `apps/runtime/deploy/cloudrun/check-migration-drift.sh`
 - DB role isolation tooling: `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
@@ -45,9 +45,9 @@ gcloud builds submit \
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=runtime \
-MIGRATE_JOB=runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+RUNTIME_SERVICE=openagents-runtime \
+MIGRATE_JOB=openagents-runtime-migrate \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime:<TAG> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
 
@@ -75,7 +75,7 @@ apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-control-service" AND httpRequest.status=500' \
   --project openagentsgemini --freshness=10m --limit=20
 
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="runtime" AND severity>=ERROR' \
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-runtime" AND severity>=ERROR' \
   --project openagentsgemini --freshness=10m --limit=50
 ```
 
@@ -84,11 +84,11 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 Run this before or after deploy if anything looks off:
 
 ```bash
-gcloud run services describe runtime \
+gcloud run services describe openagents-runtime \
   --project openagentsgemini --region us-central1 \
   --format='value(spec.template.spec.containers[0].image)'
 
-gcloud run jobs describe runtime-migrate \
+gcloud run jobs describe openagents-runtime-migrate \
   --project openagentsgemini --region us-central1 \
   --format='value(spec.template.spec.template.spec.containers[0].image)'
 ```
@@ -100,8 +100,8 @@ The two values must match.
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=runtime \
-MIGRATE_JOB=runtime-migrate \
+RUNTIME_SERVICE=openagents-runtime \
+MIGRATE_JOB=openagents-runtime-migrate \
 apps/runtime/deploy/cloudrun/check-migration-drift.sh
 ```
 

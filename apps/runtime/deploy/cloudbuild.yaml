@@ -17,24 +17,24 @@ steps:
       - -f
       - apps/runtime/Dockerfile
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
 
 images:
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY

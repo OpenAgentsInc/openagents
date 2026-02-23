@@ -20,8 +20,8 @@ require_command jq
 
 GCP_PROJECT="${GCP_PROJECT:-openagentsgemini}"
 GCP_REGION="${GCP_REGION:-us-central1}"
-RUNTIME_SERVICE="${RUNTIME_SERVICE:-runtime}"
-MIGRATE_JOB="${MIGRATE_JOB:-runtime-migrate}"
+RUNTIME_SERVICE="${RUNTIME_SERVICE:-openagents-runtime}"
+MIGRATE_JOB="${MIGRATE_JOB:-openagents-runtime-migrate}"
 EXPECTED_IMAGE="${EXPECTED_IMAGE:-}"
 
 SERVICE_IMAGE="$(gcloud run services describe "${RUNTIME_SERVICE}" --project "${GCP_PROJECT}" --region "${GCP_REGION}" --format='value(spec.template.spec.containers[0].image)')"

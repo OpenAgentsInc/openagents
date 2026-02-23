@@ -92,9 +92,9 @@ For runtime deploy evidence:
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=runtime \
-MIGRATE_JOB=runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+RUNTIME_SERVICE=openagents-runtime \
+MIGRATE_JOB=openagents-runtime-migrate \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime:<TAG> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
 
