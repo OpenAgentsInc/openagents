@@ -33,9 +33,9 @@ use crate::{
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     marketplace::{
-        PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection, build_provider_catalog,
-        is_provider_worker, select_provider_for_capability,
-        select_provider_for_capability_excluding,
+        ComputeAllInQuoteV1, PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection,
+        build_provider_catalog, compute_all_in_quote_v1, is_provider_worker,
+        select_provider_for_capability, select_provider_for_capability_excluding,
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
@@ -502,6 +502,22 @@ struct RouteProviderBody {
 }
 
 #[derive(Debug, Deserialize)]
+struct QuoteSandboxRunBody {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    request: protocol::SandboxRunRequest,
+}
+
+#[derive(Debug, Serialize)]
+struct QuoteSandboxRunResponse {
+    schema: String,
+    job_hash: String,
+    capability: String,
+    selection: ProviderSelection,
+    quote: ComputeAllInQuoteV1,
+}
+
+#[derive(Debug, Deserialize)]
 struct DispatchSandboxRunBody {
     owner_user_id: Option<u64>,
     owner_guest_scope: Option<String>,
@@ -667,6 +683,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/route/provider",
             post(route_provider),
+        )
+        .route(
+            "/internal/v1/marketplace/compute/quote/sandbox-run",
+            post(quote_sandbox_run),
         )
         .route(
             "/internal/v1/marketplace/dispatch/sandbox-run",
@@ -1488,6 +1508,44 @@ async fn route_provider(
     let selection = select_provider_for_capability(&workers, Some(&owner), &body.capability)
         .ok_or(ApiError::NotFound)?;
     Ok(Json(selection))
+}
+
+async fn quote_sandbox_run(
+    State(state): State<AppState>,
+    Json(body): Json<QuoteSandboxRunBody>,
+) -> Result<Json<QuoteSandboxRunResponse>, ApiError> {
+    let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    state
+        .compute_abuse
+        .enforce_dispatch_rate(owner_key.as_str())
+        .await?;
+
+    validate_sandbox_request_phase0(&body.request)?;
+    let job_hash = protocol::hash::canonical_hash(&body.request)
+        .map_err(|error| ApiError::InvalidRequest(format!("invalid sandbox request: {error}")))?;
+
+    let workers = state.workers.list_all_workers().await;
+    let selection =
+        select_provider_for_capability(&workers, Some(&owner), PHASE0_REQUIRED_PROVIDER_CAPABILITY)
+            .ok_or(ApiError::NotFound)?;
+
+    let issued_at_unix = Utc::now().timestamp().max(0) as u64;
+    let quote = compute_all_in_quote_v1(
+        &selection.provider,
+        PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+        job_hash.as_str(),
+        issued_at_unix,
+    )
+    .ok_or_else(|| ApiError::Internal("unable to compute all-in quote".to_string()))?;
+
+    Ok(Json(QuoteSandboxRunResponse {
+        schema: "openagents.marketplace.compute_quote.v1".to_string(),
+        job_hash,
+        capability: PHASE0_REQUIRED_PROVIDER_CAPABILITY.to_string(),
+        selection,
+        quote,
+    }))
 }
 
 async fn dispatch_sandbox_run(
@@ -6028,6 +6086,153 @@ mod tests {
             )
             .await?;
         assert_eq!(bad_response.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn quote_sandbox_run_returns_all_in_quote_and_routes_by_total_cost() -> Result<()> {
+        let app = test_router();
+        let (provider_base_url, shutdown) = spawn_compute_provider_stub().await?;
+
+        let create_single_node = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:quote-provider-single",
+                        "owner_user_id": 11,
+                        "adapter": "test",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-quote-single",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 1000
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_single_node.status(), axum::http::StatusCode::CREATED);
+
+        let create_instance_market = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:quote-provider-instance",
+                        "owner_user_id": 11,
+                        "adapter": "instance_market_adapter",
+                        "metadata": {
+                            "roles": ["client", "provider"],
+                            "provider_id": "provider-quote-instance",
+                            "provider_base_url": provider_base_url.clone(),
+                            "capabilities": ["oa.sandbox_run.v1"],
+                            "min_price_msats": 900
+                        }
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(
+            create_instance_market.status(),
+            axum::http::StatusCode::CREATED
+        );
+
+        let request = protocol::SandboxRunRequest {
+            sandbox: protocol::jobs::sandbox::SandboxConfig {
+                image_digest: "sha256:test".to_string(),
+                network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+                resources: protocol::jobs::sandbox::ResourceLimits {
+                    timeout_secs: 30,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+            ..Default::default()
+        };
+
+        let quote_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/compute/quote/sandbox-run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 11,
+                        "request": request
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(quote_response.status(), axum::http::StatusCode::OK);
+        let quote_json = response_json(quote_response).await?;
+
+        assert_eq!(
+            quote_json.pointer("/schema").and_then(Value::as_str),
+            Some("openagents.marketplace.compute_quote.v1")
+        );
+        assert_eq!(
+            quote_json
+                .pointer("/selection/provider/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-quote-single")
+        );
+
+        assert_eq!(
+            quote_json
+                .pointer("/quote/provider_price_msats")
+                .and_then(Value::as_u64),
+            Some(1000)
+        );
+        assert_eq!(
+            quote_json
+                .pointer("/quote/operator_fee_msats")
+                .and_then(Value::as_u64),
+            Some(5)
+        );
+        assert_eq!(
+            quote_json
+                .pointer("/quote/policy_adder_msats")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            quote_json
+                .pointer("/quote/total_price_msats")
+                .and_then(Value::as_u64),
+            Some(1005)
+        );
+        assert!(
+            quote_json
+                .pointer("/quote/quote_sha256")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.len() == 64)
+        );
+        assert!(
+            quote_json
+                .pointer("/quote/quote_id")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.starts_with("quote_"))
+        );
+
+        let issued_at = quote_json
+            .pointer("/quote/issued_at_unix")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        let valid_until = quote_json
+            .pointer("/quote/valid_until_unix")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        assert!(issued_at > 0);
+        assert!(valid_until >= issued_at);
 
         let _ = shutdown.send(());
         Ok(())

@@ -6,6 +6,7 @@ use crate::types::{RuntimeWorker, WorkerOwner, WorkerStatus};
 use crate::workers::WorkerSnapshot;
 
 pub const PROVIDER_CATALOG_SCHEMA_V1: &str = "openagents.marketplace.provider_catalog.v1";
+pub const COMPUTE_ALL_IN_QUOTE_SCHEMA_V1: &str = "openagents.marketplace.compute_all_in_quote.v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -320,6 +321,43 @@ pub struct ProviderSelection {
     pub tier: ProviderSelectionTier,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FeeComponentV1 {
+    pub component: String,
+    pub amount_msats: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AllInPriceBreakdownMsats {
+    pub provider_price_msats: u64,
+    pub operator_fee_msats: u64,
+    pub policy_adder_msats: u64,
+    pub total_price_msats: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComputeAllInQuoteV1 {
+    pub schema: String,
+    pub quote_id: String,
+    pub quote_sha256: String,
+    pub provider_id: String,
+    pub provider_worker_id: String,
+    pub capability: String,
+    pub objective_hash: String,
+    pub issued_at_unix: u64,
+    pub valid_until_unix: u64,
+    pub cancel_until_unix: u64,
+    pub cancel_fee_msats: u64,
+    pub refund_until_unix: u64,
+    pub currency: String,
+    pub provider_price_msats: u64,
+    pub operator_fee_msats: u64,
+    pub policy_adder_msats: u64,
+    pub total_price_msats: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fee_components: Vec<FeeComponentV1>,
+}
+
 pub fn select_provider_for_capability(
     workers: &[WorkerSnapshot],
     owner_filter: Option<&WorkerOwner>,
@@ -360,7 +398,9 @@ pub fn select_provider_for_capability_excluding(
             .filter(|provider| owners_match(&provider.owner, owner))
             .cloned()
             .collect::<Vec<_>>();
-        owned.sort_by(|a, b| provider_rank_key(a).cmp(&provider_rank_key(b)));
+        owned.sort_by(|a, b| {
+            provider_rank_key(a, capability).cmp(&provider_rank_key(b, capability))
+        });
         if let Some(provider) = owned.into_iter().next() {
             return Some(ProviderSelection {
                 provider,
@@ -373,7 +413,8 @@ pub fn select_provider_for_capability_excluding(
         .into_iter()
         .filter(|provider| provider.supply_class == SupplyClass::ReservePool)
         .collect::<Vec<_>>();
-    reserve_pool.sort_by(|a, b| provider_rank_key(a).cmp(&provider_rank_key(b)));
+    reserve_pool
+        .sort_by(|a, b| provider_rank_key(a, capability).cmp(&provider_rank_key(b, capability)));
     reserve_pool
         .into_iter()
         .next()
@@ -385,9 +426,16 @@ pub fn select_provider_for_capability_excluding(
 
 const PROVIDER_STRIKE_PRICE_PENALTY_MSATS: u64 = 500;
 const PROVIDER_PROVISIONAL_PENALTY_MSATS: u64 = 1_000;
+const OPERATOR_FEE_BPS: u64 = 50;
+const POLICY_ADDER_INSTANCE_MARKET_MSATS: u64 = 250;
+const POLICY_ADDER_RESERVE_POOL_MSATS: u64 = 500;
+const QUOTE_TTL_SECONDS: u64 = 60;
+const REFUND_WINDOW_SECONDS: u64 = 60 * 60;
 
-fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, u8, u64, String) {
-    let base_price = provider.min_price_msats.unwrap_or(u64::MAX);
+fn provider_rank_key(provider: &ProviderCatalogEntry, capability: &str) -> (u64, u8, u64, String) {
+    let base_price = compute_all_in_price_breakdown(provider, capability)
+        .map(|breakdown| breakdown.total_price_msats)
+        .unwrap_or(u64::MAX);
     let strike_penalty = provider
         .failure_strikes
         .saturating_mul(PROVIDER_STRIKE_PRICE_PENALTY_MSATS);
@@ -405,6 +453,164 @@ fn provider_rank_key(provider: &ProviderCatalogEntry) -> (u64, u8, u64, String) 
         provider.failure_strikes,
         provider.provider_id.clone(),
     )
+}
+
+fn provider_base_price_msats_for_capability(
+    provider: &ProviderCatalogEntry,
+    capability: &str,
+) -> Option<u64> {
+    let capability = capability.trim();
+    if capability.is_empty() {
+        return None;
+    }
+
+    if provider.pricing_stage == PricingStage::Banded {
+        if let Some(band) = provider
+            .pricing_bands
+            .iter()
+            .find(|band| band.capability.as_str() == capability)
+        {
+            if band.min_price_msats > 0 {
+                return Some(band.min_price_msats);
+            }
+        }
+    }
+
+    provider.min_price_msats.filter(|value| *value > 0)
+}
+
+fn compute_operator_fee_msats(provider_price_msats: u64) -> u64 {
+    if OPERATOR_FEE_BPS == 0 {
+        return 0;
+    }
+
+    // Ceil to avoid undercharging on fractional bps.
+    provider_price_msats
+        .saturating_mul(OPERATOR_FEE_BPS)
+        .saturating_add(9_999)
+        / 10_000
+}
+
+fn compute_policy_adder_msats(provider: &ProviderCatalogEntry) -> u64 {
+    match provider.supply_class {
+        SupplyClass::ReservePool => POLICY_ADDER_RESERVE_POOL_MSATS,
+        SupplyClass::InstanceMarket => POLICY_ADDER_INSTANCE_MARKET_MSATS,
+        SupplyClass::SingleNode | SupplyClass::LocalCluster | SupplyClass::BundleRack => 0,
+    }
+}
+
+pub fn compute_all_in_price_breakdown(
+    provider: &ProviderCatalogEntry,
+    capability: &str,
+) -> Option<AllInPriceBreakdownMsats> {
+    let provider_price_msats = provider_base_price_msats_for_capability(provider, capability)?;
+    let operator_fee_msats = compute_operator_fee_msats(provider_price_msats);
+    let policy_adder_msats = compute_policy_adder_msats(provider);
+    let total_price_msats = provider_price_msats
+        .saturating_add(operator_fee_msats)
+        .saturating_add(policy_adder_msats);
+
+    Some(AllInPriceBreakdownMsats {
+        provider_price_msats,
+        operator_fee_msats,
+        policy_adder_msats,
+        total_price_msats,
+    })
+}
+
+pub fn compute_all_in_quote_v1(
+    provider: &ProviderCatalogEntry,
+    capability: &str,
+    objective_hash: &str,
+    issued_at_unix: u64,
+) -> Option<ComputeAllInQuoteV1> {
+    let capability = capability.trim();
+    if capability.is_empty() {
+        return None;
+    }
+
+    let objective_hash = objective_hash.trim();
+    if objective_hash.is_empty() {
+        return None;
+    }
+
+    let breakdown = compute_all_in_price_breakdown(provider, capability)?;
+    let valid_until_unix = issued_at_unix.saturating_add(QUOTE_TTL_SECONDS);
+    let cancel_until_unix = valid_until_unix;
+    let refund_until_unix = issued_at_unix.saturating_add(REFUND_WINDOW_SECONDS);
+    let cancel_fee_msats = 0u64;
+
+    #[derive(Serialize)]
+    struct QuoteHashInput<'a> {
+        capability: &'a str,
+        objective_hash: &'a str,
+        issued_at_unix: u64,
+        valid_until_unix: u64,
+        cancel_until_unix: u64,
+        cancel_fee_msats: u64,
+        refund_until_unix: u64,
+        currency: &'a str,
+        provider_id: &'a str,
+        provider_worker_id: &'a str,
+        provider_price_msats: u64,
+        operator_fee_msats: u64,
+        policy_adder_msats: u64,
+        total_price_msats: u64,
+    }
+
+    let input = QuoteHashInput {
+        capability,
+        objective_hash,
+        issued_at_unix,
+        valid_until_unix,
+        cancel_until_unix,
+        cancel_fee_msats,
+        refund_until_unix,
+        currency: "msats",
+        provider_id: provider.provider_id.as_str(),
+        provider_worker_id: provider.worker_id.as_str(),
+        provider_price_msats: breakdown.provider_price_msats,
+        operator_fee_msats: breakdown.operator_fee_msats,
+        policy_adder_msats: breakdown.policy_adder_msats,
+        total_price_msats: breakdown.total_price_msats,
+    };
+
+    let quote_sha256 = protocol::hash::canonical_hash(&input).ok()?;
+    let quote_id = format!("quote_{}", &quote_sha256[..16]);
+    let mut fee_components = Vec::new();
+    if breakdown.operator_fee_msats > 0 {
+        fee_components.push(FeeComponentV1 {
+            component: "operator_fee".to_string(),
+            amount_msats: breakdown.operator_fee_msats,
+        });
+    }
+    if breakdown.policy_adder_msats > 0 {
+        fee_components.push(FeeComponentV1 {
+            component: "policy_adder".to_string(),
+            amount_msats: breakdown.policy_adder_msats,
+        });
+    }
+
+    Some(ComputeAllInQuoteV1 {
+        schema: COMPUTE_ALL_IN_QUOTE_SCHEMA_V1.to_string(),
+        quote_id,
+        quote_sha256,
+        provider_id: provider.provider_id.clone(),
+        provider_worker_id: provider.worker_id.clone(),
+        capability: capability.to_string(),
+        objective_hash: objective_hash.to_string(),
+        issued_at_unix,
+        valid_until_unix,
+        cancel_until_unix,
+        cancel_fee_msats,
+        refund_until_unix,
+        currency: "msats".to_string(),
+        provider_price_msats: breakdown.provider_price_msats,
+        operator_fee_msats: breakdown.operator_fee_msats,
+        policy_adder_msats: breakdown.policy_adder_msats,
+        total_price_msats: breakdown.total_price_msats,
+        fee_components,
+    })
 }
 
 fn provider_tier_rank(tier: &ProviderTier) -> u8 {
@@ -608,5 +814,33 @@ mod tests {
         let catalog = build_provider_catalog(&workers);
         assert_eq!(catalog.len(), 1);
         assert_eq!(catalog[0].supply_class, SupplyClass::InstanceMarket);
+    }
+
+    #[test]
+    fn routing_uses_all_in_total_price_not_just_provider_unit_price() {
+        let owner = WorkerOwner {
+            user_id: Some(11),
+            guest_scope: None,
+        };
+
+        // Provider B advertises a cheaper unit price, but its supply class incurs a policy adder
+        // (all-in total becomes more expensive).
+        let workers = vec![
+            snapshot_provider("worker:a", 11, "provider-a", 1000, 0, 0, "test", false),
+            snapshot_provider(
+                "worker:b",
+                11,
+                "provider-b",
+                900,
+                0,
+                0,
+                "instance_market_adapter",
+                false,
+            ),
+        ];
+
+        let selection = select_provider_for_capability(&workers, Some(&owner), "oa.sandbox_run.v1")
+            .expect("expected selection");
+        assert_eq!(selection.provider.provider_id, "provider-a");
     }
 }
