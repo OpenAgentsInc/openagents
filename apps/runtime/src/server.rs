@@ -28,7 +28,8 @@ use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     bridge::{
-        BridgeNostrPublisher, PricingBandV1, PricingStageV1, ProviderAdV1, build_provider_ad_event,
+        BridgeNostrPublisher, CommerceMessageKindV1, CommerceMessageV1, PricingBandV1,
+        PricingStageV1, ProviderAdV1, build_commerce_message_event, build_provider_ad_event,
     },
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
@@ -518,6 +519,78 @@ struct QuoteSandboxRunResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct RouterCandidateQuoteV1 {
+    marketplace_id: String,
+    provider_id: String,
+    #[serde(default)]
+    provider_worker_id: Option<String>,
+    total_price_msats: u64,
+    #[serde(default)]
+    currency: Option<String>,
+    #[serde(default)]
+    latency_ms: Option<u64>,
+    #[serde(default)]
+    reliability_bps: Option<u32>,
+    #[serde(default)]
+    constraints: serde_json::Value,
+    #[serde(default)]
+    quote_id: Option<String>,
+    #[serde(default)]
+    quote_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct NormalizedCandidateQuoteV1 {
+    marketplace_id: String,
+    provider_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_worker_id: Option<String>,
+    total_price_msats: u64,
+    latency_ms: Option<u64>,
+    reliability_bps: u32,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    constraints: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quote_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quote_sha256: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RouterSelectComputeBody {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+    run_id: Uuid,
+    capability: String,
+    #[serde(default)]
+    objective_hash: Option<String>,
+    #[serde(default)]
+    marketplace_id: Option<String>,
+    candidates: Vec<RouterCandidateQuoteV1>,
+    #[serde(default)]
+    policy: Option<String>,
+    #[serde(default)]
+    idempotency_key: Option<String>,
+    #[serde(default)]
+    decided_at_unix: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct RouterSelectComputeResponse {
+    schema: String,
+    decision_sha256: String,
+    policy: String,
+    run_id: String,
+    capability: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    objective_hash: Option<String>,
+    selected: NormalizedCandidateQuoteV1,
+    candidates: Vec<NormalizedCandidateQuoteV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nostr_event: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
 struct DispatchSandboxRunBody {
     owner_user_id: Option<u64>,
     owner_guest_scope: Option<String>,
@@ -687,6 +760,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/compute/quote/sandbox-run",
             post(quote_sandbox_run),
+        )
+        .route(
+            "/internal/v1/marketplace/router/compute/select",
+            post(router_select_compute),
         )
         .route(
             "/internal/v1/marketplace/dispatch/sandbox-run",
@@ -1545,6 +1622,242 @@ async fn quote_sandbox_run(
         capability: PHASE0_REQUIRED_PROVIDER_CAPABILITY.to_string(),
         selection,
         quote,
+    }))
+}
+
+async fn router_select_compute(
+    State(state): State<AppState>,
+    Json(body): Json<RouterSelectComputeBody>,
+) -> Result<Json<RouterSelectComputeResponse>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let owner = owner_from_parts(body.owner_user_id, body.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+
+    let capability = body.capability.trim();
+    if capability.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "capability must not be empty".to_string(),
+        ));
+    }
+    if body.candidates.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "candidates must not be empty".to_string(),
+        ));
+    }
+
+    let policy = body
+        .policy
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("lowest_total_cost_v1")
+        .to_string();
+    if policy != "lowest_total_cost_v1" {
+        return Err(ApiError::InvalidRequest(format!(
+            "unsupported policy: {policy}"
+        )));
+    }
+
+    let objective_hash = body
+        .objective_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let decided_at_unix = body
+        .decided_at_unix
+        .filter(|value| *value > 0)
+        .unwrap_or_else(|| Utc::now().timestamp().max(0) as u64);
+
+    let marketplace_id = body
+        .marketplace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("openagents")
+        .to_string();
+
+    let mut candidates = Vec::with_capacity(body.candidates.len());
+    for candidate in &body.candidates {
+        if candidate.marketplace_id.trim().is_empty() {
+            return Err(ApiError::InvalidRequest(
+                "candidate.marketplace_id must not be empty".to_string(),
+            ));
+        }
+        if candidate.provider_id.trim().is_empty() {
+            return Err(ApiError::InvalidRequest(
+                "candidate.provider_id must not be empty".to_string(),
+            ));
+        }
+        if candidate.total_price_msats == 0 {
+            return Err(ApiError::InvalidRequest(
+                "candidate.total_price_msats must be greater than zero".to_string(),
+            ));
+        }
+        let currency = candidate.currency.as_deref().unwrap_or("msats").trim();
+        if currency != "msats" {
+            return Err(ApiError::InvalidRequest(format!(
+                "unsupported currency: {currency}"
+            )));
+        }
+
+        candidates.push(NormalizedCandidateQuoteV1 {
+            marketplace_id: candidate.marketplace_id.trim().to_string(),
+            provider_id: candidate.provider_id.trim().to_string(),
+            provider_worker_id: candidate
+                .provider_worker_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            total_price_msats: candidate.total_price_msats,
+            latency_ms: candidate.latency_ms.filter(|value| *value > 0),
+            reliability_bps: candidate.reliability_bps.unwrap_or(0).min(10_000),
+            constraints: candidate.constraints.clone(),
+            quote_id: candidate
+                .quote_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            quote_sha256: candidate
+                .quote_sha256
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        });
+    }
+
+    candidates.sort_by(|left, right| {
+        left.total_price_msats
+            .cmp(&right.total_price_msats)
+            .then_with(|| {
+                left.latency_ms
+                    .unwrap_or(u64::MAX)
+                    .cmp(&right.latency_ms.unwrap_or(u64::MAX))
+            })
+            .then_with(|| right.reliability_bps.cmp(&left.reliability_bps))
+            .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+            .then_with(|| left.provider_id.cmp(&right.provider_id))
+    });
+
+    let selected = candidates
+        .first()
+        .cloned()
+        .ok_or_else(|| ApiError::InvalidRequest("candidates must not be empty".to_string()))?;
+
+    let run_id = body.run_id.to_string();
+
+    #[derive(Serialize)]
+    struct DecisionHashInput<'a> {
+        schema: &'a str,
+        policy: &'a str,
+        run_id: &'a str,
+        capability: &'a str,
+        objective_hash: &'a Option<String>,
+        selected: &'a NormalizedCandidateQuoteV1,
+        candidates: &'a [NormalizedCandidateQuoteV1],
+    }
+
+    let decision_hash_input = DecisionHashInput {
+        schema: "openagents.marketplace.router_decision.v1",
+        policy: policy.as_str(),
+        run_id: run_id.as_str(),
+        capability,
+        objective_hash: &objective_hash,
+        selected: &selected,
+        candidates: &candidates,
+    };
+    let decision_sha256 = protocol::hash::canonical_hash(&decision_hash_input)
+        .map_err(|error| ApiError::Internal(format!("decision hash failed: {error}")))?;
+
+    let nostr_event = match state.config.bridge_nostr_secret_key {
+        Some(secret_key) => {
+            let message_id = format!("decision_{}", &decision_sha256[..16]);
+            let order_id = format!("order_{}", &decision_sha256[..16]);
+            let payload = CommerceMessageV1 {
+                message_id,
+                kind: CommerceMessageKindV1::Accept,
+                marketplace_id: marketplace_id.clone(),
+                actor_id: owner_key.clone(),
+                created_at_unix: decided_at_unix,
+                rfq_id: None,
+                offer_id: None,
+                quote_id: selected.quote_id.clone(),
+                order_id: Some(order_id),
+                receipt_id: None,
+                objective_hash: objective_hash.clone(),
+                run_id: Some(run_id.clone()),
+                body: serde_json::json!({
+                    "schema": "openagents.marketplace.router_decision_payload.v1",
+                    "decision_sha256": decision_sha256.clone(),
+                    "policy": policy.clone(),
+                    "marketplace_id": marketplace_id.clone(),
+                    "capability": capability,
+                    "objective_hash": objective_hash.clone(),
+                    "selected": selected.clone(),
+                    "candidates": candidates.clone(),
+                }),
+            };
+
+            let event = build_commerce_message_event(&secret_key, Some(decided_at_unix), &payload)
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
+            Some(
+                serde_json::to_value(&event)
+                    .map_err(|error| ApiError::Internal(error.to_string()))?,
+            )
+        }
+        None => None,
+    };
+
+    let idempotency_key = body
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("router_decision:{decision_sha256}"));
+
+    state
+        .orchestrator
+        .append_run_event(
+            body.run_id,
+            AppendRunEventRequest {
+                event_type: "receipt".to_string(),
+                payload: serde_json::json!({
+                    "receipt_type": "RouterDecision",
+                    "payload": {
+                        "schema": "openagents.marketplace.router_decision.v1",
+                        "decision_sha256": decision_sha256.clone(),
+                        "decided_at_unix": decided_at_unix,
+                        "policy": policy.clone(),
+                        "marketplace_id": marketplace_id.clone(),
+                        "capability": capability,
+                        "objective_hash": objective_hash.clone(),
+                        "selected": selected.clone(),
+                        "candidates": candidates.clone(),
+                        "nostr_event": nostr_event.clone(),
+                    }
+                }),
+                idempotency_key: Some(idempotency_key),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    Ok(Json(RouterSelectComputeResponse {
+        schema: "openagents.marketplace.router_decision.v1".to_string(),
+        decision_sha256,
+        policy,
+        run_id,
+        capability: capability.to_string(),
+        objective_hash,
+        selected,
+        candidates,
+        nostr_event,
     }))
 }
 
@@ -6235,6 +6548,116 @@ mod tests {
         assert!(valid_until >= issued_at);
 
         let _ = shutdown.send(());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn router_select_compute_normalizes_and_emits_signed_decision_when_configured()
+    -> Result<()> {
+        let secret = nostr::generate_secret_key();
+        let app =
+            build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+                c.bridge_nostr_secret_key = Some(secret);
+            });
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:router-worker",
+                        "metadata": {"source": "test"}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let body = serde_json::json!({
+            "owner_user_id": 11,
+            "run_id": run_id,
+            "capability": "oa.sandbox_run.v1",
+            "objective_hash": "sha256:jobhash",
+            "marketplace_id": "openagents",
+            "policy": "lowest_total_cost_v1",
+            "idempotency_key": "router:test",
+            "decided_at_unix": 1_700_000_010,
+            "candidates": [
+                {"marketplace_id":"market-a","provider_id":"provider-a","total_price_msats":1200,"latency_ms":50,"reliability_bps":9000,"quote_id":"quote-a"},
+                {"marketplace_id":"market-b","provider_id":"provider-b","total_price_msats":1100,"latency_ms":200,"reliability_bps":8000,"quote_id":"quote-b"}
+            ]
+        });
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(first.status(), axum::http::StatusCode::OK);
+        let first_json = response_json(first).await?;
+        assert_eq!(
+            first_json.pointer("/schema").and_then(Value::as_str),
+            Some("openagents.marketplace.router_decision.v1")
+        );
+        assert_eq!(
+            first_json
+                .pointer("/selected/provider_id")
+                .and_then(Value::as_str),
+            Some("provider-b")
+        );
+        assert!(
+            first_json
+                .pointer("/decision_sha256")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.len() == 64)
+        );
+
+        let event_value = first_json
+            .get("nostr_event")
+            .cloned()
+            .ok_or_else(|| anyhow!("missing nostr_event"))?;
+        let event: nostr::Event = serde_json::from_value(event_value)?;
+        let kind = crate::bridge::validate_bridge_event_v1(&event)
+            .map_err(|error| anyhow!("bridge validation failed: {error}"))?;
+        assert!(matches!(
+            kind,
+            crate::bridge::BridgeEventKind::CommerceMessage
+        ));
+
+        // Same request + idempotency key should be safe to retry.
+        let retry = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/marketplace/router/compute/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        assert_eq!(retry.status(), axum::http::StatusCode::OK);
+        let retry_json = response_json(retry).await?;
+        assert_eq!(
+            retry_json
+                .pointer("/decision_sha256")
+                .and_then(Value::as_str),
+            first_json
+                .pointer("/decision_sha256")
+                .and_then(Value::as_str)
+        );
+
         Ok(())
     }
 
