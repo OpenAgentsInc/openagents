@@ -20315,6 +20315,243 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn htmx_dual_mode_contract_matrix_for_web_mutation_endpoints() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+        config.codex_thread_store_path = Some(static_dir.path().join("thread-store.json"));
+
+        let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
+        let app = build_router(config);
+
+        let chat_new_hx_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let chat_new_hx_response = app.clone().oneshot(chat_new_hx_request).await?;
+        assert_eq!(chat_new_hx_response.status(), StatusCode::OK);
+        assert_eq!(
+            chat_new_hx_response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/html; charset=utf-8")
+        );
+        let chat_new_hx_body = read_text(chat_new_hx_response).await?;
+        assert!(chat_new_hx_body.contains("id=\"chat-thread-content-panel\""));
+        assert!(!chat_new_hx_body.contains("<html"));
+
+        let chat_new_non_hx_request = Request::builder()
+            .method("POST")
+            .uri("/chat/new")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::empty())?;
+        let chat_new_non_hx_response = app.clone().oneshot(chat_new_non_hx_request).await?;
+        assert_eq!(
+            chat_new_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        let chat_location = chat_new_non_hx_response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(chat_location.starts_with("/chat/thread_"));
+        let thread_id = chat_location
+            .trim_start_matches("/chat/")
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!thread_id.is_empty());
+
+        let chat_send_hx_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("text=contract+matrix"))?;
+        let chat_send_hx_response = app.clone().oneshot(chat_send_hx_request).await?;
+        assert_eq!(chat_send_hx_response.status(), StatusCode::OK);
+        assert_eq!(
+            chat_send_hx_response
+                .headers()
+                .get("HX-Trigger")
+                .and_then(|value| value.to_str().ok()),
+            Some("chat-message-sent")
+        );
+        let chat_send_hx_body = read_text(chat_send_hx_response).await?;
+        assert!(chat_send_hx_body.contains("id=\"chat-status\""));
+        assert!(!chat_send_hx_body.contains("<html"));
+
+        let chat_send_non_hx_request = Request::builder()
+            .method("POST")
+            .uri(format!("/chat/{thread_id}/send"))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("text=contract+matrix+nonhx"))?;
+        let chat_send_non_hx_response = app.clone().oneshot(chat_send_non_hx_request).await?;
+        assert_eq!(
+            chat_send_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        let expected_chat_location = format!("/chat/{thread_id}?status=message-sent");
+        assert_eq!(
+            chat_send_non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some(expected_chat_location.as_str())
+        );
+
+        let feed_hx_request = Request::builder()
+            .method("POST")
+            .uri("/feed/shout")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("zone=dev&body=dual+mode"))?;
+        let feed_hx_response = app.clone().oneshot(feed_hx_request).await?;
+        assert_eq!(feed_hx_response.status(), StatusCode::OK);
+        assert_eq!(
+            feed_hx_response
+                .headers()
+                .get("HX-Trigger")
+                .and_then(|value| value.to_str().ok()),
+            Some("feed-shout-posted")
+        );
+        let feed_hx_body = read_text(feed_hx_response).await?;
+        assert!(feed_hx_body.contains("id=\"feed-status\""));
+        assert!(!feed_hx_body.contains("<html"));
+
+        let feed_non_hx_request = Request::builder()
+            .method("POST")
+            .uri("/feed/shout")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("zone=dev&body=dual+mode+nonhx"))?;
+        let feed_non_hx_response = app.clone().oneshot(feed_non_hx_request).await?;
+        assert_eq!(
+            feed_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        assert_eq!(
+            feed_non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/feed?zone=dev&status=shout-posted")
+        );
+
+        let settings_hx_request = Request::builder()
+            .method("POST")
+            .uri("/settings/profile/update")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("name=Dual+Mode+Tester"))?;
+        let settings_hx_response = app.clone().oneshot(settings_hx_request).await?;
+        assert_eq!(settings_hx_response.status(), StatusCode::OK);
+        let settings_hx_body = read_text(settings_hx_response).await?;
+        assert!(settings_hx_body.contains("id=\"settings-status\""));
+        assert!(!settings_hx_body.contains("<html"));
+
+        let settings_non_hx_request = Request::builder()
+            .method("POST")
+            .uri("/settings/profile/update")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("name=Dual+Mode+Tester+NonHX"))?;
+        let settings_non_hx_response = app.clone().oneshot(settings_non_hx_request).await?;
+        assert_eq!(
+            settings_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        assert_eq!(
+            settings_non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/settings/profile?status=profile-updated")
+        );
+
+        let l402_hx_request = Request::builder()
+            .method("POST")
+            .uri("/l402/paywalls/web/create")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "name=Dual%20Mode&host_regexp=sats4ai%5C.com&path_regexp=%5E%2Fapi%2F.*&price_msats=1000&upstream=https%3A%2F%2Fupstream.openagents.com&enabled=on",
+            ))?;
+        let l402_hx_response = app.clone().oneshot(l402_hx_request).await?;
+        assert_eq!(l402_hx_response.status(), StatusCode::OK);
+        let l402_hx_body = read_text(l402_hx_response).await?;
+        assert!(l402_hx_body.contains("id=\"billing-status\""));
+        assert!(!l402_hx_body.contains("<html"));
+
+        let l402_non_hx_request = Request::builder()
+            .method("POST")
+            .uri("/l402/paywalls/web/create")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from(
+                "name=Dual%20Mode%20NonHX&host_regexp=sats4ai%5C.com&path_regexp=%5E%2Fapi%2F.*&price_msats=1000&upstream=https%3A%2F%2Fupstream.openagents.com&enabled=on",
+            ))?;
+        let l402_non_hx_response = app.clone().oneshot(l402_non_hx_request).await?;
+        assert_eq!(
+            l402_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        assert_eq!(
+            l402_non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/l402?status=l402-paywall-created")
+        );
+
+        let admin_hx_request = Request::builder()
+            .method("POST")
+            .uri("/admin/route-split/evaluate")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("hx-request", "true")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("path=%2Fchat%2Fthread_1"))?;
+        let admin_hx_response = app.clone().oneshot(admin_hx_request).await?;
+        assert_eq!(admin_hx_response.status(), StatusCode::OK);
+        let admin_hx_body = read_text(admin_hx_response).await?;
+        assert!(admin_hx_body.contains("id=\"admin-result\""));
+        assert!(!admin_hx_body.contains("<html"));
+
+        let admin_non_hx_request = Request::builder()
+            .method("POST")
+            .uri("/admin/route-split/evaluate")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", format!("Bearer {admin_token}"))
+            .body(Body::from("path=%2Fchat%2Fthread_1"))?;
+        let admin_non_hx_response = app.oneshot(admin_non_hx_request).await?;
+        assert_eq!(
+            admin_non_hx_response.status(),
+            StatusCode::TEMPORARY_REDIRECT
+        );
+        assert_eq!(
+            admin_non_hx_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/admin?status=admin-action-completed")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn web_chat_new_thread_hx_returns_partial_fragment_and_push_url() -> Result<()> {
         let static_dir = tempdir()?;
         std::fs::write(
