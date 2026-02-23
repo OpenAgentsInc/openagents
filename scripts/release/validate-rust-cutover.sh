@@ -26,6 +26,7 @@ RUN_RUNTIME_DRIFT_CHECK="${RUN_RUNTIME_DRIFT_CHECK:-1}"
 RUN_KHALA_CONTRACT_TESTS="${RUN_KHALA_CONTRACT_TESTS:-1}"
 RUN_CROSS_SURFACE="${RUN_CROSS_SURFACE:-0}"
 RUN_LOG_PROBES="${RUN_LOG_PROBES:-1}"
+RUN_HTMX_PERF_CHECKS="${RUN_HTMX_PERF_CHECKS:-1}"
 FAIL_ON_REQUIRED_FAILURE="${FAIL_ON_REQUIRED_FAILURE:-1}"
 
 mkdir -p "${LOG_DIR}"
@@ -102,6 +103,50 @@ run_check \
   "production control smoke (static host + auth/session/sync token checks when token provided)" \
   env OPENAGENTS_BASE_URL="${PROD_CONTROL_BASE_URL}" OPENAGENTS_CONTROL_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" \
   "${ROOT_DIR}/apps/openagents.com/service/deploy/smoke-control.sh"
+
+# A2) HTMX performance lane (staging + production).
+if [[ "${RUN_HTMX_PERF_CHECKS}" == "1" ]]; then
+  if [[ -n "${STAGING_CONTROL_ACCESS_TOKEN}" ]]; then
+    run_check \
+      "control-staging-htmx-perf" \
+      "required" \
+      "staging HTMX perf budget check (login/feed/settings/chat)" \
+      env BASE_URL="${STAGING_CONTROL_BASE_URL}" OA_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" REQUIRE_AUTH_FLOWS=1 \
+      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_perf_check.sh"
+  else
+    skip_check \
+      "control-staging-htmx-perf" \
+      "required" \
+      "staging HTMX perf budget check (login/feed/settings/chat)" \
+      "STAGING_CONTROL_ACCESS_TOKEN unset"
+  fi
+
+  if [[ -n "${PROD_CONTROL_ACCESS_TOKEN}" ]]; then
+    run_check \
+      "control-prod-htmx-perf" \
+      "required" \
+      "production HTMX perf budget check (login/feed/settings/chat)" \
+      env BASE_URL="${PROD_CONTROL_BASE_URL}" OA_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" REQUIRE_AUTH_FLOWS=1 \
+      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_perf_check.sh"
+  else
+    skip_check \
+      "control-prod-htmx-perf" \
+      "required" \
+      "production HTMX perf budget check (login/feed/settings/chat)" \
+      "PROD_CONTROL_ACCESS_TOKEN unset"
+  fi
+else
+  skip_check \
+    "control-staging-htmx-perf" \
+    "required" \
+    "staging HTMX perf budget check (login/feed/settings/chat)" \
+    "RUN_HTMX_PERF_CHECKS=0"
+  skip_check \
+    "control-prod-htmx-perf" \
+    "required" \
+    "production HTMX perf budget check (login/feed/settings/chat)" \
+    "RUN_HTMX_PERF_CHECKS=0"
+fi
 
 # B) Runtime service checks.
 if [[ -n "${STAGING_RUNTIME_BASE_URL}" ]]; then

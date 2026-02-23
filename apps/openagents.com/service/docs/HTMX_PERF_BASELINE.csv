@@ -1,0 +1,5 @@
+probe,size_bytes,ttfb_ms
+login_email_hx,2200,180
+feed_main_fragment_hx,52000,260
+settings_profile_update_hx,1900,190
+chat_send_hx,1700,210

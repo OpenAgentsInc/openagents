@@ -22,6 +22,11 @@ Validation evidence should be archived in backroom (not committed into `docs/`).
 - health/readiness checks
 - static host policy checks
 - auth/session/sync token checks (when auth token is provided)
+- HTMX perf budget checks (`login/feed/settings/chat`) via:
+
+```bash
+apps/openagents.com/service/scripts/htmx_perf_check.sh
+```
 
 2. Runtime lane
 - runtime health + authority API smoke
@@ -59,6 +64,10 @@ Optional authenticated smoke tokens:
 
 - `STAGING_CONTROL_ACCESS_TOKEN`
 - `PROD_CONTROL_ACCESS_TOKEN`
+
+HTMX perf lane toggle:
+
+- `RUN_HTMX_PERF_CHECKS=1` (default)
 
 ## Go/No-Go Policy
 
