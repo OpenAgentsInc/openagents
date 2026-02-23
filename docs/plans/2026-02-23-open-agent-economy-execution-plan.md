@@ -153,6 +153,7 @@ Built-in powers (Phase 0 where needed; expanded later):
 - **Codex-backed coding:** Codex app-server is the Phase 0 interactive backend (requires a ChatGPT-linked account).
 - **Tooling with proof:** tools are policy-gated and produce deterministic receipts + replay logs.
 - **Cross-surface control:** one identity across surfaces; capabilities differ per surface (desktop executes; web/mobile control and review).
+- **Personal fleet connectivity:** connect your devices (Linux/macOS/cloud) to your Autopilot account as OpenAgents Compute providers and see live connected devices on openagents.com (online/offline, capabilities, earnings, and emergency disable).
 - **Optional compute contribution (desktop):** desktop can run a provider mode (Pylon/OpenAgents Compute) to earn credits and strengthen supply liquidity. Default is off and must be resource-capped and instantly disableable.
 
 What Autopilot is not (Phase 0):
@@ -166,7 +167,7 @@ Autopilot is multi-surface, but parity is not promised. One identity, different 
 | Surface | Role | Must-Do in Phase 0 | Later |
 |---|---|---|---|
 | Desktop (`apps/autopilot-desktop/`) | Execute + admin | Codex tool harness; repo ops; sandbox verification; artifact/receipt emission; optional compute provider toggle | local-model backends; fleet ops; deep policy UX |
-| Web (`apps/openagents.com/*`) | Control + history | Run/thread list; artifacts; receipts; budgets; replay explorer | org/team admin; billing; marketplace ops |
+| Web (`apps/openagents.com/*`) | Control + history | Run/thread list; artifacts; receipts; budgets; replay explorer; **live connected devices** (your fleet) | org/team admin; billing; marketplace ops |
 | Mobile (`apps/autopilot-ios/`) | Approvals + alerts | Notifications + status; lightweight review; emergency stop/disable | richer remote ops; delegated approvals; fleet dashboards |
 
 ## 5) Synthesis Coverage Map
@@ -251,7 +252,7 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-025` - Define Bridge boundary + minimal Nostr interop event kinds. - Codify message classes + signing policy and implement a minimal Nexus<->Nostr gateway for provider ads + receipts so interop is Nostr-verifiable without pushing high-rate chatter onto Nostr.
 
 - `OA-ECON-120` - Implement marketplace core catalog service. - Unify listing, discovery, and metadata contracts.
-- `OA-ECON-121` - Implement provider announcements in Nexus registry + optional Nostr mirror. - Publish capability ads to the operator-domain registry via authenticated HTTP mutations; stream discovery/health via WS delivery; optionally mirror to Nostr (NIP-89) through the Bridge.
+- `OA-ECON-121` - Implement provider/device enrollment + announcements in Nexus registry + optional Nostr mirror. - Let users connect devices (Linux/macOS/cloud) as providers under their account; publish capability ads via authenticated HTTP mutations; stream discovery/health/presence via WS delivery; optionally mirror to Nostr (NIP-89) through the Bridge.
 - `OA-ECON-122` - Implement job-type registry with verification metadata. - Define objective vs subjective verification semantics per job.
 - `OA-ECON-123` - Implement SandboxRun objective verification pipeline. - Verify build/test/lint workloads deterministically.
 - `OA-ECON-128` - Implement reserve provider pool manager. - Guarantee fill path when market liquidity is insufficient.
@@ -259,7 +260,7 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-131` - Implement supply class taxonomy in routing layer. - Distinguish SingleNode, LocalCluster (OpenAgents Compute multi-device local clusters), BundleRack, InstanceMarket, ReservePool.
 - `OA-ECON-132` - Implement OpenAgents Compute local-cluster provider support. - Support multi-device local clusters presented as one market supplier (fastest supply-side liquidity path).
 - `OA-ECON-136` - Implement pay-after-verify settlement for compute jobs. - Release payment only after verification pass.
-- `OA-ECON-167` - Build market telemetry and liquidity dashboards. - Expose fill, latency, churn, and breadth metrics.
+- `OA-ECON-167` - Build market telemetry, liquidity dashboards, and live fleet view on openagents.com. - Expose fill/latency/cost/breadth + provider/device presence (online/offline, capabilities, earnings, and emergency disable).
 
 #### Phase 0 Settlement Model (Minimum)
 
@@ -571,7 +572,7 @@ Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`O
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices as providers and **see live connected devices on openagents.com** (online/offline, capabilities, earnings, emergency disable); if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
