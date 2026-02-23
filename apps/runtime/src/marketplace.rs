@@ -446,7 +446,26 @@ const POLICY_ADDER_RESERVE_POOL_MSATS: u64 = 500;
 const QUOTE_TTL_SECONDS: u64 = 60;
 const REFUND_WINDOW_SECONDS: u64 = 60 * 60;
 
-fn provider_rank_key(provider: &ProviderCatalogEntry, capability: &str) -> (u64, u8, u64, String) {
+fn provider_topology_rank(provider: &ProviderCatalogEntry) -> u8 {
+    match provider.supply_class {
+        SupplyClass::LocalCluster => {
+            if provider.cluster_members.len() >= 2 {
+                0
+            } else {
+                1
+            }
+        }
+        SupplyClass::BundleRack => 1,
+        SupplyClass::InstanceMarket => 2,
+        SupplyClass::SingleNode => 3,
+        SupplyClass::ReservePool => 4,
+    }
+}
+
+fn provider_rank_key(
+    provider: &ProviderCatalogEntry,
+    capability: &str,
+) -> (u64, u8, u8, u64, String) {
     let base_price = compute_all_in_price_breakdown(provider, capability)
         .map(|breakdown| breakdown.total_price_msats)
         .unwrap_or(u64::MAX);
@@ -465,9 +484,11 @@ fn provider_rank_key(provider: &ProviderCatalogEntry, capability: &str) -> (u64,
         .saturating_add(tier_penalty);
     let effective_price = effective_price.saturating_add(price_integrity_penalty);
 
+    let topology_rank = provider_topology_rank(provider);
     (
         effective_price,
         provider_tier_rank(&provider.tier),
+        topology_rank,
         provider.failure_strikes,
         provider.provider_id.clone(),
     )
@@ -778,6 +799,58 @@ mod tests {
             .expect("expected selection");
         assert_eq!(selection.provider.provider_id, "provider-preferred");
         assert_eq!(selection.provider.tier, ProviderTier::Preferred);
+    }
+
+    #[test]
+    fn routing_prefers_local_cluster_topology_on_equal_price() {
+        let owner = WorkerOwner {
+            user_id: Some(11),
+            guest_scope: None,
+        };
+
+        let single = snapshot_provider(
+            "worker:single",
+            11,
+            "provider-single",
+            1000,
+            0,
+            0,
+            "test",
+            false,
+        );
+        let mut cluster = snapshot_provider(
+            "worker:cluster",
+            11,
+            "provider-cluster",
+            1000,
+            0,
+            0,
+            "test",
+            false,
+        );
+        if let Some(map) = cluster.worker.metadata.as_object_mut() {
+            map.insert(
+                "supply_class".to_string(),
+                serde_json::Value::String("local_cluster".to_string()),
+            );
+            map.insert(
+                "cluster_id".to_string(),
+                serde_json::Value::String("cluster-1".to_string()),
+            );
+            map.insert(
+                "cluster_members".to_string(),
+                serde_json::Value::Array(vec![
+                    serde_json::Value::String("node-a".to_string()),
+                    serde_json::Value::String("node-b".to_string()),
+                ]),
+            );
+        }
+
+        let workers = vec![single, cluster];
+        let selection = select_provider_for_capability(&workers, Some(&owner), "oa.sandbox_run.v1")
+            .expect("expected selection");
+        assert_eq!(selection.provider.provider_id, "provider-cluster");
+        assert_eq!(selection.provider.supply_class, SupplyClass::LocalCluster);
     }
 
     #[test]
