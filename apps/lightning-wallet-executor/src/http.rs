@@ -311,6 +311,7 @@ async fn wallets_pay_bolt11(
     match state
         .compat
         .wallets_pay_bolt11(
+            request_id.clone(),
             parsed.wallet_id,
             parsed.mnemonic,
             parsed.invoice,
@@ -503,6 +504,19 @@ fn wallet_executor_error_response(error: WalletExecutorError, request_id: &str) 
                 false,
             )
         }
+        WalletExecutorError::Idempotency(error) => json_response(
+            StatusCode::CONFLICT,
+            request_id,
+            json!({
+                "ok": false,
+                "error": {
+                    "requestId": request_id,
+                    "code": error.code.as_str(),
+                    "message": error.message,
+                }
+            }),
+            false,
+        ),
         WalletExecutorError::Spark(error) => {
             let status = if matches!(
                 error.code,

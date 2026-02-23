@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rand::RngCore;
 use serde::Serialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 use crate::config::{SparkNetwork, WalletExecutorConfig};
@@ -50,15 +51,28 @@ impl WalletCompatHttpError {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CompatHttpResult {
     pub ok: bool,
     pub result: Value,
 }
 
+#[derive(Debug, Clone)]
+struct CompatPaymentIdempotencyRecord {
+    fingerprint: String,
+    outcome: CompatPaymentIdempotencyOutcome,
+}
+
+#[derive(Debug, Clone)]
+enum CompatPaymentIdempotencyOutcome {
+    InFlight,
+    Completed(CompatHttpResult),
+}
+
 pub struct WalletCompatService {
     config: WalletExecutorConfig,
     mock_state: Mutex<CompatMockState>,
+    payments: Mutex<HashMap<String, CompatPaymentIdempotencyRecord>>,
 }
 
 impl WalletCompatService {
@@ -66,6 +80,7 @@ impl WalletCompatService {
         Self {
             config,
             mock_state: Mutex::new(CompatMockState::default()),
+            payments: Mutex::new(HashMap::new()),
         }
     }
 
@@ -166,6 +181,7 @@ impl WalletCompatService {
 
     pub async fn wallets_pay_bolt11(
         &self,
+        request_id: String,
         wallet_id: String,
         mnemonic: String,
         invoice: String,
@@ -178,6 +194,77 @@ impl WalletCompatService {
             normalize_optional_string(host).map(|value| value.to_ascii_lowercase());
         allow_host_or_throw(&self.config, normalized_host.as_deref())?;
 
+        let fingerprint = compat_payment_fingerprint(
+            &wallet_id,
+            &normalized_mnemonic,
+            normalized_host.as_deref(),
+            &invoice,
+            max_amount_msats,
+        );
+
+        {
+            let mut payments = self.payments.lock().await;
+            if let Some(existing) = payments.get(&request_id) {
+                if existing.fingerprint != fingerprint {
+                    return Err(WalletCompatHttpError::new(
+                        409,
+                        "idempotency_conflict",
+                        "request id reused with different payment parameters",
+                    ));
+                }
+                return match &existing.outcome {
+                    CompatPaymentIdempotencyOutcome::Completed(value) => Ok(value.clone()),
+                    CompatPaymentIdempotencyOutcome::InFlight => Err(WalletCompatHttpError::new(
+                        409,
+                        "idempotency_in_flight",
+                        "payment already in flight for request id",
+                    )),
+                };
+            }
+
+            payments.insert(
+                request_id.clone(),
+                CompatPaymentIdempotencyRecord {
+                    fingerprint: fingerprint.clone(),
+                    outcome: CompatPaymentIdempotencyOutcome::InFlight,
+                },
+            );
+        }
+
+        let result = self
+            .wallets_pay_bolt11_inner(
+                wallet_id,
+                normalized_mnemonic,
+                invoice,
+                max_amount_msats,
+                timeout_ms,
+            )
+            .await;
+
+        let mut payments = self.payments.lock().await;
+        match &result {
+            Ok(ok) => {
+                if let Some(entry) = payments.get_mut(&request_id) {
+                    entry.outcome = CompatPaymentIdempotencyOutcome::Completed(ok.clone());
+                }
+            }
+            Err(_) => {
+                let _ = payments.remove(&request_id);
+            }
+        }
+        drop(payments);
+
+        result
+    }
+
+    async fn wallets_pay_bolt11_inner(
+        &self,
+        wallet_id: String,
+        normalized_mnemonic: String,
+        invoice: String,
+        max_amount_msats: u64,
+        timeout_ms: Option<u64>,
+    ) -> Result<CompatHttpResult, WalletCompatHttpError> {
         if is_spark_mode(&self.config) {
             let timeout_ms = timeout_ms.unwrap_or(12_000).max(1_000);
             let payment = spark_pay_bolt11(
@@ -510,6 +597,32 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn compat_payment_fingerprint(
+    wallet_id: &str,
+    mnemonic: &str,
+    host: Option<&str>,
+    invoice: &str,
+    max_amount_msats: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(wallet_id.trim().as_bytes());
+    hasher.update(b"|");
+    hasher.update(sha256_hex(mnemonic.trim().as_bytes()).as_bytes());
+    hasher.update(b"|");
+    hasher.update(host.unwrap_or_default().trim().to_ascii_lowercase().as_bytes());
+    hasher.update(b"|");
+    hasher.update(sha256_hex(invoice.trim().as_bytes()).as_bytes());
+    hasher.update(b"|");
+    hasher.update(max_amount_msats.to_string().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}
+
 fn mock_identity(wallet_id: &str) -> String {
     use sha2::{Digest, Sha256};
 
@@ -786,4 +899,56 @@ async fn spark_send_spark(
             .saturating_mul(1_000),
         paid_at_ms: to_paid_at_ms(sent.payment.timestamp),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn wallets_pay_bolt11_is_idempotent_by_request_id() {
+        let config = WalletExecutorConfig::default_mock();
+        let service = WalletCompatService::new(config);
+
+        let wallet_id = "wallet-test".to_string();
+        let mnemonic = default_mnemonic();
+
+        let invoice_res = service
+            .wallets_create_invoice(wallet_id.clone(), mnemonic.clone(), 1, None)
+            .await
+            .expect("invoice should be created");
+        let invoice = invoice_res
+            .result
+            .get("invoice")
+            .and_then(Value::as_str)
+            .expect("invoice field")
+            .to_string();
+
+        let first = service
+            .wallets_pay_bolt11(
+                "req-compat-idem-1".to_string(),
+                wallet_id.clone(),
+                mnemonic.clone(),
+                invoice.clone(),
+                200_000,
+                None,
+                None,
+            )
+            .await
+            .expect("first pay should succeed");
+        let second = service
+            .wallets_pay_bolt11(
+                "req-compat-idem-1".to_string(),
+                wallet_id.clone(),
+                mnemonic.clone(),
+                invoice,
+                200_000,
+                None,
+                None,
+            )
+            .await
+            .expect("second pay should return cached result");
+
+        assert_eq!(first.result.get("paymentId"), second.result.get("paymentId"));
+    }
 }

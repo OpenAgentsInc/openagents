@@ -130,6 +130,44 @@ impl fmt::Display for SparkGatewayErrorCode {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdempotencyErrorCode {
+    Conflict,
+    InFlight,
+}
+
+impl IdempotencyErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Conflict => "idempotency_conflict",
+            Self::InFlight => "idempotency_in_flight",
+        }
+    }
+}
+
+impl fmt::Display for IdempotencyErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Error)]
+#[error("idempotency error ({code}): {message}")]
+pub struct IdempotencyError {
+    pub code: IdempotencyErrorCode,
+    pub message: String,
+}
+
+impl IdempotencyError {
+    pub fn new(code: IdempotencyErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Error)]
 #[error("spark gateway error ({code}): {message}")]
 pub struct SparkGatewayError {

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -6,7 +7,10 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::config::WalletExecutorConfig;
-use crate::error::{PolicyDenialCode, PolicyDeniedError, SparkGatewayError, SparkGatewayErrorCode};
+use crate::error::{
+    IdempotencyError, IdempotencyErrorCode, PolicyDenialCode, PolicyDeniedError, SparkGatewayError,
+    SparkGatewayErrorCode,
+};
 use crate::gateway::{PaymentGateway, SparkPaymentStatus};
 use crate::receipt::{
     WalletExecutionReceipt, WalletExecutionReceiptInput, build_wallet_execution_receipt,
@@ -38,6 +42,19 @@ pub struct PayBolt11Result {
     pub quoted_amount_msats: u64,
     pub window_spend_msats_after_payment: u64,
     pub receipt: WalletExecutionReceipt,
+}
+
+#[derive(Debug, Clone)]
+struct PaymentIdempotencyRecord {
+    fingerprint: String,
+    outcome: PaymentIdempotencyOutcome,
+}
+
+#[derive(Debug, Clone)]
+enum PaymentIdempotencyOutcome {
+    InFlight,
+    Completed(PayBolt11Result),
+    TerminalSparkError(SparkGatewayError),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,8 +137,10 @@ impl Default for StatusState {
     }
 }
 
+#[derive(Debug)]
 pub enum WalletExecutorError {
     Policy(PolicyDeniedError),
+    Idempotency(IdempotencyError),
     Spark(SparkGatewayError),
 }
 
@@ -130,6 +149,7 @@ pub struct WalletExecutorService {
     gateway: Arc<dyn PaymentGateway>,
     status: Mutex<StatusState>,
     history: Mutex<Vec<PaymentHistoryItem>>,
+    idempotency: Mutex<HashMap<String, PaymentIdempotencyRecord>>,
 }
 
 impl WalletExecutorService {
@@ -139,6 +159,7 @@ impl WalletExecutorService {
             gateway,
             status: Mutex::new(StatusState::default()),
             history: Mutex::new(Vec::new()),
+            idempotency: Mutex::new(HashMap::new()),
         }
     }
 
@@ -189,7 +210,80 @@ impl WalletExecutorService {
         let request_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let host = sanitize_host(&request.host);
         let invoice_hash = hash_invoice(&request.invoice);
+        let fingerprint = payment_request_fingerprint(
+            &self.config.wallet_id,
+            &host,
+            &invoice_hash,
+            request.max_amount_msats,
+        );
 
+        {
+            let mut idempotency = self.idempotency.lock().await;
+            if let Some(existing) = idempotency.get(&request_id) {
+                if existing.fingerprint != fingerprint {
+                    return Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                        IdempotencyErrorCode::Conflict,
+                        format!("request_id {request_id} reused with different payment parameters"),
+                    )));
+                }
+
+                return match &existing.outcome {
+                    PaymentIdempotencyOutcome::Completed(result) => Ok(result.clone()),
+                    PaymentIdempotencyOutcome::InFlight => Err(WalletExecutorError::Idempotency(
+                        IdempotencyError::new(
+                            IdempotencyErrorCode::InFlight,
+                            format!("payment already in flight for request_id {request_id}"),
+                        ),
+                    )),
+                    PaymentIdempotencyOutcome::TerminalSparkError(error) => {
+                        Err(WalletExecutorError::Spark(error.clone()))
+                    }
+                };
+            }
+
+            idempotency.insert(
+                request_id.clone(),
+                PaymentIdempotencyRecord {
+                    fingerprint: fingerprint.clone(),
+                    outcome: PaymentIdempotencyOutcome::InFlight,
+                },
+            );
+        }
+
+        let result = self
+            .pay_bolt11_inner(request, request_id.clone(), host, invoice_hash)
+            .await;
+
+        let mut idempotency = self.idempotency.lock().await;
+        match &result {
+            Ok(ok) => {
+                if let Some(entry) = idempotency.get_mut(&request_id) {
+                    entry.outcome = PaymentIdempotencyOutcome::Completed(ok.clone());
+                }
+            }
+            Err(WalletExecutorError::Spark(error))
+                if matches!(error.code, SparkGatewayErrorCode::PaymentMissingPreimage) =>
+            {
+                if let Some(entry) = idempotency.get_mut(&request_id) {
+                    entry.outcome = PaymentIdempotencyOutcome::TerminalSparkError(error.clone());
+                }
+            }
+            Err(_) => {
+                let _ = idempotency.remove(&request_id);
+            }
+        }
+        drop(idempotency);
+
+        result
+    }
+
+    async fn pay_bolt11_inner(
+        &self,
+        request: InvoicePaymentRequest,
+        request_id: String,
+        host: String,
+        invoice_hash: String,
+    ) -> Result<PayBolt11Result, WalletExecutorError> {
         self.bootstrap().await.map_err(WalletExecutorError::Spark)?;
         self.ensure_host_allowed(&host)
             .await
@@ -438,6 +532,23 @@ fn hash_invoice(invoice: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn payment_request_fingerprint(
+    wallet_id: &str,
+    host: &str,
+    invoice_hash: &str,
+    max_amount_msats: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(wallet_id.trim().as_bytes());
+    hasher.update(b"|");
+    hasher.update(host.trim().to_ascii_lowercase().as_bytes());
+    hasher.update(b"|");
+    hasher.update(invoice_hash.trim().to_ascii_lowercase().as_bytes());
+    hasher.update(b"|");
+    hasher.update(max_amount_msats.to_string().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 fn prune_window(rows: &mut Vec<PaymentHistoryItem>, now_ms: i64, window_ms: u64) {
     let window_ms = i64::try_from(window_ms).unwrap_or(i64::MAX);
     rows.retain(|row| now_ms.saturating_sub(row.paid_at_ms) <= window_ms);
@@ -446,4 +557,119 @@ fn prune_window(rows: &mut Vec<PaymentHistoryItem>, now_ms: i64, window_ms: u64)
 fn sum_msats(rows: &[PaymentHistoryItem]) -> u64 {
     rows.iter()
         .fold(0_u64, |total, row| total.saturating_add(row.amount_msats))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::gateway::{MockPaymentGateway, PaymentGateway, SparkPreparedPayment, SparkSentPayment};
+
+    struct CountingGateway {
+        inner: MockPaymentGateway,
+        prepare_calls: AtomicUsize,
+        send_calls: AtomicUsize,
+    }
+
+    impl CountingGateway {
+        fn new() -> Self {
+            Self {
+                inner: MockPaymentGateway::new(None),
+                prepare_calls: AtomicUsize::new(0),
+                send_calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PaymentGateway for CountingGateway {
+        async fn connect(&self) -> Result<(), SparkGatewayError> {
+            self.inner.connect().await
+        }
+
+        async fn get_info(&self) -> Result<crate::gateway::SparkWalletInfo, SparkGatewayError> {
+            self.inner.get_info().await
+        }
+
+        async fn prepare_payment(
+            &self,
+            invoice: &str,
+        ) -> Result<SparkPreparedPayment, SparkGatewayError> {
+            self.prepare_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner.prepare_payment(invoice).await
+        }
+
+        async fn send_payment(
+            &self,
+            prepared: SparkPreparedPayment,
+            payment_timeout_secs: u64,
+        ) -> Result<SparkSentPayment, SparkGatewayError> {
+            self.send_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner.send_payment(prepared, payment_timeout_secs).await
+        }
+    }
+
+    #[tokio::test]
+    async fn pay_bolt11_is_idempotent_by_request_id() {
+        let config = WalletExecutorConfig::default_mock();
+        let gateway = Arc::new(CountingGateway::new());
+        let service = WalletExecutorService::new(config, gateway.clone());
+
+        let req = InvoicePaymentRequest {
+            invoice: "lnbc1testinvoicepayload".to_string(),
+            max_amount_msats: 200_000,
+            host: "sats4ai.com".to_string(),
+        };
+
+        let first = service
+            .pay_bolt11(req.clone(), Some("req-idempotent-1".to_string()))
+            .await
+            .expect("first payment should succeed");
+        let second = service
+            .pay_bolt11(req, Some("req-idempotent-1".to_string()))
+            .await
+            .expect("second payment should return cached result");
+
+        assert_eq!(first.payment.payment_id, second.payment.payment_id);
+        assert_eq!(gateway.prepare_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(gateway.send_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn pay_bolt11_reused_request_id_conflicts() {
+        let config = WalletExecutorConfig::default_mock();
+        let gateway = Arc::new(CountingGateway::new());
+        let service = WalletExecutorService::new(config, gateway.clone());
+
+        let req_a = InvoicePaymentRequest {
+            invoice: "lnbc1invoicea".to_string(),
+            max_amount_msats: 200_000,
+            host: "sats4ai.com".to_string(),
+        };
+        let req_b = InvoicePaymentRequest {
+            invoice: "lnbc1invoiceb".to_string(),
+            max_amount_msats: 200_000,
+            host: "sats4ai.com".to_string(),
+        };
+
+        let _ = service
+            .pay_bolt11(req_a, Some("req-conflict-1".to_string()))
+            .await
+            .expect("first payment should succeed");
+        let err = service
+            .pay_bolt11(req_b, Some("req-conflict-1".to_string()))
+            .await
+            .expect_err("reused request id should be rejected");
+
+        match err {
+            WalletExecutorError::Idempotency(error) => {
+                assert_eq!(error.code.as_str(), "idempotency_conflict");
+            }
+            other => panic!("expected idempotency error, got {other:?}"),
+        }
+
+        assert_eq!(gateway.send_calls.load(Ordering::SeqCst), 1);
+    }
 }
