@@ -108,6 +108,7 @@ Nexus is a superset of a Nostr relay: it supports a Nostr-compatible event surfa
 #### Trust Zones
 
 - **Zone 0 (inside operator Nexus boundary):** control/runtime services and workers authenticated strongly (mTLS/Noise/session keys/attestation as appropriate).
+- **Zone 0.5 (account-attached devices/providers):** user-owned devices enrolled to the account (Linux/macOS/cloud). Authenticated and quota/resource-capped, but not assumed correct; objective verification and pay-after-verify still apply.
 - **Zone 1 (outside/semi-trusted):** any user-run agent, external provider, or third-party operator domain.
 
 Zone 1 ingress is treated as hostile by default: signed, rate-limited, replay-safe, and schema-validated.
@@ -259,6 +260,7 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-129` - Implement provider qualification suite. - Gate new providers with capability and health validation.
 - `OA-ECON-131` - Implement supply class taxonomy in routing layer. - Distinguish SingleNode, LocalCluster (OpenAgents Compute multi-device local clusters), BundleRack, InstanceMarket, ReservePool.
 - `OA-ECON-132` - Implement OpenAgents Compute local-cluster provider support. - Support multi-device local clusters presented as one market supplier (fastest supply-side liquidity path).
+- `OA-ECON-163` - Implement abuse baseline for OpenAgents Compute lanes. - Enforce submission quotas/rate limits, payload size limits, sandbox hardening defaults, and automatic quarantine on repeated verification failures.
 - `OA-ECON-136` - Implement pay-after-verify settlement for compute jobs. - Release payment only after verification pass.
 - `OA-ECON-167` - Build market telemetry, liquidity dashboards, and live fleet view on openagents.com. - Expose fill/latency/cost/breadth + provider/device presence (online/offline, capabilities, earnings, and emergency disable).
 
@@ -284,8 +286,7 @@ Phase 0 assumes platform-managed settlement (OpenAgents-controlled treasury/wall
 - `OA-ECON-133` - Implement BundleRack and InstanceMarket adapters. - Integrate datacenter/rented capacity as supply classes.
 - `OA-ECON-137` - Implement pricing bands and staged bidding controls. - Move from fixed pricing to market bidding safely.
 
-- `OA-ECON-163` - Implement anti-abuse controls for marketplace lanes. - Minimum baseline: quotas/rate limits, job payload constraints, and automatic quarantine on repeated failures.
-- `OA-ECON-164` - Implement fraud response automation. - Minimum baseline: containment triggers, evidence capture, and operator escalation paths.
+- `OA-ECON-164` - Implement fraud response automation + evidence capture. - Trigger containment, capture replay/receipt evidence pointers, and route operator escalation paths.
 
 - `OA-ECON-134` - Implement topology-aware routing. - Post-traffic: route by interconnect, throughput, and stability characteristics.
 - `OA-ECON-135` - Implement cost/reliability policy optimizer. - Post-traffic: balance spend, latency, and success probability using real marketplace data.
@@ -493,7 +494,7 @@ Phase 0 ships Nexus intra-domain live lanes + a minimal Bridge that makes provid
 - `OA-ECON-161` - Implement coalition merge/split governance workflow. - Support structural evolution with policy integrity.
 - `OA-ECON-162` - Expose coalition APIs and SDK surfaces. - Provide integrator-grade interfaces for coalition operations.
 
-Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`OA-ECON-163`, `OA-ECON-164`) because supply onboarding makes abuse a Phase 0/1 concern.
+Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (baseline quotas/limits/quarantine) and `OA-ECON-164` is Phase 1 (fraud automation + evidence capture), because supply onboarding makes abuse a Day-0 concern.
 - `OA-ECON-165` - Implement cross-provider interoperability lanes. - Ensure neutral routing across model/provider ecosystems.
 - `OA-ECON-166` - Build marketplace e2e conformance suite. - Validate complete transaction flows with replay evidence.
 - `OA-ECON-168` - Publish marketplace operator runbooks. - Document deployment, policy, and incident operations.
@@ -572,7 +573,7 @@ Note: Marketplace anti-abuse + fraud response is pulled forward into Phase 1 (`O
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices as providers and **see live connected devices on openagents.com** (online/offline, capabilities, earnings, emergency disable); if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); abuse baseline is enforced (submission rate limits, payload caps, sandbox defaults, quarantine on repeated failures); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices as providers and **see live connected devices on openagents.com** (online/offline, capabilities, earnings, emergency disable); if compute contribution is enabled on desktop, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
