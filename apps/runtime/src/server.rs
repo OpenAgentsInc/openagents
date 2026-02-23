@@ -948,6 +948,33 @@ async fn get_run_receipt(
             "receipt signature verification failed".to_string(),
         ));
     }
+
+    for payment in &mut receipt.payments {
+        let payment_signature = crate::artifacts::sign_receipt_sha256(
+            &secret_key,
+            payment.canonical_json_sha256.as_str(),
+        )
+        .map_err(ApiError::from_artifacts)?;
+        if !state.config.verifier_allowed_signer_pubkeys.is_empty()
+            && !state
+                .config
+                .verifier_allowed_signer_pubkeys
+                .contains(payment_signature.signer_pubkey.as_str())
+        {
+            return Err(ApiError::Internal(
+                "payment receipt signer pubkey is not in active key graph".to_string(),
+            ));
+        }
+        if !crate::artifacts::verify_receipt_signature(&payment_signature)
+            .map_err(ApiError::from_artifacts)?
+        {
+            return Err(ApiError::Internal(
+                "payment receipt signature verification failed".to_string(),
+            ));
+        }
+        payment.signature = Some(payment_signature);
+    }
+
     receipt.signature = Some(signature);
     Ok(Json(receipt))
 }
@@ -990,6 +1017,31 @@ async fn verify_contract_critical_run_receipt(
         return Err(ApiError::Internal(
             "receipt signature verification failed".to_string(),
         ));
+    }
+
+    for payment in &receipt.payments {
+        let payment_signature = crate::artifacts::sign_receipt_sha256(
+            &secret_key,
+            payment.canonical_json_sha256.as_str(),
+        )
+        .map_err(ApiError::from_artifacts)?;
+        if !state.config.verifier_allowed_signer_pubkeys.is_empty()
+            && !state
+                .config
+                .verifier_allowed_signer_pubkeys
+                .contains(payment_signature.signer_pubkey.as_str())
+        {
+            return Err(ApiError::Internal(
+                "payment receipt signer pubkey is not in active key graph".to_string(),
+            ));
+        }
+        if !crate::artifacts::verify_receipt_signature(&payment_signature)
+            .map_err(ApiError::from_artifacts)?
+        {
+            return Err(ApiError::Internal(
+                "payment receipt signature verification failed".to_string(),
+            ));
+        }
     }
 
     Ok(())

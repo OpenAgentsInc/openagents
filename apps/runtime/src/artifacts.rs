@@ -76,6 +76,7 @@ pub struct VerificationReceipt {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PaymentReceipt {
+    pub schema: String,
     pub rail: String,
     pub asset_id: String,
     pub amount_msats: u64,
@@ -85,6 +86,9 @@ pub struct PaymentReceipt {
     pub policy_bundle_id: String,
     pub job_hash: Option<String>,
     pub status: String,
+    pub canonical_json_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ReceiptSignatureV1>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -207,8 +211,40 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         metrics: &'a ReceiptMetrics,
         tool_calls: &'a [ToolCallReceipt],
         verification: &'a [VerificationReceipt],
-        payments: &'a [PaymentReceipt],
+        payments: &'a [PaymentReceiptHashInput<'a>],
     }
+
+    #[derive(Serialize)]
+    struct PaymentReceiptHashInput<'a> {
+        schema: &'a str,
+        rail: &'a str,
+        asset_id: &'a str,
+        amount_msats: u64,
+        payment_proof: &'a Value,
+        session_id: &'a str,
+        trajectory_hash: &'a str,
+        policy_bundle_id: &'a str,
+        job_hash: Option<&'a str>,
+        status: &'a str,
+        canonical_json_sha256: &'a str,
+    }
+
+    let payment_hash_inputs = payments
+        .iter()
+        .map(|payment| PaymentReceiptHashInput {
+            schema: payment.schema.as_str(),
+            rail: payment.rail.as_str(),
+            asset_id: payment.asset_id.as_str(),
+            amount_msats: payment.amount_msats,
+            payment_proof: &payment.payment_proof,
+            session_id: payment.session_id.as_str(),
+            trajectory_hash: payment.trajectory_hash.as_str(),
+            policy_bundle_id: payment.policy_bundle_id.as_str(),
+            job_hash: payment.job_hash.as_deref(),
+            status: payment.status.as_str(),
+            canonical_json_sha256: payment.canonical_json_sha256.as_str(),
+        })
+        .collect::<Vec<_>>();
 
     let hash_input = ReceiptHashInput {
         schema: "openagents.receipt.v1",
@@ -222,7 +258,7 @@ pub fn build_receipt(run: &RuntimeRun) -> Result<RuntimeReceipt, ArtifactError> 
         metrics: &metrics,
         tool_calls: &tool_calls,
         verification: &verification,
-        payments: &payments,
+        payments: &payment_hash_inputs,
     };
     let canonical_json = protocol::hash::canonical_json(&hash_input)
         .map_err(|error| ArtifactError::Hash(error.to_string()))?;
@@ -807,6 +843,8 @@ fn extract_payment_receipts(
     policy_bundle_id: &str,
     session_id: &str,
 ) -> Result<Vec<PaymentReceipt>, ArtifactError> {
+    const PAYMENT_RECEIPT_SCHEMA: &str = "openagents.treasury.payment_receipt.v1";
+
     let mut receipts = Vec::new();
     for event in events {
         if event.event_type != "payment" {
@@ -845,7 +883,39 @@ fn extract_payment_receipts(
             .unwrap_or("released")
             .to_string();
 
+        #[derive(Serialize)]
+        struct PaymentHashInput<'a> {
+            schema: &'a str,
+            rail: &'a str,
+            asset_id: &'a str,
+            amount_msats: u64,
+            payment_proof: &'a Value,
+            session_id: &'a str,
+            trajectory_hash: &'a str,
+            policy_bundle_id: &'a str,
+            job_hash: Option<&'a str>,
+            status: &'a str,
+        }
+
+        let hash_input = PaymentHashInput {
+            schema: PAYMENT_RECEIPT_SCHEMA,
+            rail: rail.as_str(),
+            asset_id: asset_id.as_str(),
+            amount_msats,
+            payment_proof: &payment_proof,
+            session_id,
+            trajectory_hash,
+            policy_bundle_id,
+            job_hash: job_hash.as_deref(),
+            status: status.as_str(),
+        };
+        let canonical_json = protocol::hash::canonical_json(&hash_input)
+            .map_err(|error| ArtifactError::Hash(error.to_string()))?;
+        let digest = Sha256::digest(canonical_json.as_bytes());
+        let canonical_json_sha256 = hex::encode(digest);
+
         receipts.push(PaymentReceipt {
+            schema: PAYMENT_RECEIPT_SCHEMA.to_string(),
             rail,
             asset_id,
             amount_msats,
@@ -855,6 +925,8 @@ fn extract_payment_receipts(
             policy_bundle_id: policy_bundle_id.to_string(),
             job_hash,
             status,
+            canonical_json_sha256,
+            signature: None,
         });
     }
     Ok(receipts)
@@ -905,6 +977,41 @@ mod tests {
         if first != second {
             return Err(anyhow!("receipt generation should be deterministic"));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn payment_receipt_hash_is_deterministic_and_signable() -> Result<()> {
+        let now = Utc::now();
+        let mut run = sample_run();
+        run.events.push(RunEvent {
+            seq: 3,
+            event_type: "payment".to_string(),
+            payload: json!({
+                "rail": "lightning",
+                "asset_id": "BTC_LN",
+                "amount_msats": 1000,
+                "payment_proof": {
+                    "type": "internal_ledger",
+                    "reservation_id": "rsv_test",
+                    "provider_id": "provider-test"
+                },
+                "job_hash": "jobhash-test",
+                "status": "released"
+            }),
+            idempotency_key: Some("payment:jobhash-test:released".to_string()),
+            recorded_at: now,
+        });
+
+        let receipt = build_receipt(&run)?;
+        let payment = receipt.payments.first().expect("payment should exist");
+        assert_eq!(payment.schema, "openagents.treasury.payment_receipt.v1");
+        assert!(payment.signature.is_none());
+        assert_eq!(payment.canonical_json_sha256.len(), 64);
+
+        let secret = [42_u8; 32];
+        let sig = super::sign_receipt_sha256(&secret, payment.canonical_json_sha256.as_str())?;
+        assert!(super::verify_receipt_signature(&sig)?);
         Ok(())
     }
 

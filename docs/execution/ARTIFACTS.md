@@ -78,6 +78,12 @@ Optional:
 
 Use protocol-level receipt semantics in `docs/protocol/PROTOCOL_SURFACE.md`.
 
+Runtime-produced payment receipts are embedded in `RECEIPT.json` under `payments[]` and include:
+
+- `schema` (`openagents.treasury.payment_receipt.v1`)
+- `canonical_json_sha256` (sha256 hex over canonical payment receipt payload; excludes signature fields)
+- `signature` (optional; deterministic signature over `canonical_json_sha256` when a receipt signer is configured)
+
 ## Forward Compatibility
 
 Additive evolution is allowed.

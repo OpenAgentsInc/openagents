@@ -91,7 +91,7 @@ Content:
 
 Notes:
 - Receipt pointers are not an authority source. The authoritative receipt remains in the runtime receipt artifact.
-- Canonical receipt hashing rules for treasury receipts are governed by `ADR-0006` (this bridge pointer is a Phase-0 minimal interop affordance).
+- Wallet executor receipt canonicalization is governed by `ADR-0006`. Runtime treasury payment receipts use `openagents.treasury.payment_receipt.v1` embedded in the runtime receipt artifact (this bridge pointer is a Phase-0 minimal interop affordance).
 
 ## Phase-1+ Nostr Event Surface (Marketplace Commerce)
 
