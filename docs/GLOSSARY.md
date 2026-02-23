@@ -229,7 +229,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | Term | Definition |
 |------|------------|
 | **SingleNode** | One machine, prosumer. Cheap batch jobs, async tasks. |
-| **BundleLAN** | Exo-style: multiple devices on same LAN. Higher throughput, bigger models. |
+| **LocalCluster** | Multiple devices on the same local network presented as one provider. Higher throughput, bigger models. |
 | **BundleRack** | Datacenter: multi-GPU server or small cluster. Low latency, high reliability. |
 | **InstanceMarket** | Vast-style: rentable capacity. SLA-critical, burst capacity. |
 | **ReservePool** | OpenAgents-controlled capacity. Guaranteed fills, training wheels. |

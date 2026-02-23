@@ -39,7 +39,7 @@ Out of scope:
 
 - Proto-first contracts (`INV-01`, `ADR-0002`).
 - Authenticated HTTP mutation authority (`INV-02`).
-- Khala WS-only live authority lanes (`INV-03`, `ADR-0003`), with bounded SSE compatibility adapter only where already authorized (`ADR-0008`).
+- Khala WS-only live authority lanes (`INV-03`, `ADR-0003`).
 - Control/runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
 - Replay/idempotency guarantees (`INV-07`).
 - Service deploy isolation and migration discipline (`INV-08`, `INV-09`, `INV-10`).
@@ -47,13 +47,18 @@ Out of scope:
 - No `.github` workflow automation in repo (`INV-12`).
 - Wallet executor auth, custody, and receipt canonicalization (`ADR-0006`).
 
+### 3.1) Authority And Drift Notes
+
+- `docs/SYNTHESIS.md` is a synthesis document, not an execution authority. If it conflicts with code or Rust-era canonical docs, the Rust-era authorities win (ADRs + invariant gates + code).
+- Part Fourteen of `docs/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/active/rust-migration-invariant-gates.md`.
+
 ## 4) Priority Ladder (Liquidity-First)
 
-We are prioritizing marketplace liquidity. Autopilot is the guaranteed buyer. Swarm Compute (BundleLAN) is the fastest supply path.
+We are prioritizing marketplace liquidity. Autopilot is the guaranteed buyer. OpenAgents Compute is the fastest supply path.
 
 Execution priority (highest first):
 
-1. Autopilot coding agent + Swarm Compute liquidity bootstrap.
+1. Autopilot coding agent + OpenAgents Compute liquidity bootstrap.
 2. Compute marketplace minimal viable commerce: catalog -> discovery -> routing -> objective verification -> pay-after-verify.
 3. Budget + receipts + idempotency baseline (only what (1) and (2) require).
 4. Then: treasury/exchange depth, sovereign protocol breadth, skills/data/coalitions expansion, decentralization hardening, ecosystem scale.
@@ -77,18 +82,22 @@ Execution priority (highest first):
 | Part Eleven: UI Architecture | WGPUI command surfaces, HUD, fleet control, mobile remote ops | `OA-ECON-171` to `OA-ECON-173`, `OA-ECON-201` to `OA-ECON-205`, `OA-ECON-214` | Next |
 | Part Twelve: Quality Assurance | No-stubs enforcement, layered tests, e2e scenarios, coverage gates | `OA-ECON-220` to `OA-ECON-227`, `OA-ECON-257` to `OA-ECON-259` | Next |
 | Part Thirteen: Implementation Architecture | Crate boundary governance, protocol boundary checks, architecture conformance | `OA-ECON-240` to `OA-ECON-243`, `OA-ECON-263` to `OA-ECON-265` | Later |
-| Part Fourteen: Directive System | Directive/issue traceability, execution discipline, release governance | `OA-ECON-263` to `OA-ECON-266` | Later |
+| Part Fourteen: Directive System (stale) | Superseded by ADRs + invariant gates; no directive system work is planned | `docs/adr/*`, `docs/plans/active/rust-migration-invariant-gates.md` | N/A (superseded) |
 | Part Fifteen: Emergent Whole | Integration-level acceptance and replayable proof of coherent operation | `OA-ECON-257` to `OA-ECON-262` | Next |
-| Part Sixteen: Company and Mission | Revenue rails, packaging, procurement/audit requirements | `OA-ECON-249` to `OA-ECON-256`, `OA-ECON-267` to `OA-ECON-279` | Later |
+| Part Sixteen: Company and Mission | Revenue rails, packaging, procurement/audit requirements | `OA-ECON-249` to `OA-ECON-256`, `OA-ECON-266` to `OA-ECON-279` | Later |
 | Part Seventeen: Wedge to Platform | Demand-floor progression, platformization sequencing and metrics | `OA-ECON-001` to `OA-ECON-009`, `OA-ECON-206` to `OA-ECON-209` | Now |
 | Part Eighteen: Intentional Centralization | Signer optionality, multi-signer migration, relay diversification, decentralization scorecards | `OA-ECON-233` to `OA-ECON-239` | Later |
 | Part Nineteen: When Things Break | Liability, bonds, disputes, guardian market, recovery drills | `OA-ECON-228` to `OA-ECON-232`, `OA-ECON-270` to `OA-ECON-276` | Later |
 | Part Twenty: Threat Model | Threat-to-control mapping, trust-boundary tests, incident drills | `OA-ECON-227` to `OA-ECON-232`, `OA-ECON-261`, `OA-ECON-272`, `OA-ECON-275` | Later |
 | Part Twenty-One: End-to-End Vignettes | Wedge flow, marketplace flow, treasury+FX flow as executable acceptance suites | `OA-ECON-257` to `OA-ECON-259` | Next |
 
+Notes:
+
+- The "Neobank Treasury Layer" is a programmable treasury router for agents (not a regulated bank). It is called out separately because multi-rail routing, quotes, and reconciliation become the dominant failure mode once the system expands beyond a single settlement rail. It is sequenced "Later" because liquidity bootstrap only needs minimal, reliable settlement + budget enforcement for the Autopilot -> OpenAgents Compute wedge.
+
 ## 6) Sequencing Model (No Duration Estimates)
 
-0. Liquidity Bootstrap (Autopilot coding agent + Swarm Compute).
+0. Liquidity Bootstrap (Autopilot coding agent + OpenAgents Compute).
 1. Compute Marketplace MVP (discovery + routing + verification + pay-after-verify).
 2. Authority baseline (receipts, budgets, idempotency, minimal keys) only as required by (0) and (1).
 3. Autopilot reliability + orchestration maturity.
@@ -100,9 +109,9 @@ Execution priority (highest first):
 
 ## 7) Comprehensive GitHub Issue Catalog
 
-### Phase 0: Liquidity Bootstrap — Autopilot Coding Agent on Swarm Compute
+### Phase 0: Liquidity Bootstrap — Autopilot Coding Agent on OpenAgents Compute
 
-Autopilot is the guaranteed buyer. Swarm Compute (BundleLAN) is the fastest path to supply-side liquidity.
+Autopilot is the guaranteed buyer. OpenAgents Compute is the fastest path to supply-side liquidity.
 
 - `OA-ECON-001` - Define parity contract and verified patch artifact schema. - Create authoritative success contract for wedge execution with replayable evidence.
 - `OA-ECON-002` - Instrument wedge baseline metrics. - Add telemetry for leverage, quality, cost, and completion across autonomous loops.
@@ -126,8 +135,8 @@ Autopilot is the guaranteed buyer. Swarm Compute (BundleLAN) is the fastest path
 - `OA-ECON-123` - Implement SandboxRun objective verification pipeline. - Verify build/test/lint workloads deterministically.
 - `OA-ECON-128` - Implement reserve provider pool manager. - Guarantee fill path when market liquidity is insufficient.
 - `OA-ECON-129` - Implement provider qualification suite. - Gate new providers with capability and health validation.
-- `OA-ECON-131` - Implement supply class taxonomy in routing layer. - Distinguish SingleNode, Swarm Compute (BundleLAN), BundleRack, InstanceMarket, ReservePool.
-- `OA-ECON-132` - Implement Swarm Compute (BundleLAN) provider support. - Support multi-device local clusters presented as one market supplier (fastest supply-side liquidity path).
+- `OA-ECON-131` - Implement supply class taxonomy in routing layer. - Distinguish SingleNode, LocalCluster (OpenAgents Compute multi-device local clusters), BundleRack, InstanceMarket, ReservePool.
+- `OA-ECON-132` - Implement OpenAgents Compute local-cluster provider support. - Support multi-device local clusters presented as one market supplier (fastest supply-side liquidity path).
 - `OA-ECON-134` - Implement topology-aware routing. - Route by interconnect, throughput, and stability characteristics.
 - `OA-ECON-135` - Implement cost/reliability policy optimizer. - Balance spend, latency, and success probability.
 - `OA-ECON-136` - Implement pay-after-verify settlement for compute jobs. - Release payment only after verification pass.
@@ -393,9 +402,9 @@ Next (full authority baseline expansion):
 
 ### Phase 8: Commercialization / Governance / Ecosystem Scale
 
-- `OA-ECON-240` - Define governance-minimized protocol evolution process. - Keep protocol governance open and low-capture.
-- `OA-ECON-241` - Build NIP publication and standards workflow. - Move protocol changes through open review and versioning.
-- `OA-ECON-242` - Implement compatibility and deprecation policy enforcement. - Enforce support windows and migration notices.
+- `OA-ECON-240` - Keep protocol evolution governance ADR-first. - Use `docs/adr/` + `ADR-0002` for contract changes; avoid separate governance systems.
+- `OA-ECON-241` - Define the external NIP proposal workflow. - If we upstream Nostr protocol proposals, specify the review + versioning path without inventing new internal processes.
+- `OA-ECON-242` - Enforce compatibility/deprecation policy in code and docs. - Apply `ADR-0005` support windows via compatibility negotiation and explicit deprecation surfaces.
 
 - `OA-ECON-249` - Implement autopilot subscription revenue instrumentation. - Track wedge economics and conversion drivers.
 - `OA-ECON-250` - Implement marketplace fee revenue instrumentation. - Track transaction-fee economics across market lanes.
@@ -406,7 +415,7 @@ Next (full authority baseline expansion):
 - `OA-ECON-255` - Implement audit evidence bundle generation. - Create exportable compliance packets from operational trails.
 - `OA-ECON-256` - Implement customer ROI scorecard surfaces. - Report outcome and leverage metrics directly to operators.
 
-- `OA-ECON-263` - Implement roadmap-to-issue traceability checker. - Enforce complete mapping from strategy docs to execution backlog.
+- `OA-ECON-263` - Implement ADR/invariant-to-issue traceability checks. - Keep plans aligned with `docs/adr/` + invariant gates without reviving the archived directive system.
 - `OA-ECON-264` - Implement dependency graph and critical path board. - Track blocked/unblocked issue flow programmatically.
 - `OA-ECON-265` - Implement release train and cutover governance. - Control rollouts through explicit deploy gates.
 - `OA-ECON-266` - Implement support and escalation operating model. - Define owner paths for incidents and customer escalations.
@@ -426,7 +435,7 @@ Next (full authority baseline expansion):
 
 ## 8) Cross-Phase Release Gates
 
-- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via Swarm Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; liquidity dashboard shows fill rate, median latency, cost, and provider breadth.
+- Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); pay-after-verify settlement completes end-to-end; liquidity dashboard shows fill rate, median latency, cost, and provider breadth.
 - Gate A: Every authority mutation emits deterministic, signed receipts.
 - Gate B: Live authority lanes remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
@@ -453,5 +462,5 @@ This is the execution backbone for moving from wedge product to full open-agent 
 - [x] Priority Ladder inserted near top.
 - [x] Sequencing Model updated with Liquidity Bootstrap first.
 - [x] Issue catalog begins with liquidity bootstrap spine.
-- [x] Swarm Compute terminology explicit (Swarm Compute = BundleLAN).
+- [x] OpenAgents Compute terminology explicit.
 - [x] Liquidity Bootstrap gate added.

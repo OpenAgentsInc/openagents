@@ -106,7 +106,7 @@ In one line: **Fracking = inject the missing infrastructure so the resource flow
 **[Visual: Highlighting "Examples (compute)".]**
 
 **Examples:**
-*   A household or office turning Macs into a BundleLAN provider.
+*   A household or office turning Macs into an OpenAgents Compute local-cluster provider.
 *   A prosumer running Pylon "provider mode" overnight.
 *   A miner deploying a small GPU pod alongside ASICs to monetize curtailment windows.
 
