@@ -17,6 +17,7 @@ use crate::{
     workers::InMemoryWorkerRegistry,
 };
 
+pub mod adjudication;
 pub mod artifacts;
 pub mod authority;
 pub mod bridge;
