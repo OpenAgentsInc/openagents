@@ -15,8 +15,8 @@ Use Rust control-service deployment/configuration flow:
 
 For staging-specific deploy/env flow, use:
 
-- `apps/openagents.com/service/deploy/deploy-staging.sh`
 - `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
+- Optional: `apps/openagents.com/service/deploy/deploy-staging.sh` (no-traffic revision + local verification gates; use the staging runbook to shift traffic)
 
 Legacy Laravel-specific secret wiring and `openagents-web` service guidance has been archived to:
 

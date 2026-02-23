@@ -6,7 +6,7 @@ The active production web deploy path is Rust-only:
 
 - Service: `openagents-control-service`
 - Deploy helper: `apps/openagents.com/service/deploy/deploy-production.sh`
-- Staging deploy helper: `apps/openagents.com/service/deploy/deploy-staging.sh`
+- Staging deploy runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Canary/rollback runbook: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Maintenance cutover runbook: `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
 - Staging runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
@@ -25,12 +25,17 @@ gcloud builds submit \
 Deploy to staging:
 
 ```bash
-PROJECT=openagentsgemini \
-REGION=us-central1 \
-SERVICE=openagents-control-service-staging \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> \
-apps/openagents.com/service/deploy/deploy-staging.sh
+TAG="$(git rev-parse --short HEAD)"
+gcloud run deploy openagents-control-service-staging \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image "us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:${TAG}" \
+  --quiet
 ```
+
+Optional (staging no-traffic revision + local verification gates):
+
+- `apps/openagents.com/service/deploy/deploy-staging.sh` (see staging runbook for traffic shift)
 
 Legacy Laravel Cloud Build / PHP-FPM deployment guidance has been archived to:
 

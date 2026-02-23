@@ -15,47 +15,65 @@ Define the canonical staging deployment flow for the Rust control service + Rust
 3. Staging service exists (default `openagents-control-service-staging`).
 4. Domain mapping for `staging.openagents.com` is verified (or an explicit Cloud Run service URL override is used while cert/domain mapping is pending).
 5. Required staging secrets/env are present.
+6. (Optional) `curl` is available if you plan to run the `smoke-*.sh` scripts as-is.
 
 ## Required staging env and secrets
 
-Minimum required configuration for staging:
+Minimum required configuration for staging (Rust control service + web-shell dist):
 
-1. WorkOS/auth:
-   - `WORKOS_CLIENT_ID`
-   - `WORKOS_API_KEY`
-   - `OA_AUTH_PROVIDER_MODE=workos`
-2. Sync token:
-   - `OA_SYNC_TOKEN_ENABLED=true`
-   - `OA_SYNC_TOKEN_SIGNING_KEY` (or `SYNC_TOKEN_SIGNING_KEY`)
-   - `OA_SYNC_TOKEN_ISSUER=https://staging.openagents.com` (recommended for staging)
-   - `OA_SYNC_TOKEN_AUDIENCE=openagents-sync`
-3. Route split + static host:
-   - `OA_ROUTE_SPLIT_ENABLED=true`
-   - `OA_ROUTE_SPLIT_MODE=rust`
-   - `OA_CONTROL_STATIC_DIR=/app/apps/openagents.com/web-shell/dist`
-4. Compatibility (optional gating in staging):
+1. Static host:
+   - `OA_CONTROL_STATIC_DIR=/app/web-shell/dist`
+2. Route split:
+   - `OA_ROUTE_SPLIT_MODE=rust` (typical for staging)
+3. Auth provider mode:
+   - Staging can run with `OA_AUTH_PROVIDER_MODE=mock` for smoke/testing.
+   - Production-like staging uses `OA_AUTH_PROVIDER_MODE=workos` and requires `WORKOS_CLIENT_ID` + `WORKOS_API_KEY`.
+4. Sync token (optional in staging):
+   - `OA_SYNC_TOKEN_ENABLED=true|false`
+   - When enabled: `OA_SYNC_TOKEN_SIGNING_KEY`, `OA_SYNC_TOKEN_ISSUER`, `OA_SYNC_TOKEN_AUDIENCE`
+5. Compatibility gates (optional in staging):
    - `OA_COMPAT_CONTROL_ENFORCED`
    - `OA_COMPAT_CONTROL_PROTOCOL_VERSION`
    - `OA_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID`
 
-## Deploy command (canonical)
+## Deploy sequence (canonical)
 
 From repo root:
 
+1. (Recommended) run the local verification gates that mirror production:
+
 ```bash
-PROJECT=openagentsgemini \
-REGION=us-central1 \
-SERVICE=openagents-control-service-staging \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> \
-apps/openagents.com/service/deploy/deploy-staging.sh
+cargo test --manifest-path apps/openagents.com/service/Cargo.toml
+cargo check -p openagents-web-shell --target wasm32-unknown-unknown
+apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
+apps/openagents.com/web-shell/scripts/perf-budget-gate.sh
 ```
 
-`deploy-staging.sh` reuses the same verification gates as production deploy:
+2. Build and push the control-service image (repo root context required):
 
-1. `cargo test --manifest-path apps/openagents.com/service/Cargo.toml`
-2. `cargo check -p openagents-web-shell --target wasm32-unknown-unknown`
-3. `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`
-4. `apps/openagents.com/web-shell/scripts/perf-budget-gate.sh`
+```bash
+TAG="$(git rev-parse --short HEAD)"
+gcloud builds submit \
+  --config apps/openagents.com/service/deploy/cloudbuild.yaml \
+  --substitutions _TAG="${TAG}" \
+  .
+```
+
+3. Deploy to staging with 100% traffic:
+
+```bash
+TAG="$(git rev-parse --short HEAD)"
+gcloud run deploy openagents-control-service-staging \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image "us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:${TAG}" \
+  --quiet
+```
+
+Optional (no-traffic canary on staging):
+
+- `apps/openagents.com/service/deploy/deploy-staging.sh` creates a no-traffic revision.
+- If you use it, you must explicitly shift traffic (see `apps/openagents.com/service/deploy/canary-rollout.sh`).
 
 ## Domain mapping checks
 
@@ -76,10 +94,9 @@ If certificate/domain mapping is pending, use the staging Cloud Run URL as `OPEN
 
 ## Smoke checks
 
-```bash
-OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
-apps/openagents.com/service/deploy/smoke-health.sh
+Important note: `GET /readyz` is the canonical probe. Some staging environments may return `404` for `GET /healthz` at the domain/edge layer.
 
+```bash
 OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
 apps/openagents.com/service/deploy/smoke-control.sh
 ```

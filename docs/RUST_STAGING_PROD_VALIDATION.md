@@ -19,7 +19,7 @@ Validation evidence should be archived in backroom (not committed into `docs/`).
 ## Matrix Lanes
 
 1. Control service lane
-- health/readiness checks
+- health/readiness checks (`/readyz` is canonical; `/healthz` is best-effort in some environments)
 - static host policy checks
 - auth/session/sync token checks (when auth token is provided)
 - HTMX perf budget checks (`login/feed/settings/chat`) via:

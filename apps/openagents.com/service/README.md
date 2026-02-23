@@ -340,15 +340,20 @@ Rust ownership migration/backfill runbook + scripts:
   - Optional authenticated checks: set `OPENAGENTS_CONTROL_ACCESS_TOKEN=<token>` for session/token endpoint coverage.
   - Optional maintenance bypass checks: set `OPENAGENTS_MAINTENANCE_BYPASS_TOKEN=<token>` to run smoke checks during maintenance windows.
 
-Staging deploy wrapper:
+Staging deploy (canonical; 100% traffic):
 
 ```bash
-PROJECT=openagentsgemini \
-REGION=us-central1 \
-SERVICE=openagents-control-service-staging \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> \
-apps/openagents.com/service/deploy/deploy-staging.sh
+TAG="$(git rev-parse --short HEAD)"
+gcloud run deploy openagents-control-service-staging \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image "us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:${TAG}" \
+  --quiet
 ```
+
+Optional staging helper (no-traffic revision + local verification gates):
+
+- `apps/openagents.com/service/deploy/deploy-staging.sh` (see `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md` for traffic shift + smoke checks)
 
 ## Schema Evolution Policy
 

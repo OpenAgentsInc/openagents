@@ -58,19 +58,25 @@ Documentation entry points:
 - Local CI policy: `docs/LOCAL_CI.md`
 - Staging/prod validation matrix: `docs/RUST_STAGING_PROD_VALIDATION.md`
 - Legacy infra decommission sequencing: `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
+- Deploy/process matrix (canonical commands): `docs/DEPLOYMENT_RUST_SERVICES.md`
+- Control service staging deploy runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Runtime deploy + migrate runbook: `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - Runtime WS incident runbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
 
-Canonical runtime deploy + migrate command:
+Canonical Rust runtime deploy + migrate command:
 
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
 RUNTIME_SERVICE=runtime \
 MIGRATE_JOB=runtime-migrate \
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/runtime-rust:<TAG> \
 apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
+
+Note:
+- Cloud Run service `openagents-runtime` (and `openagents-runtime-migrate`) is a legacy runtime lane. Do not deploy Rust runtime images there.
+- Artifact Registry `openagents-runtime/runtime:latest` is legacy; Rust runtime images publish to `openagents-runtime/runtime-rust:*`.
 
 ## Authority (Non-Negotiable)
 

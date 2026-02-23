@@ -12,6 +12,14 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 - Control + Khala shadow parity harness: `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
 - Shared staging/prod release matrix: `docs/RUST_STAGING_PROD_VALIDATION.md`
 
+## Artifact Registry + legacy lane note (non-negotiable)
+
+- Artifact Registry repo: `us-central1-docker.pkg.dev/openagentsgemini/openagents-runtime/*`
+- Legacy runtime lane (Elixir) uses image `openagents-runtime/runtime:*` and the tag `openagents-runtime/runtime:latest`.
+- Rust runtime images publish to `openagents-runtime/runtime-rust:*` (including `:latest-rust`).
+
+Do not overwrite the legacy `openagents-runtime/runtime:latest` tag with Rust images.
+
 ## Why this exists
 
 We previously hit a production incident where the migration job stayed pinned to an older image, so newer runtime tables were never created (`runtime.khala_projection_checkpoints`, `runtime.sync_stream_events`), causing 500s.

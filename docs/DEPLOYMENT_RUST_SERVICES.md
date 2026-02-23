@@ -1,7 +1,7 @@
 # Rust Service Deployment Matrix
 
 Status: active  
-Last updated: 2026-02-21
+Last updated: 2026-02-23
 
 This is the canonical deploy/process map for active Rust service lanes.
 
@@ -24,7 +24,8 @@ Cross-environment release validation gate:
      - `apps/openagents.com/service/deploy/maintenance-mode.sh`
 2. `openagents-control-service-staging`
    - Deploy:
-     - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service-staging IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/service/deploy/deploy-staging.sh`
+     - `gcloud run deploy openagents-control-service-staging --project openagentsgemini --region us-central1 --image us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> --quiet`
+     - Optional: `apps/openagents.com/service/deploy/deploy-staging.sh` (runs local verification gates and creates a no-traffic revision; see staging runbook for traffic shift)
    - Runbook:
      - `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 3. `runtime` (Rust)

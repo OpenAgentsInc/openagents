@@ -43,17 +43,24 @@ Optional helper (no Laravel/Node runtime steps):
 
 ```bash
 PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service \
-IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<tag> \
 apps/openagents.com/service/deploy/deploy-production.sh
 ```
 
-Staging helper:
+Staging deploy (canonical; 100% traffic):
 
 ```bash
-PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service-staging \
-IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
-apps/openagents.com/service/deploy/deploy-staging.sh
+TAG="$(git rev-parse --short HEAD)"
+gcloud run deploy openagents-control-service-staging \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image "us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:${TAG}" \
+  --quiet
 ```
+
+Optional staging helper:
+
+- `apps/openagents.com/service/deploy/deploy-staging.sh` (runs local verification gates and creates a no-traffic revision; see `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md` for traffic shift + smoke checks)
 
 Image build (Cloud Build, Rust-only):
 
