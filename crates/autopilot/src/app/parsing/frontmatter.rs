@@ -147,3 +147,61 @@ pub(crate) fn first_nonempty_line(text: &str) -> Option<String> {
         .find(|line| !line.is_empty())
         .map(|line| line.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_frontmatter_normalizes_keys_and_preserves_body() {
+        let source = r#"---
+Title: "Autopilot Brief"
+allowed-tools: [ "read_file", 'write_file' ]
+skills:
+  - "rust"
+  - "wgpu"
+tags: automation, "agentic"
+---
+First body line
+Second body line
+"#;
+
+        let (frontmatter, body) = parse_frontmatter(source);
+        assert_eq!(
+            frontmatter_scalar(&frontmatter, "title").as_deref(),
+            Some("Autopilot Brief")
+        );
+        assert_eq!(
+            frontmatter_list(&frontmatter, "allowed_tools"),
+            Some(vec!["read_file".to_string(), "write_file".to_string()])
+        );
+        assert_eq!(
+            frontmatter_list(&frontmatter, "skills"),
+            Some(vec!["rust".to_string(), "wgpu".to_string()])
+        );
+        assert_eq!(
+            frontmatter_list(&frontmatter, "tags"),
+            Some(vec!["automation".to_string(), "agentic".to_string()])
+        );
+        assert_eq!(body, "First body line\nSecond body line");
+    }
+
+    #[test]
+    fn parse_frontmatter_without_closing_delimiter_returns_original_text() {
+        let source = r#"---
+title: broken
+skills: [rust]
+body should stay intact"#;
+
+        let (frontmatter, body) = parse_frontmatter(source);
+        assert!(frontmatter.scalars.is_empty());
+        assert!(frontmatter.lists.is_empty());
+        assert_eq!(body, source);
+    }
+
+    #[test]
+    fn first_nonempty_line_ignores_blank_lines() {
+        let text = "\n  \n  keep this line\nnext";
+        assert_eq!(first_nonempty_line(text).as_deref(), Some("keep this line"));
+    }
+}

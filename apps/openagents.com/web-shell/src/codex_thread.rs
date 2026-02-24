@@ -824,4 +824,55 @@ mod tests {
             .expect("assistant stream message");
         assert!(!assistant.streaming);
     }
+
+    #[test]
+    fn merges_streaming_deltas_with_multibyte_overlap() {
+        let mut state = CodexThreadState::default();
+        assert!(state.ingest_khala_payload(&json!({
+            "eventType": "worker.event",
+            "payload": {
+                "method": "codex/event/agent_message_content_delta",
+                "threadId": "thread-utf8",
+                "params": {
+                    "msg": { "item_id": "item-utf8", "delta": "Plan ✅ ready" }
+                }
+            }
+        })));
+        assert!(state.ingest_khala_payload(&json!({
+            "eventType": "worker.event",
+            "payload": {
+                "method": "codex/event/agent_message_content_delta",
+                "threadId": "thread-utf8",
+                "params": {
+                    "msg": { "item_id": "item-utf8", "delta": "✅ ready now" }
+                }
+            }
+        })));
+
+        assert_eq!(state.messages.len(), 1);
+        assert_eq!(state.messages[0].text, "Plan ✅ ready now");
+    }
+
+    #[test]
+    fn vercel_sse_wire_skips_malformed_events_and_continues() {
+        let mut state = CodexThreadState::default();
+        let changed = state.ingest_vercel_sse_wire(
+            "data: {\"type\":\"start\",\"threadId\":\"thread-parse\"}\n\n\
+             data: {\"type\":\"start-step\"}\n\n\
+             data: {\"type\":\n\n\
+             data: {\"type\":\"text-delta\",\"id\":\"item-1\",\"channel\":\"assistant\",\"delta\":\"Hello\"}\n\n\
+             data: {\"type\":\"finish-step\"}\n\n\
+             data: [DONE]\n\n",
+        );
+
+        assert!(changed >= 3);
+        assert_eq!(state.thread_id.as_deref(), Some("thread-parse"));
+        assert!(state.messages.iter().any(|message| message.text == "Hello"));
+        assert!(
+            state
+                .messages
+                .iter()
+                .any(|message| message.text == "Turn completed.")
+        );
+    }
 }

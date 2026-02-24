@@ -37,6 +37,39 @@ fn layout_panels_are_consistent() {
 }
 
 #[test]
+fn normalize_pane_rect_enforces_minimum_dimensions_for_invalid_values() {
+    let rect = PaneRect {
+        x: 42.0,
+        y: 24.0,
+        width: f32::NAN,
+        height: -10.0,
+    };
+
+    let normalized = normalize_pane_rect(rect);
+    assert_eq!(normalized.x, 42.0);
+    assert_eq!(normalized.y, 24.0);
+    assert_eq!(normalized.width, PANE_MIN_WIDTH);
+    assert_eq!(normalized.height, PANE_MIN_HEIGHT);
+}
+
+#[test]
+fn calculate_new_pane_position_wraps_to_margin_when_offset_overflows_screen() {
+    let last = PaneRect {
+        x: 1100.0,
+        y: 650.0,
+        width: 420.0,
+        height: 300.0,
+    };
+    let screen = Size::new(1280.0, 720.0);
+
+    let next = calculate_new_pane_position(Some(last), screen, 420.0, 300.0);
+    assert_eq!(next.x, PANE_MARGIN);
+    assert_eq!(next.y, PANE_MARGIN);
+    assert_eq!(next.width, 420.0);
+    assert_eq!(next.height, 300.0);
+}
+
+#[test]
 fn extract_thread_hint_prefers_thread_id_fields() {
     let params = serde_json::json!({
         "threadId": "thread-primary",

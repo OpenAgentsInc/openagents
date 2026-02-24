@@ -301,6 +301,10 @@ impl Evaluator for AdjutantModule {
 // ============================================================================
 
 impl Optimizable for AdjutantModule {
+    fn get_signature(&self) -> &dyn dsrs::MetaSignature {
+        self.planner.get_signature()
+    }
+
     fn parameters(&mut self) -> IndexMap<String, &mut dyn Optimizable> {
         let mut params = IndexMap::new();
         params.insert(
@@ -316,6 +320,10 @@ impl Optimizable for AdjutantModule {
             &mut self.synthesizer as &mut dyn Optimizable,
         );
         params
+    }
+
+    fn update_signature_instruction(&mut self, instruction: String) -> anyhow::Result<()> {
+        self.planner.update_signature_instruction(instruction)
     }
 }
 
