@@ -8,6 +8,10 @@ use sha2::{Digest, Sha256};
 use openagents_l402::Bolt11;
 
 use crate::artifacts::sign_receipt_sha256;
+use crate::bridge::{
+    BridgeNostrPublisher, LiquidityReceiptPointerV1, bridge_relays_from_env,
+    build_liquidity_receipt_pointer_event,
+};
 use crate::liquidity::store::{LiquidityStore, LiquidityStoreError, PaymentFinalizeInput};
 use crate::liquidity::types::{
     INVOICE_PAY_RECEIPT_SCHEMA_V1, InvoicePayReceiptV1, LiquidityPaymentRow, LiquidityQuoteRow,
@@ -361,6 +365,8 @@ impl LiquidityService {
             .await
             .map_err(map_store_error)?;
 
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(&receipt);
+
         Ok(PayResponseV1 {
             schema: PAY_RESPONSE_SCHEMA_V1.to_string(),
             quote_id,
@@ -373,6 +379,45 @@ impl LiquidityService {
             receipt,
             payment_proof: wallet_response_json,
         })
+    }
+
+    fn maybe_spawn_nostr_liquidity_receipt_pointer_mirror(&self, receipt: &InvoicePayReceiptV1) {
+        let relays = bridge_relays_from_env();
+        if relays.is_empty() {
+            return;
+        }
+        let Some(secret_key) = self.receipt_signing_key else {
+            return;
+        };
+
+        let payload = LiquidityReceiptPointerV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            pool_id: None,
+            lp_id: None,
+            deposit_id: None,
+            withdrawal_id: None,
+            quote_id: Some(receipt.quote_id.clone()),
+            receipt_sha256: receipt.canonical_json_sha256.clone(),
+            receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+        };
+
+        tokio::spawn(async move {
+            let event = match build_liquidity_receipt_pointer_event(&secret_key, None, &payload) {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::warn!(reason = %error, "bridge nostr mirror failed to build liquidity receipt pointer");
+                    return;
+                }
+            };
+            let publisher = BridgeNostrPublisher::new(relays);
+            if let Err(error) = publisher.connect().await {
+                tracing::warn!(reason = %error, "bridge nostr mirror failed to connect to relays");
+                return;
+            }
+            if let Err(error) = publisher.publish(&event).await {
+                tracing::warn!(reason = %error, "bridge nostr mirror failed to publish liquidity receipt pointer");
+            }
+        });
     }
 
     async fn build_response_from_stored(

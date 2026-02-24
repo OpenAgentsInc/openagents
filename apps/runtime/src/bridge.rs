@@ -27,6 +27,8 @@ pub enum BridgeError {
 /// Phase 0 mirrors only:
 /// - NIP-89 handler info events for provider ads (kind 31990)
 /// - NIP-78 app data events for receipt pointers (kind 30078)
+/// - NIP-78 app data events for liquidity receipt pointers (kind 30078)
+/// - NIP-78 app data events for liquidity pool snapshots (kind 30078)
 ///
 /// Phase 1+ may additionally mirror low-rate marketplace commerce messages via NIP-78
 /// (see `docs/protocol/marketplace-commerce-grammar-v1.md`).
@@ -35,6 +37,8 @@ pub enum BridgeError {
 pub enum BridgeEventKind {
     ProviderAd,
     ReceiptPointer,
+    LiquidityReceiptPointer,
+    PoolSnapshot,
     CommerceMessage,
 }
 
@@ -110,6 +114,39 @@ pub struct ReceiptPointerV1 {
     pub receipt_url: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LiquidityReceiptPointerV1 {
+    pub receipt_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pool_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lp_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deposit_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdrawal_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote_id: Option<String>,
+    pub receipt_sha256: String,
+    pub receipt_url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PoolSnapshotBridgeV1 {
+    pub pool_id: String,
+    pub snapshot_id: String,
+    pub snapshot_sha256: String,
+    pub as_of_unix: u64,
+    pub wallet_balance_sats: u64,
+    pub shares_outstanding: i64,
+    pub pending_withdrawals_sats_estimate: i64,
+    pub share_price_sats: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_sha256: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CommerceMessageKindV1 {
@@ -180,6 +217,17 @@ fn now_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+pub fn bridge_relays_from_env() -> Vec<String> {
+    std::env::var("RUNTIME_BRIDGE_NOSTR_RELAYS")
+        .ok()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
 }
 
 pub fn build_provider_ad_event(
@@ -350,6 +398,131 @@ pub fn build_receipt_pointer_event(
     Ok(event)
 }
 
+pub fn build_liquidity_receipt_pointer_event(
+    secret_key: &[u8; 32],
+    created_at: Option<u64>,
+    payload: &LiquidityReceiptPointerV1,
+) -> Result<Event, BridgeError> {
+    if payload.receipt_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "receipt_id must not be empty".to_string(),
+        ));
+    }
+    if payload.receipt_sha256.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "receipt_sha256 must not be empty".to_string(),
+        ));
+    }
+    if payload.receipt_url.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "receipt_url must not be empty".to_string(),
+        ));
+    }
+
+    let identifier = format!("openagents:liquidity_receipt:{}", payload.receipt_id);
+    let content = serde_json::to_string(payload)
+        .map_err(|err| BridgeError::Serialization(err.to_string()))?;
+    let mut app = AppData::new(identifier, content);
+    app.add_tag(vec![
+        "oa_schema".to_string(),
+        "openagents.bridge.liquidity_receipt_pointer.v1".to_string(),
+    ]);
+    if let Some(pool_id) = payload.pool_id.as_ref().filter(|v| !v.trim().is_empty()) {
+        app.add_tag(vec!["oa_pool_id".to_string(), pool_id.clone()]);
+    }
+    if let Some(lp_id) = payload.lp_id.as_ref().filter(|v| !v.trim().is_empty()) {
+        app.add_tag(vec!["oa_lp_id".to_string(), lp_id.clone()]);
+    }
+    if let Some(deposit_id) = payload.deposit_id.as_ref().filter(|v| !v.trim().is_empty()) {
+        app.add_tag(vec!["oa_deposit_id".to_string(), deposit_id.clone()]);
+    }
+    if let Some(withdrawal_id) = payload
+        .withdrawal_id
+        .as_ref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        app.add_tag(vec![
+            "oa_withdrawal_id".to_string(),
+            withdrawal_id.clone(),
+        ]);
+    }
+    if let Some(quote_id) = payload.quote_id.as_ref().filter(|v| !v.trim().is_empty()) {
+        app.add_tag(vec!["oa_quote_id".to_string(), quote_id.clone()]);
+    }
+    app.add_tag(vec![
+        "oa_receipt_sha256".to_string(),
+        payload.receipt_sha256.clone(),
+    ]);
+    app.add_tag(vec![
+        "oa_receipt_url".to_string(),
+        payload.receipt_url.clone(),
+    ]);
+
+    let template = EventTemplate {
+        created_at: created_at.unwrap_or_else(now_unix_seconds),
+        kind: KIND_APP_DATA as u16,
+        tags: app.to_tags(),
+        content: app.content.clone(),
+    };
+    let event = finalize_event(&template, secret_key)?;
+    Ok(event)
+}
+
+pub fn build_pool_snapshot_event(
+    secret_key: &[u8; 32],
+    created_at: Option<u64>,
+    payload: &PoolSnapshotBridgeV1,
+) -> Result<Event, BridgeError> {
+    if payload.pool_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "pool_id must not be empty".to_string(),
+        ));
+    }
+    if payload.snapshot_id.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "snapshot_id must not be empty".to_string(),
+        ));
+    }
+    if payload.snapshot_sha256.trim().is_empty() {
+        return Err(BridgeError::InvalidInput(
+            "snapshot_sha256 must not be empty".to_string(),
+        ));
+    }
+
+    let prefix_len = payload.snapshot_sha256.len().min(16);
+    let identifier = format!(
+        "openagents:pool_snapshot:{}:{}",
+        payload.pool_id,
+        &payload.snapshot_sha256[..prefix_len]
+    );
+
+    let content = serde_json::to_string(payload)
+        .map_err(|err| BridgeError::Serialization(err.to_string()))?;
+    let mut app = AppData::new(identifier, content);
+    app.add_tag(vec![
+        "oa_schema".to_string(),
+        "openagents.bridge.pool_snapshot.v1".to_string(),
+    ]);
+    app.add_tag(vec!["oa_pool_id".to_string(), payload.pool_id.clone()]);
+    app.add_tag(vec![
+        "oa_snapshot_sha256".to_string(),
+        payload.snapshot_sha256.clone(),
+    ]);
+    app.add_tag(vec![
+        "oa_as_of_unix".to_string(),
+        payload.as_of_unix.to_string(),
+    ]);
+
+    let template = EventTemplate {
+        created_at: created_at.unwrap_or_else(now_unix_seconds),
+        kind: KIND_APP_DATA as u16,
+        tags: app.to_tags(),
+        content: app.content.clone(),
+    };
+    let event = finalize_event(&template, secret_key)?;
+    Ok(event)
+}
+
 pub fn build_commerce_message_event(
     secret_key: &[u8; 32],
     created_at: Option<u64>,
@@ -473,8 +646,21 @@ pub fn validate_phase0_bridge_event(event: &Event) -> Result<BridgeEventKind, Br
         }) {
             return Ok(BridgeEventKind::ReceiptPointer);
         }
+        if event.tags.iter().any(|t| {
+            t.len() >= 2
+                && t[0] == "oa_schema"
+                && t[1] == "openagents.bridge.liquidity_receipt_pointer.v1"
+        }) {
+            return Ok(BridgeEventKind::LiquidityReceiptPointer);
+        }
+        if event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.pool_snapshot.v1"
+        }) {
+            return Ok(BridgeEventKind::PoolSnapshot);
+        }
         return Err(BridgeError::InvalidInput(
-            "unsupported Phase-0 app-data schema (expected receipt_ptr)".to_string(),
+            "unsupported Phase-0 app-data schema (expected receipt_ptr/liquidity_receipt/pool_snapshot)"
+                .to_string(),
         ));
     }
 
@@ -508,6 +694,18 @@ pub fn validate_bridge_event_v1(event: &Event) -> Result<BridgeEventKind, Bridge
         .any(|t| t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.receipt_ptr.v1")
     {
         return Ok(BridgeEventKind::ReceiptPointer);
+    }
+    if event.tags.iter().any(|t| {
+        t.len() >= 2
+            && t[0] == "oa_schema"
+            && t[1] == "openagents.bridge.liquidity_receipt_pointer.v1"
+    }) {
+        return Ok(BridgeEventKind::LiquidityReceiptPointer);
+    }
+    if event.tags.iter().any(|t| {
+        t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.pool_snapshot.v1"
+    }) {
+        return Ok(BridgeEventKind::PoolSnapshot);
     }
     if event.tags.iter().any(|t| {
         t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.commerce_message.v1"
@@ -720,5 +918,76 @@ mod tests {
                 .iter()
                 .any(|t| t.len() >= 2 && t[0] == "oa_body_sha256" && t[1] == content_sha)
         );
+    }
+
+    #[test]
+    fn liquidity_receipt_pointer_event_is_signed_and_phase0_valid() {
+        let secret = nostr::generate_secret_key();
+        let receipt_sha256 = receipt_sha256_from_utf8(r#"{"schema":"openagents.receipt.v1"}"#);
+        let payload = LiquidityReceiptPointerV1 {
+            receipt_id: "lipr_123".to_string(),
+            pool_id: Some("llp-main".to_string()),
+            lp_id: Some("lp_1".to_string()),
+            deposit_id: Some("liqdep_1".to_string()),
+            withdrawal_id: None,
+            quote_id: None,
+            receipt_sha256: receipt_sha256.clone(),
+            receipt_url: "openagents://receipt/lipr_123".to_string(),
+        };
+
+        let event = build_liquidity_receipt_pointer_event(&secret, Some(1_700_000_010), &payload)
+            .expect("build_liquidity_receipt_pointer_event");
+
+        let kind = validate_phase0_bridge_event(&event).expect("validate_phase0_bridge_event");
+        assert!(matches!(kind, BridgeEventKind::LiquidityReceiptPointer));
+        assert_eq!(u64::from(event.kind), KIND_APP_DATA);
+        assert!(event.tags.iter().any(|t| t.len() >= 2
+            && t[0] == "d"
+            && t[1].starts_with("openagents:liquidity_receipt:")));
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.len() >= 2 && t[0] == "oa_receipt_sha256" && t[1] == receipt_sha256)
+        );
+    }
+
+    #[test]
+    fn pool_snapshot_event_is_signed_and_phase0_valid() {
+        let secret = nostr::generate_secret_key();
+        let payload = PoolSnapshotBridgeV1 {
+            pool_id: "llp-main".to_string(),
+            snapshot_id: "lips_abc".to_string(),
+            snapshot_sha256: "deadbeef00deadbeef00deadbeef00deadbeef00deadbeef00deadbeef00dead"
+                .to_string(),
+            as_of_unix: 1_700_000_011,
+            wallet_balance_sats: 1234,
+            shares_outstanding: 1200,
+            pending_withdrawals_sats_estimate: 10,
+            share_price_sats: 1,
+            receipt_id: Some("lpsr_abc".to_string()),
+            receipt_sha256: Some(
+                "00deadbeef00deadbeef00deadbeef00deadbeef00deadbeef00deadbeef00dead".to_string(),
+            ),
+        };
+
+        let event =
+            build_pool_snapshot_event(&secret, Some(1_700_000_011), &payload).expect("build");
+
+        let kind = validate_phase0_bridge_event(&event).expect("validate_phase0_bridge_event");
+        assert!(matches!(kind, BridgeEventKind::PoolSnapshot));
+        assert_eq!(u64::from(event.kind), KIND_APP_DATA);
+        assert!(event.tags.iter().any(|t| t.len() >= 2
+            && t[0] == "d"
+            && t[1].starts_with("openagents:pool_snapshot:llp-main:")));
+        assert!(event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "oa_schema" && t[1] == "openagents.bridge.pool_snapshot.v1"
+        }));
+        assert!(event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "oa_snapshot_sha256" && t[1] == payload.snapshot_sha256
+        }));
+        assert!(event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "oa_as_of_unix" && t[1] == payload.as_of_unix.to_string()
+        }));
     }
 }

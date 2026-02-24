@@ -7,6 +7,10 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::artifacts::sign_receipt_sha256;
+use crate::bridge::{
+    BridgeNostrPublisher, LiquidityReceiptPointerV1, PoolSnapshotBridgeV1, bridge_relays_from_env,
+    build_liquidity_receipt_pointer_event, build_pool_snapshot_event,
+};
 use crate::liquidity_pool::store::{
     DepositInsertInput, LiquidityPoolStore, LiquidityPoolStoreError, ReceiptInsertInput,
     WithdrawalInsertInput,
@@ -149,7 +153,9 @@ impl LiquidityPoolService {
 
         let lp_id = body.lp_id.trim().to_string();
         if lp_id.is_empty() {
-            return Err(LiquidityPoolError::InvalidRequest("lp_id is required".to_string()));
+            return Err(LiquidityPoolError::InvalidRequest(
+                "lp_id is required".to_string(),
+            ));
         }
         let idempotency_key = body.idempotency_key.trim().to_string();
         if idempotency_key.is_empty() {
@@ -205,22 +211,20 @@ impl LiquidityPoolService {
             ));
         }
 
-        let amount_sats_i64 = i64::try_from(body.amount_sats).map_err(|_| {
-            LiquidityPoolError::InvalidRequest("amount_sats too large".to_string())
-        })?;
-        let share_price_u64 = u64::try_from(share_price_sats).map_err(|_| {
-            LiquidityPoolError::Internal("share_price_sats invalid".to_string())
-        })?;
+        let amount_sats_i64 = i64::try_from(body.amount_sats)
+            .map_err(|_| LiquidityPoolError::InvalidRequest("amount_sats too large".to_string()))?;
+        let share_price_u64 = u64::try_from(share_price_sats)
+            .map_err(|_| LiquidityPoolError::Internal("share_price_sats invalid".to_string()))?;
         let shares_minted_u64 = body.amount_sats / share_price_u64;
-        let shares_minted = i64::try_from(shares_minted_u64).map_err(|_| {
-            LiquidityPoolError::Internal("shares_minted too large".to_string())
-        })?;
+        let shares_minted = i64::try_from(shares_minted_u64)
+            .map_err(|_| LiquidityPoolError::Internal("shares_minted too large".to_string()))?;
 
         let deposit_id = format!("liqdep_{}", Uuid::now_v7());
 
         let (invoice_bolt11, invoice_hash, deposit_address) = match body.rail {
             DepositRailV1::LightningInvoice => {
-                let wallet_request_id = wallet_request_id("deposit", pool_id, lp_id.as_str(), &idempotency_key);
+                let wallet_request_id =
+                    wallet_request_id("deposit", pool_id, lp_id.as_str(), &idempotency_key);
                 let created = self
                     .wallet
                     .create_invoice(
@@ -260,10 +264,9 @@ impl LiquidityPoolService {
             .await
             .map_err(map_store_error)?;
 
-        let stored_amount_sats =
-            u64::try_from(stored.amount_sats).map_err(|_| {
-                LiquidityPoolError::Internal("stored deposit amount invalid".to_string())
-            })?;
+        let stored_amount_sats = u64::try_from(stored.amount_sats).map_err(|_| {
+            LiquidityPoolError::Internal("stored deposit amount invalid".to_string())
+        })?;
         let receipt = build_deposit_receipt(
             &stored,
             body.rail,
@@ -295,6 +298,19 @@ impl LiquidityPoolService {
             })
             .await
             .map_err(map_store_error)?;
+
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
+            LiquidityReceiptPointerV1 {
+                receipt_id: receipt.receipt_id.clone(),
+                pool_id: Some(receipt.pool_id.clone()),
+                lp_id: Some(receipt.lp_id.clone()),
+                deposit_id: Some(receipt.deposit_id.clone()),
+                withdrawal_id: None,
+                quote_id: None,
+                receipt_sha256: receipt.canonical_json_sha256.clone(),
+                receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+            },
+        );
 
         Ok(DepositQuoteResponseV1 {
             schema: DEPOSIT_QUOTE_RESPONSE_SCHEMA_V1.to_string(),
@@ -340,7 +356,9 @@ impl LiquidityPoolService {
 
         let lp_id = body.lp_id.trim().to_string();
         if lp_id.is_empty() {
-            return Err(LiquidityPoolError::InvalidRequest("lp_id is required".to_string()));
+            return Err(LiquidityPoolError::InvalidRequest(
+                "lp_id is required".to_string(),
+            ));
         }
         let idempotency_key = body.idempotency_key.trim().to_string();
         if idempotency_key.is_empty() {
@@ -440,6 +458,19 @@ impl LiquidityPoolService {
             .await
             .map_err(map_store_error)?;
 
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
+            LiquidityReceiptPointerV1 {
+                receipt_id: receipt.receipt_id.clone(),
+                pool_id: Some(receipt.pool_id.clone()),
+                lp_id: Some(receipt.lp_id.clone()),
+                deposit_id: None,
+                withdrawal_id: Some(receipt.withdrawal_id.clone()),
+                quote_id: None,
+                receipt_sha256: receipt.canonical_json_sha256.clone(),
+                receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+            },
+        );
+
         Ok(WithdrawResponseV1 {
             schema: WITHDRAW_RESPONSE_SCHEMA_V1.to_string(),
             withdrawal: stored,
@@ -515,9 +546,7 @@ impl LiquidityPoolService {
             .map_err(map_store_error)?
             .ok_or(LiquidityPoolError::NotFound)?;
         if pool.status == PoolStatusV1::Disabled.as_str() {
-            return Err(LiquidityPoolError::Conflict(
-                "pool is disabled".to_string(),
-            ));
+            return Err(LiquidityPoolError::Conflict("pool is disabled".to_string()));
         }
 
         let as_of = Utc::now();
@@ -549,9 +578,8 @@ impl LiquidityPoolService {
         });
 
         let share_price_sats = if total_shares > 0 {
-            let denom = u64::try_from(total_shares).map_err(|_| {
-                LiquidityPoolError::Internal("total_shares invalid".to_string())
-            })?;
+            let denom = u64::try_from(total_shares)
+                .map_err(|_| LiquidityPoolError::Internal("total_shares invalid".to_string()))?;
             let per_share = wallet_balance_sats / denom;
             i64::try_from(per_share.max(1)).map_err(|_| {
                 LiquidityPoolError::Internal("share_price_sats too large".to_string())
@@ -653,11 +681,124 @@ impl LiquidityPoolService {
             .await
             .map_err(map_store_error)?;
 
+        self.maybe_spawn_nostr_pool_snapshot_mirror(&stored, &receipt);
+
         Ok(PoolSnapshotResponseV1 {
             schema: POOL_SNAPSHOT_SCHEMA_V1.to_string(),
             snapshot: stored,
             receipt,
         })
+    }
+
+    fn maybe_spawn_nostr_liquidity_receipt_pointer_mirror(&self, payload: LiquidityReceiptPointerV1) {
+        let relays = bridge_relays_from_env();
+        if relays.is_empty() {
+            return;
+        }
+        let Some(secret_key) = self.receipt_signing_key else {
+            return;
+        };
+
+        tokio::spawn(async move {
+            let event =
+                match build_liquidity_receipt_pointer_event(&secret_key, None, &payload) {
+                    Ok(event) => event,
+                    Err(error) => {
+                        tracing::warn!(
+                            reason = %error,
+                            "bridge nostr mirror failed to build liquidity receipt pointer"
+                        );
+                        return;
+                    }
+                };
+            let publisher = BridgeNostrPublisher::new(relays);
+            if let Err(error) = publisher.connect().await {
+                tracing::warn!(
+                    reason = %error,
+                    "bridge nostr mirror failed to connect to relays"
+                );
+                return;
+            }
+            if let Err(error) = publisher.publish(&event).await {
+                tracing::warn!(
+                    reason = %error,
+                    "bridge nostr mirror failed to publish liquidity receipt pointer"
+                );
+            }
+        });
+    }
+
+    fn maybe_spawn_nostr_pool_snapshot_mirror(
+        &self,
+        snapshot: &PoolSnapshotRow,
+        receipt: &PoolSnapshotReceiptV1,
+    ) {
+        let relays = bridge_relays_from_env();
+        if relays.is_empty() {
+            return;
+        }
+        let Some(secret_key) = self.receipt_signing_key else {
+            return;
+        };
+
+        let wallet_balance_sats = snapshot
+            .assets_json
+            .get("walletBalanceSats")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let shares_outstanding = snapshot
+            .liabilities_json
+            .get("sharesOutstanding")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let pending_withdrawals_sats_estimate = snapshot
+            .liabilities_json
+            .get("pendingWithdrawalsSatsEstimate")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+
+        let payload = PoolSnapshotBridgeV1 {
+            pool_id: snapshot.pool_id.clone(),
+            snapshot_id: snapshot.snapshot_id.clone(),
+            snapshot_sha256: snapshot.canonical_json_sha256.clone(),
+            as_of_unix: snapshot.as_of.timestamp().max(0) as u64,
+            wallet_balance_sats,
+            shares_outstanding,
+            pending_withdrawals_sats_estimate,
+            share_price_sats: snapshot.share_price_sats,
+            receipt_id: Some(receipt.receipt_id.clone()),
+            receipt_sha256: Some(receipt.canonical_json_sha256.clone()),
+        };
+
+        tokio::spawn(async move {
+            let event = match build_pool_snapshot_event(&secret_key, None, &payload) {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::warn!(
+                        pool_id = %payload.pool_id,
+                        reason = %error,
+                        "bridge nostr mirror failed to build pool snapshot event"
+                    );
+                    return;
+                }
+            };
+            let publisher = BridgeNostrPublisher::new(relays);
+            if let Err(error) = publisher.connect().await {
+                tracing::warn!(
+                    pool_id = %payload.pool_id,
+                    reason = %error,
+                    "bridge nostr mirror failed to connect to relays"
+                );
+                return;
+            }
+            if let Err(error) = publisher.publish(&event).await {
+                tracing::warn!(
+                    pool_id = %payload.pool_id,
+                    reason = %error,
+                    "bridge nostr mirror failed to publish pool snapshot event"
+                );
+            }
+        });
     }
 }
 
@@ -850,9 +991,8 @@ fn estimate_withdraw_amount_sats(
             "share_price_sats must be > 0".to_string(),
         ));
     }
-    let share_price_u64 = u64::try_from(share_price_sats).map_err(|_| {
-        LiquidityPoolError::Internal("share_price_sats invalid".to_string())
-    })?;
+    let share_price_u64 = u64::try_from(share_price_sats)
+        .map_err(|_| LiquidityPoolError::Internal("share_price_sats invalid".to_string()))?;
     let amount_u64 = shares_burned
         .checked_mul(share_price_u64)
         .ok_or_else(|| LiquidityPoolError::Internal("withdraw estimate overflow".to_string()))?;
@@ -997,7 +1137,10 @@ impl WalletExecutorClient for HttpWalletExecutorClient {
                     "wallet executor create-invoice returned empty invoice".to_string(),
                 ));
             }
-            Ok(WalletInvoiceResult { invoice, invoice_hash })
+            Ok(WalletInvoiceResult {
+                invoice,
+                invoice_hash,
+            })
         } else {
             let code = json
                 .pointer("/error/code")
@@ -1085,9 +1228,7 @@ impl WalletExecutorClient for HttpWalletExecutorClient {
             )));
         }
 
-        let balance_sats = json
-            .pointer("/status/balanceSats")
-            .and_then(Value::as_u64);
+        let balance_sats = json.pointer("/status/balanceSats").and_then(Value::as_u64);
 
         Ok(WalletStatusSummary { balance_sats })
     }
