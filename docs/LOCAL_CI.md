@@ -60,6 +60,11 @@ Examples:
 ./scripts/local-ci.sh all
 ```
 
+`runtime` lane includes the Hydra CEP MVP-1 executable harness:
+
+- `cargo run --manifest-path apps/runtime/Cargo.toml --bin vignette-neobank-pay-bolt11`
+- expected artifact: `output/vignettes/local-ci/neobank-pay-bolt11/summary.json`
+
 Changed-mode trigger note:
 
 - `runtime` lane auto-runs for `apps/runtime/**`, `proto/**`, and `buf*.yaml` changes.

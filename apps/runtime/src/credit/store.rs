@@ -196,10 +196,7 @@ impl CreditStore for MemoryCreditStore {
         intent_id: &str,
     ) -> Result<Option<CreditIntentRow>, CreditStoreError> {
         let inner = self.inner.lock().await;
-        Ok(inner
-            .intents
-            .get(intent_id)
-            .map(|(row, _, _)| row.clone()))
+        Ok(inner.intents.get(intent_id).map(|(row, _, _)| row.clone()))
     }
 
     async fn create_or_get_offer(

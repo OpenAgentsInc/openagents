@@ -928,7 +928,10 @@ async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> 
         .await?;
     assert_eq!(health_response.status(), axum::http::StatusCode::OK);
     let health_json = response_json(health_response).await?;
-    assert_eq!(health_json["schema"], "openagents.credit.health_response.v1");
+    assert_eq!(
+        health_json["schema"],
+        "openagents.credit.health_response.v1"
+    );
     assert!(health_json["open_envelope_count"].is_u64());
     assert!(health_json["open_reserved_commitments_sats"].is_u64());
 
@@ -936,7 +939,10 @@ async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> 
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/internal/v1/credit/agents/{}/exposure", "a".repeat(64)))
+                .uri(format!(
+                    "/internal/v1/credit/agents/{}/exposure",
+                    "a".repeat(64)
+                ))
                 .body(Body::empty())?,
         )
         .await?;
@@ -964,7 +970,10 @@ async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> 
         .await?;
     assert_eq!(envelope_response.status(), axum::http::StatusCode::OK);
     let envelope_json = response_json(envelope_response).await?;
-    assert_eq!(envelope_json["schema"], "openagents.credit.envelope_response.v1");
+    assert_eq!(
+        envelope_json["schema"],
+        "openagents.credit.envelope_response.v1"
+    );
     let envelope_id = envelope_json
         .pointer("/envelope/envelope_id")
         .and_then(Value::as_str)
@@ -994,7 +1003,10 @@ async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> 
         .await?;
     assert_eq!(settle_first.status(), axum::http::StatusCode::OK);
     let settle_first_json = response_json(settle_first).await?;
-    assert_eq!(settle_first_json["schema"], "openagents.credit.settle_response.v1");
+    assert_eq!(
+        settle_first_json["schema"],
+        "openagents.credit.settle_response.v1"
+    );
     assert_eq!(settle_first_json["outcome"], "success");
     let receipt_sha_first = settle_first_json
         .pointer("/receipt/canonical_json_sha256")
@@ -1229,7 +1241,10 @@ async fn credit_settle_returns_bad_gateway_when_wallet_executor_unavailable() ->
                 }))?))?,
         )
         .await?;
-    assert_eq!(settle_response.status(), axum::http::StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        settle_response.status(),
+        axum::http::StatusCode::BAD_GATEWAY
+    );
     let json = response_json(settle_response).await?;
     assert_eq!(json["error"], "dependency_unavailable");
     Ok(())

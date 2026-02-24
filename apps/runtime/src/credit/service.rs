@@ -23,9 +23,9 @@ use crate::credit::types::{
     CreditLiquidityPayEventRow, CreditOfferRequestV1, CreditOfferResponseV1, CreditOfferRow,
     CreditOfferStatusV1, CreditPolicySnapshotV1, CreditScopeTypeV1, CreditSettleRequestV1,
     CreditSettleResponseV1, CreditSettlementOutcomeV1, CreditSettlementRow,
-    CreditUnderwritingAuditRow,
-    DEFAULT_NOTICE_SCHEMA_V1, DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1,
-    ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1, EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
+    CreditUnderwritingAuditRow, DEFAULT_NOTICE_SCHEMA_V1, DefaultNoticeV1,
+    ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1, ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
+    EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
 };
 use crate::liquidity::types::{PayRequestV1, QuotePayRequestV1};
 use crate::liquidity::{LiquidityError, LiquidityService};
@@ -1148,7 +1148,9 @@ impl CreditService {
             breakers,
             policy: CreditPolicySnapshotV1 {
                 max_sats_per_envelope: self.policy.max_sats_per_envelope,
-                max_outstanding_envelopes_per_agent: self.policy.max_outstanding_envelopes_per_agent,
+                max_outstanding_envelopes_per_agent: self
+                    .policy
+                    .max_outstanding_envelopes_per_agent,
                 max_offer_ttl_seconds: self.policy.max_offer_ttl_seconds,
                 underwriting_history_days: self.policy.underwriting_history_days,
                 underwriting_base_sats: self.policy.underwriting_base_sats,
@@ -1165,7 +1167,9 @@ impl CreditService {
                 circuit_breaker_min_sample: self.policy.circuit_breaker_min_sample,
                 loss_rate_halt_threshold: self.policy.loss_rate_halt_threshold,
                 ln_failure_rate_halt_threshold: self.policy.ln_failure_rate_halt_threshold,
-                ln_failure_large_settlement_cap_sats: self.policy.ln_failure_large_settlement_cap_sats,
+                ln_failure_large_settlement_cap_sats: self
+                    .policy
+                    .ln_failure_large_settlement_cap_sats,
             },
         })
     }

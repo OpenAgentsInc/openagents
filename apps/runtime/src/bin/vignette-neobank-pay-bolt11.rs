@@ -153,6 +153,34 @@ async fn main() -> Result<()> {
     if cep.status != "success" {
         return Err(anyhow!("cep settle not successful: {}", cep.status));
     }
+    let direct_liquidity_quote_id = non_empty_opt(
+        direct.liquidity_quote_id.clone(),
+        "direct.liquidity_quote_id",
+    )?;
+    let direct_liquidity_receipt_sha256 = non_empty_opt(
+        direct.liquidity_receipt_sha256.clone(),
+        "direct.liquidity_receipt_sha256",
+    )?;
+    let cep_credit_offer_id = non_empty_opt(cep.credit_offer_id.clone(), "cep.credit_offer_id")?;
+    let cep_credit_envelope_id =
+        non_empty_opt(cep.credit_envelope_id.clone(), "cep.credit_envelope_id")?;
+    let cep_credit_settlement_receipt_sha256 = non_empty_opt(
+        cep.credit_settlement_receipt_sha256.clone(),
+        "cep.credit_settlement_receipt_sha256",
+    )?;
+    let cep_liquidity_receipt_sha256 = non_empty_opt(
+        cep.liquidity_receipt_sha256.clone(),
+        "cep.liquidity_receipt_sha256",
+    )?;
+    if direct.receipt.receipt_id.trim().is_empty()
+        || direct.receipt.canonical_json_sha256.trim().is_empty()
+        || cep.receipt.receipt_id.trim().is_empty()
+        || cep.receipt.canonical_json_sha256.trim().is_empty()
+    {
+        return Err(anyhow!(
+            "missing deterministic receipt id/hash in vignette output"
+        ));
+    }
 
     let summary = json!({
         "schema": "openagents.vignette.neobank_pay_bolt11.summary.v1",
@@ -161,17 +189,17 @@ async fn main() -> Result<()> {
         "wallet_base_url": wallet.base_url,
         "direct": {
             "budget_reservation_id": direct.budget_reservation_id,
-            "liquidity_quote_id": direct.liquidity_quote_id,
-            "liquidity_receipt_sha256": direct.liquidity_receipt_sha256,
+            "liquidity_quote_id": direct_liquidity_quote_id,
+            "liquidity_receipt_sha256": direct_liquidity_receipt_sha256,
             "receipt_id": direct.receipt.receipt_id,
             "receipt_sha256": direct.receipt.canonical_json_sha256,
         },
         "cep": {
             "budget_reservation_id": cep.budget_reservation_id,
-            "credit_offer_id": cep.credit_offer_id,
-            "credit_envelope_id": cep.credit_envelope_id,
-            "credit_settlement_receipt_sha256": cep.credit_settlement_receipt_sha256,
-            "liquidity_receipt_sha256": cep.liquidity_receipt_sha256,
+            "credit_offer_id": cep_credit_offer_id,
+            "credit_envelope_id": cep_credit_envelope_id,
+            "credit_settlement_receipt_sha256": cep_credit_settlement_receipt_sha256,
+            "liquidity_receipt_sha256": cep_liquidity_receipt_sha256,
             "receipt_id": cep.receipt.receipt_id,
             "receipt_sha256": cep.receipt.canonical_json_sha256,
         },
@@ -377,6 +405,14 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
+}
+
+fn non_empty_opt(value: Option<String>, field: &str) -> Result<String> {
+    let value = value.ok_or_else(|| anyhow!("missing {field}"))?;
+    if value.trim().is_empty() {
+        return Err(anyhow!("{field} is empty"));
+    }
+    Ok(value)
 }
 
 async fn wait_for_http_ok(

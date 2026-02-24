@@ -1,5 +1,8 @@
 use std::collections::HashMap;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use anyhow::{Context, Result, anyhow};
 use axum::{
@@ -14,14 +17,15 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, oneshot};
 
-use crate::credit::service::CreditService;
 use crate::credit::service::CreditPolicyConfig;
+use crate::credit::service::CreditService;
 use crate::credit::store;
 use crate::credit::types::{
     CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1, CREDIT_ENVELOPE_REQUEST_SCHEMA_V1,
-    CREDIT_HEALTH_RESPONSE_SCHEMA_V1, CREDIT_OFFER_REQUEST_SCHEMA_V1, CREDIT_SETTLE_REQUEST_SCHEMA_V1,
-    CreditEnvelopeRequestV1, CreditOfferRequestV1, CreditScopeTypeV1, CreditSettleRequestV1,
-    DEFAULT_NOTICE_SCHEMA_V1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1, ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
+    CREDIT_HEALTH_RESPONSE_SCHEMA_V1, CREDIT_OFFER_REQUEST_SCHEMA_V1,
+    CREDIT_SETTLE_REQUEST_SCHEMA_V1, CreditEnvelopeRequestV1, CreditOfferRequestV1,
+    CreditScopeTypeV1, CreditSettleRequestV1, DEFAULT_NOTICE_SCHEMA_V1,
+    ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1, ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
 };
 use crate::liquidity::{LiquidityService, store as liquidity_store};
 
@@ -63,6 +67,7 @@ async fn cep_issue_and_settle_success_is_idempotent() -> Result<()> {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_pk.clone(),
             pool_id: pool_pk.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_hash_vignette".to_string(),
             max_sats: 10_000,
@@ -106,10 +111,7 @@ async fn cep_issue_and_settle_success_is_idempotent() -> Result<()> {
     assert_eq!(settled_1.outcome, "success");
     assert_eq!(wallet.pay_calls.load(Ordering::Relaxed), 1);
     assert_eq!(
-        settled_1
-            .receipt
-            .get("schema")
-            .and_then(Value::as_str),
+        settled_1.receipt.get("schema").and_then(Value::as_str),
         Some(ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1)
     );
     if settled_1
@@ -162,6 +164,7 @@ async fn cep_settle_verification_failed_emits_default_and_does_not_pay() -> Resu
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: "d".repeat(64),
             pool_id: "e".repeat(64),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_hash_failed".to_string(),
             max_sats: 10_000,
@@ -195,10 +198,7 @@ async fn cep_settle_verification_failed_emits_default_and_does_not_pay() -> Resu
     assert_eq!(settled.outcome, "failed");
     assert_eq!(wallet.pay_calls.load(Ordering::Relaxed), 0);
     assert_eq!(
-        settled
-            .receipt
-            .get("schema")
-            .and_then(Value::as_str),
+        settled.receipt.get("schema").and_then(Value::as_str),
         Some(DEFAULT_NOTICE_SCHEMA_V1)
     );
 
@@ -226,6 +226,7 @@ async fn cep_settle_expired_emits_default_and_does_not_pay() -> Result<()> {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: "1".repeat(64),
             pool_id: "2".repeat(64),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_hash_expired".to_string(),
             max_sats: 10_000,
@@ -261,10 +262,7 @@ async fn cep_settle_expired_emits_default_and_does_not_pay() -> Result<()> {
     assert_eq!(settled.outcome, "expired");
     assert_eq!(wallet.pay_calls.load(Ordering::Relaxed), 0);
     assert_eq!(
-        settled
-            .receipt
-            .get("schema")
-            .and_then(Value::as_str),
+        settled.receipt.get("schema").and_then(Value::as_str),
         Some(DEFAULT_NOTICE_SCHEMA_V1)
     );
 
@@ -331,7 +329,9 @@ async fn pay_bolt11(
     if !ok {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"ok": false, "error": {"code": "unauthorized", "message": "invalid token"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "invalid token"}}),
+            ),
         );
     }
 
@@ -339,7 +339,9 @@ async fn pay_bolt11(
         state.pay_calls.fetch_add(1, Ordering::Relaxed);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"ok": false, "error": {"code": "wallet_fail", "message": "simulated failure"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "wallet_fail", "message": "simulated failure"}}),
+            ),
         );
     }
 
@@ -409,7 +411,8 @@ async fn cep_envelope_refuses_when_max_outstanding_exceeded() -> Result<()> {
         max_outstanding_envelopes_per_agent: 1,
         ..CreditPolicyConfig::default()
     };
-    let credit = CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
+    let credit =
+        CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
 
     let agent_id = "a".repeat(64);
     let pool_id = "b".repeat(64);
@@ -420,6 +423,7 @@ async fn cep_envelope_refuses_when_max_outstanding_exceeded() -> Result<()> {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id: pool_id.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_1".to_string(),
             max_sats: 10_000,
@@ -441,6 +445,7 @@ async fn cep_envelope_refuses_when_max_outstanding_exceeded() -> Result<()> {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id,
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_2".to_string(),
             max_sats: 10_000,
@@ -487,7 +492,8 @@ async fn cep_loss_circuit_breaker_halts_new_envelopes_and_health_is_versioned() 
         health_window_seconds: 60 * 60,
         ..CreditPolicyConfig::default()
     };
-    let credit = CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
+    let credit =
+        CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
 
     let agent_id = "d".repeat(64);
     let pool_id = "e".repeat(64);
@@ -499,6 +505,7 @@ async fn cep_loss_circuit_breaker_halts_new_envelopes_and_health_is_versioned() 
                 schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
                 agent_id: agent_id.clone(),
                 pool_id: pool_id.clone(),
+                intent_id: None,
                 scope_type: CreditScopeTypeV1::Nip90,
                 scope_id: format!("job_fail_{idx}"),
                 max_sats: 10_000,
@@ -537,6 +544,7 @@ async fn cep_loss_circuit_breaker_halts_new_envelopes_and_health_is_versioned() 
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id: pool_id.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_blocked".to_string(),
             max_sats: 10_000,
@@ -562,7 +570,8 @@ async fn cep_loss_circuit_breaker_halts_new_envelopes_and_health_is_versioned() 
 }
 
 #[tokio::test]
-async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_versioned() -> Result<()> {
+async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_versioned()
+-> Result<()> {
     let wallet = spawn_wallet_executor_stub("test-token".to_string(), false).await?;
     let signing_key = [17u8; 32];
     let liquidity = Arc::new(LiquidityService::new(
@@ -581,7 +590,8 @@ async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_ver
         max_sats_per_envelope: 100_000,
         ..CreditPolicyConfig::default()
     };
-    let credit = CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
+    let credit =
+        CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
 
     let agent_id = "1".repeat(64);
     let pool_id = "2".repeat(64);
@@ -592,6 +602,7 @@ async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_ver
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id: pool_id.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_before".to_string(),
             max_sats: 20_000,
@@ -607,6 +618,7 @@ async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_ver
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id: pool_id.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_default".to_string(),
             max_sats: 20_000,
@@ -640,6 +652,7 @@ async fn cep_default_reduces_future_underwriting_limit_and_agent_exposure_is_ver
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id,
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_after".to_string(),
             max_sats: 20_000,
@@ -685,7 +698,8 @@ async fn cep_ln_failure_circuit_breaker_halts_large_settlements() -> Result<()> 
         loss_rate_halt_threshold: 1.0,
         ..CreditPolicyConfig::default()
     };
-    let credit = CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
+    let credit =
+        CreditService::new_with_policy(store::memory(), liquidity, Some(signing_key), policy);
 
     let agent_id = "9".repeat(64);
     let pool_id = "8".repeat(64);
@@ -696,6 +710,7 @@ async fn cep_ln_failure_circuit_breaker_halts_large_settlements() -> Result<()> 
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id: pool_id.clone(),
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_ln_fail_small".to_string(),
             max_sats: 10_000,
@@ -732,6 +747,7 @@ async fn cep_ln_failure_circuit_breaker_halts_large_settlements() -> Result<()> 
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1.to_string(),
             agent_id: agent_id.clone(),
             pool_id,
+            intent_id: None,
             scope_type: CreditScopeTypeV1::Nip90,
             scope_id: "job_ln_fail_large".to_string(),
             max_sats: 10_000,

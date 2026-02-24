@@ -142,3 +142,14 @@ Operator introspection:
   - breaker status (`halt_new_envelopes`, `halt_large_settlements`)
   - settlement/LN sample counts used in breaker decisions
   - effective policy values under `policy`
+
+MVP-1 verification commands:
+
+```bash
+cargo test -p openagents-runtime-service --no-fail-fast
+cargo run -p openagents-runtime-service --bin vignette-neobank-pay-bolt11
+```
+
+Harness artifact:
+
+- `output/vignettes/neobank-pay-bolt11/<run_id>/summary.json`
