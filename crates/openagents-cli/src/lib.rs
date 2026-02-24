@@ -34,3 +34,32 @@ pub fn run() -> anyhow::Result<()> {
         Commands::CommunityFeed(args) => communityfeed_cli::run(args),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+    use clap::error::ErrorKind;
+
+    use super::OpenAgentsCli;
+
+    #[test]
+    fn cli_requires_subcommand() {
+        let err = match OpenAgentsCli::try_parse_from(["openagents"]) {
+            Ok(_) => panic!("expected missing subcommand parse error"),
+            Err(err) => err,
+        };
+        assert_eq!(
+            err.kind(),
+            ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+    }
+
+    #[test]
+    fn cli_rejects_unknown_subcommand() {
+        let err = match OpenAgentsCli::try_parse_from(["openagents", "unknown-subcommand"]) {
+            Ok(_) => panic!("expected invalid subcommand parse error"),
+            Err(err) => err,
+        };
+        assert_eq!(err.kind(), ErrorKind::InvalidSubcommand);
+    }
+}

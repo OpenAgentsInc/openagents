@@ -126,4 +126,29 @@ mod tests {
         assert_eq!(issue_status(&blocked), WorkspaceIssueStatus::Blocked);
         assert_eq!(issue_status_label(&blocked), "Blocked");
     }
+
+    #[test]
+    fn sorts_workspace_issues_by_status_then_priority_then_number() {
+        let mut urgent_in_progress = issue("in_progress", "urgent", false);
+        urgent_in_progress.number = 12;
+        let mut blocked_low = issue("open", "low", true);
+        blocked_low.number = 40;
+        let mut open_high = issue("open", "high", false);
+        open_high.number = 3;
+        let mut open_medium = issue("open", "medium", false);
+        open_medium.number = 2;
+        let mut complete_urgent = issue("completed", "urgent", false);
+        complete_urgent.number = 1;
+
+        let issues = [
+            open_medium.clone(),
+            complete_urgent.clone(),
+            blocked_low.clone(),
+            urgent_in_progress.clone(),
+            open_high.clone(),
+        ];
+        let sorted = sort_workspace_issues(&issues);
+        let sorted_numbers: Vec<u32> = sorted.iter().map(|issue| issue.number).collect();
+        assert_eq!(sorted_numbers, vec![40, 12, 3, 2, 1]);
+    }
 }

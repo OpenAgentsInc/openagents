@@ -875,4 +875,27 @@ mod tests {
                 .any(|message| message.text == "Turn completed.")
         );
     }
+
+    #[test]
+    fn extract_thread_id_supports_nested_message_shapes() {
+        let worker_payload = json!({});
+        let worker_payload = worker_payload.as_object().expect("object worker payload");
+        let params = json!({
+            "thread_id": "thread-nested"
+        });
+        let params = params.as_object().expect("object params");
+
+        assert_eq!(
+            extract_thread_id(worker_payload, params).as_deref(),
+            Some("thread-nested")
+        );
+    }
+
+    #[test]
+    fn merge_streaming_text_appends_non_overlapping_suffix() {
+        assert_eq!(
+            merge_streaming_text("alpha beta", " gamma"),
+            "alpha beta gamma".to_string()
+        );
+    }
 }

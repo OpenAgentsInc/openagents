@@ -168,6 +168,26 @@ To validate changed-file lane routing logic:
 ./scripts/local-ci.sh test-triggers
 ```
 
+## Test Density Snapshot
+
+Track test-marker density for current low-density large crates:
+
+```bash
+./scripts/test-density-report.sh
+```
+
+Current target surfaces:
+
+- `crates/openagents-cli`
+- `crates/autopilot_ui`
+- `crates/runtime`
+- `apps/openagents.com/web-shell`
+- `crates/autopilot`
+
+Contribution rule for these surfaces:
+
+- Refactor/feature PRs touching these paths must include focused net-new tests in risky modules (state transitions, protocol adapters, reducers, parsing, or orchestration logic).
+
 ## Panic-Surface No-Net-Growth Gate
 
 `./scripts/local-ci.sh panic-surface` runs:

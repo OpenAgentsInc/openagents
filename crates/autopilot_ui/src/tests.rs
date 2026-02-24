@@ -112,6 +112,35 @@ fn extract_thread_hint_supports_nested_codex_msg_thread_fields() {
 }
 
 #[test]
+fn command_string_from_item_supports_array_commands() {
+    let item = serde_json::json!({
+        "command": ["cargo", "test", "--workspace", 42]
+    });
+    assert_eq!(
+        command_string_from_item(&item).as_deref(),
+        Some("cargo test --workspace")
+    );
+}
+
+#[test]
+fn extract_file_changes_preserves_first_path_and_first_diff() {
+    let item = serde_json::json!({
+        "changes": [
+            {"path": "src/main.rs", "diff": "first-diff"},
+            {"path": "Cargo.toml", "diff": "second-diff"}
+        ]
+    });
+    let (paths, first_path, first_diff) = extract_file_changes(&item);
+
+    assert_eq!(
+        paths,
+        vec!["src/main.rs".to_string(), "Cargo.toml".to_string()]
+    );
+    assert_eq!(first_path.as_deref(), Some("src/main.rs"));
+    assert_eq!(first_diff.as_deref(), Some("first-diff"));
+}
+
+#[test]
 fn agent_delta_aliases_do_not_double_append_modern_then_legacy() {
     let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
     let modern = serde_json::json!({

@@ -132,6 +132,42 @@ impl IdempotencyJournal for MemoryJournal {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{IdempotencyJournal, MemoryJournal};
+    use std::time::Duration;
+
+    #[test]
+    fn memory_journal_check_or_record_is_idempotent() {
+        let journal = MemoryJournal::new();
+        assert!(
+            journal
+                .check_or_record("request-key", Duration::from_secs(30))
+                .expect("first key record should succeed")
+        );
+        assert!(
+            !journal
+                .check_or_record("request-key", Duration::from_secs(30))
+                .expect("duplicate key should be rejected")
+        );
+    }
+
+    #[test]
+    fn memory_journal_expires_zero_ttl_entries() {
+        let journal = MemoryJournal::new();
+        journal
+            .put_with_ttl("ephemeral", b"payload", Duration::from_millis(0))
+            .expect("put_with_ttl should succeed");
+        assert!(
+            journal
+                .get("ephemeral")
+                .expect("journal get should succeed")
+                .is_none(),
+            "zero-ttl entries should be expired on read"
+        );
+    }
+}
+
 /// Cloudflare Durable Object SQL-backed idempotency journal.
 #[cfg(feature = "cloudflare")]
 #[derive(Clone)]
