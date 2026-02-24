@@ -435,3 +435,1046 @@ Hydra is “liquidity-first” infrastructure: it makes the entire market feel r
 
 * `GET /stats` (minute cache)
 * `GET /v1/hydra/receipts` (filtered by type/time/agent)
+
+---
+
+```proto
+// proto/openagents/hydra/v1/hydra.proto
+syntax = "proto3";
+
+package openagents.hydra.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/protocol/v1/reasons.proto";
+import "openagents/lightning/v1/wallet_executor.proto";
+
+// Hydra — OpenAgents Liquidity Engine (v1)
+//
+// This file defines proto-first, portable contracts for Hydra’s authority surfaces:
+//
+// - LLP: Lightning Liquidity Pool (quote/pay + liquidity status + pool snapshots)
+// - CEP: Outcome-scoped Credit Envelopes (intent/offer/issue/settle)
+// - Routing intelligence (score invoice payment feasibility)
+// - Optional FX RFQ/settlement scaffolding (for Treasury Agents)
+//
+// Norms:
+// - Authority mutations MUST remain authenticated HTTP only (INV-02).
+// - Live delivery lanes (Khala) are WS-only and non-authoritative.
+// - All mutation flows MUST be idempotent.
+// - Receipts MUST be deterministic and replay-verifiable.
+// - v1 is additive-only (ADR-0002); do not change semantics of existing fields.
+//
+// Canonical hashing/signature pipelines are defined outside this proto and referenced via
+// `canonical_json_sha256` fields where applicable.
+
+//
+// -----------------------------
+// Common enums + primitives
+// -----------------------------
+
+enum HydraErrorCode {
+  HYDRA_ERROR_CODE_UNSPECIFIED = 0;
+
+  HYDRA_ERROR_CODE_UNAUTHORIZED = 1;
+  HYDRA_ERROR_CODE_FORBIDDEN = 2;
+  HYDRA_ERROR_CODE_INVALID_REQUEST = 3;
+  HYDRA_ERROR_CODE_NOT_FOUND = 4;
+  HYDRA_ERROR_CODE_CONFLICT = 5;
+  HYDRA_ERROR_CODE_RATE_LIMITED = 6;
+
+  // Domain errors (Hydra-specific)
+  HYDRA_ERROR_CODE_QUOTE_EXPIRED = 10;
+  HYDRA_ERROR_CODE_INSUFFICIENT_LIQUIDITY = 11;
+  HYDRA_ERROR_CODE_BUDGET_EXHAUSTED = 12;
+  HYDRA_ERROR_CODE_POLICY_DENIED = 13;
+
+  // Dependency / downstream failures
+  HYDRA_ERROR_CODE_WALLET_EXECUTOR_UNAVAILABLE = 20;
+  HYDRA_ERROR_CODE_WALLET_EXECUTOR_REJECTED = 21;
+  HYDRA_ERROR_CODE_LIGHTNING_BACKEND_UNAVAILABLE = 22;
+  HYDRA_ERROR_CODE_LIGHTNING_PAYMENT_FAILED = 23;
+
+  HYDRA_ERROR_CODE_INTERNAL_ERROR = 100;
+}
+
+message HydraError {
+  HydraErrorCode code = 1;
+  string message = 2;
+  repeated string details = 3;
+  uint32 retry_after_ms = 4;
+
+  // Optional mapping to canonical policy/runtime reason taxonomy.
+  openagents.protocol.v1.ReasonCode reason_code = 10;
+  string reason_code_text = 11;
+
+  // Request correlation.
+  string request_id = 20;
+}
+
+enum HydraUrgency {
+  HYDRA_URGENCY_UNSPECIFIED = 0;
+  HYDRA_URGENCY_LOW = 1;
+  HYDRA_URGENCY_NORMAL = 2;
+  HYDRA_URGENCY_HIGH = 3;
+}
+
+// Generic money container.
+// For Lightning flows, set currency="msats" and amount=<msats>.
+// For pool accounting, set currency="sats" and amount=<sats>.
+message HydraMoney {
+  string currency = 1; // "msats" | "sats" | "usd_cents" | ...
+  uint64 amount = 2;
+}
+
+// Stable linkage fields used throughout OpenAgents for auditability.
+// These are pointers to authoritative artifacts/state elsewhere.
+//
+// Notes:
+// - `trajectory_hash`, `job_hash`, `objective_hash` should be deterministic sha256:<hex> strings.
+// - These fields are essential for “money → why → proof” legibility.
+message HydraLinkage {
+  string session_id = 1;
+  string run_id = 2;
+  string trajectory_hash = 3;
+
+  // Deterministic compute/job hash from job registry.
+  string job_hash = 4;
+
+  // Deterministic objective hash (e.g., job request canonical hash).
+  string objective_hash = 5;
+
+  // Policy bundle ID for the compiled policy/routing configuration used.
+  string policy_bundle_id = 6;
+
+  // Optional human/admin correlation hints (non-contract-critical).
+  google.protobuf.Struct metadata = 20;
+}
+
+// Budget scope is intentionally explicit: Hydra is used by fleet operators
+// who need org/repo/issue-level spend isolation.
+message HydraBudgetScope {
+  string org_id = 1;
+  string project_id = 2;
+  string repo_id = 3;
+  string issue_id = 4;
+}
+
+// Fee component decomposition to make quotes and receipts machine-comparable.
+// (Mirrors the pattern used in marketplace commerce grammar.)
+message HydraFeeComponent {
+  string component = 1;        // "provider" | "operator_fee" | "policy_adder" | ...
+  HydraMoney amount = 2;       // usually msats for Lightning settlement
+  string notes = 3;            // optional human notes (non-critical)
+}
+
+// Canonical receipt linkage for money movement.
+// WalletExecutorReceipt is the canonical settlement proof for Lightning payments.
+// Hydra receipts wrap it with policy/linkage context and additional deterministic fields.
+message HydraTreasuryReceiptRef {
+  string receipt_sha256 = 1;   // sha256:<hex> of canonical JSON view (Hydra-level)
+  string receipt_url = 2;      // optional URL in object storage
+  string receipt_id = 3;       // optional stable id derived from sha prefix (e.g., hydra_<...>)
+}
+
+//
+// -----------------------------
+// LLP: Lightning Liquidity Pool
+// -----------------------------
+
+enum HydraLightningBackend {
+  HYDRA_LIGHTNING_BACKEND_UNSPECIFIED = 0;
+  HYDRA_LIGHTNING_BACKEND_NOOP = 1;
+  HYDRA_LIGHTNING_BACKEND_CLN = 2; // Phase 0
+  HYDRA_LIGHTNING_BACKEND_LDK = 3; // Later
+}
+
+// Coarse liquidity health summary used for routing and /stats.
+message HydraLightningLiquiditySummary {
+  HydraLightningBackend backend = 1;
+
+  // Sats-level totals (coarse, for health/monitoring; not spend authority).
+  uint64 channel_total_sats = 10;
+  uint64 channel_outbound_sats = 11;
+  uint64 channel_inbound_sats = 12;
+
+  uint32 channel_count = 20;
+  uint32 connected_channel_count = 21;
+
+  // Optional last error observed when querying backend.
+  string last_error = 30;
+  int64 observed_at_ms = 31;
+}
+
+// A pay-quote is a binding pre-flight intent used to ensure retry safety.
+// Quote IDs are server-generated and stable; quote expiry is authoritative.
+enum HydraPayQuoteStatus {
+  HYDRA_PAY_QUOTE_STATUS_UNSPECIFIED = 0;
+  HYDRA_PAY_QUOTE_STATUS_CREATED = 1;
+  HYDRA_PAY_QUOTE_STATUS_USED = 2;
+  HYDRA_PAY_QUOTE_STATUS_EXPIRED = 3;
+  HYDRA_PAY_QUOTE_STATUS_CANCELED = 4;
+}
+
+message HydraLiquidityPayQuoteRequest {
+  // Correlation.
+  string request_id = 1;
+
+  // Required idempotency key for authority mutation application.
+  // Multiple identical requests with same idempotency_key MUST return the same quote.
+  string idempotency_key = 2;
+
+  // Which pool/partition to route through (default "default").
+  string pool_id = 3;
+
+  // BOLT11 invoice to pay.
+  string bolt11 = 4;
+
+  // Fee ceiling (msats).
+  uint64 max_fee_msats = 5;
+
+  HydraUrgency urgency = 6;
+
+  // Optional “all-in” ceiling (invoice + fees). If set, Hydra MUST not exceed it.
+  optional uint64 max_total_msats = 7;
+
+  // Optional linkage for receipts and audit.
+  HydraLinkage linkage = 10;
+  HydraBudgetScope budget_scope = 11;
+
+  // Optional policy context (non-contract-critical hints).
+  google.protobuf.Struct policy_context = 20;
+}
+
+message HydraLiquidityPayQuote {
+  string quote_id = 1;
+  string pool_id = 2;
+
+  // Echo of request intent.
+  string bolt11 = 3;
+  uint64 max_fee_msats = 4;
+  HydraUrgency urgency = 5;
+  optional uint64 max_total_msats = 6;
+
+  // Parsed invoice fields.
+  string invoice_hash = 10;
+  uint64 quoted_amount_msats = 11;
+
+  // Estimates (best-effort, non-binding except as constrained by max_fee/max_total).
+  uint64 expected_fee_msats = 20;
+  uint64 expected_total_msats = 21;
+
+  // Scoring outputs for routing decisions (best-effort).
+  double confidence = 30;       // 0..1
+  double liquidity_score = 31;  // 0..1
+
+  HydraPayQuoteStatus status = 40;
+
+  int64 created_at_ms = 50;
+  int64 valid_until_ms = 51;
+
+  // Deterministic hash pointer for the canonical JSON view of the quote (if enforced).
+  string canonical_json_sha256 = 60;
+
+  // Optional linkage captured at quote creation.
+  HydraLinkage linkage = 70;
+  HydraBudgetScope budget_scope = 71;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraLiquidityPayQuoteResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraLiquidityPayQuote quote = 3;
+  HydraError error = 4;
+}
+
+// Commit executes the payment. This is an authority mutation.
+// It MUST be idempotent on idempotency_key.
+message HydraLiquidityPayCommitRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string quote_id = 3;
+
+  // Optional override: allow smaller fee ceiling for this commit (tighten only).
+  optional uint64 max_fee_msats_override = 4;
+
+  // Optional linkage (if not already embedded in quote).
+  HydraLinkage linkage = 10;
+  HydraBudgetScope budget_scope = 11;
+
+  google.protobuf.Struct policy_context = 20;
+}
+
+// Hydra-level payment receipt that wraps wallet-executor canonical receipt and adds
+// policy/linkage context. This is the durable “what paid, why, under what constraints” artifact.
+message HydraLiquidityPayReceipt {
+  string receipt_version = 1;      // e.g. "openagents.hydra.liquidity_pay_receipt.v1"
+  string receipt_id = 2;           // derived from canonical_json_sha256 prefix (recommended)
+  string request_id = 3;
+
+  string pool_id = 4;
+  string quote_id = 5;
+
+  string host = 10;                // lowercased invoice destination host (best-effort)
+  string invoice_hash = 11;
+
+  uint64 quoted_amount_msats = 20;
+  uint64 settled_amount_msats = 21;
+  uint64 fee_paid_msats = 22;
+  uint64 total_paid_msats = 23;
+
+  int64 paid_at_ms = 30;
+
+  // Canonical Lightning settlement proof (required when Lightning is used).
+  openagents.lightning.v1.WalletExecutionReceipt wallet_receipt = 40;
+
+  // Linkages for auditability.
+  HydraLinkage linkage = 50;
+  HydraBudgetScope budget_scope = 51;
+
+  // Optional fee decomposition (if known/meaningful).
+  repeated HydraFeeComponent fees = 60;
+
+  // Deterministic canonical hash pointer for this receipt.
+  string canonical_json_sha256 = 70;
+}
+
+message HydraLiquidityPayCommitResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+
+  HydraLiquidityPayReceipt receipt = 3;
+
+  // Optional pointer to an externalized receipt object (for large receipts).
+  HydraTreasuryReceiptRef receipt_ref = 4;
+
+  HydraError error = 5;
+}
+
+message HydraLiquidityStatusRequest {
+  string request_id = 1;
+  string pool_id = 2;
+}
+
+message HydraCircuitBreakerState {
+  string breaker_id = 1;
+  string kind = 2; // stable string key, e.g. "envelopes_halt_new", "withdrawals_throttled"
+  bool active = 3;
+
+  openagents.protocol.v1.ReasonCode reason_code = 4;
+  string reason = 5;
+
+  int64 activated_at_ms = 6;
+  int64 updated_at_ms = 7;
+
+  google.protobuf.Struct metadata = 20;
+}
+
+message HydraLiquidityStatus {
+  string pool_id = 1;
+
+  HydraLightningLiquiditySummary lightning = 10;
+
+  // Aggregates (msats) for credit exposure.
+  uint64 outstanding_envelopes_msats = 20;
+  uint32 outstanding_envelope_count = 21;
+
+  // Rolling health.
+  double routing_success_rate_5m = 30;   // 0..1
+  double routing_success_rate_1h = 31;   // 0..1
+  double routing_success_rate_24h = 32;  // 0..1
+
+  uint64 median_fee_msats_5m = 40;
+  uint64 median_fee_msats_1h = 41;
+  uint64 median_fee_msats_24h = 42;
+
+  // Circuit breakers that affect Hydra behavior.
+  repeated HydraCircuitBreakerState circuit_breakers = 50;
+
+  int64 observed_at_ms = 60;
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraLiquidityStatusResult {
+  bool ok = 1;
+  HydraLiquidityStatus status = 2;
+  HydraError error = 3;
+}
+
+//
+// -----------------------------
+// CEP: Outcome-scoped Credit Envelopes
+// -----------------------------
+
+enum HydraEnvelopeScope {
+  HYDRA_ENVELOPE_SCOPE_UNSPECIFIED = 0;
+
+  // Objective verification flows (default for CEP bootstrap).
+  HYDRA_ENVELOPE_SCOPE_NIP90_OBJECTIVE_JOB = 1;
+
+  // Future scopes (enabled later).
+  HYDRA_ENVELOPE_SCOPE_L402_CALL = 2;
+  HYDRA_ENVELOPE_SCOPE_SKILL_INVOCATION = 3;
+  HYDRA_ENVELOPE_SCOPE_FX_SWAP = 4;
+
+  HYDRA_ENVELOPE_SCOPE_CUSTOM = 100;
+}
+
+enum HydraEnvelopeStatus {
+  HYDRA_ENVELOPE_STATUS_UNSPECIFIED = 0;
+  HYDRA_ENVELOPE_STATUS_INTENT_CREATED = 1;
+  HYDRA_ENVELOPE_STATUS_OFFERED = 2;
+  HYDRA_ENVELOPE_STATUS_ISSUED = 3;
+  HYDRA_ENVELOPE_STATUS_SETTLED = 4;
+  HYDRA_ENVELOPE_STATUS_EXPIRED = 5;
+  HYDRA_ENVELOPE_STATUS_CANCELED = 6;
+  HYDRA_ENVELOPE_STATUS_DEFAULTED = 7;
+}
+
+message HydraCreditIntentRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string pool_id = 3;
+
+  // Agent principal requesting envelope underwriting.
+  string agent_id = 4;
+
+  HydraEnvelopeScope scope = 5;
+
+  // Outcome scoping (required for objective jobs; optional otherwise).
+  string objective_hash = 6;
+  string job_hash = 7;
+
+  // Maximum exposure requested (msats).
+  uint64 requested_max_msats = 8;
+
+  // Desired expiry window. Hydra may shorten it by policy.
+  int64 desired_expires_at_ms = 9;
+
+  HydraLinkage linkage = 10;
+  HydraBudgetScope budget_scope = 11;
+
+  google.protobuf.Struct policy_context = 20;
+}
+
+message HydraCreditIntent {
+  string intent_id = 1;
+  string pool_id = 2;
+
+  string agent_id = 3;
+  HydraEnvelopeScope scope = 4;
+
+  string objective_hash = 5;
+  string job_hash = 6;
+
+  uint64 requested_max_msats = 10;
+  int64 desired_expires_at_ms = 11;
+
+  HydraEnvelopeStatus status = 20;
+
+  int64 created_at_ms = 30;
+  int64 updated_at_ms = 31;
+
+  HydraLinkage linkage = 40;
+  HydraBudgetScope budget_scope = 41;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraCreditIntentResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraCreditIntent intent = 3;
+  HydraError error = 4;
+}
+
+// Offer is Hydra’s underwriting response.
+// It is a bounded, short-lived set of terms, not a rolling line.
+message HydraCreditOfferRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string intent_id = 3;
+
+  // Optional acceptance hints (non-binding; can be used for negotiation later).
+  google.protobuf.Struct preferences = 10;
+}
+
+message HydraCreditOffer {
+  string offer_id = 1;
+  string intent_id = 2;
+  string pool_id = 3;
+
+  string agent_id = 4;
+  HydraEnvelopeScope scope = 5;
+
+  // Approved cap (msats) and fee schedule.
+  uint64 approved_max_msats = 10;
+
+  // Fee in basis points charged on settlement (policy-defined).
+  uint32 fee_bps = 11;
+
+  // Optional risk score for observability/debugging (0..1).
+  double risk_score = 12;
+
+  // Binding window for accepting this offer.
+  int64 valid_until_ms = 20;
+
+  // Expiry for the envelope that would be issued from this offer.
+  int64 envelope_expires_at_ms = 21;
+
+  // Optional fee breakdown for agent legibility.
+  repeated HydraFeeComponent fees = 30;
+
+  HydraEnvelopeStatus status = 40; // typically OFFERED
+
+  int64 created_at_ms = 50;
+
+  string canonical_json_sha256 = 60;
+
+  HydraLinkage linkage = 70;
+  HydraBudgetScope budget_scope = 71;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraCreditOfferResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraCreditOffer offer = 3;
+  HydraError error = 4;
+}
+
+// Envelope issuance is the moment Hydra commits working-capital availability.
+// This is an authority mutation and MUST be idempotent.
+message HydraCreditEnvelopeIssueRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string offer_id = 3;
+
+  // Explicit acceptance (proof-of-accept) fields can be added later.
+  google.protobuf.Struct acceptance = 10;
+}
+
+message HydraCreditEnvelope {
+  string envelope_id = 1;
+  string offer_id = 2;
+  string intent_id = 3;
+  string pool_id = 4;
+
+  string agent_id = 5;
+  HydraEnvelopeScope scope = 6;
+
+  string objective_hash = 7;
+  string job_hash = 8;
+
+  uint64 max_msats = 10;
+  uint32 fee_bps = 11;
+
+  HydraEnvelopeStatus status = 20;
+
+  int64 issued_at_ms = 30;
+  int64 expires_at_ms = 31;
+  int64 updated_at_ms = 32;
+
+  HydraLinkage linkage = 40;
+  HydraBudgetScope budget_scope = 41;
+
+  string canonical_json_sha256 = 60;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraCreditEnvelopeResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraCreditEnvelope envelope = 3;
+  HydraError error = 4;
+}
+
+// Settlement consumes an envelope to pay a Lightning invoice after verification.
+// This is the heart of pay-after-verify for objective jobs.
+message HydraCreditEnvelopeSettleRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string envelope_id = 3;
+
+  // Provider invoice to pay (typically included in a compute job result).
+  string bolt11 = 4;
+
+  // Verification evidence pointers (portable).
+  string verification_receipt_sha256 = 10; // sha256:<hex>
+  string verification_receipt_url = 11;
+
+  // Optional “delivered vs quoted” integrity measures (when quote exists).
+  optional uint64 quoted_total_msats = 20;
+
+  // Optional linkage (if not already embedded in envelope).
+  HydraLinkage linkage = 30;
+  HydraBudgetScope budget_scope = 31;
+
+  google.protobuf.Struct policy_context = 40;
+}
+
+message HydraCreditEnvelopeSettlementReceipt {
+  string receipt_version = 1; // e.g. "openagents.hydra.envelope_settlement_receipt.v1"
+  string receipt_id = 2;
+  string request_id = 3;
+
+  string pool_id = 4;
+  string envelope_id = 5;
+
+  string invoice_hash = 10;
+  uint64 settled_amount_msats = 11;
+  uint64 fee_paid_msats = 12;
+  uint64 total_paid_msats = 13;
+
+  int64 settled_at_ms = 20;
+
+  // Canonical Lightning settlement proof.
+  openagents.lightning.v1.WalletExecutionReceipt wallet_receipt = 30;
+
+  // Verification evidence pointers (portable).
+  string verification_receipt_sha256 = 40;
+  string verification_receipt_url = 41;
+
+  // Policy + linkage.
+  HydraLinkage linkage = 50;
+  HydraBudgetScope budget_scope = 51;
+
+  repeated HydraFeeComponent fees = 60;
+  string canonical_json_sha256 = 70;
+}
+
+message HydraCreditEnvelopeSettleResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+
+  HydraCreditEnvelopeSettlementReceipt receipt = 3;
+  HydraTreasuryReceiptRef receipt_ref = 4;
+
+  HydraError error = 5;
+}
+
+//
+// -----------------------------
+// Routing intelligence
+// -----------------------------
+
+message HydraRoutingScoreRequest {
+  string request_id = 1;
+
+  string pool_id = 2;
+  string bolt11 = 3;
+
+  uint64 max_fee_msats = 4;
+  HydraUrgency urgency = 5;
+
+  // Optional linkage (for audit and offline model training later).
+  HydraLinkage linkage = 10;
+
+  google.protobuf.Struct policy_context = 20;
+}
+
+message HydraRoutingScore {
+  string pool_id = 1;
+  string invoice_hash = 2;
+
+  uint64 max_fee_msats = 3;
+
+  // Best-effort estimates for routing decision-making.
+  uint64 expected_fee_msats = 10;
+  uint64 expected_total_msats = 11;
+
+  double confidence = 20;       // 0..1
+  double liquidity_score = 21;  // 0..1
+
+  repeated string policy_notes = 30;
+
+  int64 scored_at_ms = 40;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraRoutingScoreResult {
+  bool ok = 1;
+  HydraRoutingScore score = 2;
+  HydraError error = 3;
+}
+
+//
+// -----------------------------
+// Optional: FX RFQ scaffolding (Treasury Agents)
+// -----------------------------
+
+message HydraFxRfqRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string rfq_id = 3;
+  string buyer_id = 4;
+
+  // Sell and desired buy constraints.
+  HydraMoney sell = 10;
+  string buy_currency = 11;        // e.g. "msats" for BTC_LN, or "usd_cents"
+  optional uint64 min_buy_amount = 12;
+
+  int64 valid_until_ms = 20;
+
+  HydraLinkage linkage = 30;
+  HydraBudgetScope budget_scope = 31;
+
+  google.protobuf.Struct constraints = 40;
+}
+
+message HydraFxQuote {
+  string quote_id = 1;
+  string rfq_id = 2;
+
+  string maker_id = 3;
+
+  HydraMoney sell = 10;
+  HydraMoney buy = 11;
+
+  repeated HydraFeeComponent fees = 20;
+  HydraMoney total_cost = 21;
+
+  int64 valid_until_ms = 30;
+
+  double confidence = 40; // maker confidence (optional)
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraFxRfqResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+
+  string rfq_id = 3;
+  repeated HydraFxQuote quotes = 4;
+
+  HydraError error = 5;
+}
+
+message HydraFxSettleRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string quote_id = 3;
+
+  HydraLinkage linkage = 10;
+  HydraBudgetScope budget_scope = 11;
+
+  google.protobuf.Struct policy_context = 20;
+}
+
+message HydraFxSettlementReceipt {
+  string receipt_version = 1; // "openagents.hydra.fx_settlement_receipt.v1"
+  string receipt_id = 2;
+  string request_id = 3;
+
+  string quote_id = 4;
+  string rfq_id = 5;
+
+  HydraMoney sell = 10;
+  HydraMoney buy = 11;
+
+  repeated HydraFeeComponent fees = 20;
+
+  // Optional linkage to underlying Lightning spend receipts (when applicable).
+  optional openagents.lightning.v1.WalletExecutionReceipt wallet_receipt = 30;
+
+  int64 settled_at_ms = 40;
+
+  HydraLinkage linkage = 50;
+  HydraBudgetScope budget_scope = 51;
+
+  string canonical_json_sha256 = 60;
+}
+
+message HydraFxSettleResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+
+  HydraFxSettlementReceipt receipt = 3;
+  HydraTreasuryReceiptRef receipt_ref = 4;
+
+  HydraError error = 5;
+}
+
+//
+// -----------------------------
+// Pool accounting: snapshots + deposit/withdraw scaffolding
+// -----------------------------
+
+enum HydraDepositMethod {
+  HYDRA_DEPOSIT_METHOD_UNSPECIFIED = 0;
+  HYDRA_DEPOSIT_METHOD_LIGHTNING_INVOICE = 1;
+  HYDRA_DEPOSIT_METHOD_ONCHAIN_ADDRESS = 2;
+  HYDRA_DEPOSIT_METHOD_SPARK_TRANSFER = 3; // optional
+}
+
+message HydraPoolAssets {
+  // Sats-based accounting.
+  uint64 onchain_sats = 1;
+  uint64 lightning_channel_sats = 2;
+  uint64 spark_sats = 3;
+
+  // Coarse breakdown.
+  uint64 lightning_outbound_sats = 10;
+  uint64 lightning_inbound_sats = 11;
+}
+
+message HydraPoolLiabilities {
+  // Optional LP share/liability model (may be 0 in early phases).
+  uint64 lp_shares_outstanding = 1;
+
+  // Pending withdrawals and commitments.
+  uint64 pending_withdraw_sats = 10;
+  uint64 reserved_envelope_msats = 11;
+}
+
+message HydraPoolSnapshot {
+  string snapshot_id = 1;
+  string pool_id = 2;
+
+  HydraPoolAssets assets = 10;
+  HydraPoolLiabilities liabilities = 11;
+
+  HydraLightningLiquiditySummary lightning = 12;
+
+  int64 observed_at_ms = 20;
+
+  // Deterministic canonical hash pointer for signed snapshots.
+  string canonical_json_sha256 = 30;
+
+  // Optional signature references (actual signature scheme managed elsewhere).
+  repeated string signer_fingerprints = 40;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraPoolSnapshotResult {
+  bool ok = 1;
+  HydraPoolSnapshot snapshot = 2;
+  HydraError error = 3;
+}
+
+message HydraPoolDepositQuoteRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string pool_id = 3;
+  HydraDepositMethod method = 4;
+
+  // Desired deposit amount in sats (recommended) or msats (optional).
+  uint64 amount_sats = 10;
+  optional uint64 amount_msats = 11;
+
+  // Optional linkage for audit.
+  HydraLinkage linkage = 20;
+}
+
+message HydraPoolDepositQuote {
+  string deposit_quote_id = 1;
+  string pool_id = 2;
+
+  HydraDepositMethod method = 3;
+
+  uint64 amount_sats = 10;
+  optional uint64 amount_msats = 11;
+
+  // Method-specific payment target.
+  optional string bolt11 = 20;
+  optional string onchain_address = 21;
+
+  int64 valid_until_ms = 30;
+  int64 created_at_ms = 31;
+
+  // Optional LP share model fields (may be zero/unused initially).
+  optional uint64 share_price_sats = 40;
+  optional uint64 shares_to_mint = 41;
+
+  string canonical_json_sha256 = 50;
+
+  HydraLinkage linkage = 60;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraPoolDepositQuoteResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraPoolDepositQuote quote = 3;
+  HydraError error = 4;
+}
+
+message HydraPoolDepositReceipt {
+  string receipt_version = 1; // "openagents.hydra.deposit_receipt.v1"
+  string receipt_id = 2;
+  string request_id = 3;
+
+  string pool_id = 4;
+  string deposit_quote_id = 5;
+
+  uint64 amount_sats = 10;
+
+  // Optional LP share mint fields.
+  optional uint64 share_price_sats = 20;
+  optional uint64 shares_minted = 21;
+
+  // Settlement proof references:
+  // - For Lightning deposits, wallet_receipt is present.
+  // - For onchain deposits, txid_ref is present.
+  optional openagents.lightning.v1.WalletExecutionReceipt wallet_receipt = 30;
+  optional string onchain_txid = 31;
+
+  int64 settled_at_ms = 40;
+
+  HydraLinkage linkage = 50;
+
+  string canonical_json_sha256 = 60;
+}
+
+message HydraPoolDepositReceiptResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraPoolDepositReceipt receipt = 3;
+  HydraTreasuryReceiptRef receipt_ref = 4;
+  HydraError error = 5;
+}
+
+enum HydraWithdrawalStatus {
+  HYDRA_WITHDRAWAL_STATUS_UNSPECIFIED = 0;
+  HYDRA_WITHDRAWAL_STATUS_PENDING = 1;
+  HYDRA_WITHDRAWAL_STATUS_SCHEDULED = 2;
+  HYDRA_WITHDRAWAL_STATUS_SETTLED = 3;
+  HYDRA_WITHDRAWAL_STATUS_FAILED = 4;
+  HYDRA_WITHDRAWAL_STATUS_CANCELED = 5;
+}
+
+message HydraPoolWithdrawRequest {
+  string request_id = 1;
+  string idempotency_key = 2;
+
+  string pool_id = 3;
+
+  // Either specify shares or sats. Oneof to prevent ambiguity.
+  oneof amount {
+    uint64 withdraw_sats = 10;
+    uint64 withdraw_shares = 11;
+  }
+
+  // Destination (either Lightning payout or on-chain).
+  oneof destination {
+    string destination_bolt11 = 20;
+    string destination_onchain_address = 21;
+  }
+
+  HydraLinkage linkage = 30;
+
+  google.protobuf.Struct policy_context = 40;
+}
+
+message HydraPoolWithdrawRecord {
+  string withdraw_id = 1;
+  string pool_id = 2;
+
+  HydraWithdrawalStatus status = 3;
+
+  oneof amount {
+    uint64 withdraw_sats = 10;
+    uint64 withdraw_shares = 11;
+  }
+
+  oneof destination {
+    string destination_bolt11 = 20;
+    string destination_onchain_address = 21;
+  }
+
+  // Scheduling controls (queue semantics / T+Δ windows).
+  optional int64 earliest_settle_at_ms = 30;
+  optional int64 scheduled_settle_at_ms = 31;
+
+  int64 created_at_ms = 40;
+  int64 updated_at_ms = 41;
+
+  google.protobuf.Struct metadata = 90;
+}
+
+message HydraPoolWithdrawRequestResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraPoolWithdrawRecord withdraw = 3;
+  HydraError error = 4;
+}
+
+message HydraPoolWithdrawReceipt {
+  string receipt_version = 1; // "openagents.hydra.withdraw_receipt.v1"
+  string receipt_id = 2;
+  string request_id = 3;
+
+  string pool_id = 4;
+  string withdraw_id = 5;
+
+  uint64 settled_sats = 10;
+
+  // Settlement proofs (one of these should be present depending on rail).
+  optional openagents.lightning.v1.WalletExecutionReceipt wallet_receipt = 20;
+  optional string onchain_txid = 21;
+
+  int64 settled_at_ms = 30;
+
+  HydraLinkage linkage = 40;
+
+  string canonical_json_sha256 = 50;
+}
+
+message HydraPoolWithdrawReceiptResult {
+  bool ok = 1;
+  bool idempotent_replay = 2;
+  HydraPoolWithdrawReceipt receipt = 3;
+  HydraTreasuryReceiptRef receipt_ref = 4;
+  HydraError error = 5;
+}
+
+//
+// -----------------------------
+// Unified result envelope (optional convenience)
+// -----------------------------
+//
+// Hydra APIs can return one result envelope type over HTTP to simplify client parsing,
+// while still preserving typed payloads and deterministic receipts.
+
+message HydraResultEnvelope {
+  bool ok = 1;
+  HydraError error = 2;
+
+  oneof result {
+    HydraLiquidityPayQuoteResult liquidity_quote = 10;
+    HydraLiquidityPayCommitResult liquidity_pay = 11;
+    HydraLiquidityStatusResult liquidity_status = 12;
+
+    HydraCreditIntentResult credit_intent = 20;
+    HydraCreditOfferResult credit_offer = 21;
+    HydraCreditEnvelopeResult credit_envelope = 22;
+    HydraCreditEnvelopeSettleResult credit_settle = 23;
+
+    HydraRoutingScoreResult routing_score = 30;
+
+    HydraFxRfqResult fx_rfq = 40;
+    HydraFxSettleResult fx_settle = 41;
+
+    HydraPoolSnapshotResult pool_snapshot = 50;
+    HydraPoolDepositQuoteResult pool_deposit_quote = 51;
+    HydraPoolDepositReceiptResult pool_deposit_receipt = 52;
+    HydraPoolWithdrawRequestResult pool_withdraw_request = 53;
+    HydraPoolWithdrawReceiptResult pool_withdraw_receipt = 54;
+  }
+}
+```
