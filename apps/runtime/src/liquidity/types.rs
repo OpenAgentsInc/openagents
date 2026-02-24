@@ -8,7 +8,23 @@ pub const QUOTE_PAY_REQUEST_SCHEMA_V1: &str = "openagents.liquidity.quote_pay_re
 pub const QUOTE_PAY_RESPONSE_SCHEMA_V1: &str = "openagents.liquidity.quote_pay_response.v1";
 pub const PAY_REQUEST_SCHEMA_V1: &str = "openagents.liquidity.pay_request.v1";
 pub const PAY_RESPONSE_SCHEMA_V1: &str = "openagents.liquidity.pay_response.v1";
+pub const LIQUIDITY_STATUS_SCHEMA_V1: &str = "openagents.liquidity.status_response.v1";
 pub const INVOICE_PAY_RECEIPT_SCHEMA_V1: &str = "openagents.liquidity.invoice_pay_receipt.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidityStatusResponseV1 {
+    pub schema: String,
+    pub wallet_executor_configured: bool,
+    pub wallet_executor_reachable: bool,
+    pub receipt_signing_enabled: bool,
+    pub quote_ttl_seconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wallet_status: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuotePayRequestV1 {

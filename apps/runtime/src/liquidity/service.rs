@@ -14,9 +14,10 @@ use crate::bridge::{
 };
 use crate::liquidity::store::{LiquidityStore, LiquidityStoreError, PaymentFinalizeInput};
 use crate::liquidity::types::{
-    INVOICE_PAY_RECEIPT_SCHEMA_V1, InvoicePayReceiptV1, LiquidityPaymentRow, LiquidityQuoteRow,
-    LiquidityReceiptRow, PAY_REQUEST_SCHEMA_V1, PAY_RESPONSE_SCHEMA_V1, PayRequestV1,
-    PayResponseV1, QUOTE_PAY_REQUEST_SCHEMA_V1, QUOTE_PAY_RESPONSE_SCHEMA_V1, QuotePayRequestV1,
+    INVOICE_PAY_RECEIPT_SCHEMA_V1, InvoicePayReceiptV1, LIQUIDITY_STATUS_SCHEMA_V1,
+    LiquidityPaymentRow, LiquidityQuoteRow, LiquidityReceiptRow, LiquidityStatusResponseV1,
+    PAY_REQUEST_SCHEMA_V1, PAY_RESPONSE_SCHEMA_V1, PayRequestV1, PayResponseV1,
+    QUOTE_PAY_REQUEST_SCHEMA_V1, QUOTE_PAY_RESPONSE_SCHEMA_V1, QuotePayRequestV1,
     QuotePayResponseV1,
 };
 
@@ -85,6 +86,9 @@ impl LiquidityService {
         }
     }
 
+    // Idempotency contract:
+    // - same idempotency_key + equivalent request fingerprint => replay existing quote
+    // - same idempotency_key + different fingerprint => Conflict (HTTP 409 at handler layer)
     pub async fn quote_pay(
         &self,
         body: QuotePayRequestV1,
@@ -204,6 +208,84 @@ impl LiquidityService {
         })
     }
 
+    pub async fn status(&self) -> LiquidityStatusResponseV1 {
+        let mut response = LiquidityStatusResponseV1 {
+            schema: LIQUIDITY_STATUS_SCHEMA_V1.to_string(),
+            wallet_executor_configured: false,
+            wallet_executor_reachable: false,
+            receipt_signing_enabled: self.receipt_signing_key.is_some(),
+            quote_ttl_seconds: self.quote_ttl_seconds,
+            wallet_status: None,
+            error_code: None,
+            error_message: None,
+        };
+
+        let Some(base_url) = self
+            .wallet_executor_base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            response.error_code = Some("wallet_executor_not_configured".to_string());
+            response.error_message = Some("wallet executor base url missing".to_string());
+            return response;
+        };
+        let Some(token) = self
+            .wallet_executor_auth_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            response.error_code = Some("wallet_executor_not_configured".to_string());
+            response.error_message = Some("wallet executor auth token missing".to_string());
+            return response;
+        };
+
+        response.wallet_executor_configured = true;
+        let url = format!("{}/status", base_url.trim_end_matches('/'));
+        match reqwest::Client::new()
+            .get(url)
+            .timeout(std::time::Duration::from_millis(
+                self.wallet_executor_timeout_ms,
+            ))
+            .header("authorization", format!("Bearer {token}"))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                if status.is_success() {
+                    let parsed = serde_json::from_str::<Value>(&body).unwrap_or_else(|_| {
+                        serde_json::json!({
+                            "status": "ok",
+                            "raw": body,
+                        })
+                    });
+                    response.wallet_executor_reachable = true;
+                    response.wallet_status = Some(parsed);
+                } else {
+                    response.error_code = Some(format!("wallet_executor_http_{}", status.as_u16()));
+                    response.error_message = Some(if body.trim().is_empty() {
+                        "wallet executor status request failed".to_string()
+                    } else {
+                        body
+                    });
+                }
+            }
+            Err(error) => {
+                response.error_code = Some("wallet_executor_transport_error".to_string());
+                response.error_message = Some(error.to_string());
+            }
+        }
+
+        response
+    }
+
+    // Idempotency contract:
+    // - first caller for a quote_id creates/finalizes payment lane
+    // - concurrent caller while lane is in_flight => Conflict (HTTP 409)
+    // - caller after finalization => deterministic replay of stored payment + receipt
     pub async fn pay(&self, body: PayRequestV1) -> Result<PayResponseV1, LiquidityError> {
         if body.schema.trim() != PAY_REQUEST_SCHEMA_V1 {
             return Err(LiquidityError::InvalidRequest(format!(

@@ -37,7 +37,10 @@ use crate::{
     fraud::FraudIncidentLog,
     lightning_node,
     liquidity::store,
-    liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
+    liquidity::types::{
+        LiquidityStatusResponseV1, PayRequestV1, PayResponseV1, QuotePayRequestV1,
+        QuotePayResponseV1,
+    },
     liquidity::{LiquidityError, LiquidityService},
     liquidity_pool::{
         LiquidityPoolError, LiquidityPoolService,
@@ -917,6 +920,7 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/liquidity/quote_pay",
             post(liquidity_quote_pay),
         )
+        .route("/internal/v1/liquidity/status", get(liquidity_status))
         .route("/internal/v1/liquidity/pay", post(liquidity_pay))
         .route(
             "/internal/v1/pools/:pool_id/admin/create",
@@ -2578,6 +2582,12 @@ async fn liquidity_quote_pay(
         .await
         .map_err(api_error_from_liquidity)?;
     Ok(Json(response))
+}
+
+async fn liquidity_status(
+    State(state): State<AppState>,
+) -> Result<Json<LiquidityStatusResponseV1>, ApiError> {
+    Ok(Json(state.liquidity.status().await))
 }
 
 async fn liquidity_pay(

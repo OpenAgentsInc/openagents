@@ -75,6 +75,37 @@ Behavior:
   populated.
 - Old snapshot rows are pruned to the configured retention count per pool/partition.
 
+## Liquidity Status Endpoint
+
+Runtime exposes `GET /internal/v1/liquidity/status` for operator checks and dashboard integration.
+
+Response includes:
+
+- `wallet_executor_configured` / `wallet_executor_reachable`
+- `receipt_signing_enabled`
+- `quote_ttl_seconds`
+- optional `wallet_status` (passthrough status payload from wallet executor)
+- optional `error_code` / `error_message` when wallet executor is unavailable/misconfigured
+
+Liquidity smoke verification command:
+
+```bash
+cargo run -p openagents-runtime-service --bin vignette-liquidity-pool-mvp0 -- --liquidity-smoke-only
+```
+
+## Quote/Pay Idempotency Semantics
+
+For `POST /internal/v1/liquidity/quote_pay`:
+
+- Same `idempotency_key` + same request fingerprint => returns original quote response.
+- Same `idempotency_key` + different request fingerprint => conflict (`409`).
+
+For `POST /internal/v1/liquidity/pay`:
+
+- First caller for `quote_id` executes the external wallet lane.
+- Concurrent caller while payment is `in_flight` => conflict (`409`).
+- Calls after finalization replay deterministic stored payment + canonical receipt (no double spend).
+
 ## Notes
 
 - OpenAgents uses **LND-only** for Phase 0 LLP. Any non-LND backend support in code is legacy

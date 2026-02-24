@@ -290,6 +290,41 @@ struct WalletExecutorStubPayPaymentBody {
 }
 
 async fn spawn_wallet_executor_stub(token: &str) -> Result<WalletExecutorStubHandle> {
+    async fn status(
+        State(state): State<WalletExecutorStubState>,
+        headers: HeaderMap,
+    ) -> axum::response::Response {
+        let provided = headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        if provided.trim() != format!("Bearer {}", state.token).as_str() {
+            return (
+                axum::http::StatusCode::UNAUTHORIZED,
+                axum::Json(json!({
+                    "ok": false,
+                    "error": {
+                        "code": "unauthorized",
+                        "message": "missing or invalid bearer token"
+                    }
+                })),
+            )
+                .into_response();
+        }
+
+        (
+            axum::http::StatusCode::OK,
+            axum::Json(json!({
+                "ok": true,
+                "status": {
+                    "balanceSats": 250000,
+                }
+            })),
+        )
+            .into_response()
+    }
+
     async fn pay_bolt11(
         State(state): State<WalletExecutorStubState>,
         headers: HeaderMap,
@@ -449,6 +484,7 @@ async fn spawn_wallet_executor_stub(token: &str) -> Result<WalletExecutorStubHan
     };
 
     let app = axum::Router::new()
+        .route("/status", axum::routing::get(status))
         .route("/pay-bolt11", axum::routing::post(pay_bolt11))
         .with_state(state.clone());
     let (addr, shutdown) = spawn_http_server(app).await?;
@@ -766,6 +802,73 @@ async fn liquidity_pay_is_idempotent_by_quote_id() -> Result<()> {
     );
 
     let _ = wallet.shutdown.send(());
+    Ok(())
+}
+
+#[tokio::test]
+async fn liquidity_status_reports_wallet_executor_health_when_configured() -> Result<()> {
+    let wallet = spawn_wallet_executor_stub("test-token").await?;
+    let wallet_base = wallet.base_url.clone();
+
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some(wallet_base);
+            config.liquidity_wallet_executor_auth_token = Some("test-token".to_string());
+            config.liquidity_quote_ttl_seconds = 90;
+        });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/liquidity/status")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(json["schema"], "openagents.liquidity.status_response.v1");
+    assert_eq!(json["wallet_executor_configured"], true);
+    assert_eq!(json["wallet_executor_reachable"], true);
+    assert_eq!(json["receipt_signing_enabled"], false);
+    assert_eq!(json["quote_ttl_seconds"], 90);
+    assert!(json.pointer("/wallet_status/status/balanceSats").is_some());
+    assert!(json.get("error_code").is_none());
+
+    let _ = wallet.shutdown.send(());
+    Ok(())
+}
+
+#[tokio::test]
+async fn liquidity_status_reports_clear_error_when_wallet_executor_unreachable() -> Result<()> {
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some("http://127.0.0.1:1".to_string());
+            config.liquidity_wallet_executor_auth_token = Some("test-token".to_string());
+        });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/liquidity/status")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(json["wallet_executor_configured"], true);
+    assert_eq!(json["wallet_executor_reachable"], false);
+    let code = json
+        .get("error_code")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing error_code"))?;
+    assert!(code.starts_with("wallet_executor_"));
+    assert!(
+        json.get("error_message")
+            .and_then(Value::as_str)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
+        "expected non-empty error_message",
+    );
     Ok(())
 }
 

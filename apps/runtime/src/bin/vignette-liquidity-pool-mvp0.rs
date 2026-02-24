@@ -29,6 +29,10 @@ struct Args {
     /// Run only the automated snapshot smoke check and exit.
     #[arg(long, default_value_t = false)]
     snapshot_smoke_only: bool,
+
+    /// Run through liquidity status + quote/pay assertions, then exit.
+    #[arg(long, default_value_t = false)]
+    liquidity_smoke_only: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,6 +144,25 @@ async fn main() -> Result<()> {
     .await?;
 
     let mut events = Vec::<Value>::new();
+
+    let liquidity_status: Value =
+        get_json_expect_ok_typed(&client, &runtime.base_url, "/internal/v1/liquidity/status")
+            .await?;
+    if !liquidity_status
+        .get("wallet_executor_reachable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return Err(anyhow!(
+            "liquidity status expected wallet_executor_reachable=true, got {}",
+            liquidity_status
+        ));
+    }
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "liquidity_status",
+        "status": liquidity_status,
+    }));
 
     // 0) Create pool.
     let pool_id = "pool_vignette_llp";
@@ -440,6 +463,31 @@ async fn main() -> Result<()> {
         "preimage_sha256": pay_resp_1.preimage_sha256,
         "paid_at_ms": pay_resp_1.paid_at_ms
     }));
+
+    if args.liquidity_smoke_only {
+        let summary = json!({
+            "run_id": run_id,
+            "mode": "liquidity_smoke_only",
+            "pool_id": pool_id,
+            "quote_id": pay_resp_1.quote_id,
+            "receipt_id": receipt_id,
+            "receipt_sha256": receipt_sha256,
+            "generated_at": Utc::now().to_rfc3339(),
+        });
+        std::fs::write(
+            output_dir.join("summary.json"),
+            serde_json::to_string_pretty(&summary)?,
+        )?;
+        let mut events_jsonl = String::new();
+        for event in &events {
+            events_jsonl.push_str(&serde_json::to_string(event)?);
+            events_jsonl.push('\n');
+        }
+        std::fs::write(output_dir.join("events.jsonl"), events_jsonl)?;
+        let _ = runtime.shutdown.send(());
+        let _ = wallet.shutdown.send(());
+        return Ok(());
+    }
 
     // 3) Snapshot generation via GET .../snapshots/latest?generate=true.
     let snapshot: PoolSnapshotResponse = get_json_expect_ok_typed(
