@@ -1,3 +1,10 @@
+//! Raw pointer FFI boundary for client-core host integrations.
+//!
+//! SAFETY: this module confines pointer dereference and ownership transfer to
+//! a small set of helpers (`with_mut_ptr`, `with_ref_ptr`, `free_box_ptr`,
+//! and string bridge helpers) so exported extern functions can stay null-safe
+//! and deterministic.
+
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -29,6 +36,33 @@ fn with_c_string_input(input: *const c_char) -> Option<String> {
     // SAFETY: Caller guarantees `input` points to a valid NUL-terminated string.
     let c_str = unsafe { CStr::from_ptr(input) };
     c_str.to_str().ok().map(ToString::to_string)
+}
+
+fn with_mut_ptr<T, R>(ptr: *mut T, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+    if ptr.is_null() {
+        return None;
+    }
+
+    // SAFETY: caller guarantees `ptr` is valid and uniquely mutable for this call.
+    Some(f(unsafe { &mut *ptr }))
+}
+
+fn with_ref_ptr<T, R>(ptr: *const T, f: impl FnOnce(&T) -> R) -> Option<R> {
+    if ptr.is_null() {
+        return None;
+    }
+
+    // SAFETY: caller guarantees `ptr` is valid for shared access for this call.
+    Some(f(unsafe { &*ptr }))
+}
+
+fn free_box_ptr<T>(ptr: *mut T) {
+    if ptr.is_null() {
+        return;
+    }
+
+    // SAFETY: `ptr` must originate from `Box::into_raw` in this crate.
+    let _ = unsafe { Box::from_raw(ptr) };
 }
 
 fn into_raw_c_string(output: String) -> *mut c_char {
@@ -656,11 +690,9 @@ pub unsafe extern "C" fn oa_client_core_khala_session_create_multi(
 pub unsafe extern "C" fn oa_client_core_khala_session_start(
     session: *mut IosKhalaSession,
 ) -> *mut c_char {
-    if session.is_null() {
+    let Some(step) = with_mut_ptr(session, IosKhalaSession::start) else {
         return std::ptr::null_mut();
-    }
-    let session = unsafe { &mut *session };
-    let step = session.start();
+    };
     khala_session_step_json(&step)
         .map(into_raw_c_string)
         .unwrap_or(std::ptr::null_mut())
@@ -671,14 +703,12 @@ pub unsafe extern "C" fn oa_client_core_khala_session_on_frame(
     session: *mut IosKhalaSession,
     raw_frame: *const c_char,
 ) -> *mut c_char {
-    if session.is_null() {
-        return std::ptr::null_mut();
-    }
     let Some(raw_frame) = with_c_string_input(raw_frame) else {
         return std::ptr::null_mut();
     };
-    let session = unsafe { &mut *session };
-    let step = session.handle_frame_raw(&raw_frame);
+    let Some(step) = with_mut_ptr(session, |session| session.handle_frame_raw(&raw_frame)) else {
+        return std::ptr::null_mut();
+    };
     khala_session_step_json(&step)
         .map(into_raw_c_string)
         .unwrap_or(std::ptr::null_mut())
@@ -688,37 +718,30 @@ pub unsafe extern "C" fn oa_client_core_khala_session_on_frame(
 pub unsafe extern "C" fn oa_client_core_khala_session_heartbeat(
     session: *mut IosKhalaSession,
 ) -> *mut c_char {
-    if session.is_null() {
-        return std::ptr::null_mut();
-    }
-    let session = unsafe { &mut *session };
-    match session.heartbeat_frame() {
-        Some(frame) => {
-            encode_json(&json!({ "frame": frame, "watermark": session.latest_watermark() }))
-                .map(into_raw_c_string)
-                .unwrap_or(std::ptr::null_mut())
-        }
+    let Some(result) = with_mut_ptr(session, |session| match session.heartbeat_frame() {
+        Some(frame) => encode_json(&json!({
+            "frame": frame,
+            "watermark": session.latest_watermark()
+        }))
+        .map(into_raw_c_string)
+        .unwrap_or(std::ptr::null_mut()),
         None => std::ptr::null_mut(),
-    }
+    }) else {
+        return std::ptr::null_mut();
+    };
+    result
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_khala_session_latest_watermark(
     session: *const IosKhalaSession,
 ) -> u64 {
-    if session.is_null() {
-        return 0;
-    }
-    let session = unsafe { &*session };
-    session.latest_watermark()
+    with_ref_ptr(session, IosKhalaSession::latest_watermark).unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_khala_session_free(session: *mut IosKhalaSession) {
-    if session.is_null() {
-        return;
-    }
-    let _ = unsafe { Box::from_raw(session) };
+    free_box_ptr(session);
 }
 
 #[unsafe(no_mangle)]
@@ -732,26 +755,24 @@ pub unsafe extern "C" fn oa_client_core_control_coordinator_apply(
     coordinator: *mut RuntimeCodexControlCoordinator,
     command_json: *const c_char,
 ) -> *mut c_char {
-    if coordinator.is_null() {
-        return std::ptr::null_mut();
-    }
     let Some(command_json) = with_c_string_input(command_json) else {
         return std::ptr::null_mut();
     };
-    let coordinator = unsafe { &mut *coordinator };
-    apply_control_coordinator_command_json(coordinator, &command_json)
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut())
+    let Some(response) = with_mut_ptr(coordinator, |coordinator| {
+        apply_control_coordinator_command_json(coordinator, &command_json)
+            .map(into_raw_c_string)
+            .unwrap_or(std::ptr::null_mut())
+    }) else {
+        return std::ptr::null_mut();
+    };
+    response
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_control_coordinator_free(
     coordinator: *mut RuntimeCodexControlCoordinator,
 ) {
-    if coordinator.is_null() {
-        return;
-    }
-    let _ = unsafe { Box::from_raw(coordinator) };
+    free_box_ptr(coordinator);
 }
 
 #[unsafe(no_mangle)]
@@ -765,26 +786,24 @@ pub unsafe extern "C" fn oa_client_core_mission_control_store_apply(
     store: *mut IosMissionControlStore,
     command_json: *const c_char,
 ) -> *mut c_char {
-    if store.is_null() {
-        return std::ptr::null_mut();
-    }
     let Some(command_json) = with_c_string_input(command_json) else {
         return std::ptr::null_mut();
     };
-    let store = unsafe { &mut *store };
-    apply_mission_control_command_json(store, &command_json)
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut())
+    let Some(response) = with_mut_ptr(store, |store| {
+        apply_mission_control_command_json(store, &command_json)
+            .map(into_raw_c_string)
+            .unwrap_or(std::ptr::null_mut())
+    }) else {
+        return std::ptr::null_mut();
+    };
+    response
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_mission_control_store_free(
     store: *mut IosMissionControlStore,
 ) {
-    if store.is_null() {
-        return;
-    }
-    let _ = unsafe { Box::from_raw(store) };
+    free_box_ptr(store);
 }
 
 #[unsafe(no_mangle)]
@@ -838,7 +857,8 @@ mod tests {
         extract_control_request_from_payload_json, extract_control_success_context_json,
         extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
         normalize_verification_code_string, oa_client_core_ffi_contract_version,
-        oa_client_core_normalize_email, parse_khala_frame_json, select_preferred_worker_json,
+        oa_client_core_free_string, oa_client_core_normalize_email, parse_khala_frame_json,
+        select_preferred_worker_json, with_c_string_input, with_mut_ptr, with_ref_ptr,
     };
 
     #[test]
@@ -1042,5 +1062,26 @@ mod tests {
 
         let embedded_nul = CString::new("test\0value").err();
         assert!(embedded_nul.is_some());
+    }
+
+    #[test]
+    fn ffi_rejects_invalid_utf8_c_string_input() {
+        let invalid_utf8 = [0xff_u8, 0_u8];
+        assert!(with_c_string_input(invalid_utf8.as_ptr().cast()).is_none());
+    }
+
+    #[test]
+    fn ffi_free_string_is_null_safe() {
+        // SAFETY: null pointer is valid no-op input for free function.
+        unsafe { oa_client_core_free_string(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn ffi_pointer_helpers_are_null_safe() {
+        assert!(with_mut_ptr::<u8, _>(ptr::null_mut(), |value| {
+            *value = value.saturating_add(1);
+        })
+        .is_none());
+        assert!(with_ref_ptr::<u8, _>(ptr::null(), |value| *value).is_none());
     }
 }

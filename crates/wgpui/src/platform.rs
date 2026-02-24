@@ -1107,6 +1107,8 @@ pub mod ios {
                 ..Default::default()
             });
 
+            // SAFETY: `layer_ptr` is validated by the FFI caller contract and
+            // points to a live CoreAnimation layer for this renderer lifetime.
             let surface = unsafe {
                 instance
                     .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer_ptr))
@@ -1270,6 +1272,7 @@ pub mod ios {
                 target.clear();
                 return;
             }
+            // SAFETY: caller guarantees `ptr..ptr+len` points to readable bytes.
             let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
             if let Ok(value) = std::str::from_utf8(slice) {
                 target.clear();
@@ -4656,6 +4659,58 @@ pub mod ios {
         }
     }
 
+    // Raw pointer FFI boundary for iOS host bridge.
+    // SAFETY: all pointer dereferences are funneled through helpers below;
+    // exported functions must null-check before invoking helper macros.
+    unsafe fn ios_state_mut_unchecked<'a>(
+        state: *mut IosBackgroundState,
+    ) -> &'a mut IosBackgroundState {
+        debug_assert!(!state.is_null());
+        // SAFETY: callers must validate pointer non-null and unique mutability
+        // before calling this helper.
+        unsafe { &mut *state }
+    }
+
+    unsafe fn ios_state_ref_unchecked<'a>(
+        state: *mut IosBackgroundState,
+    ) -> &'a IosBackgroundState {
+        debug_assert!(!state.is_null());
+        // SAFETY: callers must validate pointer non-null and shared access
+        // before calling this helper.
+        unsafe { &*state }
+    }
+
+    unsafe fn free_ios_state_unchecked(state: *mut IosBackgroundState) {
+        debug_assert!(!state.is_null());
+        // SAFETY: callers must pass a pointer returned by `Box::into_raw`
+        // from this module and call this exactly once.
+        let _ = unsafe { Box::from_raw(state) };
+    }
+
+    macro_rules! ios_state_mut {
+        ($state:expr) => {{
+            // SAFETY: all callers perform null checks before invoking this helper
+            // and take at most one mutable borrow for the duration of the call.
+            unsafe { ios_state_mut_unchecked($state) }
+        }};
+    }
+
+    macro_rules! ios_state_ref {
+        ($state:expr) => {{
+            // SAFETY: all callers perform null checks before invoking this helper
+            // and only request shared access for read-only operations.
+            unsafe { ios_state_ref_unchecked($state) }
+        }};
+    }
+
+    macro_rules! ios_state_free {
+        ($state:expr) => {{
+            // SAFETY: all callers pass pointers created by `Box::into_raw`
+            // from this module and free each pointer at most once.
+            unsafe { free_ios_state_unchecked($state) }
+        }};
+    }
+
     /// C FFI for Swift: create renderer from CAMetalLayer pointer.
     /// `width`/`height` are logical points.
     /// Returns opaque pointer to IosBackgroundState, or null on error.
@@ -4674,6 +4729,8 @@ pub mod ios {
             eprintln!("[WGPUI Rust] create: layer_ptr is null");
             return std::ptr::null_mut();
         }
+        // SAFETY: `layer_ptr` is null-checked above and comes from host-provided
+        // CAMetalLayer ownership for the lifetime of the renderer state.
         match unsafe { IosBackgroundState::new(layer_ptr, width, height, scale) } {
             Ok(state) => {
                 eprintln!("[WGPUI Rust] create: OK");
@@ -4692,7 +4749,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         match state.render() {
             Ok(()) => 1,
             Err(e) => {
@@ -4712,7 +4769,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.resize(width, height);
     }
 
@@ -4722,7 +4779,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let _ = unsafe { Box::from_raw(state) };
+        let _ = ios_state_free!(state);
     }
 
     /// C FFI: handle tap at logical point coordinates (origin top-left). Call from Swift on tap.
@@ -4735,7 +4792,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.handle_tap(x, y);
     }
 
@@ -4744,7 +4801,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.clear_codex_messages();
     }
 
@@ -4760,7 +4817,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         let ptr_u8 = if text_ptr.is_null() {
             std::ptr::null()
         } else {
@@ -4784,7 +4841,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_codex_context_utf8(
             if thread_ptr.is_null() {
                 std::ptr::null()
@@ -4824,7 +4881,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_empty_state_utf8(
             if title_ptr.is_null() {
                 std::ptr::null()
@@ -4854,7 +4911,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_auth_fields_utf8(
             if email_ptr.is_null() {
                 std::ptr::null()
@@ -4898,7 +4955,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_operator_status_utf8(
             if worker_status_ptr.is_null() {
                 std::ptr::null()
@@ -4950,7 +5007,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.clear_mission_data();
     }
 
@@ -4977,7 +5034,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.push_mission_worker(
             if worker_id_ptr.is_null() {
                 std::ptr::null()
@@ -5038,7 +5095,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.push_mission_thread(
             if worker_id_ptr.is_null() {
                 std::ptr::null()
@@ -5099,7 +5156,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.push_mission_timeline_entry(
             if worker_id_ptr.is_null() {
                 std::ptr::null()
@@ -5179,7 +5236,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.push_mission_event(
             id,
             if topic_ptr.is_null() {
@@ -5275,7 +5332,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.push_mission_request(
             if request_id_ptr.is_null() {
                 std::ptr::null()
@@ -5344,7 +5401,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         let ptr_u8 = if ptr.is_null() {
             std::ptr::null()
         } else {
@@ -5362,7 +5419,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         let ptr_u8 = if ptr.is_null() {
             std::ptr::null()
         } else {
@@ -5380,7 +5437,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         let ptr_u8 = if ptr.is_null() {
             std::ptr::null()
         } else {
@@ -5396,7 +5453,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
+        let state = ios_state_ref!(state);
         state.active_input_target().as_u8()
     }
 
@@ -5408,7 +5465,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_active_input_target(InputTarget::from_u8(target));
     }
 
@@ -5420,7 +5477,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_mutations_enabled(enabled != 0);
     }
 
@@ -5432,7 +5489,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_retention_profile(profile);
     }
 
@@ -5444,7 +5501,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_watchlist_only(enabled != 0);
     }
 
@@ -5456,7 +5513,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_order_newest_first(enabled != 0);
     }
 
@@ -5470,7 +5527,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_alert_rules(
             errors_enabled != 0,
             stuck_turns_enabled != 0,
@@ -5486,7 +5543,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_filter(filter);
     }
 
@@ -5495,7 +5552,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
+        let state = ios_state_ref!(state);
         state.mission_filter_u8()
     }
 
@@ -5507,7 +5564,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_mission_pin_critical(enabled != 0);
     }
 
@@ -5518,7 +5575,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
+        let state = ios_state_ref!(state);
         if state.mission_pin_critical_enabled() {
             1
         } else {
@@ -5531,7 +5588,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
+        let state = ios_state_ref!(state);
         if state.composer_focused() { 1 } else { 0 }
     }
 
@@ -5543,7 +5600,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_composer_focused(focused != 0);
     }
 
@@ -5554,7 +5611,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_send_requested() { 1 } else { 0 }
     }
 
@@ -5565,7 +5622,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_new_thread_requested() {
             1
         } else {
@@ -5580,7 +5637,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_interrupt_requested() {
             1
         } else {
@@ -5595,7 +5652,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_model_cycle_requested() {
             1
         } else {
@@ -5610,7 +5667,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_reasoning_cycle_requested() {
             1
         } else {
@@ -5625,7 +5682,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_send_code_requested() {
             1
         } else {
@@ -5640,7 +5697,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_verify_code_requested() {
             1
         } else {
@@ -5655,7 +5712,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_sign_out_requested() {
             1
         } else {
@@ -5670,7 +5727,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_refresh_workers_requested() {
             1
         } else {
@@ -5685,7 +5742,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_connect_stream_requested() {
             1
         } else {
@@ -5700,7 +5757,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_disconnect_stream_requested() {
             1
         } else {
@@ -5715,7 +5772,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_send_handshake_requested() {
             1
         } else {
@@ -5730,7 +5787,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_thread_read_requested() {
             1
         } else {
@@ -5745,7 +5802,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_stop_worker_requested() {
             1
         } else {
@@ -5760,7 +5817,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_refresh_snapshot_requested() {
             1
         } else {
@@ -5775,7 +5832,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_retention_cycle_requested() {
             1
         } else {
@@ -5790,7 +5847,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_watch_active_requested() {
             1
         } else {
@@ -5805,7 +5862,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_watchlist_only_toggle_requested() {
             1
         } else {
@@ -5820,7 +5877,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_order_toggle_requested() {
             1
         } else {
@@ -5835,7 +5892,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_alert_errors_toggle_requested() {
             1
         } else {
@@ -5850,7 +5907,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_alert_stuck_turns_toggle_requested() {
             1
         } else {
@@ -5865,7 +5922,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_mission_alert_reconnect_storms_toggle_requested() {
             1
         } else {
@@ -5881,7 +5938,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.send_code_requested { 1 } else { 0 }
     }
 
@@ -5893,7 +5950,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if state.consume_send_code_requested() {
             1
         } else {
@@ -5907,7 +5964,7 @@ pub mod ios {
         if state.is_null() {
             return 0;
         }
-        let state = unsafe { &*state };
+        let state = ios_state_ref!(state);
         if state.active_input_target() == InputTarget::AuthEmail {
             1
         } else {
@@ -5924,7 +5981,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         state.set_active_input_target(if focused != 0 {
             InputTarget::AuthEmail
         } else {
@@ -5942,7 +5999,7 @@ pub mod ios {
         if state.is_null() {
             return;
         }
-        let state = unsafe { &mut *state };
+        let state = ios_state_mut!(state);
         if ptr.is_null() || len == 0 {
             IosBackgroundState::set_utf8_string(&mut state.auth_email, std::ptr::null(), 0);
             return;
