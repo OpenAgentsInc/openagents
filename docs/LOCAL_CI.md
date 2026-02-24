@@ -63,6 +63,7 @@ Examples:
 `runtime` lane includes the Hydra CEP MVP-1 executable harness:
 
 - `cargo run --manifest-path apps/runtime/Cargo.toml --bin vignette-neobank-pay-bolt11`
+- `cargo test --manifest-path apps/runtime/Cargo.toml server::tests::internal_openapi_route_includes_credit_endpoints_and_schemas -- --nocapture`
 - expected artifact: `output/vignettes/local-ci/neobank-pay-bolt11/summary.json`
 
 Changed-mode trigger note:

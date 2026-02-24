@@ -114,3 +114,20 @@ apps/runtime/deploy/cloudrun/check-migration-drift.sh
 ```
 
 This command should be wired to operator checks/alerts; non-zero exit means migration drift or stale execution state.
+
+## CEP MVP-1 Post-Deploy Validation
+
+Validate the runtime-served OpenAPI and CEP health/exposure lanes after rollout:
+
+```bash
+RUNTIME_BASE_URL="https://runtime-<env>.a.run.app"
+TOKEN="<runtime-internal-bearer>"
+
+curl -sf "${RUNTIME_BASE_URL}/internal/v1/openapi.json" \
+  -H "authorization: Bearer ${TOKEN}" \
+  | jq '.paths["/credit/intent"], .paths["/credit/settle"], .components.schemas.CreditSettleResponseV1.properties.settlement_id'
+
+curl -sf "${RUNTIME_BASE_URL}/internal/v1/credit/health" \
+  -H "authorization: Bearer ${TOKEN}" \
+  | jq '.schema, .breakers, .policy.max_sats_per_envelope'
+```

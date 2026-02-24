@@ -58,6 +58,10 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
 2. Runtime lane
 - runtime health + authority API smoke
 - migration drift check (runtime image matches migrate job image)
+- CEP MVP-1 contract checks:
+  - `GET /internal/v1/openapi.json` includes `/credit/*` operations
+  - `GET /internal/v1/credit/health`
+  - `GET /internal/v1/credit/agents/{agent_id}/exposure` (known test agent)
 
 3. Khala contract lane
 

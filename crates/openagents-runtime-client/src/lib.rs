@@ -207,6 +207,27 @@ pub struct RuntimeCreditCircuitBreakersV1 {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditPolicySnapshotV1 {
+    pub max_sats_per_envelope: u64,
+    pub max_outstanding_envelopes_per_agent: u64,
+    pub max_offer_ttl_seconds: u64,
+    pub underwriting_history_days: i64,
+    pub underwriting_base_sats: u64,
+    pub underwriting_k: f64,
+    pub underwriting_default_penalty_multiplier: f64,
+    pub min_fee_bps: u32,
+    pub max_fee_bps: u32,
+    pub fee_risk_scaler: f64,
+    pub health_window_seconds: i64,
+    pub health_settlement_sample_limit: u32,
+    pub health_ln_pay_sample_limit: u32,
+    pub circuit_breaker_min_sample: u64,
+    pub loss_rate_halt_threshold: f64,
+    pub ln_failure_rate_halt_threshold: f64,
+    pub ln_failure_large_settlement_cap_sats: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct RuntimeCreditHealthResponseV1 {
     pub schema: String,
     pub generated_at: DateTime<Utc>,
@@ -219,6 +240,152 @@ pub struct RuntimeCreditHealthResponseV1 {
     pub ln_fail_count: u64,
     pub ln_failure_rate: f64,
     pub breakers: RuntimeCreditCircuitBreakersV1,
+    pub policy: RuntimeCreditPolicySnapshotV1,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeCreditScopeTypeV1 {
+    Nip90,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuntimeCreditIntentRequestV1 {
+    pub schema: String,
+    pub idempotency_key: String,
+    pub agent_id: String,
+    pub scope_type: RuntimeCreditScopeTypeV1,
+    pub scope_id: String,
+    pub max_sats: u64,
+    pub exp: DateTime<Utc>,
+    #[serde(default)]
+    pub policy_context: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditIntentResponseV1 {
+    pub schema: String,
+    pub intent: RuntimeCreditIntentRowV1,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditIntentRowV1 {
+    pub intent_id: String,
+    pub idempotency_key: String,
+    pub agent_id: String,
+    pub scope_type: String,
+    pub scope_id: String,
+    pub max_sats: i64,
+    pub exp: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuntimeCreditOfferRequestV1 {
+    pub schema: String,
+    pub agent_id: String,
+    pub pool_id: String,
+    #[serde(default)]
+    pub intent_id: Option<String>,
+    pub scope_type: RuntimeCreditScopeTypeV1,
+    pub scope_id: String,
+    pub max_sats: u64,
+    pub fee_bps: u32,
+    pub requires_verifier: bool,
+    pub exp: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditOfferResponseV1 {
+    pub schema: String,
+    pub offer: RuntimeCreditOfferRowV1,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditOfferRowV1 {
+    pub offer_id: String,
+    pub agent_id: String,
+    pub pool_id: String,
+    pub scope_type: String,
+    pub scope_id: String,
+    pub max_sats: i64,
+    pub fee_bps: i32,
+    pub requires_verifier: bool,
+    pub exp: DateTime<Utc>,
+    pub status: String,
+    pub issued_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuntimeCreditEnvelopeRequestV1 {
+    pub schema: String,
+    pub offer_id: String,
+    pub provider_id: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditEnvelopeResponseV1 {
+    pub schema: String,
+    pub envelope: RuntimeCreditEnvelopeRowV1,
+    pub receipt: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditEnvelopeRowV1 {
+    pub envelope_id: String,
+    pub offer_id: String,
+    pub agent_id: String,
+    pub pool_id: String,
+    pub provider_id: String,
+    pub scope_type: String,
+    pub scope_id: String,
+    pub max_sats: i64,
+    pub fee_bps: i32,
+    pub exp: DateTime<Utc>,
+    pub status: String,
+    pub issued_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuntimeCreditSettleRequestV1 {
+    pub schema: String,
+    pub envelope_id: String,
+    pub verification_passed: bool,
+    pub verification_receipt_sha256: String,
+    pub provider_invoice: String,
+    pub provider_host: String,
+    pub max_fee_msats: u64,
+    #[serde(default)]
+    pub policy_context: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditSettleResponseV1 {
+    pub schema: String,
+    pub envelope_id: String,
+    pub settlement_id: String,
+    pub outcome: String,
+    pub spent_sats: u64,
+    pub fee_sats: u64,
+    pub verification_receipt_sha256: String,
+    pub liquidity_receipt_sha256: Option<String>,
+    pub receipt: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditAgentExposureResponseV1 {
+    pub schema: String,
+    pub agent_id: String,
+    pub open_envelope_count: u64,
+    pub open_exposure_sats: u64,
+    pub settled_count_30d: u64,
+    pub success_volume_sats_30d: u64,
+    pub pass_rate_30d: f64,
+    pub loss_count_30d: u64,
+    pub underwriting_limit_sats: u64,
+    pub underwriting_fee_bps: u32,
+    pub requires_verifier: bool,
+    pub computed_at: DateTime<Utc>,
 }
 
 impl RuntimeInternalClient {
@@ -309,6 +476,31 @@ impl RuntimeInternalClient {
     #[must_use]
     pub fn credit_health_path() -> &'static str {
         "/internal/v1/credit/health"
+    }
+
+    #[must_use]
+    pub fn credit_intent_path() -> &'static str {
+        "/internal/v1/credit/intent"
+    }
+
+    #[must_use]
+    pub fn credit_offer_path() -> &'static str {
+        "/internal/v1/credit/offer"
+    }
+
+    #[must_use]
+    pub fn credit_envelope_path() -> &'static str {
+        "/internal/v1/credit/envelope"
+    }
+
+    #[must_use]
+    pub fn credit_settle_path() -> &'static str {
+        "/internal/v1/credit/settle"
+    }
+
+    #[must_use]
+    pub fn credit_agent_exposure_path(agent_id: &str) -> String {
+        format!("/internal/v1/credit/agents/{}/exposure", agent_id.trim())
     }
 
     pub async fn list_workers(
@@ -413,6 +605,42 @@ impl RuntimeInternalClient {
 
     pub async fn credit_health(&self) -> Result<RuntimeCreditHealthResponseV1, RuntimeClientError> {
         self.get_json(Self::credit_health_path()).await
+    }
+
+    pub async fn credit_intent(
+        &self,
+        request: &RuntimeCreditIntentRequestV1,
+    ) -> Result<RuntimeCreditIntentResponseV1, RuntimeClientError> {
+        self.post_json(Self::credit_intent_path(), request).await
+    }
+
+    pub async fn credit_offer(
+        &self,
+        request: &RuntimeCreditOfferRequestV1,
+    ) -> Result<RuntimeCreditOfferResponseV1, RuntimeClientError> {
+        self.post_json(Self::credit_offer_path(), request).await
+    }
+
+    pub async fn credit_envelope(
+        &self,
+        request: &RuntimeCreditEnvelopeRequestV1,
+    ) -> Result<RuntimeCreditEnvelopeResponseV1, RuntimeClientError> {
+        self.post_json(Self::credit_envelope_path(), request).await
+    }
+
+    pub async fn credit_settle(
+        &self,
+        request: &RuntimeCreditSettleRequestV1,
+    ) -> Result<RuntimeCreditSettleResponseV1, RuntimeClientError> {
+        self.post_json(Self::credit_settle_path(), request).await
+    }
+
+    pub async fn credit_agent_exposure(
+        &self,
+        agent_id: &str,
+    ) -> Result<RuntimeCreditAgentExposureResponseV1, RuntimeClientError> {
+        self.get_json(Self::credit_agent_exposure_path(agent_id).as_str())
+            .await
     }
 
     pub async fn get_json<T>(&self, path: &str) -> Result<T, RuntimeClientError>
@@ -585,6 +813,26 @@ mod tests {
         assert_eq!(
             RuntimeInternalClient::credit_health_path(),
             "/internal/v1/credit/health"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_intent_path(),
+            "/internal/v1/credit/intent"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_offer_path(),
+            "/internal/v1/credit/offer"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_envelope_path(),
+            "/internal/v1/credit/envelope"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_settle_path(),
+            "/internal/v1/credit/settle"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_agent_exposure_path("abc"),
+            "/internal/v1/credit/agents/abc/exposure"
         );
     }
 

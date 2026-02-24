@@ -143,6 +143,37 @@ Operator introspection:
   - settlement/LN sample counts used in breaker decisions
   - effective policy values under `policy`
 
+## CEP API Surface (MVP-1)
+
+Authoritative internal runtime endpoints:
+
+- `POST /internal/v1/credit/intent`
+- `POST /internal/v1/credit/offer`
+- `POST /internal/v1/credit/envelope`
+- `POST /internal/v1/credit/settle`
+- `GET /internal/v1/credit/health`
+- `GET /internal/v1/credit/agents/{agent_id}/exposure`
+
+Idempotency/conflict semantics:
+
+- `credit/intent`: idempotent by `idempotency_key` + request fingerprint; payload drift returns `409`.
+- `credit/offer`: deterministic offer id from request fingerprint; policy/scope drift returns `409`.
+- `credit/envelope`: deterministic envelope id from `(offer_id, provider_id)`; consumed/invalid offer returns `409`.
+- `credit/settle`: idempotent per `(envelope_id, request fingerprint)` with deterministic replay; conflicting settle payload returns `409`.
+
+Required settlement linkage fields (`credit/settle`):
+
+- `verification_passed`
+- `verification_receipt_sha256`
+- `provider_invoice`
+- `provider_host`
+- `policy_context` (scope/job/policy linkage payload)
+
+Served OpenAPI contract:
+
+- `GET /internal/v1/openapi.json` (runtime-served JSON projection of `apps/runtime/docs/openapi-internal-v1.yaml`)
+- CEP settle response includes deterministic `settlement_id` in addition to envelope/outcome/receipt fields.
+
 MVP-1 verification commands:
 
 ```bash

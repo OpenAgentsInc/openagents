@@ -565,6 +565,36 @@ async fn health_and_readiness_endpoints_are_available() -> Result<()> {
 }
 
 #[tokio::test]
+async fn internal_openapi_route_includes_credit_endpoints_and_schemas() -> Result<()> {
+    let app = test_router();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/internal/v1/openapi.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(json.get("openapi").and_then(Value::as_str), Some("3.1.0"));
+    assert!(json.pointer("/paths/~1credit~1intent/post").is_some());
+    assert!(json.pointer("/paths/~1credit~1offer/post").is_some());
+    assert!(json.pointer("/paths/~1credit~1envelope/post").is_some());
+    assert!(json.pointer("/paths/~1credit~1settle/post").is_some());
+    assert!(json.pointer("/paths/~1credit~1health/get").is_some());
+    assert!(
+        json.pointer("/paths/~1credit~1agents~1{agent_id}~1exposure/get")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/CreditSettleResponseV1/properties/settlement_id")
+            .is_some()
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn comms_delivery_events_endpoint_accepts_and_deduplicates() -> Result<()> {
     let app = test_router();
     let payload = json!({

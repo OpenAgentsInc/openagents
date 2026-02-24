@@ -703,7 +703,10 @@ pub(super) async fn fetch_runtime_credit_health(
     state: &AppState,
 ) -> Result<RuntimeCreditHealthResponseV1, String> {
     let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
-    client.credit_health().await.map_err(runtime_client_error_string)
+    client
+        .credit_health()
+        .await
+        .map_err(runtime_client_error_string)
 }
 
 pub(super) async fn fetch_compute_dashboard_views(
@@ -902,6 +905,7 @@ mod tests {
     use super::*;
     use openagents_runtime_client::{
         RuntimeCreditCircuitBreakersV1, RuntimeCreditHealthResponseV1,
+        RuntimeCreditPolicySnapshotV1,
     };
 
     fn sample_pool_view() -> LiquidityPoolView {
@@ -943,6 +947,25 @@ mod tests {
             breakers: RuntimeCreditCircuitBreakersV1 {
                 halt_new_envelopes: false,
                 halt_large_settlements: true,
+            },
+            policy: RuntimeCreditPolicySnapshotV1 {
+                max_sats_per_envelope: 100_000,
+                max_outstanding_envelopes_per_agent: 3,
+                max_offer_ttl_seconds: 3600,
+                underwriting_history_days: 30,
+                underwriting_base_sats: 2_000,
+                underwriting_k: 150.0,
+                underwriting_default_penalty_multiplier: 2.0,
+                min_fee_bps: 50,
+                max_fee_bps: 2000,
+                fee_risk_scaler: 400.0,
+                health_window_seconds: 21_600,
+                health_settlement_sample_limit: 200,
+                health_ln_pay_sample_limit: 200,
+                circuit_breaker_min_sample: 5,
+                loss_rate_halt_threshold: 0.5,
+                ln_failure_rate_halt_threshold: 0.5,
+                ln_failure_large_settlement_cap_sats: 5_000,
             },
         }
     }

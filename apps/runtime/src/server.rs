@@ -888,6 +888,7 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
+        .route("/internal/v1/openapi.json", get(internal_openapi_spec))
         .route(
             "/internal/v1/comms/delivery-events",
             post(record_comms_delivery_event),
@@ -1042,6 +1043,15 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         fanout_driver: state.fanout.driver_name().to_string(),
         db_configured: state.db.is_some(),
     })
+}
+
+async fn internal_openapi_spec() -> Result<Json<serde_json::Value>, ApiError> {
+    let yaml = include_str!("../docs/openapi-internal-v1.yaml");
+    let value = serde_yaml::from_str::<serde_yaml::Value>(yaml)
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let json_value =
+        serde_json::to_value(value).map_err(|error| ApiError::Internal(error.to_string()))?;
+    Ok(Json(json_value))
 }
 
 async fn readiness(State(state): State<AppState>) -> impl IntoResponse {

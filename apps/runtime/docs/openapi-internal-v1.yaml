@@ -606,6 +606,170 @@ paths:
           $ref: '#/components/responses/Error'
         '500':
           $ref: '#/components/responses/Error'
+  /credit/intent:
+    post:
+      summary: Create or replay a credit intent
+      operationId: creditIntent
+      description: |
+        Idempotent by `idempotency_key` + request fingerprint.
+        Reusing the same `idempotency_key` with drifted payload returns `409 conflict`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditIntentRequestV1'
+      responses:
+        '200':
+          description: Intent created or idempotently replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditIntentResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /credit/offer:
+    post:
+      summary: Create or replay a credit offer
+      operationId: creditOffer
+      description: |
+        Offer IDs are deterministic from request fingerprint.
+        Scope/cap/expiry drift or policy conflicts return `409 conflict`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditOfferRequestV1'
+      responses:
+        '200':
+          description: Offer created or idempotently replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditOfferResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /credit/envelope:
+    post:
+      summary: Issue or replay a credit envelope from an offer
+      operationId: creditEnvelope
+      description: |
+        Envelopes are deterministic from `(offer_id, provider_id)`.
+        Reusing consumed or invalid offers returns `409 conflict`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditEnvelopeRequestV1'
+      responses:
+        '200':
+          description: Envelope issued or idempotently replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditEnvelopeResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /credit/settle:
+    post:
+      summary: Settle a credit envelope (pay-after-verify)
+      operationId: creditSettle
+      description: |
+        Settlement is idempotent per `envelope_id` + request fingerprint.
+        Required linkage fields:
+        - `verification_passed`
+        - `verification_receipt_sha256`
+        - `provider_invoice`
+        - `provider_host`
+        - `policy_context` (scope/job/policy linkage payload)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditSettleRequestV1'
+      responses:
+        '200':
+          description: Settlement completed or idempotently replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditSettleResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /credit/health:
+    get:
+      summary: Read credit health and breaker state
+      operationId: creditHealth
+      responses:
+        '200':
+          description: Current CEP health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditHealthResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /credit/agents/{agent_id}/exposure:
+    get:
+      summary: Read underwriting exposure for one agent
+      operationId: creditAgentExposure
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: Agent exposure snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditAgentExposureResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     RuntimeSignature:
@@ -1039,6 +1203,438 @@ components:
         data:
           type: object
           additionalProperties: true
+    CreditIntentRequestV1:
+      type: object
+      required: [schema, idempotency_key, agent_id, scope_type, scope_id, max_sats, exp]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.intent_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        scope_type:
+          type: string
+          enum: [nip90]
+        scope_id:
+          type: string
+          minLength: 1
+        max_sats:
+          type: integer
+          minimum: 1
+        exp:
+          type: string
+          format: date-time
+        policy_context:
+          type: object
+          additionalProperties: true
+    CreditIntentRow:
+      type: object
+      required: [intent_id, idempotency_key, agent_id, scope_type, scope_id, max_sats, exp, created_at]
+      properties:
+        intent_id:
+          type: string
+        idempotency_key:
+          type: string
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        max_sats:
+          type: integer
+        exp:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    CreditIntentResponseV1:
+      type: object
+      required: [schema, intent]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.intent_response.v1
+        intent:
+          $ref: '#/components/schemas/CreditIntentRow'
+    CreditOfferRequestV1:
+      type: object
+      required: [schema, agent_id, pool_id, scope_type, scope_id, max_sats, fee_bps, requires_verifier, exp]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.offer_request.v1
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        pool_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        intent_id:
+          type: string
+          nullable: true
+        scope_type:
+          type: string
+          enum: [nip90]
+        scope_id:
+          type: string
+          minLength: 1
+        max_sats:
+          type: integer
+          minimum: 1
+        fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 100000
+        requires_verifier:
+          type: boolean
+        exp:
+          type: string
+          format: date-time
+    CreditOfferRow:
+      type: object
+      required: [offer_id, agent_id, pool_id, scope_type, scope_id, max_sats, fee_bps, requires_verifier, exp, status, issued_at]
+      properties:
+        offer_id:
+          type: string
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        pool_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        max_sats:
+          type: integer
+        fee_bps:
+          type: integer
+        requires_verifier:
+          type: boolean
+        exp:
+          type: string
+          format: date-time
+        status:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+    CreditOfferResponseV1:
+      type: object
+      required: [schema, offer]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.offer_response.v1
+        offer:
+          $ref: '#/components/schemas/CreditOfferRow'
+    CreditEnvelopeRequestV1:
+      type: object
+      required: [schema, offer_id, provider_id]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.envelope_request.v1
+        offer_id:
+          type: string
+        provider_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    CreditEnvelopeRow:
+      type: object
+      required: [envelope_id, offer_id, agent_id, pool_id, provider_id, scope_type, scope_id, max_sats, fee_bps, exp, status, issued_at]
+      properties:
+        envelope_id:
+          type: string
+        offer_id:
+          type: string
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        pool_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        provider_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        max_sats:
+          type: integer
+        fee_bps:
+          type: integer
+        exp:
+          type: string
+          format: date-time
+        status:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+    CreditEnvelopeResponseV1:
+      type: object
+      required: [schema, envelope, receipt]
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.envelope_response.v1
+        envelope:
+          $ref: '#/components/schemas/CreditEnvelopeRow'
+        receipt:
+          type: object
+          additionalProperties: true
+    CreditSettleRequestV1:
+      type: object
+      required:
+        - schema
+        - envelope_id
+        - verification_passed
+        - verification_receipt_sha256
+        - provider_invoice
+        - provider_host
+        - max_fee_msats
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.settle_request.v1
+        envelope_id:
+          type: string
+        verification_passed:
+          type: boolean
+        verification_receipt_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        provider_invoice:
+          type: string
+          minLength: 1
+        provider_host:
+          type: string
+          minLength: 1
+        max_fee_msats:
+          type: integer
+          minimum: 0
+        policy_context:
+          type: object
+          additionalProperties: true
+          description: Scope/job/policy linkage payload used for auditability.
+    CreditSettleResponseV1:
+      type: object
+      required:
+        - schema
+        - envelope_id
+        - settlement_id
+        - outcome
+        - spent_sats
+        - fee_sats
+        - verification_receipt_sha256
+        - receipt
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.settle_response.v1
+        envelope_id:
+          type: string
+        settlement_id:
+          type: string
+        outcome:
+          type: string
+          enum: [success, failed, expired, defaulted]
+        spent_sats:
+          type: integer
+          minimum: 0
+        fee_sats:
+          type: integer
+          minimum: 0
+        verification_receipt_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        liquidity_receipt_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        receipt:
+          type: object
+          additionalProperties: true
+    CreditCircuitBreakersV1:
+      type: object
+      required: [halt_new_envelopes, halt_large_settlements]
+      properties:
+        halt_new_envelopes:
+          type: boolean
+        halt_large_settlements:
+          type: boolean
+    CreditPolicySnapshotV1:
+      type: object
+      required:
+        - max_sats_per_envelope
+        - max_outstanding_envelopes_per_agent
+        - max_offer_ttl_seconds
+        - underwriting_history_days
+        - underwriting_base_sats
+        - underwriting_k
+        - underwriting_default_penalty_multiplier
+        - min_fee_bps
+        - max_fee_bps
+        - fee_risk_scaler
+        - health_window_seconds
+        - health_settlement_sample_limit
+        - health_ln_pay_sample_limit
+        - circuit_breaker_min_sample
+        - loss_rate_halt_threshold
+        - ln_failure_rate_halt_threshold
+        - ln_failure_large_settlement_cap_sats
+      properties:
+        max_sats_per_envelope:
+          type: integer
+          minimum: 1
+        max_outstanding_envelopes_per_agent:
+          type: integer
+          minimum: 1
+        max_offer_ttl_seconds:
+          type: integer
+          minimum: 1
+        underwriting_history_days:
+          type: integer
+        underwriting_base_sats:
+          type: integer
+          minimum: 1
+        underwriting_k:
+          type: number
+        underwriting_default_penalty_multiplier:
+          type: number
+        min_fee_bps:
+          type: integer
+        max_fee_bps:
+          type: integer
+        fee_risk_scaler:
+          type: number
+        health_window_seconds:
+          type: integer
+          minimum: 1
+        health_settlement_sample_limit:
+          type: integer
+          minimum: 1
+        health_ln_pay_sample_limit:
+          type: integer
+          minimum: 1
+        circuit_breaker_min_sample:
+          type: integer
+          minimum: 1
+        loss_rate_halt_threshold:
+          type: number
+        ln_failure_rate_halt_threshold:
+          type: number
+        ln_failure_large_settlement_cap_sats:
+          type: integer
+          minimum: 1
+    CreditHealthResponseV1:
+      type: object
+      required:
+        - schema
+        - generated_at
+        - open_envelope_count
+        - open_reserved_commitments_sats
+        - settlement_sample
+        - loss_count
+        - loss_rate
+        - ln_pay_sample
+        - ln_fail_count
+        - ln_failure_rate
+        - breakers
+        - policy
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.health_response.v1
+        generated_at:
+          type: string
+          format: date-time
+        open_envelope_count:
+          type: integer
+          minimum: 0
+        open_reserved_commitments_sats:
+          type: integer
+          minimum: 0
+        settlement_sample:
+          type: integer
+          minimum: 0
+        loss_count:
+          type: integer
+          minimum: 0
+        loss_rate:
+          type: number
+        ln_pay_sample:
+          type: integer
+          minimum: 0
+        ln_fail_count:
+          type: integer
+          minimum: 0
+        ln_failure_rate:
+          type: number
+        breakers:
+          $ref: '#/components/schemas/CreditCircuitBreakersV1'
+        policy:
+          $ref: '#/components/schemas/CreditPolicySnapshotV1'
+    CreditAgentExposureResponseV1:
+      type: object
+      required:
+        - schema
+        - agent_id
+        - open_envelope_count
+        - open_exposure_sats
+        - settled_count_30d
+        - success_volume_sats_30d
+        - pass_rate_30d
+        - loss_count_30d
+        - underwriting_limit_sats
+        - underwriting_fee_bps
+        - requires_verifier
+        - computed_at
+      properties:
+        schema:
+          type: string
+          const: openagents.credit.agent_exposure_response.v1
+        agent_id:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        open_envelope_count:
+          type: integer
+          minimum: 0
+        open_exposure_sats:
+          type: integer
+          minimum: 0
+        settled_count_30d:
+          type: integer
+          minimum: 0
+        success_volume_sats_30d:
+          type: integer
+          minimum: 0
+        pass_rate_30d:
+          type: number
+        loss_count_30d:
+          type: integer
+          minimum: 0
+        underwriting_limit_sats:
+          type: integer
+          minimum: 1
+        underwriting_fee_bps:
+          type: integer
+          minimum: 0
+        requires_verifier:
+          type: boolean
+        computed_at:
+          type: string
+          format: date-time
     ErrorEnvelope:
       type: object
       required: [error]
@@ -1056,6 +1652,7 @@ components:
                 - not_found
                 - conflict
                 - stale_cursor
+                - dependency_unavailable
                 - internal_error
             message:
               type: string
