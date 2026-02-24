@@ -4,6 +4,8 @@
 
 Hydra is not a wallet UI and not “node ops tooling.” It is the **capital substrate** that the rest of the system (Autopilot, OpenAgents Compute, Skills, Exchange) can program against.
 
+**Status:** Canonical draft (supersedes prior liquidity pool draft notes).
+
 ---
 
 ## 1) Goals and Non-Goals
@@ -24,6 +26,7 @@ Hydra must make money movement **legible to machines**: every action is quotable
 * **No unscoped credit.** Hydra never offers open-ended lines of credit or “agent overdrafts.”
 * **No opaque execution.** Hydra will not silently retry, re-route, or batch settlement without durable receipts that explain what happened.
 * **No client-side custody.** Hydra integrates with the wallet-executor custody boundary; user clients consume receipts and projections.
+* **No long-term lockups.** If/when external LP deposits exist, liquidity must remain withdrawable with bounded delay (subject to solvency and safety controls).
 
 ---
 
@@ -58,6 +61,7 @@ Hydra is designed for “agentic commerce reality”:
         │                                           │
         │  - LLP: LN Liquidity Pool                 │
         │  - CEP: Credit Envelope Pool              │
+        │  - RRP: Rebalancing/Reserve Partition     │
         │  - Routing Scorer/Optimizer               │
         │  - FX RFQ hook (Treasury Agents)          │
         │  - Reputation Index                       │
@@ -76,6 +80,64 @@ Hydra is intentionally split across two execution authorities:
 * **Wallet executor (per-user / per-treasury)**: custody boundary for spend authority + canonical receipts.
 
 Hydra orchestrates these into a single economic interface for agents.
+
+---
+
+## 3.1 Entities and Roles
+
+### Entities
+
+* **Pool**: an accounting object backed by BTC held across:
+  * Lightning channel balances (local + remote reserves)
+  * on-chain BTC reserves (channel opens/rebalances/safety exits)
+  * optional operational balances (e.g., Spark, if explicitly enabled)
+* **Partitions** (segregated ledgers): `LLP` + `CEP` + optional `RRP`.
+
+### Roles
+
+* **Pool Operator**: runs Lightning node(s), rebalancing, routing policy enforcement, accounting, and incident response.
+* **Signer Set**: threshold keys controlling sensitive treasury actions (channel opens/closes, large withdrawals, on-chain spends).
+* **Depositor (LP)**: provides BTC capital (optional early; required only once external deposits are enabled).
+* **Consumers**: Autopilot + marketplace settlement flows consuming liquidity services.
+* **Borrowers**: agents consuming bounded working-capital via CEP envelopes (Hydra pays providers directly under constraints).
+
+---
+
+## 3.2 Trust Model and Keying
+
+Hydra is money-adjacent authority. It must preserve OpenAgents invariants:
+
+* **Authority mutations are authenticated HTTP only** (no WS/Nostr authority mutation lanes).
+* **Every effect is receipted + idempotent** (safe retries, no double spend).
+
+Execution posture:
+
+* **Treasury control**: threshold signing for high-impact actions; operational hot paths are bounded by caps and circuit breakers.
+* **Operational hot wallet**: Lightning node operations require hot access to channel state; mitigate with:
+  * channel sizing rules and peer exposure caps
+  * sweeping policies and operating-balance limits
+  * rate limits and circuit breakers
+  * alarms + runbooks
+* **Agent safety**: agents never receive free-floating pool funds. They access liquidity only via:
+  * LLP quote → pay (invoice execution service)
+  * CEP envelope settlement (pay-after-verify by default for objective workloads)
+
+---
+
+## 3.3 Accounting and LP Mode (Optional)
+
+Hydra can run operator-funded until external LP deposits are production-safe. When LP mode is enabled:
+
+* **Share model**: internal shares minted/burned against deposits/withdrawals; share price moves only on realized PnL/loss with explicit marking rules.
+* **Segregated ledgers**: LLP/CEP/RRP partitions are tracked separately to keep risk and subsidies explicit.
+  * LP exposure can be partitioned (LLP-only, CEP-only, blended) once external deposits are enabled.
+* **Deposits/withdrawals**:
+  * deposits via Lightning invoice (small) and on-chain address (large)
+  * withdrawals via queue + scheduling semantics (T+Δ windows), dynamically throttled based on:
+    * channel health/liquidity bands
+    * outstanding CEP commitments
+    * reserve thresholds and circuit breaker state
+* **Signed snapshots**: periodic `HydraPoolSnapshot` signed by the signer set; surfaced through `/stats` and optionally mirrored via Bridge for public audit in summary form.
 
 ---
 
@@ -106,6 +168,23 @@ Hydra’s LLP is not “a node.” It is a **pool** with explicit accounting, ri
 * `GET  /v1/liquidity/status`
 
 **Why “quote then pay”:** agents and policies need a binding pre-flight. The quote locks the *intent* (fee ceiling, urgency, idempotency key, policy context) so retries can be safe and comparable.
+
+---
+
+### 4.1.1 RRP — Rebalancing / Reserve Partition (Optional)
+
+**Purpose:** keep LLP reliable under stress without turning normal operations into “panic mode” changes.
+
+Used for:
+
+* emergency rebalances within explicit budgets
+* fallback liquidity for high-priority settlement when channels are fragmented
+* safe unwinds (channel closes/sweeps) during incidents
+
+Funding and accounting:
+
+* funded by a small, explicit skim from LLP/CEP fees (or operator subsidy)
+* tracked as a separate partition so any subsidy is legible and policy-controlled
 
 ---
 
