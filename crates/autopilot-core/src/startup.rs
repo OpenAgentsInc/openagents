@@ -74,7 +74,7 @@ use crate::verification::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "phase enum is serialized across startup UI checkpoints")]
 pub enum StartupPhase {
     /// Idle - waiting for user to provide a prompt or select an issue
     Idle,

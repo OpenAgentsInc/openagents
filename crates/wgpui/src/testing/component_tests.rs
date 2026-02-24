@@ -62,7 +62,7 @@ fn test_button_interactive_state_methods() {
 
     // Can create with disabled state
     let disabled = Button::new("Disabled").disabled(true);
-    assert!(Component::id(&disabled).is_none() || true); // Just verify it compiles
+    assert!(Component::id(&disabled).is_none());
 }
 
 #[test]

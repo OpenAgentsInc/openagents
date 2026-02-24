@@ -793,27 +793,18 @@ impl RuntimeCodexControlCoordinator {
         let worker_id = worker_id.into();
         let occurred_at = occurred_at.into();
 
-        if self
-            .tracked_requests_by_id
-            .contains_key(&request.request_id)
-        {
+        if let Some(tracker) = self.tracked_requests_by_id.get_mut(&request.request_id) {
             let mut should_queue = false;
-            let existing = {
-                let tracker = self
-                    .tracked_requests_by_id
-                    .get_mut(&request.request_id)
-                    .expect("checked contains_key above");
-                if tracker.state == RuntimeCodexControlRequestState::Error && tracker.retryable {
-                    tracker.state = RuntimeCodexControlRequestState::Queued;
-                    tracker.error_code = None;
-                    tracker.error_message = None;
-                    tracker.last_updated_at = occurred_at.clone();
-                    should_queue = true;
-                } else if tracker.state == RuntimeCodexControlRequestState::Queued {
-                    should_queue = true;
-                }
-                tracker.clone()
-            };
+            if tracker.state == RuntimeCodexControlRequestState::Error && tracker.retryable {
+                tracker.state = RuntimeCodexControlRequestState::Queued;
+                tracker.error_code = None;
+                tracker.error_message = None;
+                tracker.last_updated_at = occurred_at.clone();
+                should_queue = true;
+            } else if tracker.state == RuntimeCodexControlRequestState::Queued {
+                should_queue = true;
+            }
+            let existing = tracker.clone();
             if should_queue {
                 self.ensure_queued(request.request_id.as_str());
             }
