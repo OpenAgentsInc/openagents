@@ -38,6 +38,16 @@ use crate::{
     liquidity::store,
     liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
     liquidity::{LiquidityError, LiquidityService},
+    liquidity_pool::{
+        LiquidityPoolError, LiquidityPoolService,
+        service::{HttpWalletExecutorClient, UnavailableWalletExecutorClient, WalletExecutorClient},
+        store as liquidity_pool_store,
+        types::{
+            DepositQuoteRequestV1, DepositQuoteResponseV1, PoolCreateRequestV1,
+            PoolCreateResponseV1, PoolSnapshotResponseV1, PoolStatusResponseV1, WithdrawRequestV1,
+            WithdrawResponseV1,
+        },
+    },
     marketplace::{
         ComputeAllInQuoteV1, PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection,
         build_provider_catalog, compute_all_in_quote_v1, is_provider_worker,
@@ -59,6 +69,7 @@ pub struct AppState {
     config: Config,
     db: Option<Arc<RuntimeDb>>,
     liquidity: Arc<LiquidityService>,
+    liquidity_pool: Arc<LiquidityPoolService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
@@ -88,6 +99,20 @@ impl AppState {
             None => store::memory(),
         };
 
+        let pool_store = match db.clone() {
+            Some(db) => liquidity_pool_store::postgres(db),
+            None => liquidity_pool_store::memory(),
+        };
+        let wallet_executor_client: Arc<dyn WalletExecutorClient> =
+            match HttpWalletExecutorClient::new(
+                config.liquidity_wallet_executor_base_url.clone(),
+                config.liquidity_wallet_executor_auth_token.clone(),
+                config.liquidity_wallet_executor_timeout_ms,
+            ) {
+                Ok(client) => Arc::new(client),
+                Err(error) => Arc::new(UnavailableWalletExecutorClient::new(error.to_string())),
+            };
+
         let state = Self {
             liquidity: Arc::new(LiquidityService::new(
                 liquidity_store,
@@ -95,6 +120,11 @@ impl AppState {
                 config.liquidity_wallet_executor_auth_token.clone(),
                 config.liquidity_wallet_executor_timeout_ms,
                 config.liquidity_quote_ttl_seconds,
+                config.bridge_nostr_secret_key,
+            )),
+            liquidity_pool: Arc::new(LiquidityPoolService::new(
+                pool_store,
+                wallet_executor_client,
                 config.bridge_nostr_secret_key,
             )),
             db,
@@ -844,6 +874,30 @@ pub fn build_router(state: AppState) -> Router {
             post(liquidity_quote_pay),
         )
         .route("/internal/v1/liquidity/pay", post(liquidity_pay))
+        .route(
+            "/internal/v1/pools/:pool_id/admin/create",
+            post(liquidity_pool_create_pool),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/deposit_quote",
+            post(liquidity_pool_deposit_quote),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/deposits/:deposit_id/confirm",
+            post(liquidity_pool_confirm_deposit),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/withdraw_request",
+            post(liquidity_pool_withdraw_request),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/status",
+            get(liquidity_pool_status),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/snapshots/latest",
+            get(liquidity_pool_latest_snapshot),
+        )
         .route("/internal/v1/fraud/incidents", get(get_fraud_incidents))
         .with_state(state)
 }
@@ -2452,6 +2506,116 @@ async fn liquidity_pay(
     Ok(Json(response))
 }
 
+async fn liquidity_pool_create_pool(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<PoolCreateRequestV1>,
+) -> Result<Json<PoolCreateResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .create_pool(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_deposit_quote(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<DepositQuoteRequestV1>,
+) -> Result<Json<DepositQuoteResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .deposit_quote(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+struct ConfirmDepositResponseV1 {
+    schema: String,
+    deposit: crate::liquidity_pool::types::DepositRow,
+    shares_minted: bool,
+}
+
+async fn liquidity_pool_confirm_deposit(
+    State(state): State<AppState>,
+    Path((pool_id, deposit_id)): Path<(String, String)>,
+) -> Result<Json<ConfirmDepositResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let (deposit, shares_minted) = state
+        .liquidity_pool
+        .confirm_deposit(pool_id.as_str(), deposit_id.as_str())
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(ConfirmDepositResponseV1 {
+        schema: "openagents.liquidity.pool.confirm_deposit_response.v1".to_string(),
+        deposit,
+        shares_minted,
+    }))
+}
+
+async fn liquidity_pool_withdraw_request(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<WithdrawRequestV1>,
+) -> Result<Json<WithdrawResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .withdraw_request(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_status(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+) -> Result<Json<PoolStatusResponseV1>, ApiError> {
+    let response = state
+        .liquidity_pool
+        .status(pool_id.as_str())
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct PoolLatestSnapshotQuery {
+    #[serde(default)]
+    generate: Option<bool>,
+}
+
+async fn liquidity_pool_latest_snapshot(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Query(query): Query<PoolLatestSnapshotQuery>,
+) -> Result<Json<PoolSnapshotResponseV1>, ApiError> {
+    if query.generate.unwrap_or(false) {
+        ensure_runtime_write_authority(&state)?;
+        let response = state
+            .liquidity_pool
+            .generate_snapshot(pool_id.as_str())
+            .await
+            .map_err(api_error_from_liquidity_pool)?;
+        return Ok(Json(response));
+    }
+
+    let response = state
+        .liquidity_pool
+        .latest_snapshot(pool_id.as_str())
+        .await
+        .map_err(api_error_from_liquidity_pool)?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(response))
+}
+
 async fn get_fraud_incidents(
     State(state): State<AppState>,
     Query(query): Query<FraudIncidentsQuery>,
@@ -3088,6 +3252,16 @@ fn api_error_from_liquidity(error: LiquidityError) -> ApiError {
         LiquidityError::Conflict(message) => ApiError::Conflict(message),
         LiquidityError::DependencyUnavailable(message) => ApiError::Internal(message),
         LiquidityError::Internal(message) => ApiError::Internal(message),
+    }
+}
+
+fn api_error_from_liquidity_pool(error: LiquidityPoolError) -> ApiError {
+    match error {
+        LiquidityPoolError::InvalidRequest(message) => ApiError::InvalidRequest(message),
+        LiquidityPoolError::NotFound => ApiError::NotFound,
+        LiquidityPoolError::Conflict(message) => ApiError::Conflict(message),
+        LiquidityPoolError::DependencyUnavailable(message) => ApiError::Internal(message),
+        LiquidityPoolError::Internal(message) => ApiError::Internal(message),
     }
 }
 

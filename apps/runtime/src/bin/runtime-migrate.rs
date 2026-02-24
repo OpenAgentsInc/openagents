@@ -17,6 +17,10 @@ const MIGRATIONS: &[EmbeddedMigration] = &[
         version: "0002_runtime_liquidity_service_api",
         sql: include_str!("../../sql/migrations/0002_runtime_liquidity_service_api.sql"),
     },
+    EmbeddedMigration {
+        version: "0003_runtime_liquidity_pool_core",
+        sql: include_str!("../../sql/migrations/0003_runtime_liquidity_pool_core.sql"),
+    },
 ];
 
 #[tokio::main]

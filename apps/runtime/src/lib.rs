@@ -31,6 +31,7 @@ pub mod history_compat;
 pub mod human_qa;
 pub mod inference_tiering;
 pub mod liquidity;
+pub mod liquidity_pool;
 pub mod marketplace;
 pub mod orchestration;
 pub mod projectors;
