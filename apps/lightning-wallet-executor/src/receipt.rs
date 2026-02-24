@@ -5,6 +5,8 @@ const RECEIPT_VERSION: &str = "openagents.lightning.wallet_receipt.v1";
 const RECEIPT_RAIL: &str = "lightning";
 const RECEIPT_ASSET_ID: &str = "BTC_LN";
 
+const INVOICE_RECEIPT_VERSION: &str = "openagents.lightning.invoice_receipt.v1";
+
 #[derive(Debug, Clone)]
 pub struct WalletExecutionReceiptInput {
     pub request_id: String,
@@ -16,6 +18,16 @@ pub struct WalletExecutionReceiptInput {
     pub settled_amount_msats: u64,
     pub preimage_hex: String,
     pub paid_at_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct InvoiceReceiptInput {
+    pub request_id: String,
+    pub wallet_id: String,
+    pub invoice_hash: String,
+    pub amount_msats: u64,
+    pub created_at_ms: i64,
+    pub expires_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +51,21 @@ pub struct WalletExecutionReceipt {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InvoiceReceipt {
+    pub receipt_version: String,
+    pub receipt_id: String,
+    pub request_id: String,
+    pub wallet_id: String,
+    pub invoice_hash: String,
+    pub amount_msats: u64,
+    pub created_at_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<i64>,
+    pub canonical_json_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CanonicalPayload {
     receipt_version: String,
     request_id: String,
@@ -54,13 +81,34 @@ struct CanonicalPayload {
     asset_id: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CanonicalInvoicePayload {
+    receipt_version: String,
+    request_id: String,
+    wallet_id: String,
+    invoice_hash: String,
+    amount_msats: u64,
+    created_at_ms: i64,
+    expires_at_ms: Option<i64>,
+}
+
 pub fn canonicalize_wallet_execution_receipt(input: &WalletExecutionReceiptInput) -> String {
     let payload = canonical_payload(input);
     serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
+pub fn canonicalize_invoice_receipt(input: &InvoiceReceiptInput) -> String {
+    let payload = canonical_invoice_payload(input);
+    serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
+}
+
 pub fn canonical_wallet_execution_receipt_hash(input: &WalletExecutionReceiptInput) -> String {
     sha256_hex(canonicalize_wallet_execution_receipt(input).as_bytes())
+}
+
+pub fn canonical_invoice_receipt_hash(input: &InvoiceReceiptInput) -> String {
+    sha256_hex(canonicalize_invoice_receipt(input).as_bytes())
 }
 
 pub fn build_wallet_execution_receipt(
@@ -88,6 +136,24 @@ pub fn build_wallet_execution_receipt(
     }
 }
 
+pub fn build_invoice_receipt(input: &InvoiceReceiptInput) -> InvoiceReceipt {
+    let payload = canonical_invoice_payload(input);
+    let canonical_json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+    let canonical_json_sha256 = sha256_hex(canonical_json.as_bytes());
+
+    InvoiceReceipt {
+        receipt_version: payload.receipt_version,
+        receipt_id: format!("lir_{}", &canonical_json_sha256[..24]),
+        request_id: payload.request_id,
+        wallet_id: payload.wallet_id,
+        invoice_hash: payload.invoice_hash,
+        amount_msats: payload.amount_msats,
+        created_at_ms: payload.created_at_ms,
+        expires_at_ms: payload.expires_at_ms,
+        canonical_json_sha256,
+    }
+}
+
 fn canonical_payload(input: &WalletExecutionReceiptInput) -> CanonicalPayload {
     let paid_at_ms = input.paid_at_ms.max(0);
 
@@ -104,6 +170,21 @@ fn canonical_payload(input: &WalletExecutionReceiptInput) -> CanonicalPayload {
         paid_at_ms,
         rail: RECEIPT_RAIL.to_string(),
         asset_id: RECEIPT_ASSET_ID.to_string(),
+    }
+}
+
+fn canonical_invoice_payload(input: &InvoiceReceiptInput) -> CanonicalInvoicePayload {
+    let created_at_ms = input.created_at_ms.max(0);
+    let expires_at_ms = input.expires_at_ms.map(|value| value.max(0));
+
+    CanonicalInvoicePayload {
+        receipt_version: INVOICE_RECEIPT_VERSION.to_string(),
+        request_id: input.request_id.trim().to_string(),
+        wallet_id: input.wallet_id.trim().to_string(),
+        invoice_hash: input.invoice_hash.trim().to_ascii_lowercase(),
+        amount_msats: input.amount_msats,
+        created_at_ms,
+        expires_at_ms,
     }
 }
 
@@ -175,5 +256,28 @@ mod tests {
         });
 
         assert_ne!(baseline, changed);
+    }
+
+    #[test]
+    fn invoice_receipt_hash_is_stable_for_identical_facts() {
+        let input = InvoiceReceiptInput {
+            request_id: "req-invoice-1".to_string(),
+            wallet_id: "wallet-ep212".to_string(),
+            invoice_hash: "ABCDEF1234".to_string(),
+            amount_msats: 42_000,
+            created_at_ms: 1_777_000_000_000,
+            expires_at_ms: Some(1_777_000_060_000),
+        };
+
+        let first = build_invoice_receipt(&input);
+        let second = build_invoice_receipt(&InvoiceReceiptInput {
+            invoice_hash: "abcdef1234".to_string(),
+            ..input
+        });
+
+        assert_eq!(first.canonical_json_sha256, second.canonical_json_sha256);
+        assert_eq!(first.receipt_id, second.receipt_id);
+        assert_eq!(first.invoice_hash, "abcdef1234");
+        assert!(first.receipt_id.starts_with("lir_"));
     }
 }

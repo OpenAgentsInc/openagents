@@ -4,9 +4,16 @@ Rust HTTP service for agent-owned Spark wallet execution.
 
 ## Endpoints
 
-- `GET /healthz`
-- `GET /status`
-- `POST /pay-bolt11`
+### Canonical
+
+- `GET /healthz` (no auth)
+- `GET /status` (bearer auth required)
+- `POST /pay-bolt11` (bearer auth required)
+- `POST /create-invoice` (bearer auth required)
+- `GET /receive-address` (bearer auth required)
+
+### Legacy compat (deprecated)
+
 - `POST /wallets/create`
 - `POST /wallets/status`
 - `POST /wallets/create-invoice`

@@ -737,30 +737,6 @@ impl SparkWallet {
             .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
 
-    /// Get the wallet's Spark address for receiving payments
-    ///
-    /// Returns a static Spark address that can be used to receive payments.
-    /// This address is tied to the wallet's identity and can be reused.
-    ///
-    /// # Returns
-    /// A `ReceivePaymentResponse` containing the Spark address
-    ///
-    /// # Example
-    /// ```rust,ignore
-    /// let response = wallet.get_spark_address().await?;
-    /// println!("Send to: {}", response.payment_request);
-    /// ```
-    pub async fn get_receive_address(&self) -> Result<ReceivePaymentResponse, SparkError> {
-        let request = ReceivePaymentRequest {
-            payment_method: ReceivePaymentMethod::SparkAddress,
-        };
-
-        self.sdk
-            .receive_payment(request)
-            .await
-            .map_err(|e| SparkError::Wallet(e.to_string()))
-    }
-
     /// Create a Spark invoice for receiving a specific amount
     ///
     /// Generates a Spark invoice (similar to Lightning BOLT-11) for receiving payments.

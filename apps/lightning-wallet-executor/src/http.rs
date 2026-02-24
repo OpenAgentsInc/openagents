@@ -80,6 +80,8 @@ fn build_router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/status", get(status))
         .route("/pay-bolt11", post(pay_bolt11))
+        .route("/create-invoice", post(create_invoice))
+        .route("/receive-address", get(receive_address))
         .route("/wallets/create", post(wallets_create))
         .route("/wallets/status", post(wallets_status))
         .route("/wallets/create-invoice", post(wallets_create_invoice))
@@ -158,6 +160,86 @@ async fn pay_bolt11(State(state): State<AppState>, headers: HeaderMap, body: Byt
             StatusCode::OK,
             &request_id,
             json!({ "ok": true, "requestId": request_id, "result": result }),
+            false,
+        ),
+        Err(error) => wallet_executor_error_response(error, &request_id),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateInvoiceBody {
+    amount_sats: u64,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    expiry_secs: Option<u64>,
+}
+
+async fn create_invoice(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let request_id = request_id_from_headers(&headers);
+
+    if let Some(response) = authorize(&state, &headers, &request_id) {
+        return response;
+    }
+
+    let parsed: CreateInvoiceBody = match parse_json_body(&body) {
+        Ok(value) => value,
+        Err(message) => return invalid_request_response(&request_id, &message),
+    };
+    if parsed.amount_sats == 0 {
+        return invalid_request_response(&request_id, "amount_sats must be > 0");
+    }
+
+    match state
+        .service
+        .create_invoice(
+            parsed.amount_sats,
+            parsed.description,
+            parsed.expiry_secs,
+            Some(request_id.clone()),
+        )
+        .await
+    {
+        Ok(result) => json_response(
+            StatusCode::OK,
+            &request_id,
+            json!({ "ok": true, "requestId": request_id, "result": result }),
+            false,
+        ),
+        Err(error) => wallet_executor_error_response(error, &request_id),
+    }
+}
+
+async fn receive_address(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let request_id = request_id_from_headers(&headers);
+
+    if let Some(response) = authorize(&state, &headers, &request_id) {
+        return response;
+    }
+
+    let network = match state.service.config().network {
+        crate::config::SparkNetwork::Mainnet => "mainnet",
+        crate::config::SparkNetwork::Regtest => "regtest",
+    };
+
+    match state.service.receive_addresses().await {
+        Ok(addresses) => json_response(
+            StatusCode::OK,
+            &request_id,
+            json!({
+                "ok": true,
+                "requestId": request_id,
+                "result": {
+                    "sparkAddress": addresses.spark_address,
+                    "bitcoinAddress": addresses.bitcoin_address,
+                    "network": network,
+                }
+            }),
             false,
         ),
         Err(error) => wallet_executor_error_response(error, &request_id),
@@ -541,6 +623,183 @@ fn wallet_executor_error_response(error: WalletExecutorError, request_id: &str) 
                 false,
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use anyhow::Result;
+    use serde_json::Value;
+
+    use crate::compat::WalletCompatService;
+    use crate::config::WalletExecutorConfig;
+    use crate::gateway::MockPaymentGateway;
+    use crate::service::WalletExecutorService;
+
+    use super::make_wallet_executor_http_server;
+
+    async fn start_server() -> Result<(String, super::WalletExecutorHttpServer)> {
+        let mut config = WalletExecutorConfig::default_mock();
+        config.host = "127.0.0.1".to_string();
+        config.port = 0;
+        config.wallet_id = "wallet-test".to_string();
+        config.auth_token = Some("test-token".to_string());
+
+        let service = Arc::new(WalletExecutorService::new(
+            config.clone(),
+            Arc::new(MockPaymentGateway::new(None)),
+        ));
+        let compat = Arc::new(WalletCompatService::new(config));
+        let server = make_wallet_executor_http_server(service, compat)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        Ok((server.address.clone(), server))
+    }
+
+    #[tokio::test]
+    async fn create_invoice_requires_auth() -> Result<()> {
+        let (base, server) = start_server().await?;
+        let client = reqwest::Client::new();
+
+        let res = client
+            .post(format!("{base}/create-invoice"))
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"amountSats": 1}).to_string())
+            .send()
+            .await?;
+        assert_eq!(res.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        server.close().await.map_err(anyhow::Error::msg)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_invoice_is_idempotent_and_conflicts_on_mismatch() -> Result<()> {
+        let (base, server) = start_server().await?;
+        let client = reqwest::Client::new();
+
+        let first = client
+            .post(format!("{base}/create-invoice"))
+            .header("authorization", "Bearer test-token")
+            .header("x-request-id", "inv-test-1")
+            .json(&serde_json::json!({
+                "amountSats": 21,
+                "description": "deposit",
+                "expirySecs": 60,
+            }))
+            .send()
+            .await?;
+        assert!(first.status().is_success());
+        let first_json: Value = first.json().await?;
+        let invoice_first = first_json
+            .pointer("/result/invoice")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let receipt_hash_first = first_json
+            .pointer("/result/receipt/canonicalJsonSha256")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        let second = client
+            .post(format!("{base}/create-invoice"))
+            .header("authorization", "Bearer test-token")
+            .header("x-request-id", "inv-test-1")
+            .json(&serde_json::json!({
+                "amountSats": 21,
+                "description": "deposit",
+                "expirySecs": 60,
+            }))
+            .send()
+            .await?;
+        assert!(second.status().is_success());
+        let second_json: Value = second.json().await?;
+        let invoice_second = second_json
+            .pointer("/result/invoice")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let receipt_hash_second = second_json
+            .pointer("/result/receipt/canonicalJsonSha256")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        assert_eq!(invoice_first, invoice_second);
+        assert_eq!(receipt_hash_first, receipt_hash_second);
+
+        let conflict = client
+            .post(format!("{base}/create-invoice"))
+            .header("authorization", "Bearer test-token")
+            .header("x-request-id", "inv-test-1")
+            .json(&serde_json::json!({
+                "amountSats": 22,
+            }))
+            .send()
+            .await?;
+        assert_eq!(conflict.status(), reqwest::StatusCode::CONFLICT);
+
+        server.close().await.map_err(anyhow::Error::msg)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn receive_address_is_stable_and_non_empty_in_mock_mode() -> Result<()> {
+        let (base, server) = start_server().await?;
+        let client = reqwest::Client::new();
+
+        let first = client
+            .get(format!("{base}/receive-address"))
+            .header("authorization", "Bearer test-token")
+            .send()
+            .await?;
+        assert!(first.status().is_success());
+        let first_json: Value = first.json().await?;
+        let spark_first = first_json
+            .pointer("/result/sparkAddress")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let btc_first = first_json
+            .pointer("/result/bitcoinAddress")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        assert!(!spark_first.is_empty());
+        assert!(!btc_first.is_empty());
+        assert_eq!(
+            first_json
+                .pointer("/result/network")
+                .and_then(Value::as_str),
+            Some("regtest")
+        );
+
+        let second = client
+            .get(format!("{base}/receive-address"))
+            .header("authorization", "Bearer test-token")
+            .send()
+            .await?;
+        assert!(second.status().is_success());
+        let second_json: Value = second.json().await?;
+        let spark_second = second_json
+            .pointer("/result/sparkAddress")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let btc_second = second_json
+            .pointer("/result/bitcoinAddress")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        assert_eq!(spark_first, spark_second);
+        assert_eq!(btc_first, btc_second);
+
+        server.close().await.map_err(anyhow::Error::msg)?;
+        Ok(())
     }
 }
 

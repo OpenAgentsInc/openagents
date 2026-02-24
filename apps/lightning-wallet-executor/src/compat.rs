@@ -609,7 +609,12 @@ fn compat_payment_fingerprint(
     hasher.update(b"|");
     hasher.update(sha256_hex(mnemonic.trim().as_bytes()).as_bytes());
     hasher.update(b"|");
-    hasher.update(host.unwrap_or_default().trim().to_ascii_lowercase().as_bytes());
+    hasher.update(
+        host.unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_bytes(),
+    );
     hasher.update(b"|");
     hasher.update(sha256_hex(invoice.trim().as_bytes()).as_bytes());
     hasher.update(b"|");
@@ -949,6 +954,9 @@ mod tests {
             .await
             .expect("second pay should return cached result");
 
-        assert_eq!(first.result.get("paymentId"), second.result.get("paymentId"));
+        assert_eq!(
+            first.result.get("paymentId"),
+            second.result.get("paymentId")
+        );
     }
 }

@@ -13,7 +13,8 @@ use crate::error::{
 };
 use crate::gateway::{PaymentGateway, SparkPaymentStatus};
 use crate::receipt::{
-    WalletExecutionReceipt, WalletExecutionReceiptInput, build_wallet_execution_receipt,
+    InvoiceReceipt, InvoiceReceiptInput, WalletExecutionReceipt, WalletExecutionReceiptInput,
+    build_invoice_receipt, build_wallet_execution_receipt,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +45,19 @@ pub struct PayBolt11Result {
     pub receipt: WalletExecutionReceipt,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateInvoiceResult {
+    pub request_id: String,
+    pub wallet_id: String,
+    pub invoice: String,
+    pub invoice_hash: String,
+    pub amount_msats: u64,
+    pub created_at_ms: i64,
+    pub expires_at_ms: Option<i64>,
+    pub receipt: InvoiceReceipt,
+}
+
 #[derive(Debug, Clone)]
 struct PaymentIdempotencyRecord {
     fingerprint: String,
@@ -54,6 +68,19 @@ struct PaymentIdempotencyRecord {
 enum PaymentIdempotencyOutcome {
     InFlight,
     Completed(PayBolt11Result),
+    TerminalSparkError(SparkGatewayError),
+}
+
+#[derive(Debug, Clone)]
+struct InvoiceIdempotencyRecord {
+    fingerprint: String,
+    outcome: InvoiceIdempotencyOutcome,
+}
+
+#[derive(Debug, Clone)]
+enum InvoiceIdempotencyOutcome {
+    InFlight,
+    Completed(CreateInvoiceResult),
     TerminalSparkError(SparkGatewayError),
 }
 
@@ -150,6 +177,7 @@ pub struct WalletExecutorService {
     status: Mutex<StatusState>,
     history: Mutex<Vec<PaymentHistoryItem>>,
     idempotency: Mutex<HashMap<String, PaymentIdempotencyRecord>>,
+    invoice_idempotency: Mutex<HashMap<String, InvoiceIdempotencyRecord>>,
 }
 
 impl WalletExecutorService {
@@ -160,6 +188,7 @@ impl WalletExecutorService {
             status: Mutex::new(StatusState::default()),
             history: Mutex::new(Vec::new()),
             idempotency: Mutex::new(HashMap::new()),
+            invoice_idempotency: Mutex::new(HashMap::new()),
         }
     }
 
@@ -229,12 +258,12 @@ impl WalletExecutorService {
 
                 return match &existing.outcome {
                     PaymentIdempotencyOutcome::Completed(result) => Ok(result.clone()),
-                    PaymentIdempotencyOutcome::InFlight => Err(WalletExecutorError::Idempotency(
-                        IdempotencyError::new(
+                    PaymentIdempotencyOutcome::InFlight => {
+                        Err(WalletExecutorError::Idempotency(IdempotencyError::new(
                             IdempotencyErrorCode::InFlight,
                             format!("payment already in flight for request_id {request_id}"),
-                        ),
-                    )),
+                        )))
+                    }
                     PaymentIdempotencyOutcome::TerminalSparkError(error) => {
                         Err(WalletExecutorError::Spark(error.clone()))
                     }
@@ -275,6 +304,95 @@ impl WalletExecutorService {
         drop(idempotency);
 
         result
+    }
+
+    pub async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_secs: Option<u64>,
+        request_id: Option<String>,
+    ) -> Result<CreateInvoiceResult, WalletExecutorError> {
+        let request_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        let fingerprint = invoice_request_fingerprint(
+            &self.config.wallet_id,
+            amount_sats,
+            description.as_deref(),
+            expiry_secs,
+        );
+
+        {
+            let mut idempotency = self.invoice_idempotency.lock().await;
+            if let Some(existing) = idempotency.get(&request_id) {
+                if existing.fingerprint != fingerprint {
+                    return Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                        IdempotencyErrorCode::Conflict,
+                        format!(
+                            "request_id {} reused with different invoice parameters",
+                            request_id
+                        ),
+                    )));
+                }
+
+                return match &existing.outcome {
+                    InvoiceIdempotencyOutcome::Completed(result) => Ok(result.clone()),
+                    InvoiceIdempotencyOutcome::InFlight => {
+                        Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                            IdempotencyErrorCode::InFlight,
+                            format!("invoice already in flight for request_id {}", request_id),
+                        )))
+                    }
+                    InvoiceIdempotencyOutcome::TerminalSparkError(error) => {
+                        Err(WalletExecutorError::Spark(error.clone()))
+                    }
+                };
+            }
+
+            idempotency.insert(
+                request_id.clone(),
+                InvoiceIdempotencyRecord {
+                    fingerprint: fingerprint.clone(),
+                    outcome: InvoiceIdempotencyOutcome::InFlight,
+                },
+            );
+        }
+
+        let result = self
+            .create_invoice_inner(amount_sats, description, expiry_secs, request_id.clone())
+            .await;
+
+        let mut idempotency = self.invoice_idempotency.lock().await;
+        match &result {
+            Ok(ok) => {
+                if let Some(entry) = idempotency.get_mut(&request_id) {
+                    entry.outcome = InvoiceIdempotencyOutcome::Completed(ok.clone());
+                }
+            }
+            Err(WalletExecutorError::Spark(error))
+                if matches!(error.code, SparkGatewayErrorCode::MnemonicMissing) =>
+            {
+                if let Some(entry) = idempotency.get_mut(&request_id) {
+                    entry.outcome = InvoiceIdempotencyOutcome::TerminalSparkError(error.clone());
+                }
+            }
+            Err(_) => {
+                let _ = idempotency.remove(&request_id);
+            }
+        }
+        drop(idempotency);
+
+        result
+    }
+
+    pub async fn receive_addresses(
+        &self,
+    ) -> Result<crate::gateway::SparkReceiveAddresses, WalletExecutorError> {
+        self.bootstrap().await.map_err(WalletExecutorError::Spark)?;
+        self.gateway
+            .get_receive_addresses()
+            .await
+            .map_err(WalletExecutorError::Spark)
     }
 
     async fn pay_bolt11_inner(
@@ -415,6 +533,53 @@ impl WalletExecutorService {
         })
     }
 
+    async fn create_invoice_inner(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_secs: Option<u64>,
+        request_id: String,
+    ) -> Result<CreateInvoiceResult, WalletExecutorError> {
+        self.bootstrap().await.map_err(WalletExecutorError::Spark)?;
+
+        if amount_sats == 0 {
+            return Err(WalletExecutorError::Policy(PolicyDeniedError::new(
+                PolicyDenialCode::RequestCapExceeded,
+                "amount_sats must be > 0",
+            )));
+        }
+
+        let created = self
+            .gateway
+            .create_invoice(amount_sats, description, expiry_secs)
+            .await
+            .map_err(WalletExecutorError::Spark)?;
+
+        let invoice_hash = hash_invoice(&created.invoice);
+
+        let receipt = build_invoice_receipt(&InvoiceReceiptInput {
+            request_id: request_id.clone(),
+            wallet_id: self.config.wallet_id.clone(),
+            invoice_hash: invoice_hash.clone(),
+            amount_msats: created.amount_msats,
+            created_at_ms: created.created_at_ms,
+            expires_at_ms: created.expires_at_ms,
+        });
+
+        self.refresh_status_from_gateway_best_effort().await;
+
+        Ok(CreateInvoiceResult {
+            request_id,
+            wallet_id: self.config.wallet_id.clone(),
+            invoice: created.invoice,
+            invoice_hash,
+            amount_msats: created.amount_msats,
+            created_at_ms: created.created_at_ms,
+            expires_at_ms: created.expires_at_ms,
+            receipt,
+        })
+    }
+
     async fn bootstrap(&self) -> Result<(), SparkGatewayError> {
         {
             let mut status = self.status.lock().await;
@@ -532,6 +697,28 @@ fn hash_invoice(invoice: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn invoice_request_fingerprint(
+    wallet_id: &str,
+    amount_sats: u64,
+    description: Option<&str>,
+    expiry_secs: Option<u64>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(wallet_id.trim().as_bytes());
+    hasher.update(b"|");
+    hasher.update(amount_sats.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(description.unwrap_or("").trim().as_bytes());
+    hasher.update(b"|");
+    hasher.update(
+        expiry_secs
+            .map(|v| v.to_string())
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    hex::encode(hasher.finalize())
+}
+
 fn payment_request_fingerprint(
     wallet_id: &str,
     host: &str,
@@ -565,7 +752,9 @@ mod tests {
 
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::gateway::{MockPaymentGateway, PaymentGateway, SparkPreparedPayment, SparkSentPayment};
+    use crate::gateway::{
+        MockPaymentGateway, PaymentGateway, SparkPreparedPayment, SparkSentPayment,
+    };
 
     struct CountingGateway {
         inner: MockPaymentGateway,
@@ -607,7 +796,26 @@ mod tests {
             payment_timeout_secs: u64,
         ) -> Result<SparkSentPayment, SparkGatewayError> {
             self.send_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.send_payment(prepared, payment_timeout_secs).await
+            self.inner
+                .send_payment(prepared, payment_timeout_secs)
+                .await
+        }
+
+        async fn create_invoice(
+            &self,
+            amount_sats: u64,
+            description: Option<String>,
+            expiry_secs: Option<u64>,
+        ) -> Result<crate::gateway::SparkCreatedInvoice, SparkGatewayError> {
+            self.inner
+                .create_invoice(amount_sats, description, expiry_secs)
+                .await
+        }
+
+        async fn get_receive_addresses(
+            &self,
+        ) -> Result<crate::gateway::SparkReceiveAddresses, SparkGatewayError> {
+            self.inner.get_receive_addresses().await
         }
     }
 
@@ -671,5 +879,64 @@ mod tests {
         }
 
         assert_eq!(gateway.send_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn create_invoice_is_idempotent_by_request_id() {
+        let mut config = WalletExecutorConfig::default_mock();
+        config.wallet_id = "wallet-test".to_string();
+        let gateway = Arc::new(CountingGateway::new());
+        let service = WalletExecutorService::new(config, gateway);
+
+        let first = service
+            .create_invoice(
+                100,
+                Some("test".to_string()),
+                Some(60),
+                Some("inv-1".to_string()),
+            )
+            .await
+            .expect("first invoice should succeed");
+        let second = service
+            .create_invoice(
+                100,
+                Some("test".to_string()),
+                Some(60),
+                Some("inv-1".to_string()),
+            )
+            .await
+            .expect("second invoice should return cached result");
+
+        assert_eq!(first.invoice, second.invoice);
+        assert_eq!(
+            first.receipt.canonical_json_sha256,
+            second.receipt.canonical_json_sha256
+        );
+        assert!(first.receipt.receipt_id.starts_with("lir_"));
+    }
+
+    #[tokio::test]
+    async fn create_invoice_conflicts_when_request_id_reused_with_different_params() {
+        let mut config = WalletExecutorConfig::default_mock();
+        config.wallet_id = "wallet-test".to_string();
+        let gateway = Arc::new(CountingGateway::new());
+        let service = WalletExecutorService::new(config, gateway);
+
+        let _ = service
+            .create_invoice(100, None, None, Some("inv-2".to_string()))
+            .await
+            .expect("first invoice should succeed");
+
+        let err = service
+            .create_invoice(101, None, None, Some("inv-2".to_string()))
+            .await
+            .expect_err("reused request id should conflict");
+
+        match err {
+            WalletExecutorError::Idempotency(error) => {
+                assert_eq!(error.code.as_str(), "idempotency_conflict");
+            }
+            other => panic!("expected idempotency error, got {other:?}"),
+        }
     }
 }

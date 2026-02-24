@@ -23,6 +23,20 @@ pub struct SparkPreparedPayment {
     pub payment_method_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SparkCreatedInvoice {
+    pub invoice: String,
+    pub amount_msats: u64,
+    pub created_at_ms: i64,
+    pub expires_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SparkReceiveAddresses {
+    pub spark_address: String,
+    pub bitcoin_address: String,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SparkPaymentStatus {
     Completed,
@@ -52,6 +66,13 @@ pub trait PaymentGateway: Send + Sync {
         prepared: SparkPreparedPayment,
         payment_timeout_secs: u64,
     ) -> Result<SparkSentPayment, SparkGatewayError>;
+    async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_secs: Option<u64>,
+    ) -> Result<SparkCreatedInvoice, SparkGatewayError>;
+    async fn get_receive_addresses(&self) -> Result<SparkReceiveAddresses, SparkGatewayError>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -70,6 +91,7 @@ struct MockGatewayState {
     identity_pubkey: String,
     balance_sats: u64,
     next_payment_id: u64,
+    next_invoice_id: u64,
     get_info_calls: usize,
 }
 
@@ -92,6 +114,7 @@ impl MockPaymentGateway {
                 identity_pubkey: "spark-mock-identity".to_string(),
                 balance_sats: config.initial_balance_sats.unwrap_or(50_000),
                 next_payment_id: 1,
+                next_invoice_id: 1,
                 get_info_calls: 0,
             }),
             quoted_amount_msats: config.quoted_amount_msats.unwrap_or(50_000).max(1_000),
@@ -189,6 +212,39 @@ impl PaymentGateway for MockPaymentGateway {
                 Some("ab".repeat(32))
             },
             paid_at_ms: chrono::Utc::now().timestamp_millis(),
+        })
+    }
+
+    async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_secs: Option<u64>,
+    ) -> Result<SparkCreatedInvoice, SparkGatewayError> {
+        let _ = description;
+        let mut state = self.state.lock().await;
+        let id = state.next_invoice_id;
+        state.next_invoice_id = state.next_invoice_id.saturating_add(1);
+
+        let created_at_ms = chrono::Utc::now().timestamp_millis();
+        let expires_at_ms = expiry_secs.and_then(|secs| {
+            i64::try_from(secs)
+                .ok()
+                .and_then(|secs_i64| created_at_ms.checked_add(secs_i64.saturating_mul(1000)))
+        });
+
+        Ok(SparkCreatedInvoice {
+            invoice: format!("lnmock{}sat{}", amount_sats, id),
+            amount_msats: amount_sats.saturating_mul(1000),
+            created_at_ms,
+            expires_at_ms,
+        })
+    }
+
+    async fn get_receive_addresses(&self) -> Result<SparkReceiveAddresses, SparkGatewayError> {
+        Ok(SparkReceiveAddresses {
+            spark_address: "spark-mock-address".to_string(),
+            bitcoin_address: "bc1qmockaddress000000000000000000000000000".to_string(),
         })
     }
 }
@@ -389,6 +445,50 @@ impl PaymentGateway for LivePaymentGateway {
             amount_msats: amount_sats.saturating_mul(1_000),
             preimage_hex,
             paid_at_ms,
+        })
+    }
+
+    async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_secs: Option<u64>,
+    ) -> Result<SparkCreatedInvoice, SparkGatewayError> {
+        let wallet = self.ensure_wallet().await?;
+        let created_at_ms = chrono::Utc::now().timestamp_millis();
+        let expires_at_ms = expiry_secs.and_then(|secs| {
+            i64::try_from(secs)
+                .ok()
+                .and_then(|secs_i64| created_at_ms.checked_add(secs_i64.saturating_mul(1000)))
+        });
+
+        let response = wallet
+            .create_invoice(amount_sats, description, expiry_secs)
+            .await
+            .map_err(|e| {
+                SparkGatewayError::new(SparkGatewayErrorCode::SendFailed, e.to_string())
+            })?;
+
+        Ok(SparkCreatedInvoice {
+            invoice: response.payment_request,
+            amount_msats: amount_sats.saturating_mul(1000),
+            created_at_ms,
+            expires_at_ms,
+        })
+    }
+
+    async fn get_receive_addresses(&self) -> Result<SparkReceiveAddresses, SparkGatewayError> {
+        let wallet = self.ensure_wallet().await?;
+        let spark_address = wallet.get_spark_address().await.map_err(|e| {
+            SparkGatewayError::new(SparkGatewayErrorCode::SendFailed, e.to_string())
+        })?;
+        let bitcoin_address = wallet.get_bitcoin_address().await.map_err(|e| {
+            SparkGatewayError::new(SparkGatewayErrorCode::SendFailed, e.to_string())
+        })?;
+
+        Ok(SparkReceiveAddresses {
+            spark_address,
+            bitcoin_address,
         })
     }
 }
