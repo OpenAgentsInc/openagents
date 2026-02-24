@@ -25,6 +25,224 @@ pub const WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1: &str =
     "openagents.liquidity.withdraw_settlement_receipt.v1";
 pub const POOL_SNAPSHOT_RECEIPT_SCHEMA_V1: &str = "openagents.liquidity.pool_snapshot_receipt.v1";
 
+pub const POOL_SIGNER_SET_UPSERT_REQUEST_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signer_set_upsert_request.v1";
+pub const POOL_SIGNER_SET_RESPONSE_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signer_set_response.v1";
+pub const POOL_SIGNER_SET_SCHEMA_V1: &str = "openagents.liquidity.pool_signer_set.v1";
+
+pub const POOL_TREASURY_OPEN_CHANNEL_REQUEST_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_treasury.open_channel_request.v1";
+pub const POOL_TREASURY_CLOSE_CHANNEL_REQUEST_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_treasury.close_channel_request.v1";
+pub const POOL_SIGNING_REQUEST_RESPONSE_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signing_request_response.v1";
+pub const POOL_SIGNING_REQUEST_LIST_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signing_request_list.v1";
+pub const POOL_SIGNING_APPROVAL_SUBMIT_REQUEST_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signing_approval_submit_request.v1";
+pub const POOL_SIGNING_REQUEST_EXECUTE_RESPONSE_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_signing_request_execute_response.v1";
+
+pub const POOL_TREASURY_ACTION_RECEIPT_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_treasury_action_receipt.v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryActionClassV1 {
+    InvoicePaySmall,
+    InvoicePayLarge,
+    OpenChannel,
+    CloseChannel,
+    OnchainWithdrawalBatch,
+}
+
+impl TreasuryActionClassV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InvoicePaySmall => "invoice_pay_small",
+            Self::InvoicePayLarge => "invoice_pay_large",
+            Self::OpenChannel => "open_channel",
+            Self::CloseChannel => "close_channel",
+            Self::OnchainWithdrawalBatch => "onchain_withdrawal_batch",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerV1 {
+    /// X-only pubkey hex (32 bytes) used for schnorr signing.
+    pub pubkey: String,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerActionPolicyV1 {
+    pub action_class: TreasuryActionClassV1,
+    /// If set, actions at/below this amount can be executed with a single signer approval.
+    #[serde(default)]
+    pub single_signer_max_sats: Option<u64>,
+    /// If set, overrides the signer-set default threshold for this action.
+    #[serde(default)]
+    pub required_signatures: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerPolicyV1 {
+    pub schema: String,
+    pub actions: Vec<PoolSignerActionPolicyV1>,
+}
+
+impl PoolSignerPolicyV1 {
+    pub fn default_for_threshold(threshold: u32) -> Self {
+        Self {
+            schema: "openagents.liquidity.pool_signer_policy.v1".to_string(),
+            actions: vec![
+                PoolSignerActionPolicyV1 {
+                    action_class: TreasuryActionClassV1::InvoicePaySmall,
+                    single_signer_max_sats: Some(100_000),
+                    required_signatures: Some(1),
+                },
+                PoolSignerActionPolicyV1 {
+                    action_class: TreasuryActionClassV1::InvoicePayLarge,
+                    single_signer_max_sats: None,
+                    required_signatures: Some(threshold),
+                },
+                PoolSignerActionPolicyV1 {
+                    action_class: TreasuryActionClassV1::OpenChannel,
+                    single_signer_max_sats: None,
+                    required_signatures: Some(threshold),
+                },
+                PoolSignerActionPolicyV1 {
+                    action_class: TreasuryActionClassV1::CloseChannel,
+                    single_signer_max_sats: None,
+                    required_signatures: Some(threshold),
+                },
+                PoolSignerActionPolicyV1 {
+                    action_class: TreasuryActionClassV1::OnchainWithdrawalBatch,
+                    single_signer_max_sats: None,
+                    required_signatures: Some(threshold),
+                },
+            ],
+        }
+    }
+
+    pub fn policy_for_action(&self, action: TreasuryActionClassV1) -> Option<&PoolSignerActionPolicyV1> {
+        self.actions.iter().find(|entry| entry.action_class == action)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerSetUpsertRequestV1 {
+    pub schema: String,
+    pub threshold: u32,
+    pub signers: Vec<PoolSignerV1>,
+    #[serde(default)]
+    pub policy: Option<PoolSignerPolicyV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerSetResponseV1 {
+    pub schema: String,
+    pub signer_set: PoolSignerSetRow,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSignerSetRow {
+    pub pool_id: String,
+    pub schema: String,
+    pub threshold: u32,
+    pub signers: Vec<PoolSignerV1>,
+    pub policy: PoolSignerPolicyV1,
+    pub canonical_json_sha256: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolTreasuryOpenChannelRequestV1 {
+    pub schema: String,
+    pub idempotency_key: String,
+    pub peer_id: String,
+    pub amount_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolTreasuryCloseChannelRequestV1 {
+    pub schema: String,
+    pub idempotency_key: String,
+    pub channel_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningRequestRow {
+    pub request_id: String,
+    pub pool_id: String,
+    pub action_class: String,
+    pub idempotency_key: String,
+    pub payload_json: Value,
+    pub payload_sha256: String,
+    pub required_signatures: u32,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_result_json: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningApprovalRow {
+    pub approval_id: String,
+    pub request_id: String,
+    pub signer_pubkey: String,
+    pub signature: ReceiptSignatureV1,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningRequestResponseV1 {
+    pub schema: String,
+    pub request: PoolSigningRequestRow,
+    pub approvals: Vec<PoolSigningApprovalRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningRequestListResponseV1 {
+    pub schema: String,
+    pub requests: Vec<PoolSigningRequestRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningApprovalSubmitRequestV1 {
+    pub schema: String,
+    pub signature: ReceiptSignatureV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolTreasuryActionReceiptV1 {
+    pub schema: String,
+    pub receipt_id: String,
+    pub pool_id: String,
+    pub signing_request_id: String,
+    pub action_class: String,
+    pub payload_sha256: String,
+    pub approvals: Vec<PoolSigningApprovalRow>,
+    pub execution_result_json: Value,
+    pub executed_at: DateTime<Utc>,
+    pub canonical_json_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ReceiptSignatureV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolSigningRequestExecuteResponseV1 {
+    pub schema: String,
+    pub request: PoolSigningRequestRow,
+    pub receipt: PoolTreasuryActionReceiptV1,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PoolKindV1 {

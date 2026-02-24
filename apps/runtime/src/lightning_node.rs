@@ -78,7 +78,7 @@ impl Default for LightningNodePolicy {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightningPayResultV1 {
     pub schema: String,
     pub preimage_sha256: Option<String>,
@@ -86,7 +86,7 @@ pub struct LightningPayResultV1 {
     pub paid_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightningOpenChannelResultV1 {
     pub schema: String,
     pub channel_id: String,
@@ -94,14 +94,14 @@ pub struct LightningOpenChannelResultV1 {
     pub opened_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightningCloseChannelResultV1 {
     pub schema: String,
     pub txids: Vec<String>,
     pub closed_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightningRebalanceResultV1 {
     pub schema: String,
     pub status: String,

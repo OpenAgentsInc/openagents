@@ -51,8 +51,12 @@ use crate::{
         store as liquidity_pool_store,
         types::{
             DepositQuoteRequestV1, DepositQuoteResponseV1, PoolCreateRequestV1,
-            PoolCreateResponseV1, PoolSnapshotResponseV1, PoolStatusResponseV1, WithdrawRequestV1,
-            WithdrawResponseV1,
+            PoolCreateResponseV1, PoolSignerSetResponseV1, PoolSignerSetUpsertRequestV1,
+            PoolSigningApprovalSubmitRequestV1, PoolSigningRequestExecuteResponseV1,
+            PoolSigningRequestListResponseV1, PoolSigningRequestResponseV1, PoolSnapshotResponseV1,
+            PoolStatusResponseV1, PoolTreasuryCloseChannelRequestV1,
+            PoolTreasuryOpenChannelRequestV1, WithdrawRequestV1, WithdrawResponseV1,
+            POOL_SIGNER_SET_RESPONSE_SCHEMA_V1,
         },
     },
     marketplace::{
@@ -942,6 +946,30 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/pools/:pool_id/admin/create",
             post(liquidity_pool_create_pool),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/signer_set",
+            get(liquidity_pool_get_signer_set).post(liquidity_pool_upsert_signer_set),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/signing_requests",
+            get(liquidity_pool_list_signing_requests),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/lightning/open_channel",
+            post(liquidity_pool_treasury_open_channel),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/lightning/close_channel",
+            post(liquidity_pool_treasury_close_channel),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/signing_requests/:request_id/approve",
+            post(liquidity_pool_signing_request_approve),
+        )
+        .route(
+            "/internal/v1/pools/:pool_id/admin/signing_requests/:request_id/execute",
+            post(liquidity_pool_signing_request_execute),
         )
         .route(
             "/internal/v1/pools/:pool_id/deposit_quote",
@@ -2693,6 +2721,113 @@ async fn liquidity_pool_create_pool(
     let response = state
         .liquidity_pool
         .create_pool(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_upsert_signer_set(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<PoolSignerSetUpsertRequestV1>,
+) -> Result<Json<PoolSignerSetResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .upsert_signer_set(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_get_signer_set(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+) -> Result<Json<PoolSignerSetResponseV1>, ApiError> {
+    let signer_set = state
+        .liquidity_pool
+        .get_signer_set(pool_id.as_str())
+        .await
+        .map_err(api_error_from_liquidity_pool)?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(PoolSignerSetResponseV1 {
+        schema: POOL_SIGNER_SET_RESPONSE_SCHEMA_V1.to_string(),
+        signer_set,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct PoolSigningRequestListQuery {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+async fn liquidity_pool_list_signing_requests(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Query(query): Query<PoolSigningRequestListQuery>,
+) -> Result<Json<PoolSigningRequestListResponseV1>, ApiError> {
+    let response = state
+        .liquidity_pool
+        .list_signing_requests(pool_id.as_str(), query.status, query.limit)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_treasury_open_channel(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<PoolTreasuryOpenChannelRequestV1>,
+) -> Result<Json<PoolSigningRequestResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .treasury_open_channel_request(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_treasury_close_channel(
+    State(state): State<AppState>,
+    Path(pool_id): Path<String>,
+    Json(body): Json<PoolTreasuryCloseChannelRequestV1>,
+) -> Result<Json<PoolSigningRequestResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .treasury_close_channel_request(pool_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_signing_request_approve(
+    State(state): State<AppState>,
+    Path((pool_id, request_id)): Path<(String, String)>,
+    Json(body): Json<PoolSigningApprovalSubmitRequestV1>,
+) -> Result<Json<PoolSigningRequestResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .submit_signing_approval(pool_id.as_str(), request_id.as_str(), body)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pool_signing_request_execute(
+    State(state): State<AppState>,
+    Path((pool_id, request_id)): Path<(String, String)>,
+) -> Result<Json<PoolSigningRequestExecuteResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity_pool
+        .execute_signing_request(pool_id.as_str(), request_id.as_str())
         .await
         .map_err(api_error_from_liquidity_pool)?;
     Ok(Json(response))

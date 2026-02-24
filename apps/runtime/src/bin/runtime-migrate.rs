@@ -29,6 +29,10 @@ const MIGRATIONS: &[EmbeddedMigration] = &[
         version: "0005_runtime_credit_risk_controls",
         sql: include_str!("../../sql/migrations/0005_runtime_credit_risk_controls.sql"),
     },
+    EmbeddedMigration {
+        version: "0006_runtime_liquidity_pool_treasury_control",
+        sql: include_str!("../../sql/migrations/0006_runtime_liquidity_pool_treasury_control.sql"),
+    },
 ];
 
 #[tokio::main]

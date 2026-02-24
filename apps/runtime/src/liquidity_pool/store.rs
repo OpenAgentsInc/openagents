@@ -7,7 +7,10 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::db::RuntimeDb;
-use crate::liquidity_pool::types::{DepositRow, LpAccountRow, PoolRow, PoolSnapshotRow, WithdrawalRow};
+use crate::liquidity_pool::types::{
+    DepositRow, LpAccountRow, PoolRow, PoolSignerSetRow, PoolSigningApprovalRow,
+    PoolSigningRequestRow, PoolSnapshotRow, WithdrawalRow,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiquidityPoolStoreError {
@@ -64,6 +67,39 @@ pub struct ReceiptInsertInput {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SignerSetUpsertInput {
+    pub pool_id: String,
+    pub schema: String,
+    pub threshold: i64,
+    pub signers_json: Value,
+    pub policy_json: Value,
+    pub canonical_json_sha256: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SigningRequestInsertInput {
+    pub request_id: String,
+    pub pool_id: String,
+    pub action_class: String,
+    pub idempotency_key: String,
+    pub payload_json: Value,
+    pub payload_sha256: String,
+    pub required_signatures: i64,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SigningApprovalInsertInput {
+    pub approval_id: String,
+    pub request_id: String,
+    pub signer_pubkey: String,
+    pub signature_json: Value,
+    pub created_at: DateTime<Utc>,
+}
+
 #[async_trait]
 pub trait LiquidityPoolStore: Send + Sync {
     async fn create_or_get_pool(&self, pool: PoolRow) -> Result<PoolRow, LiquidityPoolStoreError>;
@@ -109,10 +145,54 @@ pub trait LiquidityPoolStore: Send + Sync {
         pool_id: &str,
     ) -> Result<Option<PoolSnapshotRow>, LiquidityPoolStoreError>;
 
-    async fn put_receipt(
+    async fn put_receipt(&self, receipt: ReceiptInsertInput)
+    -> Result<(), LiquidityPoolStoreError>;
+
+    async fn upsert_signer_set(
         &self,
-        receipt: ReceiptInsertInput,
-    ) -> Result<(), LiquidityPoolStoreError>;
+        input: SignerSetUpsertInput,
+    ) -> Result<PoolSignerSetRow, LiquidityPoolStoreError>;
+
+    async fn get_signer_set(
+        &self,
+        pool_id: &str,
+    ) -> Result<Option<PoolSignerSetRow>, LiquidityPoolStoreError>;
+
+    async fn create_or_get_signing_request(
+        &self,
+        input: SigningRequestInsertInput,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError>;
+
+    async fn get_signing_request(
+        &self,
+        pool_id: &str,
+        request_id: &str,
+    ) -> Result<Option<PoolSigningRequestRow>, LiquidityPoolStoreError>;
+
+    async fn list_signing_requests(
+        &self,
+        pool_id: &str,
+        status: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<PoolSigningRequestRow>, LiquidityPoolStoreError>;
+
+    async fn create_or_get_signing_approval(
+        &self,
+        input: SigningApprovalInsertInput,
+    ) -> Result<PoolSigningApprovalRow, LiquidityPoolStoreError>;
+
+    async fn list_signing_approvals(
+        &self,
+        request_id: &str,
+    ) -> Result<Vec<PoolSigningApprovalRow>, LiquidityPoolStoreError>;
+
+    async fn mark_signing_request_executed(
+        &self,
+        request_id: &str,
+        status: &str,
+        execution_result_json: Value,
+        executed_at: DateTime<Utc>,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError>;
 }
 
 pub fn memory() -> Arc<dyn LiquidityPoolStore> {
@@ -139,6 +219,11 @@ struct MemoryPoolInner {
     latest_snapshot_by_pool: HashMap<String, PoolSnapshotRow>,
     receipts_by_unique: HashMap<(String, String, String), String>,
     receipts_by_id: HashMap<String, ReceiptInsertInput>,
+    signer_sets_by_pool: HashMap<String, PoolSignerSetRow>,
+    signing_requests: HashMap<String, (PoolSigningRequestRow, String)>,
+    signing_request_by_idempotency: HashMap<(String, String, String), String>,
+    signing_approvals_by_unique: HashMap<(String, String), String>,
+    signing_approvals_by_id: HashMap<String, PoolSigningApprovalRow>,
 }
 
 #[async_trait]
@@ -173,11 +258,10 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             input.idempotency_key.clone(),
         );
         if let Some(existing_id) = inner.deposit_by_idempotency.get(&key) {
-            let (row, fingerprint) = inner
-                .deposits
-                .get(existing_id)
-                .cloned()
-                .ok_or_else(|| LiquidityPoolStoreError::Db("missing deposit row".to_string()))?;
+            let (row, fingerprint) =
+                inner.deposits.get(existing_id).cloned().ok_or_else(|| {
+                    LiquidityPoolStoreError::Db("missing deposit row".to_string())
+                })?;
             if fingerprint != input.request_fingerprint_sha256 {
                 return Err(LiquidityPoolStoreError::Conflict(
                     "idempotency_key reused with different deposit parameters".to_string(),
@@ -206,9 +290,10 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         inner
             .deposit_by_idempotency
             .insert(key, input.deposit_id.clone());
-        inner
-            .deposits
-            .insert(input.deposit_id.clone(), (row.clone(), input.request_fingerprint_sha256));
+        inner.deposits.insert(
+            input.deposit_id.clone(),
+            (row.clone(), input.request_fingerprint_sha256),
+        );
         Ok(row)
     }
 
@@ -241,12 +326,15 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         updated.confirmed_at = Some(confirmed_at);
 
         let lp_key = (updated.pool_id.clone(), updated.lp_id.clone());
-        let account = inner.lp_accounts.entry(lp_key.clone()).or_insert_with(|| LpAccountRow {
-            pool_id: updated.pool_id.clone(),
-            lp_id: updated.lp_id.clone(),
-            shares_total: 0,
-            updated_at: confirmed_at,
-        });
+        let account = inner
+            .lp_accounts
+            .entry(lp_key.clone())
+            .or_insert_with(|| LpAccountRow {
+                pool_id: updated.pool_id.clone(),
+                lp_id: updated.lp_id.clone(),
+                shares_total: 0,
+                updated_at: confirmed_at,
+            });
         account.shares_total = account
             .shares_total
             .checked_add(updated.shares_minted)
@@ -270,11 +358,10 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             input.idempotency_key.clone(),
         );
         if let Some(existing_id) = inner.withdrawal_by_idempotency.get(&key) {
-            let (row, fingerprint) = inner
-                .withdrawals
-                .get(existing_id)
-                .cloned()
-                .ok_or_else(|| LiquidityPoolStoreError::Db("missing withdrawal row".to_string()))?;
+            let (row, fingerprint) =
+                inner.withdrawals.get(existing_id).cloned().ok_or_else(|| {
+                    LiquidityPoolStoreError::Db("missing withdrawal row".to_string())
+                })?;
             if fingerprint != input.request_fingerprint_sha256 {
                 return Err(LiquidityPoolStoreError::Conflict(
                     "idempotency_key reused with different withdrawal parameters".to_string(),
@@ -327,9 +414,9 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let mut total = 0_i64;
         for ((pool, _), row) in inner.lp_accounts.iter() {
             if pool == pool_id {
-                total = total
-                    .checked_add(row.shares_total)
-                    .ok_or_else(|| LiquidityPoolStoreError::Db("share accounting overflow".to_string()))?;
+                total = total.checked_add(row.shares_total).ok_or_else(|| {
+                    LiquidityPoolStoreError::Db("share accounting overflow".to_string())
+                })?;
             }
         }
         Ok(total)
@@ -343,9 +430,7 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let mut total = 0_i64;
         for (row, _) in inner.withdrawals.values() {
             if row.pool_id == pool_id
-                && (row.status == "requested"
-                    || row.status == "queued"
-                    || row.status == "approved")
+                && (row.status == "requested" || row.status == "queued" || row.status == "approved")
             {
                 total = total.saturating_add(row.amount_sats_estimate);
             }
@@ -412,6 +497,216 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             .receipts_by_id
             .insert(receipt.receipt_id.clone(), receipt);
         Ok(())
+    }
+
+    async fn upsert_signer_set(
+        &self,
+        input: SignerSetUpsertInput,
+    ) -> Result<PoolSignerSetRow, LiquidityPoolStoreError> {
+        let mut inner = self.inner.lock().await;
+        let created_at = inner
+            .signer_sets_by_pool
+            .get(&input.pool_id)
+            .map(|row| row.created_at)
+            .unwrap_or(input.updated_at);
+
+        let signers: Vec<crate::liquidity_pool::types::PoolSignerV1> =
+            serde_json::from_value(input.signers_json.clone())
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        let policy: crate::liquidity_pool::types::PoolSignerPolicyV1 =
+            serde_json::from_value(input.policy_json.clone())
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let row = PoolSignerSetRow {
+            pool_id: input.pool_id.clone(),
+            schema: input.schema,
+            threshold: u32::try_from(input.threshold)
+                .map_err(|_| LiquidityPoolStoreError::Db("threshold overflow".to_string()))?,
+            signers,
+            policy,
+            canonical_json_sha256: input.canonical_json_sha256,
+            created_at,
+            updated_at: input.updated_at,
+        };
+
+        inner.signer_sets_by_pool.insert(input.pool_id, row.clone());
+        Ok(row)
+    }
+
+    async fn get_signer_set(
+        &self,
+        pool_id: &str,
+    ) -> Result<Option<PoolSignerSetRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        Ok(inner.signer_sets_by_pool.get(pool_id).cloned())
+    }
+
+    async fn create_or_get_signing_request(
+        &self,
+        input: SigningRequestInsertInput,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError> {
+        let mut inner = self.inner.lock().await;
+        let key = (
+            input.pool_id.clone(),
+            input.action_class.clone(),
+            input.idempotency_key.clone(),
+        );
+
+        if let Some(existing_id) = inner.signing_request_by_idempotency.get(&key) {
+            let (row, fingerprint) =
+                inner.signing_requests.get(existing_id).cloned().ok_or_else(|| {
+                    LiquidityPoolStoreError::Db("missing signing request row".to_string())
+                })?;
+            if fingerprint != input.payload_sha256 {
+                return Err(LiquidityPoolStoreError::Conflict(
+                    "idempotency_key reused with different signing payload".to_string(),
+                ));
+            }
+            return Ok(row);
+        }
+
+        let row = PoolSigningRequestRow {
+            request_id: input.request_id.clone(),
+            pool_id: input.pool_id.clone(),
+            action_class: input.action_class.clone(),
+            idempotency_key: input.idempotency_key.clone(),
+            payload_json: input.payload_json.clone(),
+            payload_sha256: input.payload_sha256.clone(),
+            required_signatures: u32::try_from(input.required_signatures)
+                .map_err(|_| LiquidityPoolStoreError::Db("required_signatures overflow".to_string()))?,
+            status: input.status.clone(),
+            execution_result_json: None,
+            created_at: input.created_at,
+            executed_at: None,
+        };
+
+        inner
+            .signing_request_by_idempotency
+            .insert(key, input.request_id.clone());
+        inner.signing_requests.insert(
+            input.request_id.clone(),
+            (row.clone(), input.payload_sha256),
+        );
+        Ok(row)
+    }
+
+    async fn get_signing_request(
+        &self,
+        pool_id: &str,
+        request_id: &str,
+    ) -> Result<Option<PoolSigningRequestRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        Ok(inner
+            .signing_requests
+            .get(request_id)
+            .filter(|(row, _)| row.pool_id == pool_id)
+            .map(|(row, _)| row.clone()))
+    }
+
+    async fn list_signing_requests(
+        &self,
+        pool_id: &str,
+        status: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<PoolSigningRequestRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        let mut out = inner
+            .signing_requests
+            .values()
+            .map(|(row, _)| row.clone())
+            .filter(|row| row.pool_id == pool_id)
+            .filter(|row| status.map_or(true, |status| row.status == status))
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        if limit > 0 && out.len() > limit as usize {
+            out.truncate(limit as usize);
+        }
+        Ok(out)
+    }
+
+    async fn create_or_get_signing_approval(
+        &self,
+        input: SigningApprovalInsertInput,
+    ) -> Result<PoolSigningApprovalRow, LiquidityPoolStoreError> {
+        let signature: crate::artifacts::ReceiptSignatureV1 =
+            serde_json::from_value(input.signature_json.clone())
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let mut inner = self.inner.lock().await;
+        let key = (input.request_id.clone(), input.signer_pubkey.clone());
+        if let Some(existing_id) = inner.signing_approvals_by_unique.get(&key) {
+            let existing = inner
+                .signing_approvals_by_id
+                .get(existing_id)
+                .cloned()
+                .ok_or_else(|| LiquidityPoolStoreError::Db("missing approval row".to_string()))?;
+
+            if existing.signature.signed_sha256 != signature.signed_sha256
+                || existing.signature.signature_hex != signature.signature_hex
+                || existing.signature.scheme != signature.scheme
+            {
+                return Err(LiquidityPoolStoreError::Conflict(
+                    "approval already exists with different signature".to_string(),
+                ));
+            }
+            return Ok(existing);
+        }
+
+        let row = PoolSigningApprovalRow {
+            approval_id: input.approval_id.clone(),
+            request_id: input.request_id.clone(),
+            signer_pubkey: input.signer_pubkey.clone(),
+            signature,
+            created_at: input.created_at,
+        };
+
+        inner
+            .signing_approvals_by_unique
+            .insert(key, input.approval_id.clone());
+        inner
+            .signing_approvals_by_id
+            .insert(input.approval_id, row.clone());
+        Ok(row)
+    }
+
+    async fn list_signing_approvals(
+        &self,
+        request_id: &str,
+    ) -> Result<Vec<PoolSigningApprovalRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        let mut out = inner
+            .signing_approvals_by_id
+            .values()
+            .filter(|row| row.request_id == request_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(out)
+    }
+
+    async fn mark_signing_request_executed(
+        &self,
+        request_id: &str,
+        status: &str,
+        execution_result_json: Value,
+        executed_at: DateTime<Utc>,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError> {
+        let mut inner = self.inner.lock().await;
+        let Some((row, fingerprint)) = inner.signing_requests.get(request_id).cloned() else {
+            return Err(LiquidityPoolStoreError::NotFound(
+                "signing_request".to_string(),
+            ));
+        };
+
+        let mut updated = row.clone();
+        updated.status = status.to_string();
+        updated.execution_result_json = Some(execution_result_json);
+        updated.executed_at = Some(executed_at);
+
+        inner
+            .signing_requests
+            .insert(request_id.to_string(), (updated.clone(), fingerprint));
+        Ok(updated)
     }
 }
 
@@ -504,7 +799,9 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         let Some(row) = row else {
             return Ok(None);
         };
-        Ok(Some(map_pool_row(&row).map_err(LiquidityPoolStoreError::Db)?))
+        Ok(Some(
+            map_pool_row(&row).map_err(LiquidityPoolStoreError::Db)?,
+        ))
     }
 
     async fn create_or_get_deposit(
@@ -882,7 +1179,9 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         let Some(row) = row else {
             return Ok(None);
         };
-        Ok(Some(map_lp_account_row(&row).map_err(LiquidityPoolStoreError::Db)?))
+        Ok(Some(
+            map_lp_account_row(&row).map_err(LiquidityPoolStoreError::Db)?,
+        ))
     }
 
     async fn get_total_shares(&self, pool_id: &str) -> Result<i64, LiquidityPoolStoreError> {
@@ -1038,7 +1337,9 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         let Some(row) = row else {
             return Ok(None);
         };
-        Ok(Some(map_snapshot_row(&row).map_err(LiquidityPoolStoreError::Db)?))
+        Ok(Some(
+            map_snapshot_row(&row).map_err(LiquidityPoolStoreError::Db)?,
+        ))
     }
 
     async fn put_receipt(
@@ -1114,6 +1415,498 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
         Ok(())
     }
+
+    async fn upsert_signer_set(
+        &self,
+        input: SignerSetUpsertInput,
+    ) -> Result<PoolSignerSetRow, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+
+        let row = client
+            .query_one(
+                r#"
+                INSERT INTO runtime.liquidity_pool_signer_sets (
+                  pool_id,
+                  schema,
+                  threshold,
+                  signers_json,
+                  policy_json,
+                  canonical_json_sha256,
+                  created_at,
+                  updated_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
+                ON CONFLICT (pool_id)
+                DO UPDATE SET
+                  schema = EXCLUDED.schema,
+                  threshold = EXCLUDED.threshold,
+                  signers_json = EXCLUDED.signers_json,
+                  policy_json = EXCLUDED.policy_json,
+                  canonical_json_sha256 = EXCLUDED.canonical_json_sha256,
+                  updated_at = EXCLUDED.updated_at
+                RETURNING pool_id,
+                          schema,
+                          threshold,
+                          signers_json,
+                          policy_json,
+                          canonical_json_sha256,
+                          created_at,
+                          updated_at
+                "#,
+                &[
+                    &input.pool_id,
+                    &input.schema,
+                    &input.threshold,
+                    &input.signers_json,
+                    &input.policy_json,
+                    &input.canonical_json_sha256,
+                    &input.updated_at,
+                ],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        map_signer_set_row(&row).map_err(LiquidityPoolStoreError::Db)
+    }
+
+    async fn get_signer_set(
+        &self,
+        pool_id: &str,
+    ) -> Result<Option<PoolSignerSetRow>, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+
+        let row = client
+            .query_opt(
+                r#"
+                SELECT pool_id,
+                       schema,
+                       threshold,
+                       signers_json,
+                       policy_json,
+                       canonical_json_sha256,
+                       created_at,
+                       updated_at
+                  FROM runtime.liquidity_pool_signer_sets
+                 WHERE pool_id = $1
+                "#,
+                &[&pool_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        Ok(Some(
+            map_signer_set_row(&row).map_err(LiquidityPoolStoreError::Db)?,
+        ))
+    }
+
+    async fn create_or_get_signing_request(
+        &self,
+        input: SigningRequestInsertInput,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT request_id,
+                       pool_id,
+                       action_class,
+                       idempotency_key,
+                       payload_json,
+                       payload_sha256,
+                       required_signatures,
+                       status,
+                       execution_result_json,
+                       executed_at,
+                       created_at
+                  FROM runtime.liquidity_pool_signing_requests
+                 WHERE pool_id = $1
+                   AND action_class = $2
+                   AND idempotency_key = $3
+                 FOR UPDATE
+                "#,
+                &[&input.pool_id, &input.action_class, &input.idempotency_key],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        if let Some(row) = existing {
+            let payload_sha256: String = row.get("payload_sha256");
+            if payload_sha256 != input.payload_sha256 {
+                return Err(LiquidityPoolStoreError::Conflict(
+                    "idempotency_key reused with different signing payload".to_string(),
+                ));
+            }
+
+            let out = map_signing_request_row(&row).map_err(LiquidityPoolStoreError::Db)?;
+            tx.commit()
+                .await
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+            return Ok(out);
+        }
+
+        let inserted = tx
+            .query_one(
+                r#"
+                INSERT INTO runtime.liquidity_pool_signing_requests (
+                  request_id,
+                  pool_id,
+                  action_class,
+                  idempotency_key,
+                  payload_json,
+                  payload_sha256,
+                  required_signatures,
+                  status,
+                  created_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                RETURNING request_id,
+                          pool_id,
+                          action_class,
+                          idempotency_key,
+                          payload_json,
+                          payload_sha256,
+                          required_signatures,
+                          status,
+                          execution_result_json,
+                          executed_at,
+                          created_at
+                "#,
+                &[
+                    &input.request_id,
+                    &input.pool_id,
+                    &input.action_class,
+                    &input.idempotency_key,
+                    &input.payload_json,
+                    &input.payload_sha256,
+                    &input.required_signatures,
+                    &input.status,
+                    &input.created_at,
+                ],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        map_signing_request_row(&inserted).map_err(LiquidityPoolStoreError::Db)
+    }
+
+    async fn get_signing_request(
+        &self,
+        pool_id: &str,
+        request_id: &str,
+    ) -> Result<Option<PoolSigningRequestRow>, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+
+        let row = client
+            .query_opt(
+                r#"
+                SELECT request_id,
+                       pool_id,
+                       action_class,
+                       idempotency_key,
+                       payload_json,
+                       payload_sha256,
+                       required_signatures,
+                       status,
+                       execution_result_json,
+                       executed_at,
+                       created_at
+                  FROM runtime.liquidity_pool_signing_requests
+                 WHERE request_id = $1
+                   AND pool_id = $2
+                "#,
+                &[&request_id, &pool_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        Ok(Some(
+            map_signing_request_row(&row).map_err(LiquidityPoolStoreError::Db)?,
+        ))
+    }
+
+    async fn list_signing_requests(
+        &self,
+        pool_id: &str,
+        status: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<PoolSigningRequestRow>, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+
+        let rows = match status {
+            Some(status) => {
+                client
+                    .query(
+                        r#"
+                        SELECT request_id,
+                               pool_id,
+                               action_class,
+                               idempotency_key,
+                               payload_json,
+                               payload_sha256,
+                               required_signatures,
+                               status,
+                               execution_result_json,
+                               executed_at,
+                               created_at
+                          FROM runtime.liquidity_pool_signing_requests
+                         WHERE pool_id = $1
+                           AND status = $2
+                         ORDER BY created_at DESC
+                         LIMIT $3
+                        "#,
+                        &[&pool_id, &status, &limit],
+                    )
+                    .await
+            }
+            None => {
+                client
+                    .query(
+                        r#"
+                        SELECT request_id,
+                               pool_id,
+                               action_class,
+                               idempotency_key,
+                               payload_json,
+                               payload_sha256,
+                               required_signatures,
+                               status,
+                               execution_result_json,
+                               executed_at,
+                               created_at
+                          FROM runtime.liquidity_pool_signing_requests
+                         WHERE pool_id = $1
+                         ORDER BY created_at DESC
+                         LIMIT $2
+                        "#,
+                        &[&pool_id, &limit],
+                    )
+                    .await
+            }
+        }
+        .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(map_signing_request_row(&row).map_err(LiquidityPoolStoreError::Db)?);
+        }
+        Ok(out)
+    }
+
+    async fn create_or_get_signing_approval(
+        &self,
+        input: SigningApprovalInsertInput,
+    ) -> Result<PoolSigningApprovalRow, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT approval_id,
+                       request_id,
+                       signer_pubkey,
+                       signature_json,
+                       created_at
+                  FROM runtime.liquidity_pool_signing_approvals
+                 WHERE request_id = $1
+                   AND signer_pubkey = $2
+                 FOR UPDATE
+                "#,
+                &[&input.request_id, &input.signer_pubkey],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        if let Some(row) = existing {
+            let out = map_signing_approval_row(&row).map_err(LiquidityPoolStoreError::Db)?;
+            let signature_digest_existing = out.signature.signature_hex.clone();
+            let signature_digest_new: crate::artifacts::ReceiptSignatureV1 =
+                serde_json::from_value(input.signature_json.clone())
+                    .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+            if signature_digest_existing != signature_digest_new.signature_hex
+                || out.signature.signed_sha256 != signature_digest_new.signed_sha256
+                || out.signature.scheme != signature_digest_new.scheme
+            {
+                return Err(LiquidityPoolStoreError::Conflict(
+                    "approval already exists with different signature".to_string(),
+                ));
+            }
+
+            tx.commit()
+                .await
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+            return Ok(out);
+        }
+
+        let inserted = tx
+            .query_one(
+                r#"
+                INSERT INTO runtime.liquidity_pool_signing_approvals (
+                  approval_id,
+                  request_id,
+                  signer_pubkey,
+                  signature_json,
+                  created_at
+                )
+                VALUES ($1,$2,$3,$4,$5)
+                RETURNING approval_id,
+                          request_id,
+                          signer_pubkey,
+                          signature_json,
+                          created_at
+                "#,
+                &[
+                    &input.approval_id,
+                    &input.request_id,
+                    &input.signer_pubkey,
+                    &input.signature_json,
+                    &input.created_at,
+                ],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        map_signing_approval_row(&inserted).map_err(LiquidityPoolStoreError::Db)
+    }
+
+    async fn list_signing_approvals(
+        &self,
+        request_id: &str,
+    ) -> Result<Vec<PoolSigningApprovalRow>, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let rows = client
+            .query(
+                r#"
+                SELECT approval_id,
+                       request_id,
+                       signer_pubkey,
+                       signature_json,
+                       created_at
+                  FROM runtime.liquidity_pool_signing_approvals
+                 WHERE request_id = $1
+                 ORDER BY created_at ASC
+                "#,
+                &[&request_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(map_signing_approval_row(&row).map_err(LiquidityPoolStoreError::Db)?);
+        }
+        Ok(out)
+    }
+
+    async fn mark_signing_request_executed(
+        &self,
+        request_id: &str,
+        status: &str,
+        execution_result_json: Value,
+        executed_at: DateTime<Utc>,
+    ) -> Result<PoolSigningRequestRow, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let row = tx
+            .query_opt(
+                r#"
+                SELECT request_id,
+                       pool_id,
+                       action_class,
+                       idempotency_key,
+                       payload_json,
+                       payload_sha256,
+                       required_signatures,
+                       status,
+                       execution_result_json,
+                       executed_at,
+                       created_at
+                  FROM runtime.liquidity_pool_signing_requests
+                 WHERE request_id = $1
+                 FOR UPDATE
+                "#,
+                &[&request_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        let Some(row) = row else {
+            return Err(LiquidityPoolStoreError::NotFound(
+                "signing_request".to_string(),
+            ));
+        };
+
+        let current_status: String = row.get("status");
+        if current_status == status {
+            let out = map_signing_request_row(&row).map_err(LiquidityPoolStoreError::Db)?;
+            tx.commit()
+                .await
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+            return Ok(out);
+        }
+
+        let updated = tx
+            .query_one(
+                r#"
+                UPDATE runtime.liquidity_pool_signing_requests
+                   SET status = $2,
+                       execution_result_json = $3,
+                       executed_at = $4
+                 WHERE request_id = $1
+                RETURNING request_id,
+                          pool_id,
+                          action_class,
+                          idempotency_key,
+                          payload_json,
+                          payload_sha256,
+                          required_signatures,
+                          status,
+                          execution_result_json,
+                          executed_at,
+                          created_at
+                "#,
+                &[&request_id, &status, &execution_result_json, &executed_at],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        map_signing_request_row(&updated).map_err(LiquidityPoolStoreError::Db)
+    }
 }
 
 fn map_pool_row(row: &tokio_postgres::Row) -> Result<PoolRow, String> {
@@ -1184,6 +1977,60 @@ fn map_snapshot_row(row: &tokio_postgres::Row) -> Result<PoolSnapshotRow, String
         share_price_sats: row.get("share_price_sats"),
         canonical_json_sha256: row.get("canonical_json_sha256"),
         signature_json: row.get("signature_json"),
+        created_at: row.get("created_at"),
+    })
+}
+
+fn map_signer_set_row(row: &tokio_postgres::Row) -> Result<PoolSignerSetRow, String> {
+    let signers_json: Value = row.get("signers_json");
+    let signers: Vec<crate::liquidity_pool::types::PoolSignerV1> =
+        serde_json::from_value(signers_json).map_err(|error| error.to_string())?;
+
+    let policy_json: Value = row.get("policy_json");
+    let policy: crate::liquidity_pool::types::PoolSignerPolicyV1 =
+        serde_json::from_value(policy_json).map_err(|error| error.to_string())?;
+
+    let threshold: i32 = row.get("threshold");
+    Ok(PoolSignerSetRow {
+        pool_id: row.get("pool_id"),
+        schema: row.get("schema"),
+        threshold: u32::try_from(threshold).map_err(|_| "threshold invalid".to_string())?,
+        signers,
+        policy,
+        canonical_json_sha256: row.get("canonical_json_sha256"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn map_signing_request_row(row: &tokio_postgres::Row) -> Result<PoolSigningRequestRow, String> {
+    let required_signatures: i32 = row.get("required_signatures");
+    Ok(PoolSigningRequestRow {
+        request_id: row.get("request_id"),
+        pool_id: row.get("pool_id"),
+        action_class: row.get("action_class"),
+        idempotency_key: row.get("idempotency_key"),
+        payload_json: row.get("payload_json"),
+        payload_sha256: row.get("payload_sha256"),
+        required_signatures: u32::try_from(required_signatures)
+            .map_err(|_| "required_signatures invalid".to_string())?,
+        status: row.get("status"),
+        execution_result_json: row.get("execution_result_json"),
+        created_at: row.get("created_at"),
+        executed_at: row.get("executed_at"),
+    })
+}
+
+fn map_signing_approval_row(row: &tokio_postgres::Row) -> Result<PoolSigningApprovalRow, String> {
+    let signature_json: Value = row.get("signature_json");
+    let signature: crate::artifacts::ReceiptSignatureV1 =
+        serde_json::from_value(signature_json).map_err(|error| error.to_string())?;
+
+    Ok(PoolSigningApprovalRow {
+        approval_id: row.get("approval_id"),
+        request_id: row.get("request_id"),
+        signer_pubkey: row.get("signer_pubkey"),
+        signature,
         created_at: row.get("created_at"),
     })
 }
