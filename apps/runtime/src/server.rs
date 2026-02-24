@@ -995,6 +995,14 @@ async fn record_comms_delivery_event(
         return Err(ApiError::InvalidRequest("payload is required".to_string()));
     }
 
+    // These optional fields are accepted for schema/compat parity.
+    // They are currently ignored, but intentionally read to avoid dead_code drift warnings.
+    let _ = body.message_id.as_deref();
+    let _ = body.integration_id.as_deref();
+    let _ = body.recipient.as_deref();
+    let _ = body.occurred_at.as_deref();
+    let _ = body.reason.as_deref();
+
     let key = format!("{provider}::{event_id}");
     let mut guard = state.comms_delivery_events.lock().await;
     if let Some(existing) = guard.get(&key).cloned() {

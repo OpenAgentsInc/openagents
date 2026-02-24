@@ -54,3 +54,7 @@ path = "src/bin/runtime-smoke.rs"
 [[bin]]
 name = "vignette-phase0-issue-to-pr"
 path = "src/bin/vignette-phase0-issue-to-pr.rs"
+
+[[bin]]
+name = "vignette-liquidity-pool-mvp0"
+path = "src/bin/vignette-liquidity-pool-mvp0.rs"
