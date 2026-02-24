@@ -249,7 +249,9 @@ async fn start_runtime() -> Result<RuntimeHandle> {
         .await
         .context("bind runtime listener")?;
     let addr = listener.local_addr().context("runtime local_addr")?;
-    let app = openagents_runtime_service::build_app(config);
+    let app = openagents_runtime_service::build_app(config)
+        .await
+        .context("build runtime app")?;
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     tokio::spawn(async move {

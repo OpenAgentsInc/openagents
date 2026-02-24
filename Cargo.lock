@@ -7230,6 +7230,7 @@ dependencies = [
  "jsonwebtoken 9.3.1",
  "nostr 0.1.0",
  "nostr-client",
+ "openagents-l402",
  "protocol",
  "reqwest",
  "serde",
@@ -7922,6 +7923,8 @@ dependencies = [
  "chrono",
  "fallible-iterator 0.2.0",
  "postgres-protocol",
+ "serde_core",
+ "serde_json",
 ]
 
 [[package]]

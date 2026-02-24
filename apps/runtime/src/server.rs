@@ -32,8 +32,12 @@ use crate::{
         PricingStageV1, ProviderAdV1, build_commerce_message_event, build_provider_ad_event,
     },
     config::Config,
+    db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
+    liquidity::store,
+    liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
+    liquidity::{LiquidityError, LiquidityService},
     marketplace::{
         ComputeAllInQuoteV1, PricingBand, PricingStage, ProviderCatalogEntry, ProviderSelection,
         build_provider_catalog, compute_all_in_quote_v1, is_provider_worker,
@@ -53,6 +57,8 @@ use crate::{
 #[derive(Clone)]
 pub struct AppState {
     config: Config,
+    db: Option<Arc<RuntimeDb>>,
+    liquidity: Arc<LiquidityService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
@@ -75,8 +81,23 @@ impl AppState {
         workers: Arc<InMemoryWorkerRegistry>,
         fanout: Arc<FanoutHub>,
         sync_auth: Arc<SyncAuthorizer>,
+        db: Option<Arc<RuntimeDb>>,
     ) -> Self {
+        let liquidity_store = match db.clone() {
+            Some(db) => store::postgres(db),
+            None => store::memory(),
+        };
+
         let state = Self {
+            liquidity: Arc::new(LiquidityService::new(
+                liquidity_store,
+                config.liquidity_wallet_executor_base_url.clone(),
+                config.liquidity_wallet_executor_auth_token.clone(),
+                config.liquidity_wallet_executor_timeout_ms,
+                config.liquidity_quote_ttl_seconds,
+                config.bridge_nostr_secret_key,
+            )),
+            db,
             config,
             orchestrator,
             workers,
@@ -340,6 +361,7 @@ struct HealthResponse {
     authority_write_mode: String,
     authority_writer_active: bool,
     fanout_driver: String,
+    db_configured: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -817,6 +839,11 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/treasury/compute/settle/sandbox-run",
             post(settle_sandbox_run),
         )
+        .route(
+            "/internal/v1/liquidity/quote_pay",
+            post(liquidity_quote_pay),
+        )
+        .route("/internal/v1/liquidity/pay", post(liquidity_pay))
         .route("/internal/v1/fraud/incidents", get(get_fraud_incidents))
         .with_state(state)
 }
@@ -831,6 +858,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         authority_write_mode: state.config.authority_write_mode.as_str().to_string(),
         authority_writer_active: state.config.authority_write_mode.writes_enabled(),
         fanout_driver: state.fanout.driver_name().to_string(),
+        db_configured: state.db.is_some(),
     })
 }
 
@@ -2398,6 +2426,32 @@ async fn reconcile_compute_treasury(
     Ok(Json(summary))
 }
 
+async fn liquidity_quote_pay(
+    State(state): State<AppState>,
+    Json(body): Json<QuotePayRequestV1>,
+) -> Result<Json<QuotePayResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity
+        .quote_pay(body)
+        .await
+        .map_err(api_error_from_liquidity)?;
+    Ok(Json(response))
+}
+
+async fn liquidity_pay(
+    State(state): State<AppState>,
+    Json(body): Json<PayRequestV1>,
+) -> Result<Json<PayResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .liquidity
+        .pay(body)
+        .await
+        .map_err(api_error_from_liquidity)?;
+    Ok(Json(response))
+}
+
 async fn get_fraud_incidents(
     State(state): State<AppState>,
     Query(query): Query<FraudIncidentsQuery>,
@@ -3025,6 +3079,16 @@ async fn get_worker_checkpoint(
         .map_err(ApiError::from_worker)?
         .ok_or(ApiError::NotFound)?;
     Ok(Json(CheckpointResponse { checkpoint }))
+}
+
+fn api_error_from_liquidity(error: LiquidityError) -> ApiError {
+    match error {
+        LiquidityError::InvalidRequest(message) => ApiError::InvalidRequest(message),
+        LiquidityError::NotFound => ApiError::NotFound,
+        LiquidityError::Conflict(message) => ApiError::Conflict(message),
+        LiquidityError::DependencyUnavailable(message) => ApiError::Internal(message),
+        LiquidityError::Internal(message) => ApiError::Internal(message),
+    }
 }
 
 #[derive(Debug)]
@@ -4694,21 +4758,25 @@ impl IntoResponse for ApiError {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
 
     use anyhow::{Result, anyhow};
     use axum::{
-        body::Body,
-        http::{HeaderValue, Method, Request},
+        body::{Body, Bytes},
+        extract::State,
+        http::{HeaderMap, HeaderValue, Method, Request},
+        response::IntoResponse,
     };
     use chrono::Utc;
     use futures::StreamExt;
     use http_body_util::BodyExt;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-    use serde_json::Value;
+    use serde::Deserialize;
+    use serde_json::{Value, json};
     use tokio::net::TcpListener;
+    use tokio::sync::Mutex;
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::Message as WsMessage;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -4745,6 +4813,7 @@ mod tests {
             service_name: "runtime-test".to_string(),
             bind_addr: loopback_bind_addr(),
             build_sha: "test".to_string(),
+            db_url: None,
             authority_write_mode: mode,
             fanout_driver: "memory".to_string(),
             fanout_queue_capacity: 64,
@@ -4785,6 +4854,10 @@ mod tests {
             verifier_allowed_signer_pubkeys: HashSet::new(),
             bridge_nostr_relays: Vec::new(),
             bridge_nostr_secret_key: None,
+            liquidity_wallet_executor_base_url: None,
+            liquidity_wallet_executor_auth_token: None,
+            liquidity_wallet_executor_timeout_ms: 12_000,
+            liquidity_quote_ttl_seconds: 60,
             treasury_reconciliation_enabled: false,
             treasury_reservation_ttl_seconds: 3600,
             treasury_reconciliation_interval_seconds: 60,
@@ -4814,6 +4887,7 @@ mod tests {
                 max_token_age_seconds: 300,
                 revoked_jtis,
             })),
+            None,
         );
         build_router(state)
     }
@@ -4940,6 +5014,206 @@ mod tests {
         Ok((format!("http://{addr}"), shutdown))
     }
 
+    #[derive(Clone)]
+    struct WalletExecutorStubState {
+        token: String,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        idempotency: Arc<Mutex<HashMap<String, String>>>,
+        receipts: Arc<Mutex<HashMap<String, Value>>>,
+    }
+
+    struct WalletExecutorStubHandle {
+        base_url: String,
+        shutdown: tokio::sync::oneshot::Sender<()>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WalletExecutorStubPayBody {
+        request_id: String,
+        payment: WalletExecutorStubPayPaymentBody,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WalletExecutorStubPayPaymentBody {
+        invoice: String,
+        max_amount_msats: u64,
+        host: String,
+    }
+
+    async fn spawn_wallet_executor_stub(token: &str) -> Result<WalletExecutorStubHandle> {
+        async fn pay_bolt11(
+            State(state): State<WalletExecutorStubState>,
+            headers: HeaderMap,
+            body: Bytes,
+        ) -> axum::response::Response {
+            let provided = headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+            if provided.trim() != format!("Bearer {}", state.token).as_str() {
+                return (
+                    axum::http::StatusCode::UNAUTHORIZED,
+                    axum::Json(json!({
+                        "ok": false,
+                        "error": {
+                            "code": "unauthorized",
+                            "message": "missing or invalid bearer token"
+                        }
+                    })),
+                )
+                    .into_response();
+            }
+
+            let parsed: WalletExecutorStubPayBody = match serde_json::from_slice(&body) {
+                Ok(value) => value,
+                Err(err) => {
+                    return (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        axum::Json(json!({
+                            "ok": false,
+                            "error": {"code": "invalid_request", "message": err.to_string()}
+                        })),
+                    )
+                        .into_response();
+                }
+            };
+
+            let request_id = parsed.request_id.trim().to_string();
+            if request_id.is_empty() {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    axum::Json(json!({
+                        "ok": false,
+                        "error": {"code": "invalid_request", "message": "requestId is required"}
+                    })),
+                )
+                    .into_response();
+            }
+            if !request_id.starts_with("liqpay:liq_quote_") {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    axum::Json(json!({
+                        "ok": false,
+                        "error": {"code": "invalid_request", "message": "unexpected requestId prefix"}
+                    })),
+                )
+                    .into_response();
+            }
+
+            let fingerprint = format!(
+                "{}|{}|{}",
+                parsed.payment.invoice.trim(),
+                parsed.payment.max_amount_msats,
+                parsed.payment.host.trim().to_ascii_lowercase()
+            );
+
+            {
+                let mut idempotency = state.idempotency.lock().await;
+                if let Some(existing) = idempotency.get(&request_id) {
+                    if existing != &fingerprint {
+                        return (
+                            axum::http::StatusCode::CONFLICT,
+                            axum::Json(json!({
+                                "ok": false,
+                                "error": {"code": "conflict", "message": "requestId reused with different payment parameters"}
+                            })),
+                        )
+                            .into_response();
+                    }
+                } else {
+                    idempotency.insert(request_id.clone(), fingerprint);
+                }
+            }
+
+            if let Some(existing) = state.receipts.lock().await.get(&request_id).cloned() {
+                state
+                    .calls
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return (axum::http::StatusCode::OK, axum::Json(existing)).into_response();
+            }
+
+            // Deterministic receipt facts for tests.
+            fn sha256_hex(data: &[u8]) -> String {
+                use sha2::Digest;
+                let mut hasher = sha2::Sha256::new();
+                hasher.update(data);
+                hex::encode(hasher.finalize())
+            }
+
+            let invoice_hash = sha256_hex(parsed.payment.invoice.trim().as_bytes());
+            let canonical_json_sha256 = sha256_hex(format!("wallet:{request_id}").as_bytes());
+            let receipt_id = format!("lwr_{}", &canonical_json_sha256[..24]);
+            let preimage_sha256 = sha256_hex(format!("preimage:{request_id}").as_bytes());
+            let now_ms = chrono::Utc::now().timestamp_millis();
+
+            let response = json!({
+                "ok": true,
+                "requestId": request_id,
+                "result": {
+                    "requestId": request_id,
+                    "walletId": "wallet-test",
+                    "payment": {
+                        "paymentId": format!("pay_{request_id}"),
+                        "amountMsats": 0,
+                        "preimageHex": "00",
+                        "paidAtMs": now_ms
+                    },
+                    "quotedAmountMsats": 0,
+                    "windowSpendMsatsAfterPayment": 0,
+                    "receipt": {
+                        "receiptVersion": "openagents.lightning.wallet_receipt.v1",
+                        "receiptId": receipt_id,
+                        "requestId": request_id,
+                        "walletId": "wallet-test",
+                        "host": parsed.payment.host.trim().to_ascii_lowercase(),
+                        "paymentId": format!("pay_{request_id}"),
+                        "invoiceHash": invoice_hash,
+                        "quotedAmountMsats": 0,
+                        "settledAmountMsats": 0,
+                        "preimageSha256": preimage_sha256,
+                        "paidAtMs": now_ms,
+                        "rail": "lightning",
+                        "assetId": "BTC_LN",
+                        "canonicalJsonSha256": canonical_json_sha256,
+                    }
+                }
+            });
+
+            state
+                .calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            state
+                .receipts
+                .lock()
+                .await
+                .insert(request_id.clone(), response.clone());
+
+            (axum::http::StatusCode::OK, axum::Json(response)).into_response()
+        }
+
+        let state = WalletExecutorStubState {
+            token: token.to_string(),
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            idempotency: Arc::new(Mutex::new(HashMap::new())),
+            receipts: Arc::new(Mutex::new(HashMap::new())),
+        };
+
+        let app = axum::Router::new()
+            .route("/pay-bolt11", axum::routing::post(pay_bolt11))
+            .with_state(state.clone());
+        let (addr, shutdown) = spawn_http_server(app).await?;
+
+        Ok(WalletExecutorStubHandle {
+            base_url: format!("http://{addr}"),
+            shutdown,
+            calls: state.calls,
+        })
+    }
+
     async fn response_json(response: axum::response::Response) -> Result<Value> {
         let collected = response.into_body().collect().await?;
         let bytes = collected.to_bytes();
@@ -5004,6 +5278,203 @@ mod tests {
 
         assert_eq!(health.status(), axum::http::StatusCode::OK);
         assert_eq!(readiness.status(), axum::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn liquidity_quote_pay_is_idempotent_by_idempotency_key() -> Result<()> {
+        let app = test_router();
+
+        let payload = json!({
+            "schema": "openagents.liquidity.quote_pay_request.v1",
+            "idempotency_key": "quote-idempotency-test",
+            "invoice": "lnbc420n1test",
+            "host": "sats4ai.com",
+            "max_amount_msats": 100_000,
+            "max_fee_msats": 10_000,
+            "urgency": "normal",
+            "policy_context": {"purpose": "test"}
+        });
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/quote_pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload)?))?,
+            )
+            .await?;
+        assert_eq!(first.status(), axum::http::StatusCode::OK);
+        let first_json = response_json(first).await?;
+        let quote_id_first = first_json
+            .get("quote_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing quote_id"))?
+            .to_string();
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/quote_pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload)?))?,
+            )
+            .await?;
+        assert_eq!(second.status(), axum::http::StatusCode::OK);
+        let second_json = response_json(second).await?;
+        let quote_id_second = second_json
+            .get("quote_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing quote_id (second)"))?
+            .to_string();
+
+        assert_eq!(quote_id_first, quote_id_second);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn liquidity_quote_pay_conflicts_on_idempotency_key_reuse_with_different_invoice()
+    -> Result<()> {
+        let app = test_router();
+
+        let first_payload = json!({
+            "schema": "openagents.liquidity.quote_pay_request.v1",
+            "idempotency_key": "quote-idempotency-conflict",
+            "invoice": "lnbc420n1test",
+            "host": "sats4ai.com",
+            "max_amount_msats": 100_000,
+            "max_fee_msats": 10_000,
+            "policy_context": {}
+        });
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/quote_pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&first_payload)?))?,
+            )
+            .await?;
+        assert_eq!(first.status(), axum::http::StatusCode::OK);
+
+        let second_payload = json!({
+            "schema": "openagents.liquidity.quote_pay_request.v1",
+            "idempotency_key": "quote-idempotency-conflict",
+            "invoice": "lnbc10p1test",
+            "host": "sats4ai.com",
+            "max_amount_msats": 1_000,
+            "max_fee_msats": 10,
+            "policy_context": {}
+        });
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/quote_pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&second_payload)?))?,
+            )
+            .await?;
+        assert_eq!(second.status(), axum::http::StatusCode::CONFLICT);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn liquidity_pay_is_idempotent_by_quote_id() -> Result<()> {
+        let wallet = spawn_wallet_executor_stub("test-token").await?;
+        let wallet_base = wallet.base_url.clone();
+
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.liquidity_wallet_executor_base_url = Some(wallet_base);
+                config.liquidity_wallet_executor_auth_token = Some("test-token".to_string());
+            },
+        );
+
+        let quote_payload = json!({
+            "schema": "openagents.liquidity.quote_pay_request.v1",
+            "idempotency_key": "pay-idempotency-test",
+            "invoice": "lnbc420n1test",
+            "host": "sats4ai.com",
+            "max_amount_msats": 100_000,
+            "max_fee_msats": 10_000,
+            "policy_context": {}
+        });
+
+        let quote_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/quote_pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&quote_payload)?))?,
+            )
+            .await?;
+        assert_eq!(quote_resp.status(), axum::http::StatusCode::OK);
+        let quote_json = response_json(quote_resp).await?;
+        let quote_id = quote_json
+            .get("quote_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing quote_id"))?
+            .to_string();
+
+        let pay_payload = json!({
+            "schema": "openagents.liquidity.pay_request.v1",
+            "quote_id": quote_id,
+        });
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&pay_payload)?))?,
+            )
+            .await?;
+        assert_eq!(first.status(), axum::http::StatusCode::OK);
+        let first_json = response_json(first).await?;
+        let first_receipt_hash = first_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing receipt hash"))?
+            .to_string();
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/liquidity/pay")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&pay_payload)?))?,
+            )
+            .await?;
+        assert_eq!(second.status(), axum::http::StatusCode::OK);
+        let second_json = response_json(second).await?;
+        let second_receipt_hash = second_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing receipt hash (second)"))?
+            .to_string();
+
+        assert_eq!(first_receipt_hash, second_receipt_hash);
+        assert_eq!(
+            wallet.calls.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "wallet executor should be called once for idempotent pay"
+        );
+
+        let _ = wallet.shutdown.send(());
         Ok(())
     }
 

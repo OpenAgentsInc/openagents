@@ -14,6 +14,7 @@ pub struct Config {
     pub service_name: String,
     pub bind_addr: SocketAddr,
     pub build_sha: String,
+    pub db_url: Option<String>,
     pub authority_write_mode: AuthorityWriteMode,
     pub fanout_driver: String,
     pub fanout_queue_capacity: usize,
@@ -51,6 +52,10 @@ pub struct Config {
     pub verifier_allowed_signer_pubkeys: HashSet<String>,
     pub bridge_nostr_relays: Vec<String>,
     pub bridge_nostr_secret_key: Option<[u8; 32]>,
+    pub liquidity_wallet_executor_base_url: Option<String>,
+    pub liquidity_wallet_executor_auth_token: Option<String>,
+    pub liquidity_wallet_executor_timeout_ms: u64,
+    pub liquidity_quote_ttl_seconds: u64,
     pub treasury_reconciliation_enabled: bool,
     pub treasury_reservation_ttl_seconds: u64,
     pub treasury_reconciliation_interval_seconds: u64,
@@ -136,6 +141,10 @@ pub enum ConfigError {
     InvalidTreasuryReconciliationIntervalSeconds(String),
     #[error("invalid RUNTIME_TREASURY_RECONCILIATION_MAX_JOBS: {0}")]
     InvalidTreasuryReconciliationMaxJobs(String),
+    #[error("invalid RUNTIME_LIQUIDITY_WALLET_EXECUTOR_TIMEOUT_MS: {0}")]
+    InvalidLiquidityWalletExecutorTimeoutMs(String),
+    #[error("invalid RUNTIME_LIQUIDITY_QUOTE_TTL_SECONDS: {0}")]
+    InvalidLiquidityQuoteTtlSeconds(String),
 }
 
 impl Config {
@@ -146,6 +155,11 @@ impl Config {
         let service_name =
             env::var("RUNTIME_SERVICE_NAME").unwrap_or_else(|_| "runtime".to_string());
         let build_sha = env::var("RUNTIME_BUILD_SHA").unwrap_or_else(|_| "dev".to_string());
+        let db_url = env::var("DB_URL")
+            .or_else(|_| env::var("DATABASE_URL"))
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let authority_write_mode = parse_authority_write_mode(
             env::var("RUNTIME_AUTHORITY_WRITE_MODE")
                 .unwrap_or_else(|_| "rust_active".to_string())
@@ -361,9 +375,7 @@ impl Config {
         let treasury_reservation_ttl_seconds = env::var("RUNTIME_TREASURY_RESERVATION_TTL_SECONDS")
             .unwrap_or_else(|_| "3600".to_string())
             .parse::<u64>()
-            .map_err(|error| {
-                ConfigError::InvalidTreasuryReservationTtlSeconds(error.to_string())
-            })?
+            .map_err(|error| ConfigError::InvalidTreasuryReservationTtlSeconds(error.to_string()))?
             .max(1);
         let treasury_reconciliation_interval_seconds =
             env::var("RUNTIME_TREASURY_RECONCILIATION_INTERVAL_SECONDS")
@@ -378,10 +390,48 @@ impl Config {
             .parse::<usize>()
             .map_err(|error| ConfigError::InvalidTreasuryReconciliationMaxJobs(error.to_string()))?
             .clamp(1, 2000);
+
+        let liquidity_wallet_executor_base_url =
+            env::var("RUNTIME_LIQUIDITY_WALLET_EXECUTOR_BASE_URL")
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+        let liquidity_wallet_executor_base_url = liquidity_wallet_executor_base_url
+            .trim_end_matches('/')
+            .to_string();
+        let liquidity_wallet_executor_base_url = (!liquidity_wallet_executor_base_url.is_empty())
+            .then_some(liquidity_wallet_executor_base_url);
+
+        let liquidity_wallet_executor_auth_token =
+            env::var("RUNTIME_LIQUIDITY_WALLET_EXECUTOR_AUTH_TOKEN")
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+        let liquidity_wallet_executor_auth_token = (!liquidity_wallet_executor_auth_token
+            .is_empty())
+        .then_some(liquidity_wallet_executor_auth_token);
+
+        let liquidity_wallet_executor_timeout_ms =
+            env::var("RUNTIME_LIQUIDITY_WALLET_EXECUTOR_TIMEOUT_MS")
+                .unwrap_or_else(|_| "12000".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityWalletExecutorTimeoutMs(error.to_string())
+                })?
+                .max(250)
+                .min(120_000);
+
+        let liquidity_quote_ttl_seconds = env::var("RUNTIME_LIQUIDITY_QUOTE_TTL_SECONDS")
+            .unwrap_or_else(|_| "60".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidLiquidityQuoteTtlSeconds(error.to_string()))?
+            .max(5)
+            .min(3600);
         Ok(Self {
             service_name,
             bind_addr,
             build_sha,
+            db_url,
             authority_write_mode,
             fanout_driver,
             fanout_queue_capacity,
@@ -419,6 +469,10 @@ impl Config {
             verifier_allowed_signer_pubkeys,
             bridge_nostr_relays,
             bridge_nostr_secret_key,
+            liquidity_wallet_executor_base_url,
+            liquidity_wallet_executor_auth_token,
+            liquidity_wallet_executor_timeout_ms,
+            liquidity_quote_ttl_seconds,
             treasury_reconciliation_enabled,
             treasury_reservation_ttl_seconds,
             treasury_reconciliation_interval_seconds,

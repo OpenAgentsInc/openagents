@@ -8,10 +8,16 @@ struct EmbeddedMigration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[EmbeddedMigration] = &[EmbeddedMigration {
-    version: "0001_runtime_sync_bootstrap",
-    sql: include_str!("../../sql/migrations/0001_runtime_sync_bootstrap.sql"),
-}];
+const MIGRATIONS: &[EmbeddedMigration] = &[
+    EmbeddedMigration {
+        version: "0001_runtime_sync_bootstrap",
+        sql: include_str!("../../sql/migrations/0001_runtime_sync_bootstrap.sql"),
+    },
+    EmbeddedMigration {
+        version: "0002_runtime_liquidity_service_api",
+        sql: include_str!("../../sql/migrations/0002_runtime_liquidity_service_api.sql"),
+    },
+];
 
 #[tokio::main]
 async fn main() -> Result<()> {

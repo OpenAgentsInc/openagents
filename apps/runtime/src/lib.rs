@@ -9,6 +9,7 @@ use tracing::info;
 use crate::{
     authority::InMemoryRuntimeAuthority,
     config::Config,
+    db::RuntimeDb,
     fanout::FanoutHub,
     orchestration::RuntimeOrchestrator,
     projectors::InMemoryProjectionPipeline,
@@ -22,12 +23,14 @@ pub mod artifacts;
 pub mod authority;
 pub mod bridge;
 pub mod config;
+pub mod db;
 pub mod event_log;
 pub mod fanout;
 pub mod fraud;
 pub mod history_compat;
 pub mod human_qa;
 pub mod inference_tiering;
+pub mod liquidity;
 pub mod marketplace;
 pub mod orchestration;
 pub mod projectors;
@@ -41,7 +44,11 @@ pub mod types;
 pub mod verification;
 pub mod workers;
 
-pub fn build_runtime_state(config: Config) -> AppState {
+pub async fn build_runtime_state(config: Config) -> Result<AppState> {
+    let db = match config.db_url.clone() {
+        Some(url) => Some(Arc::new(RuntimeDb::connect(url.as_str()).await?)),
+        None => None,
+    };
     let authority = InMemoryRuntimeAuthority::shared();
     let projectors = InMemoryProjectionPipeline::shared_from_env();
     let orchestrator = Arc::new(RuntimeOrchestrator::new(authority, projectors));
@@ -61,11 +68,18 @@ pub fn build_runtime_state(config: Config) -> AppState {
         max_token_age_seconds: config.sync_token_max_age_seconds,
         revoked_jtis: config.sync_revoked_jtis.clone(),
     }));
-    AppState::new(config, orchestrator, workers, fanout, sync_auth)
+    Ok(AppState::new(
+        config,
+        orchestrator,
+        workers,
+        fanout,
+        sync_auth,
+        db,
+    ))
 }
 
-pub fn build_app(config: Config) -> axum::Router {
-    build_router(build_runtime_state(config))
+pub async fn build_app(config: Config) -> Result<axum::Router> {
+    Ok(build_router(build_runtime_state(config).await?))
 }
 
 pub async fn serve(config: Config) -> Result<()> {
@@ -75,6 +89,6 @@ pub async fn serve(config: Config) -> Result<()> {
         bind_addr = %config.bind_addr,
         "runtime service listening"
     );
-    axum::serve(listener, build_app(config)).await?;
+    axum::serve(listener, build_app(config).await?).await?;
     Ok(())
 }

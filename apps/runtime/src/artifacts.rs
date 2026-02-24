@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bitcoin::secp256k1::{Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
 use nostr::get_public_key_hex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -91,7 +91,7 @@ pub struct PaymentReceipt {
     pub signature: Option<ReceiptSignatureV1>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReceiptSignatureV1 {
     pub schema: String,
     pub scheme: String,
