@@ -141,11 +141,14 @@ impl AppState {
             config.bridge_nostr_secret_key,
         ));
 
+        let llp_lightning_node = crate::lightning_node::from_env();
+
         let state = Self {
             liquidity,
-            liquidity_pool: Arc::new(LiquidityPoolService::new(
+            liquidity_pool: Arc::new(LiquidityPoolService::new_with_lightning_node(
                 pool_store,
                 wallet_executor_client,
+                llp_lightning_node,
                 config.bridge_nostr_secret_key,
             )),
             credit,

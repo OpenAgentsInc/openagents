@@ -31,6 +31,7 @@ pub mod fraud;
 pub mod history_compat;
 pub mod human_qa;
 pub mod inference_tiering;
+pub mod lightning_node;
 pub mod liquidity;
 pub mod liquidity_pool;
 pub mod marketplace;

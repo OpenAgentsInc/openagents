@@ -11,6 +11,7 @@ use crate::bridge::{
     BridgeNostrPublisher, LiquidityReceiptPointerV1, PoolSnapshotBridgeV1, bridge_relays_from_env,
     build_liquidity_receipt_pointer_event, build_pool_snapshot_event,
 };
+use crate::lightning_node::{LightningNode, NoopLightningNode};
 use crate::liquidity_pool::store::{
     DepositInsertInput, LiquidityPoolStore, LiquidityPoolStoreError, ReceiptInsertInput,
     WithdrawalInsertInput,
@@ -67,6 +68,7 @@ impl LiquidityPoolError {
 pub struct LiquidityPoolService {
     store: Arc<dyn LiquidityPoolStore>,
     wallet: Arc<dyn WalletExecutorClient>,
+    lightning_node: Arc<dyn LightningNode>,
     default_withdraw_delay_hours: i64,
     receipt_signing_key: Option<[u8; 32]>,
 }
@@ -77,9 +79,24 @@ impl LiquidityPoolService {
         wallet: Arc<dyn WalletExecutorClient>,
         receipt_signing_key: Option<[u8; 32]>,
     ) -> Self {
+        Self::new_with_lightning_node(
+            store,
+            wallet,
+            Arc::new(NoopLightningNode),
+            receipt_signing_key,
+        )
+    }
+
+    pub fn new_with_lightning_node(
+        store: Arc<dyn LiquidityPoolStore>,
+        wallet: Arc<dyn WalletExecutorClient>,
+        lightning_node: Arc<dyn LightningNode>,
+        receipt_signing_key: Option<[u8; 32]>,
+    ) -> Self {
         Self {
             store,
             wallet,
+            lightning_node,
             default_withdraw_delay_hours: 24,
             receipt_signing_key,
         }
@@ -555,6 +572,44 @@ impl LiquidityPoolService {
         let wallet_status = self.wallet.get_status().await?;
         let wallet_balance_sats = wallet_status.balance_sats.unwrap_or(0);
 
+        let lightning_backend = self.lightning_node.backend().to_string();
+        let (mut onchain_sats, mut channel_total_sats, mut channel_outbound_sats, mut channel_inbound_sats) =
+            (0u64, 0u64, 0u64, 0u64);
+        let (mut channel_count, mut connected_channel_count) = (0u64, 0u64);
+        let mut lightning_last_error: Option<String> = None;
+
+        match self.lightning_node.get_balances().await {
+            Ok(balances) => {
+                onchain_sats = balances.onchain_sats;
+                channel_total_sats = balances.channel_total_sats;
+                channel_outbound_sats = balances.channel_outbound_sats;
+                channel_inbound_sats = balances.channel_inbound_sats;
+            }
+            Err(error) => {
+                lightning_last_error = Some(format!(
+                    "get_balances failed ({}): {}",
+                    error.code(),
+                    error.message()
+                ));
+            }
+        }
+
+        match self.lightning_node.channel_health_snapshot().await {
+            Ok(health) => {
+                channel_count = health.channel_count;
+                connected_channel_count = health.connected_channel_count;
+            }
+            Err(error) => {
+                lightning_last_error = lightning_last_error.or_else(|| {
+                    Some(format!(
+                        "channel_health_snapshot failed ({}): {}",
+                        error.code(),
+                        error.message()
+                    ))
+                });
+            }
+        }
+
         let total_shares = self
             .store
             .get_total_shares(pool_id)
@@ -569,6 +624,17 @@ impl LiquidityPoolService {
         let assets_json = json!({
             "schema": "openagents.liquidity.pool_assets.v1",
             "walletBalanceSats": wallet_balance_sats,
+            "lightning": {
+                "schema": "openagents.liquidity.llp_lightning_snapshot.v1",
+                "backend": lightning_backend,
+                "onchainSats": onchain_sats,
+                "channelTotalSats": channel_total_sats,
+                "channelOutboundSats": channel_outbound_sats,
+                "channelInboundSats": channel_inbound_sats,
+                "channelCount": channel_count,
+                "connectedChannelCount": connected_channel_count,
+                "lastError": lightning_last_error,
+            }
         });
 
         let liabilities_json = json!({
