@@ -36,6 +36,7 @@ Supported lanes:
 - `legacy-legacyparity`
 - `web-shell`
 - `workspace-compile`
+- `panic-surface`
 - `clippy-rust`
 - `cross-surface`
 - `ios-rust-core`
@@ -50,6 +51,7 @@ Examples:
 ./scripts/local-ci.sh legacy-comms
 ./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh workspace-compile
+./scripts/local-ci.sh panic-surface
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh cross-surface
 ./scripts/local-ci.sh ios-rust-core
@@ -64,6 +66,7 @@ Changed-mode trigger note:
 - `runtime-history` lane auto-runs for Rust runtime history-compat paths (`apps/runtime/src/**`, `apps/runtime/fixtures/history_compat/**`, `apps/runtime/Cargo.toml`, `Cargo.lock`) and enforces deterministic replay compatibility fixtures.
 - `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
+- `panic-surface` lane auto-runs for Rust workspace paths and enforces no-net-growth panic-surface policy against `docs/ci/panic-surface-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
 - `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `legacy-legacyparity` lane auto-runs for legacy legacyparity paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
@@ -84,6 +87,7 @@ Run additional gates manually before pushing when needed:
 ```bash
 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh workspace-compile
+./scripts/local-ci.sh panic-surface
 OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh inbox-gmail
@@ -162,6 +166,26 @@ To validate changed-file lane routing logic:
 
 ```bash
 ./scripts/local-ci.sh test-triggers
+```
+
+## Panic-Surface No-Net-Growth Gate
+
+`./scripts/local-ci.sh panic-surface` runs:
+
+```bash
+./scripts/panic-surface-gate.sh check
+```
+
+Policy:
+
+- Counts production panic markers (`.unwrap(`, `.expect(`, `panic!(`) across `apps/**` + `crates/**`.
+- Excludes test/example/bench/fixture paths.
+- Fails if any metric exceeds baseline in `docs/ci/panic-surface-baseline.env`.
+
+Refresh baseline only when intentional reductions are merged:
+
+```bash
+./scripts/panic-surface-gate.sh snapshot
 ```
 
 ## Temporary Bypass (Use Sparingly)

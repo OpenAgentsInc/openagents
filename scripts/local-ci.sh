@@ -371,6 +371,14 @@ run_workspace_compile() {
   )
 }
 
+run_panic_surface_gate() {
+  echo "==> panic-surface no-net-growth gate"
+  (
+    cd "$ROOT_DIR"
+    ./scripts/panic-surface-gate.sh check
+  )
+}
+
 run_rust_clippy_checks() {
   echo "==> workspace rust clippy (critical crates)"
   (
@@ -407,6 +415,7 @@ has_match() {
 
 run_all_rust() {
   run_workspace_compile
+  run_panic_surface_gate
   run_runtime_checks
   run_proto_checks
   run_runtime_history_checks
@@ -490,6 +499,7 @@ run_changed() {
 
   if has_match "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "$changed_files"; then
     run_workspace_compile
+    run_panic_surface_gate
   fi
 
   if has_match "$RUST_CLIPPY_TRIGGER_PATTERN" "$changed_files"; then
@@ -561,6 +571,9 @@ case "$MODE" in
   workspace-compile)
     run_workspace_compile
     ;;
+  panic-surface)
+    run_panic_surface_gate
+    ;;
   clippy-rust)
     run_rust_clippy_checks
     ;;
@@ -601,7 +614,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|clippy-rust|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|clippy-rust|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -111,6 +111,21 @@ fn unsupported_image_adapter_error() -> anyhow::Error {
     anyhow::anyhow!("assistant image content is not supported by this LM adapter")
 }
 
+fn chat_history_to_one_or_many(
+    chat_history: Vec<rig::message::Message>,
+) -> Result<rig::OneOrMany<rig::message::Message>> {
+    if chat_history.len() == 1 {
+        let message = chat_history
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("chat history must not be empty"))?;
+        Ok(rig::OneOrMany::one(message))
+    } else {
+        rig::OneOrMany::many(chat_history)
+            .map_err(|_| anyhow::anyhow!("chat history must not be empty"))
+    }
+}
+
 impl LM {
     /// Finalizes construction of an [`LM`], initializing the HTTP client and
     /// optional response cache based on provided parameters.
@@ -216,7 +231,6 @@ impl LM {
         system_prompt: String,
         accumulated_usage: &mut LmUsage,
     ) -> Result<ToolLoopResult> {
-        use rig::OneOrMany;
         use rig::completion::CompletionRequest;
         use rig::message::UserContent;
 
@@ -234,7 +248,10 @@ impl LM {
             let def = tool.definition("".to_string()).await;
             if def.name == *tool_name {
                 // Actually execute the tool
-                tool_result = tool.call(args_str.clone()).await.unwrap();
+                tool_result = match tool.call(args_str.clone()).await {
+                    Ok(result) => result,
+                    Err(error) => format!("Tool '{}' execution failed: {}", tool_name, error),
+                };
                 tool_calls.push(initial_tool_call.clone());
                 tool_executions.push(tool_result.clone());
                 break;
@@ -244,7 +261,7 @@ impl LM {
         // Add initial tool call and result to history
         chat_history.push(rig::message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(rig::message::AssistantContent::ToolCall(
+            content: rig::OneOrMany::one(rig::message::AssistantContent::ToolCall(
                 initial_tool_call.clone(),
             )),
         });
@@ -253,28 +270,24 @@ impl LM {
             UserContent::tool_result_with_call_id(
                 initial_tool_call.id.clone(),
                 call_id.clone(),
-                OneOrMany::one(tool_result.into()),
+                rig::OneOrMany::one(tool_result.into()),
             )
         } else {
             UserContent::tool_result(
                 initial_tool_call.id.clone(),
-                OneOrMany::one(tool_result.into()),
+                rig::OneOrMany::one(tool_result.into()),
             )
         };
 
         chat_history.push(rig::message::Message::User {
-            content: OneOrMany::one(tool_result_content),
+            content: rig::OneOrMany::one(tool_result_content),
         });
 
         // Now loop until we get a text response
         for _iteration in 1..max_iterations {
             let request = CompletionRequest {
                 preamble: Some(system_prompt.clone()),
-                chat_history: if chat_history.len() == 1 {
-                    OneOrMany::one(chat_history.clone().into_iter().next().unwrap())
-                } else {
-                    OneOrMany::many(chat_history.clone()).expect("chat_history should not be empty")
-                },
+                chat_history: chat_history_to_one_or_many(chat_history.clone())?,
                 documents: Vec::new(),
                 tools: tool_definitions.clone(),
                 temperature: Some(self.temperature as f64),
@@ -330,7 +343,12 @@ impl LM {
                         let def = tool.definition("".to_string()).await;
                         if def.name == *tool_name {
                             // Actually execute the tool
-                            tool_result = tool.call(args_str.clone()).await.unwrap();
+                            tool_result = match tool.call(args_str.clone()).await {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    format!("Tool '{}' execution failed: {}", tool_name, error)
+                                }
+                            };
                             tool_calls.push(tool_call.clone());
                             tool_executions.push(tool_result.clone());
                             break;
@@ -339,7 +357,7 @@ impl LM {
 
                     chat_history.push(rig::message::Message::Assistant {
                         id: None,
-                        content: OneOrMany::one(rig::message::AssistantContent::ToolCall(
+                        content: rig::OneOrMany::one(rig::message::AssistantContent::ToolCall(
                             tool_call.clone(),
                         )),
                     });
@@ -348,17 +366,17 @@ impl LM {
                         UserContent::tool_result_with_call_id(
                             tool_call.id.clone(),
                             call_id.clone(),
-                            OneOrMany::one(tool_result.into()),
+                            rig::OneOrMany::one(tool_result.into()),
                         )
                     } else {
                         UserContent::tool_result(
                             tool_call.id.clone(),
-                            OneOrMany::one(tool_result.into()),
+                            rig::OneOrMany::one(tool_result.into()),
                         )
                     };
 
                     chat_history.push(rig::message::Message::User {
-                        content: OneOrMany::one(tool_result_content),
+                        content: rig::OneOrMany::one(tool_result_content),
                     });
                 }
                 AssistantContent::Image(_image) => {
@@ -391,7 +409,6 @@ impl LM {
         tools: Vec<Arc<dyn ToolDyn>>,
         callback: Option<&dyn DspyCallback>,
     ) -> Result<LMResponse> {
-        use rig::OneOrMany;
         use rig::completion::CompletionRequest;
 
         let request_messages = messages.get_rig_messages();
@@ -407,11 +424,7 @@ impl LM {
 
         let request = CompletionRequest {
             preamble: Some(request_messages.system.clone()),
-            chat_history: if chat_history.len() == 1 {
-                OneOrMany::one(chat_history.clone().into_iter().next().unwrap())
-            } else {
-                OneOrMany::many(chat_history.clone()).expect("chat_history should not be empty")
-            },
+            chat_history: chat_history_to_one_or_many(chat_history.clone())?,
             documents: Vec::new(),
             tools: tool_definitions.clone(),
             temperature: Some(self.temperature as f64),
@@ -502,7 +515,7 @@ impl LM {
                         &mut accumulated_usage,
                     )
                     .await
-                    .unwrap();
+                    ?;
                 let message = result.message.clone();
                 tool_loop_result = Some(result);
                 message
@@ -543,23 +556,20 @@ impl LM {
     }
 
     /// Returns the `n` most recent cached calls.
-    ///
-    /// Panics if caching is disabled for this `LM`.
     pub async fn inspect_history(&self, n: usize) -> Vec<CallResult> {
-        self.cache_handler
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .get_history(n)
-            .await
-            .unwrap()
+        let Some(cache) = self.cache_handler.as_ref() else {
+            return Vec::new();
+        };
+        cache.lock().await.get_history(n).await.unwrap_or_default()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{unsupported_image_adapter_error, unsupported_image_tool_loop_error};
+    use super::{
+        LM, chat_history_to_one_or_many, unsupported_image_adapter_error,
+        unsupported_image_tool_loop_error,
+    };
 
     #[test]
     fn unsupported_image_tool_loop_error_is_deterministic() {
@@ -575,6 +585,26 @@ mod tests {
             unsupported_image_adapter_error().to_string(),
             "assistant image content is not supported by this LM adapter"
         );
+    }
+
+    #[test]
+    fn chat_history_conversion_rejects_empty_history() {
+        assert!(chat_history_to_one_or_many(Vec::new()).is_err());
+    }
+
+    #[tokio::test]
+    #[cfg_attr(miri, ignore)]
+    async fn inspect_history_returns_empty_when_cache_is_disabled() {
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "test");
+        }
+        let lm = LM::builder()
+            .model("openai:gpt-4o-mini".to_string())
+            .cache(false)
+            .build()
+            .await
+            .expect("lm build");
+        assert!(lm.inspect_history(10).await.is_empty());
     }
 }
 

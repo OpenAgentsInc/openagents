@@ -7,7 +7,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use smallvec::SmallVec;
 
@@ -20,6 +20,27 @@ use super::{FontRun, LineLayout, WrappedLineLayout};
 pub struct LineLayoutCache {
     previous_frame: Mutex<FrameCache>,
     current_frame: RwLock<FrameCache>,
+}
+
+fn mutex_lock<'a, T>(mutex: &'a Mutex<T>) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn rw_read<'a, T>(rw_lock: &'a RwLock<T>) -> RwLockReadGuard<'a, T> {
+    match rw_lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn rw_write<'a, T>(rw_lock: &'a RwLock<T>) -> RwLockWriteGuard<'a, T> {
+    match rw_lock.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 #[derive(Default)]
@@ -55,7 +76,7 @@ impl LineLayoutCache {
     /// This can be used to track which layouts were added during
     /// a particular operation.
     pub fn layout_index(&self) -> LineLayoutIndex {
-        let frame = self.current_frame.read().unwrap();
+        let frame = rw_read(&self.current_frame);
         LineLayoutIndex {
             lines_index: frame.used_lines.len(),
             wrapped_lines_index: frame.used_wrapped_lines.len(),
@@ -67,8 +88,8 @@ impl LineLayoutCache {
     /// This is useful when re-rendering a portion of the UI that
     /// hasn't changed.
     pub fn reuse_layouts(&self, range: Range<LineLayoutIndex>) {
-        let mut previous_frame = self.previous_frame.lock().unwrap();
-        let mut current_frame = self.current_frame.write().unwrap();
+        let mut previous_frame = mutex_lock(&self.previous_frame);
+        let mut current_frame = rw_write(&self.current_frame);
 
         // Collect keys to reuse first (to avoid borrow issues)
         let line_keys: Vec<_> =
@@ -98,7 +119,7 @@ impl LineLayoutCache {
     ///
     /// Removes layouts added after the given index.
     pub fn truncate_layouts(&self, index: LineLayoutIndex) {
-        let mut current_frame = self.current_frame.write().unwrap();
+        let mut current_frame = rw_write(&self.current_frame);
         current_frame.used_lines.truncate(index.lines_index);
         current_frame
             .used_wrapped_lines
@@ -110,8 +131,8 @@ impl LineLayoutCache {
     /// Swaps current and previous frame caches, clearing the
     /// current frame for the next render.
     pub fn finish_frame(&self) {
-        let mut prev_frame = self.previous_frame.lock().unwrap();
-        let mut curr_frame = self.current_frame.write().unwrap();
+        let mut prev_frame = mutex_lock(&self.previous_frame);
+        let mut curr_frame = rw_write(&self.current_frame);
 
         // Swap frames
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
@@ -146,22 +167,19 @@ impl LineLayoutCache {
 
         // Try current frame cache first
         {
-            let current_frame = self.current_frame.read().unwrap();
+            let current_frame = rw_read(&self.current_frame);
             if let Some(layout) = current_frame.lines.get(&key_ref as &dyn AsCacheKeyRef) {
                 return layout.clone();
             }
         }
 
         // Try previous frame cache
-        let from_previous = self
-            .previous_frame
-            .lock()
-            .unwrap()
+        let from_previous = mutex_lock(&self.previous_frame)
             .lines
             .remove_entry(&key_ref as &dyn AsCacheKeyRef);
 
         if let Some((key, layout)) = from_previous {
-            let mut current_frame = self.current_frame.write().unwrap();
+            let mut current_frame = rw_write(&self.current_frame);
             current_frame.lines.insert(key.clone(), layout.clone());
             current_frame.used_lines.push(key);
             return layout;
@@ -176,7 +194,7 @@ impl LineLayoutCache {
             wrap_width: None,
         });
 
-        let mut current_frame = self.current_frame.write().unwrap();
+        let mut current_frame = rw_write(&self.current_frame);
         current_frame.lines.insert(key.clone(), layout.clone());
         current_frame.used_lines.push(key);
 
@@ -204,7 +222,7 @@ impl LineLayoutCache {
 
         // Try current frame cache first
         {
-            let current_frame = self.current_frame.read().unwrap();
+            let current_frame = rw_read(&self.current_frame);
             if let Some(layout) = current_frame
                 .wrapped_lines
                 .get(&key_ref as &dyn AsCacheKeyRef)
@@ -214,15 +232,12 @@ impl LineLayoutCache {
         }
 
         // Try previous frame cache
-        let from_previous = self
-            .previous_frame
-            .lock()
-            .unwrap()
+        let from_previous = mutex_lock(&self.previous_frame)
             .wrapped_lines
             .remove_entry(&key_ref as &dyn AsCacheKeyRef);
 
         if let Some((key, layout)) = from_previous {
-            let mut current_frame = self.current_frame.write().unwrap();
+            let mut current_frame = rw_write(&self.current_frame);
             current_frame
                 .wrapped_lines
                 .insert(key.clone(), layout.clone());
@@ -239,7 +254,7 @@ impl LineLayoutCache {
             wrap_width,
         });
 
-        let mut current_frame = self.current_frame.write().unwrap();
+        let mut current_frame = rw_write(&self.current_frame);
         current_frame
             .wrapped_lines
             .insert(key.clone(), layout.clone());
@@ -250,14 +265,14 @@ impl LineLayoutCache {
 
     /// Clear all cached layouts.
     pub fn clear(&self) {
-        self.previous_frame.lock().unwrap().clear();
-        self.current_frame.write().unwrap().clear();
+        mutex_lock(&self.previous_frame).clear();
+        rw_write(&self.current_frame).clear();
     }
 
     /// Get statistics about the cache.
     pub fn stats(&self) -> CacheStats {
-        let current = self.current_frame.read().unwrap();
-        let previous = self.previous_frame.lock().unwrap();
+        let current = rw_read(&self.current_frame);
+        let previous = mutex_lock(&self.previous_frame);
         CacheStats {
             current_lines: current.lines.len(),
             current_wrapped_lines: current.wrapped_lines.len(),
