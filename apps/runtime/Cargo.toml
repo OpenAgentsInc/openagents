@@ -31,6 +31,7 @@ protocol = { path = "../../crates/protocol" }
 nostr.workspace = true
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-l402 = { path = "../../crates/openagents-l402" }
+neobank = { path = "../../crates/neobank" }
 cln-rpc = "0.5.0"
 
 [dev-dependencies]
@@ -59,3 +60,7 @@ path = "src/bin/vignette-phase0-issue-to-pr.rs"
 [[bin]]
 name = "vignette-liquidity-pool-mvp0"
 path = "src/bin/vignette-liquidity-pool-mvp0.rs"
+
+[[bin]]
+name = "vignette-neobank-pay-bolt11"
+path = "src/bin/vignette-neobank-pay-bolt11.rs"

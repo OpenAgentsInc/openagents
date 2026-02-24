@@ -6373,6 +6373,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "neobank"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "chrono",
+ "hex",
+ "openagents-l402",
+ "protocol",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7297,6 +7316,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "jsonwebtoken 9.3.1",
+ "neobank",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-l402",

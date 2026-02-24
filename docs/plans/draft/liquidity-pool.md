@@ -370,6 +370,14 @@ Publish:
   * trajectory/run id
   * spend reason
 
+MVP status in-repo:
+
+* `crates/neobank/src/router.rs` exposes `quote_and_pay_bolt11(...)` and route policy selection (direct liquidity vs CEP).
+* `crates/neobank/src/budgets.rs` provides reservation/finalization hooks with idempotent in-memory enforcement.
+* `crates/neobank/src/receipts.rs` emits `openagents.neobank.payment_attempt_receipt.v1` with canonical hash + optional signatures.
+* `crates/neobank/src/rails/runtime.rs` implements typed Runtime internal API calls for liquidity + credit lanes.
+* `apps/runtime/src/bin/vignette-neobank-pay-bolt11.rs` is the end-to-end harness proving direct + CEP payment routing.
+
 ### Budgets + Approvals
 
 * CEP issuance is just another spend path:

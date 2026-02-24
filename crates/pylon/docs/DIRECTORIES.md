@@ -244,7 +244,7 @@ Cashu wallet storage for Neobank treasury.
 
 **Format**: redb (Rust embedded database)
 
-**Created By**: `NeobankService::init()` when treasury is enabled.
+**Owned By**: `crates/neobank` TreasuryRouter integrations for autonomous spend routing.
 
 ## Directory Creation
 
