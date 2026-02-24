@@ -18,10 +18,47 @@ pub fn optimizable_impl(input: TokenStream) -> TokenStream {
         .iter()
         .map(|field| field.ident.as_ref().unwrap())
         .collect();
+    if parameter_names.is_empty() {
+        return syn::Error::new_spanned(
+            &input.ident,
+            "Optimizable derive requires at least one #[parameter] field",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let get_signature_impl = if parameter_names.len() == 1 {
+        let parameter_name = parameter_names[0];
+        quote! {
+            self.#parameter_name.get_signature()
+        }
+    } else {
+        let first_parameter_name = parameter_names[0];
+        quote! {
+            self.#first_parameter_name.get_signature()
+        }
+    };
+    let update_signature_impl = if parameter_names.len() == 1 {
+        let parameter_name = parameter_names[0];
+        quote! {
+            self.#parameter_name.update_signature_instruction(instruction)
+        }
+    } else {
+        quote! {
+            let mut params = self.parameters();
+            for parameter in params.values_mut() {
+                parameter.update_signature_instruction(instruction.clone())?;
+            }
+            Ok(())
+        }
+    };
 
     // Generate the Optimizable implementation (flatten nested parameters with compound names)
     let expanded = quote! {
         impl #impl_generics #trait_path for #name #type_generics #where_clause {
+            fn get_signature(&self) -> &dyn ::dsrs::core::MetaSignature {
+                #get_signature_impl
+            }
+
             fn parameters(
                 &mut self,
             ) -> indexmap::IndexMap<::std::string::String, &mut dyn #trait_path> {
@@ -46,6 +83,13 @@ pub fn optimizable_impl(input: TokenStream) -> TokenStream {
                 }
                 )*
                 params
+            }
+
+            fn update_signature_instruction(
+                &mut self,
+                instruction: ::std::string::String,
+            ) -> ::anyhow::Result<()> {
+                #update_signature_impl
             }
         }
     };

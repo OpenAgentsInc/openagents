@@ -112,3 +112,38 @@ fn test_ordering_of_parameters() {
         }
     }
 }
+
+#[rstest]
+fn test_get_signature_and_update_instruction_for_single_parameter() {
+    let mut leaf = Leaf {
+        predictor: new_predict(),
+    };
+    let before = leaf.get_signature().instruction().to_string();
+
+    leaf.update_signature_instruction("Leaf instruction".to_string())
+        .unwrap();
+    assert_ne!(leaf.get_signature().instruction(), before);
+    assert_eq!(leaf.get_signature().instruction(), "Leaf instruction");
+}
+
+#[rstest]
+fn test_multi_parameter_update_instruction_updates_all_children() {
+    let mut parent = Parent {
+        a: new_predict(),
+        b: Leaf {
+            predictor: new_predict(),
+        },
+    };
+    let original_instruction = parent.get_signature().instruction().to_string();
+    assert_eq!(original_instruction, parent.a.signature.instruction());
+
+    parent
+        .update_signature_instruction("Parent instruction".to_string())
+        .unwrap();
+
+    assert_eq!(parent.a.signature.instruction(), "Parent instruction");
+    assert_eq!(
+        parent.b.predictor.signature.instruction(),
+        "Parent instruction"
+    );
+}

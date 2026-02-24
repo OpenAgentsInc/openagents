@@ -103,6 +103,14 @@ where
     }
 }
 
+fn unsupported_image_tool_loop_error() -> anyhow::Error {
+    anyhow::anyhow!("assistant image content is not supported in tool loops")
+}
+
+fn unsupported_image_adapter_error() -> anyhow::Error {
+    anyhow::anyhow!("assistant image content is not supported by this LM adapter")
+}
+
 impl LM {
     /// Finalizes construction of an [`LM`], initializing the HTTP client and
     /// optional response cache based on provided parameters.
@@ -353,7 +361,9 @@ impl LM {
                         content: OneOrMany::one(tool_result_content),
                     });
                 }
-                AssistantContent::Image(_image) => todo!(),
+                AssistantContent::Image(_image) => {
+                    return Err(unsupported_image_tool_loop_error());
+                }
             }
         }
 
@@ -505,7 +515,9 @@ impl LM {
                 );
                 Message::assistant(&msg)
             }
-            AssistantContent::Image(_image) => todo!(),
+            AssistantContent::Image(_image) => {
+                return Err(unsupported_image_adapter_error());
+            }
         };
 
         let mut full_chat = messages.clone();
@@ -526,7 +538,7 @@ impl LM {
                 .unwrap_or_default(),
             tool_executions: tool_loop_result
                 .map(|result| result.tool_executions)
-                .unwrap_or_default(),
+            .unwrap_or_default(),
         })
     }
 
@@ -542,6 +554,27 @@ impl LM {
             .get_history(n)
             .await
             .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{unsupported_image_adapter_error, unsupported_image_tool_loop_error};
+
+    #[test]
+    fn unsupported_image_tool_loop_error_is_deterministic() {
+        assert_eq!(
+            unsupported_image_tool_loop_error().to_string(),
+            "assistant image content is not supported in tool loops"
+        );
+    }
+
+    #[test]
+    fn unsupported_image_adapter_error_is_deterministic() {
+        assert_eq!(
+            unsupported_image_adapter_error().to_string(),
+            "assistant image content is not supported by this LM adapter"
+        );
     }
 }
 

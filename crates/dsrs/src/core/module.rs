@@ -54,13 +54,9 @@ pub trait Module: Send + Sync {
 
 #[allow(unused_variables)]
 pub trait Optimizable {
-    fn get_signature(&self) -> &dyn MetaSignature {
-        todo!()
-    }
+    fn get_signature(&self) -> &dyn MetaSignature;
 
     fn parameters(&mut self) -> IndexMap<String, &mut dyn Optimizable>;
 
-    fn update_signature_instruction(&mut self, instruction: String) -> anyhow::Result<()> {
-        todo!()
-    }
+    fn update_signature_instruction(&mut self, instruction: String) -> anyhow::Result<()>;
 }
