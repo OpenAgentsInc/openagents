@@ -35,6 +35,7 @@ use crate::{
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
+    lightning_node,
     liquidity::store,
     liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
     liquidity::{LiquidityError, LiquidityService},
@@ -128,11 +129,15 @@ impl AppState {
                 config.liquidity_quote_ttl_seconds,
                 config.bridge_nostr_secret_key,
             )),
-            liquidity_pool: Arc::new(LiquidityPoolService::new(
-                pool_store,
-                wallet_executor_client,
-                config.bridge_nostr_secret_key,
-            )),
+            liquidity_pool: Arc::new(
+                LiquidityPoolService::new_with_lightning_node(
+                    pool_store,
+                    wallet_executor_client,
+                    lightning_node::from_env(),
+                    config.bridge_nostr_secret_key,
+                )
+                .with_withdraw_delay_hours(config.liquidity_pool_withdraw_delay_hours),
+            ),
             db,
             config,
             orchestrator,

@@ -70,7 +70,7 @@ Hydra is designed for “agentic commerce reality”:
                         │               │
          ┌──────────────▼───┐     ┌────▼──────────────────┐
          │ Lightning Node(s) │     │ Wallet Executor        │
-         │ (CLN Phase 0)     │     │ (Spark send/pay/recv)  │
+         │ (LND Phase 0)     │     │ (Spark send/pay/recv)  │
          └───────────────────┘     └────────────────────────┘
 ```
 
@@ -78,6 +78,11 @@ Hydra is intentionally split across two execution authorities:
 
 * **Lightning node backend (LLP)**: operator-managed channel liquidity and routing capacity.
 * **Wallet executor (per-user / per-treasury)**: custody boundary for spend authority + canonical receipts.
+
+Clarification:
+
+* **Spark is for quick user wallets** (send/receive/pay via wallet-executor custody). It is not the channel/liquidity engine.
+* **LLP liquidity is channel-backed and node-backed**. Hydra starts with operator-managed **LND nodes** and will later support balancing across multiple nodes (and potentially other backend types) without changing the quote/receipt surface.
 
 Hydra orchestrates these into a single economic interface for agents.
 
@@ -151,9 +156,9 @@ Hydra’s LLP is not “a node.” It is a **pool** with explicit accounting, ri
 
 **Backed by:**
 
-* Lightning node backend (Phase 0: CLN via JSON-RPC)
+* Lightning node backend (Phase 0: LND via REST (gRPC gateway))
 * On-chain reserve (for channel opens/rebalances)
-* Optional operational rail balances (e.g., Spark balance used for treasury ops if needed)
+* Optional operational rail balances (e.g., Spark balances used for user-wallet custody or treasury ops if needed; not used as LLP channel liquidity)
 
 **Core capabilities:**
 
@@ -429,7 +434,7 @@ Hydra must make fees explicit in quotes and receipts. “Hidden fees” are rout
 
 ### MVP-0 — Liquidity execution baseline
 
-* CLN backend integration for channel health snapshots
+* LND backend integration for channel health snapshots
 * `quote_pay` + `pay` + canonical receipts
 * `/stats` liquidity health tables (minute cache)
 
@@ -664,7 +669,7 @@ message HydraTreasuryReceiptRef {
 enum HydraLightningBackend {
   HYDRA_LIGHTNING_BACKEND_UNSPECIFIED = 0;
   HYDRA_LIGHTNING_BACKEND_NOOP = 1;
-  HYDRA_LIGHTNING_BACKEND_CLN = 2; // Phase 0
+  HYDRA_LIGHTNING_BACKEND_LND = 2; // Phase 0
   HYDRA_LIGHTNING_BACKEND_LDK = 3; // Later
 }
 

@@ -1,13 +1,12 @@
 use std::env;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Utc};
-use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LightningNodeError {
@@ -59,23 +58,6 @@ pub struct ChannelHealthSnapshotV1 {
     pub channel_count: u64,
     pub connected_channel_count: u64,
     pub as_of: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LightningNodePolicy {
-    pub peer_allowlist: Vec<String>,
-    pub max_channel_sats_per_peer: u64,
-    pub max_daily_rebalance_sats: u64,
-}
-
-impl Default for LightningNodePolicy {
-    fn default() -> Self {
-        Self {
-            peer_allowlist: Vec::new(),
-            max_channel_sats_per_peer: 5_000_000,
-            max_daily_rebalance_sats: 500_000,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,44 +130,57 @@ pub fn from_env() -> Arc<dyn LightningNode> {
         .to_ascii_lowercase();
 
     match backend.as_str() {
-        "cln" => {
-            let rpc_path = env::var("RUNTIME_LLP_CLN_RPC_PATH")
-                .ok()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
-            let Some(rpc_path) = rpc_path else {
+        "noop" => Arc::new(NoopLightningNode),
+        "lnd" => {
+            let Some(base_url) = env_non_empty_any(&[
+                "RUNTIME_LLP_LND_REST_BASE_URL",
+                "LND_REST_BASE_URL",
+            ]) else {
                 return Arc::new(UnavailableLightningNode::new(
-                    "cln",
-                    "RUNTIME_LLP_CLN_RPC_PATH is required when backend=cln",
+                    "lnd",
+                    "RUNTIME_LLP_LND_REST_BASE_URL (or LND_REST_BASE_URL) is required when backend=lnd",
                 ));
             };
 
-            let peer_allowlist = env::var("RUNTIME_LLP_PEER_ALLOWLIST")
-                .unwrap_or_default()
-                .split(',')
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| value.to_ascii_lowercase())
-                .collect::<Vec<_>>();
-            let max_channel_sats_per_peer = env::var("RUNTIME_LLP_MAX_CHANNEL_SATS_PER_PEER")
-                .ok()
-                .and_then(|value| value.trim().parse::<u64>().ok())
-                .unwrap_or(LightningNodePolicy::default().max_channel_sats_per_peer);
-            let max_daily_rebalance_sats = env::var("RUNTIME_LLP_MAX_DAILY_REBALANCE_SATS")
-                .ok()
-                .and_then(|value| value.trim().parse::<u64>().ok())
-                .unwrap_or(LightningNodePolicy::default().max_daily_rebalance_sats);
+            let Some(macaroon_hex) = env_non_empty_any(&[
+                "RUNTIME_LLP_LND_REST_MACAROON_HEX",
+                "LND_REST_MACAROON_HEX",
+            ]) else {
+                return Arc::new(UnavailableLightningNode::new(
+                    "lnd",
+                    "RUNTIME_LLP_LND_REST_MACAROON_HEX (or LND_REST_MACAROON_HEX) is required when backend=lnd",
+                ));
+            };
 
-            Arc::new(ClnLightningNode::new(
-                PathBuf::from(rpc_path),
-                LightningNodePolicy {
-                    peer_allowlist,
-                    max_channel_sats_per_peer,
-                    max_daily_rebalance_sats,
-                },
-            ))
+            let tls_cert_base64 = env_non_empty_any(&[
+                "RUNTIME_LLP_LND_REST_TLS_CERT_BASE64",
+                "LND_REST_TLS_CERT_BASE64",
+            ]);
+            let tls_verify = env_bool_any(
+                &["RUNTIME_LLP_LND_REST_TLS_VERIFY", "LND_REST_TLS_VERIFY"],
+                true,
+            );
+            let timeout_ms = env_u64_any(&["RUNTIME_LLP_LND_REST_TIMEOUT_MS"], 10_000)
+                .clamp(250, 120_000);
+
+            match LndRestLightningNode::new(
+                base_url,
+                macaroon_hex,
+                tls_cert_base64,
+                tls_verify,
+                timeout_ms,
+            ) {
+                Ok(node) => Arc::new(node),
+                Err(error) => Arc::new(UnavailableLightningNode::new(
+                    "lnd",
+                    error.message().as_str(),
+                )),
+            }
         }
-        _ => Arc::new(NoopLightningNode),
+        value => Arc::new(UnavailableLightningNode::new(
+            "unknown",
+            format!("unsupported RUNTIME_LLP_LIGHTNING_BACKEND value: {value}").as_str(),
+        )),
     }
 }
 
@@ -328,120 +323,188 @@ impl LightningNode for UnavailableLightningNode {
 }
 
 #[derive(Debug)]
-pub struct ClnLightningNode {
-    rpc_path: PathBuf,
-    policy: LightningNodePolicy,
+struct LndChannelView {
+    capacity_sats: u64,
+    local_balance_sats: u64,
+    active: bool,
 }
 
-impl ClnLightningNode {
-    pub fn new(rpc_path: PathBuf, policy: LightningNodePolicy) -> Self {
-        Self { rpc_path, policy }
+#[derive(Debug)]
+pub struct LndRestLightningNode {
+    client: reqwest::Client,
+    base_url: String,
+    macaroon_hex: String,
+}
+
+impl LndRestLightningNode {
+    pub fn new(
+        base_url: String,
+        macaroon_hex: String,
+        tls_cert_base64: Option<String>,
+        tls_verify: bool,
+        timeout_ms: u64,
+    ) -> Result<Self, LightningNodeError> {
+        let base_url = base_url.trim().trim_end_matches('/').to_string();
+        if base_url.is_empty() {
+            return Err(LightningNodeError::InvalidConfig(
+                "LND REST base URL cannot be empty".to_string(),
+            ));
+        }
+
+        let macaroon_hex = macaroon_hex.trim().to_string();
+        if macaroon_hex.is_empty() {
+            return Err(LightningNodeError::InvalidConfig(
+                "LND REST macaroon cannot be empty".to_string(),
+            ));
+        }
+
+        let mut builder = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms));
+        if let Some(cert_b64) = tls_cert_base64.as_ref().map(|value| value.trim()) {
+            if !cert_b64.is_empty() {
+                let decoded = STANDARD.decode(cert_b64).map_err(|error| {
+                    LightningNodeError::InvalidConfig(format!(
+                        "invalid RUNTIME_LLP_LND_REST_TLS_CERT_BASE64/LND_REST_TLS_CERT_BASE64: {error}"
+                    ))
+                })?;
+                let cert = reqwest::Certificate::from_pem(&decoded)
+                    .or_else(|_| reqwest::Certificate::from_der(&decoded))
+                    .map_err(|error| {
+                        LightningNodeError::InvalidConfig(format!(
+                            "invalid LND REST TLS certificate bytes: {error}"
+                        ))
+                    })?;
+                builder = builder.add_root_certificate(cert);
+            }
+        } else if !tls_verify {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+
+        let client = builder.build().map_err(|error| {
+            LightningNodeError::InvalidConfig(format!("failed to build LND REST client: {error}"))
+        })?;
+
+        Ok(Self {
+            client,
+            base_url,
+            macaroon_hex,
+        })
     }
 
-    fn enforce_peer_allowlist(&self, peer_id: &str) -> Result<(), LightningNodeError> {
-        if self.policy.peer_allowlist.is_empty() {
-            return Ok(());
-        }
-        let peer_id = peer_id.trim().to_ascii_lowercase();
-        if self
-            .policy
-            .peer_allowlist
-            .iter()
-            .any(|allowed| allowed == &peer_id)
-        {
-            return Ok(());
-        }
-        Err(LightningNodeError::InvalidConfig(
-            "peer_id is not allowlisted".to_string(),
-        ))
+    fn endpoint(&self, path: &str) -> String {
+        format!("{}/{}", self.base_url, path.trim_start_matches('/'))
     }
 
-    async fn with_rpc<F, T>(&self, f: F) -> Result<T, LightningNodeError>
-    where
-        F: for<'a> FnOnce(&'a mut cln_rpc::ClnRpc) -> BoxFuture<'a, Result<T, LightningNodeError>>
-            + Send,
-        T: Send,
-    {
-        let path = Path::new(&self.rpc_path);
-        let mut rpc = cln_rpc::ClnRpc::new(path)
+    async fn get_json(&self, path: &str) -> Result<Value, LightningNodeError> {
+        let url = self.endpoint(path);
+        let response = self
+            .client
+            .get(url.as_str())
+            .header("Grpc-Metadata-macaroon", self.macaroon_hex.as_str())
+            .send()
             .await
-            .map_err(|error| LightningNodeError::DependencyUnavailable(error.to_string()))?;
-        f(&mut rpc).await
+            .map_err(|error| {
+                LightningNodeError::DependencyUnavailable(format!(
+                    "LND REST request failed for {path}: {error}"
+                ))
+            })?;
+
+        let status = response.status();
+        let body_text = response.text().await.map_err(|error| {
+            LightningNodeError::DependencyUnavailable(format!(
+                "LND REST response read failed for {path}: {error}"
+            ))
+        })?;
+        if !status.is_success() {
+            return Err(LightningNodeError::DependencyUnavailable(format!(
+                "LND REST request failed for {path}: HTTP {} {body_text}",
+                status.as_u16()
+            )));
+        }
+
+        serde_json::from_str::<Value>(&body_text).map_err(|error| {
+            LightningNodeError::DependencyUnavailable(format!(
+                "LND REST response JSON parse failed for {path}: {error}"
+            ))
+        })
+    }
+
+    async fn list_channels(&self) -> Result<Vec<LndChannelView>, LightningNodeError> {
+        let payload = self.get_json("/v1/channels").await?;
+        let channels = payload
+            .get("channels")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                LightningNodeError::DependencyUnavailable(
+                    "LND REST /v1/channels did not return channels array".to_string(),
+                )
+            })?;
+
+        let mut out = Vec::with_capacity(channels.len());
+        for channel in channels {
+            let capacity_sats = parse_u64_field(channel, "capacity").unwrap_or(0);
+            let local_balance_sats = parse_u64_field(channel, "local_balance").unwrap_or(0);
+            let active = parse_bool_field(channel, "active").unwrap_or(false);
+
+            out.push(LndChannelView {
+                capacity_sats,
+                local_balance_sats,
+                active,
+            });
+        }
+
+        Ok(out)
     }
 }
 
 #[async_trait]
-impl LightningNode for ClnLightningNode {
+impl LightningNode for LndRestLightningNode {
     fn backend(&self) -> &'static str {
-        "cln"
+        "lnd"
     }
 
     async fn get_balances(&self) -> Result<LightningBalancesV1, LightningNodeError> {
         let now = Utc::now();
-        let response = self
-            .with_rpc(|rpc| {
-                Box::pin(async move {
-                    let req = cln_rpc::model::requests::ListfundsRequest { spent: None };
-                    rpc.call_typed(&req)
-                        .await
-                        .map_err(|error| {
-                            LightningNodeError::DependencyUnavailable(error.to_string())
-                        })
-                })
-            })
-            .await?;
+        let chain_payload = self.get_json("/v1/balance/blockchain").await?;
+        let onchain_sats = parse_u64_field(&chain_payload, "total_balance")
+            .or_else(|| parse_u64_field(&chain_payload, "confirmed_balance"))
+            .unwrap_or(0);
 
-        let mut onchain_msats: u64 = 0;
-        for output in &response.outputs {
-            if output.status.to_string() != "CONFIRMED" {
-                continue;
-            }
-            onchain_msats = onchain_msats.saturating_add(output.amount_msat.msat());
-        }
+        let channels = self.list_channels().await?;
+        let mut channel_total_sats = 0_u64;
+        let mut channel_outbound_sats = 0_u64;
+        let mut channel_inbound_sats = 0_u64;
 
-        let mut channel_total_msats: u64 = 0;
-        let mut channel_outbound_msats: u64 = 0;
-        let mut channel_inbound_msats: u64 = 0;
-        for chan in &response.channels {
-            let total = chan.amount_msat.msat();
-            let ours = chan.our_amount_msat.msat().min(total);
-            channel_total_msats = channel_total_msats.saturating_add(total);
-            channel_outbound_msats = channel_outbound_msats.saturating_add(ours);
-            channel_inbound_msats = channel_inbound_msats.saturating_add(total.saturating_sub(ours));
+        for channel in channels {
+            let total_sats = if channel.capacity_sats > 0 {
+                channel.capacity_sats
+            } else {
+                channel.local_balance_sats
+            };
+            let outbound_sats = channel.local_balance_sats.min(total_sats);
+            let inbound_sats = total_sats.saturating_sub(outbound_sats);
+
+            channel_total_sats = channel_total_sats.saturating_add(total_sats);
+            channel_outbound_sats = channel_outbound_sats.saturating_add(outbound_sats);
+            channel_inbound_sats = channel_inbound_sats.saturating_add(inbound_sats);
         }
 
         Ok(LightningBalancesV1 {
             schema: "openagents.lightning.node_balances.v1".to_string(),
             backend: self.backend().to_string(),
-            onchain_sats: onchain_msats / 1000,
-            channel_total_sats: channel_total_msats / 1000,
-            channel_outbound_sats: channel_outbound_msats / 1000,
-            channel_inbound_sats: channel_inbound_msats / 1000,
+            onchain_sats,
+            channel_total_sats,
+            channel_outbound_sats,
+            channel_inbound_sats,
             as_of: now,
         })
     }
 
     async fn channel_health_snapshot(&self) -> Result<ChannelHealthSnapshotV1, LightningNodeError> {
         let now = Utc::now();
-        let response = self
-            .with_rpc(|rpc| {
-                Box::pin(async move {
-                    let req = cln_rpc::model::requests::ListfundsRequest { spent: None };
-                    rpc.call_typed(&req)
-                        .await
-                        .map_err(|error| {
-                            LightningNodeError::DependencyUnavailable(error.to_string())
-                        })
-                })
-            })
-            .await?;
-
-        let channel_count = response.channels.len() as u64;
-        let connected_channel_count = response
-            .channels
-            .iter()
-            .filter(|chan| chan.connected)
-            .count() as u64;
+        let channels = self.list_channels().await?;
+        let channel_count = channels.len() as u64;
+        let connected_channel_count = channels.iter().filter(|entry| entry.active).count() as u64;
 
         Ok(ChannelHealthSnapshotV1 {
             schema: "openagents.lightning.channel_health.v1".to_string(),
@@ -454,175 +517,105 @@ impl LightningNode for ClnLightningNode {
 
     async fn pay_bolt11(
         &self,
-        invoice: &str,
-        max_fee_msats: u64,
-        label: Option<String>,
+        _invoice: &str,
+        _max_fee_msats: u64,
+        _label: Option<String>,
     ) -> Result<LightningPayResultV1, LightningNodeError> {
-        let invoice = invoice.trim().to_string();
-        if invoice.is_empty() {
-            return Err(LightningNodeError::InvalidConfig(
-                "invoice is required".to_string(),
-            ));
-        }
-
-        let response = self
-            .with_rpc(|rpc| {
-                Box::pin(async move {
-                    let req = cln_rpc::model::requests::PayRequest {
-                        amount_msat: None,
-                        description: None,
-                        exemptfee: None,
-                        label,
-                        localinvreqid: None,
-                        maxdelay: None,
-                        maxfee: Some(cln_rpc::primitives::Amount::from_msat(max_fee_msats)),
-                        maxfeepercent: None,
-                        partial_msat: None,
-                        retry_for: Some(30),
-                        riskfactor: None,
-                        exclude: None,
-                        bolt11: invoice,
-                    };
-                    rpc.call_typed(&req)
-                        .await
-                        .map_err(|error| {
-                            LightningNodeError::DependencyUnavailable(error.to_string())
-                        })
-                })
-            })
-            .await?;
-
-        let fee_msats = response
-            .amount_sent_msat
-            .msat()
-            .saturating_sub(response.amount_msat.msat());
-        let preimage_bytes = response.payment_preimage.to_vec();
-        let preimage_sha256 = hex::encode(Sha256::digest(preimage_bytes));
-
-        Ok(LightningPayResultV1 {
-            schema: "openagents.lightning.pay_result.v1".to_string(),
-            preimage_sha256: Some(preimage_sha256),
-            fee_msats: Some(fee_msats),
-            paid_at: Utc::now(),
-        })
+        Err(LightningNodeError::Unsupported(
+            "LND backend pay_bolt11 is not implemented in Phase 0 (snapshot telemetry only)"
+                .to_string(),
+        ))
     }
 
     async fn open_channel(
         &self,
-        peer_id: &str,
-        amount_sats: u64,
+        _peer_id: &str,
+        _amount_sats: u64,
     ) -> Result<LightningOpenChannelResultV1, LightningNodeError> {
-        let peer_id_raw = peer_id.trim().to_ascii_lowercase();
-        if peer_id_raw.is_empty() {
-            return Err(LightningNodeError::InvalidConfig(
-                "peer_id is required".to_string(),
-            ));
-        }
-        if amount_sats == 0 {
-            return Err(LightningNodeError::InvalidConfig(
-                "amount_sats must be > 0".to_string(),
-            ));
-        }
-        if amount_sats > self.policy.max_channel_sats_per_peer {
-            return Err(LightningNodeError::InvalidConfig(format!(
-                "amount_sats exceeds max_channel_sats_per_peer ({})",
-                self.policy.max_channel_sats_per_peer
-            )));
-        }
-        self.enforce_peer_allowlist(peer_id_raw.as_str())?;
-
-        let opened_at = Utc::now();
-        let response = self
-            .with_rpc(|rpc| {
-                Box::pin(async move {
-                    let peer = cln_rpc::primitives::PublicKey::from_str(peer_id_raw.as_str())
-                        .map_err(|error| LightningNodeError::InvalidConfig(error.to_string()))?;
-                    let req = cln_rpc::model::requests::FundchannelRequest {
-                        announce: Some(false),
-                        close_to: None,
-                        compact_lease: None,
-                        feerate: None,
-                        minconf: None,
-                        mindepth: None,
-                        push_msat: None,
-                        request_amt: None,
-                        reserve: None,
-                        channel_type: None,
-                        utxos: None,
-                        amount: cln_rpc::primitives::AmountOrAll::Amount(
-                            cln_rpc::primitives::Amount::from_sat(amount_sats),
-                        ),
-                        id: peer,
-                    };
-                    rpc.call_typed(&req)
-                        .await
-                        .map_err(|error| {
-                            LightningNodeError::DependencyUnavailable(error.to_string())
-                        })
-                })
-            })
-            .await?;
-
-        Ok(LightningOpenChannelResultV1 {
-            schema: "openagents.lightning.open_channel_result.v1".to_string(),
-            channel_id: response.channel_id.to_string(),
-            txid: response.txid,
-            opened_at,
-        })
+        Err(LightningNodeError::Unsupported(
+            "LND backend open_channel is not implemented in Phase 0 (snapshot telemetry only)"
+                .to_string(),
+        ))
     }
 
     async fn close_channel(
         &self,
-        channel_id: &str,
+        _channel_id: &str,
     ) -> Result<LightningCloseChannelResultV1, LightningNodeError> {
-        let channel_id = channel_id.trim().to_string();
-        if channel_id.is_empty() {
-            return Err(LightningNodeError::InvalidConfig(
-                "channel_id is required".to_string(),
-            ));
-        }
-
-        let closed_at = Utc::now();
-        let response = self
-            .with_rpc(|rpc| {
-                Box::pin(async move {
-                    let req = cln_rpc::model::requests::CloseRequest {
-                        destination: None,
-                        fee_negotiation_step: None,
-                        force_lease_closed: None,
-                        unilateraltimeout: None,
-                        wrong_funding: None,
-                        feerange: None,
-                        id: channel_id,
-                    };
-                    rpc.call_typed(&req)
-                        .await
-                        .map_err(|error| {
-                            LightningNodeError::DependencyUnavailable(error.to_string())
-                        })
-                })
-            })
-            .await?;
-
-        Ok(LightningCloseChannelResultV1 {
-            schema: "openagents.lightning.close_channel_result.v1".to_string(),
-            txids: response.txids.unwrap_or_default(),
-            closed_at,
-        })
+        Err(LightningNodeError::Unsupported(
+            "LND backend close_channel is not implemented in Phase 0 (snapshot telemetry only)"
+                .to_string(),
+        ))
     }
 
     async fn rebalance(
         &self,
-        budget_sats: u64,
+        _budget_sats: u64,
     ) -> Result<LightningRebalanceResultV1, LightningNodeError> {
-        if budget_sats > self.policy.max_daily_rebalance_sats {
-            return Err(LightningNodeError::InvalidConfig(format!(
-                "budget_sats exceeds max_daily_rebalance_sats ({})",
-                self.policy.max_daily_rebalance_sats
-            )));
-        }
         Err(LightningNodeError::Unsupported(
-            "CLN backend rebalancing is not implemented in Phase 0 (requires a plugin)".to_string(),
+            "LND backend rebalance is not implemented in Phase 0 (snapshot telemetry only)"
+                .to_string(),
         ))
     }
+}
+
+fn parse_u64_field(value: &Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(parse_u64_value)
+}
+
+fn parse_u64_value(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(raw) => raw.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+}
+
+fn parse_bool_field(value: &Value, key: &str) -> Option<bool> {
+    value.get(key).and_then(parse_bool_value)
+}
+
+fn parse_bool_value(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(flag) => Some(*flag),
+        Value::Number(number) => number.as_u64().map(|v| v > 0),
+        Value::String(raw) => {
+            let normalized = raw.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" => Some(true),
+                "0" | "false" | "no" => Some(false),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn env_non_empty(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_non_empty_any(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| env_non_empty(key))
+}
+
+fn env_bool_any(keys: &[&str], default: bool) -> bool {
+    keys.iter()
+        .find_map(|key| env::var(key).ok())
+        .map(|value| match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" => true,
+            "0" | "false" | "no" => false,
+            _ => default,
+        })
+        .unwrap_or(default)
+}
+
+fn env_u64_any(keys: &[&str], default: u64) -> u64 {
+    keys.iter()
+        .find_map(|key| env::var(key).ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(default)
 }

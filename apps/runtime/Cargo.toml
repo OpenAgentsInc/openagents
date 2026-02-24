@@ -27,12 +27,12 @@ hex.workspace = true
 bitcoin.workspace = true
 jsonwebtoken = "9"
 reqwest.workspace = true
+base64.workspace = true
 protocol = { path = "../../crates/protocol" }
 nostr.workspace = true
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-l402 = { path = "../../crates/openagents-l402" }
 neobank = { path = "../../crates/neobank" }
-cln-rpc = "0.5.0"
 
 [dev-dependencies]
 anyhow.workspace = true

@@ -397,7 +397,9 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 ## Lightning and Payment Architecture (Rust Endstate)
 
 - `apps/lightning-ops/` remains control-plane policy/reconcile authority in Rust.
-- `apps/lightning-wallet-executor/` remains execution adapter for LND/BOLT11 settlement in Rust.
+- `apps/lightning-wallet-executor/` remains execution adapter for Spark-backed user wallets (BOLT11 + on-chain) in Rust.
+- `apps/openagents.com/service/` contains an LND REST invoice payer for operator-run L402 settlement (where configured).
+- `apps/runtime/` (Hydra/LLP) integrates with operator-managed LND node(s) for channel-backed liquidity telemetry (Phase 0) and later multi-node balancing.
 - Control intent remains in control-plane authority data.
 - Settlement execution remains externalized to wallet executor + Lightning infra.
 - Khala may stream derived operational summaries; it never becomes settlement authority.
