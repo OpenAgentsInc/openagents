@@ -1,152 +1,124 @@
-# Email and Inbox Functionality Audit (Desktop + Cross-Surface)
+# Email / Inbox Functionality Audit (Post-Remediation)
 
 Date: 2026-02-24
 
 ## Scope
 
-This audit covers all currently discoverable email/inbox functionality across:
+- Control service inbox contract + Gmail adapter
+- Control service secret-at-rest handling for provider integrations
+- Desktop inbox wiring to control-service APIs
+- Runtime comms delivery-event ingest path parity
+- QA/ops readiness artifacts for Gmail-backed flows
 
-- Desktop app inbox UX/data flow (`apps/autopilot-desktop`, `crates/autopilot_ui`, `crates/autopilot_app`)
-- Shared inbox domain crate (`crates/autopilot-inbox-domain`)
-- Rust control service auth + email/webhook integrations (`apps/openagents.com/service`)
-- Runtime inbox/comms surfaces (`apps/runtime`, `crates/runtime`)
-- iOS auth lane where it shares the same email-code API contract (`apps/autopilot-ios`)
-- Legacy Laravel email/comms files still present in repo (`apps/openagents.com/app`, `routes`, `tests`, `config`)
+## Executive Status
 
-## Preflight Authorities Checked
+Gmail-backed inbox is now implemented across control service, desktop, and runtime contract surfaces.
 
-- `docs/adr/INDEX.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
-- `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
-- `docs/adr/ADR-0002-proto-first-contract-governance.md`
-- `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
-- `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
-- `docs/PROJECT_OVERVIEW.md`
+Primary gaps from the earlier audit are closed:
 
-Constraints applied during audit:
+1. Canonical inbox API routes now exist in control service (`/api/inbox/*`).
+2. Gmail list/read/send with access-token refresh is implemented.
+3. Desktop inbox no longer boots from hard-coded sample threads on the primary path.
+4. Integration provider secrets are encrypted at rest when key material is configured.
+5. Runtime now implements `POST /internal/v1/comms/delivery-events`, matching control defaults/docs.
+6. Local CI includes deterministic non-live inbox/Gmail contract checks.
 
-- Treat Rust control/runtime paths as canonical.
-- Treat proto/contracts as authority for cross-surface auth/session semantics.
-- Identify but do not treat legacy Laravel lanes as canonical behavior.
+## Issue Workstream Closure Status
 
-## Executive Summary
+- `#2148` Control-service inbox API contract: implemented
+- `#2149` Gmail mailbox adapter + refresh: implemented
+- `#2150` Desktop inbox backend wiring: implemented
+- `#2151` Secret encryption at rest + migration path: implemented
+- `#2152` Desktop `x-client` normalization + compatibility policy: implemented
+- `#2153` Control/runtime delivery-event path drift: implemented
+- `#2154` Deterministic QA lane + staging checklist updates: implemented
+- `#2155` OAuth + secret rotation ops runbook: implemented
+- `#2156` Master tracker: complete
 
-1. Desktop inbox is implemented as a local sample-data workflow, not a real mailbox integration.
-2. Shared inbox domain logic exists (classification/draft heuristics) and is test-covered, but has no provider/network I/O.
-3. Email-code authentication is implemented and active in the Rust control service, and consumed by desktop/iOS clients.
-4. Email integration support exists in control service (Resend webhook ingest + Google OAuth token persistence), but this is not wired into a user-facing mailbox inbox pipeline.
-5. Runtime has an "inbox" service, but it is an agent envelope queue, not end-user email inbox.
-6. A contract drift risk exists: control-service forwarding defaults to `/internal/v1/comms/delivery-events`, while runtime router does not currently expose that route.
-7. Legacy Laravel email/inbox/auth implementations remain in-tree as historical lanes and should not be treated as active architecture.
+## Implemented Surfaces
 
-## Status Matrix
+### Control service
 
-| Capability | Status | Evidence |
-|---|---|---|
-| Desktop inbox list/thread/approval/audit UI routing | Implemented (local state only) | `apps/autopilot-desktop/src/main.rs:3329`, `apps/autopilot-desktop/src/main.rs:4008`, `crates/autopilot_ui/src/lib.rs:3526`, `crates/autopilot_ui/src/lib.rs:5850` |
-| Desktop inbox data source (real mailbox sync) | Missing | `apps/autopilot-desktop/src/inbox_domain.rs:33` |
-| Desktop inbox draft approve/reject persistence/send | Missing (local flag toggles only) | `apps/autopilot-desktop/src/inbox_domain.rs:125`, `apps/autopilot-desktop/src/inbox_domain.rs:137` |
-| Shared inbox policy/draft/audit domain logic | Implemented | `crates/autopilot-inbox-domain/src/lib.rs:133`, `crates/autopilot-inbox-domain/src/lib.rs:225`, `crates/autopilot-inbox-domain/src/lib.rs:307` |
-| Email-code auth API (`/api/auth/email`, `/api/auth/verify`) | Implemented (Rust control service) | `apps/openagents.com/service/src/lib.rs:1202`, `apps/openagents.com/service/src/lib.rs:1215`, `apps/openagents.com/service/src/lib.rs:5895`, `apps/openagents.com/service/src/lib.rs:6078` |
-| Session refresh + logout/revocation | Implemented | `apps/openagents.com/service/src/lib.rs:15363`, `apps/openagents.com/service/src/lib.rs:15421`, `apps/openagents.com/service/src/auth.rs:825`, `apps/openagents.com/service/src/auth.rs:981` |
-| Desktop client auth lane | Implemented with compatibility header | `apps/autopilot-desktop/src/runtime_auth.rs:58`, `apps/autopilot-desktop/src/runtime_auth.rs:81`, `apps/autopilot-desktop/src/runtime_auth.rs:20` |
-| iOS client auth lane | Implemented | `apps/autopilot-ios/Autopilot/Autopilot/RuntimeCodexClient.swift:45`, `apps/autopilot-ios/Autopilot/Autopilot/RuntimeCodexClient.swift:66` |
-| Resend webhook ingest/idempotency/signature verification | Implemented | `apps/openagents.com/service/src/lib.rs:7983`, `apps/openagents.com/service/src/lib.rs:8210`, `apps/openagents.com/service/src/lib.rs:8229` |
-| Runtime forwarding of normalized delivery events from control service | Implemented in control service (dependent on runtime endpoint availability) | `apps/openagents.com/service/src/lib.rs:8469`, `apps/openagents.com/service/src/lib.rs:8613`, `apps/openagents.com/service/src/config.rs:54` |
-| Runtime comms delivery endpoint implementation | Missing in current runtime router | `apps/runtime/src/server.rs:773` |
-| Runtime docs/spec for comms delivery endpoint | Present but likely stale/drifted | `apps/runtime/docs/openapi-internal-v1.yaml:24`, `apps/runtime/docs/RUNTIME_CONTRACT.md:107` |
-| Google integration token persistence (`gmail.primary`) | Implemented in control domain store | `apps/openagents.com/service/src/domain_store.rs:1614`, `apps/openagents.com/service/src/domain_store.rs:1671` |
-| Legacy Laravel email/auth + webhook code | Present, non-canonical | `apps/openagents.com/routes/auth.php:22`, `apps/openagents.com/app/Http/Controllers/Auth/EmailCodeAuthController.php:51`, `apps/openagents.com/app/Http/Controllers/Api/Webhooks/ResendWebhookController.php:15`, `docs/PROJECT_OVERVIEW.md:58` |
+- Inbox routes:
+  - `GET /api/inbox/threads`
+  - `POST /api/inbox/refresh`
+  - `GET /api/inbox/threads/:thread_id`
+  - `POST /api/inbox/threads/:thread_id/draft/approve`
+  - `POST /api/inbox/threads/:thread_id/draft/reject`
+  - `POST /api/inbox/threads/:thread_id/reply/send`
+- Gmail adapter:
+  - thread list + detail fetch
+  - reply send
+  - access-token refresh with retry/backoff/timeout
+- Observability:
+  - inbox list/detail/refresh/approve/reject/send audit events
+  - Gmail request failure counters
+- OpenAPI:
+  - route constants, operation entries, request/response examples
 
-## Detailed Findings
+### Domain store
 
-### 1) Desktop inbox is a local simulation
+- Integration secret envelope support:
+  - encrypted envelope format: `enc:v1:<key_id>:<nonce>:<ciphertext>`
+  - decrypt-on-read with key-id validation
+  - lazy plaintext migration to encrypted form
+- Inbox persistence:
+  - per-thread state projection (approval/decision/draft preview/source)
+  - inbox audit record stream
 
-- `DesktopInboxState::new()` seeds three hard-coded threads and computes category/risk/policy locally (`apps/autopilot-desktop/src/inbox_domain.rs:33`).
-- Inbox actions only mutate in-memory state and emit `AppEvent::InboxUpdated` (`apps/autopilot-desktop/src/main.rs:4008`).
-- No provider auth token use, mailbox fetch, or send API calls exist in the desktop inbox path.
+### Desktop
 
-Current maturity: UI/interaction prototype and local domain bridge, not production mailbox functionality.
+- `X-Client` auth header switched to canonical `autopilot-desktop`
+- Compatibility alias window documented (legacy `openagents-expo` through June 30, 2026)
+- Inbox actions now call backend APIs:
+  - refresh
+  - select thread (detail load)
+  - approve draft
+  - reject draft
+- Local hard-coded seed threads removed from primary inbox flow
 
-### 2) Shared inbox domain crate is heuristic and reusable, not integrated with mailbox providers
+### Runtime
 
-- Classification is keyword-based (`apps/autopilot-desktop/src/inbox_domain.rs` delegates to `crates/autopilot-inbox-domain/src/lib.rs:133`).
-- Draft text generation is template/local-style based (`crates/autopilot-inbox-domain/src/lib.rs:225`).
-- Quality scoring/reporting exists (`crates/autopilot-inbox-domain/src/lib.rs:307`).
+- Added `POST /internal/v1/comms/delivery-events` route implementation
+- Idempotent replay behavior:
+  - first event: `202` accepted
+  - duplicate event id: `200` idempotent replay
 
-Current maturity: reusable domain primitives are in place; external data-plane is absent.
+## Verification Evidence (Deterministic / Non-Live)
 
-### 3) Email-code auth in Rust control service is fully implemented and active
+- Control service:
+  - `inbox_routes_fetch_gmail_threads_and_support_actions`
+  - `inbox_threads_fail_when_refresh_token_is_missing`
+- Runtime:
+  - `comms_delivery_events_endpoint_accepts_and_deduplicates`
+- Desktop contract parsing:
+  - `extract_inbox_snapshot_parses_contract_shape`
 
-- Routes are wired in Rust service router (`apps/openagents.com/service/src/lib.rs:1202`, `apps/openagents.com/service/src/lib.rs:1215`, `apps/openagents.com/service/src/lib.rs:1216`, `apps/openagents.com/service/src/lib.rs:1226`).
-- Challenge + verify + session issuance/rotation/revocation behavior is implemented in `AuthService` (`apps/openagents.com/service/src/auth.rs:442`, `apps/openagents.com/service/src/auth.rs:472`, `apps/openagents.com/service/src/auth.rs:825`, `apps/openagents.com/service/src/auth.rs:981`).
-- Proto authority exists for these semantics (`proto/openagents/control/v1/auth.proto:71`).
+Local CI lane:
 
-Current maturity: production-ready auth/session lane.
+- `./scripts/local-ci.sh inbox-gmail`
 
-### 4) Desktop auth lane works, but has client-id/header drift
+## What Is Still Required To Function With A Real Gmail Account
 
-- Desktop code currently sends `x-client: openagents-expo` (`apps/autopilot-desktop/src/runtime_auth.rs:20`), with comment indicating compatibility fallback.
-- Desktop README says it uses `X-Client: autopilot-desktop` (`apps/autopilot-desktop/README.md:22`).
+The code path is complete; production success now depends on environment/operator setup:
 
-Current maturity: functional but inconsistent code/docs identity labeling.
+1. Provision Google OAuth credentials for each environment (dev/staging/prod).
+2. Register exact redirect URIs in Google Cloud Console:
+   - `http://localhost:8080/settings/integrations/google/callback`
+   - `https://staging.openagents.com/settings/integrations/google/callback`
+   - `https://openagents.com/settings/integrations/google/callback`
+3. Set control-service env vars:
+   - `GOOGLE_OAUTH_CLIENT_ID`
+   - `GOOGLE_OAUTH_CLIENT_SECRET`
+   - `GOOGLE_OAUTH_REDIRECT_URI`
+   - `GOOGLE_OAUTH_SCOPES` (must include `gmail.readonly` and `gmail.send`)
+   - `GOOGLE_OAUTH_TOKEN_URL`
+4. Set provider-secret encryption env vars:
+   - `OA_INTEGRATION_SECRET_ENCRYPTION_KEY` (32-byte base64/base64url)
+   - `OA_INTEGRATION_SECRET_KEY_ID`
+5. Deploy control service and runtime with aligned comms path (`/internal/v1/comms/delivery-events`).
+6. Run staging smoke checklist (connect -> refresh -> detail -> approve/reject -> send).
 
-### 5) "Elsewhere" email integration exists in control service (Resend + Google), but not as inbox sync
+## Canonical Runbook
 
-- Resend integration secrets and metadata are persisted (`apps/openagents.com/service/src/domain_store.rs:1562`).
-- Resend webhook pipeline is implemented: signature verification, idempotency, normalization, storage, retries, runtime forwarding (`apps/openagents.com/service/src/lib.rs:7983`, `apps/openagents.com/service/src/lib.rs:8469`, `apps/openagents.com/service/src/lib.rs:8613`).
-- Google OAuth integration secret payload persists under `integration_id: "gmail.primary"` (`apps/openagents.com/service/src/domain_store.rs:1671`).
-
-Current maturity: integration plumbing exists; mailbox read/send workflow into desktop inbox not implemented.
-
-### 6) Runtime comms delivery contract appears drifted
-
-- Control service default forwarding target is `/internal/v1/comms/delivery-events` (`apps/openagents.com/service/src/config.rs:54`).
-- Runtime router does not expose that route in current build (`apps/runtime/src/server.rs:773` onward route list).
-- Runtime docs still claim this endpoint (`apps/runtime/docs/openapi-internal-v1.yaml:24`, `apps/runtime/docs/RUNTIME_CONTRACT.md:107`).
-
-Impact: webhook forwarding may fail at runtime depending on deployed target/router composition.
-
-### 7) Runtime "inbox" is not user email inbox
-
-- `InboxFs` and `DeadletterFs` are generic envelope queue services mounted in agent environment (`crates/runtime/src/services/inbox.rs:12`, `crates/runtime/src/services/deadletter.rs:9`, `crates/runtime/src/env.rs:67`).
-
-Current maturity: runtime agent message queue exists; unrelated to desktop email inbox feature intent.
-
-### 8) Legacy Laravel email/auth/webhook code still exists but is non-canonical
-
-- Laravel routes/controllers still define `/api/auth/email`, `/api/auth/verify`, and Resend webhook logic (`apps/openagents.com/routes/auth.php:22`, `apps/openagents.com/app/Http/Controllers/Auth/EmailCodeAuthController.php:51`, `apps/openagents.com/app/Http/Controllers/Api/Webhooks/ResendWebhookController.php:15`).
-- Repository overview explicitly marks `apps/openagents.com/app`, `routes`, `tests`, `config` as historical/non-canonical (`docs/PROJECT_OVERVIEW.md:58`).
-
-Current maturity: archival/legacy lane remains in-tree and can cause operator confusion if not clearly ignored.
-
-## Verification Performed
-
-### Targeted tests run
-
-- `cargo test -p autopilot-inbox-domain` -> passed (4 tests)
-- `cargo test -p autopilot-desktop inbox_domain` -> passed (2 tests)
-- `cargo test -p autopilot_ui inbox_` -> passed (4 tests)
-- `cargo test -p runtime inbox` -> passed (1 test)
-- `cargo test -p runtime test_control_plane_http` -> passed (1 test)
-- `cargo test -p openagents-control-service refresh_rotates_refresh_token_and_logout_revokes_session` -> passed
-- `cargo test -p openagents-control-service resend_webhook_forwarding_retries_and_projects_delivery` -> passed
-
-### Discovery checks run
-
-- Repo-wide scan for inbox/email surfaces (`rg --files | rg -i "inbox|email|gmail|resend|magic_auth|auth.*verify|comms.*delivery|mail"`).
-- Runtime endpoint presence check (`rg -n "comms/delivery-events|delivery-events" apps/runtime/src crates/runtime`), confirming no runtime implementation match outside docs.
-
-## Overall Status
-
-- Auth/session email-code lane: strong and operational (Rust control authority).
-- Desktop inbox lane: UX and domain scaffolding present, but not connected to real mailbox providers.
-- Email integration lane: webhook/integration infrastructure present, but end-to-end inbox product behavior is incomplete.
-- Critical architecture risk: control-runtime comms delivery endpoint drift.
-
-## Recommended Follow-Ups (Priority Order)
-
-1. Resolve contract drift by either implementing runtime `POST /internal/v1/comms/delivery-events` or changing control forwarding config/docs to the actual runtime endpoint.
-2. Align desktop auth client identity header with intended desktop client id (and update compatibility strategy/docs consistently).
-3. Define canonical mailbox data-plane contract (provider sync + thread model + draft send/approval persistence) and wire desktop inbox to it.
-4. Keep legacy Laravel email/auth/webhook files clearly flagged as archival to prevent accidental operational reliance.
+- `apps/openagents.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`

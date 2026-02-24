@@ -20,6 +20,7 @@ Migration mapping details:
 
 Desktop runtime sync now uses the same email-code auth flow as iOS.
 Login requests call `/api/auth/email` + `/api/auth/verify` with `X-Client: autopilot-desktop`, then runtime worker streams use that bearer token as the authenticated user.
+Control service keeps a temporary compatibility alias for legacy `X-Client: openagents-expo` through **June 30, 2026**.
 
 No restart is required after sign-in.
 

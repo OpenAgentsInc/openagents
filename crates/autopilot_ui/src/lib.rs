@@ -44,115 +44,8 @@ pub use shortcuts::{
     ShortcutScope,
 };
 
-const PANEL_PADDING: f32 = 12.0;
-const PANEL_GAP: f32 = 12.0;
-const LEFT_PANEL_WIDTH: f32 = 250.0;
-const RIGHT_PANEL_WIDTH: f32 = 260.0;
-const PANEL_HEADER_HEIGHT: f32 = 26.0;
-const SESSION_ROW_HEIGHT: f32 = 30.0;
-const COMMAND_BAR_HEIGHT: f32 = 42.0;
-const COMPOSER_HEIGHT: f32 = 56.0;
-const STATUS_LINE_HEIGHT: f32 = 22.0;
-const STATUS_SECTION_GAP: f32 = 10.0;
-const ACCENT_BAR_WIDTH: f32 = 3.0;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
-const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
-const INPUT_MIN_LINES: usize = 1;
-const INPUT_MAX_LINES: Option<usize> = None;
-const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
-const REASONING_DROPDOWN_MIN_WIDTH: f32 = 140.0;
-const REASONING_DROPDOWN_MAX_WIDTH: f32 = 200.0;
-const DEFAULT_MODEL_INDEX: usize = 0;
-const DEFAULT_REASONING_EFFORT: &str = "xhigh";
-const SHOW_MODEL_DROPDOWN: bool = false;
-const SHOW_MODEL_SELECTOR: bool = true;
-const FILE_EDITOR_PANEL_PADDING: f32 = 12.0;
-const FILE_EDITOR_PANEL_GAP: f32 = 10.0;
-const FILE_TREE_MIN_WIDTH: f32 = 220.0;
-const FILE_TREE_MAX_WIDTH: f32 = 320.0;
-const FILE_TREE_ROW_HEIGHT: f32 = 22.0;
-const FILE_TREE_INDENT: f32 = 14.0;
-const FILE_TREE_SCROLLBAR_WIDTH: f32 = 6.0;
-const FILE_EDITOR_TOOLBAR_HEIGHT: f32 = 30.0;
-const FILE_EDITOR_TAB_HEIGHT: f32 = 26.0;
-const FILE_EDITOR_TAB_GAP: f32 = 6.0;
-const FILE_EDITOR_TAB_PADDING: f32 = 14.0;
-const FILE_EDITOR_SPLIT_GAP: f32 = 8.0;
-const FILE_TREE_MAX_ENTRIES: usize = 3000;
-const PANE_MARGIN: f32 = 24.0;
-const PANE_OFFSET: f32 = 28.0;
-const PANE_MIN_WIDTH: f32 = 200.0;
-const PANE_MIN_HEIGHT: f32 = 100.0;
-const PANE_TITLE_HEIGHT: f32 = 28.0;
-const PANE_RESIZE_HANDLE: f32 = 10.0;
-const CHAT_PANE_WIDTH: f32 = 820.0;
-const CHAT_PANE_HEIGHT: f32 = 620.0;
-const EVENTS_PANE_WIDTH: f32 = 480.0;
-const EVENTS_PANE_HEIGHT: f32 = 520.0;
-const THREADS_PANE_WIDTH: f32 = 520.0;
-const THREADS_PANE_HEIGHT: f32 = 520.0;
-const FILE_EDITOR_PANE_WIDTH: f32 = 720.0;
-const FILE_EDITOR_PANE_HEIGHT: f32 = 560.0;
-const IDENTITY_PANE_WIDTH: f32 = 520.0;
-const IDENTITY_PANE_HEIGHT: f32 = 520.0;
-const PYLON_PANE_WIDTH: f32 = 520.0;
-const PYLON_PANE_HEIGHT: f32 = 420.0;
-const WALLET_PANE_WIDTH: f32 = 520.0;
-const WALLET_PANE_HEIGHT: f32 = 420.0;
-const SELL_COMPUTE_PANE_WIDTH: f32 = 560.0;
-const SELL_COMPUTE_PANE_HEIGHT: f32 = 460.0;
-const HISTORY_PANE_WIDTH: f32 = 640.0;
-const HISTORY_PANE_HEIGHT: f32 = 500.0;
-const NIP90_PANE_WIDTH: f32 = 640.0;
-const NIP90_PANE_HEIGHT: f32 = 520.0;
-const AUTH_PANE_WIDTH: f32 = 620.0;
-const AUTH_PANE_HEIGHT: f32 = 500.0;
-const INBOX_LIST_PANE_WIDTH: f32 = 640.0;
-const INBOX_LIST_PANE_HEIGHT: f32 = 560.0;
-const INBOX_THREAD_PANE_WIDTH: f32 = 660.0;
-const INBOX_THREAD_PANE_HEIGHT: f32 = 560.0;
-const INBOX_APPROVALS_PANE_WIDTH: f32 = 560.0;
-const INBOX_APPROVALS_PANE_HEIGHT: f32 = 520.0;
-const INBOX_AUDIT_PANE_WIDTH: f32 = 680.0;
-const INBOX_AUDIT_PANE_HEIGHT: f32 = 560.0;
-const COMMUNITYFEED_PANE_WIDTH: f32 = 560.0;
-const COMMUNITYFEED_PANE_HEIGHT: f32 = 520.0;
-const COMMUNITYFEED_POST_PANE_WIDTH: f32 = 640.0;
-const COMMUNITYFEED_POST_PANE_HEIGHT: f32 = 560.0;
-const HOTBAR_HEIGHT: f32 = 52.0;
-const HOTBAR_FLOAT_GAP: f32 = 18.0;
-const HOTBAR_ITEM_SIZE: f32 = 36.0;
-const HOTBAR_ITEM_GAP: f32 = 6.0;
-const HOTBAR_PADDING: f32 = 6.0;
-const HOTBAR_SLOT_EVENTS: u8 = 0;
-const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
-const HOTBAR_SLOT_IDENTITY: u8 = 2;
-const HOTBAR_SLOT_WALLET: u8 = 3;
-const HOTBAR_SLOT_THREADS: u8 = 4;
-const AGENT_DELTA_ALIAS_CACHE_LIMIT: usize = 2048;
-const HOTBAR_SLOT_COMMUNITYFEED: u8 = 5;
-const HOTBAR_SLOT_AUTH: u8 = 6;
-const HOTBAR_SLOT_INBOX: u8 = 7;
-const HOTBAR_CHAT_SLOT_START: u8 = 8;
-const HOTBAR_SLOT_MAX: u8 = 9;
-const GRID_DOT_DISTANCE: f32 = 32.0;
-const MODEL_OPTIONS: [(&str, &str); 4] = [
-    (
-        "gpt-5.2",
-        "Latest frontier model with improvements across knowledge, reasoning and coding.",
-    ),
-    ("gpt-5.2-codex", "Latest frontier agentic coding model."),
-    (
-        "gpt-5.1-codex-max",
-        "Codex-optimized flagship for deep and fast reasoning.",
-    ),
-    (
-        "gpt-5.1-codex-mini",
-        "Optimized for Codex. Cheaper, faster, but less capable.",
-    ),
-];
-const REASONING_OPTIONS_FULL: [&str; 4] = ["low", "medium", "high", "xhigh"];
-const REASONING_OPTIONS_MINI: [&str; 2] = ["medium", "high"];
+mod constants;
+use constants::*;
 
 #[derive(Default, Clone)]
 pub struct AppViewModel {
@@ -196,6 +89,7 @@ impl AppViewModel {
             AppEvent::AppServerEvent { .. } => {}
             AppEvent::PylonStatus { .. } => {}
             AppEvent::WalletStatus { .. } => {}
+            AppEvent::LiquidityProviderStatus { .. } => {}
             AppEvent::DvmProviderStatus { .. } => {}
             AppEvent::DvmHistory { .. } => {}
             AppEvent::RuntimeAuthState { .. } => {}
@@ -511,6 +405,7 @@ enum PaneKind {
     Identity,
     Pylon,
     Wallet,
+    Liquidity,
     SellCompute,
     DvmHistory,
     Nip90,
@@ -856,7 +751,28 @@ pub struct MinimalRoot {
     wallet_status: WalletStatusView,
     wallet_refresh_button: Button,
     wallet_refresh_bounds: Bounds,
+    wallet_liquidity_button: Button,
+    wallet_liquidity_bounds: Bounds,
     pending_wallet_refresh: Rc<RefCell<bool>>,
+    pending_wallet_liquidity: Rc<RefCell<bool>>,
+    liquidity_status: LiquidityProviderStatusView,
+    liquidity_online_button: Button,
+    liquidity_offline_button: Button,
+    liquidity_refresh_button: Button,
+    liquidity_online_bounds: Bounds,
+    liquidity_offline_bounds: Bounds,
+    liquidity_refresh_bounds: Bounds,
+    pending_liquidity_online: Rc<RefCell<bool>>,
+    pending_liquidity_offline: Rc<RefCell<bool>>,
+    pending_liquidity_refresh: Rc<RefCell<bool>>,
+    liquidity_invoice_amount_input: TextInput,
+    liquidity_invoice_amount_bounds: Bounds,
+    liquidity_invoice_create_button: Button,
+    liquidity_invoice_create_bounds: Bounds,
+    pending_liquidity_invoice_create: Rc<RefCell<bool>>,
+    liquidity_invoice_copy_button: Button,
+    liquidity_invoice_copy_bounds: Bounds,
+    pending_liquidity_invoice_copy: Rc<RefCell<bool>>,
     sell_compute_status: SellComputeStatusView,
     sell_compute_online_button: Button,
     sell_compute_offline_button: Button,
@@ -3074,6 +2990,85 @@ impl MinimalRoot {
                 *pending_wallet_refresh_click.borrow_mut() = true;
             });
 
+        let pending_wallet_liquidity = Rc::new(RefCell::new(false));
+        let pending_wallet_liquidity_click = pending_wallet_liquidity.clone();
+        let wallet_liquidity_button = Button::new("Liquidity")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_wallet_liquidity_click.borrow_mut() = true;
+            });
+
+        let pending_liquidity_online = Rc::new(RefCell::new(false));
+        let pending_liquidity_online_click = pending_liquidity_online.clone();
+        let liquidity_online_button = Button::new("Go online")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_liquidity_online_click.borrow_mut() = true;
+            });
+
+        let pending_liquidity_offline = Rc::new(RefCell::new(false));
+        let pending_liquidity_offline_click = pending_liquidity_offline.clone();
+        let liquidity_offline_button = Button::new("Go offline")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_liquidity_offline_click.borrow_mut() = true;
+            });
+
+        let pending_liquidity_refresh = Rc::new(RefCell::new(false));
+        let pending_liquidity_refresh_click = pending_liquidity_refresh.clone();
+        let liquidity_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_liquidity_refresh_click.borrow_mut() = true;
+            });
+
+        let pending_liquidity_invoice_create = Rc::new(RefCell::new(false));
+        let pending_liquidity_invoice_create_click = pending_liquidity_invoice_create.clone();
+        let mut liquidity_invoice_amount_input = TextInput::new()
+            .placeholder("Invoice amount (sats)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_liquidity_invoice_create_click.borrow_mut() = true;
+            });
+        liquidity_invoice_amount_input.set_value("1000");
+
+        let pending_liquidity_invoice_create_click = pending_liquidity_invoice_create.clone();
+        let liquidity_invoice_create_button = Button::new("Create invoice")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_liquidity_invoice_create_click.borrow_mut() = true;
+            });
+
+        let pending_liquidity_invoice_copy = Rc::new(RefCell::new(false));
+        let pending_liquidity_invoice_copy_click = pending_liquidity_invoice_copy.clone();
+        let liquidity_invoice_copy_button = Button::new("Copy")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_liquidity_invoice_copy_click.borrow_mut() = true;
+            });
+
         let pending_sell_compute_online = Rc::new(RefCell::new(false));
         let pending_sell_compute_online_click = pending_sell_compute_online.clone();
         let sell_compute_online_button = Button::new("Go online")
@@ -3284,7 +3279,28 @@ impl MinimalRoot {
             wallet_status: WalletStatusView::default(),
             wallet_refresh_button,
             wallet_refresh_bounds: Bounds::ZERO,
+            wallet_liquidity_button,
+            wallet_liquidity_bounds: Bounds::ZERO,
             pending_wallet_refresh,
+            pending_wallet_liquidity,
+            liquidity_status: LiquidityProviderStatusView::default(),
+            liquidity_online_button,
+            liquidity_offline_button,
+            liquidity_refresh_button,
+            liquidity_online_bounds: Bounds::ZERO,
+            liquidity_offline_bounds: Bounds::ZERO,
+            liquidity_refresh_bounds: Bounds::ZERO,
+            pending_liquidity_online,
+            pending_liquidity_offline,
+            pending_liquidity_refresh,
+            liquidity_invoice_amount_input,
+            liquidity_invoice_amount_bounds: Bounds::ZERO,
+            liquidity_invoice_create_button,
+            liquidity_invoice_create_bounds: Bounds::ZERO,
+            pending_liquidity_invoice_create,
+            liquidity_invoice_copy_button,
+            liquidity_invoice_copy_bounds: Bounds::ZERO,
+            pending_liquidity_invoice_copy,
             sell_compute_status: SellComputeStatusView::default(),
             sell_compute_online_button,
             sell_compute_offline_button,
@@ -3357,7 +3373,8 @@ impl MinimalRoot {
         let text_input_focused = self.chat_panes.values().any(|chat| chat.input.is_focused())
             || self.file_editor.path_input.is_focused()
             || self.runtime_auth_email_input.is_focused()
-            || self.runtime_auth_code_input.is_focused();
+            || self.runtime_auth_code_input.is_focused()
+            || self.liquidity_invoice_amount_input.is_focused();
         ShortcutContext { text_input_focused }
     }
 
@@ -3415,6 +3432,19 @@ impl MinimalRoot {
                     spark_address: status.spark_address,
                     bitcoin_address: status.bitcoin_address,
                     identity_exists: status.identity_exists,
+                    last_error: status.last_error,
+                };
+            }
+            AppEvent::LiquidityProviderStatus { status } => {
+                self.liquidity_status = LiquidityProviderStatusView {
+                    running: status.running,
+                    provider_active: status.provider_active,
+                    worker_id: status.worker_id,
+                    earned_sats: status.earned_sats,
+                    max_invoice_sats: status.max_invoice_sats,
+                    max_hourly_sats: status.max_hourly_sats,
+                    max_daily_sats: status.max_daily_sats,
+                    last_invoice: status.last_invoice,
                     last_error: status.last_error,
                 };
             }
@@ -4132,6 +4162,38 @@ impl MinimalRoot {
         if self.pane_store.is_active("wallet") {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::WalletRefresh);
+            }
+        }
+    }
+
+    fn toggle_liquidity_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("liquidity", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            LIQUIDITY_PANE_WIDTH,
+                            LIQUIDITY_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "liquidity".to_string(),
+                    kind: PaneKind::Liquidity,
+                    title: "Liquidity".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+
+        if self.pane_store.is_active("liquidity") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::WalletRefresh);
+                handler(UserAction::LiquidityProviderRefresh);
             }
         }
     }
@@ -5361,7 +5423,71 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            handled |= refresh_handled;
+                            let liquidity_handled = matches!(
+                                self.wallet_liquidity_button.event(
+                                    event,
+                                    self.wallet_liquidity_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= refresh_handled || liquidity_handled;
+                        }
+                        PaneKind::Liquidity => {
+                            let online_handled = matches!(
+                                self.liquidity_online_button.event(
+                                    event,
+                                    self.liquidity_online_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let offline_handled = matches!(
+                                self.liquidity_offline_button.event(
+                                    event,
+                                    self.liquidity_offline_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let refresh_handled = matches!(
+                                self.liquidity_refresh_button.event(
+                                    event,
+                                    self.liquidity_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let amount_handled = matches!(
+                                self.liquidity_invoice_amount_input.event(
+                                    event,
+                                    self.liquidity_invoice_amount_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let create_handled = matches!(
+                                self.liquidity_invoice_create_button.event(
+                                    event,
+                                    self.liquidity_invoice_create_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let copy_handled = matches!(
+                                self.liquidity_invoice_copy_button.event(
+                                    event,
+                                    self.liquidity_invoice_copy_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= online_handled
+                                || offline_handled
+                                || refresh_handled
+                                || amount_handled
+                                || create_handled
+                                || copy_handled;
                         }
                         PaneKind::SellCompute => {
                             let online_handled = matches!(
@@ -5674,6 +5800,86 @@ impl MinimalRoot {
         if should_wallet_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::WalletRefresh);
+            }
+        }
+
+        let should_wallet_liquidity = {
+            let mut pending = self.pending_wallet_liquidity.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_wallet_liquidity {
+            self.toggle_liquidity_pane(self.screen_size());
+        }
+
+        let should_liquidity_online = {
+            let mut pending = self.pending_liquidity_online.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_liquidity_online {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::LiquidityProviderOnline);
+            }
+        }
+
+        let should_liquidity_offline = {
+            let mut pending = self.pending_liquidity_offline.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_liquidity_offline {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::LiquidityProviderOffline);
+            }
+        }
+
+        let should_liquidity_refresh = {
+            let mut pending = self.pending_liquidity_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_liquidity_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::LiquidityProviderRefresh);
+            }
+        }
+
+        let should_liquidity_create_invoice = {
+            let mut pending = self.pending_liquidity_invoice_create.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_liquidity_create_invoice {
+            let amount = self
+                .liquidity_invoice_amount_input
+                .get_value()
+                .trim()
+                .parse::<u64>()
+                .unwrap_or(0);
+            if amount > 0 {
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::LiquidityProviderCreateInvoice {
+                        amount_sats: amount,
+                    });
+                }
+            }
+        }
+
+        let should_liquidity_copy_invoice = {
+            let mut pending = self.pending_liquidity_invoice_copy.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_liquidity_copy_invoice {
+            if let Some(invoice) = self.liquidity_status.last_invoice.as_deref() {
+                let _ = copy_to_clipboard(invoice);
             }
         }
 
@@ -6367,6 +6573,7 @@ impl Component for MinimalRoot {
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
+                PaneKind::Liquidity => paint_liquidity_pane(self, content_bounds, cx),
                 PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
                 PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
@@ -7392,7 +7599,10 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     content_width = content_width.min(bounds.size.width - padding * 2.0);
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
     let refresh_width = 90.0;
+    let liquidity_width = 96.0;
+    let gap = 8.0;
     root.wallet_refresh_bounds = Bounds::ZERO;
+    root.wallet_liquidity_bounds = Bounds::ZERO;
 
     let identity_line = if root.wallet_status.identity_exists {
         "Identity: present"
@@ -7506,16 +7716,23 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
                 let button_bounds = aligned_row_bounds(
                     bounds,
                     button_height,
-                    &[wgpui::RowItem::fixed(refresh_width)],
-                    0.0,
+                    &[
+                        wgpui::RowItem::fixed(refresh_width),
+                        wgpui::RowItem::fixed(liquidity_width),
+                    ],
+                    gap,
                     JustifyContent::FlexStart,
                     AlignItems::Center,
-                )
-                .into_iter()
-                .next()
-                .unwrap_or(bounds);
-                root.wallet_refresh_bounds = button_bounds;
-                root.wallet_refresh_button.paint(button_bounds, cx);
+                );
+                if button_bounds.len() >= 2 {
+                    root.wallet_refresh_bounds = button_bounds[0];
+                    root.wallet_liquidity_bounds = button_bounds[1];
+                    root.wallet_refresh_button.paint(button_bounds[0], cx);
+                    root.wallet_liquidity_button.paint(button_bounds[1], cx);
+                } else if let Some(first) = button_bounds.into_iter().next() {
+                    root.wallet_refresh_bounds = first;
+                    root.wallet_refresh_button.paint(first, cx);
+                }
             }
             WalletStep::Line(text, color, _) => {
                 Text::new(text)
@@ -7524,6 +7741,273 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
                     .paint(bounds, cx);
             }
             WalletStep::Spacer(_) => {}
+        }
+    }
+}
+
+fn paint_liquidity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let button_height = 28.0;
+    let label_height = 16.0;
+    let value_spacing = 10.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.9).min(720.0).max(360.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+
+    let provider_active = root.liquidity_status.provider_active.unwrap_or(false);
+    let running = root.liquidity_status.running;
+    root.liquidity_online_button
+        .set_disabled(running && provider_active);
+    root.liquidity_offline_button.set_disabled(!running);
+    root.liquidity_invoice_copy_button
+        .set_disabled(root.liquidity_status.last_invoice.is_none());
+
+    let online_width = 92.0;
+    let offline_width = 96.0;
+    let refresh_width = 86.0;
+    let gap = 8.0;
+    root.liquidity_online_bounds = Bounds::ZERO;
+    root.liquidity_offline_bounds = Bounds::ZERO;
+    root.liquidity_refresh_bounds = Bounds::ZERO;
+    root.liquidity_invoice_amount_bounds = Bounds::ZERO;
+    root.liquidity_invoice_create_bounds = Bounds::ZERO;
+    root.liquidity_invoice_copy_bounds = Bounds::ZERO;
+
+    let daemon_line = if running {
+        "Daemon: running"
+    } else {
+        "Daemon: stopped"
+    };
+
+    enum LiquidityStep {
+        ButtonRow,
+        InvoiceRow,
+        InvoiceCopyRow,
+        Line(String, wgpui::color::Hsla, f32),
+        Spacer(f32),
+    }
+
+    let mut steps = vec![
+        LiquidityStep::ButtonRow,
+        LiquidityStep::Spacer(14.0),
+        LiquidityStep::Line(daemon_line.to_string(), theme::text::PRIMARY, label_height),
+        LiquidityStep::Spacer(value_spacing),
+    ];
+
+    if let Some(provider_active) = root.liquidity_status.provider_active {
+        steps.push(LiquidityStep::Line(
+            format!(
+                "Provider: {}",
+                if provider_active { "online" } else { "offline" }
+            ),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    if let Some(worker_id) = root.liquidity_status.worker_id.as_deref() {
+        steps.push(LiquidityStep::Line(
+            format!("Worker: {}", worker_id),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    steps.push(LiquidityStep::Line(
+        format!("Earned: {} sats", root.liquidity_status.earned_sats),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(LiquidityStep::Spacer(value_spacing));
+
+    if root.liquidity_status.max_invoice_sats > 0 {
+        steps.push(LiquidityStep::Line(
+            format!(
+                "Max per invoice: {} sats",
+                root.liquidity_status.max_invoice_sats
+            ),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+    if root.liquidity_status.max_hourly_sats > 0 {
+        steps.push(LiquidityStep::Line(
+            format!(
+                "Max per hour: {} sats",
+                root.liquidity_status.max_hourly_sats
+            ),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+    if root.liquidity_status.max_daily_sats > 0 {
+        steps.push(LiquidityStep::Line(
+            format!("Max per day: {} sats", root.liquidity_status.max_daily_sats),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    if let Some(address) = root.wallet_status.spark_address.as_deref() {
+        let mut text = Text::new(address).font_size(text_size);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(LiquidityStep::Line(
+            "Spark address".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(4.0));
+        steps.push(LiquidityStep::Line(
+            address.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    if let Some(address) = root.wallet_status.bitcoin_address.as_deref() {
+        let mut text = Text::new(address).font_size(text_size);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(LiquidityStep::Line(
+            "Bitcoin address".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(4.0));
+        steps.push(LiquidityStep::Line(
+            address.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    steps.push(LiquidityStep::Spacer(10.0));
+    steps.push(LiquidityStep::Line(
+        "Create invoice".to_string(),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(LiquidityStep::Spacer(4.0));
+    steps.push(LiquidityStep::InvoiceRow);
+    steps.push(LiquidityStep::Spacer(value_spacing));
+
+    if let Some(invoice) = root.liquidity_status.last_invoice.as_deref() {
+        let mut text = Text::new(invoice).font_size(text_size);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(LiquidityStep::Line(
+            "Last invoice".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(LiquidityStep::Spacer(4.0));
+        steps.push(LiquidityStep::Line(
+            invoice.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(LiquidityStep::Spacer(6.0));
+        steps.push(LiquidityStep::InvoiceCopyRow);
+        steps.push(LiquidityStep::Spacer(value_spacing));
+    }
+
+    if let Some(err) = root.liquidity_status.last_error.as_deref() {
+        steps.push(LiquidityStep::Line(
+            err.to_string(),
+            theme::accent::RED,
+            label_height,
+        ));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            LiquidityStep::ButtonRow => ColumnItem::Fixed(button_height),
+            LiquidityStep::InvoiceRow => ColumnItem::Fixed(button_height),
+            LiquidityStep::InvoiceCopyRow => ColumnItem::Fixed(button_height),
+            LiquidityStep::Line(_, _, height) => ColumnItem::Fixed(*height),
+            LiquidityStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            LiquidityStep::ButtonRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[
+                        wgpui::RowItem::fixed(online_width),
+                        wgpui::RowItem::fixed(offline_width),
+                        wgpui::RowItem::fixed(refresh_width),
+                    ],
+                    gap,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if row_bounds.len() >= 3 {
+                    root.liquidity_online_bounds = row_bounds[0];
+                    root.liquidity_offline_bounds = row_bounds[1];
+                    root.liquidity_refresh_bounds = row_bounds[2];
+                    root.liquidity_online_button.paint(row_bounds[0], cx);
+                    root.liquidity_offline_button.paint(row_bounds[1], cx);
+                    root.liquidity_refresh_button.paint(row_bounds[2], cx);
+                }
+            }
+            LiquidityStep::InvoiceRow => {
+                let invoice_button_width = 140.0;
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[
+                        wgpui::RowItem::flex(1.0),
+                        wgpui::RowItem::fixed(invoice_button_width),
+                    ],
+                    gap,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if row_bounds.len() >= 2 {
+                    root.liquidity_invoice_amount_bounds = row_bounds[0];
+                    root.liquidity_invoice_create_bounds = row_bounds[1];
+                    root.liquidity_invoice_amount_input.paint(row_bounds[0], cx);
+                    root.liquidity_invoice_create_button
+                        .paint(row_bounds[1], cx);
+                }
+            }
+            LiquidityStep::InvoiceCopyRow => {
+                let copy_width = 76.0;
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(copy_width)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if let Some(copy_bounds) = row_bounds.into_iter().next() {
+                    root.liquidity_invoice_copy_bounds = copy_bounds;
+                    root.liquidity_invoice_copy_button.paint(copy_bounds, cx);
+                }
+            }
+            LiquidityStep::Line(text, color, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            LiquidityStep::Spacer(_) => {}
         }
     }
 }
@@ -11280,6 +11764,19 @@ struct WalletStatusView {
 }
 
 #[derive(Clone, Debug, Default)]
+struct LiquidityProviderStatusView {
+    running: bool,
+    provider_active: Option<bool>,
+    worker_id: Option<String>,
+    earned_sats: u64,
+    max_invoice_sats: u64,
+    max_hourly_sats: u64,
+    max_daily_sats: u64,
+    last_invoice: Option<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
 struct SellComputeStatusView {
     running: bool,
     provider_active: Option<bool>,
@@ -11360,6 +11857,12 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::PylonStop => "PylonStop".to_string(),
             UserAction::PylonRefresh => "PylonRefresh".to_string(),
             UserAction::WalletRefresh => "WalletRefresh".to_string(),
+            UserAction::LiquidityProviderOnline => "LiquidityProviderOnline".to_string(),
+            UserAction::LiquidityProviderOffline => "LiquidityProviderOffline".to_string(),
+            UserAction::LiquidityProviderRefresh => "LiquidityProviderRefresh".to_string(),
+            UserAction::LiquidityProviderCreateInvoice { amount_sats } => {
+                format!("LiquidityProviderCreateInvoice ({amount_sats} sats)")
+            }
             UserAction::DvmProviderStart => "DvmProviderStart".to_string(),
             UserAction::DvmProviderStop => "DvmProviderStop".to_string(),
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
@@ -11415,6 +11918,13 @@ fn format_event(event: &AppEvent) -> String {
                 "WalletStatus (identity)".to_string()
             } else {
                 "WalletStatus (missing identity)".to_string()
+            }
+        }
+        AppEvent::LiquidityProviderStatus { status } => {
+            if status.running {
+                "LiquidityProviderStatus (running)".to_string()
+            } else {
+                "LiquidityProviderStatus (stopped)".to_string()
             }
         }
         AppEvent::DvmProviderStatus { status } => {
@@ -11750,322 +12260,4 @@ fn paint_panel(cx: &mut PaintContext, bounds: Bounds) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn approx_eq(a: f32, b: f32) {
-        assert!(
-            (a - b).abs() < 0.5,
-            "expected {a} ~= {b} (diff {})",
-            (a - b).abs()
-        );
-    }
-
-    #[test]
-    fn layout_panels_are_consistent() {
-        let bounds = Bounds::new(0.0, 0.0, 1200.0, 800.0);
-        let layout = Layout::new(bounds);
-
-        approx_eq(layout.left_panel_bounds.size.width, LEFT_PANEL_WIDTH);
-        approx_eq(layout.right_panel_bounds.size.width, RIGHT_PANEL_WIDTH);
-
-        let expected_center_width =
-            bounds.size.width - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH - PANEL_GAP * 2.0;
-        approx_eq(layout.center_panel_bounds.size.width, expected_center_width);
-
-        approx_eq(layout.command_bar_bounds.size.height, COMMAND_BAR_HEIGHT);
-        approx_eq(
-            layout.command_bar_bounds.origin.y,
-            bounds.size.height - COMMAND_BAR_HEIGHT,
-        );
-
-        assert!(
-            layout.right_body_bounds.origin.y
-                >= layout.right_header_bounds.origin.y + layout.right_header_bounds.size.height
-        );
-        assert!(
-            layout.left_header_bounds.origin.x
-                >= layout.left_panel_bounds.origin.x + PANEL_PADDING - 0.5
-        );
-    }
-
-    #[test]
-    fn extract_thread_hint_prefers_thread_id_fields() {
-        let params = serde_json::json!({
-            "threadId": "thread-primary",
-            "conversationId": "thread-fallback",
-            "msg": {
-                "thread_id": "thread-nested"
-            }
-        });
-
-        assert_eq!(
-            extract_thread_hint(Some(&params)).as_deref(),
-            Some("thread-primary")
-        );
-    }
-
-    #[test]
-    fn extract_thread_hint_supports_codex_event_conversation_fields() {
-        let params = serde_json::json!({
-            "conversationId": "conv-root"
-        });
-
-        assert_eq!(
-            extract_thread_hint(Some(&params)).as_deref(),
-            Some("conv-root")
-        );
-    }
-
-    #[test]
-    fn extract_thread_hint_supports_nested_codex_msg_thread_fields() {
-        let params = serde_json::json!({
-            "msg": {
-                "thread_id": "thread-nested"
-            }
-        });
-
-        assert_eq!(
-            extract_thread_hint(Some(&params)).as_deref(),
-            Some("thread-nested")
-        );
-    }
-
-    #[test]
-    fn agent_delta_aliases_do_not_double_append_modern_then_legacy() {
-        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
-        let modern = serde_json::json!({
-            "method": "item/agentMessage/delta",
-            "params": {
-                "itemId": "msg-1",
-                "delta": "Hi "
-            }
-        });
-        let legacy = serde_json::json!({
-            "method": "codex/event/agent_message_content_delta",
-            "params": {
-                "msg": {
-                    "item_id": "msg-1",
-                    "delta": "Hi "
-                }
-            }
-        });
-
-        chat.apply_formatted_event(&modern);
-        chat.apply_formatted_event(&legacy);
-
-        let stream = chat
-            .formatted_message_streams
-            .get("msg-1")
-            .expect("agent stream should exist");
-        assert_eq!(stream.source(), "Hi ");
-    }
-
-    #[test]
-    fn agent_delta_aliases_do_not_double_append_legacy_then_modern() {
-        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
-        let modern = serde_json::json!({
-            "method": "item/agentMessage/delta",
-            "params": {
-                "itemId": "msg-1",
-                "delta": "Hi "
-            }
-        });
-        let legacy = serde_json::json!({
-            "method": "codex/event/agent_message_content_delta",
-            "params": {
-                "msg": {
-                    "item_id": "msg-1",
-                    "delta": "Hi "
-                }
-            }
-        });
-
-        chat.apply_formatted_event(&legacy);
-        chat.apply_formatted_event(&modern);
-
-        let stream = chat
-            .formatted_message_streams
-            .get("msg-1")
-            .expect("agent stream should exist");
-        assert_eq!(stream.source(), "Hi ");
-    }
-
-    #[test]
-    fn repeated_modern_agent_deltas_still_append() {
-        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
-        let modern = serde_json::json!({
-            "method": "item/agentMessage/delta",
-            "params": {
-                "itemId": "msg-1",
-                "delta": "go "
-            }
-        });
-
-        chat.apply_formatted_event(&modern);
-        chat.apply_formatted_event(&modern);
-
-        let stream = chat
-            .formatted_message_streams
-            .get("msg-1")
-            .expect("agent stream should exist");
-        assert_eq!(stream.source(), "go go ");
-    }
-
-    #[test]
-    fn inbox_list_toggle_opens_and_closes_pane() {
-        let mut root = MinimalRoot::new();
-        let screen = Size::new(1280.0, 720.0);
-
-        root.toggle_inbox_list_pane(screen);
-        let pane = root
-            .pane_store
-            .pane("inbox-list")
-            .expect("pane should open");
-        assert_eq!(pane.kind, PaneKind::InboxList);
-
-        root.toggle_inbox_list_pane(screen);
-        assert!(root.pane_store.pane("inbox-list").is_none());
-    }
-
-    #[test]
-    fn inbox_snapshot_event_updates_state() {
-        let mut root = MinimalRoot::new();
-        let snapshot = InboxSnapshot {
-            threads: vec![
-                InboxThreadSummary {
-                    id: "thread-1".to_string(),
-                    subject: "Subject".to_string(),
-                    from_address: "sender@example.com".to_string(),
-                    snippet: "snippet".to_string(),
-                    category: "ops".to_string(),
-                    risk: "low".to_string(),
-                    policy: "send_with_approval".to_string(),
-                    draft_preview: "draft".to_string(),
-                    pending_approval: true,
-                    updated_at: "2026-02-21T00:00:00Z".to_string(),
-                },
-                InboxThreadSummary {
-                    id: "thread-2".to_string(),
-                    subject: "Subject 2".to_string(),
-                    from_address: "sender2@example.com".to_string(),
-                    snippet: "snippet 2".to_string(),
-                    category: "sales".to_string(),
-                    risk: "medium".to_string(),
-                    policy: "draft_only".to_string(),
-                    draft_preview: "draft 2".to_string(),
-                    pending_approval: false,
-                    updated_at: "2026-02-21T00:00:01Z".to_string(),
-                },
-            ],
-            selected_thread_id: Some("thread-1".to_string()),
-            audit_log: vec![InboxAuditEntry {
-                thread_id: "thread-1".to_string(),
-                action: "select_thread".to_string(),
-                detail: "selected".to_string(),
-                created_at: "2026-02-21T00:00:02Z".to_string(),
-            }],
-        };
-
-        root.apply_event(AppEvent::InboxUpdated {
-            snapshot,
-            source: "test".to_string(),
-        });
-
-        assert_eq!(root.inbox.threads.len(), 2);
-        assert_eq!(
-            root.inbox
-                .selected_thread()
-                .map(|thread| thread.id.as_str()),
-            Some("thread-1")
-        );
-        assert_eq!(root.inbox.pending_threads().len(), 1);
-        assert_eq!(root.inbox.audit_log.len(), 1);
-        assert_eq!(root.inbox.source.as_deref(), Some("test"));
-    }
-
-    #[test]
-    fn inbox_row_hit_testing_returns_thread_id() {
-        let mut inbox = InboxPaneState::default();
-        inbox.list_row_bounds = vec![(
-            "thread-hit".to_string(),
-            Bounds::new(10.0, 20.0, 100.0, 30.0),
-        )];
-
-        assert_eq!(
-            inbox.row_at(Point::new(50.0, 35.0)).as_deref(),
-            Some("thread-hit")
-        );
-        assert!(inbox.row_at(Point::new(200.0, 200.0)).is_none());
-    }
-
-    #[test]
-    fn route_state_tracks_codex_and_inbox_context_together() {
-        let mut root = MinimalRoot::new();
-        let screen = Size::new(1280.0, 720.0);
-        let chat_id = root.open_chat_pane(screen, true, false, DEFAULT_THREAD_MODEL);
-        if let Some(chat) = root.chat_panes.get_mut(&chat_id) {
-            chat.thread_id = Some("codex-thread-1".to_string());
-        }
-
-        root.apply_event(AppEvent::InboxUpdated {
-            snapshot: InboxSnapshot {
-                threads: vec![InboxThreadSummary {
-                    id: "inbox-thread-1".to_string(),
-                    subject: "Inbox Subject".to_string(),
-                    from_address: "sender@example.com".to_string(),
-                    snippet: "snippet".to_string(),
-                    category: "ops".to_string(),
-                    risk: "low".to_string(),
-                    policy: "draft_only".to_string(),
-                    draft_preview: "draft".to_string(),
-                    pending_approval: true,
-                    updated_at: "2026-02-21T00:00:00Z".to_string(),
-                }],
-                selected_thread_id: Some("inbox-thread-1".to_string()),
-                audit_log: Vec::new(),
-            },
-            source: "test".to_string(),
-        });
-
-        root.toggle_inbox_list_pane(screen);
-        root.pane_store.bring_to_front("inbox-list");
-        root.sync_route_state();
-
-        assert_eq!(root.route_state.active_surface, DesktopSurfaceRoute::Inbox);
-        assert_eq!(
-            root.route_state.codex_thread_id.as_deref(),
-            Some("codex-thread-1")
-        );
-        assert_eq!(
-            root.route_state.inbox_thread_id.as_deref(),
-            Some("inbox-thread-1")
-        );
-        assert_eq!(root.route_state.inbox_pane, Some(InboxRoutePane::List));
-    }
-
-    #[test]
-    fn route_state_switches_surface_without_losing_other_domain_context() {
-        let mut root = MinimalRoot::new();
-        let screen = Size::new(1280.0, 720.0);
-        let chat_id = root.open_chat_pane(screen, true, false, DEFAULT_THREAD_MODEL);
-        if let Some(chat) = root.chat_panes.get_mut(&chat_id) {
-            chat.thread_id = Some("codex-thread-2".to_string());
-        }
-        root.toggle_inbox_list_pane(screen);
-        root.inbox.selected_thread_id = Some("inbox-thread-2".to_string());
-
-        root.pane_store.bring_to_front(&chat_id);
-        root.sync_route_state();
-
-        assert_eq!(root.route_state.active_surface, DesktopSurfaceRoute::Codex);
-        assert_eq!(
-            root.route_state.codex_thread_id.as_deref(),
-            Some("codex-thread-2")
-        );
-        assert_eq!(
-            root.route_state.inbox_thread_id.as_deref(),
-            Some("inbox-thread-2")
-        );
-    }
-}
+mod tests;

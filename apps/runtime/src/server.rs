@@ -40,7 +40,9 @@ use crate::{
     liquidity::{LiquidityError, LiquidityService},
     liquidity_pool::{
         LiquidityPoolError, LiquidityPoolService,
-        service::{HttpWalletExecutorClient, UnavailableWalletExecutorClient, WalletExecutorClient},
+        service::{
+            HttpWalletExecutorClient, UnavailableWalletExecutorClient, WalletExecutorClient,
+        },
         store as liquidity_pool_store,
         types::{
             DepositQuoteRequestV1, DepositQuoteResponseV1, PoolCreateRequestV1,
@@ -79,6 +81,7 @@ pub struct AppState {
     compute_telemetry: Arc<ComputeTelemetry>,
     treasury: Arc<Treasury>,
     fraud: Arc<FraudIncidentLog>,
+    comms_delivery_events: Arc<Mutex<HashMap<String, CommsDeliveryAccepted>>>,
     fleet_seq: Arc<AtomicU64>,
     fraud_seq: Arc<AtomicU64>,
     started_at: chrono::DateTime<Utc>,
@@ -138,6 +141,7 @@ impl AppState {
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
             treasury: Arc::new(Treasury::default()),
             fraud: Arc::new(FraudIncidentLog::default()),
+            comms_delivery_events: Arc::new(Mutex::new(HashMap::new())),
             fleet_seq: Arc::new(AtomicU64::new(0)),
             fraud_seq: Arc::new(AtomicU64::new(0)),
             started_at: Utc::now(),
@@ -738,6 +742,33 @@ struct SettleSandboxRunResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct CommsDeliveryEventRequest {
+    event_id: String,
+    provider: String,
+    delivery_state: String,
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    integration_id: Option<String>,
+    #[serde(default)]
+    recipient: Option<String>,
+    #[serde(default)]
+    occurred_at: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CommsDeliveryAccepted {
+    event_id: String,
+    status: String,
+    #[serde(rename = "idempotentReplay")]
+    idempotent_replay: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct DriftQuery {
     topic: String,
 }
@@ -774,6 +805,10 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
+        .route(
+            "/internal/v1/comms/delivery-events",
+            post(record_comms_delivery_event),
+        )
         .route("/internal/v1/runs", post(start_run))
         .route("/internal/v1/runs/:run_id", get(get_run))
         .route("/internal/v1/runs/:run_id/events", post(append_run_event))
@@ -936,6 +971,49 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             fanout_driver: state.fanout.driver_name().to_string(),
         }),
     )
+}
+
+async fn record_comms_delivery_event(
+    State(state): State<AppState>,
+    Json(body): Json<CommsDeliveryEventRequest>,
+) -> Result<(StatusCode, Json<CommsDeliveryAccepted>), ApiError> {
+    let event_id = body.event_id.trim().to_string();
+    if event_id.is_empty() {
+        return Err(ApiError::InvalidRequest("event_id is required".to_string()));
+    }
+    let provider = body.provider.trim().to_ascii_lowercase();
+    if provider.is_empty() {
+        return Err(ApiError::InvalidRequest("provider is required".to_string()));
+    }
+    let delivery_state = body.delivery_state.trim().to_ascii_lowercase();
+    if delivery_state.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "delivery_state is required".to_string(),
+        ));
+    }
+    if body.payload.is_null() {
+        return Err(ApiError::InvalidRequest("payload is required".to_string()));
+    }
+
+    let key = format!("{provider}::{event_id}");
+    let mut guard = state.comms_delivery_events.lock().await;
+    if let Some(existing) = guard.get(&key).cloned() {
+        return Ok((
+            StatusCode::OK,
+            Json(CommsDeliveryAccepted {
+                idempotent_replay: true,
+                ..existing
+            }),
+        ));
+    }
+
+    let accepted = CommsDeliveryAccepted {
+        event_id,
+        status: "accepted".to_string(),
+        idempotent_replay: false,
+    };
+    guard.insert(key, accepted.clone());
+    Ok((StatusCode::ACCEPTED, Json(accepted)))
 }
 
 async fn start_run(
@@ -5436,6 +5514,53 @@ mod tests {
             &EncodingKey::from_secret(TEST_SYNC_SIGNING_KEY.as_bytes()),
         )
         .expect("sync token should encode")
+    }
+
+    #[tokio::test]
+    async fn comms_delivery_events_endpoint_accepts_and_deduplicates() -> Result<()> {
+        let app = test_router();
+        let payload = json!({
+            "event_id": "resend_evt_123",
+            "provider": "resend",
+            "delivery_state": "delivered",
+            "message_id": "email_abc",
+            "integration_id": "resend.primary",
+            "recipient": "user@example.com",
+            "occurred_at": "2026-02-24T00:00:00Z",
+            "payload": {
+                "rawType": "email.delivered"
+            }
+        });
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/comms/delivery-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload)?))?,
+            )
+            .await?;
+        assert_eq!(first.status(), axum::http::StatusCode::ACCEPTED);
+        let first_json = response_json(first).await?;
+        assert_eq!(first_json["status"], "accepted");
+        assert_eq!(first_json["idempotentReplay"], false);
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/comms/delivery-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload)?))?,
+            )
+            .await?;
+        assert_eq!(second.status(), axum::http::StatusCode::OK);
+        let second_json = response_json(second).await?;
+        assert_eq!(second_json["status"], "accepted");
+        assert_eq!(second_json["idempotentReplay"], true);
+        Ok(())
     }
 
     #[tokio::test]

@@ -59,6 +59,7 @@ const DEFAULT_LIQUIDITY_STATS_POOL_IDS: &str = "llp-main";
 const DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS: u64 = 300;
 const DEFAULT_GOOGLE_OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send";
 const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const DEFAULT_GOOGLE_GMAIL_API_BASE_URL: &str = "https://gmail.googleapis.com";
 const DEFAULT_RUNTIME_DRIVER: &str = "legacy";
 const DEFAULT_RUNTIME_FORCE_LEGACY: bool = false;
 const DEFAULT_RUNTIME_CANARY_USER_PERCENT: u8 = 0;
@@ -152,6 +153,7 @@ pub struct Config {
     pub google_oauth_redirect_uri: Option<String>,
     pub google_oauth_scopes: String,
     pub google_oauth_token_url: String,
+    pub google_gmail_api_base_url: String,
     pub runtime_driver: String,
     pub runtime_force_driver: Option<String>,
     pub runtime_force_legacy: bool,
@@ -605,6 +607,12 @@ impl Config {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_GOOGLE_OAUTH_TOKEN_URL.to_string());
 
+        let google_gmail_api_base_url = env::var("GOOGLE_GMAIL_API_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_GOOGLE_GMAIL_API_BASE_URL.to_string());
+
         let runtime_driver = env::var("OA_RUNTIME_DRIVER")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -804,6 +812,7 @@ impl Config {
             google_oauth_redirect_uri,
             google_oauth_scopes,
             google_oauth_token_url,
+            google_gmail_api_base_url,
             runtime_driver,
             runtime_force_driver,
             runtime_force_legacy,

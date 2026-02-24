@@ -38,6 +38,23 @@ apps/openagents.com/service/scripts/htmx_browser_smoke.sh
 apps/openagents.com/service/scripts/htmx-route-group-canary.sh
 ```
 
+1. Gmail inbox lane (control-service)
+- connect Google account via `/settings/integrations/google/redirect` and callback completion
+- verify inbox thread list endpoint:
+  - `GET /api/inbox/threads`
+- verify inbox detail + action endpoints:
+  - `GET /api/inbox/threads/{thread_id}`
+  - `POST /api/inbox/threads/{thread_id}/draft/approve`
+  - `POST /api/inbox/threads/{thread_id}/draft/reject`
+  - `POST /api/inbox/threads/{thread_id}/reply/send`
+- confirm runtime comms ingest route alignment:
+  - control forwards to `/internal/v1/comms/delivery-events`
+  - runtime accepts `POST /internal/v1/comms/delivery-events`
+- capture release evidence:
+  - request/response logs with request ids
+  - connected Gmail test account identifier (redacted)
+  - send confirmation message id
+
 2. Runtime lane
 - runtime health + authority API smoke
 - migration drift check (runtime image matches migrate job image)

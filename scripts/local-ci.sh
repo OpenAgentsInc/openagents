@@ -15,7 +15,9 @@ CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-
 IOS_RUST_CORE_TRIGGER_PATTERN='^(apps/autopilot-ios/|crates/openagents-client-core/|apps/autopilot-ios/scripts/build-rust-client-core\.sh$|apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility\.sh$)'
 IOS_CODEX_WGPUI_TRIGGER_PATTERN='^(apps/autopilot-ios/Autopilot/Autopilot/|apps/autopilot-ios/scripts/|apps/autopilot-ios/docs/|crates/openagents-client-core/|scripts/local-ci\.sh$)'
 RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
+RUST_CLIPPY_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN='^(apps/openagents\.com/(app/Http/Controllers/Api/RuntimeCodexWorkersController\.php|app/AI/Runtime/RuntimeCodexClient\.php|config/runtime\.php|routes/api\.php|tests/Feature/Api/RuntimeCodexWorkersApiTest\.php))'
+INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
 
 is_truthy() {
   local value="${1:-}"
@@ -186,6 +188,8 @@ run_trigger_tests() {
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/README.md" "false"
+  assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "true"
+  assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "docs/README.md" "false"
 
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php" "true"
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/ChatStreamingTest.php" "false"
@@ -367,6 +371,29 @@ run_workspace_compile() {
   )
 }
 
+run_rust_clippy_checks() {
+  echo "==> workspace rust clippy (critical crates)"
+  (
+    cd "$ROOT_DIR"
+    cargo clippy -p openagents-runtime-service --all-targets
+    cargo clippy -p openagents-web-shell --all-targets
+    cargo clippy -p openagents-client-core --all-targets
+    cargo clippy -p wgpui --all-targets
+    cargo clippy -p autopilot-desktop --all-targets
+  )
+}
+
+run_inbox_gmail_checks() {
+  echo "==> inbox gmail contract checks"
+  (
+    cd "$ROOT_DIR"
+    cargo test -p openagents-control-service inbox_routes_fetch_gmail_threads_and_support_actions
+    cargo test -p openagents-control-service inbox_threads_fail_when_refresh_token_is_missing
+    cargo test -p autopilot-desktop extract_inbox_snapshot_parses_contract_shape
+    cargo test -p openagents-runtime-service comms_delivery_events_endpoint_accepts_and_deduplicates
+  )
+}
+
 has_match() {
   local pattern="$1"
   local files="$2"
@@ -383,6 +410,7 @@ run_all_rust() {
   run_runtime_history_checks
   run_web_shell_checks
   run_ios_rust_core_checks
+  run_inbox_gmail_checks
 }
 
 run_all() {
@@ -462,6 +490,18 @@ run_changed() {
     run_workspace_compile
   fi
 
+  if has_match "$RUST_CLIPPY_TRIGGER_PATTERN" "$changed_files"; then
+    if is_truthy "${OA_LOCAL_CI_ENABLE_CLIPPY:-0}"; then
+      run_rust_clippy_checks
+    else
+      echo "==> rust-clippy-triggered paths detected; clippy skipped (set OA_LOCAL_CI_ENABLE_CLIPPY=1 to enable)"
+    fi
+  fi
+
+  if has_match "$INBOX_GMAIL_TRIGGER_PATTERN" "$changed_files"; then
+    run_inbox_gmail_checks
+  fi
+
   if [[ "$legacy_lanes_detected" -eq 1 ]]; then
     echo "==> legacy-triggered paths detected; compatibility lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
   fi
@@ -519,6 +559,9 @@ case "$MODE" in
   workspace-compile)
     run_workspace_compile
     ;;
+  clippy-rust)
+    run_rust_clippy_checks
+    ;;
   cross-surface)
     run_cross_surface_harness
     ;;
@@ -531,6 +574,9 @@ case "$MODE" in
     ;;
   runtime-codex-workers-php)
     run_runtime_codex_workers_php_tests
+    ;;
+  inbox-gmail)
+    run_inbox_gmail_checks
     ;;
   test-triggers)
     run_trigger_tests
@@ -553,7 +599,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|clippy-rust|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -14,7 +14,8 @@ use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, CommunityFeedCommentSummary,
     CommunityFeedPostSummary, CommunityFeedProfileSummary, DvmHistorySnapshot, DvmProviderStatus,
-    EventRecorder, PylonStatus, RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
+    EventRecorder, InboxAuditEntry, InboxSnapshot, InboxThreadSummary, LiquidityProviderStatus,
+    PylonStatus, RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -112,6 +113,9 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
+const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
+const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
+const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
 const RUNTIME_SYNC_KHALA_TOPIC: &str = "runtime.codex_worker_events";
 const RUNTIME_SYNC_KHALA_CHANNEL: &str = "sync:v1";
 const RUNTIME_SYNC_KHALA_WS_VSN: &str = "2.0.0";
@@ -148,6 +152,12 @@ enum AuthCommand {
     },
     Logout,
     Status,
+}
+
+#[derive(Debug)]
+struct InboxThreadDetailBridge {
+    thread: InboxThreadSummary,
+    audit_log: Vec<InboxAuditEntry>,
 }
 
 #[derive(Clone)]
@@ -316,6 +326,26 @@ impl RuntimeCodexSync {
             .unwrap_or_else(|| "desktop".to_string());
         let safe_scope = sanitize_worker_component(&scope);
         let mut worker_id = format!("{}:{}:shared", self.worker_prefix, safe_scope);
+
+        if worker_id.len() > 160 {
+            worker_id.truncate(160);
+        }
+
+        if worker_id.len() < 3 {
+            worker_id = format!("{}:{}", self.worker_prefix, Uuid::new_v4());
+        }
+
+        worker_id
+    }
+
+    fn worker_id_for_liquidity_provider(&self) -> String {
+        let scope = env::var("HOSTNAME")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "desktop".to_string());
+        let safe_scope = sanitize_worker_component(&scope);
+        let mut worker_id = format!("{}:{}:liquidity", self.worker_prefix, safe_scope);
 
         if worker_id.len() > 160 {
             worker_id.truncate(160);
@@ -1146,6 +1176,45 @@ impl RuntimeCodexSync {
         guard.get(worker_id).copied()
     }
 
+    async fn inbox_threads_snapshot(&self, limit: Option<usize>) -> Result<InboxSnapshot, String> {
+        let path = match limit {
+            Some(limit) => format!("/api/inbox/threads?limit={limit}"),
+            None => "/api/inbox/threads".to_string(),
+        };
+        let response = self.get_json(path.as_str()).await?;
+        extract_inbox_snapshot(&response)
+    }
+
+    async fn inbox_refresh_snapshot(&self, limit: Option<u64>) -> Result<InboxSnapshot, String> {
+        let body = match limit {
+            Some(limit) => json!({ "limit": limit }),
+            None => json!({}),
+        };
+        let response = self.post_json("/api/inbox/refresh", body).await?;
+        extract_inbox_snapshot(&response)
+    }
+
+    async fn inbox_thread_detail(
+        &self,
+        thread_id: &str,
+    ) -> Result<InboxThreadDetailBridge, String> {
+        let path = format!("/api/inbox/threads/{thread_id}");
+        let response = self.get_json(path.as_str()).await?;
+        extract_inbox_thread_detail(&response)
+    }
+
+    async fn inbox_approve_draft(&self, thread_id: &str) -> Result<InboxSnapshot, String> {
+        let path = format!("/api/inbox/threads/{thread_id}/draft/approve");
+        let response = self.post_json(path.as_str(), json!({})).await?;
+        extract_inbox_snapshot(&response)
+    }
+
+    async fn inbox_reject_draft(&self, thread_id: &str) -> Result<InboxSnapshot, String> {
+        let path = format!("/api/inbox/threads/{thread_id}/draft/reject");
+        let response = self.post_json(path.as_str(), json!({})).await?;
+        extract_inbox_snapshot(&response)
+    }
+
     async fn get_json(&self, path: &str) -> Result<Value, String> {
         let response = self
             .request_builder(Method::GET, path)
@@ -1211,6 +1280,41 @@ fn runtime_sync_error_message(status: reqwest::StatusCode, raw_body: &str) -> St
         .unwrap_or_else(|| format!("runtime sync request failed ({status})"))
 }
 
+fn extract_inbox_snapshot(response: &Value) -> Result<InboxSnapshot, String> {
+    let snapshot = response
+        .get("data")
+        .and_then(|data| data.get("snapshot"))
+        .cloned()
+        .ok_or_else(|| "inbox snapshot missing in response".to_string())?;
+    serde_json::from_value::<InboxSnapshot>(snapshot)
+        .map_err(|err| format!("inbox snapshot decode failed: {err}"))
+}
+
+fn extract_inbox_thread_detail(response: &Value) -> Result<InboxThreadDetailBridge, String> {
+    let data = response
+        .get("data")
+        .ok_or_else(|| "inbox thread detail missing data envelope".to_string())?;
+    let thread = data
+        .get("thread")
+        .cloned()
+        .ok_or_else(|| "inbox thread detail missing thread payload".to_string())
+        .and_then(|value| {
+            serde_json::from_value::<InboxThreadSummary>(value)
+                .map_err(|err| format!("inbox thread summary decode failed: {err}"))
+        })?;
+    let audit_log = data
+        .get("audit_log")
+        .cloned()
+        .map(|value| {
+            serde_json::from_value::<Vec<InboxAuditEntry>>(value)
+                .map_err(|err| format!("inbox audit log decode failed: {err}"))
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(InboxThreadDetailBridge { thread, audit_log })
+}
+
 fn sanitize_worker_component(value: &str) -> String {
     let mut out = value
         .chars()
@@ -1260,6 +1364,39 @@ fn parse_positive_u64_env(name: &str) -> Option<u64> {
     }
 
     trimmed.parse::<u64>().ok().filter(|value| *value > 0)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LiquidityProviderCaps {
+    max_invoice_sats: u64,
+    max_hourly_sats: u64,
+    max_daily_sats: u64,
+}
+
+fn liquidity_provider_caps_from_env() -> LiquidityProviderCaps {
+    LiquidityProviderCaps {
+        max_invoice_sats: parse_positive_u64_env(ENV_LIQUIDITY_MAX_INVOICE_SATS).unwrap_or(50_000),
+        max_hourly_sats: parse_positive_u64_env(ENV_LIQUIDITY_MAX_HOURLY_SATS).unwrap_or(200_000),
+        max_daily_sats: parse_positive_u64_env(ENV_LIQUIDITY_MAX_DAILY_SATS).unwrap_or(1_000_000),
+    }
+}
+
+fn liquidity_provider_status_with_caps(caps: LiquidityProviderCaps) -> LiquidityProviderStatus {
+    LiquidityProviderStatus {
+        running: false,
+        provider_active: Some(false),
+        worker_id: None,
+        earned_sats: 0,
+        max_invoice_sats: caps.max_invoice_sats,
+        max_hourly_sats: caps.max_hourly_sats,
+        max_daily_sats: caps.max_daily_sats,
+        last_invoice: None,
+        last_error: None,
+    }
+}
+
+fn liquidity_provider_status_default() -> LiquidityProviderStatus {
+    liquidity_provider_status_with_caps(liquidity_provider_caps_from_env())
 }
 
 fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (String, Value) {
@@ -3327,10 +3464,50 @@ fn spawn_event_bridge(
             tokio::task::spawn_blocking(move || {
                 let mut pylon_runtime = InProcessPylon::new();
                 let mut inbox_state = DesktopInboxState::new();
+                let liquidity_online = Arc::new(AtomicBool::new(false));
+                let mut liquidity_heartbeat: Option<tokio::task::JoinHandle<()>> = None;
+                let mut liquidity_status = liquidity_provider_status_default();
+                let _ = proxy_actions.send_event(AppEvent::LiquidityProviderStatus {
+                    status: liquidity_status.clone(),
+                });
                 let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
                     snapshot: inbox_state.snapshot(),
                     source: "bootstrap".to_string(),
                 });
+                if let Some(sync) = runtime_sync_actions.as_ref() {
+                    match handle.block_on(sync.inbox_threads_snapshot(Some(20))) {
+                        Ok(snapshot) => {
+                            inbox_state.replace_snapshot(snapshot);
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "bootstrap_remote".to_string(),
+                            });
+                        }
+                        Err(err) => {
+                            let detail = format!("Inbox bootstrap failed: {err}");
+                            inbox_state.push_system_error(detail.as_str());
+                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                snapshot: inbox_state.snapshot(),
+                                source: "bootstrap_error".to_string(),
+                            });
+                            let _ = proxy_actions.send_event(AppEvent::AppServerEvent {
+                                message: json!({
+                                    "method": "inbox/error",
+                                    "params": { "message": detail }
+                                })
+                                .to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    inbox_state.push_system_error(
+                        "Runtime sync is not configured; inbox requires authenticated backend access.",
+                    );
+                    let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                        snapshot: inbox_state.snapshot(),
+                        source: "bootstrap_no_runtime_sync".to_string(),
+                    });
+                }
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
                     match action {
@@ -4006,13 +4183,52 @@ fn spawn_event_bridge(
                             });
                         }
                         UserAction::InboxRefresh => {
-                            inbox_state.refresh();
-                            let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
-                                snapshot: inbox_state.snapshot(),
-                                source: "refresh".to_string(),
-                            });
+                            if let Some(sync) = runtime_sync_actions.as_ref() {
+                                match handle.block_on(sync.inbox_refresh_snapshot(Some(20))) {
+                                    Ok(snapshot) => {
+                                        inbox_state.replace_snapshot(snapshot);
+                                        let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                            snapshot: inbox_state.snapshot(),
+                                            source: "refresh".to_string(),
+                                        });
+                                    }
+                                    Err(err) => {
+                                        let detail = format!("Inbox refresh failed: {err}");
+                                        inbox_state.push_system_error(detail.as_str());
+                                        let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                            snapshot: inbox_state.snapshot(),
+                                            source: "refresh_error".to_string(),
+                                        });
+                                        let _ = proxy_actions.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "inbox/error",
+                                                "params": { "message": detail }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                }
+                            } else {
+                                let detail = "Runtime sync unavailable. Login from Runtime pane to use inbox.".to_string();
+                                inbox_state.push_system_error(detail.as_str());
+                                let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
+                                    snapshot: inbox_state.snapshot(),
+                                    source: "refresh_error".to_string(),
+                                });
+                            }
                         }
                         UserAction::InboxSelectThread { thread_id } => {
+                            if let Some(sync) = runtime_sync_actions.as_ref() {
+                                match handle.block_on(sync.inbox_thread_detail(thread_id.as_str())) {
+                                    Ok(detail) => {
+                                        inbox_state.apply_thread_detail(detail.thread, detail.audit_log);
+                                    }
+                                    Err(err) => {
+                                        let detail = format!("Inbox thread load failed: {err}");
+                                        inbox_state.push_system_error(detail.as_str());
+                                    }
+                                }
+                            }
                             inbox_state.select_thread(thread_id.as_str());
                             let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
                                 snapshot: inbox_state.snapshot(),
@@ -4020,21 +4236,59 @@ fn spawn_event_bridge(
                             });
                         }
                         UserAction::InboxApproveDraft { thread_id } => {
-                            inbox_state.approve_draft(thread_id.as_str());
+                            if let Some(sync) = runtime_sync_actions.as_ref() {
+                                match handle.block_on(sync.inbox_approve_draft(thread_id.as_str())) {
+                                    Ok(snapshot) => {
+                                        inbox_state.replace_snapshot(snapshot);
+                                    }
+                                    Err(err) => {
+                                        let detail = format!("Inbox approve failed: {err}");
+                                        inbox_state.push_system_error(detail.as_str());
+                                    }
+                                }
+                            } else {
+                                inbox_state.push_system_error(
+                                    "Runtime sync unavailable. Login from Runtime pane to use inbox.",
+                                );
+                            }
                             let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
                                 snapshot: inbox_state.snapshot(),
                                 source: "approve_draft".to_string(),
                             });
                         }
                         UserAction::InboxRejectDraft { thread_id } => {
-                            inbox_state.reject_draft(thread_id.as_str());
+                            if let Some(sync) = runtime_sync_actions.as_ref() {
+                                match handle.block_on(sync.inbox_reject_draft(thread_id.as_str())) {
+                                    Ok(snapshot) => {
+                                        inbox_state.replace_snapshot(snapshot);
+                                    }
+                                    Err(err) => {
+                                        let detail = format!("Inbox reject failed: {err}");
+                                        inbox_state.push_system_error(detail.as_str());
+                                    }
+                                }
+                            } else {
+                                inbox_state.push_system_error(
+                                    "Runtime sync unavailable. Login from Runtime pane to use inbox.",
+                                );
+                            }
                             let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
                                 snapshot: inbox_state.snapshot(),
                                 source: "reject_draft".to_string(),
                             });
                         }
                         UserAction::InboxLoadAudit { thread_id } => {
-                            inbox_state.load_audit(thread_id.as_str());
+                            if let Some(sync) = runtime_sync_actions.as_ref() {
+                                match handle.block_on(sync.inbox_thread_detail(thread_id.as_str())) {
+                                    Ok(detail) => {
+                                        inbox_state.apply_thread_detail(detail.thread, detail.audit_log);
+                                    }
+                                    Err(err) => {
+                                        let detail = format!("Inbox audit load failed: {err}");
+                                        inbox_state.push_system_error(detail.as_str());
+                                    }
+                                }
+                            }
                             let _ = proxy_actions.send_event(AppEvent::InboxUpdated {
                                 snapshot: inbox_state.snapshot(),
                                 source: "load_audit".to_string(),
@@ -4212,6 +4466,204 @@ fn spawn_event_bridge(
                             handle.block_on(async move {
                                 let status = fetch_wallet_status().await;
                                 let _ = proxy.send_event(AppEvent::WalletStatus { status });
+                            });
+                        }
+                        UserAction::LiquidityProviderOnline => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let online_flag = liquidity_online.clone();
+
+                            let (next_status, next_heartbeat) = handle.block_on(async move {
+                                let caps = liquidity_provider_caps_from_env();
+                                let Some(sync) = runtime_sync.as_ref() else {
+                                    return (
+                                        LiquidityProviderStatus {
+                                            last_error: Some("Runtime sync not configured.".to_string()),
+                                            ..liquidity_provider_status_with_caps(caps)
+                                        },
+                                        None,
+                                    );
+                                };
+
+                                let worker_id = sync.worker_id_for_liquidity_provider();
+                                let metadata = json!({
+                                    "source": "autopilot-desktop",
+                                    "roles": ["liquidity_provider"],
+                                    "caps": {
+                                        "max_invoice_sats": caps.max_invoice_sats,
+                                        "max_hourly_sats": caps.max_hourly_sats,
+                                        "max_daily_sats": caps.max_daily_sats,
+                                    },
+                                    "occurred_at": Utc::now().to_rfc3339(),
+                                });
+                                let request = json!({
+                                    "worker_id": worker_id,
+                                    "workspace_ref": sync.workspace_ref,
+                                    "adapter": "desktop_liquidity_provider",
+                                    "metadata": metadata,
+                                });
+
+                                if let Err(error) = sync.post_json("/api/runtime/workers", request).await {
+                                    return (
+                                        LiquidityProviderStatus {
+                                            last_error: Some(error),
+                                            ..liquidity_provider_status_with_caps(caps)
+                                        },
+                                        None,
+                                    );
+                                }
+
+                                online_flag.store(true, Ordering::SeqCst);
+
+                                let mut status = liquidity_provider_status_with_caps(caps);
+                                status.running = true;
+                                status.provider_active = Some(true);
+                                status.worker_id = Some(worker_id.clone());
+
+                                let sync_for_loop = sync.clone();
+                                let worker_id_for_loop = worker_id.clone();
+                                let online_for_loop = online_flag.clone();
+                                let heartbeat = tokio::spawn(async move {
+                                    let mut ticker = tokio::time::interval(Duration::from_millis(
+                                        sync_for_loop.heartbeat_interval_ms,
+                                    ));
+                                    ticker.set_missed_tick_behavior(
+                                        tokio::time::MissedTickBehavior::Delay,
+                                    );
+
+                                    loop {
+                                        ticker.tick().await;
+                                        if !online_for_loop.load(Ordering::SeqCst) {
+                                            break;
+                                        }
+
+                                        let path = format!(
+                                            "/api/runtime/workers/{worker_id_for_loop}/heartbeat"
+                                        );
+                                        let payload = json!({
+                                            "metadataPatch": {
+                                                "occurred_at": Utc::now().to_rfc3339(),
+                                            }
+                                        });
+                                        if sync_for_loop.post_json(path.as_str(), payload).await.is_err()
+                                        {
+                                            tracing::warn!(
+                                                worker_id = %worker_id_for_loop,
+                                                "liquidity provider heartbeat failed"
+                                            );
+                                        }
+                                    }
+                                });
+
+                                (status, Some(heartbeat))
+                            });
+
+                            if let Some(handle) = liquidity_heartbeat.take() {
+                                handle.abort();
+                            }
+                            liquidity_heartbeat = next_heartbeat;
+                            liquidity_status = next_status.clone();
+                            let _ = proxy.send_event(AppEvent::LiquidityProviderStatus {
+                                status: next_status,
+                            });
+                        }
+                        UserAction::LiquidityProviderOffline => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+
+                            liquidity_online.store(false, Ordering::SeqCst);
+                            if let Some(handle) = liquidity_heartbeat.take() {
+                                handle.abort();
+                            }
+
+                            let next_status = handle.block_on(async move {
+                                let caps = liquidity_provider_caps_from_env();
+                                let Some(sync) = runtime_sync.as_ref() else {
+                                    return liquidity_provider_status_with_caps(caps);
+                                };
+
+                                let worker_id = sync.worker_id_for_liquidity_provider();
+                                let path = format!("/api/runtime/workers/{worker_id}/status");
+                                let payload = json!({
+                                    "status": "stopped",
+                                    "reason": "user_offline",
+                                });
+
+                                let mut status = liquidity_provider_status_with_caps(caps);
+                                status.worker_id = Some(worker_id.clone());
+                                status.provider_active = Some(false);
+                                status.running = false;
+
+                                if let Err(error) = sync.post_json(path.as_str(), payload).await {
+                                    status.last_error = Some(error);
+                                }
+
+                                status
+                            });
+
+                            liquidity_status = next_status.clone();
+                            let _ = proxy.send_event(AppEvent::LiquidityProviderStatus {
+                                status: next_status,
+                            });
+                        }
+                        UserAction::LiquidityProviderRefresh => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+
+                            let next_status = handle.block_on(async move {
+                                let caps = liquidity_provider_caps_from_env();
+                                let Some(sync) = runtime_sync.as_ref() else {
+                                    return liquidity_provider_status_with_caps(caps);
+                                };
+
+                                let worker_id = sync.worker_id_for_liquidity_provider();
+                                let path = format!("/api/runtime/workers/{worker_id}");
+
+                                let mut status = liquidity_provider_status_with_caps(caps);
+                                status.worker_id = Some(worker_id.clone());
+
+                                match sync.get_json(path.as_str()).await {
+                                    Ok(response) => {
+                                        let runtime_status = response
+                                            .get("data")
+                                            .and_then(|value| value.get("worker"))
+                                            .and_then(|value| value.get("status"))
+                                            .and_then(|value| value.as_str())
+                                            .unwrap_or_default()
+                                            .to_ascii_lowercase();
+                                        status.running = runtime_status == "running";
+                                        status.provider_active = Some(status.running);
+                                    }
+                                    Err(error) => {
+                                        status.last_error = Some(error);
+                                    }
+                                }
+
+                                status
+                            });
+
+                            liquidity_status = next_status.clone();
+                            let _ = proxy.send_event(AppEvent::LiquidityProviderStatus {
+                                status: next_status,
+                            });
+                        }
+                        UserAction::LiquidityProviderCreateInvoice { amount_sats } => {
+                            let proxy = proxy_actions.clone();
+                            let mut next_status = liquidity_status.clone();
+
+                            match handle.block_on(async { create_wallet_invoice(amount_sats).await }) {
+                                Ok(invoice) => {
+                                    next_status.last_invoice = Some(invoice);
+                                    next_status.last_error = None;
+                                }
+                                Err(error) => {
+                                    next_status.last_error = Some(error);
+                                }
+                            }
+
+                            liquidity_status = next_status.clone();
+                            let _ = proxy.send_event(AppEvent::LiquidityProviderStatus {
+                                status: next_status,
                             });
                         }
                         UserAction::DvmProviderStart => {
@@ -6888,6 +7340,53 @@ async fn fetch_wallet_status() -> WalletStatus {
     status
 }
 
+async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
+    if amount_sats == 0 {
+        return Err("Amount must be > 0 sats.".to_string());
+    }
+
+    let config = PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
+    let data_dir = config
+        .data_path()
+        .map_err(|err| format!("Failed to resolve Pylon data dir: {err}"))?;
+    let identity_path = data_dir.join("identity.mnemonic");
+    if !identity_path.exists() {
+        return Err(format!(
+            "No identity found. Run 'pylon init' first. Expected: {}",
+            identity_path.display()
+        ));
+    }
+
+    let mnemonic = std::fs::read_to_string(&identity_path)
+        .map_err(|err| format!("Failed to read identity: {err}"))?
+        .trim()
+        .to_string();
+
+    let signer = SparkSigner::from_mnemonic(&mnemonic, "")
+        .map_err(|err| format!("Failed to derive Spark signer: {err}"))?;
+
+    let wallet_config = WalletConfig {
+        network: spark_network_for_pylon(&config.network),
+        api_key: None,
+        storage_dir: data_dir.join("spark"),
+    };
+
+    let wallet = SparkWallet::new(signer, wallet_config)
+        .await
+        .map_err(|err| format!("Failed to init Spark wallet: {err}"))?;
+
+    let response = wallet
+        .create_invoice(
+            amount_sats,
+            Some("OpenAgents liquidity funding".to_string()),
+            Some(3600),
+        )
+        .await
+        .map_err(|err| format!("Failed to create invoice: {err}"))?;
+
+    Ok(response.payment_request)
+}
+
 fn map_key(key: &WinitKey) -> Option<Key> {
     match key {
         WinitKey::Named(named) => match named {
@@ -6922,3 +7421,75 @@ fn to_modifiers(modifiers: ModifiersState) -> Modifiers {
 }
 
 // DesktopRoot moved to `crates/autopilot_ui`.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_inbox_snapshot_parses_contract_shape() {
+        let payload = json!({
+            "data": {
+                "snapshot": {
+                    "threads": [
+                        {
+                            "id": "thread_1",
+                            "subject": "Subject",
+                            "from_address": "sender@example.com",
+                            "snippet": "Snippet",
+                            "category": "other",
+                            "risk": "medium",
+                            "policy": "draft_only",
+                            "draft_preview": "Draft",
+                            "pending_approval": true,
+                            "updated_at": "2026-02-24T00:00:00Z"
+                        }
+                    ],
+                    "selected_thread_id": "thread_1",
+                    "audit_log": []
+                }
+            }
+        });
+        let snapshot = extract_inbox_snapshot(&payload).expect("parse snapshot");
+        assert_eq!(snapshot.threads.len(), 1);
+        assert_eq!(snapshot.selected_thread_id.as_deref(), Some("thread_1"));
+    }
+
+    #[test]
+    fn extract_inbox_snapshot_rejects_missing_payload() {
+        let payload = json!({ "data": {} });
+        let error = extract_inbox_snapshot(&payload).expect_err("missing snapshot must fail");
+        assert!(error.contains("missing"));
+    }
+
+    #[test]
+    fn extract_inbox_thread_detail_parses_contract_shape() {
+        let payload = json!({
+            "data": {
+                "thread": {
+                    "id": "thread_1",
+                    "subject": "Subject",
+                    "from_address": "sender@example.com",
+                    "snippet": "Snippet",
+                    "category": "other",
+                    "risk": "medium",
+                    "policy": "draft_only",
+                    "draft_preview": "Draft",
+                    "pending_approval": true,
+                    "updated_at": "2026-02-24T00:00:00Z"
+                },
+                "audit_log": [
+                    {
+                        "thread_id": "thread_1",
+                        "action": "select_thread",
+                        "detail": "loaded",
+                        "created_at": "2026-02-24T00:00:00Z"
+                    }
+                ]
+            }
+        });
+        let detail = extract_inbox_thread_detail(&payload).expect("parse detail");
+        assert_eq!(detail.thread.id, "thread_1");
+        assert_eq!(detail.audit_log.len(), 1);
+    }
+}

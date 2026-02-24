@@ -2716,6 +2716,7 @@ mod tests {
             google_oauth_redirect_uri: None,
             google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
             google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
+            google_gmail_api_base_url: "https://gmail.googleapis.com".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,
@@ -2740,6 +2741,22 @@ mod tests {
             compat_control_min_schema_version: 1,
             compat_control_max_schema_version: 1,
         }
+    }
+
+    #[test]
+    fn token_name_for_client_supports_desktop_canonical_and_legacy_aliases() {
+        assert_eq!(
+            super::token_name_for_client(Some("autopilot-desktop")),
+            "desktop:autopilot-desktop"
+        );
+        assert_eq!(
+            super::token_name_for_client(Some("openagents-desktop")),
+            "desktop:openagents-desktop"
+        );
+        assert_eq!(
+            super::token_name_for_client(Some("openagents-expo")),
+            "mobile:openagents-expo"
+        );
     }
 
     #[tokio::test]

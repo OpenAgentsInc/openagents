@@ -51,3 +51,7 @@ Cross-environment release validation gate:
    - `apps/openagents.com/docs/archived/legacy-laravel-deploy/`
 4. Legacy Laravel archived deploy scripts are freeze-gated (OA-RUST-111 Phase B) and require explicit unfreeze variables + approved ticket metadata before execution.
 5. Legacy infra deletion is blocked unless fresh Laravel DB backup artifacts are captured and referenced in release evidence.
+
+## Related Gmail Inbox Runbook
+
+- `apps/openagents.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`

@@ -3,6 +3,11 @@ use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use autopilot_app::{InboxAuditEntry, InboxSnapshot, InboxThreadSummary};
+use autopilot_inbox_domain::{
+    PolicyDecision, classify_thread, compose_local_draft, infer_style_signature_from_bodies,
+    risk_to_str,
+};
 use axum::body::to_bytes;
 use axum::body::{Body, Bytes};
 use axum::extract::{Form, Path, Query, Request, State};
@@ -63,11 +68,12 @@ use crate::config::Config;
 use crate::domain_store::{
     AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, CreateShoutInput,
     DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
-    MarkWebhookEventVerifiedInput, RecordL402GatewayEventInput, RecordWebhookEventInput,
-    SendWhisperInput, ShoutRecord, UpdateAutopilotInput, UpdateL402PaywallInput,
-    UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput, UpsertGoogleIntegrationInput,
-    UpsertResendIntegrationInput, UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput,
-    UserIntegrationRecord, UserSparkWalletRecord, WhisperRecord, ZoneCount,
+    MarkWebhookEventVerifiedInput, RecordInboxAuditInput, RecordL402GatewayEventInput,
+    RecordWebhookEventInput, SendWhisperInput, ShoutRecord, UpdateAutopilotInput,
+    UpdateL402PaywallInput, UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
+    UpsertGoogleIntegrationInput, UpsertInboxThreadStateInput, UpsertResendIntegrationInput,
+    UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput, UserIntegrationRecord,
+    UserSparkWalletRecord, WhisperRecord, ZoneCount,
 };
 use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
@@ -77,7 +83,9 @@ use crate::openapi::{
     ROUTE_AGENTS_ME_WALLET, ROUTE_AUTH_EMAIL, ROUTE_AUTH_LOGOUT, ROUTE_AUTH_REFRESH,
     ROUTE_AUTH_REGISTER, ROUTE_AUTH_SESSION, ROUTE_AUTH_SESSIONS, ROUTE_AUTH_SESSIONS_REVOKE,
     ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
-    ROUTE_AUTOPILOTS_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
+    ROUTE_AUTOPILOTS_THREADS, ROUTE_INBOX_REFRESH, ROUTE_INBOX_REPLY_SEND,
+    ROUTE_INBOX_THREAD_APPROVE, ROUTE_INBOX_THREAD_DETAIL, ROUTE_INBOX_THREAD_REJECT,
+    ROUTE_INBOX_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
     ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
     ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LEGACY_CHAT_STREAM,
     ROUTE_LEGACY_CHATS_STREAM, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
@@ -89,12 +97,14 @@ use crate::openapi::{
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
     ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH, ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
     ROUTE_RUNTIME_SKILLS_TOOL_SPECS, ROUTE_RUNTIME_THREAD_MESSAGES, ROUTE_RUNTIME_THREADS,
-    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_SETTINGS_AUTOPILOT, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
-    ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT,
-    ROUTE_SETTINGS_INTEGRATIONS_RESEND, ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST,
-    ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS, ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SYNC_TOKEN,
-    ROUTE_TOKENS, ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION,
-    ROUTE_V1_AUTH_SESSIONS, ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
+    ROUTE_RUNTIME_TOOLS_EXECUTE, ROUTE_RUNTIME_WORKER_BY_ID, ROUTE_RUNTIME_WORKER_HEARTBEAT,
+    ROUTE_RUNTIME_WORKER_STATUS, ROUTE_RUNTIME_WORKERS, ROUTE_SETTINGS_AUTOPILOT,
+    ROUTE_SETTINGS_INTEGRATIONS_GOOGLE, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK,
+    ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT, ROUTE_SETTINGS_INTEGRATIONS_RESEND,
+    ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST, ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS,
+    ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
+    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
@@ -742,6 +752,136 @@ struct GoogleOauthCallbackQuery {
     code: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct InboxThreadsQuery {
+    #[serde(default)]
+    limit: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct InboxRefreshRequestPayload {
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct InboxDraftActionRequestPayload {
+    #[serde(default)]
+    detail: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct InboxSendReplyRequestPayload {
+    #[serde(default)]
+    body: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct InboxSnapshotEnvelope {
+    request_id: String,
+    source: String,
+    snapshot: InboxSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+struct InboxThreadDetailResponse {
+    request_id: String,
+    thread_id: String,
+    thread: InboxThreadSummary,
+    messages: Vec<InboxThreadMessage>,
+    audit_log: Vec<InboxAuditEntry>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct InboxThreadMessage {
+    id: String,
+    from: Option<String>,
+    to: Option<String>,
+    subject: Option<String>,
+    snippet: String,
+    body: String,
+    created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct InboxReplySendResponse {
+    request_id: String,
+    thread_id: String,
+    message_id: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+struct GoogleIntegrationSecretPayload {
+    #[serde(default)]
+    refresh_token: Option<String>,
+    #[serde(default)]
+    access_token: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    token_type: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    obtained_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailThreadListResponse {
+    #[serde(default)]
+    threads: Vec<GmailThreadListItem>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailThreadListItem {
+    id: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailThreadResponse {
+    id: String,
+    #[serde(default)]
+    snippet: Option<String>,
+    #[serde(default)]
+    messages: Vec<GmailMessage>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailMessage {
+    id: String,
+    #[serde(default)]
+    snippet: Option<String>,
+    #[serde(default, rename = "internalDate")]
+    internal_date: Option<String>,
+    #[serde(default)]
+    payload: Option<GmailMessagePayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailMessagePayload {
+    #[serde(default, rename = "mimeType")]
+    mime_type: Option<String>,
+    #[serde(default)]
+    headers: Vec<GmailHeader>,
+    #[serde(default)]
+    body: Option<GmailBody>,
+    #[serde(default)]
+    parts: Vec<GmailMessagePayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailHeader {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct GmailBody {
+    #[serde(default)]
+    data: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CreateAutopilotRequestPayload {
     #[serde(default)]
@@ -1275,6 +1415,12 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             ROUTE_SETTINGS_INTEGRATIONS_GOOGLE,
             delete(settings_integrations_google_disconnect),
         )
+        .route(ROUTE_INBOX_THREADS, get(inbox_threads_index))
+        .route(ROUTE_INBOX_REFRESH, post(inbox_refresh))
+        .route(ROUTE_INBOX_THREAD_DETAIL, get(inbox_thread_detail))
+        .route(ROUTE_INBOX_THREAD_APPROVE, post(inbox_thread_approve))
+        .route(ROUTE_INBOX_THREAD_REJECT, post(inbox_thread_reject))
+        .route(ROUTE_INBOX_REPLY_SEND, post(inbox_thread_reply_send))
         .route(
             ROUTE_TOKENS_CURRENT,
             delete(delete_current_personal_access_token),
@@ -1406,6 +1552,16 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
                 throttle_codex_control_request_gate,
             )),
         )
+        .route(
+            ROUTE_RUNTIME_WORKERS,
+            get(runtime_workers_index).post(runtime_workers_create),
+        )
+        .route(ROUTE_RUNTIME_WORKER_BY_ID, get(runtime_worker_show))
+        .route(
+            ROUTE_RUNTIME_WORKER_HEARTBEAT,
+            post(runtime_worker_heartbeat),
+        )
+        .route(ROUTE_RUNTIME_WORKER_STATUS, post(runtime_worker_transition))
         .route(ROUTE_V1_AUTH_SESSION, get(current_session))
         .route(ROUTE_V1_AUTH_SESSIONS, get(list_sessions))
         .route(ROUTE_V1_AUTH_SESSIONS_REVOKE, post(revoke_sessions))
@@ -7422,6 +7578,986 @@ async fn settings_integrations_google_disconnect(
     ))
 }
 
+async fn inbox_threads_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<InboxThreadsQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let limit = parse_inbox_limit(query.limit.as_deref())?;
+    let snapshot = inbox_snapshot_for_user(&state, &bundle.user.id, limit, &request_id).await?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.threads.listed", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_count", snapshot.threads.len().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("inbox.threads.listed", &request_id);
+
+    Ok(ok_data(InboxSnapshotEnvelope {
+        request_id,
+        source: "threads".to_string(),
+        snapshot,
+    }))
+}
+
+async fn inbox_refresh(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<InboxRefreshRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let limit = payload.limit.unwrap_or(20).clamp(1, 100) as usize;
+    let snapshot = inbox_snapshot_for_user(&state, &bundle.user.id, limit, &request_id).await?;
+
+    state
+        ._domain_store
+        .record_inbox_audit(RecordInboxAuditInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: "system".to_string(),
+            action: "refresh".to_string(),
+            detail: format!("gmail inbox refreshed ({} threads)", snapshot.threads.len()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.refreshed", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_count", snapshot.threads.len().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("inbox.refreshed", &request_id);
+
+    Ok(ok_data(InboxSnapshotEnvelope {
+        request_id,
+        source: "refresh".to_string(),
+        snapshot,
+    }))
+}
+
+async fn inbox_thread_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let thread_id = normalize_optional_bounded_string(Some(thread_id), "thread_id", 255)?
+        .ok_or_else(|| validation_error("thread_id", "The thread_id field is required."))?;
+
+    let detail =
+        inbox_thread_detail_for_user(&state, &bundle.user.id, &thread_id, &request_id).await?;
+
+    state
+        ._domain_store
+        .record_inbox_audit(RecordInboxAuditInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            action: "select_thread".to_string(),
+            detail: "thread detail loaded".to_string(),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.thread.viewed", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_id", thread_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("inbox.thread.viewed", &request_id);
+
+    Ok(ok_data(detail))
+}
+
+async fn inbox_thread_approve(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+    Json(payload): Json<InboxDraftActionRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let thread_id = normalize_optional_bounded_string(Some(thread_id), "thread_id", 255)?
+        .ok_or_else(|| validation_error("thread_id", "The thread_id field is required."))?;
+
+    let existing = state
+        ._domain_store
+        .inbox_thread_state(&bundle.user.id, &thread_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let draft_preview = existing.as_ref().and_then(|row| row.draft_preview.clone());
+
+    state
+        ._domain_store
+        .upsert_inbox_thread_state(UpsertInboxThreadStateInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            pending_approval: false,
+            decision: Some("approved".to_string()),
+            draft_preview,
+            source: Some("inbox_api.approve".to_string()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+    state
+        ._domain_store
+        .record_inbox_audit(RecordInboxAuditInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            action: "approve_draft".to_string(),
+            detail: payload
+                .detail
+                .and_then(non_empty)
+                .unwrap_or_else(|| "draft approved".to_string()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let snapshot = inbox_snapshot_for_user(&state, &bundle.user.id, 20, &request_id).await?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.draft.approved", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_id", thread_id),
+    );
+    state
+        .observability
+        .increment_counter("inbox.draft.approved", &request_id);
+
+    Ok(ok_data(InboxSnapshotEnvelope {
+        request_id,
+        source: "approve_draft".to_string(),
+        snapshot,
+    }))
+}
+
+async fn inbox_thread_reject(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+    Json(payload): Json<InboxDraftActionRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let thread_id = normalize_optional_bounded_string(Some(thread_id), "thread_id", 255)?
+        .ok_or_else(|| validation_error("thread_id", "The thread_id field is required."))?;
+
+    let existing = state
+        ._domain_store
+        .inbox_thread_state(&bundle.user.id, &thread_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let draft_preview = existing.as_ref().and_then(|row| row.draft_preview.clone());
+
+    state
+        ._domain_store
+        .upsert_inbox_thread_state(UpsertInboxThreadStateInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            pending_approval: true,
+            decision: Some("rejected".to_string()),
+            draft_preview,
+            source: Some("inbox_api.reject".to_string()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+    state
+        ._domain_store
+        .record_inbox_audit(RecordInboxAuditInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            action: "reject_draft".to_string(),
+            detail: payload
+                .detail
+                .and_then(non_empty)
+                .unwrap_or_else(|| "draft rejected for manual revision".to_string()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let snapshot = inbox_snapshot_for_user(&state, &bundle.user.id, 20, &request_id).await?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.draft.rejected", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_id", thread_id),
+    );
+    state
+        .observability
+        .increment_counter("inbox.draft.rejected", &request_id);
+
+    Ok(ok_data(InboxSnapshotEnvelope {
+        request_id,
+        source: "reject_draft".to_string(),
+        snapshot,
+    }))
+}
+
+async fn inbox_thread_reply_send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+    Json(payload): Json<InboxSendReplyRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let thread_id = normalize_optional_bounded_string(Some(thread_id), "thread_id", 255)?
+        .ok_or_else(|| validation_error("thread_id", "The thread_id field is required."))?;
+
+    let detail =
+        inbox_thread_detail_for_user(&state, &bundle.user.id, &thread_id, &request_id).await?;
+    let latest_message = detail.messages.last().cloned().ok_or_else(|| {
+        validation_error(
+            "thread_id",
+            "Inbox thread has no messages and cannot be replied to.",
+        )
+    })?;
+
+    let to_header = latest_message
+        .from
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+        .ok_or_else(|| validation_error("thread_id", "Could not resolve recipient from thread."))?;
+    let to_address = normalize_reply_recipient(to_header.as_str())
+        .ok_or_else(|| validation_error("thread_id", "Could not resolve recipient from thread."))?;
+
+    let draft_body = payload
+        .body
+        .and_then(non_empty)
+        .or_else(|| {
+            if detail.thread.draft_preview.trim().is_empty() {
+                None
+            } else {
+                Some(detail.thread.draft_preview.clone())
+            }
+        })
+        .ok_or_else(|| validation_error("body", "Reply body is required to send this thread."))?;
+
+    let subject = normalize_reply_subject(
+        latest_message
+            .subject
+            .as_deref()
+            .unwrap_or(detail.thread.subject.as_str()),
+    );
+    let in_reply_to = if latest_message.id.trim().is_empty() {
+        None
+    } else {
+        Some(format!("<{}>", latest_message.id))
+    };
+
+    let mut raw_lines = vec![
+        format!("To: {to_address}"),
+        format!("Subject: {subject}"),
+        "MIME-Version: 1.0".to_string(),
+        "Content-Type: text/plain; charset=UTF-8".to_string(),
+    ];
+    if let Some(message_id) = in_reply_to.as_ref() {
+        raw_lines.push(format!("In-Reply-To: {message_id}"));
+        raw_lines.push(format!("References: {message_id}"));
+    }
+    raw_lines.push(String::new());
+    raw_lines.push(draft_body.clone());
+    let raw = URL_SAFE_NO_PAD.encode(raw_lines.join("\r\n"));
+
+    let send_payload = serde_json::json!({
+        "threadId": thread_id,
+        "raw": raw,
+    });
+    let send_url = format!(
+        "{}/gmail/v1/users/me/messages/send",
+        google_gmail_api_base_url(state.config.as_ref())
+    );
+    let response = gmail_json_request(
+        &state,
+        &bundle.user.id,
+        reqwest::Method::POST,
+        send_url.as_str(),
+        Some(send_payload),
+        &request_id,
+    )
+    .await?;
+    let message_id = normalized_json_string(response.get("id"))
+        .unwrap_or_else(|| format!("msg_{}", Uuid::new_v4().simple()));
+
+    state
+        ._domain_store
+        .upsert_inbox_thread_state(UpsertInboxThreadStateInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            pending_approval: false,
+            decision: Some("sent".to_string()),
+            draft_preview: Some(draft_body),
+            source: Some("inbox_api.send".to_string()),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+    state
+        ._domain_store
+        .record_inbox_audit(RecordInboxAuditInput {
+            user_id: bundle.user.id.clone(),
+            thread_id: thread_id.clone(),
+            action: "send_reply".to_string(),
+            detail: format!("reply sent to {to_address} ({message_id})"),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("inbox.reply.sent", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone())
+            .with_attribute("thread_id", thread_id.clone())
+            .with_attribute("message_id", message_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("inbox.reply.sent", &request_id);
+
+    Ok(ok_data(InboxReplySendResponse {
+        request_id,
+        thread_id,
+        message_id,
+        status: "sent".to_string(),
+    }))
+}
+
+async fn inbox_snapshot_for_user(
+    state: &AppState,
+    user_id: &str,
+    limit: usize,
+    request_id: &str,
+) -> Result<InboxSnapshot, (StatusCode, Json<ApiErrorResponse>)> {
+    let thread_rows = gmail_thread_summaries_for_user(state, user_id, limit, request_id).await?;
+    let audit_rows = state
+        ._domain_store
+        .list_inbox_audits_for_user(user_id, None, 200)
+        .await
+        .map_err(map_domain_store_error)?;
+    let audit_log = audit_rows
+        .into_iter()
+        .map(|entry| InboxAuditEntry {
+            thread_id: entry.thread_id,
+            action: entry.action,
+            detail: entry.detail,
+            created_at: timestamp(entry.created_at),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(InboxSnapshot {
+        selected_thread_id: thread_rows.first().map(|row| row.id.clone()),
+        threads: thread_rows,
+        audit_log,
+    })
+}
+
+async fn inbox_thread_detail_for_user(
+    state: &AppState,
+    user_id: &str,
+    thread_id: &str,
+    request_id: &str,
+) -> Result<InboxThreadDetailResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let gmail_thread = gmail_fetch_thread_for_user(state, user_id, thread_id, request_id).await?;
+    let persisted = state
+        ._domain_store
+        .inbox_thread_state(user_id, thread_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let summary = inbox_summary_from_gmail_thread(thread_id, &gmail_thread, persisted.as_ref());
+    let audit_rows = state
+        ._domain_store
+        .list_inbox_audits_for_user(user_id, Some(thread_id), 100)
+        .await
+        .map_err(map_domain_store_error)?;
+    let audit_log = audit_rows
+        .into_iter()
+        .map(|entry| InboxAuditEntry {
+            thread_id: entry.thread_id,
+            action: entry.action,
+            detail: entry.detail,
+            created_at: timestamp(entry.created_at),
+        })
+        .collect::<Vec<_>>();
+    let messages = gmail_thread
+        .messages
+        .iter()
+        .map(inbox_message_from_gmail)
+        .collect::<Vec<_>>();
+
+    Ok(InboxThreadDetailResponse {
+        request_id: request_id.to_string(),
+        thread_id: thread_id.to_string(),
+        thread: summary,
+        messages,
+        audit_log,
+    })
+}
+
+async fn gmail_thread_summaries_for_user(
+    state: &AppState,
+    user_id: &str,
+    limit: usize,
+    request_id: &str,
+) -> Result<Vec<InboxThreadSummary>, (StatusCode, Json<ApiErrorResponse>)> {
+    let base_url = google_gmail_api_base_url(state.config.as_ref());
+    let list_url = format!(
+        "{base_url}/gmail/v1/users/me/threads?maxResults={}",
+        limit.clamp(1, 100)
+    );
+    let response = gmail_json_request(
+        state,
+        user_id,
+        reqwest::Method::GET,
+        list_url.as_str(),
+        None,
+        request_id,
+    )
+    .await?;
+    let list = serde_json::from_value::<GmailThreadListResponse>(response).map_err(|_| {
+        error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Google mailbox list payload was invalid.",
+        )
+    })?;
+
+    let state_rows = state
+        ._domain_store
+        .list_inbox_thread_states_for_user(user_id)
+        .await
+        .map_err(map_domain_store_error)?;
+    let state_by_thread_id = state_rows
+        .into_iter()
+        .map(|row| (row.thread_id.clone(), row))
+        .collect::<HashMap<_, _>>();
+
+    let mut rows = Vec::with_capacity(list.threads.len());
+    for thread in list.threads {
+        let detail = gmail_fetch_thread_for_user(state, user_id, &thread.id, request_id).await?;
+        let summary = inbox_summary_from_gmail_thread(
+            &thread.id,
+            &detail,
+            state_by_thread_id.get(&thread.id),
+        );
+        rows.push(summary);
+    }
+
+    rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    Ok(rows)
+}
+
+async fn gmail_fetch_thread_for_user(
+    state: &AppState,
+    user_id: &str,
+    thread_id: &str,
+    request_id: &str,
+) -> Result<GmailThreadResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let url = format!(
+        "{}/gmail/v1/users/me/threads/{thread_id}?format=full",
+        google_gmail_api_base_url(state.config.as_ref())
+    );
+    let response = gmail_json_request(
+        state,
+        user_id,
+        reqwest::Method::GET,
+        url.as_str(),
+        None,
+        request_id,
+    )
+    .await?;
+
+    serde_json::from_value::<GmailThreadResponse>(response).map_err(|_| {
+        error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Google mailbox thread payload was invalid.",
+        )
+    })
+}
+
+fn inbox_summary_from_gmail_thread(
+    thread_id: &str,
+    thread: &GmailThreadResponse,
+    persisted_state: Option<&crate::domain_store::InboxThreadStateRecord>,
+) -> InboxThreadSummary {
+    let latest = thread.messages.last();
+    let subject = latest
+        .and_then(gmail_message_subject)
+        .or_else(|| gmail_thread_subject(thread))
+        .unwrap_or_else(|| "No subject".to_string());
+    let from_address = latest
+        .and_then(gmail_message_from)
+        .unwrap_or_else(|| "unknown@unknown".to_string());
+    let snippet = latest
+        .and_then(|message| message.snippet.clone())
+        .or_else(|| thread.snippet.clone())
+        .unwrap_or_default();
+    let body = latest
+        .map(gmail_message_body)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| snippet.clone());
+
+    let decision = classify_thread(subject.as_str(), body.as_str(), snippet.as_str());
+    let style_signature = infer_style_signature_from_bodies([body.as_str()]);
+    let generated_draft = compose_local_draft(
+        decision.category,
+        subject.as_str(),
+        body.as_str(),
+        None,
+        None,
+        None,
+        style_signature.as_str(),
+    );
+
+    let pending_approval = persisted_state
+        .map(|row| row.pending_approval)
+        .unwrap_or(matches!(
+            decision.policy,
+            PolicyDecision::DraftOnly | PolicyDecision::SendWithApproval
+        ));
+    let draft_preview = persisted_state
+        .and_then(|row| row.draft_preview.clone())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(generated_draft);
+    let updated_at = latest
+        .and_then(|message| gmail_internal_date_to_timestamp(message.internal_date.as_deref()))
+        .unwrap_or_else(|| timestamp(Utc::now()));
+
+    InboxThreadSummary {
+        id: thread_id.to_string(),
+        subject,
+        from_address,
+        snippet,
+        category: decision.category.as_str().to_string(),
+        risk: risk_to_str(decision.risk).to_string(),
+        policy: decision.policy.as_str().to_string(),
+        draft_preview,
+        pending_approval,
+        updated_at,
+    }
+}
+
+fn inbox_message_from_gmail(message: &GmailMessage) -> InboxThreadMessage {
+    InboxThreadMessage {
+        id: message.id.clone(),
+        from: gmail_message_from(message),
+        to: gmail_message_to(message),
+        subject: gmail_message_subject(message),
+        snippet: message.snippet.clone().unwrap_or_default(),
+        body: gmail_message_body(message),
+        created_at: gmail_internal_date_to_timestamp(message.internal_date.as_deref()),
+    }
+}
+
+fn gmail_message_subject(message: &GmailMessage) -> Option<String> {
+    gmail_message_header_value(message, "subject")
+}
+
+fn gmail_message_from(message: &GmailMessage) -> Option<String> {
+    gmail_message_header_value(message, "from")
+}
+
+fn gmail_message_to(message: &GmailMessage) -> Option<String> {
+    gmail_message_header_value(message, "to")
+}
+
+fn gmail_thread_subject(thread: &GmailThreadResponse) -> Option<String> {
+    thread.messages.iter().rev().find_map(gmail_message_subject)
+}
+
+fn gmail_message_header_value(message: &GmailMessage, name: &str) -> Option<String> {
+    let payload = message.payload.as_ref()?;
+    payload
+        .headers
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case(name))
+        .map(|header| header.value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn gmail_message_body(message: &GmailMessage) -> String {
+    message
+        .payload
+        .as_ref()
+        .and_then(gmail_payload_body)
+        .unwrap_or_else(|| message.snippet.clone().unwrap_or_default())
+}
+
+fn gmail_payload_body(payload: &GmailMessagePayload) -> Option<String> {
+    if let Some(data) = payload
+        .body
+        .as_ref()
+        .and_then(|body| body.data.as_deref())
+        .and_then(gmail_base64_decode)
+    {
+        let text = data.trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
+        }
+    }
+
+    for part in &payload.parts {
+        if let Some(text) = gmail_payload_body(part) {
+            let trimmed = text.trim().to_string();
+            if !trimmed.is_empty() {
+                return Some(trimmed);
+            }
+        }
+    }
+
+    None
+}
+
+fn gmail_base64_decode(input: &str) -> Option<String> {
+    URL_SAFE_NO_PAD
+        .decode(input.as_bytes())
+        .or_else(|_| STANDARD.decode(input.as_bytes()))
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+}
+
+fn gmail_internal_date_to_timestamp(value: Option<&str>) -> Option<String> {
+    let millis = value?.parse::<i64>().ok()?;
+    let dt = chrono::DateTime::<Utc>::from_timestamp_millis(millis)?;
+    Some(timestamp(dt))
+}
+
+fn google_gmail_api_base_url(config: &Config) -> &str {
+    config.google_gmail_api_base_url.as_str()
+}
+
+fn normalize_reply_recipient(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains('<') && trimmed.contains('>') {
+        let start = trimmed.find('<')?;
+        let end = trimmed.rfind('>')?;
+        if end > start + 1 {
+            let email = trimmed[start + 1..end].trim().to_string();
+            return (!email.is_empty()).then_some(email);
+        }
+    }
+    Some(trimmed.to_string())
+}
+
+fn normalize_reply_subject(raw: &str) -> String {
+    let subject = raw.trim();
+    if subject.is_empty() {
+        return "Re: (no subject)".to_string();
+    }
+    if subject.to_ascii_lowercase().starts_with("re:") {
+        subject.to_string()
+    } else {
+        format!("Re: {subject}")
+    }
+}
+
+fn parse_inbox_limit(raw: Option<&str>) -> Result<usize, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(raw) = raw else {
+        return Ok(20);
+    };
+    let parsed = raw
+        .trim()
+        .parse::<usize>()
+        .map_err(|_| validation_error("limit", "The limit field must be an integer."))?;
+    if !(1..=100).contains(&parsed) {
+        return Err(validation_error(
+            "limit",
+            "The limit field must be between 1 and 100.",
+        ));
+    }
+    Ok(parsed)
+}
+
+async fn gmail_json_request(
+    state: &AppState,
+    user_id: &str,
+    method: reqwest::Method,
+    url: &str,
+    body: Option<serde_json::Value>,
+    request_id: &str,
+) -> Result<serde_json::Value, (StatusCode, Json<ApiErrorResponse>)> {
+    let client = reqwest::Client::new();
+    let mut access_token = google_access_token_for_user(state, user_id, false).await?;
+    let mut refreshed_after_401 = false;
+    let max_attempts = 3usize;
+
+    for attempt in 1..=max_attempts {
+        let mut request = client
+            .request(method.clone(), url)
+            .header("accept", "application/json")
+            .bearer_auth(access_token.as_str())
+            .timeout(std::time::Duration::from_secs(15));
+        if let Some(body) = body.as_ref() {
+            request = request.json(body);
+        }
+
+        let response = match request.send().await {
+            Ok(value) => value,
+            Err(_) => {
+                if attempt < max_attempts {
+                    tokio::time::sleep(std::time::Duration::from_millis(200 * attempt as u64))
+                        .await;
+                    continue;
+                }
+                state
+                    .observability
+                    .increment_counter("inbox.gmail.request.failed", request_id);
+                return Err(error_response_with_status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ApiErrorCode::ServiceUnavailable,
+                    "Google mailbox request failed.",
+                ));
+            }
+        };
+
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(|_| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google mailbox response could not be read.",
+            )
+        })?;
+
+        if status == StatusCode::UNAUTHORIZED && !refreshed_after_401 {
+            access_token = google_access_token_for_user(state, user_id, true).await?;
+            refreshed_after_401 = true;
+            continue;
+        }
+
+        if !status.is_success() {
+            if attempt < max_attempts
+                && (status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS)
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(200 * attempt as u64)).await;
+                continue;
+            }
+            state
+                .observability
+                .increment_counter("inbox.gmail.request.failed", request_id);
+            return Err(map_gmail_error_status(status));
+        }
+
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|_| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google mailbox response payload was invalid.",
+            )
+        })?;
+        return Ok(value);
+    }
+
+    Err(error_response_with_status(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ApiErrorCode::ServiceUnavailable,
+        "Google mailbox request failed after retries.",
+    ))
+}
+
+async fn google_access_token_for_user(
+    state: &AppState,
+    user_id: &str,
+    force_refresh: bool,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let integration = state
+        ._domain_store
+        .find_active_integration_secret(user_id, "google")
+        .await
+        .map_err(map_domain_store_error)?
+        .ok_or_else(|| {
+            validation_error(
+                "google",
+                "Connect an active Google integration before using inbox.",
+            )
+        })?;
+    let secret_raw = integration
+        .encrypted_secret
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+        .ok_or_else(|| {
+            validation_error(
+                "google",
+                "Google integration secret is missing. Reconnect Google.",
+            )
+        })?;
+    let secret = serde_json::from_str::<GoogleIntegrationSecretPayload>(secret_raw.as_str())
+        .map_err(|_| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google integration secret payload is invalid.",
+            )
+        })?;
+
+    let is_fresh = secret
+        .expires_at
+        .as_deref()
+        .and_then(|value| parse_rfc3339_utc(value).ok())
+        .map(|expiry| expiry > Utc::now() + Duration::seconds(30))
+        .unwrap_or(false);
+    if !force_refresh {
+        if let Some(token) = secret
+            .access_token
+            .as_deref()
+            .and_then(|value| non_empty(value.to_string()))
+        {
+            if is_fresh {
+                return Ok(token);
+            }
+        }
+    }
+
+    let refresh_token = secret
+        .refresh_token
+        .as_deref()
+        .and_then(|value| non_empty(value.to_string()))
+        .ok_or_else(|| {
+            validation_error(
+                "google",
+                "Google refresh token is missing. Reconnect Google integration.",
+            )
+        })?;
+    let client_id = state
+        .config
+        .google_oauth_client_id
+        .clone()
+        .and_then(non_empty)
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google OAuth client id is not configured.",
+            )
+        })?;
+    let client_secret = state
+        .config
+        .google_oauth_client_secret
+        .clone()
+        .and_then(non_empty)
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google OAuth client secret is not configured.",
+            )
+        })?;
+
+    let refresh_response = reqwest::Client::new()
+        .post(state.config.google_oauth_token_url.clone())
+        .header("accept", "application/json")
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token.as_str()),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+        ])
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|_| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google token refresh request failed.",
+            )
+        })?;
+    if !refresh_response.status().is_success() {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Google token refresh failed. Reconnect Google integration.",
+        ));
+    }
+    let token_payload = refresh_response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|_| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google token refresh payload was invalid.",
+            )
+        })?;
+    let access_token = normalized_json_string(token_payload.get("access_token"))
+        .and_then(non_empty)
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                "Google token refresh payload did not include an access token.",
+            )
+        })?;
+
+    state
+        ._domain_store
+        .upsert_google_integration(UpsertGoogleIntegrationInput {
+            user_id: user_id.to_string(),
+            refresh_token: Some(refresh_token),
+            access_token: Some(access_token.clone()),
+            scope: normalized_json_string(token_payload.get("scope")).or(secret.scope),
+            token_type: normalized_json_string(token_payload.get("token_type"))
+                .or(secret.token_type),
+            expires_at: resolve_google_token_expiry(&token_payload),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    Ok(access_token)
+}
+
+fn map_gmail_error_status(status: StatusCode) -> (StatusCode, Json<ApiErrorResponse>) {
+    if status == StatusCode::NOT_FOUND {
+        return not_found_error("Inbox thread not found.");
+    }
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return error_response_with_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            ApiErrorCode::RateLimited,
+            "Google mailbox rate limit exceeded. Retry shortly.",
+        );
+    }
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        return forbidden_error("Google mailbox access was denied. Reconnect Google integration.");
+    }
+    if status.is_client_error() {
+        return validation_error("gmail", "Google mailbox request was rejected.");
+    }
+
+    error_response_with_status(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ApiErrorCode::ServiceUnavailable,
+        "Google mailbox request failed.",
+    )
+}
+
 fn settings_integration_response(
     _headers: &HeaderMap,
     status: &str,
@@ -9203,10 +10339,12 @@ async fn stats_metrics_fragment(
         return Ok(Redirect::temporary("/stats").into_response());
     }
 
-    let metrics = fetch_stats_metrics_view(&state).await.unwrap_or_else(|error| {
-        tracing::warn!(error = %error, "stats metrics fetch failed");
-        empty_stats_metrics_view()
-    });
+    let metrics = fetch_stats_metrics_view(&state)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(error = %error, "stats metrics fetch failed");
+            empty_stats_metrics_view()
+        });
 
     Ok(stats_metrics_fragment_response(&metrics))
 }
@@ -9220,10 +10358,12 @@ async fn stats_pools_fragment(
         return Ok(Redirect::temporary("/stats").into_response());
     }
 
-    let pools = fetch_stats_pools_view(&state).await.unwrap_or_else(|error| {
-        tracing::warn!(error = %error, "stats pools fetch failed");
-        Vec::new()
-    });
+    let pools = fetch_stats_pools_view(&state)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(error = %error, "stats pools fetch failed");
+            Vec::new()
+        });
 
     Ok(stats_pools_fragment_response(&pools))
 }
@@ -9338,10 +10478,8 @@ fn stats_metrics_fragment_response(metrics: &LiquidityStatsMetricsView) -> Respo
 }
 
 fn stats_pools_fragment_response(pools: &[LiquidityPoolView]) -> Response {
-    let mut response = crate::web_htmx::fragment_response(
-        render_maud_stats_pools_fragment(pools),
-        StatusCode::OK,
-    );
+    let mut response =
+        crate::web_htmx::fragment_response(render_maud_stats_pools_fragment(pools), StatusCode::OK);
     apply_html_security_headers(response.headers_mut());
     response
 }
@@ -9414,8 +10552,8 @@ async fn fetch_stats_pools_view(state: &AppState) -> Result<Vec<LiquidityPoolVie
             base_url.trim_end_matches('/'),
             pool_id
         );
-        let status = runtime_get_optional_json::<RuntimePoolStatusResponseV1>(status_url.as_str())
-            .await?;
+        let status =
+            runtime_get_optional_json::<RuntimePoolStatusResponseV1>(status_url.as_str()).await?;
 
         let snapshot_url = format!(
             "{}/internal/v1/pools/{}/snapshots/latest",
@@ -9446,13 +10584,7 @@ fn build_pool_view(
             status.total_shares,
             status.pending_withdrawals_sats_estimate,
         ),
-        None => (
-            "-".to_string(),
-            "not_found".to_string(),
-            0,
-            0,
-            0,
-        ),
+        None => ("-".to_string(), "not_found".to_string(), 0, 0, 0),
     };
 
     let (snapshot_id, snapshot_as_of, snapshot_sha256, snapshot_signed, wallet_balance_sats) =
@@ -9498,8 +10630,8 @@ fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> LiquidityStatsMetric
     for pool in pools {
         total_assets_sats = total_assets_sats.saturating_add(pool.wallet_balance_sats.unwrap_or(0));
         total_shares = total_shares.saturating_add(pool.total_shares);
-        pending_withdrawals_sats_estimate =
-            pending_withdrawals_sats_estimate.saturating_add(pool.pending_withdrawals_sats_estimate);
+        pending_withdrawals_sats_estimate = pending_withdrawals_sats_estimate
+            .saturating_add(pool.pending_withdrawals_sats_estimate);
         if let Some(ts) = pool.latest_snapshot_as_of.clone() {
             if last_snapshot_at
                 .as_deref()
@@ -9779,6 +10911,35 @@ where
 
     serde_json::from_slice::<T>(&bytes)
         .map(Some)
+        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
+}
+
+async fn runtime_post_json_value(
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
+    let response = reqwest::Client::new()
+        .post(url)
+        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
+        .timeout(timeout)
+        .json(body)
+        .send()
+        .await
+        .map_err(|error| format!("runtime_request_failed:{error}"))?;
+
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("runtime_read_failed:{error}"))?;
+    if !status.is_success() {
+        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
+            .unwrap_or_else(|| "<empty>".to_string());
+        return Err(format!("runtime_http_{status}:{body}"));
+    }
+
+    serde_json::from_slice::<serde_json::Value>(&bytes)
         .map_err(|error| format!("runtime_json_decode_failed:{error}"))
 }
 
@@ -14995,6 +16156,252 @@ async fn send_thread_message(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeWorkerRegisterRequestPayload {
+    worker_id: Option<String>,
+    workspace_ref: Option<String>,
+    codex_home_ref: Option<String>,
+    adapter: Option<String>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeWorkerHeartbeatRequestPayload {
+    metadata_patch: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeWorkerTransitionRequestPayload {
+    status: String,
+    reason: Option<String>,
+}
+
+async fn runtime_workers_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        ));
+    };
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let url = format!(
+        "{}/internal/v1/workers?owner_user_id={owner_user_id}",
+        base_url.trim_end_matches('/')
+    );
+    let response = runtime_get_json::<serde_json::Value>(url.as_str())
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to fetch runtime workers: {message}"),
+            )
+        })?;
+    let workers = response
+        .get("workers")
+        .cloned()
+        .filter(|value| value.is_array())
+        .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+    Ok(ok_data(workers))
+}
+
+async fn runtime_workers_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RuntimeWorkerRegisterRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        ));
+    };
+
+    let worker_id = normalize_optional_bounded_string(payload.worker_id, "worker_id", 160)?;
+    let workspace_ref =
+        normalize_optional_bounded_string(payload.workspace_ref, "workspace_ref", 255)?;
+    let codex_home_ref =
+        normalize_optional_bounded_string(payload.codex_home_ref, "codex_home_ref", 255)?;
+    let adapter = normalize_optional_bounded_string(payload.adapter, "adapter", 120)?;
+    let metadata = validate_optional_json_object_or_array(payload.metadata, "metadata")?
+        .unwrap_or_else(|| serde_json::json!({}));
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+
+    let request = serde_json::json!({
+        "worker_id": worker_id,
+        "owner_user_id": owner_user_id,
+        "workspace_ref": workspace_ref,
+        "codex_home_ref": codex_home_ref,
+        "adapter": adapter,
+        "metadata": metadata,
+    });
+
+    let url = format!("{}/internal/v1/workers", base_url.trim_end_matches('/'));
+    let response = runtime_post_json_value(url.as_str(), &request)
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to register runtime worker: {message}"),
+            )
+        })?;
+    let snapshot = response
+        .get("worker")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Null);
+    Ok(ok_data(snapshot))
+}
+
+async fn runtime_worker_show(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(worker_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        ));
+    };
+
+    let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
+        .unwrap_or_else(|| "worker".to_string());
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let url = format!(
+        "{}/internal/v1/workers/{}?owner_user_id={owner_user_id}",
+        base_url.trim_end_matches('/'),
+        worker_id
+    );
+    let response = runtime_get_json::<serde_json::Value>(url.as_str())
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to fetch runtime worker: {message}"),
+            )
+        })?;
+    let snapshot = response
+        .get("worker")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Null);
+    Ok(ok_data(snapshot))
+}
+
+async fn runtime_worker_heartbeat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(worker_id): Path<String>,
+    Json(payload): Json<RuntimeWorkerHeartbeatRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        ));
+    };
+
+    let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
+        .unwrap_or_else(|| "worker".to_string());
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let metadata_patch =
+        validate_optional_json_object_or_array(payload.metadata_patch, "metadataPatch")?
+            .unwrap_or_else(|| serde_json::json!({}));
+
+    let url = format!(
+        "{}/internal/v1/workers/{}/heartbeat",
+        base_url.trim_end_matches('/'),
+        worker_id
+    );
+    let request = serde_json::json!({
+        "owner_user_id": owner_user_id,
+        "metadata_patch": metadata_patch,
+    });
+    let response = runtime_post_json_value(url.as_str(), &request)
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to heartbeat runtime worker: {message}"),
+            )
+        })?;
+    let snapshot = response
+        .get("worker")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Null);
+    Ok(ok_data(snapshot))
+}
+
+async fn runtime_worker_transition(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(worker_id): Path<String>,
+    Json(payload): Json<RuntimeWorkerTransitionRequestPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let bundle = session_bundle_from_headers(&state, &headers).await?;
+    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+        return Err(error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        ));
+    };
+
+    let normalized_status = payload.status.trim().to_lowercase();
+    if !matches!(
+        normalized_status.as_str(),
+        "starting" | "running" | "stopping" | "stopped" | "failed"
+    ) {
+        return Err(validation_error(
+            "status",
+            "The selected status is invalid.",
+        ));
+    }
+    let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
+        .unwrap_or_else(|| "worker".to_string());
+    let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
+    let url = format!(
+        "{}/internal/v1/workers/{}/status",
+        base_url.trim_end_matches('/'),
+        worker_id
+    );
+    let request = serde_json::json!({
+        "owner_user_id": owner_user_id,
+        "status": normalized_status,
+        "reason": payload.reason,
+    });
+    let response = runtime_post_json_value(url.as_str(), &request)
+        .await
+        .map_err(|message| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to transition runtime worker: {message}"),
+            )
+        })?;
+    let snapshot = response
+        .get("worker")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Null);
+    Ok(ok_data(snapshot))
+}
+
 async fn runtime_codex_workers_index(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -17168,7 +18575,7 @@ fn runtime_worker_snapshot_payload(
     worker: &RuntimeWorkerRecord,
     now: chrono::DateTime<Utc>,
 ) -> serde_json::Value {
-    let (heartbeat_state, heartbeat_age_ms) = runtime_worker_heartbeat(worker, now);
+    let (heartbeat_state, heartbeat_age_ms) = runtime_worker_heartbeat_state(worker, now);
     serde_json::json!({
         "worker_id": worker.worker_id,
         "status": worker.status,
@@ -17202,7 +18609,7 @@ fn runtime_worker_event_payload(event: &RuntimeWorkerEventRecord) -> serde_json:
     })
 }
 
-fn runtime_worker_heartbeat(
+fn runtime_worker_heartbeat_state(
     worker: &RuntimeWorkerRecord,
     now: chrono::DateTime<Utc>,
 ) -> (&'static str, Option<u64>) {
@@ -18239,10 +19646,10 @@ mod tests {
         SET_COOKIE,
     };
     use axum::http::{HeaderValue, Request, StatusCode};
-    use axum::routing::post;
+    use axum::routing::{get, post};
     use axum::{Json, Router};
     use base64::Engine as _;
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
     use hmac::Mac;
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
@@ -18258,8 +19665,8 @@ mod tests {
     use crate::domain_store::{
         AutopilotAggregate, AutopilotPolicyRecord, AutopilotProfileRecord, AutopilotRecord,
         AutopilotRuntimeBindingRecord, CreateAutopilotInput, CreateL402PaywallInput, DomainStore,
-        RecordL402GatewayEventInput, RecordL402ReceiptInput, UpsertResendIntegrationInput,
-        UpsertUserSparkWalletInput,
+        RecordL402GatewayEventInput, RecordL402ReceiptInput, UpsertGoogleIntegrationInput,
+        UpsertResendIntegrationInput, UpsertUserSparkWalletInput,
     };
     use crate::observability::{Observability, RecordingAuditSink};
     use crate::{
@@ -18361,6 +19768,7 @@ mod tests {
             google_oauth_redirect_uri: None,
             google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
             google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
+            google_gmail_api_base_url: "https://gmail.googleapis.com".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,
@@ -18878,6 +20286,134 @@ mod tests {
             axum::serve(listener, app.into_make_service())
                 .await
                 .expect("google oauth token stub server failed");
+        });
+
+        Ok((addr, handle))
+    }
+
+    async fn start_gmail_inbox_stub(
+        token_calls: Arc<Mutex<Vec<String>>>,
+        send_calls: Arc<Mutex<Vec<Value>>>,
+    ) -> Result<(SocketAddr, JoinHandle<()>)> {
+        #[derive(Clone)]
+        struct GmailStubState {
+            token_calls: Arc<Mutex<Vec<String>>>,
+            send_calls: Arc<Mutex<Vec<Value>>>,
+        }
+
+        let state = GmailStubState {
+            token_calls,
+            send_calls,
+        };
+        let app = Router::new()
+            .route(
+                "/oauth2/token",
+                post(
+                    |State(state): State<GmailStubState>, body: String| async move {
+                        state.token_calls.lock().await.push(body);
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "access_token": "fresh_access_token",
+                                "token_type": "Bearer",
+                                "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+                                "expires_in": 3600
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/gmail/v1/users/me/threads",
+                get(|headers: HeaderMap| async move {
+                    let auth = headers
+                        .get("authorization")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    if auth.contains("stale_access_token") {
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": {"message": "expired"}})),
+                        );
+                    }
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "threads": [
+                                { "id": "thread_1" }
+                            ]
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/gmail/v1/users/me/threads/:thread_id",
+                get(
+                    |axum::extract::Path(thread_id): axum::extract::Path<String>,
+                     headers: HeaderMap| async move {
+                        let auth = headers
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        if auth.contains("stale_access_token") {
+                            return (
+                                StatusCode::UNAUTHORIZED,
+                                Json(json!({"error": {"message": "expired"}})),
+                            );
+                        }
+
+                        let body = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                            .encode("Can we move tomorrow's walkthrough to next week?");
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "id": thread_id,
+                                "snippet": "Can we move tomorrow's call to next week?",
+                                "messages": [
+                                    {
+                                        "id": "gmail_msg_1",
+                                        "snippet": "Can we move tomorrow's call to next week?",
+                                        "internalDate": "1765584000000",
+                                        "payload": {
+                                            "headers": [
+                                                {"name": "Subject", "value": "Can we reschedule the walkthrough?"},
+                                                {"name": "From", "value": "alex@acme.com"},
+                                                {"name": "To", "value": "you@openagents.com"}
+                                            ],
+                                            "body": {"data": body}
+                                        }
+                                    }
+                                ]
+                            })),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/gmail/v1/users/me/messages/send",
+                post(
+                    |State(state): State<GmailStubState>, Json(payload): Json<Value>| async move {
+                        state.send_calls.lock().await.push(payload);
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "id": "gmail_msg_sent_1",
+                                "threadId": "thread_1"
+                            })),
+                        )
+                    },
+                ),
+            )
+            .with_state(state);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .expect("gmail inbox stub server failed");
         });
 
         Ok((addr, handle))
@@ -23945,6 +25481,179 @@ mod tests {
         );
 
         token_stub_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inbox_routes_fetch_gmail_threads_and_support_actions() -> Result<()> {
+        let token_calls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let send_calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let (gmail_stub_addr, gmail_stub_handle) =
+            start_gmail_inbox_stub(token_calls.clone(), send_calls.clone()).await?;
+
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.google_oauth_client_id = Some("google-client-id".to_string());
+        config.google_oauth_client_secret = Some("google-client-secret".to_string());
+        config.google_oauth_token_url = format!("http://{gmail_stub_addr}/oauth2/token");
+        config.google_gmail_api_base_url = format!("http://{gmail_stub_addr}");
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let auth = super::AuthService::from_config(&config);
+        let verify = auth
+            .local_test_sign_in(
+                "inbox-google@openagents.com".to_string(),
+                None,
+                Some("autopilot-ios"),
+                None,
+            )
+            .await?;
+        let token = verify.access_token.clone();
+        let user_id = verify.user.id.clone();
+
+        let store = DomainStore::from_config(&config);
+        store
+            .upsert_google_integration(UpsertGoogleIntegrationInput {
+                user_id: user_id.clone(),
+                refresh_token: Some("refresh_token_1234567890".to_string()),
+                access_token: Some("stale_access_token".to_string()),
+                scope: Some(
+                    "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send"
+                        .to_string(),
+                ),
+                token_type: Some("Bearer".to_string()),
+                expires_at: Some(Utc::now() - Duration::minutes(5)),
+            })
+            .await?;
+        let app = build_router(config.clone());
+
+        let list_request = Request::builder()
+            .method("GET")
+            .uri("/api/inbox/threads")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_response = app.clone().oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = read_json(list_response).await?;
+        assert_eq!(
+            list_body["data"]["snapshot"]["threads"][0]["id"],
+            "thread_1"
+        );
+
+        let detail_request = Request::builder()
+            .method("GET")
+            .uri("/api/inbox/threads/thread_1")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let detail_response = app.clone().oneshot(detail_request).await?;
+        assert_eq!(detail_response.status(), StatusCode::OK);
+        let detail_body = read_json(detail_response).await?;
+        assert_eq!(detail_body["data"]["thread"]["id"], "thread_1");
+
+        let approve_request = Request::builder()
+            .method("POST")
+            .uri("/api/inbox/threads/thread_1/draft/approve")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"detail":"approved in test"}"#))?;
+        let approve_response = app.clone().oneshot(approve_request).await?;
+        assert_eq!(approve_response.status(), StatusCode::OK);
+        let approve_body = read_json(approve_response).await?;
+        assert_eq!(
+            approve_body["data"]["snapshot"]["threads"][0]["pending_approval"],
+            false
+        );
+
+        let reject_request = Request::builder()
+            .method("POST")
+            .uri("/api/inbox/threads/thread_1/draft/reject")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"detail":"reject in test"}"#))?;
+        let reject_response = app.clone().oneshot(reject_request).await?;
+        assert_eq!(reject_response.status(), StatusCode::OK);
+        let reject_body = read_json(reject_response).await?;
+        assert_eq!(
+            reject_body["data"]["snapshot"]["threads"][0]["pending_approval"],
+            true
+        );
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/inbox/threads/thread_1/reply/send")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                r#"{"body":"Thanks for the update. Tuesday works for us."}"#,
+            ))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        assert_eq!(send_response.status(), StatusCode::OK);
+        let send_body = read_json(send_response).await?;
+        assert_eq!(send_body["data"]["status"], "sent");
+        assert_eq!(send_body["data"]["message_id"], "gmail_msg_sent_1");
+
+        let refresh_calls = token_calls.lock().await.clone();
+        assert!(!refresh_calls.is_empty());
+        assert!(refresh_calls[0].contains("grant_type=refresh_token"));
+
+        let sends = send_calls.lock().await.clone();
+        assert_eq!(sends.len(), 1);
+        assert_eq!(sends[0]["threadId"], "thread_1");
+
+        gmail_stub_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inbox_threads_fail_when_refresh_token_is_missing() -> Result<()> {
+        let static_dir = tempdir()?;
+        let mut config = test_config(static_dir.path().to_path_buf());
+        config.google_oauth_client_id = Some("google-client-id".to_string());
+        config.google_oauth_client_secret = Some("google-client-secret".to_string());
+        config.google_oauth_token_url = "http://127.0.0.1:9/oauth2/token".to_string();
+        config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
+        config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
+
+        let auth = super::AuthService::from_config(&config);
+        let verify = auth
+            .local_test_sign_in(
+                "inbox-missing-refresh@openagents.com".to_string(),
+                None,
+                Some("autopilot-ios"),
+                None,
+            )
+            .await?;
+        let token = verify.access_token.clone();
+        let user_id = verify.user.id.clone();
+
+        let store = DomainStore::from_config(&config);
+        store
+            .upsert_google_integration(UpsertGoogleIntegrationInput {
+                user_id,
+                refresh_token: Some("   ".to_string()),
+                access_token: Some("stale_access_token".to_string()),
+                scope: Some("https://www.googleapis.com/auth/gmail.readonly".to_string()),
+                token_type: Some("Bearer".to_string()),
+                expires_at: Some(Utc::now() - Duration::minutes(5)),
+            })
+            .await?;
+        let app = build_router(config.clone());
+
+        let list_request = Request::builder()
+            .method("GET")
+            .uri("/api/inbox/threads")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())?;
+        let list_response = app.oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = read_json(list_response).await?;
+        assert_eq!(body["error"]["code"], "invalid_request");
+        assert_eq!(
+            body["message"],
+            "Google refresh token is missing. Reconnect Google integration."
+        );
+
         Ok(())
     }
 

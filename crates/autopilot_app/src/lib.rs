@@ -207,6 +207,12 @@ pub enum UserAction {
     PylonStop,
     PylonRefresh,
     WalletRefresh,
+    LiquidityProviderOnline,
+    LiquidityProviderOffline,
+    LiquidityProviderRefresh,
+    LiquidityProviderCreateInvoice {
+        amount_sats: u64,
+    },
     DvmProviderStart,
     DvmProviderStop,
     DvmProviderRefresh,
@@ -303,6 +309,19 @@ pub struct WalletStatus {
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
     pub identity_exists: bool,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct LiquidityProviderStatus {
+    pub running: bool,
+    pub provider_active: Option<bool>,
+    pub worker_id: Option<String>,
+    pub earned_sats: u64,
+    pub max_invoice_sats: u64,
+    pub max_hourly_sats: u64,
+    pub max_daily_sats: u64,
+    pub last_invoice: Option<String>,
     pub last_error: Option<String>,
 }
 
@@ -495,6 +514,9 @@ pub enum AppEvent {
     },
     WalletStatus {
         status: WalletStatus,
+    },
+    LiquidityProviderStatus {
+        status: LiquidityProviderStatus,
     },
     DvmProviderStatus {
         status: DvmProviderStatus,

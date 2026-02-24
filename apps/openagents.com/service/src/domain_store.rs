@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -15,7 +19,18 @@ use crate::config::Config;
 pub struct DomainStore {
     state: Arc<RwLock<DomainStoreState>>,
     path: Option<PathBuf>,
+    integration_secret_cipher: Option<IntegrationSecretCipher>,
 }
+
+#[derive(Clone)]
+struct IntegrationSecretCipher {
+    key_id: String,
+    key: [u8; 32],
+}
+
+const INTEGRATION_SECRET_ENCRYPTION_KEY_ENV: &str = "OA_INTEGRATION_SECRET_ENCRYPTION_KEY";
+const INTEGRATION_SECRET_KEY_ID_ENV: &str = "OA_INTEGRATION_SECRET_KEY_ID";
+const INTEGRATION_SECRET_ENVELOPE_PREFIX: &str = "enc:v1:";
 
 #[derive(Debug, thiserror::Error)]
 pub enum DomainStoreError {
@@ -358,6 +373,48 @@ pub struct UserIntegrationAuditRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboxThreadStateRecord {
+    pub id: u64,
+    pub user_id: String,
+    pub thread_id: String,
+    pub pending_approval: bool,
+    pub decision: Option<String>,
+    pub draft_preview: Option<String>,
+    pub source: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboxAuditRecord {
+    pub id: u64,
+    pub user_id: String,
+    pub thread_id: String,
+    pub action: String,
+    pub detail: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertInboxThreadStateInput {
+    pub user_id: String,
+    pub thread_id: String,
+    pub pending_approval: bool,
+    pub decision: Option<String>,
+    pub draft_preview: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordInboxAuditInput {
+    pub user_id: String,
+    pub thread_id: String,
+    pub action: String,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct IntegrationUpsertResult {
     pub integration: UserIntegrationRecord,
@@ -534,12 +591,16 @@ struct DomainStoreState {
     user_spark_wallets: HashMap<String, UserSparkWalletRecord>,
     user_integrations: HashMap<String, UserIntegrationRecord>,
     user_integration_audits: Vec<UserIntegrationAuditRecord>,
+    inbox_thread_states: HashMap<String, InboxThreadStateRecord>,
+    inbox_audits: Vec<InboxAuditRecord>,
     comms_webhook_events: HashMap<String, CommsWebhookEventRecord>,
     comms_delivery_projections: HashMap<String, CommsDeliveryProjectionRecord>,
     shouts: Vec<ShoutRecord>,
     whispers: Vec<WhisperRecord>,
     next_user_integration_id: u64,
     next_user_integration_audit_id: u64,
+    next_inbox_thread_state_id: u64,
+    next_inbox_audit_id: u64,
     next_comms_webhook_event_id: u64,
     next_comms_delivery_projection_id: u64,
     next_l402_receipt_id: u64,
@@ -562,6 +623,24 @@ impl DomainStoreState {
         if self.next_user_integration_audit_id == 0 {
             self.next_user_integration_audit_id = self
                 .user_integration_audits
+                .iter()
+                .map(|row| row.id)
+                .max()
+                .unwrap_or(0)
+                + 1;
+        }
+        if self.next_inbox_thread_state_id == 0 {
+            self.next_inbox_thread_state_id = self
+                .inbox_thread_states
+                .values()
+                .map(|row| row.id)
+                .max()
+                .unwrap_or(0)
+                + 1;
+        }
+        if self.next_inbox_audit_id == 0 {
+            self.next_inbox_audit_id = self
+                .inbox_audits
                 .iter()
                 .map(|row| row.id)
                 .max()
@@ -618,10 +697,12 @@ impl DomainStore {
         let path = config.domain_store_path.clone();
         let mut state = Self::load_state(path.as_ref());
         state.normalize_counters();
+        let integration_secret_cipher = integration_secret_cipher_from_env();
 
         Self {
             state: Arc::new(RwLock::new(state)),
             path,
+            integration_secret_cipher,
         }
     }
 
@@ -1569,8 +1650,9 @@ impl DomainStore {
         let sender_name = normalize_optional_string(input.sender_name.as_deref());
         let fingerprint = sha256_hex(&api_key);
         let secret_last4 = Some(last4(&api_key));
+        let integration_secret_cipher = self.integration_secret_cipher.clone();
 
-        self.mutate(|state| {
+        self.mutate(move |state| {
             let mut metadata = serde_json::Map::new();
             metadata.insert(
                 "sender_email".to_string(),
@@ -1587,11 +1669,12 @@ impl DomainStore {
                     .unwrap_or(Value::Null),
             );
 
+            let secret = encrypt_integration_secret(&api_key, integration_secret_cipher.as_ref())?;
             let result = upsert_integration_secret(
                 state,
                 &user_id,
                 "resend",
-                api_key.clone(),
+                secret,
                 fingerprint,
                 secret_last4,
                 Some(Value::Object(metadata)),
@@ -1616,14 +1699,18 @@ impl DomainStore {
         input: UpsertGoogleIntegrationInput,
     ) -> Result<IntegrationUpsertResult, DomainStoreError> {
         let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let integration_secret_cipher = self.integration_secret_cipher.clone();
 
-        self.mutate(|state| {
+        self.mutate(move |state| {
             let key = integration_key(&user_id, "google");
             let existing = state.user_integrations.get(&key).cloned();
             let existing_payload = existing
                 .as_ref()
                 .and_then(|row| row.encrypted_secret.as_ref())
-                .and_then(|value| serde_json::from_str::<Value>(value).ok())
+                .and_then(|value| {
+                    decrypt_integration_secret(value, integration_secret_cipher.as_ref()).ok()
+                })
+                .and_then(|value| serde_json::from_str::<Value>(value.as_str()).ok())
                 .unwrap_or(Value::Null);
 
             let refresh_token = input
@@ -1676,11 +1763,15 @@ impl DomainStore {
                 "expires_at": expires_at,
                 "obtained_at": Utc::now().to_rfc3339(),
             });
-            let secret = serde_json::to_string(&secret_payload).map_err(|error| {
+            let secret_plain = serde_json::to_string(&secret_payload).map_err(|error| {
                 DomainStoreError::Persistence {
                     message: format!("failed to encode google secret payload: {error}"),
                 }
             })?;
+            let secret = encrypt_integration_secret(
+                secret_plain.as_str(),
+                integration_secret_cipher.as_ref(),
+            )?;
 
             let refresh_token = secret_payload
                 .get("refresh_token")
@@ -1836,7 +1927,167 @@ impl DomainStore {
             return Ok(None);
         }
 
+        let mut row = row;
+        let mut needs_migration = false;
+        let mut migrated_secret: Option<String> = None;
+        if let Some(stored_secret) = row.encrypted_secret.clone() {
+            let decrypted = decrypt_integration_secret(
+                stored_secret.as_str(),
+                self.integration_secret_cipher.as_ref(),
+            )?;
+            if self.integration_secret_cipher.is_some()
+                && !is_encrypted_integration_secret(stored_secret.as_str())
+            {
+                needs_migration = true;
+                migrated_secret = Some(encrypt_integration_secret(
+                    decrypted.as_str(),
+                    self.integration_secret_cipher.as_ref(),
+                )?);
+            }
+            row.encrypted_secret = Some(decrypted);
+        }
+        drop(state);
+
+        if needs_migration {
+            let key_for_update = key.clone();
+            let new_secret = migrated_secret.unwrap_or_default();
+            self.mutate(move |state| {
+                if let Some(integration) = state.user_integrations.get_mut(&key_for_update) {
+                    integration.encrypted_secret = Some(new_secret.clone());
+                    integration.updated_at = Utc::now();
+                }
+                Ok(())
+            })
+            .await?;
+        }
+
         Ok(Some(row))
+    }
+
+    pub async fn upsert_inbox_thread_state(
+        &self,
+        input: UpsertInboxThreadStateInput,
+    ) -> Result<InboxThreadStateRecord, DomainStoreError> {
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let thread_id = normalize_non_empty(&input.thread_id, "thread_id")?;
+        let decision = normalize_optional_string(input.decision.as_deref());
+        let draft_preview = normalize_optional_string(input.draft_preview.as_deref());
+        let source = normalize_optional_string(input.source.as_deref())
+            .unwrap_or_else(|| "gmail_adapter".to_string());
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let key = inbox_thread_state_key(&user_id, &thread_id);
+
+            let row = state.inbox_thread_states.entry(key).or_insert_with(|| {
+                let id = state.next_inbox_thread_state_id;
+                state.next_inbox_thread_state_id =
+                    state.next_inbox_thread_state_id.saturating_add(1);
+                InboxThreadStateRecord {
+                    id,
+                    user_id: user_id.clone(),
+                    thread_id: thread_id.clone(),
+                    pending_approval: input.pending_approval,
+                    decision: None,
+                    draft_preview: None,
+                    source: source.clone(),
+                    created_at: now,
+                    updated_at: now,
+                }
+            });
+
+            row.pending_approval = input.pending_approval;
+            row.decision = decision;
+            row.draft_preview = draft_preview;
+            row.source = source;
+            row.updated_at = now;
+
+            Ok(row.clone())
+        })
+        .await
+    }
+
+    pub async fn inbox_thread_state(
+        &self,
+        user_id: &str,
+        thread_id: &str,
+    ) -> Result<Option<InboxThreadStateRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let thread_id = normalize_non_empty(thread_id, "thread_id")?;
+        let key = inbox_thread_state_key(&user_id, &thread_id);
+        let state = self.state.read().await;
+        Ok(state.inbox_thread_states.get(&key).cloned())
+    }
+
+    pub async fn list_inbox_thread_states_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<InboxThreadStateRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let state = self.state.read().await;
+        let mut rows: Vec<InboxThreadStateRecord> = state
+            .inbox_thread_states
+            .values()
+            .filter(|row| row.user_id == user_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(rows)
+    }
+
+    pub async fn record_inbox_audit(
+        &self,
+        input: RecordInboxAuditInput,
+    ) -> Result<InboxAuditRecord, DomainStoreError> {
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let thread_id = normalize_non_empty(&input.thread_id, "thread_id")?;
+        let action = normalize_non_empty(&input.action, "action")?;
+        let detail = normalize_non_empty(&input.detail, "detail")?;
+
+        self.mutate(|state| {
+            let now = Utc::now();
+            let row = InboxAuditRecord {
+                id: state.next_inbox_audit_id,
+                user_id,
+                thread_id,
+                action,
+                detail,
+                created_at: now,
+                updated_at: now,
+            };
+            state.next_inbox_audit_id = state.next_inbox_audit_id.saturating_add(1);
+            state.inbox_audits.push(row.clone());
+            Ok(row)
+        })
+        .await
+    }
+
+    pub async fn list_inbox_audits_for_user(
+        &self,
+        user_id: &str,
+        thread_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<InboxAuditRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let thread_filter = normalize_optional_string(thread_id);
+        let safe_limit = limit.clamp(1, 200);
+
+        let state = self.state.read().await;
+        let mut rows: Vec<InboxAuditRecord> = state
+            .inbox_audits
+            .iter()
+            .filter(|row| row.user_id == user_id)
+            .filter(|row| {
+                thread_filter
+                    .as_ref()
+                    .map(|thread| row.thread_id == *thread)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        rows.truncate(safe_limit);
+        Ok(rows)
     }
 
     pub async fn list_integrations_for_user(
@@ -2703,6 +2954,151 @@ fn append_integration_audit(
         });
 }
 
+fn integration_secret_cipher_from_env() -> Option<IntegrationSecretCipher> {
+    let encoded_key = std::env::var(INTEGRATION_SECRET_ENCRYPTION_KEY_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let key_id = std::env::var(INTEGRATION_SECRET_KEY_ID_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "v1".to_string());
+
+    let decoded = URL_SAFE_NO_PAD
+        .decode(encoded_key.as_bytes())
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(encoded_key.as_bytes()));
+    let key = match decoded {
+        Ok(bytes) if bytes.len() == 32 => {
+            let mut material = [0u8; 32];
+            material.copy_from_slice(bytes.as_slice());
+            material
+        }
+        Ok(bytes) => {
+            tracing::warn!(
+                target: "openagents.domain_store",
+                env = INTEGRATION_SECRET_ENCRYPTION_KEY_ENV,
+                key_bytes = bytes.len(),
+                "integration secret encryption key ignored: expected 32-byte base64 value",
+            );
+            return None;
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "openagents.domain_store",
+                env = INTEGRATION_SECRET_ENCRYPTION_KEY_ENV,
+                error = %error,
+                "integration secret encryption key ignored: invalid base64 payload",
+            );
+            return None;
+        }
+    };
+
+    Some(IntegrationSecretCipher { key_id, key })
+}
+
+fn is_encrypted_integration_secret(value: &str) -> bool {
+    value.starts_with(INTEGRATION_SECRET_ENVELOPE_PREFIX)
+}
+
+fn encrypt_integration_secret(
+    plaintext: &str,
+    cipher: Option<&IntegrationSecretCipher>,
+) -> Result<String, DomainStoreError> {
+    let Some(cipher) = cipher else {
+        return Ok(plaintext.to_string());
+    };
+    if is_encrypted_integration_secret(plaintext) {
+        return Ok(plaintext.to_string());
+    }
+
+    let nonce_source = Uuid::new_v4().as_bytes().to_owned();
+    let nonce = Nonce::from_slice(&nonce_source[..12]);
+    let aead = ChaCha20Poly1305::new_from_slice(&cipher.key).map_err(|error| {
+        DomainStoreError::Persistence {
+            message: format!("failed to initialize integration secret cipher: {error}"),
+        }
+    })?;
+    let ciphertext = aead.encrypt(nonce, plaintext.as_bytes()).map_err(|error| {
+        DomainStoreError::Persistence {
+            message: format!("failed to encrypt integration secret: {error}"),
+        }
+    })?;
+
+    let nonce_b64 = URL_SAFE_NO_PAD.encode(nonce_source[..12].as_ref());
+    let ciphertext_b64 = URL_SAFE_NO_PAD.encode(ciphertext);
+    Ok(format!(
+        "{INTEGRATION_SECRET_ENVELOPE_PREFIX}{}:{nonce_b64}:{ciphertext_b64}",
+        cipher.key_id
+    ))
+}
+
+fn decrypt_integration_secret(
+    stored: &str,
+    cipher: Option<&IntegrationSecretCipher>,
+) -> Result<String, DomainStoreError> {
+    if !is_encrypted_integration_secret(stored) {
+        return Ok(stored.to_string());
+    }
+
+    let Some(cipher) = cipher else {
+        return Err(DomainStoreError::Persistence {
+            message: "integration secret is encrypted but no decryption key is configured"
+                .to_string(),
+        });
+    };
+
+    let mut parts = stored.split(':');
+    let version = parts.next().unwrap_or_default();
+    let version_suffix = parts.next().unwrap_or_default();
+    let key_id = parts.next().unwrap_or_default();
+    let nonce_b64 = parts.next().unwrap_or_default();
+    let ciphertext_b64 = parts.next().unwrap_or_default();
+    let has_extra_parts = parts.next().is_some();
+
+    if version != "enc" || version_suffix != "v1" || has_extra_parts {
+        return Err(DomainStoreError::Persistence {
+            message: "integration secret envelope is invalid".to_string(),
+        });
+    }
+    if key_id != cipher.key_id {
+        return Err(DomainStoreError::Persistence {
+            message: format!("integration secret key id {key_id} is not configured"),
+        });
+    }
+
+    let nonce_raw = URL_SAFE_NO_PAD
+        .decode(nonce_b64.as_bytes())
+        .map_err(|error| DomainStoreError::Persistence {
+            message: format!("failed to decode integration secret nonce: {error}"),
+        })?;
+    if nonce_raw.len() != 12 {
+        return Err(DomainStoreError::Persistence {
+            message: "integration secret nonce length is invalid".to_string(),
+        });
+    }
+    let ciphertext = URL_SAFE_NO_PAD
+        .decode(ciphertext_b64.as_bytes())
+        .map_err(|error| DomainStoreError::Persistence {
+            message: format!("failed to decode integration secret payload: {error}"),
+        })?;
+
+    let nonce = Nonce::from_slice(nonce_raw.as_slice());
+    let aead = ChaCha20Poly1305::new_from_slice(&cipher.key).map_err(|error| {
+        DomainStoreError::Persistence {
+            message: format!("failed to initialize integration secret cipher: {error}"),
+        }
+    })?;
+    let decrypted = aead.decrypt(nonce, ciphertext.as_ref()).map_err(|error| {
+        DomainStoreError::Persistence {
+            message: format!("failed to decrypt integration secret: {error}"),
+        }
+    })?;
+    String::from_utf8(decrypted).map_err(|error| DomainStoreError::Persistence {
+        message: format!("integration secret plaintext is invalid utf8: {error}"),
+    })
+}
+
 fn normalize_display_name(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -2853,6 +3249,10 @@ fn integration_key(user_id: &str, provider: &str) -> String {
     format!("{}::{}", user_id.trim(), provider.trim().to_lowercase())
 }
 
+fn inbox_thread_state_key(user_id: &str, thread_id: &str) -> String {
+    format!("{}::{}", user_id.trim(), thread_id.trim())
+}
+
 fn delivery_projection_key(user_id: &str, provider: &str, integration_id: &str) -> String {
     format!(
         "{}::{}::{}",
@@ -2973,6 +3373,7 @@ mod tests {
             google_oauth_redirect_uri: None,
             google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
             google_oauth_token_url: "https://oauth2.googleapis.com/token".to_string(),
+            google_gmail_api_base_url: "https://gmail.googleapis.com".to_string(),
             runtime_driver: "legacy".to_string(),
             runtime_force_driver: None,
             runtime_force_legacy: false,
@@ -2997,6 +3398,157 @@ mod tests {
             compat_control_min_schema_version: 1,
             compat_control_max_schema_version: 1,
         }
+    }
+
+    #[test]
+    fn integration_secret_cipher_roundtrip_and_rotation_guard() {
+        let cipher = IntegrationSecretCipher {
+            key_id: "v1".to_string(),
+            key: [7u8; 32],
+        };
+        let rotated = IntegrationSecretCipher {
+            key_id: "v2".to_string(),
+            key: [7u8; 32],
+        };
+
+        let plaintext = "super-secret-token-value";
+        let encrypted =
+            encrypt_integration_secret(plaintext, Some(&cipher)).expect("encrypt integration");
+        assert!(is_encrypted_integration_secret(&encrypted));
+        assert_ne!(encrypted, plaintext);
+
+        let decrypted =
+            decrypt_integration_secret(encrypted.as_str(), Some(&cipher)).expect("decrypt");
+        assert_eq!(decrypted, plaintext);
+
+        let wrong_key = decrypt_integration_secret(encrypted.as_str(), Some(&rotated))
+            .expect_err("key id mismatch must fail");
+        assert!(matches!(wrong_key, DomainStoreError::Persistence { .. }));
+
+        let missing_key = decrypt_integration_secret(encrypted.as_str(), None)
+            .expect_err("missing key must fail");
+        assert!(matches!(missing_key, DomainStoreError::Persistence { .. }));
+
+        let passthrough =
+            decrypt_integration_secret("legacy-plaintext", None).expect("plaintext passthrough");
+        assert_eq!(passthrough, "legacy-plaintext");
+    }
+
+    #[tokio::test]
+    async fn integration_secret_migrates_plaintext_after_encryption_key_is_enabled() {
+        let store = DomainStore::from_config(&test_config(None));
+        store
+            .upsert_resend_integration(UpsertResendIntegrationInput {
+                user_id: "usr_encrypt".to_string(),
+                api_key: "re_plaintext_1234567890".to_string(),
+                sender_email: Some("bot@openagents.com".to_string()),
+                sender_name: Some("OpenAgents Bot".to_string()),
+            })
+            .await
+            .expect("seed resend integration");
+
+        {
+            let state = store.state.read().await;
+            let key = integration_key("usr_encrypt", "resend");
+            let row = state
+                .user_integrations
+                .get(&key)
+                .expect("seeded integration row");
+            assert_eq!(
+                row.encrypted_secret.as_deref(),
+                Some("re_plaintext_1234567890")
+            );
+        }
+
+        let mut store = store;
+        store.integration_secret_cipher = Some(IntegrationSecretCipher {
+            key_id: "v1".to_string(),
+            key: [11u8; 32],
+        });
+
+        let fetched = store
+            .find_active_integration_secret("usr_encrypt", "resend")
+            .await
+            .expect("find secret")
+            .expect("integration exists");
+        assert_eq!(
+            fetched.encrypted_secret.as_deref(),
+            Some("re_plaintext_1234567890")
+        );
+
+        let state = store.state.read().await;
+        let key = integration_key("usr_encrypt", "resend");
+        let row = state
+            .user_integrations
+            .get(&key)
+            .expect("integration row after migration");
+        let stored = row.encrypted_secret.clone().unwrap_or_default();
+        assert!(is_encrypted_integration_secret(stored.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbox_thread_state_and_audit_roundtrip() {
+        let store = DomainStore::from_config(&test_config(None));
+
+        let upserted = store
+            .upsert_inbox_thread_state(UpsertInboxThreadStateInput {
+                user_id: "usr_inbox".to_string(),
+                thread_id: "thread_1".to_string(),
+                pending_approval: true,
+                decision: Some("draft_only".to_string()),
+                draft_preview: Some("Draft reply".to_string()),
+                source: Some("gmail_adapter".to_string()),
+            })
+            .await
+            .expect("upsert inbox state");
+        assert_eq!(upserted.thread_id, "thread_1");
+        assert!(upserted.pending_approval);
+
+        let updated = store
+            .upsert_inbox_thread_state(UpsertInboxThreadStateInput {
+                user_id: "usr_inbox".to_string(),
+                thread_id: "thread_1".to_string(),
+                pending_approval: false,
+                decision: Some("approved".to_string()),
+                draft_preview: Some("Approved draft".to_string()),
+                source: Some("inbox_api".to_string()),
+            })
+            .await
+            .expect("update inbox state");
+        assert_eq!(updated.id, upserted.id);
+        assert!(!updated.pending_approval);
+        assert_eq!(updated.decision.as_deref(), Some("approved"));
+
+        let loaded = store
+            .inbox_thread_state("usr_inbox", "thread_1")
+            .await
+            .expect("load inbox state")
+            .expect("state exists");
+        assert_eq!(loaded.id, upserted.id);
+
+        store
+            .record_inbox_audit(RecordInboxAuditInput {
+                user_id: "usr_inbox".to_string(),
+                thread_id: "thread_1".to_string(),
+                action: "approve_draft".to_string(),
+                detail: "draft approved and queued".to_string(),
+            })
+            .await
+            .expect("record inbox audit");
+
+        let audits = store
+            .list_inbox_audits_for_user("usr_inbox", Some("thread_1"), 20)
+            .await
+            .expect("list inbox audits");
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].action, "approve_draft");
+
+        let rows = store
+            .list_inbox_thread_states_for_user("usr_inbox")
+            .await
+            .expect("list inbox states");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].thread_id, "thread_1");
     }
 
     #[tokio::test]

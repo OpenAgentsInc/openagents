@@ -7142,8 +7142,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "autopilot-inbox-domain",
+ "autopilot_app",
  "axum 0.7.9",
  "base64",
+ "chacha20poly1305",
  "chrono",
  "clap",
  "hmac",

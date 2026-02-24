@@ -9,8 +9,11 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+autopilot-inbox-domain.workspace = true
+autopilot_app = { path = "../../../crates/autopilot_app" }
 axum = "0.7"
 base64.workspace = true
+chacha20poly1305 = "0.10"
 chrono.workspace = true
 clap.workspace = true
 hmac = "0.12"

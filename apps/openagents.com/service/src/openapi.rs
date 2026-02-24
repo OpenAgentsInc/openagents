@@ -55,6 +55,12 @@ pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT: &str =
 pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK: &str =
     "/settings/integrations/google/callback";
 pub const ROUTE_SETTINGS_INTEGRATIONS_GOOGLE: &str = "/settings/integrations/google";
+pub const ROUTE_INBOX_THREADS: &str = "/api/inbox/threads";
+pub const ROUTE_INBOX_THREAD_DETAIL: &str = "/api/inbox/threads/:thread_id";
+pub const ROUTE_INBOX_THREAD_APPROVE: &str = "/api/inbox/threads/:thread_id/draft/approve";
+pub const ROUTE_INBOX_THREAD_REJECT: &str = "/api/inbox/threads/:thread_id/draft/reject";
+pub const ROUTE_INBOX_REPLY_SEND: &str = "/api/inbox/threads/:thread_id/reply/send";
+pub const ROUTE_INBOX_REFRESH: &str = "/api/inbox/refresh";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
 pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
@@ -71,6 +77,10 @@ pub const ROUTE_RUNTIME_SKILLS_RELEASE: &str = "/api/runtime/skills/releases/:sk
 pub const ROUTE_RUNTIME_CODEX_WORKERS: &str = "/api/runtime/codex/workers";
 pub const ROUTE_RUNTIME_CODEX_WORKER_BY_ID: &str = "/api/runtime/codex/workers/:worker_id";
 pub const ROUTE_RUNTIME_CODEX_WORKER_STREAM: &str = "/api/runtime/codex/workers/:worker_id/stream";
+pub const ROUTE_RUNTIME_WORKERS: &str = "/api/runtime/workers";
+pub const ROUTE_RUNTIME_WORKER_BY_ID: &str = "/api/runtime/workers/:worker_id";
+pub const ROUTE_RUNTIME_WORKER_HEARTBEAT: &str = "/api/runtime/workers/:worker_id/heartbeat";
+pub const ROUTE_RUNTIME_WORKER_STATUS: &str = "/api/runtime/workers/:worker_id/status";
 pub const ROUTE_RUNTIME_THREADS: &str = "/api/runtime/threads";
 pub const ROUTE_RUNTIME_THREAD_MESSAGES: &str = "/api/runtime/threads/:thread_id/messages";
 pub const ROUTE_RUNTIME_CODEX_WORKER_REQUESTS: &str =
@@ -501,6 +511,78 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("settings_integration_status"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_INBOX_THREADS,
+        operation_id: "inboxThreadsList",
+        summary: "List Gmail-backed inbox thread summaries for the authenticated user.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("inbox_snapshot"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_INBOX_REFRESH,
+        operation_id: "inboxRefresh",
+        summary: "Refresh Gmail-backed inbox thread summaries.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("inbox_refresh"),
+        response_example: Some("inbox_snapshot"),
+    },
+    OpenApiContract {
+        method: "get",
+        route_path: ROUTE_INBOX_THREAD_DETAIL,
+        operation_id: "inboxThreadDetail",
+        summary: "Load one Gmail-backed inbox thread detail and audit trail.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: None,
+        response_example: Some("inbox_thread_detail"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_INBOX_THREAD_APPROVE,
+        operation_id: "inboxDraftApprove",
+        summary: "Mark an inbox draft as approved.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("inbox_draft_action"),
+        response_example: Some("inbox_snapshot"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_INBOX_THREAD_REJECT,
+        operation_id: "inboxDraftReject",
+        summary: "Mark an inbox draft as rejected for revision.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("inbox_draft_action"),
+        response_example: Some("inbox_snapshot"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_INBOX_REPLY_SEND,
+        operation_id: "inboxReplySend",
+        summary: "Send an inbox reply through Gmail for the selected thread.",
+        tag: "inbox",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("inbox_reply_send"),
+        response_example: Some("inbox_reply_send"),
     },
     OpenApiContract {
         method: "delete",
@@ -1535,6 +1617,15 @@ fn request_example(key: &str) -> Option<Value> {
             "sender_email": "bot@openagents.com",
             "sender_name": "OpenAgents Bot"
         })),
+        "inbox_refresh" => Some(json!({
+            "limit": 20
+        })),
+        "inbox_draft_action" => Some(json!({
+            "detail": "approved after manual review"
+        })),
+        "inbox_reply_send" => Some(json!({
+            "body": "Thanks for the update. Tuesday afternoon works for us."
+        })),
         "settings_profile_delete" => Some(json!({
             "email": "user@openagents.com"
         })),
@@ -2126,6 +2217,82 @@ fn response_example(key: &str) -> Option<Value> {
                         "sender_name": "OpenAgents Bot"
                     }
                 }
+            }
+        })),
+        "inbox_snapshot" => Some(json!({
+            "data": {
+                "request_id": "req_123",
+                "source": "refresh",
+                "snapshot": {
+                    "threads": [
+                        {
+                            "id": "189aee6d0f11",
+                            "subject": "Can we reschedule the walkthrough?",
+                            "from_address": "alex@acme.com",
+                            "snippet": "Can we move tomorrow's call to next week?",
+                            "category": "scheduling",
+                            "risk": "low",
+                            "policy": "send_with_approval",
+                            "draft_preview": "Subject context: Can we reschedule the walkthrough?",
+                            "pending_approval": true,
+                            "updated_at": "2026-02-24T00:00:00Z"
+                        }
+                    ],
+                    "selected_thread_id": "189aee6d0f11",
+                    "audit_log": [
+                        {
+                            "thread_id": "system",
+                            "action": "refresh",
+                            "detail": "gmail inbox refreshed (1 threads)",
+                            "created_at": "2026-02-24T00:00:00Z"
+                        }
+                    ]
+                }
+            }
+        })),
+        "inbox_thread_detail" => Some(json!({
+            "data": {
+                "request_id": "req_123",
+                "thread_id": "189aee6d0f11",
+                "thread": {
+                    "id": "189aee6d0f11",
+                    "subject": "Can we reschedule the walkthrough?",
+                    "from_address": "alex@acme.com",
+                    "snippet": "Can we move tomorrow's call to next week?",
+                    "category": "scheduling",
+                    "risk": "low",
+                    "policy": "send_with_approval",
+                    "draft_preview": "Subject context: Can we reschedule the walkthrough?",
+                    "pending_approval": true,
+                    "updated_at": "2026-02-24T00:00:00Z"
+                },
+                "messages": [
+                    {
+                        "id": "18f6f3e99b7a",
+                        "from": "alex@acme.com",
+                        "to": "you@openagents.com",
+                        "subject": "Can we reschedule the walkthrough?",
+                        "snippet": "Can we move tomorrow's call to next week?",
+                        "body": "Can we move tomorrow's walkthrough to next week?",
+                        "created_at": "2026-02-24T00:00:00Z"
+                    }
+                ],
+                "audit_log": [
+                    {
+                        "thread_id": "189aee6d0f11",
+                        "action": "select_thread",
+                        "detail": "thread detail loaded",
+                        "created_at": "2026-02-24T00:00:00Z"
+                    }
+                ]
+            }
+        })),
+        "inbox_reply_send" => Some(json!({
+            "data": {
+                "request_id": "req_123",
+                "thread_id": "189aee6d0f11",
+                "message_id": "18f6f3ea7cbf",
+                "status": "sent"
             }
         })),
         "profile_deleted" => Some(json!({
