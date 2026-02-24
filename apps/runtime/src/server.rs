@@ -36,8 +36,8 @@ use crate::{
     credit::store as credit_store,
     credit::types::{
         CreditAgentExposureResponseV1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1,
-        CreditHealthResponseV1, CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1,
-        CreditSettleResponseV1,
+        CreditHealthResponseV1, CreditIntentRequestV1, CreditIntentResponseV1,
+        CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1, CreditSettleResponseV1,
     },
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
@@ -939,6 +939,7 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/liquidity/quote_pay",
             post(liquidity_quote_pay),
         )
+        .route("/internal/v1/credit/intent", post(credit_intent))
         .route("/internal/v1/credit/offer", post(credit_offer))
         .route("/internal/v1/credit/envelope", post(credit_envelope))
         .route("/internal/v1/credit/settle", post(credit_settle))
@@ -2625,6 +2626,19 @@ async fn credit_offer(
     let response = state
         .credit
         .offer(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_intent(
+    State(state): State<AppState>,
+    Json(body): Json<CreditIntentRequestV1>,
+) -> Result<Json<CreditIntentResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .intent(body)
         .await
         .map_err(api_error_from_credit)?;
     Ok(Json(response))

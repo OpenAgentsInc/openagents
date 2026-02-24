@@ -5,27 +5,29 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use openagents_l402::Bolt11;
-use nostr::{Event, EventTemplate, finalize_event};
 use nostr::nip32::{Label, LabelEvent, LabelTarget};
+use nostr::{Event, EventTemplate, finalize_event};
+use openagents_l402::Bolt11;
 
 use crate::artifacts::sign_receipt_sha256;
 use crate::credit::store::{CreditReceiptInsertInput, CreditStore, CreditStoreError};
 use crate::credit::types::{
     CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1, CREDIT_ENVELOPE_REQUEST_SCHEMA_V1,
     CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1, CREDIT_HEALTH_RESPONSE_SCHEMA_V1,
-    CREDIT_OFFER_REQUEST_SCHEMA_V1, CREDIT_OFFER_RESPONSE_SCHEMA_V1, CREDIT_SETTLE_REQUEST_SCHEMA_V1,
-    CREDIT_SETTLE_RESPONSE_SCHEMA_V1, CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1,
-    CreditAgentExposureResponseV1, CreditCircuitBreakersV1, CreditEnvelopeRequestV1,
-    CreditEnvelopeResponseV1, CreditEnvelopeRow, CreditEnvelopeStatusV1, CreditHealthResponseV1,
+    CREDIT_INTENT_REQUEST_SCHEMA_V1, CREDIT_INTENT_RESPONSE_SCHEMA_V1,
+    CREDIT_OFFER_REQUEST_SCHEMA_V1, CREDIT_OFFER_RESPONSE_SCHEMA_V1,
+    CREDIT_SETTLE_REQUEST_SCHEMA_V1, CREDIT_SETTLE_RESPONSE_SCHEMA_V1,
+    CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1, CreditAgentExposureResponseV1, CreditCircuitBreakersV1,
+    CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditEnvelopeRow, CreditEnvelopeStatusV1,
+    CreditHealthResponseV1, CreditIntentRequestV1, CreditIntentResponseV1, CreditIntentRow,
     CreditLiquidityPayEventRow, CreditOfferRequestV1, CreditOfferResponseV1, CreditOfferRow,
-    CreditOfferStatusV1, CreditScopeTypeV1, CreditSettlementOutcomeV1, CreditSettleRequestV1,
-    CreditSettleResponseV1, CreditSettlementRow, CreditUnderwritingAuditRow,
+    CreditOfferStatusV1, CreditScopeTypeV1, CreditSettleRequestV1, CreditSettleResponseV1,
+    CreditSettlementOutcomeV1, CreditSettlementRow, CreditUnderwritingAuditRow,
     DEFAULT_NOTICE_SCHEMA_V1, DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1,
     ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1, EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
 };
+use crate::liquidity::types::{PayRequestV1, QuotePayRequestV1};
 use crate::liquidity::{LiquidityError, LiquidityService};
-use crate::liquidity::types::{QuotePayRequestV1, PayRequestV1};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreditError {
@@ -128,7 +130,12 @@ impl CreditService {
         liquidity: Arc<LiquidityService>,
         receipt_signing_key: Option<[u8; 32]>,
     ) -> Self {
-        Self::new_with_policy(store, liquidity, receipt_signing_key, CreditPolicyConfig::default())
+        Self::new_with_policy(
+            store,
+            liquidity,
+            receipt_signing_key,
+            CreditPolicyConfig::default(),
+        )
     }
 
     pub fn new_with_policy(
@@ -150,10 +157,15 @@ impl CreditService {
         self.compute_health(now).await
     }
 
-    pub async fn agent_exposure(&self, agent_id: &str) -> Result<CreditAgentExposureResponseV1, CreditError> {
+    pub async fn agent_exposure(
+        &self,
+        agent_id: &str,
+    ) -> Result<CreditAgentExposureResponseV1, CreditError> {
         let now = Utc::now();
         let agent_id = sanitize_pubkey(agent_id)?;
-        let decision = self.compute_underwriting_decision(agent_id.as_str(), now).await?;
+        let decision = self
+            .compute_underwriting_decision(agent_id.as_str(), now)
+            .await?;
 
         Ok(CreditAgentExposureResponseV1 {
             schema: CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1.to_string(),
@@ -171,7 +183,127 @@ impl CreditService {
         })
     }
 
-    pub async fn offer(&self, body: CreditOfferRequestV1) -> Result<CreditOfferResponseV1, CreditError> {
+    pub async fn intent(
+        &self,
+        body: CreditIntentRequestV1,
+    ) -> Result<CreditIntentResponseV1, CreditError> {
+        if body.schema.trim() != CREDIT_INTENT_REQUEST_SCHEMA_V1 {
+            return Err(CreditError::InvalidRequest(format!(
+                "schema must be {CREDIT_INTENT_REQUEST_SCHEMA_V1}"
+            )));
+        }
+        if body.scope_type != CreditScopeTypeV1::Nip90 {
+            return Err(CreditError::InvalidRequest(
+                "scope_type must be nip90".to_string(),
+            ));
+        }
+
+        let idempotency_key = body.idempotency_key.trim().to_string();
+        if idempotency_key.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "idempotency_key is required".to_string(),
+            ));
+        }
+        let agent_id = sanitize_pubkey(&body.agent_id)?;
+        let scope_id = body.scope_id.trim().to_string();
+        if scope_id.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "scope_id is required".to_string(),
+            ));
+        }
+        if body.max_sats == 0 {
+            return Err(CreditError::InvalidRequest(
+                "max_sats must be > 0".to_string(),
+            ));
+        }
+        if body.max_sats > self.policy.max_sats_per_envelope {
+            return Err(CreditError::InvalidRequest(format!(
+                "max_sats exceeds max_sats_per_envelope ({})",
+                self.policy.max_sats_per_envelope
+            )));
+        }
+
+        let now = Utc::now();
+        if body.exp <= now {
+            return Err(CreditError::InvalidRequest(
+                "exp must be in the future".to_string(),
+            ));
+        }
+        let max_exp = now + Duration::seconds(self.policy.max_offer_ttl_seconds as i64);
+        if body.exp > max_exp {
+            return Err(CreditError::InvalidRequest(format!(
+                "exp exceeds max_offer_ttl_seconds ({})",
+                self.policy.max_offer_ttl_seconds
+            )));
+        }
+
+        let policy_context_sha256 =
+            canonical_sha256(&body.policy_context).map_err(CreditError::Internal)?;
+        #[derive(Serialize)]
+        struct IntentFingerprint<'a> {
+            schema: &'a str,
+            idempotency_key: &'a str,
+            agent_id: &'a str,
+            scope_type: &'a str,
+            scope_id: &'a str,
+            max_sats: u64,
+            exp: &'a DateTime<Utc>,
+            policy_context_sha256: &'a str,
+        }
+
+        let request_fingerprint_sha256 = canonical_sha256(&IntentFingerprint {
+            schema: CREDIT_INTENT_REQUEST_SCHEMA_V1,
+            idempotency_key: idempotency_key.as_str(),
+            agent_id: agent_id.as_str(),
+            scope_type: body.scope_type.as_str(),
+            scope_id: scope_id.as_str(),
+            max_sats: body.max_sats,
+            exp: &body.exp,
+            policy_context_sha256: policy_context_sha256.as_str(),
+        })
+        .map_err(CreditError::Internal)?;
+
+        let intent_id = format!("cepi_{}", &sha256_hex(idempotency_key.as_bytes())[..24]);
+        let intent = CreditIntentRow {
+            intent_id,
+            idempotency_key: idempotency_key.clone(),
+            agent_id: agent_id.clone(),
+            scope_type: body.scope_type.as_str().to_string(),
+            scope_id: scope_id.clone(),
+            max_sats: i64::try_from(body.max_sats)
+                .map_err(|_| CreditError::InvalidRequest("max_sats too large".to_string()))?,
+            exp: body.exp,
+            created_at: now,
+        };
+        let raw_json = json!({
+            "schema": CREDIT_INTENT_REQUEST_SCHEMA_V1,
+            "idempotency_key": idempotency_key,
+            "agent_id": agent_id,
+            "scope_type": body.scope_type.as_str(),
+            "scope_id": scope_id,
+            "max_sats": body.max_sats,
+            "exp": body.exp,
+            "policy_context": body.policy_context,
+            "policy_context_sha256": policy_context_sha256,
+            "request_fingerprint_sha256": request_fingerprint_sha256,
+        });
+
+        let stored = self
+            .store
+            .create_or_get_intent(intent, request_fingerprint_sha256, raw_json)
+            .await
+            .map_err(map_store_error)?;
+
+        Ok(CreditIntentResponseV1 {
+            schema: CREDIT_INTENT_RESPONSE_SCHEMA_V1.to_string(),
+            intent: stored,
+        })
+    }
+
+    pub async fn offer(
+        &self,
+        body: CreditOfferRequestV1,
+    ) -> Result<CreditOfferResponseV1, CreditError> {
         if body.schema.trim() != CREDIT_OFFER_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_OFFER_REQUEST_SCHEMA_V1}"
@@ -187,10 +319,14 @@ impl CreditService {
         let pool_id = sanitize_pubkey(&body.pool_id)?;
         let scope_id = body.scope_id.trim().to_string();
         if scope_id.is_empty() {
-            return Err(CreditError::InvalidRequest("scope_id is required".to_string()));
+            return Err(CreditError::InvalidRequest(
+                "scope_id is required".to_string(),
+            ));
         }
         if body.max_sats == 0 {
-            return Err(CreditError::InvalidRequest("max_sats must be > 0".to_string()));
+            return Err(CreditError::InvalidRequest(
+                "max_sats must be > 0".to_string(),
+            ));
         }
         if body.max_sats > self.policy.max_sats_per_envelope {
             return Err(CreditError::InvalidRequest(format!(
@@ -201,7 +337,9 @@ impl CreditService {
 
         let issued_at = Utc::now();
         if body.exp <= issued_at {
-            return Err(CreditError::InvalidRequest("exp must be in the future".to_string()));
+            return Err(CreditError::InvalidRequest(
+                "exp must be in the future".to_string(),
+            ));
         }
 
         let max_exp = issued_at + Duration::seconds(self.policy.max_offer_ttl_seconds as i64);
@@ -212,19 +350,53 @@ impl CreditService {
             )));
         }
 
+        let intent_id = body
+            .intent_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(intent_id) = intent_id.as_deref() {
+            let intent = self
+                .store
+                .get_intent(intent_id)
+                .await
+                .map_err(map_store_error)?
+                .ok_or(CreditError::NotFound)?;
+            if intent.agent_id != agent_id {
+                return Err(CreditError::Conflict(
+                    "intent mismatch: agent_id differs".to_string(),
+                ));
+            }
+            if intent.scope_type != body.scope_type.as_str() || intent.scope_id != scope_id {
+                return Err(CreditError::Conflict(
+                    "intent mismatch: scope differs".to_string(),
+                ));
+            }
+            let intent_max_sats = u64::try_from(intent.max_sats).unwrap_or(u64::MAX);
+            if body.max_sats > intent_max_sats {
+                return Err(CreditError::Conflict(
+                    "intent mismatch: max_sats exceeds intent".to_string(),
+                ));
+            }
+            if body.exp > intent.exp {
+                return Err(CreditError::Conflict(
+                    "intent mismatch: exp exceeds intent".to_string(),
+                ));
+            }
+        }
+
         let decision = self
             .compute_underwriting_decision(agent_id.as_str(), issued_at)
             .await?;
-        let underwriting_limit_sats = body
-            .max_sats
-            .min(decision.limit_sats)
-            .max(1);
+        let underwriting_limit_sats = body.max_sats.min(decision.limit_sats).max(1);
         let underwriting_fee_bps = decision.fee_bps;
         let requires_verifier = decision.requires_verifier;
 
         #[derive(Serialize)]
         struct OfferFingerprint<'a> {
             schema: &'a str,
+            intent_id: Option<&'a str>,
             agent_id: &'a str,
             pool_id: &'a str,
             scope_type: &'a str,
@@ -237,6 +409,7 @@ impl CreditService {
 
         let request_fingerprint_sha256 = canonical_sha256(&OfferFingerprint {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1,
+            intent_id: intent_id.as_deref(),
             agent_id: agent_id.as_str(),
             pool_id: pool_id.as_str(),
             scope_type: body.scope_type.as_str(),
@@ -256,12 +429,10 @@ impl CreditService {
             pool_id,
             scope_type: body.scope_type.as_str().to_string(),
             scope_id,
-            max_sats: i64::try_from(underwriting_limit_sats).map_err(|_| {
-                CreditError::InvalidRequest("max_sats too large".to_string())
-            })?,
-            fee_bps: i32::try_from(underwriting_fee_bps).map_err(|_| {
-                CreditError::InvalidRequest("fee_bps too large".to_string())
-            })?,
+            max_sats: i64::try_from(underwriting_limit_sats)
+                .map_err(|_| CreditError::InvalidRequest("max_sats too large".to_string()))?,
+            fee_bps: i32::try_from(underwriting_fee_bps)
+                .map_err(|_| CreditError::InvalidRequest("fee_bps too large".to_string()))?,
             requires_verifier,
             exp: body.exp,
             status: CreditOfferStatusV1::Offered.as_str().to_string(),
@@ -277,6 +448,7 @@ impl CreditService {
         let audit_json = json!({
             "schema": CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1,
             "offerId": stored.offer_id,
+            "intentId": intent_id,
             "issuedAt": stored.issued_at,
             "inputs": decision.audit_inputs,
             "decision": {
@@ -320,7 +492,9 @@ impl CreditService {
 
         let offer_id = body.offer_id.trim().to_string();
         if offer_id.is_empty() {
-            return Err(CreditError::InvalidRequest("offer_id is required".to_string()));
+            return Err(CreditError::InvalidRequest(
+                "offer_id is required".to_string(),
+            ));
         }
         let provider_id = sanitize_pubkey(&body.provider_id)?;
 
@@ -410,12 +584,21 @@ impl CreditService {
         // Mark offer accepted (best-effort; offer immutability isn't critical for settlement).
         let _ = self
             .store
-            .update_offer_status(offer_id.as_str(), CreditOfferStatusV1::Accepted.as_str(), issued_at)
+            .update_offer_status(
+                offer_id.as_str(),
+                CreditOfferStatusV1::Accepted.as_str(),
+                issued_at,
+            )
             .await;
 
         let receipt = build_envelope_issue_receipt(&stored, self.receipt_signing_key.as_ref())?;
-        store_receipt(self.store.as_ref(), "envelope", stored.envelope_id.as_str(), &receipt)
-            .await?;
+        store_receipt(
+            self.store.as_ref(),
+            "envelope",
+            stored.envelope_id.as_str(),
+            &receipt,
+        )
+        .await?;
 
         Ok(CreditEnvelopeResponseV1 {
             schema: CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1.to_string(),
@@ -424,7 +607,10 @@ impl CreditService {
         })
     }
 
-    pub async fn settle(&self, body: CreditSettleRequestV1) -> Result<CreditSettleResponseV1, CreditError> {
+    pub async fn settle(
+        &self,
+        body: CreditSettleRequestV1,
+    ) -> Result<CreditSettleResponseV1, CreditError> {
         if body.schema.trim() != CREDIT_SETTLE_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_SETTLE_REQUEST_SCHEMA_V1}"
@@ -536,8 +722,13 @@ impl CreditService {
                 )
                 .await
                 .map_err(map_store_error)?;
-            store_receipt(self.store.as_ref(), "settlement", row.settlement_id.as_str(), &receipt)
-                .await?;
+            store_receipt(
+                self.store.as_ref(),
+                "settlement",
+                row.settlement_id.as_str(),
+                &receipt,
+            )
+            .await?;
             return Ok(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
@@ -585,8 +776,13 @@ impl CreditService {
                 )
                 .await
                 .map_err(map_store_error)?;
-            store_receipt(self.store.as_ref(), "settlement", row.settlement_id.as_str(), &receipt)
-                .await?;
+            store_receipt(
+                self.store.as_ref(),
+                "settlement",
+                row.settlement_id.as_str(),
+                &receipt,
+            )
+            .await?;
             return Ok(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
@@ -613,9 +809,7 @@ impl CreditService {
             ));
         }
         let amount_msats = Bolt11::amount_msats(invoice.as_str()).ok_or_else(|| {
-            CreditError::InvalidRequest(
-                "provider_invoice must be a bolt11 with amount".to_string(),
-            )
+            CreditError::InvalidRequest("provider_invoice must be a bolt11 with amount".to_string())
         })?;
 
         let max_amount_msats = u64::try_from(envelope.max_sats)
@@ -711,7 +905,11 @@ impl CreditService {
         let (label_event_id, label_event_sha256, label_event_json) = match &label_event {
             Some(event) => {
                 let sha = canonical_sha256(event).ok();
-                (Some(event.id.clone()), sha, serde_json::to_value(event).ok())
+                (
+                    Some(event.id.clone()),
+                    sha,
+                    serde_json::to_value(event).ok(),
+                )
             }
             None => (None, None, None),
         };
@@ -839,9 +1037,10 @@ impl CreditService {
         let risk_score = (1.0 - pass_rate_30d).max(0.0) * 2.0
             + (weighted_loss_score * 0.5)
             + ((open_exposure_sats as f64) / 50_000.0).min(50.0).sqrt();
-        let fee_bps = (risk_score * self.policy.fee_risk_scaler)
-            .round()
-            .clamp(self.policy.min_fee_bps as f64, self.policy.max_fee_bps as f64) as u32;
+        let fee_bps = (risk_score * self.policy.fee_risk_scaler).round().clamp(
+            self.policy.min_fee_bps as f64,
+            self.policy.max_fee_bps as f64,
+        ) as u32;
 
         let stats = UnderwritingStats {
             settled_count_30d,
@@ -882,7 +1081,10 @@ impl CreditService {
         })
     }
 
-    async fn compute_health(&self, now: DateTime<Utc>) -> Result<CreditHealthResponseV1, CreditError> {
+    async fn compute_health(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<CreditHealthResponseV1, CreditError> {
         let since = now - Duration::seconds(self.policy.health_window_seconds.max(60));
 
         let settlements = self
@@ -983,10 +1185,7 @@ fn sanitize_pubkey(raw: &str) -> Result<String, CreditError> {
 }
 
 fn msats_to_sats_ceil(amount_msats: u64) -> u64 {
-    amount_msats
-        .saturating_add(999)
-        .saturating_div(1000)
-        .max(1)
+    amount_msats.saturating_add(999).saturating_div(1000).max(1)
 }
 
 fn compute_fee_sats(spent_sats: u64, fee_bps: u64) -> u64 {
@@ -1019,9 +1218,13 @@ fn map_store_error(error: CreditStoreError) -> CreditError {
 fn map_liquidity_error(error: LiquidityError) -> CreditError {
     match error {
         LiquidityError::InvalidRequest(message) => CreditError::InvalidRequest(message),
-        LiquidityError::NotFound => CreditError::DependencyUnavailable("quote not found".to_string()),
+        LiquidityError::NotFound => {
+            CreditError::DependencyUnavailable("quote not found".to_string())
+        }
         LiquidityError::Conflict(message) => CreditError::Conflict(message),
-        LiquidityError::DependencyUnavailable(message) => CreditError::DependencyUnavailable(message),
+        LiquidityError::DependencyUnavailable(message) => {
+            CreditError::DependencyUnavailable(message)
+        }
         LiquidityError::Internal(message) => CreditError::Internal(message),
     }
 }
@@ -1192,7 +1395,11 @@ fn build_default_notice(
     let (label_event_id, label_event_sha256, label_event_json) = match &label_event {
         Some(event) => {
             let sha = canonical_sha256(event).ok();
-            (Some(event.id.clone()), sha, serde_json::to_value(event).ok())
+            (
+                Some(event.id.clone()),
+                sha,
+                serde_json::to_value(event).ok(),
+            )
         }
         None => (None, None, None),
     };
@@ -1303,8 +1510,8 @@ async fn store_receipt<T: Serialize>(
     entity_id: &str,
     receipt: &T,
 ) -> Result<(), CreditError> {
-    let receipt_value = serde_json::to_value(receipt)
-        .map_err(|error| CreditError::Internal(error.to_string()))?;
+    let receipt_value =
+        serde_json::to_value(receipt).map_err(|error| CreditError::Internal(error.to_string()))?;
     let canonical_json_sha256 = receipt_value
         .get("canonical_json_sha256")
         .and_then(Value::as_str)
@@ -1326,7 +1533,10 @@ async fn store_receipt<T: Serialize>(
         ));
     }
 
-    let signature_json = receipt_value.get("signature").cloned().filter(|value| !value.is_null());
+    let signature_json = receipt_value
+        .get("signature")
+        .cloned()
+        .filter(|value| !value.is_null());
 
     store
         .put_receipt(CreditReceiptInsertInput {

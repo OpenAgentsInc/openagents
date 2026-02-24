@@ -1164,6 +1164,156 @@ async fn credit_settle_returns_bad_gateway_when_wallet_executor_unavailable() ->
 }
 
 #[tokio::test]
+async fn credit_intent_replays_by_idempotency_key_and_conflicts_on_drift() -> Result<()> {
+    let app = test_router();
+
+    let intent_payload = json!({
+        "schema": "openagents.credit.intent_request.v1",
+        "idempotency_key": "intent-idem-1",
+        "agent_id": "a".repeat(64),
+        "scope_type": "nip90",
+        "scope_id": "oa.sandbox_run.v1:intent-test",
+        "max_sats": 7_500,
+        "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+        "policy_context": {"reason": "test"},
+    });
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/intent")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&intent_payload)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first_json = response_json(first).await?;
+    assert_eq!(first_json["schema"], "openagents.credit.intent_response.v1");
+    let first_intent_id = first_json
+        .pointer("/intent/intent_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing intent_id"))?
+        .to_string();
+
+    let second = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/intent")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&intent_payload)?))?,
+        )
+        .await?;
+    assert_eq!(second.status(), axum::http::StatusCode::OK);
+    let second_json = response_json(second).await?;
+    let second_intent_id = second_json
+        .pointer("/intent/intent_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing intent_id replay"))?;
+    assert_eq!(first_intent_id, second_intent_id);
+
+    let drifted = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/intent")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.intent_request.v1",
+                    "idempotency_key": "intent-idem-1",
+                    "agent_id": "a".repeat(64),
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:intent-test",
+                    "max_sats": 8_000,
+                    "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+                    "policy_context": {"reason": "drift"},
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(drifted.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn credit_offer_with_intent_enforces_scope_cap_and_expiry_bounds() -> Result<()> {
+    let app = test_router();
+    let intent = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/intent")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.intent_request.v1",
+                    "idempotency_key": "intent-offer-link-1",
+                    "agent_id": "a".repeat(64),
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:intent-offer",
+                    "max_sats": 5_000,
+                    "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+                    "policy_context": {"reason": "offer-link"},
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(intent.status(), axum::http::StatusCode::OK);
+    let intent_json = response_json(intent).await?;
+    let intent_id = intent_json["intent"]["intent_id"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing intent_id"))?
+        .to_string();
+
+    let too_large_offer = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.offer_request.v1",
+                    "agent_id": "a".repeat(64),
+                    "pool_id": "b".repeat(64),
+                    "intent_id": intent_id,
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:intent-offer",
+                    "max_sats": 5_001,
+                    "fee_bps": 100,
+                    "requires_verifier": true,
+                    "exp": (Utc::now() + chrono::Duration::minutes(9)).to_rfc3339(),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(too_large_offer.status(), axum::http::StatusCode::CONFLICT);
+
+    let valid_offer = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.offer_request.v1",
+                    "agent_id": "a".repeat(64),
+                    "pool_id": "b".repeat(64),
+                    "intent_id": intent_json["intent"]["intent_id"],
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:intent-offer",
+                    "max_sats": 4_500,
+                    "fee_bps": 100,
+                    "requires_verifier": true,
+                    "exp": (Utc::now() + chrono::Duration::minutes(9)).to_rfc3339(),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(valid_offer.status(), axum::http::StatusCode::OK);
+    Ok(())
+}
+
+#[tokio::test]
 async fn run_lifecycle_updates_projector_checkpoint() -> Result<()> {
     let app = test_router();
 

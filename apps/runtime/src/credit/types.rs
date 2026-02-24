@@ -6,6 +6,8 @@ use crate::artifacts::ReceiptSignatureV1;
 
 pub const CREDIT_OFFER_REQUEST_SCHEMA_V1: &str = "openagents.credit.offer_request.v1";
 pub const CREDIT_OFFER_RESPONSE_SCHEMA_V1: &str = "openagents.credit.offer_response.v1";
+pub const CREDIT_INTENT_REQUEST_SCHEMA_V1: &str = "openagents.credit.intent_request.v1";
+pub const CREDIT_INTENT_RESPONSE_SCHEMA_V1: &str = "openagents.credit.intent_response.v1";
 pub const CREDIT_ENVELOPE_REQUEST_SCHEMA_V1: &str = "openagents.credit.envelope_request.v1";
 pub const CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1: &str = "openagents.credit.envelope_response.v1";
 pub const CREDIT_SETTLE_REQUEST_SCHEMA_V1: &str = "openagents.credit.settle_request.v1";
@@ -93,10 +95,43 @@ impl CreditSettlementOutcomeV1 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditIntentRequestV1 {
+    pub schema: String,
+    pub idempotency_key: String,
+    pub agent_id: String,
+    pub scope_type: CreditScopeTypeV1,
+    pub scope_id: String,
+    pub max_sats: u64,
+    pub exp: DateTime<Utc>,
+    #[serde(default)]
+    pub policy_context: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditIntentResponseV1 {
+    pub schema: String,
+    pub intent: CreditIntentRow,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditIntentRow {
+    pub intent_id: String,
+    pub idempotency_key: String,
+    pub agent_id: String,
+    pub scope_type: String,
+    pub scope_id: String,
+    pub max_sats: i64,
+    pub exp: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditOfferRequestV1 {
     pub schema: String,
     pub agent_id: String,
     pub pool_id: String,
+    #[serde(default)]
+    pub intent_id: Option<String>,
     pub scope_type: CreditScopeTypeV1,
     pub scope_id: String,
     pub max_sats: u64,

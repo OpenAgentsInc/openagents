@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::db::RuntimeDb;
 use crate::credit::types::{
-    CreditEnvelopeRow, CreditLiquidityPayEventRow, CreditOfferRow, CreditSettlementRow,
-    CreditUnderwritingAuditRow,
+    CreditEnvelopeRow, CreditIntentRow, CreditLiquidityPayEventRow, CreditOfferRow,
+    CreditSettlementRow, CreditUnderwritingAuditRow,
 };
+use crate::db::RuntimeDb;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreditStoreError {
@@ -36,6 +36,18 @@ pub struct CreditReceiptInsertInput {
 
 #[async_trait]
 pub trait CreditStore: Send + Sync {
+    async fn create_or_get_intent(
+        &self,
+        intent: CreditIntentRow,
+        request_fingerprint_sha256: String,
+        raw_json: Value,
+    ) -> Result<CreditIntentRow, CreditStoreError>;
+
+    async fn get_intent(
+        &self,
+        intent_id: &str,
+    ) -> Result<Option<CreditIntentRow>, CreditStoreError>;
+
     async fn create_or_get_offer(
         &self,
         offer: CreditOfferRow,
@@ -80,8 +92,7 @@ pub trait CreditStore: Send + Sync {
         envelope_id: &str,
     ) -> Result<Option<CreditSettlementRow>, CreditStoreError>;
 
-    async fn put_receipt(&self, receipt: CreditReceiptInsertInput)
-        -> Result<(), CreditStoreError>;
+    async fn put_receipt(&self, receipt: CreditReceiptInsertInput) -> Result<(), CreditStoreError>;
 
     async fn get_receipt_by_unique(
         &self,
@@ -141,6 +152,7 @@ struct MemoryCreditStore {
 
 #[derive(Default)]
 struct MemoryCreditStoreInner {
+    intents: HashMap<String, (CreditIntentRow, String, Value)>,
     offers: HashMap<String, (CreditOfferRow, String)>,
     envelopes: HashMap<String, (CreditEnvelopeRow, String)>,
     settlements_by_envelope: HashMap<String, (CreditSettlementRow, String)>,
@@ -152,6 +164,39 @@ struct MemoryCreditStoreInner {
 
 #[async_trait]
 impl CreditStore for MemoryCreditStore {
+    async fn create_or_get_intent(
+        &self,
+        intent: CreditIntentRow,
+        request_fingerprint_sha256: String,
+        raw_json: Value,
+    ) -> Result<CreditIntentRow, CreditStoreError> {
+        let mut inner = self.inner.lock().await;
+        if let Some((existing, fingerprint, _)) = inner.intents.get(&intent.intent_id).cloned() {
+            if fingerprint != request_fingerprint_sha256 {
+                return Err(CreditStoreError::Conflict(
+                    "intent idempotency key reused with different intent parameters".to_string(),
+                ));
+            }
+            return Ok(existing);
+        }
+        inner.intents.insert(
+            intent.intent_id.clone(),
+            (intent.clone(), request_fingerprint_sha256, raw_json),
+        );
+        Ok(intent)
+    }
+
+    async fn get_intent(
+        &self,
+        intent_id: &str,
+    ) -> Result<Option<CreditIntentRow>, CreditStoreError> {
+        let inner = self.inner.lock().await;
+        Ok(inner
+            .intents
+            .get(intent_id)
+            .map(|(row, _, _)| row.clone()))
+    }
+
     async fn create_or_get_offer(
         &self,
         offer: CreditOfferRow,
@@ -166,9 +211,10 @@ impl CreditStore for MemoryCreditStore {
             }
             return Ok(existing);
         }
-        inner
-            .offers
-            .insert(offer.offer_id.clone(), (offer.clone(), request_fingerprint_sha256));
+        inner.offers.insert(
+            offer.offer_id.clone(),
+            (offer.clone(), request_fingerprint_sha256),
+        );
         Ok(offer)
     }
 
@@ -188,7 +234,9 @@ impl CreditStore for MemoryCreditStore {
             return Err(CreditStoreError::NotFound("offer".to_string()));
         };
         row.status = status.to_string();
-        inner.offers.insert(offer_id.to_string(), (row, fingerprint));
+        inner
+            .offers
+            .insert(offer_id.to_string(), (row, fingerprint));
         Ok(())
     }
 
@@ -198,8 +246,7 @@ impl CreditStore for MemoryCreditStore {
         request_fingerprint_sha256: String,
     ) -> Result<CreditEnvelopeRow, CreditStoreError> {
         let mut inner = self.inner.lock().await;
-        if let Some((existing, fingerprint)) = inner.envelopes.get(&envelope.envelope_id).cloned()
-        {
+        if let Some((existing, fingerprint)) = inner.envelopes.get(&envelope.envelope_id).cloned() {
             if fingerprint != request_fingerprint_sha256 {
                 return Err(CreditStoreError::Conflict(
                     "envelope_id reused with different envelope parameters".to_string(),
@@ -219,10 +266,7 @@ impl CreditStore for MemoryCreditStore {
         envelope_id: &str,
     ) -> Result<Option<CreditEnvelopeRow>, CreditStoreError> {
         let inner = self.inner.lock().await;
-        Ok(inner
-            .envelopes
-            .get(envelope_id)
-            .map(|(row, _)| row.clone()))
+        Ok(inner.envelopes.get(envelope_id).map(|(row, _)| row.clone()))
     }
 
     async fn update_envelope_status(
@@ -278,10 +322,7 @@ impl CreditStore for MemoryCreditStore {
             .map(|(row, _)| row.clone()))
     }
 
-    async fn put_receipt(
-        &self,
-        receipt: CreditReceiptInsertInput,
-    ) -> Result<(), CreditStoreError> {
+    async fn put_receipt(&self, receipt: CreditReceiptInsertInput) -> Result<(), CreditStoreError> {
         let mut inner = self.inner.lock().await;
         let unique = (
             receipt.entity_kind.clone(),
@@ -319,7 +360,11 @@ impl CreditStore for MemoryCreditStore {
         schema: &str,
     ) -> Result<Option<CreditReceiptInsertInput>, CreditStoreError> {
         let inner = self.inner.lock().await;
-        let key = (entity_kind.to_string(), entity_id.to_string(), schema.to_string());
+        let key = (
+            entity_kind.to_string(),
+            entity_id.to_string(),
+            schema.to_string(),
+        );
         let Some(receipt_id) = inner.receipts_by_unique.get(&key) else {
             return Ok(None);
         };
@@ -469,6 +514,99 @@ struct PostgresCreditStore {
 
 #[async_trait]
 impl CreditStore for PostgresCreditStore {
+    async fn create_or_get_intent(
+        &self,
+        intent: CreditIntentRow,
+        request_fingerprint_sha256: String,
+        raw_json: Value,
+    ) -> Result<CreditIntentRow, CreditStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT intent_id, agent_id, scope_type, scope_id, max_sats, exp, raw_json, created_at
+                  FROM runtime.credit_intents
+                 WHERE intent_id = $1
+                "#,
+                &[&intent.intent_id],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        if let Some(row) = existing {
+            let existing_raw_json: Value = row.get("raw_json");
+            let fingerprint = existing_raw_json
+                .get("request_fingerprint_sha256")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if fingerprint != request_fingerprint_sha256 {
+                return Err(CreditStoreError::Conflict(
+                    "intent idempotency key reused with different intent parameters".to_string(),
+                ));
+            }
+            let out = map_intent_row(&row).map_err(CreditStoreError::Db)?;
+            tx.commit()
+                .await
+                .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+            return Ok(out);
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO runtime.credit_intents (
+                intent_id, agent_id, scope_type, scope_id, max_sats, exp, raw_json, created_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            "#,
+            &[
+                &intent.intent_id,
+                &intent.agent_id,
+                &intent.scope_type,
+                &intent.scope_id,
+                &intent.max_sats,
+                &intent.exp,
+                &raw_json,
+                &intent.created_at,
+            ],
+        )
+        .await
+        .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        Ok(intent)
+    }
+
+    async fn get_intent(
+        &self,
+        intent_id: &str,
+    ) -> Result<Option<CreditIntentRow>, CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_opt(
+                r#"
+                SELECT intent_id, agent_id, scope_type, scope_id, max_sats, exp, raw_json, created_at
+                  FROM runtime.credit_intents
+                 WHERE intent_id = $1
+                "#,
+                &[&intent_id],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        Ok(row
+            .as_ref()
+            .map(map_intent_row)
+            .transpose()
+            .map_err(CreditStoreError::Db)?)
+    }
+
     async fn create_or_get_offer(
         &self,
         offer: CreditOfferRow,
@@ -810,10 +948,7 @@ impl CreditStore for PostgresCreditStore {
             .map_err(CreditStoreError::Db)?)
     }
 
-    async fn put_receipt(
-        &self,
-        receipt: CreditReceiptInsertInput,
-    ) -> Result<(), CreditStoreError> {
+    async fn put_receipt(&self, receipt: CreditReceiptInsertInput) -> Result<(), CreditStoreError> {
         let client = self.db.client();
         let mut client = client.lock().await;
         let tx = client
@@ -1110,10 +1245,7 @@ impl CreditStore for PostgresCreditStore {
             .map_err(|error| CreditStoreError::Db(error.to_string()))?;
         let open_count: i64 = row.get("open_count");
         let exposure_sats: i64 = row.get("exposure_sats");
-        Ok((
-            u64::try_from(open_count).unwrap_or(0),
-            exposure_sats,
-        ))
+        Ok((u64::try_from(open_count).unwrap_or(0), exposure_sats))
     }
 
     async fn list_recent_liquidity_pay_events(
@@ -1154,16 +1286,10 @@ impl CreditStore for PostgresCreditStore {
 
 fn map_offer_row(row: &tokio_postgres::Row) -> Result<CreditOfferRow, String> {
     Ok(CreditOfferRow {
-        offer_id: row
-            .try_get("offer_id")
-            .map_err(|e| e.to_string())?,
-        agent_id: row
-            .try_get("agent_id")
-            .map_err(|e| e.to_string())?,
+        offer_id: row.try_get("offer_id").map_err(|e| e.to_string())?,
+        agent_id: row.try_get("agent_id").map_err(|e| e.to_string())?,
         pool_id: row.try_get("pool_id").map_err(|e| e.to_string())?,
-        scope_type: row
-            .try_get("scope_type")
-            .map_err(|e| e.to_string())?,
+        scope_type: row.try_get("scope_type").map_err(|e| e.to_string())?,
         scope_id: row.try_get("scope_id").map_err(|e| e.to_string())?,
         max_sats: row.try_get("max_sats").map_err(|e| e.to_string())?,
         fee_bps: row.try_get("fee_bps").map_err(|e| e.to_string())?,
@@ -1176,22 +1302,32 @@ fn map_offer_row(row: &tokio_postgres::Row) -> Result<CreditOfferRow, String> {
     })
 }
 
+fn map_intent_row(row: &tokio_postgres::Row) -> Result<CreditIntentRow, String> {
+    let raw_json: Value = row.try_get("raw_json").map_err(|e| e.to_string())?;
+    Ok(CreditIntentRow {
+        intent_id: row.try_get("intent_id").map_err(|e| e.to_string())?,
+        idempotency_key: raw_json
+            .get("idempotency_key")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        agent_id: row.try_get("agent_id").map_err(|e| e.to_string())?,
+        scope_type: row.try_get("scope_type").map_err(|e| e.to_string())?,
+        scope_id: row.try_get("scope_id").map_err(|e| e.to_string())?,
+        max_sats: row.try_get("max_sats").map_err(|e| e.to_string())?,
+        exp: row.try_get("exp").map_err(|e| e.to_string())?,
+        created_at: row.try_get("created_at").map_err(|e| e.to_string())?,
+    })
+}
+
 fn map_envelope_row(row: &tokio_postgres::Row) -> Result<CreditEnvelopeRow, String> {
     Ok(CreditEnvelopeRow {
-        envelope_id: row
-            .try_get("envelope_id")
-            .map_err(|e| e.to_string())?,
+        envelope_id: row.try_get("envelope_id").map_err(|e| e.to_string())?,
         offer_id: row.try_get("offer_id").map_err(|e| e.to_string())?,
-        agent_id: row
-            .try_get("agent_id")
-            .map_err(|e| e.to_string())?,
+        agent_id: row.try_get("agent_id").map_err(|e| e.to_string())?,
         pool_id: row.try_get("pool_id").map_err(|e| e.to_string())?,
-        provider_id: row
-            .try_get("provider_id")
-            .map_err(|e| e.to_string())?,
-        scope_type: row
-            .try_get("scope_type")
-            .map_err(|e| e.to_string())?,
+        provider_id: row.try_get("provider_id").map_err(|e| e.to_string())?,
+        scope_type: row.try_get("scope_type").map_err(|e| e.to_string())?,
         scope_id: row.try_get("scope_id").map_err(|e| e.to_string())?,
         max_sats: row.try_get("max_sats").map_err(|e| e.to_string())?,
         fee_bps: row.try_get("fee_bps").map_err(|e| e.to_string())?,
@@ -1203,12 +1339,8 @@ fn map_envelope_row(row: &tokio_postgres::Row) -> Result<CreditEnvelopeRow, Stri
 
 fn map_settlement_row(row: &tokio_postgres::Row) -> Result<CreditSettlementRow, String> {
     Ok(CreditSettlementRow {
-        settlement_id: row
-            .try_get("settlement_id")
-            .map_err(|e| e.to_string())?,
-        envelope_id: row
-            .try_get("envelope_id")
-            .map_err(|e| e.to_string())?,
+        settlement_id: row.try_get("settlement_id").map_err(|e| e.to_string())?,
+        envelope_id: row.try_get("envelope_id").map_err(|e| e.to_string())?,
         outcome: row.try_get("outcome").map_err(|e| e.to_string())?,
         spent_sats: row.try_get("spent_sats").map_err(|e| e.to_string())?,
         fee_sats: row.try_get("fee_sats").map_err(|e| e.to_string())?,
@@ -1218,31 +1350,21 @@ fn map_settlement_row(row: &tokio_postgres::Row) -> Result<CreditSettlementRow, 
         liquidity_receipt_sha256: row
             .try_get("liquidity_receipt_sha256")
             .map_err(|e| e.to_string())?,
-        created_at: row
-            .try_get("created_at")
-            .map_err(|e| e.to_string())?,
+        created_at: row.try_get("created_at").map_err(|e| e.to_string())?,
     })
 }
 
 fn map_receipt_row(row: &tokio_postgres::Row) -> Result<CreditReceiptInsertInput, String> {
     Ok(CreditReceiptInsertInput {
-        receipt_id: row
-            .try_get("receipt_id")
-            .map_err(|e| e.to_string())?,
-        entity_kind: row
-            .try_get("entity_kind")
-            .map_err(|e| e.to_string())?,
+        receipt_id: row.try_get("receipt_id").map_err(|e| e.to_string())?,
+        entity_kind: row.try_get("entity_kind").map_err(|e| e.to_string())?,
         entity_id: row.try_get("entity_id").map_err(|e| e.to_string())?,
         schema: row.try_get("schema").map_err(|e| e.to_string())?,
         canonical_json_sha256: row
             .try_get("canonical_json_sha256")
             .map_err(|e| e.to_string())?,
-        signature_json: row
-            .try_get("signature_json")
-            .map_err(|e| e.to_string())?,
-        receipt_json: row
-            .try_get("receipt_json")
-            .map_err(|e| e.to_string())?,
+        signature_json: row.try_get("signature_json").map_err(|e| e.to_string())?,
+        receipt_json: row.try_get("receipt_json").map_err(|e| e.to_string())?,
         created_at: row.try_get("created_at").map_err(|e| e.to_string())?,
     })
 }
