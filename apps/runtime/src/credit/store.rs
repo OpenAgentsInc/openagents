@@ -130,6 +130,11 @@ pub trait CreditStore: Send + Sync {
         now: DateTime<Utc>,
     ) -> Result<(u64, i64), CreditStoreError>;
 
+    async fn get_global_open_envelope_stats(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError>;
+
     async fn list_recent_liquidity_pay_events(
         &self,
         since: DateTime<Utc>,
@@ -478,6 +483,26 @@ impl CreditStore for MemoryCreditStore {
             if row.agent_id != agent_id {
                 continue;
             }
+            if row.status != "accepted" {
+                continue;
+            }
+            if row.exp <= now {
+                continue;
+            }
+            count = count.saturating_add(1);
+            exposure = exposure.saturating_add(row.max_sats);
+        }
+        Ok((count, exposure))
+    }
+
+    async fn get_global_open_envelope_stats(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError> {
+        let inner = self.inner.lock().await;
+        let mut count: u64 = 0;
+        let mut exposure: i64 = 0;
+        for (row, _) in inner.envelopes.values() {
             if row.status != "accepted" {
                 continue;
             }
@@ -1240,6 +1265,28 @@ impl CreditStore for PostgresCreditStore {
                  WHERE agent_id = $1 AND status = 'accepted' AND exp > $2
                 "#,
                 &[&agent_id, &now],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        let open_count: i64 = row.get("open_count");
+        let exposure_sats: i64 = row.get("exposure_sats");
+        Ok((u64::try_from(open_count).unwrap_or(0), exposure_sats))
+    }
+
+    async fn get_global_open_envelope_stats(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_one(
+                r#"
+                SELECT COUNT(*) AS open_count, COALESCE(SUM(max_sats), 0) AS exposure_sats
+                  FROM runtime.credit_envelopes
+                 WHERE status = 'accepted' AND exp > $1
+                "#,
+                &[&now],
             )
             .await
             .map_err(|error| CreditStoreError::Db(error.to_string()))?;

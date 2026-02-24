@@ -2,8 +2,8 @@ use super::*;
 use openagents_runtime_client::{
     ComputeRuntimeProviderCatalogEntry, ComputeRuntimeTelemetryResponse,
     ComputeRuntimeTreasurySummary, ComputeRuntimeWorkerSnapshot, RuntimeClientError,
-    RuntimeInternalClient, RuntimePoolSnapshotResponseV1, RuntimePoolStatusResponseV1,
-    RuntimeWorkerStatusTransitionRequest,
+    RuntimeCreditHealthResponseV1, RuntimeInternalClient, RuntimePoolSnapshotResponseV1,
+    RuntimePoolStatusResponseV1, RuntimeWorkerStatusTransitionRequest,
 };
 
 pub(super) async fn compute_page(
@@ -422,6 +422,15 @@ pub(super) fn empty_stats_metrics_view() -> LiquidityStatsMetricsView {
         total_shares: 0,
         pending_withdrawals_sats_estimate: 0,
         last_snapshot_at: None,
+        cep_metrics_available: false,
+        cep_outstanding_envelope_count: 0,
+        cep_outstanding_reserved_commitments_sats: 0,
+        cep_settlement_sample: 0,
+        cep_loss_rate_pct: 0.0,
+        cep_ln_pay_sample: 0,
+        cep_ln_failure_rate_pct: 0.0,
+        cep_breaker_halt_new_envelopes: false,
+        cep_breaker_halt_large_settlements: false,
     }
 }
 
@@ -429,7 +438,14 @@ pub(super) async fn fetch_stats_dashboard_views(
     state: &AppState,
 ) -> Result<(LiquidityStatsMetricsView, Vec<LiquidityPoolView>), String> {
     let pools = fetch_stats_pools_view(state).await?;
-    let metrics = build_stats_metrics_view(&pools);
+    let cep_health = match fetch_runtime_credit_health(state).await {
+        Ok(health) => Some(health),
+        Err(error) => {
+            tracing::warn!(error = %error, "stats credit health fetch failed");
+            None
+        }
+    };
+    let metrics = build_stats_metrics_view(&pools, cep_health.as_ref());
     Ok((metrics, pools))
 }
 
@@ -437,7 +453,14 @@ pub(super) async fn fetch_stats_metrics_view(
     state: &AppState,
 ) -> Result<LiquidityStatsMetricsView, String> {
     let pools = fetch_stats_pools_view(state).await?;
-    Ok(build_stats_metrics_view(&pools))
+    let cep_health = match fetch_runtime_credit_health(state).await {
+        Ok(health) => Some(health),
+        Err(error) => {
+            tracing::warn!(error = %error, "stats credit health fetch failed");
+            None
+        }
+    };
+    Ok(build_stats_metrics_view(&pools, cep_health.as_ref()))
 }
 
 pub(super) async fn fetch_stats_pools_view(
@@ -590,7 +613,10 @@ pub(super) fn build_pool_view(
     }
 }
 
-pub(super) fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> LiquidityStatsMetricsView {
+pub(super) fn build_stats_metrics_view(
+    pools: &[LiquidityPoolView],
+    cep_health: Option<&RuntimeCreditHealthResponseV1>,
+) -> LiquidityStatsMetricsView {
     let mut total_assets_sats = 0_i64;
     let mut total_wallet_sats = 0_i64;
     let mut total_onchain_sats = 0_i64;
@@ -647,7 +673,37 @@ pub(super) fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> Liquidity
         total_shares,
         pending_withdrawals_sats_estimate,
         last_snapshot_at,
+        cep_metrics_available: cep_health.is_some(),
+        cep_outstanding_envelope_count: cep_health
+            .map(|health| health.open_envelope_count)
+            .unwrap_or(0),
+        cep_outstanding_reserved_commitments_sats: cep_health
+            .map(|health| health.open_reserved_commitments_sats)
+            .unwrap_or(0),
+        cep_settlement_sample: cep_health
+            .map(|health| health.settlement_sample)
+            .unwrap_or(0),
+        cep_loss_rate_pct: cep_health
+            .map(|health| (health.loss_rate * 100.0).clamp(0.0, 100.0))
+            .unwrap_or(0.0),
+        cep_ln_pay_sample: cep_health.map(|health| health.ln_pay_sample).unwrap_or(0),
+        cep_ln_failure_rate_pct: cep_health
+            .map(|health| (health.ln_failure_rate * 100.0).clamp(0.0, 100.0))
+            .unwrap_or(0.0),
+        cep_breaker_halt_new_envelopes: cep_health
+            .map(|health| health.breakers.halt_new_envelopes)
+            .unwrap_or(false),
+        cep_breaker_halt_large_settlements: cep_health
+            .map(|health| health.breakers.halt_large_settlements)
+            .unwrap_or(false),
     }
+}
+
+pub(super) async fn fetch_runtime_credit_health(
+    state: &AppState,
+) -> Result<RuntimeCreditHealthResponseV1, String> {
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    client.credit_health().await.map_err(runtime_client_error_string)
 }
 
 pub(super) async fn fetch_compute_dashboard_views(
@@ -837,4 +893,91 @@ pub(super) async fn fetch_runtime_compute_treasury(
         .compute_treasury_summary(owner_user_id)
         .await
         .map_err(runtime_client_error_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::*;
+    use openagents_runtime_client::{
+        RuntimeCreditCircuitBreakersV1, RuntimeCreditHealthResponseV1,
+    };
+
+    fn sample_pool_view() -> LiquidityPoolView {
+        LiquidityPoolView {
+            pool_id: "llp-main".to_string(),
+            pool_kind: "liquidity".to_string(),
+            status: "active".to_string(),
+            share_price_sats: 1,
+            total_shares: 1000,
+            pending_withdrawals_sats_estimate: 50,
+            latest_snapshot_id: Some("snap_1".to_string()),
+            latest_snapshot_as_of: Some("2026-02-24T00:00:00Z".to_string()),
+            latest_snapshot_sha256: Some("abc".to_string()),
+            latest_snapshot_signed: true,
+            wallet_balance_sats: Some(100),
+            lightning_backend: Some("lnd".to_string()),
+            lightning_onchain_sats: Some(200),
+            lightning_channel_total_sats: Some(300),
+            lightning_channel_outbound_sats: Some(170),
+            lightning_channel_inbound_sats: Some(130),
+            lightning_channel_count: Some(4),
+            lightning_connected_channel_count: Some(3),
+            lightning_last_error: None,
+        }
+    }
+
+    fn sample_credit_health() -> RuntimeCreditHealthResponseV1 {
+        RuntimeCreditHealthResponseV1 {
+            schema: "openagents.credit.health_response.v1".to_string(),
+            generated_at: Utc::now(),
+            open_envelope_count: 2,
+            open_reserved_commitments_sats: 1234,
+            settlement_sample: 20,
+            loss_count: 2,
+            loss_rate: 0.1,
+            ln_pay_sample: 10,
+            ln_fail_count: 3,
+            ln_failure_rate: 0.3,
+            breakers: RuntimeCreditCircuitBreakersV1 {
+                halt_new_envelopes: false,
+                halt_large_settlements: true,
+            },
+        }
+    }
+
+    #[test]
+    fn build_stats_metrics_view_includes_cep_metrics_when_available() {
+        let pools = vec![sample_pool_view()];
+        let health = sample_credit_health();
+        let view = build_stats_metrics_view(&pools, Some(&health));
+        assert_eq!(view.pool_count, 1);
+        assert_eq!(view.total_assets_sats, 600);
+        assert!(view.cep_metrics_available);
+        assert_eq!(view.cep_outstanding_envelope_count, 2);
+        assert_eq!(view.cep_outstanding_reserved_commitments_sats, 1234);
+        assert_eq!(view.cep_settlement_sample, 20);
+        assert_eq!(view.cep_loss_rate_pct, 10.0);
+        assert_eq!(view.cep_ln_pay_sample, 10);
+        assert_eq!(view.cep_ln_failure_rate_pct, 30.0);
+        assert!(!view.cep_breaker_halt_new_envelopes);
+        assert!(view.cep_breaker_halt_large_settlements);
+    }
+
+    #[test]
+    fn build_stats_metrics_view_gracefully_handles_missing_cep_metrics() {
+        let pools = vec![sample_pool_view()];
+        let view = build_stats_metrics_view(&pools, None);
+        assert_eq!(view.pool_count, 1);
+        assert!(!view.cep_metrics_available);
+        assert_eq!(view.cep_outstanding_envelope_count, 0);
+        assert_eq!(view.cep_outstanding_reserved_commitments_sats, 0);
+        assert_eq!(view.cep_settlement_sample, 0);
+        assert_eq!(view.cep_loss_rate_pct, 0.0);
+        assert_eq!(view.cep_ln_pay_sample, 0);
+        assert_eq!(view.cep_ln_failure_rate_pct, 0.0);
+        assert!(!view.cep_breaker_halt_new_envelopes);
+        assert!(!view.cep_breaker_halt_large_settlements);
+    }
 }

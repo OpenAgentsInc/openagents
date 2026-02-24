@@ -929,6 +929,8 @@ async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> 
     assert_eq!(health_response.status(), axum::http::StatusCode::OK);
     let health_json = response_json(health_response).await?;
     assert_eq!(health_json["schema"], "openagents.credit.health_response.v1");
+    assert!(health_json["open_envelope_count"].is_u64());
+    assert!(health_json["open_reserved_commitments_sats"].is_u64());
 
     let exposure_response = app
         .clone()

@@ -1087,6 +1087,13 @@ impl CreditService {
         now: DateTime<Utc>,
     ) -> Result<CreditHealthResponseV1, CreditError> {
         let since = now - Duration::seconds(self.policy.health_window_seconds.max(60));
+        let (open_envelope_count, open_reserved_commitments_sats_i64) = self
+            .store
+            .get_global_open_envelope_stats(now)
+            .await
+            .map_err(map_store_error)?;
+        let open_reserved_commitments_sats =
+            u64::try_from(open_reserved_commitments_sats_i64).unwrap_or(0);
 
         let settlements = self
             .store
@@ -1130,6 +1137,8 @@ impl CreditService {
         Ok(CreditHealthResponseV1 {
             schema: CREDIT_HEALTH_RESPONSE_SCHEMA_V1.to_string(),
             generated_at: now,
+            open_envelope_count,
+            open_reserved_commitments_sats,
             settlement_sample,
             loss_count,
             loss_rate,

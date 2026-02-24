@@ -99,6 +99,15 @@ pub struct LiquidityStatsMetricsView {
     pub total_shares: i64,
     pub pending_withdrawals_sats_estimate: i64,
     pub last_snapshot_at: Option<String>,
+    pub cep_metrics_available: bool,
+    pub cep_outstanding_envelope_count: u64,
+    pub cep_outstanding_reserved_commitments_sats: u64,
+    pub cep_settlement_sample: u64,
+    pub cep_loss_rate_pct: f64,
+    pub cep_ln_pay_sample: u64,
+    pub cep_ln_failure_rate_pct: f64,
+    pub cep_breaker_halt_new_envelopes: bool,
+    pub cep_breaker_halt_large_settlements: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -924,6 +933,55 @@ pub fn render_stats_pools_fragment(pools: &[LiquidityPoolView]) -> String {
 }
 
 fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -> Markup {
+    let cep_outstanding_envelope_count = if metrics.cep_metrics_available {
+        metrics.cep_outstanding_envelope_count.to_string()
+    } else {
+        "-".to_string()
+    };
+    let cep_outstanding_reserved_commitments_sats = if metrics.cep_metrics_available {
+        metrics.cep_outstanding_reserved_commitments_sats.to_string()
+    } else {
+        "-".to_string()
+    };
+    let cep_settlement_sample = if metrics.cep_metrics_available {
+        metrics.cep_settlement_sample.to_string()
+    } else {
+        "-".to_string()
+    };
+    let cep_loss_rate_pct = if metrics.cep_metrics_available {
+        format!("{:.2}", metrics.cep_loss_rate_pct)
+    } else {
+        "-".to_string()
+    };
+    let cep_ln_pay_sample = if metrics.cep_metrics_available {
+        metrics.cep_ln_pay_sample.to_string()
+    } else {
+        "-".to_string()
+    };
+    let cep_ln_failure_rate_pct = if metrics.cep_metrics_available {
+        format!("{:.2}", metrics.cep_ln_failure_rate_pct)
+    } else {
+        "-".to_string()
+    };
+    let cep_breaker_halt_new_envelopes = if metrics.cep_metrics_available {
+        if metrics.cep_breaker_halt_new_envelopes {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    } else {
+        "-".to_string()
+    };
+    let cep_breaker_halt_large_settlements = if metrics.cep_metrics_available {
+        if metrics.cep_breaker_halt_large_settlements {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    } else {
+        "-".to_string()
+    };
+
     let body = html! {
         h3 { "Metrics" }
         div class="oa-grid two" {
@@ -941,6 +999,22 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
                 div class="oa-kv" { span { "Channels connected/total" } strong { (format!("{}/{}", metrics.total_connected_channel_count, metrics.total_channel_count)) } }
                 div class="oa-kv" { span { "Pending withdrawals (sats est.)" } strong { (metrics.pending_withdrawals_sats_estimate) } }
                 div class="oa-kv" { span { "Last snapshot" } strong { (metrics.last_snapshot_at.clone().unwrap_or_else(|| "-".to_string())) } }
+            }
+        }
+        h3 { "CEP" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "CEP data available" } strong { (if metrics.cep_metrics_available { "yes" } else { "no" }) } }
+                div class="oa-kv" { span { "CEP outstanding envelopes" } strong { (cep_outstanding_envelope_count) } }
+                div class="oa-kv" { span { "CEP outstanding reserved commitments (sats)" } strong { (cep_outstanding_reserved_commitments_sats) } }
+                div class="oa-kv" { span { "CEP settlement sample" } strong { (cep_settlement_sample) } }
+                div class="oa-kv" { span { "CEP loss rate (%)" } strong { (cep_loss_rate_pct) } }
+            }
+            div {
+                div class="oa-kv" { span { "CEP LN pay sample" } strong { (cep_ln_pay_sample) } }
+                div class="oa-kv" { span { "CEP LN failure rate (%)" } strong { (cep_ln_failure_rate_pct) } }
+                div class="oa-kv" { span { "CEP breaker halt_new_envelopes" } strong { (cep_breaker_halt_new_envelopes) } }
+                div class="oa-kv" { span { "CEP breaker halt_large_settlements" } strong { (cep_breaker_halt_large_settlements) } }
             }
         }
     };

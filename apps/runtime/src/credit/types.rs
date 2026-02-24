@@ -334,6 +334,8 @@ pub struct CreditPolicySnapshotV1 {
 pub struct CreditHealthResponseV1 {
     pub schema: String,
     pub generated_at: DateTime<Utc>,
+    pub open_envelope_count: u64,
+    pub open_reserved_commitments_sats: u64,
     pub settlement_sample: u64,
     pub loss_count: u64,
     pub loss_rate: f64,

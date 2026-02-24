@@ -200,6 +200,27 @@ pub struct RuntimePoolSnapshotResponseV1 {
     pub snapshot: RuntimePoolSnapshotRowV1,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditCircuitBreakersV1 {
+    pub halt_new_envelopes: bool,
+    pub halt_large_settlements: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeCreditHealthResponseV1 {
+    pub schema: String,
+    pub generated_at: DateTime<Utc>,
+    pub open_envelope_count: u64,
+    pub open_reserved_commitments_sats: u64,
+    pub settlement_sample: u64,
+    pub loss_count: u64,
+    pub loss_rate: f64,
+    pub ln_pay_sample: u64,
+    pub ln_fail_count: u64,
+    pub ln_failure_rate: f64,
+    pub breakers: RuntimeCreditCircuitBreakersV1,
+}
+
 impl RuntimeInternalClient {
     pub fn new(config: RuntimeInternalClientConfig) -> Result<Self, RuntimeClientError> {
         let base_url = normalize_base_url(&config.base_url)?;
@@ -283,6 +304,11 @@ impl RuntimeInternalClient {
     #[must_use]
     pub fn pool_snapshot_latest_path(pool_id: &str) -> String {
         format!("/internal/v1/pools/{}/snapshots/latest", pool_id.trim())
+    }
+
+    #[must_use]
+    pub fn credit_health_path() -> &'static str {
+        "/internal/v1/credit/health"
     }
 
     pub async fn list_workers(
@@ -383,6 +409,10 @@ impl RuntimeInternalClient {
     ) -> Result<Option<RuntimePoolSnapshotResponseV1>, RuntimeClientError> {
         self.get_optional_json(Self::pool_snapshot_latest_path(pool_id).as_str())
             .await
+    }
+
+    pub async fn credit_health(&self) -> Result<RuntimeCreditHealthResponseV1, RuntimeClientError> {
+        self.get_json(Self::credit_health_path()).await
     }
 
     pub async fn get_json<T>(&self, path: &str) -> Result<T, RuntimeClientError>
@@ -551,6 +581,10 @@ mod tests {
         assert_eq!(
             RuntimeInternalClient::worker_status_path("worker_abc"),
             "/internal/v1/workers/worker_abc/status"
+        );
+        assert_eq!(
+            RuntimeInternalClient::credit_health_path(),
+            "/internal/v1/credit/health"
         );
     }
 
