@@ -32,6 +32,13 @@ use crate::{
         PricingStageV1, ProviderAdV1, build_commerce_message_event, build_provider_ad_event,
     },
     config::Config,
+    credit::service::{CreditError, CreditService},
+    credit::store as credit_store,
+    credit::types::{
+        CreditAgentExposureResponseV1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1,
+        CreditHealthResponseV1, CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1,
+        CreditSettleResponseV1,
+    },
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
@@ -78,6 +85,7 @@ pub struct AppState {
     config: Config,
     db: Option<Arc<RuntimeDb>>,
     liquidity: Arc<LiquidityService>,
+    credit: Arc<CreditService>,
     liquidity_pool: Arc<LiquidityPoolService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
@@ -108,6 +116,23 @@ impl AppState {
             Some(db) => store::postgres(db),
             None => store::memory(),
         };
+        let credit_store = match db.clone() {
+            Some(db) => credit_store::postgres(db),
+            None => credit_store::memory(),
+        };
+        let liquidity = Arc::new(LiquidityService::new(
+            liquidity_store,
+            config.liquidity_wallet_executor_base_url.clone(),
+            config.liquidity_wallet_executor_auth_token.clone(),
+            config.liquidity_wallet_executor_timeout_ms,
+            config.liquidity_quote_ttl_seconds,
+            config.bridge_nostr_secret_key,
+        ));
+        let credit = Arc::new(CreditService::new(
+            credit_store,
+            liquidity.clone(),
+            config.bridge_nostr_secret_key,
+        ));
 
         let pool_store = match db.clone() {
             Some(db) => liquidity_pool_store::postgres(db),
@@ -124,14 +149,8 @@ impl AppState {
             };
 
         let state = Self {
-            liquidity: Arc::new(LiquidityService::new(
-                liquidity_store,
-                config.liquidity_wallet_executor_base_url.clone(),
-                config.liquidity_wallet_executor_auth_token.clone(),
-                config.liquidity_wallet_executor_timeout_ms,
-                config.liquidity_quote_ttl_seconds,
-                config.bridge_nostr_secret_key,
-            )),
+            liquidity,
+            credit,
             liquidity_pool: Arc::new(
                 LiquidityPoolService::new_with_lightning_node(
                     pool_store,
@@ -919,6 +938,14 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/liquidity/quote_pay",
             post(liquidity_quote_pay),
+        )
+        .route("/internal/v1/credit/offer", post(credit_offer))
+        .route("/internal/v1/credit/envelope", post(credit_envelope))
+        .route("/internal/v1/credit/settle", post(credit_settle))
+        .route("/internal/v1/credit/health", get(credit_health))
+        .route(
+            "/internal/v1/credit/agents/:agent_id/exposure",
+            get(credit_agent_exposure),
         )
         .route("/internal/v1/liquidity/status", get(liquidity_status))
         .route("/internal/v1/liquidity/pay", post(liquidity_pay))
@@ -2590,6 +2617,64 @@ async fn liquidity_status(
     Ok(Json(state.liquidity.status().await))
 }
 
+async fn credit_offer(
+    State(state): State<AppState>,
+    Json(body): Json<CreditOfferRequestV1>,
+) -> Result<Json<CreditOfferResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .offer(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_envelope(
+    State(state): State<AppState>,
+    Json(body): Json<CreditEnvelopeRequestV1>,
+) -> Result<Json<CreditEnvelopeResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .envelope(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_settle(
+    State(state): State<AppState>,
+    Json(body): Json<CreditSettleRequestV1>,
+) -> Result<Json<CreditSettleResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .settle(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_health(
+    State(state): State<AppState>,
+) -> Result<Json<CreditHealthResponseV1>, ApiError> {
+    let response = state.credit.health().await.map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_agent_exposure(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<CreditAgentExposureResponseV1>, ApiError> {
+    let response = state
+        .credit
+        .agent_exposure(agent_id.as_str())
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
 async fn liquidity_pay(
     State(state): State<AppState>,
     Json(body): Json<PayRequestV1>,
@@ -3365,6 +3450,22 @@ fn api_error_from_liquidity_pool(error: LiquidityPoolError) -> ApiError {
     }
 }
 
+fn api_error_from_credit(error: CreditError) -> ApiError {
+    match error {
+        CreditError::InvalidRequest(message) => {
+            if message == "offer is not in offered status" {
+                ApiError::Conflict(message)
+            } else {
+                ApiError::InvalidRequest(message)
+            }
+        }
+        CreditError::NotFound => ApiError::NotFound,
+        CreditError::Conflict(message) => ApiError::Conflict(message),
+        CreditError::DependencyUnavailable(message) => ApiError::DependencyUnavailable(message),
+        CreditError::Internal(message) => ApiError::Internal(message),
+    }
+}
+
 #[derive(Debug)]
 enum ApiError {
     NotFound,
@@ -3410,6 +3511,7 @@ enum ApiError {
         qos_tier: String,
     },
     WritePathFrozen(String),
+    DependencyUnavailable(String),
     InvalidRequest(String),
     Internal(String),
 }
@@ -4745,6 +4847,14 @@ impl IntoResponse for ApiError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({
                     "error": "write_path_frozen",
+                    "message": message,
+                })),
+            )
+                .into_response(),
+            Self::DependencyUnavailable(message) => (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "error": "dependency_unavailable",
                     "message": message,
                 })),
             )

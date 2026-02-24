@@ -873,6 +873,297 @@ async fn liquidity_status_reports_clear_error_when_wallet_executor_unreachable()
 }
 
 #[tokio::test]
+async fn credit_routes_support_offer_envelope_settle_and_idempotent_replay() -> Result<()> {
+    let wallet = spawn_wallet_executor_stub("test-token").await?;
+    let wallet_base = wallet.base_url.clone();
+
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some(wallet_base);
+            config.liquidity_wallet_executor_auth_token = Some("test-token".to_string());
+        });
+
+    let agent_id = "a".repeat(64);
+    let pool_id = "b".repeat(64);
+    let provider_id = "c".repeat(64);
+
+    let offer_payload = json!({
+        "schema": "openagents.credit.offer_request.v1",
+        "agent_id": agent_id,
+        "pool_id": pool_id,
+        "scope_type": "nip90",
+        "scope_id": "oa.sandbox_run.v1:test",
+        "max_sats": 10_000,
+        "fee_bps": 100,
+        "requires_verifier": true,
+        "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+    });
+    let offer_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&offer_payload)?))?,
+        )
+        .await?;
+    assert_eq!(offer_response.status(), axum::http::StatusCode::OK);
+    let offer_json = response_json(offer_response).await?;
+    assert_eq!(offer_json["schema"], "openagents.credit.offer_response.v1");
+    let offer_id = offer_json
+        .pointer("/offer/offer_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing offer_id"))?
+        .to_string();
+
+    let health_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/credit/health")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(health_response.status(), axum::http::StatusCode::OK);
+    let health_json = response_json(health_response).await?;
+    assert_eq!(health_json["schema"], "openagents.credit.health_response.v1");
+
+    let exposure_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/internal/v1/credit/agents/{}/exposure", "a".repeat(64)))
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(exposure_response.status(), axum::http::StatusCode::OK);
+    let exposure_json = response_json(exposure_response).await?;
+    assert_eq!(
+        exposure_json["schema"],
+        "openagents.credit.agent_exposure_response.v1"
+    );
+
+    let envelope_payload = json!({
+        "schema": "openagents.credit.envelope_request.v1",
+        "offer_id": offer_id,
+        "provider_id": provider_id,
+    });
+    let envelope_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/envelope")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&envelope_payload)?))?,
+        )
+        .await?;
+    assert_eq!(envelope_response.status(), axum::http::StatusCode::OK);
+    let envelope_json = response_json(envelope_response).await?;
+    assert_eq!(envelope_json["schema"], "openagents.credit.envelope_response.v1");
+    let envelope_id = envelope_json
+        .pointer("/envelope/envelope_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing envelope_id"))?
+        .to_string();
+
+    let settle_payload = json!({
+        "schema": "openagents.credit.settle_request.v1",
+        "envelope_id": envelope_id,
+        "verification_passed": true,
+        "verification_receipt_sha256": "sha256:verified",
+        "provider_invoice": "lnbc420n1test",
+        "provider_host": "provider.example",
+        "max_fee_msats": 10_000,
+        "policy_context": {},
+    });
+
+    let settle_first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle_payload)?))?,
+        )
+        .await?;
+    assert_eq!(settle_first.status(), axum::http::StatusCode::OK);
+    let settle_first_json = response_json(settle_first).await?;
+    assert_eq!(settle_first_json["schema"], "openagents.credit.settle_response.v1");
+    assert_eq!(settle_first_json["outcome"], "success");
+    let receipt_sha_first = settle_first_json
+        .pointer("/receipt/canonical_json_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing settlement receipt hash"))?
+        .to_string();
+
+    let settle_second = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle_payload)?))?,
+        )
+        .await?;
+    assert_eq!(settle_second.status(), axum::http::StatusCode::OK);
+    let settle_second_json = response_json(settle_second).await?;
+    let receipt_sha_second = settle_second_json
+        .pointer("/receipt/canonical_json_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing settlement receipt hash (replay)"))?
+        .to_string();
+    assert_eq!(receipt_sha_first, receipt_sha_second);
+    assert_eq!(
+        wallet.calls.load(std::sync::atomic::Ordering::Relaxed),
+        1,
+        "credit settle idempotent replay must not double-pay",
+    );
+
+    let _ = wallet.shutdown.send(());
+    Ok(())
+}
+
+#[tokio::test]
+async fn credit_envelope_conflicts_when_offer_already_consumed() -> Result<()> {
+    let app = test_router();
+    let offer_payload = json!({
+        "schema": "openagents.credit.offer_request.v1",
+        "agent_id": "a".repeat(64),
+        "pool_id": "b".repeat(64),
+        "scope_type": "nip90",
+        "scope_id": "oa.sandbox_run.v1:test-conflict",
+        "max_sats": 10_000,
+        "fee_bps": 100,
+        "requires_verifier": true,
+        "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+    });
+    let offer_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&offer_payload)?))?,
+        )
+        .await?;
+    assert_eq!(offer_response.status(), axum::http::StatusCode::OK);
+    let offer_json = response_json(offer_response).await?;
+    let offer_id = offer_json
+        .pointer("/offer/offer_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing offer_id"))?
+        .to_string();
+
+    let envelope_1 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/envelope")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.envelope_request.v1",
+                    "offer_id": offer_id,
+                    "provider_id": "c".repeat(64),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(envelope_1.status(), axum::http::StatusCode::OK);
+
+    let envelope_2 = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/envelope")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.envelope_request.v1",
+                    "offer_id": offer_json["offer"]["offer_id"],
+                    "provider_id": "d".repeat(64),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(envelope_2.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn credit_settle_returns_bad_gateway_when_wallet_executor_unavailable() -> Result<()> {
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some("http://127.0.0.1:1".to_string());
+            config.liquidity_wallet_executor_auth_token = Some("test-token".to_string());
+        });
+
+    let offer_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.offer_request.v1",
+                    "agent_id": "a".repeat(64),
+                    "pool_id": "b".repeat(64),
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:test-dependency",
+                    "max_sats": 10_000,
+                    "fee_bps": 100,
+                    "requires_verifier": true,
+                    "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(offer_response.status(), axum::http::StatusCode::OK);
+    let offer_json = response_json(offer_response).await?;
+
+    let envelope_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/envelope")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.envelope_request.v1",
+                    "offer_id": offer_json["offer"]["offer_id"],
+                    "provider_id": "c".repeat(64),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(envelope_response.status(), axum::http::StatusCode::OK);
+    let envelope_json = response_json(envelope_response).await?;
+
+    let settle_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.settle_request.v1",
+                    "envelope_id": envelope_json["envelope"]["envelope_id"],
+                    "verification_passed": true,
+                    "verification_receipt_sha256": "sha256:verified",
+                    "provider_invoice": "lnbc420n1test",
+                    "provider_host": "provider.example",
+                    "max_fee_msats": 10_000,
+                    "policy_context": {},
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(settle_response.status(), axum::http::StatusCode::BAD_GATEWAY);
+    let json = response_json(settle_response).await?;
+    assert_eq!(json["error"], "dependency_unavailable");
+    Ok(())
+}
+
+#[tokio::test]
 async fn run_lifecycle_updates_projector_checkpoint() -> Result<()> {
     let app = test_router();
 
