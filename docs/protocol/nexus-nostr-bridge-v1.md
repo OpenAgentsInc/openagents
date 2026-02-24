@@ -1,6 +1,6 @@
 # Nexus <-> Nostr Bridge (Phase-0 Minimal) v1
 
-Status: Active  
+Status: Active
 Last updated: 2026-02-23
 
 This document defines the **Phase-0 Bridge boundary** between:

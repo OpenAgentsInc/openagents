@@ -14,7 +14,7 @@ Accepted
 
 ## Context
 
-Rivet contains high-signal Rust patterns relevant to replacing BEAM-era operational behavior (long-lived sessions, reconnect lifecycle handling, durable workflow history discipline, and pubsub seams).  
+Rivet contains high-signal Rust patterns relevant to replacing BEAM-era operational behavior (long-lived sessions, reconnect lifecycle handling, durable workflow history discipline, and pubsub seams).
 Without explicit boundaries, selective reuse can drift into platform-level adoption that conflicts with OpenAgents authority and protocol architecture.
 
 OpenAgents requires a formal posture that defines what is harvested, what is rejected, and how provenance is governed.

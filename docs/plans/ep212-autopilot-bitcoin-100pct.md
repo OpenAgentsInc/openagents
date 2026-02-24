@@ -1,7 +1,7 @@
 # EP212: Autopilot Learns Bitcoin (Announcement) — 100% Implementation Plan
 
-Status: draft (active)  
-Last updated: 2026-02-24  
+Status: draft (active)
+Last updated: 2026-02-24
 Scope: Rust-first product surfaces (web + desktop + mobile), wallet executor, lightning-ops, and protocol/docs parity.
 
 This document audits the Episode 212 announcement claims ("Autopilot Learns Bitcoin") against the current codebase and roadmap, identifies gaps, and specifies the work required to make the announcement **literally true in production** (not "works in dev").
@@ -457,4 +457,3 @@ When turning this plan into GitHub issues, keep them small and gate-driven. Sugg
 2. **Paywalls are an SSRF/open-proxy risk.** “Any HTTP endpoint” requires domain verification + outbound egress controls.
 3. **Idempotency and receipts** must be first-class (especially for money). Every spend/settlement must be replay-safe.
 4. **Performance parity**: tools must not add multi-second latencies; long polls/SSE should not reappear as authority transports.
-

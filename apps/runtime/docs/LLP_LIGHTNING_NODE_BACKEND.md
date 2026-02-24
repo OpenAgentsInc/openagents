@@ -48,4 +48,3 @@ LLP pool snapshots (`assets_json`) include a `lightning` object:
 
 This is intentionally coarse; it is enough to validate "channel-backed assets exist" and to
 instrument `/stats` dashboards.
-

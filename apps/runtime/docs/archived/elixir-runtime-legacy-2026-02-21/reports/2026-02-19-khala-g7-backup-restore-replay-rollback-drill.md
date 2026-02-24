@@ -1,6 +1,6 @@
 # Khala G7 Backup/Restore/Replay + Rollback Drill Report
 
-Date: 2026-02-19  
+Date: 2026-02-19
 Scope: Gate G7 (`#1766`) production-readiness drills in non-prod (`openagentsgemini/us-central1`)
 
 ## Drill Objectives

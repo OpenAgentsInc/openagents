@@ -90,4 +90,3 @@ buf breaking --against .git#branch=main,subdir=proto
 - `docs/ARCHITECTURE-RUST.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - Related issue(s): `OA-RUST-...`
-
