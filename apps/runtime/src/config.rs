@@ -57,6 +57,11 @@ pub struct Config {
     pub liquidity_wallet_executor_timeout_ms: u64,
     pub liquidity_quote_ttl_seconds: u64,
     pub liquidity_pool_withdraw_delay_hours: i64,
+    pub liquidity_pool_snapshot_worker_enabled: bool,
+    pub liquidity_pool_snapshot_pool_ids: Vec<String>,
+    pub liquidity_pool_snapshot_interval_seconds: u64,
+    pub liquidity_pool_snapshot_jitter_seconds: u64,
+    pub liquidity_pool_snapshot_retention_count: i64,
     pub treasury_reconciliation_enabled: bool,
     pub treasury_reservation_ttl_seconds: u64,
     pub treasury_reconciliation_interval_seconds: u64,
@@ -148,6 +153,14 @@ pub enum ConfigError {
     InvalidLiquidityQuoteTtlSeconds(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_WITHDRAW_DELAY_HOURS: {0}")]
     InvalidLiquidityPoolWithdrawDelayHours(String),
+    #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_WORKER_ENABLED: {0}")]
+    InvalidLiquidityPoolSnapshotWorkerEnabled(String),
+    #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_INTERVAL_SECONDS: {0}")]
+    InvalidLiquidityPoolSnapshotIntervalSeconds(String),
+    #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_JITTER_SECONDS: {0}")]
+    InvalidLiquidityPoolSnapshotJitterSeconds(String),
+    #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_RETENTION_COUNT: {0}")]
+    InvalidLiquidityPoolSnapshotRetentionCount(String),
 }
 
 impl Config {
@@ -439,6 +452,41 @@ impl Config {
                     ConfigError::InvalidLiquidityPoolWithdrawDelayHours(error.to_string())
                 })?
                 .clamp(0, 168);
+        let liquidity_pool_snapshot_worker_enabled =
+            parse_bool_env("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_WORKER_ENABLED", true).map_err(
+                |error| ConfigError::InvalidLiquidityPoolSnapshotWorkerEnabled(error.to_string()),
+            )?;
+        let liquidity_pool_snapshot_pool_ids = env::var("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_POOL_IDS")
+            .unwrap_or_else(|_| "llp-main".to_string())
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let liquidity_pool_snapshot_interval_seconds =
+            env::var("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_INTERVAL_SECONDS")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolSnapshotIntervalSeconds(error.to_string())
+                })?
+                .clamp(1, 3600);
+        let liquidity_pool_snapshot_jitter_seconds =
+            env::var("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_JITTER_SECONDS")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolSnapshotJitterSeconds(error.to_string())
+                })?
+                .clamp(0, 60);
+        let liquidity_pool_snapshot_retention_count =
+            env::var("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_RETENTION_COUNT")
+                .unwrap_or_else(|_| "120".to_string())
+                .parse::<i64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolSnapshotRetentionCount(error.to_string())
+                })?
+                .clamp(1, 10_000);
         Ok(Self {
             service_name,
             bind_addr,
@@ -486,6 +534,11 @@ impl Config {
             liquidity_wallet_executor_timeout_ms,
             liquidity_quote_ttl_seconds,
             liquidity_pool_withdraw_delay_hours,
+            liquidity_pool_snapshot_worker_enabled,
+            liquidity_pool_snapshot_pool_ids,
+            liquidity_pool_snapshot_interval_seconds,
+            liquidity_pool_snapshot_jitter_seconds,
+            liquidity_pool_snapshot_retention_count,
             treasury_reconciliation_enabled,
             treasury_reservation_ttl_seconds,
             treasury_reconciliation_interval_seconds,

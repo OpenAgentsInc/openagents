@@ -58,6 +58,23 @@ LLP pool snapshots (`assets_json`) include a `lightning` object:
 This is intentionally coarse; it is enough to validate "channel-backed assets exist" and to
 instrument `/stats` dashboards.
 
+## Automated LLP Snapshot Worker (MVP-0)
+
+Runtime can materialize LLP snapshots on a fixed cadence for configured pools:
+
+- `RUNTIME_LIQUIDITY_POOL_SNAPSHOT_WORKER_ENABLED` (default `true`)
+- `RUNTIME_LIQUIDITY_POOL_SNAPSHOT_POOL_IDS` (default `llp-main`, CSV)
+- `RUNTIME_LIQUIDITY_POOL_SNAPSHOT_INTERVAL_SECONDS` (default `60`)
+- `RUNTIME_LIQUIDITY_POOL_SNAPSHOT_JITTER_SECONDS` (default `5`)
+- `RUNTIME_LIQUIDITY_POOL_SNAPSHOT_RETENTION_COUNT` (default `120`)
+
+Behavior:
+
+- Generates `partitionKind=llp` snapshots in the background.
+- Snapshot generation continues even if LND is unavailable; `assets_json.lightning.lastError` is
+  populated.
+- Old snapshot rows are pruned to the configured retention count per pool/partition.
+
 ## Notes
 
 - OpenAgents uses **LND-only** for Phase 0 LLP. Any non-LND backend support in code is legacy

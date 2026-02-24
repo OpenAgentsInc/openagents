@@ -2015,6 +2015,19 @@ impl LiquidityPoolService {
         })
     }
 
+    pub async fn prune_snapshots_keep_latest(
+        &self,
+        pool_id: &str,
+        partition_kind: PoolPartitionKindV1,
+        keep_latest: i64,
+    ) -> Result<u64, LiquidityPoolError> {
+        let keep_latest = keep_latest.max(1);
+        self.store
+            .prune_snapshots_keep_latest(pool_id, partition_kind.as_str(), keep_latest)
+            .await
+            .map_err(map_store_error)
+    }
+
     async fn execute_lightning_withdrawal_direct(
         &self,
         withdrawal: &WithdrawalRow,

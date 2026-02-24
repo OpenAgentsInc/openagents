@@ -25,6 +25,10 @@ struct Args {
     /// Output directory. Defaults to `output/vignettes/liquidity-pool/<run_id>`.
     #[arg(long)]
     output_dir: Option<PathBuf>,
+
+    /// Run only the automated snapshot smoke check and exit.
+    #[arg(long, default_value_t = false)]
+    snapshot_smoke_only: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +160,43 @@ async fn main() -> Result<()> {
     )
     .await?;
     events.push(json!({"at": Utc::now().to_rfc3339(), "step": "pool_create", "pool_id": pool_id, "response": created_pool}));
+
+    // 0.5) Assert automated snapshot worker writes a latest LLP snapshot without generate=true.
+    let auto_snapshot =
+        wait_for_pool_snapshot(&client, &runtime.base_url, pool_id, Duration::from_secs(6))
+            .await
+            .context("wait for automated LLP snapshot")?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "pool_snapshot_auto",
+        "pool_id": pool_id,
+        "snapshot_id": auto_snapshot.snapshot.get("snapshot_id").and_then(Value::as_str),
+        "snapshot_as_of": auto_snapshot.snapshot.get("as_of").and_then(Value::as_str),
+        "receipt_id": auto_snapshot.receipt.get("receipt_id").and_then(Value::as_str),
+    }));
+    if args.snapshot_smoke_only {
+        let summary = json!({
+            "run_id": run_id,
+            "mode": "snapshot_smoke_only",
+            "pool_id": pool_id,
+            "snapshot_id": auto_snapshot.snapshot.get("snapshot_id").and_then(Value::as_str),
+            "snapshot_as_of": auto_snapshot.snapshot.get("as_of").and_then(Value::as_str),
+            "generated_at": Utc::now().to_rfc3339(),
+        });
+        std::fs::write(
+            output_dir.join("summary.json"),
+            serde_json::to_string_pretty(&summary)?,
+        )?;
+        let mut events_jsonl = String::new();
+        for event in &events {
+            events_jsonl.push_str(&serde_json::to_string(event)?);
+            events_jsonl.push('\n');
+        }
+        std::fs::write(output_dir.join("events.jsonl"), events_jsonl)?;
+        let _ = runtime.shutdown.send(());
+        let _ = wallet.shutdown.send(());
+        return Ok(());
+    }
 
     // 1) Deposit quote (LN invoice) + stable idempotency.
     let lp_id = "lp:vignette";
@@ -795,6 +836,11 @@ async fn start_runtime(deps: RuntimeDeps) -> Result<RuntimeHandle> {
     config.liquidity_wallet_executor_base_url = Some(deps.wallet_base_url);
     config.liquidity_wallet_executor_auth_token = Some(deps.wallet_auth_token);
     config.liquidity_pool_withdraw_delay_hours = 0;
+    config.liquidity_pool_snapshot_worker_enabled = true;
+    config.liquidity_pool_snapshot_pool_ids = vec!["pool_vignette_llp".to_string()];
+    config.liquidity_pool_snapshot_interval_seconds = 1;
+    config.liquidity_pool_snapshot_jitter_seconds = 0;
+    config.liquidity_pool_snapshot_retention_count = 8;
     config.bridge_nostr_secret_key = deps.receipt_signing_key;
     config.bridge_nostr_relays = Vec::new();
 
@@ -1306,6 +1352,37 @@ async fn wait_for_http_ok(
             Ok(resp) if resp.status().is_success() => return Ok(()),
             _ => tokio::time::sleep(Duration::from_millis(50)).await,
         }
+    }
+}
+
+async fn wait_for_pool_snapshot(
+    client: &reqwest::Client,
+    base_url: &str,
+    pool_id: &str,
+    timeout: Duration,
+) -> Result<PoolSnapshotResponse> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let path = format!("/internal/v1/pools/{pool_id}/snapshots/latest");
+    let url = format!("{base_url}{path}");
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            return Err(anyhow!("timeout waiting for {}", url));
+        }
+
+        match client.get(&url).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let json = resp.json::<Value>().await.unwrap_or(Value::Null);
+                if status.is_success() {
+                    let parsed: PoolSnapshotResponse = serde_json::from_value(json)
+                        .with_context(|| format!("parse response from {}", path))?;
+                    return Ok(parsed);
+                }
+            }
+            Err(_) => {}
+        }
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
 

@@ -183,6 +183,13 @@ pub trait LiquidityPoolStore: Send + Sync {
         partition_kind: &str,
     ) -> Result<Option<PoolSnapshotRow>, LiquidityPoolStoreError>;
 
+    async fn prune_snapshots_keep_latest(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+        keep_latest: i64,
+    ) -> Result<u64, LiquidityPoolStoreError>;
+
     /// CEP-specific liabilities: reserved commitments from accepted credit envelopes.
     async fn get_credit_reserved_commitments_sats(
         &self,
@@ -650,6 +657,16 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             .latest_snapshot_by_pool_partition
             .get(&(pool_id.to_string(), partition_kind.to_string()))
             .cloned())
+    }
+
+    async fn prune_snapshots_keep_latest(
+        &self,
+        _pool_id: &str,
+        _partition_kind: &str,
+        _keep_latest: i64,
+    ) -> Result<u64, LiquidityPoolStoreError> {
+        // Memory store keeps only the latest snapshot projection per pool/partition.
+        Ok(0)
     }
 
     async fn get_credit_reserved_commitments_sats(
@@ -1849,6 +1866,35 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         Ok(Some(
             map_snapshot_row(&row).map_err(LiquidityPoolStoreError::Db)?,
         ))
+    }
+
+    async fn prune_snapshots_keep_latest(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+        keep_latest: i64,
+    ) -> Result<u64, LiquidityPoolStoreError> {
+        let keep_latest = keep_latest.max(1);
+        let client = self.db.client();
+        let client = client.lock().await;
+        let deleted = client
+            .execute(
+                r#"
+                DELETE FROM runtime.liquidity_pool_snapshots
+                 WHERE snapshot_id IN (
+                   SELECT snapshot_id
+                     FROM runtime.liquidity_pool_snapshots
+                    WHERE pool_id = $1
+                      AND partition_kind = $2
+                    ORDER BY as_of DESC, created_at DESC, snapshot_id DESC
+                    OFFSET $3
+                 )
+                "#,
+                &[&pool_id, &partition_kind, &keep_latest],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        Ok(deleted)
     }
 
     async fn get_credit_reserved_commitments_sats(

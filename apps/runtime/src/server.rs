@@ -156,6 +156,7 @@ impl AppState {
         };
 
         maybe_spawn_provider_multihoming_autopilot(&state);
+        maybe_spawn_liquidity_pool_snapshot_worker(&state);
         maybe_spawn_treasury_reconciliation_worker(&state);
 
         state
@@ -4340,6 +4341,92 @@ fn maybe_spawn_provider_multihoming_autopilot(state: &AppState) {
             tokio::time::sleep(Duration::from_secs(PROVIDER_MULTIHOMING_REFRESH_SECS)).await;
         }
     });
+}
+
+fn maybe_spawn_liquidity_pool_snapshot_worker(state: &AppState) {
+    if !state.config.liquidity_pool_snapshot_worker_enabled {
+        return;
+    }
+    if !state.config.authority_write_mode.writes_enabled() {
+        tracing::info!(
+            authority_mode = %state.config.authority_write_mode.as_str(),
+            "liquidity pool snapshot worker disabled because authority writes are not enabled"
+        );
+        return;
+    }
+    if state.config.liquidity_pool_snapshot_pool_ids.is_empty() {
+        tracing::warn!("liquidity pool snapshot worker has no configured pool ids");
+        return;
+    }
+
+    let pool = state.liquidity_pool.clone();
+    let pool_ids = state.config.liquidity_pool_snapshot_pool_ids.clone();
+    let interval_seconds = state.config.liquidity_pool_snapshot_interval_seconds.max(1);
+    let jitter_seconds = state.config.liquidity_pool_snapshot_jitter_seconds;
+    let retention_count = state.config.liquidity_pool_snapshot_retention_count.max(1);
+
+    tokio::spawn(async move {
+        loop {
+            run_liquidity_pool_snapshot_tick(pool.as_ref(), pool_ids.as_slice(), retention_count)
+                .await;
+
+            let sleep_seconds =
+                liquidity_pool_snapshot_sleep_seconds(interval_seconds, jitter_seconds);
+            tokio::time::sleep(Duration::from_secs(sleep_seconds)).await;
+        }
+    });
+}
+
+async fn run_liquidity_pool_snapshot_tick(
+    pool_service: &LiquidityPoolService,
+    pool_ids: &[String],
+    retention_count: i64,
+) {
+    for pool_id in pool_ids {
+        match pool_service
+            .generate_snapshot(pool_id.as_str(), PoolPartitionKindV1::Llp)
+            .await
+        {
+            Ok(snapshot) => {
+                if let Err(error) = pool_service
+                    .prune_snapshots_keep_latest(
+                        pool_id.as_str(),
+                        PoolPartitionKindV1::Llp,
+                        retention_count,
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        pool_id,
+                        reason = %error,
+                        "liquidity pool snapshot prune failed"
+                    );
+                }
+
+                tracing::debug!(
+                    pool_id,
+                    snapshot_id = %snapshot.snapshot.snapshot_id,
+                    snapshot_as_of = %snapshot.snapshot.as_of,
+                    "liquidity pool snapshot tick generated"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    pool_id,
+                    reason = %error,
+                    "liquidity pool snapshot tick failed"
+                );
+            }
+        }
+    }
+}
+
+fn liquidity_pool_snapshot_sleep_seconds(interval_seconds: u64, jitter_seconds: u64) -> u64 {
+    if jitter_seconds == 0 {
+        return interval_seconds.max(1);
+    }
+    let jitter = (Utc::now().timestamp_subsec_nanos() as u64) % (jitter_seconds + 1);
+    interval_seconds.saturating_add(jitter).max(1)
 }
 
 fn maybe_spawn_treasury_reconciliation_worker(state: &AppState) {
