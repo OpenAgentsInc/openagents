@@ -13,6 +13,7 @@ Scope: cross-process and client/server contracts only
 | `openagents.codex.v1` | Codex surface contracts | `owner:runtime` (with `owner:desktop` + `owner:ios` consumers) | Codex worker envelopes, sandbox bindings, Codex auth/worker projections consumed by web/desktop/iOS | Generic runtime-agnostic auth/session contracts |
 | `openagents.sync.v1` | Khala transport/replay | `owner:khala` | WS envelope, topic/cursor semantics, replay/bootstrap errors, subscription contracts | Authority mutation payloads |
 | `openagents.lightning.v1` | Lightning control/payments | `owner:infra` | Lightning policy/executor control-plane contract payloads | Codex/runtime generic orchestration |
+| `openagents.hydra.v1` | Hydra credit contracts | `owner:runtime` (with `owner:infra` neobank consumer) | Credit intent/offer/envelope/settle, health/exposure telemetry, Hydra error taxonomy | Generic runtime orchestration/worker lifecycles |
 | `openagents.protocol.v1` | Transitional legacy namespace | `owner:contracts-docs` | Migration shims only for contracts not yet moved to canonical package | Any new contract additions |
 
 ## Placement Rules
@@ -58,6 +59,7 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/sync/v1/client_telemetry.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-093 |
 | `proto/openagents/lightning/v1/control_plane.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 / OA-RUST-101 / OA-RUST-102 |
 | `proto/openagents/lightning/v1/wallet_executor.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 |
+| `proto/openagents/hydra/v1/credit.proto` | `openagents.hydra.v1` | `openagents.hydra.v1` | `owner:runtime` | OA-HYDRA-MVP1 / #2185 |
 
 ## Verification
 

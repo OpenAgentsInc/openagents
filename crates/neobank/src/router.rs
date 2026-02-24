@@ -7,8 +7,9 @@ use sha2::{Digest, Sha256};
 
 use crate::budgets::{BudgetError, BudgetFinalizeDisposition, BudgetHooks};
 use crate::rails::runtime::{
-    CreditEnvelopeRequestV1, CreditOfferRequestV1, CreditSettleRequestV1, LiquidityPayRequestV1,
-    LiquidityQuotePayRequestV1, RuntimeClientError, RuntimeInternalApiClient,
+    CreditEnvelopeRequestV1, CreditOfferRequestV1, CreditScopeTypeV1, CreditSettleRequestV1,
+    LiquidityPayRequestV1, LiquidityQuotePayRequestV1, RuntimeClientError,
+    RuntimeInternalApiClient,
 };
 use crate::receipts::{
     PaymentAttemptReceiptInput, PaymentAttemptReceiptV1, PaymentRouteKind, ReceiptSigner,
@@ -285,7 +286,8 @@ impl TreasuryRouter {
                 schema: "openagents.credit.offer_request.v1".to_string(),
                 agent_id: cep.agent_id.clone(),
                 pool_id: cep.pool_id.clone(),
-                scope_type: "nip90".to_string(),
+                intent_id: None,
+                scope_type: CreditScopeTypeV1::Nip90,
                 scope_id: cep.scope_id.clone(),
                 max_sats: max_sats_needed,
                 fee_bps: 100,
@@ -481,6 +483,9 @@ fn map_runtime_error(error: RuntimeClientError) -> NeobankError {
             code,
             message,
         } => NeobankError::Runtime(format!("status={status} code={code} message={message}")),
+        RuntimeClientError::Contract(message) => {
+            NeobankError::Runtime(format!("contract={message}"))
+        }
     }
 }
 

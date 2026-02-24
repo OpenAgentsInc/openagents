@@ -59,6 +59,7 @@ Current files:
 - `proto/openagents/sync/v1/client_telemetry.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
+- `proto/openagents/hydra/v1/credit.proto`
 
 `openagents.protocol.v1` is transitional legacy namespace only. New contracts must be placed using `proto/PACKAGE_MAP.md`.
 

@@ -3,6 +3,8 @@
 //! This crate owns generated Rust wire types for all `proto/openagents/*/v1/*` packages.
 //! It intentionally separates wire types from richer domain models.
 
+pub mod hydra_credit;
+
 /// Proto-generated wire contracts.
 pub mod wire {
     include!(concat!(env!("OUT_DIR"), "/openagents.rs"));

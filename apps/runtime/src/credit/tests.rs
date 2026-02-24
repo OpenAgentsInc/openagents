@@ -87,8 +87,11 @@ async fn cep_issue_and_settle_success_is_idempotent() -> Result<()> {
         .await
         .context("envelope")?;
 
-    assert_eq!(envelope.receipt.schema, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1);
-    if envelope.receipt.signature.is_none() {
+    assert_eq!(
+        envelope.receipt.get("schema").and_then(Value::as_str),
+        Some(ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1)
+    );
+    if envelope.receipt.get("signature").is_none() {
         return Err(anyhow!("expected envelope issue receipt to be signed"));
     }
 

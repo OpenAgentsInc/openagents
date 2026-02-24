@@ -1,4 +1,10 @@
 use chrono::{DateTime, Utc};
+use openagents_proto::hydra_credit::HydraCreditConversionError;
+pub use openagents_proto::hydra_credit::{
+    CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditOfferRequestV1, CreditOfferResponseV1,
+    CreditScopeTypeV1, CreditSettleRequestV1, CreditSettleResponseV1,
+};
+use openagents_proto::wire::openagents::hydra::v1 as wire_hydra;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -14,6 +20,8 @@ pub enum RuntimeClientError {
     },
     #[error("parse error: {0}")]
     Parse(String),
+    #[error("contract error: {0}")]
+    Contract(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,21 +73,29 @@ impl RuntimeInternalApiClient {
         &self,
         body: CreditOfferRequestV1,
     ) -> Result<CreditOfferResponseV1, RuntimeClientError> {
-        self.post_json("/internal/v1/credit/offer", &body).await
+        let body = normalize_credit_offer_request(body)?;
+        let response = self.post_json("/internal/v1/credit/offer", &body).await?;
+        normalize_credit_offer_response(response)
     }
 
     pub async fn credit_envelope(
         &self,
         body: CreditEnvelopeRequestV1,
     ) -> Result<CreditEnvelopeResponseV1, RuntimeClientError> {
-        self.post_json("/internal/v1/credit/envelope", &body).await
+        let body = normalize_credit_envelope_request(body)?;
+        let response = self
+            .post_json("/internal/v1/credit/envelope", &body)
+            .await?;
+        normalize_credit_envelope_response(response)
     }
 
     pub async fn credit_settle(
         &self,
         body: CreditSettleRequestV1,
     ) -> Result<CreditSettleResponseV1, RuntimeClientError> {
-        self.post_json("/internal/v1/credit/settle", &body).await
+        let body = normalize_credit_settle_request(body)?;
+        let response = self.post_json("/internal/v1/credit/settle", &body).await?;
+        normalize_credit_settle_response(response)
     }
 
     async fn post_json<TReq, TRes>(
@@ -187,91 +203,51 @@ pub struct LiquidityInvoicePayReceiptV1 {
     pub canonical_json_sha256: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct CreditOfferRequestV1 {
-    pub schema: String,
-    pub agent_id: String,
-    pub pool_id: String,
-    pub scope_type: String,
-    pub scope_id: String,
-    pub max_sats: u64,
-    pub fee_bps: u32,
-    pub requires_verifier: bool,
-    pub exp: DateTime<Utc>,
+fn map_contract_error(error: HydraCreditConversionError) -> RuntimeClientError {
+    RuntimeClientError::Contract(error.to_string())
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreditOfferResponseV1 {
-    pub schema: String,
-    pub offer: CreditOfferRowV1,
+fn normalize_credit_offer_request(
+    request: CreditOfferRequestV1,
+) -> Result<CreditOfferRequestV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditOfferRequestV1 = request.try_into().map_err(map_contract_error)?;
+    CreditOfferRequestV1::try_from(wire).map_err(map_contract_error)
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreditOfferRowV1 {
-    pub offer_id: String,
-    pub agent_id: String,
-    pub pool_id: String,
-    pub scope_type: String,
-    pub scope_id: String,
-    pub max_sats: i64,
-    pub fee_bps: i32,
-    pub requires_verifier: bool,
-    pub exp: DateTime<Utc>,
-    pub status: String,
-    pub issued_at: DateTime<Utc>,
+fn normalize_credit_envelope_request(
+    request: CreditEnvelopeRequestV1,
+) -> Result<CreditEnvelopeRequestV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditEnvelopeRequestV1 = request.into();
+    Ok(CreditEnvelopeRequestV1::from(wire))
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct CreditEnvelopeRequestV1 {
-    pub schema: String,
-    pub offer_id: String,
-    pub provider_id: String,
+fn normalize_credit_settle_request(
+    request: CreditSettleRequestV1,
+) -> Result<CreditSettleRequestV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditSettleRequestV1 = request.try_into().map_err(map_contract_error)?;
+    CreditSettleRequestV1::try_from(wire).map_err(map_contract_error)
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreditEnvelopeResponseV1 {
-    pub schema: String,
-    pub envelope: CreditEnvelopeRowV1,
-    pub receipt: Value,
+fn normalize_credit_offer_response(
+    response: CreditOfferResponseV1,
+) -> Result<CreditOfferResponseV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditOfferResponseV1 =
+        response.try_into().map_err(map_contract_error)?;
+    CreditOfferResponseV1::try_from(wire).map_err(map_contract_error)
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreditEnvelopeRowV1 {
-    pub envelope_id: String,
-    pub offer_id: String,
-    pub agent_id: String,
-    pub pool_id: String,
-    pub provider_id: String,
-    pub scope_type: String,
-    pub scope_id: String,
-    pub max_sats: i64,
-    pub fee_bps: i32,
-    pub exp: DateTime<Utc>,
-    pub status: String,
-    pub issued_at: DateTime<Utc>,
+fn normalize_credit_envelope_response(
+    response: CreditEnvelopeResponseV1,
+) -> Result<CreditEnvelopeResponseV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditEnvelopeResponseV1 =
+        response.try_into().map_err(map_contract_error)?;
+    CreditEnvelopeResponseV1::try_from(wire).map_err(map_contract_error)
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct CreditSettleRequestV1 {
-    pub schema: String,
-    pub envelope_id: String,
-    pub verification_passed: bool,
-    pub verification_receipt_sha256: String,
-    pub provider_invoice: String,
-    pub provider_host: String,
-    pub max_fee_msats: u64,
-    pub policy_context: Value,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreditSettleResponseV1 {
-    pub schema: String,
-    pub envelope_id: String,
-    pub settlement_id: String,
-    pub outcome: String,
-    pub spent_sats: u64,
-    pub fee_sats: u64,
-    pub verification_receipt_sha256: String,
-    pub liquidity_receipt_sha256: Option<String>,
-    pub receipt: Value,
+fn normalize_credit_settle_response(
+    response: CreditSettleResponseV1,
+) -> Result<CreditSettleResponseV1, RuntimeClientError> {
+    let wire: wire_hydra::CreditSettleResponseV1 =
+        response.try_into().map_err(map_contract_error)?;
+    CreditSettleResponseV1::try_from(wire).map_err(map_contract_error)
 }

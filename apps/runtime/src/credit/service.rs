@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
+use openagents_proto::hydra_credit::HydraCreditConversionError;
+use openagents_proto::wire::openagents::hydra::v1 as wire_hydra;
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -155,7 +157,8 @@ impl CreditService {
 
     pub async fn health(&self) -> Result<CreditHealthResponseV1, CreditError> {
         let now = Utc::now();
-        self.compute_health(now).await
+        let response = self.compute_health(now).await?;
+        normalize_credit_health_response(response)
     }
 
     pub async fn agent_exposure(
@@ -168,7 +171,7 @@ impl CreditService {
             .compute_underwriting_decision(agent_id.as_str(), now)
             .await?;
 
-        Ok(CreditAgentExposureResponseV1 {
+        let response = CreditAgentExposureResponseV1 {
             schema: CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1.to_string(),
             agent_id,
             open_envelope_count: decision.stats.open_envelope_count,
@@ -181,13 +184,16 @@ impl CreditService {
             underwriting_fee_bps: decision.fee_bps,
             requires_verifier: decision.requires_verifier,
             computed_at: now,
-        })
+        };
+
+        normalize_credit_agent_exposure_response(response)
     }
 
     pub async fn intent(
         &self,
         body: CreditIntentRequestV1,
     ) -> Result<CreditIntentResponseV1, CreditError> {
+        let body = normalize_credit_intent_request(body)?;
         if body.schema.trim() != CREDIT_INTENT_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_INTENT_REQUEST_SCHEMA_V1}"
@@ -295,7 +301,7 @@ impl CreditService {
             .await
             .map_err(map_store_error)?;
 
-        Ok(CreditIntentResponseV1 {
+        normalize_credit_intent_response(CreditIntentResponseV1 {
             schema: CREDIT_INTENT_RESPONSE_SCHEMA_V1.to_string(),
             intent: stored,
         })
@@ -305,6 +311,7 @@ impl CreditService {
         &self,
         body: CreditOfferRequestV1,
     ) -> Result<CreditOfferResponseV1, CreditError> {
+        let body = normalize_credit_offer_request(body)?;
         if body.schema.trim() != CREDIT_OFFER_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_OFFER_REQUEST_SCHEMA_V1}"
@@ -475,7 +482,7 @@ impl CreditService {
             Err(error) => return Err(map_store_error(error)),
         }
 
-        Ok(CreditOfferResponseV1 {
+        normalize_credit_offer_response(CreditOfferResponseV1 {
             schema: CREDIT_OFFER_RESPONSE_SCHEMA_V1.to_string(),
             offer: stored,
         })
@@ -485,6 +492,7 @@ impl CreditService {
         &self,
         body: CreditEnvelopeRequestV1,
     ) -> Result<CreditEnvelopeResponseV1, CreditError> {
+        let body = normalize_credit_envelope_request(body)?;
         if body.schema.trim() != CREDIT_ENVELOPE_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_ENVELOPE_REQUEST_SCHEMA_V1}"
@@ -601,10 +609,11 @@ impl CreditService {
         )
         .await?;
 
-        Ok(CreditEnvelopeResponseV1 {
+        normalize_credit_envelope_response(CreditEnvelopeResponseV1 {
             schema: CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1.to_string(),
             envelope: stored,
-            receipt,
+            receipt: serde_json::to_value(receipt)
+                .map_err(|error| CreditError::Internal(error.to_string()))?,
         })
     }
 
@@ -612,6 +621,7 @@ impl CreditService {
         &self,
         body: CreditSettleRequestV1,
     ) -> Result<CreditSettleResponseV1, CreditError> {
+        let body = normalize_credit_settle_request(body)?;
         if body.schema.trim() != CREDIT_SETTLE_REQUEST_SCHEMA_V1 {
             return Err(CreditError::InvalidRequest(format!(
                 "schema must be {CREDIT_SETTLE_REQUEST_SCHEMA_V1}"
@@ -657,7 +667,7 @@ impl CreditService {
                 .await
                 .map_err(map_store_error)?
                 .ok_or_else(|| CreditError::Internal("missing stored receipt".to_string()))?;
-            return Ok(CreditSettleResponseV1 {
+            return normalize_credit_settle_response(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
                 settlement_id: existing.settlement_id,
@@ -731,7 +741,7 @@ impl CreditService {
                 &receipt,
             )
             .await?;
-            return Ok(CreditSettleResponseV1 {
+            return normalize_credit_settle_response(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
                 settlement_id: row.settlement_id,
@@ -786,7 +796,7 @@ impl CreditService {
                 &receipt,
             )
             .await?;
-            return Ok(CreditSettleResponseV1 {
+            return normalize_credit_settle_response(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
                 settlement_id: row.settlement_id,
@@ -965,7 +975,7 @@ impl CreditService {
         )
         .await?;
 
-        Ok(CreditSettleResponseV1 {
+        normalize_credit_settle_response(CreditSettleResponseV1 {
             schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
             envelope_id,
             settlement_id: row.settlement_id,
@@ -1266,6 +1276,93 @@ fn map_liquidity_error(error: LiquidityError) -> CreditError {
         }
         LiquidityError::Internal(message) => CreditError::Internal(message),
     }
+}
+
+fn map_contract_request_error(error: HydraCreditConversionError) -> CreditError {
+    CreditError::InvalidRequest(format!("hydra_proto_contract: {error}"))
+}
+
+fn map_contract_response_error(error: HydraCreditConversionError) -> CreditError {
+    CreditError::Internal(format!("hydra_proto_contract_response: {error}"))
+}
+
+fn normalize_credit_intent_request(
+    request: CreditIntentRequestV1,
+) -> Result<CreditIntentRequestV1, CreditError> {
+    let wire: wire_hydra::CreditIntentRequestV1 =
+        request.try_into().map_err(map_contract_request_error)?;
+    CreditIntentRequestV1::try_from(wire).map_err(map_contract_request_error)
+}
+
+fn normalize_credit_offer_request(
+    request: CreditOfferRequestV1,
+) -> Result<CreditOfferRequestV1, CreditError> {
+    let wire: wire_hydra::CreditOfferRequestV1 =
+        request.try_into().map_err(map_contract_request_error)?;
+    CreditOfferRequestV1::try_from(wire).map_err(map_contract_request_error)
+}
+
+fn normalize_credit_envelope_request(
+    request: CreditEnvelopeRequestV1,
+) -> Result<CreditEnvelopeRequestV1, CreditError> {
+    let wire: wire_hydra::CreditEnvelopeRequestV1 = request.into();
+    Ok(CreditEnvelopeRequestV1::from(wire))
+}
+
+fn normalize_credit_settle_request(
+    request: CreditSettleRequestV1,
+) -> Result<CreditSettleRequestV1, CreditError> {
+    let wire: wire_hydra::CreditSettleRequestV1 =
+        request.try_into().map_err(map_contract_request_error)?;
+    CreditSettleRequestV1::try_from(wire).map_err(map_contract_request_error)
+}
+
+fn normalize_credit_intent_response(
+    response: CreditIntentResponseV1,
+) -> Result<CreditIntentResponseV1, CreditError> {
+    let wire: wire_hydra::CreditIntentResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditIntentResponseV1::try_from(wire).map_err(map_contract_response_error)
+}
+
+fn normalize_credit_offer_response(
+    response: CreditOfferResponseV1,
+) -> Result<CreditOfferResponseV1, CreditError> {
+    let wire: wire_hydra::CreditOfferResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditOfferResponseV1::try_from(wire).map_err(map_contract_response_error)
+}
+
+fn normalize_credit_envelope_response(
+    response: CreditEnvelopeResponseV1,
+) -> Result<CreditEnvelopeResponseV1, CreditError> {
+    let wire: wire_hydra::CreditEnvelopeResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditEnvelopeResponseV1::try_from(wire).map_err(map_contract_response_error)
+}
+
+fn normalize_credit_settle_response(
+    response: CreditSettleResponseV1,
+) -> Result<CreditSettleResponseV1, CreditError> {
+    let wire: wire_hydra::CreditSettleResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditSettleResponseV1::try_from(wire).map_err(map_contract_response_error)
+}
+
+fn normalize_credit_health_response(
+    response: CreditHealthResponseV1,
+) -> Result<CreditHealthResponseV1, CreditError> {
+    let wire: wire_hydra::CreditHealthResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditHealthResponseV1::try_from(wire).map_err(map_contract_response_error)
+}
+
+fn normalize_credit_agent_exposure_response(
+    response: CreditAgentExposureResponseV1,
+) -> Result<CreditAgentExposureResponseV1, CreditError> {
+    let wire: wire_hydra::CreditAgentExposureResponseV1 =
+        response.try_into().map_err(map_contract_response_error)?;
+    CreditAgentExposureResponseV1::try_from(wire).map_err(map_contract_response_error)
 }
 
 fn build_envelope_issue_receipt(

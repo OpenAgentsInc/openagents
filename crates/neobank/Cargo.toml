@@ -10,6 +10,7 @@ publish = false
 chrono.workspace = true
 hex.workspace = true
 openagents-l402 = { path = "../openagents-l402" }
+openagents-proto = { path = "../openagents-proto" }
 protocol = { path = "../protocol" }
 reqwest.workspace = true
 serde.workspace = true

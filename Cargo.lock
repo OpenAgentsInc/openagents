@@ -6316,6 +6316,7 @@ dependencies = [
  "chrono",
  "hex",
  "openagents-l402",
+ "openagents-proto",
  "protocol",
  "reqwest",
  "serde",
@@ -7202,6 +7203,7 @@ dependencies = [
 name = "openagents-proto"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "prost",
  "prost-build",
  "prost-types",
@@ -7268,6 +7270,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-l402",
+ "openagents-proto",
  "protocol",
  "reqwest",
  "serde",

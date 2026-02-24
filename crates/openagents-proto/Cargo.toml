@@ -11,8 +11,11 @@ description = "Generated Rust wire contracts for OpenAgents proto packages"
 doctest = false
 
 [dependencies]
+chrono.workspace = true
 prost = "0.13"
 prost-types = "0.13"
+serde.workspace = true
+serde_json.workspace = true
 thiserror = { workspace = true }
 
 [build-dependencies]
