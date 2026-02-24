@@ -178,6 +178,7 @@ pub struct CreditSettleRequestV1 {
 pub struct CreditSettleResponseV1 {
     pub schema: String,
     pub envelope_id: String,
+    pub settlement_id: String,
     pub outcome: String,
     pub spent_sats: u64,
     pub fee_sats: u64,

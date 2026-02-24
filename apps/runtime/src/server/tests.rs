@@ -5404,6 +5404,367 @@ async fn treasury_settlement_is_pay_after_verify_and_idempotent() -> Result<()> 
 }
 
 #[tokio::test]
+async fn settle_sandbox_run_routes_through_cep_and_is_idempotent() -> Result<()> {
+    let wallet_token = "wallet-token-cep-settle";
+    let wallet = spawn_wallet_executor_stub(wallet_token).await?;
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some(wallet.base_url.clone());
+            config.liquidity_wallet_executor_auth_token = Some(wallet_token.to_string());
+        });
+    let (provider_base_url, provider_shutdown) = spawn_compute_provider_stub().await?;
+    let provider_id = "c".repeat(64);
+    let agent_id = "a".repeat(64);
+    let pool_id = "b".repeat(64);
+
+    let create_provider = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/workers")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:cep-provider-ok",
+                    "owner_user_id": 11,
+                    "adapter": "test",
+                    "metadata": {
+                        "roles": ["client", "provider"],
+                        "provider_id": provider_id,
+                        "provider_base_url": provider_base_url.clone(),
+                        "capabilities": ["oa.sandbox_run.v1"],
+                        "min_price_msats": 1000
+                    }
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+    let run_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:settle-worker",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+    let run_json = response_json(run_response).await?;
+    let run_id = run_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let request = protocol::SandboxRunRequest {
+        sandbox: protocol::jobs::sandbox::SandboxConfig {
+            image_digest: "sha256:test".to_string(),
+            network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+            resources: protocol::jobs::sandbox::ResourceLimits {
+                timeout_secs: 30,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+        ..Default::default()
+    };
+    let response = protocol::SandboxRunResponse {
+        env_info: protocol::jobs::sandbox::EnvInfo {
+            image_digest: "sha256:test".to_string(),
+            hostname: None,
+            system_info: None,
+        },
+        runs: vec![protocol::jobs::sandbox::CommandResult {
+            cmd: "echo hi".to_string(),
+            exit_code: 0,
+            duration_ms: 10,
+            stdout_sha256: "stdout".to_string(),
+            stderr_sha256: "stderr".to_string(),
+            stdout_preview: None,
+            stderr_preview: None,
+        }],
+        artifacts: Vec::new(),
+        status: protocol::jobs::sandbox::SandboxStatus::Success,
+        error: None,
+        provenance: protocol::Provenance::new("stub-success"),
+    };
+
+    let settle_body = serde_json::json!({
+        "owner_user_id": 11,
+        "run_id": run_id.clone(),
+        "provider_id": provider_id,
+        "provider_worker_id": "desktop:cep-provider-ok",
+        "amount_msats": 42000,
+        "route_policy": {"kind": "force_cep"},
+        "cep": {
+            "agent_id": agent_id,
+            "pool_id": pool_id,
+            "provider_invoice": "lnbc420n1test",
+            "provider_host": "provider.test",
+            "max_fee_msats": 1000
+        },
+        "request": request,
+        "response": response
+    });
+
+    let settle_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle_body)?))?,
+        )
+        .await?;
+    assert_eq!(settle_response.status(), axum::http::StatusCode::OK);
+    let settle_json = response_json(settle_response).await?;
+    assert_eq!(
+        settle_json
+            .pointer("/settlement_status")
+            .and_then(Value::as_str),
+        Some("released")
+    );
+    assert_eq!(
+        settle_json
+            .pointer("/settlement_route")
+            .and_then(Value::as_str),
+        Some("cep_envelope")
+    );
+    assert!(
+        settle_json
+            .pointer("/credit_offer_id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.starts_with("cepo_"))
+    );
+    assert!(
+        settle_json
+            .pointer("/credit_envelope_id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.starts_with("cepe_"))
+    );
+    assert!(
+        settle_json
+            .pointer("/credit_settlement_id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.starts_with("ceps_"))
+    );
+    assert!(
+        settle_json
+            .pointer("/credit_liquidity_receipt_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.len() == 64)
+    );
+    assert!(
+        settle_json
+            .pointer("/verification_receipt_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.len() == 64)
+    );
+
+    let run_get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/internal/v1/runs/{run_id}"))
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(run_get.status(), axum::http::StatusCode::OK);
+    let run_json = response_json(run_get).await?;
+    let events = run_json
+        .pointer("/run/events")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("missing run events"))?;
+    assert!(events.iter().any(|event| {
+        event
+            .pointer("/payload/receipt_type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "CepSettlementLinked")
+    }));
+
+    let retry = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle_body)?))?,
+        )
+        .await?;
+    assert_eq!(retry.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        wallet.calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "cep settlement replay must not trigger a second pay-bolt11 call",
+    );
+
+    let _ = provider_shutdown.send(());
+    let _ = wallet.shutdown.send(());
+    Ok(())
+}
+
+#[tokio::test]
+async fn settle_sandbox_run_cep_with_verification_failure_withholds_without_payment() -> Result<()>
+{
+    let wallet_token = "wallet-token-cep-withhold";
+    let wallet = spawn_wallet_executor_stub(wallet_token).await?;
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.liquidity_wallet_executor_base_url = Some(wallet.base_url.clone());
+            config.liquidity_wallet_executor_auth_token = Some(wallet_token.to_string());
+        });
+    let (provider_base_url, provider_shutdown) = spawn_compute_provider_stub().await?;
+    let provider_id = "d".repeat(64);
+    let agent_id = "e".repeat(64);
+    let pool_id = "f".repeat(64);
+
+    let create_provider = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/workers")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:cep-provider-fail",
+                    "owner_user_id": 11,
+                    "adapter": "test",
+                    "metadata": {
+                        "roles": ["client", "provider"],
+                        "provider_id": provider_id,
+                        "provider_base_url": provider_base_url.clone(),
+                        "capabilities": ["oa.sandbox_run.v1"],
+                        "min_price_msats": 1000
+                    }
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_provider.status(), axum::http::StatusCode::CREATED);
+
+    let run_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:settle-worker",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(run_response.status(), axum::http::StatusCode::CREATED);
+    let run_json = response_json(run_response).await?;
+    let run_id = run_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let request = protocol::SandboxRunRequest {
+        sandbox: protocol::jobs::sandbox::SandboxConfig {
+            image_digest: "sha256:test".to_string(),
+            network_policy: protocol::jobs::sandbox::NetworkPolicy::None,
+            resources: protocol::jobs::sandbox::ResourceLimits {
+                timeout_secs: 30,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        commands: vec![protocol::jobs::sandbox::SandboxCommand::new(
+            "echo expected",
+        )],
+        ..Default::default()
+    };
+    let response = protocol::SandboxRunResponse {
+        env_info: protocol::jobs::sandbox::EnvInfo {
+            image_digest: "sha256:test".to_string(),
+            hostname: None,
+            system_info: None,
+        },
+        runs: vec![protocol::jobs::sandbox::CommandResult {
+            cmd: "echo actual".to_string(),
+            exit_code: 0,
+            duration_ms: 10,
+            stdout_sha256: "stdout".to_string(),
+            stderr_sha256: "stderr".to_string(),
+            stdout_preview: None,
+            stderr_preview: None,
+        }],
+        artifacts: Vec::new(),
+        status: protocol::jobs::sandbox::SandboxStatus::Success,
+        error: None,
+        provenance: protocol::Provenance::new("stub-fail"),
+    };
+
+    let settle_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/treasury/compute/settle/sandbox-run")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "owner_user_id": 11,
+                    "run_id": run_id,
+                    "provider_id": provider_id,
+                    "provider_worker_id": "desktop:cep-provider-fail",
+                    "amount_msats": 42000,
+                    "route_policy": {"kind": "force_cep"},
+                    "cep": {
+                        "agent_id": agent_id,
+                        "pool_id": pool_id,
+                        "provider_invoice": "lnbc420n1test",
+                        "provider_host": "provider.test",
+                        "max_fee_msats": 1000
+                    },
+                    "request": request,
+                    "response": response
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(settle_response.status(), axum::http::StatusCode::OK);
+    let settle_json = response_json(settle_response).await?;
+    assert_eq!(
+        settle_json
+            .pointer("/settlement_status")
+            .and_then(Value::as_str),
+        Some("withheld")
+    );
+    assert_eq!(
+        settle_json
+            .pointer("/settlement_route")
+            .and_then(Value::as_str),
+        Some("cep_envelope")
+    );
+    assert_eq!(
+        settle_json
+            .pointer("/credit_liquidity_receipt_sha256")
+            .and_then(Value::as_str),
+        None
+    );
+    assert_eq!(
+        wallet.calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "verification failure must not release CEP payment",
+    );
+
+    let _ = provider_shutdown.send(());
+    let _ = wallet.shutdown.send(());
+    Ok(())
+}
+
+#[tokio::test]
 async fn provider_is_auto_quarantined_after_repeated_verification_violations() -> Result<()> {
     let app = test_router();
     let (provider_base_url, shutdown) = spawn_provider_stub().await?;

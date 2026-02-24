@@ -660,6 +660,7 @@ impl CreditService {
             return Ok(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
+                settlement_id: existing.settlement_id,
                 outcome: existing.outcome,
                 spent_sats: u64::try_from(existing.spent_sats).unwrap_or(0),
                 fee_sats: u64::try_from(existing.fee_sats).unwrap_or(0),
@@ -733,6 +734,7 @@ impl CreditService {
             return Ok(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
+                settlement_id: row.settlement_id,
                 outcome: row.outcome,
                 spent_sats: 0,
                 fee_sats: 0,
@@ -787,6 +789,7 @@ impl CreditService {
             return Ok(CreditSettleResponseV1 {
                 schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
                 envelope_id,
+                settlement_id: row.settlement_id,
                 outcome: row.outcome,
                 spent_sats: 0,
                 fee_sats: 0,
@@ -965,6 +968,7 @@ impl CreditService {
         Ok(CreditSettleResponseV1 {
             schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
             envelope_id,
+            settlement_id: row.settlement_id,
             outcome: row.outcome,
             spent_sats,
             fee_sats,

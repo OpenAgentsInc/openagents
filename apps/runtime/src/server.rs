@@ -20,7 +20,9 @@ use axum::{
 };
 use chrono::Utc;
 use futures::StreamExt;
+use openagents_l402::Bolt11;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -37,7 +39,8 @@ use crate::{
     credit::types::{
         CreditAgentExposureResponseV1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1,
         CreditHealthResponseV1, CreditIntentRequestV1, CreditIntentResponseV1,
-        CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1, CreditSettleResponseV1,
+        CreditOfferRequestV1, CreditOfferResponseV1, CreditScopeTypeV1, CreditSettleRequestV1,
+        CreditSettleResponseV1,
     },
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
@@ -757,8 +760,45 @@ struct SettleSandboxRunBody {
     amount_msats: u64,
     #[serde(default)]
     quote: Option<ComputeAllInQuoteV1>,
+    #[serde(default)]
+    route_policy: Option<SettleSandboxRunRoutePolicyV1>,
+    #[serde(default)]
+    cep: Option<SettleSandboxRunCepRouteV1>,
     request: protocol::SandboxRunRequest,
     response: protocol::SandboxRunResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+enum SettleSandboxRunRoutePolicyV1 {
+    DirectOnly,
+    ForceCep,
+    PreferAgentBalance {
+        agent_balance_sats: u64,
+        min_reserve_sats: u64,
+        #[serde(default = "default_true")]
+        direct_allowed: bool,
+    },
+}
+
+impl Default for SettleSandboxRunRoutePolicyV1 {
+    fn default() -> Self {
+        Self::DirectOnly
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SettleSandboxRunCepRouteV1 {
+    agent_id: String,
+    pool_id: String,
+    #[serde(default)]
+    scope_id: Option<String>,
+    provider_invoice: String,
+    provider_host: String,
+    #[serde(default)]
+    max_fee_msats: Option<u64>,
+    #[serde(default)]
+    offer_ttl_seconds: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -771,6 +811,17 @@ struct SettleSandboxRunResponse {
     #[serde(default)]
     violations: Vec<String>,
     settlement_status: String,
+    settlement_route: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credit_offer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credit_envelope_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credit_settlement_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credit_liquidity_receipt_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verification_receipt_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3039,6 +3090,16 @@ async fn settle_sandbox_run(
     }
 
     let settle_amount_msats = quoted_provider_price_msats.unwrap_or(body.amount_msats);
+    let route_policy = body.route_policy.clone().unwrap_or_default();
+    let use_direct_settlement =
+        should_use_direct_objective_route(settle_amount_msats, &route_policy);
+    let cep_route = body.cep.clone();
+    if !use_direct_settlement && cep_route.is_none() {
+        return Err(ApiError::InvalidRequest(
+            "route_policy selected CEP but cep config is missing".to_string(),
+        ));
+    }
+
     let (reservation, _created) = state
         .treasury
         .reserve_compute_job(
@@ -3096,6 +3157,12 @@ async fn settle_sandbox_run(
         .await?;
     }
 
+    let verification_receipt_payload = serde_json::json!({
+        "receipt_type": if outcome.passed { "VerificationPassed" } else { "VerificationFailed" },
+        "payload": { "job_hash": job_hash.clone(), "exit_code": outcome.exit_code, "violations": violations.clone() },
+    });
+    let verification_receipt_sha256 = canonical_sha256_hex(&verification_receipt_payload)?;
+
     // Record verification receipt evidence (idempotent).
     state
         .orchestrator
@@ -3103,10 +3170,7 @@ async fn settle_sandbox_run(
             body.run_id,
             AppendRunEventRequest {
                 event_type: "receipt".to_string(),
-                payload: serde_json::json!({
-                    "receipt_type": if outcome.passed { "VerificationPassed" } else { "VerificationFailed" },
-                    "payload": { "job_hash": job_hash.clone(), "exit_code": outcome.exit_code, "violations": violations.clone() },
-                }),
+                payload: verification_receipt_payload,
                 idempotency_key: Some(format!("verify:{job_hash}")),
                 expected_previous_seq: None,
             },
@@ -3142,6 +3206,32 @@ async fn settle_sandbox_run(
         .await
         .map_err(ApiError::from_orchestration)?;
 
+    let settlement_release_eligible = outcome.passed && price_integrity_passed;
+    let mut cep_settlement = None;
+    if !use_direct_settlement {
+        let cep = cep_route
+            .as_ref()
+            .ok_or_else(|| ApiError::InvalidRequest("cep config is required".to_string()))?;
+        let settled = execute_cep_objective_settlement(
+            &state,
+            &reservation,
+            body.provider_id.trim(),
+            job_hash.as_str(),
+            settle_amount_msats,
+            settlement_release_eligible,
+            verification_receipt_sha256.as_str(),
+            cep,
+        )
+        .await?;
+        if settlement_release_eligible && settled.outcome != "success" {
+            return Err(ApiError::DependencyUnavailable(format!(
+                "cep settlement outcome={} envelope_id={}",
+                settled.outcome, settled.envelope_id
+            )));
+        }
+        cep_settlement = Some(settled);
+    }
+
     let (settled, _changed) = state
         .treasury
         .settle_compute_job(
@@ -3158,10 +3248,18 @@ async fn settle_sandbox_run(
         crate::treasury::SettlementStatus::Withheld => "withheld",
         crate::treasury::SettlementStatus::Reserved => "reserved",
     };
+    let settlement_route = if use_direct_settlement {
+        "direct_liquidity"
+    } else {
+        "cep_envelope"
+    };
 
     let payment_released = settled.status == crate::treasury::SettlementStatus::Released;
     let payment_amount = if payment_released {
-        settled.amount_msats
+        cep_settlement
+            .as_ref()
+            .map(|value| value.settled_amount_msats)
+            .unwrap_or(settled.amount_msats)
     } else {
         0
     };
@@ -3179,16 +3277,69 @@ async fn settle_sandbox_run(
         Some("withheld")
     };
 
+    let credit_offer_id = cep_settlement.as_ref().map(|value| value.offer_id.clone());
+    let credit_envelope_id = cep_settlement
+        .as_ref()
+        .map(|value| value.envelope_id.clone());
+    let credit_settlement_id = cep_settlement
+        .as_ref()
+        .map(|value| value.settlement_id.clone());
+    let credit_liquidity_receipt_sha256 = cep_settlement
+        .as_ref()
+        .and_then(|value| value.liquidity_receipt_sha256.clone());
+
+    if let Some(cep) = cep_settlement.as_ref() {
+        state
+            .orchestrator
+            .append_run_event(
+                body.run_id,
+                AppendRunEventRequest {
+                    event_type: "receipt".to_string(),
+                    payload: serde_json::json!({
+                        "receipt_type": "CepSettlementLinked",
+                        "payload": {
+                            "job_hash": job_hash.clone(),
+                            "offer_id": cep.offer_id.clone(),
+                            "envelope_id": cep.envelope_id.clone(),
+                            "settlement_id": cep.settlement_id.clone(),
+                            "settlement_outcome": cep.outcome.clone(),
+                            "liquidity_receipt_sha256": cep.liquidity_receipt_sha256.clone(),
+                            "verification_receipt_sha256": verification_receipt_sha256.clone(),
+                        }
+                    }),
+                    idempotency_key: Some(format!(
+                        "cep-settlement:{job_hash}:{}",
+                        cep.settlement_id
+                    )),
+                    expected_previous_seq: None,
+                },
+            )
+            .await
+            .map_err(ApiError::from_orchestration)?;
+    }
+
     let payment_event = serde_json::json!({
         "rail": "lightning",
         "asset_id": "BTC_LN",
         "amount_msats": payment_amount,
         "payment_proof": if payment_released {
-            serde_json::json!({
-                "type": "internal_ledger",
-                "reservation_id": settled_reservation_id.clone(),
-                "provider_id": settled_provider_id.clone(),
-            })
+            if let Some(cep) = cep_settlement.as_ref() {
+                serde_json::json!({
+                    "type": "cep_envelope",
+                    "reservation_id": settled_reservation_id.clone(),
+                    "provider_id": settled_provider_id.clone(),
+                    "offer_id": cep.offer_id.clone(),
+                    "envelope_id": cep.envelope_id.clone(),
+                    "settlement_id": cep.settlement_id.clone(),
+                    "liquidity_receipt_sha256": cep.liquidity_receipt_sha256.clone(),
+                })
+            } else {
+                serde_json::json!({
+                    "type": "internal_ledger",
+                    "reservation_id": settled_reservation_id.clone(),
+                    "provider_id": settled_provider_id.clone(),
+                })
+            }
         } else {
             serde_json::json!({
                 "type": "withheld",
@@ -3234,6 +3385,12 @@ async fn settle_sandbox_run(
                         "price_integrity_variance_bps": price_integrity_variance_bps,
                         "reservation_id": settled_reservation_id,
                         "provider_id": settled_provider_id,
+                        "settlement_route": settlement_route,
+                        "verification_receipt_sha256": verification_receipt_sha256.clone(),
+                        "credit_offer_id": credit_offer_id.clone(),
+                        "credit_envelope_id": credit_envelope_id.clone(),
+                        "credit_settlement_id": credit_settlement_id.clone(),
+                        "credit_liquidity_receipt_sha256": credit_liquidity_receipt_sha256.clone(),
                     }
                 }),
                 idempotency_key: Some(format!("receipt-payment:{job_hash}:{settlement_status}")),
@@ -3364,7 +3521,203 @@ async fn settle_sandbox_run(
         exit_code: outcome.exit_code,
         violations,
         settlement_status: settlement_status.to_string(),
+        settlement_route: settlement_route.to_string(),
+        credit_offer_id,
+        credit_envelope_id,
+        credit_settlement_id,
+        credit_liquidity_receipt_sha256,
+        verification_receipt_sha256: Some(verification_receipt_sha256),
     }))
+}
+
+#[derive(Debug, Clone)]
+struct CepObjectiveSettlementResult {
+    offer_id: String,
+    envelope_id: String,
+    settlement_id: String,
+    outcome: String,
+    settled_amount_msats: u64,
+    liquidity_receipt_sha256: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn should_use_direct_objective_route(
+    max_amount_msats: u64,
+    policy: &SettleSandboxRunRoutePolicyV1,
+) -> bool {
+    match policy {
+        SettleSandboxRunRoutePolicyV1::DirectOnly => true,
+        SettleSandboxRunRoutePolicyV1::ForceCep => false,
+        SettleSandboxRunRoutePolicyV1::PreferAgentBalance {
+            agent_balance_sats,
+            min_reserve_sats,
+            direct_allowed,
+        } => {
+            if !direct_allowed {
+                return false;
+            }
+            agent_balance_sats.saturating_sub(*min_reserve_sats)
+                >= msats_to_sats_ceil(max_amount_msats)
+        }
+    }
+}
+
+fn msats_to_sats_ceil(amount_msats: u64) -> u64 {
+    if amount_msats == 0 {
+        return 0;
+    }
+    amount_msats.saturating_add(999).saturating_div(1000)
+}
+
+fn canonical_sha256_hex(value: &serde_json::Value) -> Result<String, ApiError> {
+    let canonical_json = protocol::hash::canonical_json(value)
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let digest = sha2::Sha256::digest(canonical_json.as_bytes());
+    Ok(hex::encode(digest))
+}
+
+fn derive_credit_envelope_id(offer_id: &str, provider_id: &str) -> Result<String, ApiError> {
+    let fingerprint = serde_json::json!({
+        "schema": "openagents.credit.envelope_request.v1",
+        "offer_id": offer_id,
+        "provider_id": provider_id,
+    });
+    let request_fingerprint_sha256 = canonical_sha256_hex(&fingerprint)?;
+    Ok(format!("cepe_{}", &request_fingerprint_sha256[..24]))
+}
+
+async fn execute_cep_objective_settlement(
+    state: &AppState,
+    reservation: &crate::treasury::ComputeJobSettlement,
+    provider_id: &str,
+    job_hash: &str,
+    settle_amount_msats: u64,
+    verification_passed: bool,
+    verification_receipt_sha256: &str,
+    cep: &SettleSandboxRunCepRouteV1,
+) -> Result<CepObjectiveSettlementResult, ApiError> {
+    let agent_id = cep.agent_id.trim().to_ascii_lowercase();
+    if agent_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "cep.agent_id is required".to_string(),
+        ));
+    }
+    let pool_id = cep.pool_id.trim().to_ascii_lowercase();
+    if pool_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "cep.pool_id is required".to_string(),
+        ));
+    }
+    let invoice = cep.provider_invoice.trim().to_string();
+    if invoice.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "cep.provider_invoice is required".to_string(),
+        ));
+    }
+    let host = cep.provider_host.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "cep.provider_host is required".to_string(),
+        ));
+    }
+
+    let invoice_amount_msats = Bolt11::amount_msats(invoice.as_str()).ok_or_else(|| {
+        ApiError::InvalidRequest("cep.provider_invoice must include amount_msats".to_string())
+    })?;
+    let max_fee_msats = cep.max_fee_msats.unwrap_or(1_000);
+    let max_sats = msats_to_sats_ceil(
+        invoice_amount_msats
+            .saturating_add(max_fee_msats)
+            .max(settle_amount_msats.saturating_add(max_fee_msats)),
+    );
+
+    let scope_id = cep
+        .scope_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(job_hash)
+        .to_string();
+
+    let max_ttl_seconds = i64::try_from(state.config.credit_policy.max_offer_ttl_seconds)
+        .unwrap_or(3600)
+        .max(60);
+    let offer_ttl_seconds = cep
+        .offer_ttl_seconds
+        .unwrap_or(max_ttl_seconds)
+        .clamp(60, max_ttl_seconds);
+    let exp = reservation.reserved_at + chrono::Duration::seconds(offer_ttl_seconds);
+    if exp <= Utc::now() {
+        return Err(ApiError::Conflict(
+            "cep offer window expired for this reservation".to_string(),
+        ));
+    }
+
+    let offered = state
+        .credit
+        .offer(CreditOfferRequestV1 {
+            schema: "openagents.credit.offer_request.v1".to_string(),
+            agent_id,
+            pool_id,
+            intent_id: None,
+            scope_type: CreditScopeTypeV1::Nip90,
+            scope_id,
+            max_sats,
+            fee_bps: 100,
+            requires_verifier: true,
+            exp,
+        })
+        .await
+        .map_err(api_error_from_credit)?;
+
+    let envelope_id = match state
+        .credit
+        .envelope(CreditEnvelopeRequestV1 {
+            schema: "openagents.credit.envelope_request.v1".to_string(),
+            offer_id: offered.offer.offer_id.clone(),
+            provider_id: provider_id.to_string(),
+        })
+        .await
+    {
+        Ok(enveloped) => enveloped.envelope.envelope_id,
+        Err(CreditError::Conflict(message)) if message == "offer is not in offered status" => {
+            derive_credit_envelope_id(offered.offer.offer_id.as_str(), provider_id)?
+        }
+        Err(error) => return Err(api_error_from_credit(error)),
+    };
+
+    let settled = state
+        .credit
+        .settle(CreditSettleRequestV1 {
+            schema: "openagents.credit.settle_request.v1".to_string(),
+            envelope_id: envelope_id.clone(),
+            verification_passed,
+            verification_receipt_sha256: verification_receipt_sha256.to_string(),
+            provider_invoice: invoice,
+            provider_host: host,
+            max_fee_msats,
+            policy_context: serde_json::json!({
+                "schema": "openagents.credit.policy_context.v1",
+                "objective": PHASE0_REQUIRED_PROVIDER_CAPABILITY,
+                "job_hash": job_hash,
+                "reservation_id": reservation.reservation_id,
+                "route": "cep_envelope"
+            }),
+        })
+        .await
+        .map_err(api_error_from_credit)?;
+
+    Ok(CepObjectiveSettlementResult {
+        offer_id: offered.offer.offer_id,
+        envelope_id,
+        settlement_id: settled.settlement_id,
+        outcome: settled.outcome.clone(),
+        settled_amount_msats: settled.spent_sats.saturating_mul(1000),
+        liquidity_receipt_sha256: settled.liquidity_receipt_sha256,
+    })
 }
 
 async fn heartbeat_worker(
