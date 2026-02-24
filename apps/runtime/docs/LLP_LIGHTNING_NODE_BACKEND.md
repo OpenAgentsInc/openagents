@@ -1,7 +1,7 @@
 # LLP Lightning Node Backend (Phase 0)
 
 This document records the initial LLP Lightning node backend decision and the minimal integration
-surface required by `docs/plans/draft/liquidity-pool.md` (channel balances + channel health in LLP
+surface required by `docs/plans/liquidity-pool.md` (channel balances + channel health in LLP
 snapshots).
 
 ## Decision

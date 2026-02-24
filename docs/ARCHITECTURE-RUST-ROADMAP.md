@@ -71,8 +71,8 @@ This roadmap defines the Rust-only migration and hardening sequence.
 
 ## Active Gate References
 
-- `docs/plans/active/rust-migration-invariant-gates.md`
-- `docs/plans/active/rust-migration-execution-control-plane.md`
+- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/RUST_STAGING_PROD_VALIDATION.md`
 - `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
 

@@ -16,7 +16,7 @@ Status: completed audit snapshot (2026-02-24)
 Mandatory baseline authorities checked before this audit pass:
 
 - `docs/adr/INDEX.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-invariant-gates.md`
 
 ## Summary
 

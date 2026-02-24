@@ -46,7 +46,7 @@ Non-goals and prohibitions:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/active/rust-migration-invariant-gates.md`
+Source: `docs/plans/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-02` (HTTP-only authority mutations)

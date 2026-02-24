@@ -22,8 +22,8 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 ## Planning and Sequencing
 
 - `docs/plans/README.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
-- `docs/plans/active/rust-migration-execution-control-plane.md`
+- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/SYNTHESIS.md`
 
 ## Product and Runtime Surfaces

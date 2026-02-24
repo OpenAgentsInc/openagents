@@ -16,7 +16,7 @@ Replace SwiftUI-powered iOS Codex product UI/state orchestration with Rust/WGPUI
 4. Authority writes remain authenticated HTTP APIs.
 
 Canonical references:
-- `docs/plans/active/rust-migration-invariant-gates.md` (`INV-11`)
+- `docs/plans/rust-migration-invariant-gates.md` (`INV-11`)
 - `apps/autopilot-ios/docs/ios-codex-first-structure.md`
 - `docs/ARCHITECTURE-RUST.md`
 

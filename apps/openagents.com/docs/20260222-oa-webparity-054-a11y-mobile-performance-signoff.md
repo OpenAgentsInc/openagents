@@ -20,7 +20,7 @@ This signoff covers Rust/WGPUI web-shell parity checks for:
 Validated against:
 - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 - `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
-- `docs/plans/active/rust-migration-invariant-gates.md` (`INV-03`, `INV-07`, `INV-11`)
+- `docs/plans/rust-migration-invariant-gates.md` (`INV-03`, `INV-07`, `INV-11`)
 
 Result:
 - No SSE or poll live transport was introduced.

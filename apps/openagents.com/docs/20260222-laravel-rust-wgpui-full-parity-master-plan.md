@@ -91,7 +91,7 @@ Use domain-sliced migration with strict contract verification:
 
 Transport doctrine for this plan:
 1. Khala live delivery is WS-only per `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`.
-2. No new SSE live authority lanes are allowed (`docs/plans/active/rust-migration-invariant-gates.md`, `INV-03`).
+2. No new SSE live authority lanes are allowed (`docs/plans/rust-migration-invariant-gates.md`, `INV-03`).
 3. Command/mutation flows stay on authenticated HTTP APIs; subscriptions/replay stay on Khala WS (`docs/sync/ROADMAP.md`).
 4. Codex control/event contracts follow `docs/protocol/codex-worker-control-v1.md` and `docs/protocol/codex-worker-events-v1.md`, aligned to the Codex app-server protocol subset audited in `docs/audits/2026-02-22-codex-app-server-parity-audit.md`.
 5. Vercel-compatible SSE may exist only as an adapter over codex/Khala authority outputs and must remain removable without authority-state impact (`docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).

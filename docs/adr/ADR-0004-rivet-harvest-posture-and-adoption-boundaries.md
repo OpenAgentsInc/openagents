@@ -49,7 +49,7 @@ Rejected platform-level adoptions:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/active/rust-migration-invariant-gates.md`
+Source: `docs/plans/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-01` (proto-first contract authority)

@@ -69,7 +69,7 @@ Rollback:
 
 - `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
 - `apps/runtime/deploy/khala/README.md`
-- `docs/plans/active/khala-runtime-codex-master-roadmap.md`
+- `docs/plans/khala-runtime-codex-master-roadmap.md`
 
 ## Remaining Work
 

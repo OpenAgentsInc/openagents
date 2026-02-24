@@ -14,7 +14,7 @@ Status: completed audit snapshot (2026-02-24)
 Mandatory baseline authorities read before audit work:
 
 - `docs/adr/INDEX.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-invariant-gates.md`
 
 Additional architecture/ownership references used to constrain recommendations:
 

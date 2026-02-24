@@ -630,7 +630,7 @@ Normative rules:
 4. Drift repair is replay from runtime event history, not mutation in Khala.
 
 See `docs/KHALA_SYNC.md` and
-`docs/plans/active/khala-self-hosting-runtime-sync-plan.md`.
+`docs/plans/khala-self-hosting-runtime-sync-plan.md`.
 
 ### `POST /internal/v1/runs/{run_id}/frames`
 

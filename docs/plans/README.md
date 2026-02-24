@@ -1,18 +1,18 @@
 # Plans
 
-This directory stores current execution plans only.
+This directory stores execution plans.
 
-## Active
+## Plans
 
-- `docs/plans/active/rust-migration-invariant-gates.md`
-- `docs/plans/active/rust-migration-execution-control-plane.md`
-- `docs/plans/active/hydra-liquidity-engine.md`
-- `docs/plans/active/vignette-phase0-issue-to-pr.md`
-- `docs/plans/active/ep212-autopilot-bitcoin-100pct.md`
-
-## Completed
-
-- `docs/plans/completed/README.md`
+- `docs/plans/2026-02-23-open-agent-economy-execution-plan.md`
+- `docs/plans/aegis.md`
+- `docs/plans/ep212-autopilot-bitcoin-100pct.md`
+- `docs/plans/gitafter-bonus.md`
+- `docs/plans/hydra-liquidity-engine.md`
+- `docs/plans/rust-migration-execution-control-plane.md`
+- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/simple-agi-economics-research.md`
+- `docs/plans/vignette-phase0-issue-to-pr.md`
 
 Historical/superseded plan documents were moved to:
 

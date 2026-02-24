@@ -50,7 +50,7 @@ Out of scope:
 ### 3.1) Authority And Drift Notes
 
 - `docs/SYNTHESIS.md` is a synthesis document, not an execution authority. If it conflicts with code or Rust-era canonical docs, the Rust-era authorities win (ADRs + invariant gates + code).
-- Part Fourteen of `docs/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/active/rust-migration-invariant-gates.md`.
+- Part Fourteen of `docs/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/rust-migration-invariant-gates.md`.
 
 ## 4) Priority Ladder (Liquidity-First)
 
@@ -199,7 +199,7 @@ Autopilot is multi-surface, but parity is not promised. One identity, different 
 | Exchange Layer | RFQ/orderflow, NIP-69/NIP-60/NIP-61 stack, settlement v0/v1/v2, liquidity/reputation | `OA-ECON-066` to `OA-ECON-089` | Later |
 | Part Four: Sovereign Agent Protocol | NIP-SA lifecycle, tick/trajectory events, agent capability publication | `OA-ECON-090` to `OA-ECON-099` | Later |
 | Part Five: Unified Wallet Application | CLI/WGPUI wallet parity, NIP-47, account management, recovery (user-managed custody) | `OA-ECON-100` to `OA-ECON-119` | Next (minimal) / Later (breadth) |
-| Part Six: Agent Git Platform | Optional bonus surface moved out of this plan | `docs/plans/optional/gitafter-bonus.md` | Optional (moved out) |
+| Part Six: Agent Git Platform | Optional bonus surface moved out of this plan | `docs/plans/gitafter-bonus.md` | Optional (moved out) |
 | Part Seven: Unified Marketplace | Compute liquidity lane now; skills/data/coalitions later; agentic commerce legibility + cross-market routing | `OA-ECON-120` to `OA-ECON-169`, `OA-ECON-280` to `OA-ECON-285` | Now (compute) / Later (skills/data/coalitions) |
 | Part Eight: Autonomous Operation | Autopilot wedge + procurement + proof artifacts; maturity later | `OA-ECON-170` to `OA-ECON-189` | Now (wedge + proof) / Next (maturity) |
 | Part Nine: Multi-Agent Orchestration | Orchestrator/sub-agent lifecycle, autonomy graduation, budget controls | `OA-ECON-190` to `OA-ECON-199` | Next |
@@ -207,7 +207,7 @@ Autopilot is multi-surface, but parity is not promised. One identity, different 
 | Part Eleven: UI Architecture | WGPUI command surfaces, HUD, fleet control, mobile remote ops | `OA-ECON-171` to `OA-ECON-173`, `OA-ECON-201` to `OA-ECON-205`, `OA-ECON-214` | Next |
 | Part Twelve: Quality Assurance | No-stubs enforcement, layered tests, e2e scenarios, coverage gates | `OA-ECON-220` to `OA-ECON-227`, `OA-ECON-257` to `OA-ECON-259` | Next |
 | Part Thirteen: Implementation Architecture | Crate boundary governance, protocol boundary checks, architecture conformance | `OA-ECON-240` to `OA-ECON-243`, `OA-ECON-263` to `OA-ECON-265` | Later |
-| Part Fourteen: Directive System (stale) | Superseded by ADRs + invariant gates; no directive system work is planned | `docs/adr/*`, `docs/plans/active/rust-migration-invariant-gates.md` | N/A (superseded) |
+| Part Fourteen: Directive System (stale) | Superseded by ADRs + invariant gates; no directive system work is planned | `docs/adr/*`, `docs/plans/rust-migration-invariant-gates.md` | N/A (superseded) |
 | Part Fifteen: Emergent Whole | Integration-level acceptance and replayable proof of coherent operation | `OA-ECON-257` to `OA-ECON-262` | Next |
 | Part Sixteen: Company and Mission | Revenue rails, packaging, procurement/audit requirements | `OA-ECON-249` to `OA-ECON-256`, `OA-ECON-266` to `OA-ECON-279` | Later |
 | Part Seventeen: Wedge to Platform | Demand-floor progression, platformization sequencing and metrics | `OA-ECON-001` to `OA-ECON-009`, `OA-ECON-206` to `OA-ECON-209` | Now |
@@ -478,7 +478,7 @@ Phase 0 ships Nexus intra-domain live lanes + a minimal Bridge that makes provid
 - `OA-ECON-103` - Implement multi-account identity management. - Support compartmentalized personas and account switching.
 - `OA-ECON-104` - Implement wallet recovery and migration tools. - Support secure restore and device migration paths.
 
-- Agent Git Platform is optional/bonus; see `docs/plans/optional/gitafter-bonus.md`.
+- Agent Git Platform is optional/bonus; see `docs/plans/gitafter-bonus.md`.
 
 - `OA-ECON-110` - Integrate wallet/protocol identity lanes across surfaces. - Ensure one sovereign identity can transact across wallet, marketplace, and agent runtime surfaces.
 - `OA-ECON-111` - Ship protocol examples and client SDK references. - Provide implementation-grade examples for integrators.
@@ -612,7 +612,7 @@ Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (b
 
 The plan is complete only when:
 
-- Each issue in `OA-ECON-001` to `OA-ECON-285` is either shipped, explicitly superseded by a linked replacement, or explicitly marked optional in a pointer plan (e.g., `docs/plans/optional/gitafter-bonus.md`).
+- Each issue in `OA-ECON-001` to `OA-ECON-285` is either shipped, explicitly superseded by a linked replacement, or explicitly marked optional in a pointer plan (e.g., `docs/plans/gitafter-bonus.md`).
 - Every synthesis concept is traceable to implemented issue outcomes.
 - End-to-end vignette suites (`OA-ECON-257`, `OA-ECON-258`, `OA-ECON-259`) pass with replay artifacts.
 - Decentralization migration controls (`OA-ECON-233` to `OA-ECON-239`) are operational and verified.
@@ -622,7 +622,7 @@ This is the execution backbone for moving from wedge product to full open-agent 
 
 ## 10) Reorder Checklist (Liquidity-First)
 
-- [x] Agent Git Platform carved out to `docs/plans/optional/gitafter-bonus.md`.
+- [x] Agent Git Platform carved out to `docs/plans/gitafter-bonus.md`.
 - [x] Priority Ladder inserted near top.
 - [x] Sequencing Model updated with Liquidity Bootstrap first.
 - [x] Issue catalog begins with liquidity bootstrap spine.

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel)"
-INTAKE_DIR="$ROOT_DIR/docs/plans/active/legacyparity-intake"
-REPORT_PATH="$ROOT_DIR/docs/plans/active/legacyparity-drift-report.md"
+INTAKE_DIR="$ROOT_DIR/docs/plans/legacyparity-intake"
+REPORT_PATH="$ROOT_DIR/docs/plans/legacyparity-drift-report.md"
 FIXTURE_PATH="$ROOT_DIR/apps/runtime/test/fixtures/legacyparity/tool_policy_parity_cases.json"
 
 LEGACYPARITY_UPSTREAM_URL="${LEGACYPARITY_UPSTREAM_URL:-https://github.com/legacyparity/legacyparity.git}"
@@ -177,7 +177,7 @@ done
   echo "|---|---|---|---|---|"
 
   if [[ "${#rows[@]}" -eq 0 ]]; then
-    echo "| (none) | - | ${UPSTREAM_HEAD} | missing_pin | Add intake records in docs/plans/active/legacyparity-intake/ |"
+    echo "| (none) | - | ${UPSTREAM_HEAD} | missing_pin | Add intake records in docs/plans/legacyparity-intake/ |"
   else
     for row in "${rows[@]}"; do
       echo "$row"

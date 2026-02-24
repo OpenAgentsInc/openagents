@@ -819,7 +819,7 @@ OpenAgents historically used a directive system (d-001, d-002, ...) to track hig
 Rust-era authority and execution governance is via:
 
 - Architecture decisions: `docs/adr/`
-- Non-negotiable gates: `docs/plans/active/rust-migration-invariant-gates.md`
+- Non-negotiable gates: `docs/plans/rust-migration-invariant-gates.md`
 - High-level sequencing: `docs/ROADMAP.md`
 
 The execution intent remains: work should be done with full-system context. ADRs, invariant gates, and active plans provide the shared context so contributors (human or agent) can avoid local optimizations that violate architecture boundaries.
