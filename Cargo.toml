@@ -52,6 +52,7 @@ members = [
     "crates/wgpui",
     "crates/protocol",
     "crates/openagents-proto",
+    "crates/openagents-runtime-client",
     "crates/testing",
     "crates/ws-test",
 ]

@@ -21,6 +21,7 @@ maud = "0.27"
 mime_guess = "2.0"
 openagents-client-core = { path = "../../../crates/openagents-client-core" }
 openagents-l402 = { path = "../../../crates/openagents-l402" }
+openagents-runtime-client = { path = "../../../crates/openagents-runtime-client" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

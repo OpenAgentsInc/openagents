@@ -7239,6 +7239,7 @@ dependencies = [
  "mime_guess",
  "openagents-client-core",
  "openagents-l402",
+ "openagents-runtime-client",
  "openapiv3",
  "reqwest",
  "serde",
@@ -7299,6 +7300,18 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "openagents-runtime-client"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "uuid",
 ]
 
 [[package]]

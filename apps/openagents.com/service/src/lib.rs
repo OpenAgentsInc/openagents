@@ -29,6 +29,10 @@ use openagents_client_core::compatibility::{
     negotiate_compatibility,
 };
 use openagents_l402::Bolt11;
+use openagents_runtime_client::{
+    RuntimeClientError, RuntimeInternalClient, RuntimeWorkerHeartbeatRequest,
+    RuntimeWorkerRegisterRequest, RuntimeWorkerTransitionRequest,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
@@ -135,8 +139,8 @@ use crate::runtime_admin::{
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::stats::{
     compute_fleet_fragment, compute_main_fragment, compute_metrics_fragment, compute_page,
-    runtime_dashboard_base_url, runtime_get_json, runtime_post_json_value, stats_main_fragment,
-    stats_metrics_fragment, stats_page, stats_pools_fragment, web_compute_provider_disable,
+    stats_main_fragment, stats_metrics_fragment, stats_page, stats_pools_fragment,
+    web_compute_provider_disable,
 };
 use crate::sync_handlers::sync_token;
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
@@ -8088,132 +8092,6 @@ async fn shouts_index(
 const COMPUTE_DEFAULT_CAPABILITY: &str = "oa.sandbox_run.v1";
 const COMPUTE_DASHBOARD_TIMEOUT_MS: u64 = 1_500;
 
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeWorkersListResponse {
-    workers: Vec<ComputeRuntimeWorkerSnapshot>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeWorkerSnapshot {
-    worker: ComputeRuntimeWorkerRecord,
-    liveness: ComputeRuntimeWorkerLivenessRecord,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeWorkerRecord {
-    worker_id: String,
-    status: String,
-    #[serde(default)]
-    metadata: serde_json::Value,
-    updated_at: chrono::DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeWorkerLivenessRecord {
-    heartbeat_state: String,
-    heartbeat_age_ms: Option<i64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeProviderCatalogResponse {
-    providers: Vec<ComputeRuntimeProviderCatalogEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeProviderCatalogEntry {
-    provider_id: String,
-    worker_id: String,
-    supply_class: String,
-    #[serde(default)]
-    reserve_pool: bool,
-    status: String,
-    heartbeat_state: String,
-    heartbeat_age_ms: Option<i64>,
-    min_price_msats: Option<u64>,
-    #[serde(default)]
-    quarantined: bool,
-    #[serde(default)]
-    capabilities: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeTelemetryResponse {
-    provider_eligible_owned: usize,
-    provider_eligible_reserve: usize,
-    provider_eligible_total: usize,
-    dispatch: ComputeRuntimeOwnerTelemetrySnapshot,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeOwnerTelemetrySnapshot {
-    dispatch_total: u64,
-    dispatch_not_found: u64,
-    dispatch_errors: u64,
-    dispatch_fallbacks: u64,
-    latency_ms_avg: Option<u64>,
-    latency_ms_p50: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeTreasurySummary {
-    account: ComputeRuntimeBudgetAccount,
-    released_msats_total: u64,
-    released_count: u64,
-    withheld_count: u64,
-    #[serde(default)]
-    provider_earnings: Vec<ComputeRuntimeProviderEarningsEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeBudgetAccount {
-    limit_msats: u64,
-    reserved_msats: u64,
-    spent_msats: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct ComputeRuntimeProviderEarningsEntry {
-    provider_id: String,
-    earned_msats: u64,
-}
-
-#[derive(Debug, Serialize)]
-struct ComputeRuntimeWorkerStatusTransitionRequest {
-    owner_user_id: u64,
-    status: String,
-    reason: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RuntimePoolRow {
-    pool_kind: String,
-    status: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RuntimePoolStatusResponseV1 {
-    pool: RuntimePoolRow,
-    share_price_sats: i64,
-    total_shares: i64,
-    pending_withdrawals_sats_estimate: i64,
-}
-
-#[derive(Debug, Deserialize)]
-struct RuntimePoolSnapshotRowV1 {
-    snapshot_id: String,
-    as_of: chrono::DateTime<Utc>,
-    #[serde(default)]
-    assets_json: serde_json::Value,
-    canonical_json_sha256: String,
-    #[serde(default)]
-    signature_json: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RuntimePoolSnapshotResponseV1 {
-    snapshot: RuntimePoolSnapshotRowV1,
-}
-
 async fn feed_page(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -13369,32 +13247,45 @@ struct RuntimeWorkerTransitionRequestPayload {
     reason: Option<String>,
 }
 
+fn runtime_internal_client(
+    state: &AppState,
+) -> Result<RuntimeInternalClient, (StatusCode, Json<ApiErrorResponse>)> {
+    RuntimeInternalClient::from_base_url(
+        state.config.runtime_elixir_base_url.as_deref(),
+        COMPUTE_DASHBOARD_TIMEOUT_MS,
+    )
+    .map_err(|error| {
+        tracing::warn!(error = %error, "runtime client unavailable");
+        error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Runtime is not configured.",
+        )
+    })
+}
+
+fn runtime_client_service_error(
+    action: &str,
+    error: RuntimeClientError,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    error_response_with_status(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ApiErrorCode::ServiceUnavailable,
+        format!("Failed to {action}: {error}"),
+    )
+}
+
 async fn runtime_workers_index(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let bundle = session_bundle_from_headers(&state, &headers).await?;
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
-        return Err(error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::ServiceUnavailable,
-            "Runtime is not configured.",
-        ));
-    };
+    let client = runtime_internal_client(&state)?;
     let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
-    let url = format!(
-        "{}/internal/v1/workers?owner_user_id={owner_user_id}",
-        base_url.trim_end_matches('/')
-    );
-    let response = runtime_get_json::<serde_json::Value>(url.as_str())
+    let response = client
+        .list_workers_json(owner_user_id)
         .await
-        .map_err(|message| {
-            error_response_with_status(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorCode::ServiceUnavailable,
-                format!("Failed to fetch runtime workers: {message}"),
-            )
-        })?;
+        .map_err(|error| runtime_client_service_error("fetch runtime workers", error))?;
     let workers = response
         .get("workers")
         .cloned()
@@ -13409,13 +13300,7 @@ async fn runtime_workers_create(
     Json(payload): Json<RuntimeWorkerRegisterRequestPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let bundle = session_bundle_from_headers(&state, &headers).await?;
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
-        return Err(error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::ServiceUnavailable,
-            "Runtime is not configured.",
-        ));
-    };
+    let client = runtime_internal_client(&state)?;
 
     let worker_id = normalize_optional_bounded_string(payload.worker_id, "worker_id", 160)?;
     let workspace_ref =
@@ -13427,25 +13312,19 @@ async fn runtime_workers_create(
         .unwrap_or_else(|| serde_json::json!({}));
     let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
 
-    let request = serde_json::json!({
-        "worker_id": worker_id,
-        "owner_user_id": owner_user_id,
-        "workspace_ref": workspace_ref,
-        "codex_home_ref": codex_home_ref,
-        "adapter": adapter,
-        "metadata": metadata,
-    });
+    let request = RuntimeWorkerRegisterRequest {
+        worker_id,
+        owner_user_id,
+        workspace_ref,
+        codex_home_ref,
+        adapter,
+        metadata,
+    };
 
-    let url = format!("{}/internal/v1/workers", base_url.trim_end_matches('/'));
-    let response = runtime_post_json_value(url.as_str(), &request)
+    let response = client
+        .register_worker(&request)
         .await
-        .map_err(|message| {
-            error_response_with_status(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorCode::ServiceUnavailable,
-                format!("Failed to register runtime worker: {message}"),
-            )
-        })?;
+        .map_err(|error| runtime_client_service_error("register runtime worker", error))?;
     let snapshot = response
         .get("worker")
         .cloned()
@@ -13459,31 +13338,15 @@ async fn runtime_worker_show(
     Path(worker_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let bundle = session_bundle_from_headers(&state, &headers).await?;
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
-        return Err(error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::ServiceUnavailable,
-            "Runtime is not configured.",
-        ));
-    };
+    let client = runtime_internal_client(&state)?;
 
     let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
         .unwrap_or_else(|| "worker".to_string());
     let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
-    let url = format!(
-        "{}/internal/v1/workers/{}?owner_user_id={owner_user_id}",
-        base_url.trim_end_matches('/'),
-        worker_id
-    );
-    let response = runtime_get_json::<serde_json::Value>(url.as_str())
+    let response = client
+        .get_worker_json(&worker_id, owner_user_id)
         .await
-        .map_err(|message| {
-            error_response_with_status(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorCode::ServiceUnavailable,
-                format!("Failed to fetch runtime worker: {message}"),
-            )
-        })?;
+        .map_err(|error| runtime_client_service_error("fetch runtime worker", error))?;
     let snapshot = response
         .get("worker")
         .cloned()
@@ -13498,13 +13361,7 @@ async fn runtime_worker_heartbeat(
     Json(payload): Json<RuntimeWorkerHeartbeatRequestPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let bundle = session_bundle_from_headers(&state, &headers).await?;
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
-        return Err(error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::ServiceUnavailable,
-            "Runtime is not configured.",
-        ));
-    };
+    let client = runtime_internal_client(&state)?;
 
     let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
         .unwrap_or_else(|| "worker".to_string());
@@ -13513,24 +13370,14 @@ async fn runtime_worker_heartbeat(
         validate_optional_json_object_or_array(payload.metadata_patch, "metadataPatch")?
             .unwrap_or_else(|| serde_json::json!({}));
 
-    let url = format!(
-        "{}/internal/v1/workers/{}/heartbeat",
-        base_url.trim_end_matches('/'),
-        worker_id
-    );
-    let request = serde_json::json!({
-        "owner_user_id": owner_user_id,
-        "metadata_patch": metadata_patch,
-    });
-    let response = runtime_post_json_value(url.as_str(), &request)
+    let request = RuntimeWorkerHeartbeatRequest {
+        owner_user_id,
+        metadata_patch,
+    };
+    let response = client
+        .heartbeat_worker(&worker_id, &request)
         .await
-        .map_err(|message| {
-            error_response_with_status(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorCode::ServiceUnavailable,
-                format!("Failed to heartbeat runtime worker: {message}"),
-            )
-        })?;
+        .map_err(|error| runtime_client_service_error("heartbeat runtime worker", error))?;
     let snapshot = response
         .get("worker")
         .cloned()
@@ -13545,13 +13392,7 @@ async fn runtime_worker_transition(
     Json(payload): Json<RuntimeWorkerTransitionRequestPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let bundle = session_bundle_from_headers(&state, &headers).await?;
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
-        return Err(error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::ServiceUnavailable,
-            "Runtime is not configured.",
-        ));
-    };
+    let client = runtime_internal_client(&state)?;
 
     let normalized_status = payload.status.trim().to_lowercase();
     if !matches!(
@@ -13566,25 +13407,15 @@ async fn runtime_worker_transition(
     let worker_id = normalize_optional_bounded_string(Some(worker_id), "worker_id", 160)?
         .unwrap_or_else(|| "worker".to_string());
     let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
-    let url = format!(
-        "{}/internal/v1/workers/{}/status",
-        base_url.trim_end_matches('/'),
-        worker_id
-    );
-    let request = serde_json::json!({
-        "owner_user_id": owner_user_id,
-        "status": normalized_status,
-        "reason": payload.reason,
-    });
-    let response = runtime_post_json_value(url.as_str(), &request)
+    let request = RuntimeWorkerTransitionRequest {
+        owner_user_id,
+        status: normalized_status,
+        reason: payload.reason,
+    };
+    let response = client
+        .transition_worker(&worker_id, &request)
         .await
-        .map_err(|message| {
-            error_response_with_status(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorCode::ServiceUnavailable,
-                format!("Failed to transition runtime worker: {message}"),
-            )
-        })?;
+        .map_err(|error| runtime_client_service_error("transition runtime worker", error))?;
     let snapshot = response
         .get("worker")
         .cloned()

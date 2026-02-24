@@ -1,4 +1,10 @@
 use super::*;
+use openagents_runtime_client::{
+    ComputeRuntimeProviderCatalogEntry, ComputeRuntimeTelemetryResponse,
+    ComputeRuntimeTreasurySummary, ComputeRuntimeWorkerSnapshot, RuntimeClientError,
+    RuntimeInternalClient, RuntimePoolSnapshotResponseV1, RuntimePoolStatusResponseV1,
+    RuntimeWorkerStatusTransitionRequest,
+};
 
 pub(super) async fn compute_page(
     State(state): State<AppState>,
@@ -281,54 +287,42 @@ pub(super) async fn web_compute_provider_disable(
         }
     };
 
-    let Some(base_url) = runtime_dashboard_base_url(&state) else {
+    let client = match runtime_internal_client(&state) {
+        Ok(client) => client,
+        Err(_) => {
+            return Ok(htmx_notice_response(
+                "compute-status",
+                "compute-runtime-unavailable",
+                true,
+                StatusCode::SERVICE_UNAVAILABLE,
+            ));
+        }
+    };
+
+    let worker_id = worker_id.trim().to_string();
+    if worker_id.is_empty() {
         return Ok(htmx_notice_response(
             "compute-status",
             "compute-runtime-unavailable",
             true,
-            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::UNPROCESSABLE_ENTITY,
         ));
-    };
+    }
 
     let owner_user_id = runtime_tools_principal_user_id(&bundle.user.id);
-    let url = format!(
-        "{}/internal/v1/workers/{}/status",
-        base_url.trim_end_matches('/'),
-        worker_id.trim()
-    );
-    let request = ComputeRuntimeWorkerStatusTransitionRequest {
+    let request = RuntimeWorkerStatusTransitionRequest {
         owner_user_id,
         status: "stopped".to_string(),
         reason: "disabled_from_web".to_string(),
     };
 
-    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
-    let response = reqwest::Client::new()
-        .post(url.as_str())
-        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
-        .timeout(timeout)
-        .json(&request)
-        .send()
-        .await;
-
-    match response {
-        Ok(resp) if resp.status().is_success() => Ok(htmx_notice_response(
+    match client.transition_worker_status(&worker_id, &request).await {
+        Ok(_) => Ok(htmx_notice_response(
             "compute-status",
             "compute-provider-disabled",
             false,
             StatusCode::OK,
         )),
-        Ok(resp) => {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            tracing::warn!(owner_user_id, %status, body = %body, "runtime disable provider rejected");
-            Ok(htmx_notice_response(
-                "compute-status",
-                "compute-action-failed",
-                true,
-                StatusCode::BAD_GATEWAY,
-            ))
-        }
         Err(error) => {
             tracing::warn!(owner_user_id, error = %error, "runtime disable provider request failed");
             Ok(htmx_notice_response(
@@ -381,12 +375,15 @@ pub(super) fn stats_pools_fragment_response(pools: &[LiquidityPoolView]) -> Resp
     response
 }
 
-pub(super) fn runtime_dashboard_base_url(state: &AppState) -> Option<String> {
-    state
-        .config
-        .runtime_elixir_base_url
-        .as_deref()
-        .and_then(|value| non_empty(value.to_string()))
+fn runtime_internal_client(state: &AppState) -> Result<RuntimeInternalClient, RuntimeClientError> {
+    RuntimeInternalClient::from_base_url(
+        state.config.runtime_elixir_base_url.as_deref(),
+        COMPUTE_DASHBOARD_TIMEOUT_MS,
+    )
+}
+
+fn runtime_client_error_string(error: RuntimeClientError) -> String {
+    error.to_string()
 }
 
 pub(super) fn empty_compute_metrics_view() -> ComputeMetricsView {
@@ -438,9 +435,7 @@ pub(super) async fn fetch_stats_metrics_view(
 pub(super) async fn fetch_stats_pools_view(
     state: &AppState,
 ) -> Result<Vec<LiquidityPoolView>, String> {
-    let Some(base_url) = runtime_dashboard_base_url(state) else {
-        return Err("runtime misconfigured".to_string());
-    };
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
     let pool_ids = state.config.liquidity_stats_pool_ids.clone();
     if pool_ids.is_empty() {
         return Ok(Vec::new());
@@ -448,22 +443,14 @@ pub(super) async fn fetch_stats_pools_view(
 
     let mut out = Vec::new();
     for pool_id in pool_ids {
-        let status_url = format!(
-            "{}/internal/v1/pools/{}/status",
-            base_url.trim_end_matches('/'),
-            pool_id
-        );
-        let status =
-            runtime_get_optional_json::<RuntimePoolStatusResponseV1>(status_url.as_str()).await?;
-
-        let snapshot_url = format!(
-            "{}/internal/v1/pools/{}/snapshots/latest",
-            base_url.trim_end_matches('/'),
-            pool_id
-        );
-        let snapshot =
-            runtime_get_optional_json::<RuntimePoolSnapshotResponseV1>(snapshot_url.as_str())
-                .await?;
+        let status = client
+            .pool_status(pool_id.as_str())
+            .await
+            .map_err(runtime_client_error_string)?;
+        let snapshot = client
+            .pool_snapshot_latest(pool_id.as_str())
+            .await
+            .map_err(runtime_client_error_string)?;
 
         out.push(build_pool_view(pool_id, status.as_ref(), snapshot.as_ref()));
     }
@@ -700,14 +687,11 @@ pub(super) async fn fetch_runtime_workers(
     state: &AppState,
     owner_user_id: u64,
 ) -> Result<Vec<ComputeRuntimeWorkerSnapshot>, String> {
-    let Some(base_url) = runtime_dashboard_base_url(state) else {
-        return Err("runtime misconfigured".to_string());
-    };
-    let url = format!(
-        "{}/internal/v1/workers?owner_user_id={owner_user_id}",
-        base_url.trim_end_matches('/')
-    );
-    let response: ComputeRuntimeWorkersListResponse = runtime_get_json(url.as_str()).await?;
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    let response = client
+        .list_workers(owner_user_id)
+        .await
+        .map_err(runtime_client_error_string)?;
     Ok(response.workers)
 }
 
@@ -715,14 +699,11 @@ pub(super) async fn fetch_runtime_provider_catalog(
     state: &AppState,
     owner_user_id: u64,
 ) -> Result<Vec<ComputeRuntimeProviderCatalogEntry>, String> {
-    let Some(base_url) = runtime_dashboard_base_url(state) else {
-        return Err("runtime misconfigured".to_string());
-    };
-    let url = format!(
-        "{}/internal/v1/marketplace/catalog/providers?owner_user_id={owner_user_id}",
-        base_url.trim_end_matches('/')
-    );
-    let response: ComputeRuntimeProviderCatalogResponse = runtime_get_json(url.as_str()).await?;
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    let response = client
+        .provider_catalog(owner_user_id)
+        .await
+        .map_err(runtime_client_error_string)?;
     Ok(response.providers)
 }
 
@@ -730,118 +711,20 @@ pub(super) async fn fetch_runtime_compute_telemetry(
     state: &AppState,
     owner_user_id: u64,
 ) -> Result<ComputeRuntimeTelemetryResponse, String> {
-    let Some(base_url) = runtime_dashboard_base_url(state) else {
-        return Err("runtime misconfigured".to_string());
-    };
-    let url = format!(
-        "{}/internal/v1/marketplace/telemetry/compute?owner_user_id={owner_user_id}&capability={}",
-        base_url.trim_end_matches('/'),
-        COMPUTE_DEFAULT_CAPABILITY
-    );
-    runtime_get_json(url.as_str()).await
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    client
+        .compute_telemetry(owner_user_id, COMPUTE_DEFAULT_CAPABILITY)
+        .await
+        .map_err(runtime_client_error_string)
 }
 
 pub(super) async fn fetch_runtime_compute_treasury(
     state: &AppState,
     owner_user_id: u64,
 ) -> Result<ComputeRuntimeTreasurySummary, String> {
-    let Some(base_url) = runtime_dashboard_base_url(state) else {
-        return Err("runtime misconfigured".to_string());
-    };
-    let url = format!(
-        "{}/internal/v1/treasury/compute/summary?owner_user_id={owner_user_id}",
-        base_url.trim_end_matches('/')
-    );
-    runtime_get_json(url.as_str()).await
-}
-
-pub(super) async fn runtime_get_json<T>(url: &str) -> Result<T, String>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
-    let response = reqwest::Client::new()
-        .get(url)
-        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
-        .timeout(timeout)
-        .send()
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    client
+        .compute_treasury_summary(owner_user_id)
         .await
-        .map_err(|error| format!("runtime_request_failed:{error}"))?;
-
-    let status = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("runtime_read_failed:{error}"))?;
-    if !status.is_success() {
-        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
-            .unwrap_or_else(|| "<empty>".to_string());
-        return Err(format!("runtime_http_{status}:{body}"));
-    }
-
-    serde_json::from_slice::<T>(&bytes)
-        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
-}
-
-pub(super) async fn runtime_get_optional_json<T>(url: &str) -> Result<Option<T>, String>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
-    let response = reqwest::Client::new()
-        .get(url)
-        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
-        .timeout(timeout)
-        .send()
-        .await
-        .map_err(|error| format!("runtime_request_failed:{error}"))?;
-
-    let status = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("runtime_read_failed:{error}"))?;
-
-    if status.as_u16() == 404 {
-        return Ok(None);
-    }
-
-    if !status.is_success() {
-        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
-            .unwrap_or_else(|| "<empty>".to_string());
-        return Err(format!("runtime_http_{status}:{body}"));
-    }
-
-    serde_json::from_slice::<T>(&bytes)
-        .map(Some)
-        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
-}
-
-pub(super) async fn runtime_post_json_value(
-    url: &str,
-    body: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
-    let response = reqwest::Client::new()
-        .post(url)
-        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
-        .timeout(timeout)
-        .json(body)
-        .send()
-        .await
-        .map_err(|error| format!("runtime_request_failed:{error}"))?;
-
-    let status = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("runtime_read_failed:{error}"))?;
-    if !status.is_success() {
-        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
-            .unwrap_or_else(|| "<empty>".to_string());
-        return Err(format!("runtime_http_{status}:{body}"));
-    }
-
-    serde_json::from_slice::<serde_json::Value>(&bytes)
-        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
+        .map_err(runtime_client_error_string)
 }
