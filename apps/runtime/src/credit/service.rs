@@ -1,0 +1,954 @@
+use std::sync::Arc;
+
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+use openagents_l402::Bolt11;
+use nostr::{Event, EventTemplate, finalize_event};
+use nostr::nip32::{Label, LabelEvent, LabelTarget};
+
+use crate::artifacts::sign_receipt_sha256;
+use crate::credit::store::{CreditReceiptInsertInput, CreditStore, CreditStoreError};
+use crate::credit::types::{
+    CREDIT_ENVELOPE_REQUEST_SCHEMA_V1, CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1,
+    CREDIT_OFFER_REQUEST_SCHEMA_V1, CREDIT_OFFER_RESPONSE_SCHEMA_V1, CREDIT_SETTLE_REQUEST_SCHEMA_V1,
+    CREDIT_SETTLE_RESPONSE_SCHEMA_V1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1,
+    CreditEnvelopeRow, CreditEnvelopeStatusV1, CreditOfferRequestV1, CreditOfferResponseV1,
+    CreditOfferRow, CreditOfferStatusV1, CreditScopeTypeV1, CreditSettlementOutcomeV1,
+    CreditSettleRequestV1, CreditSettleResponseV1, CreditSettlementRow, DEFAULT_NOTICE_SCHEMA_V1,
+    DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1, ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
+    EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
+};
+use crate::liquidity::{LiquidityError, LiquidityService};
+use crate::liquidity::types::{QuotePayRequestV1, PayRequestV1};
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreditError {
+    #[error("invalid request: {0}")]
+    InvalidRequest(String),
+    #[error("not found")]
+    NotFound,
+    #[error("conflict: {0}")]
+    Conflict(String),
+    #[error("dependency unavailable: {0}")]
+    DependencyUnavailable(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+impl CreditError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidRequest(_) => "invalid_request",
+            Self::NotFound => "not_found",
+            Self::Conflict(_) => "conflict",
+            Self::DependencyUnavailable(_) => "dependency_unavailable",
+            Self::Internal(_) => "internal_error",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Self::InvalidRequest(message)
+            | Self::Conflict(message)
+            | Self::DependencyUnavailable(message)
+            | Self::Internal(message) => message.clone(),
+            Self::NotFound => "not found".to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct CreditService {
+    store: Arc<dyn CreditStore>,
+    liquidity: Arc<LiquidityService>,
+    receipt_signing_key: Option<[u8; 32]>,
+}
+
+impl CreditService {
+    pub fn new(
+        store: Arc<dyn CreditStore>,
+        liquidity: Arc<LiquidityService>,
+        receipt_signing_key: Option<[u8; 32]>,
+    ) -> Self {
+        Self {
+            store,
+            liquidity,
+            receipt_signing_key,
+        }
+    }
+
+    pub async fn offer(&self, body: CreditOfferRequestV1) -> Result<CreditOfferResponseV1, CreditError> {
+        if body.schema.trim() != CREDIT_OFFER_REQUEST_SCHEMA_V1 {
+            return Err(CreditError::InvalidRequest(format!(
+                "schema must be {CREDIT_OFFER_REQUEST_SCHEMA_V1}"
+            )));
+        }
+        if body.scope_type != CreditScopeTypeV1::Nip90 {
+            return Err(CreditError::InvalidRequest(
+                "scope_type must be nip90".to_string(),
+            ));
+        }
+
+        let agent_id = sanitize_pubkey(&body.agent_id)?;
+        let pool_id = sanitize_pubkey(&body.pool_id)?;
+        let scope_id = body.scope_id.trim().to_string();
+        if scope_id.is_empty() {
+            return Err(CreditError::InvalidRequest("scope_id is required".to_string()));
+        }
+        if body.max_sats == 0 {
+            return Err(CreditError::InvalidRequest("max_sats must be > 0".to_string()));
+        }
+        if body.exp <= Utc::now() {
+            return Err(CreditError::InvalidRequest("exp must be in the future".to_string()));
+        }
+
+        #[derive(Serialize)]
+        struct OfferFingerprint<'a> {
+            schema: &'a str,
+            agent_id: &'a str,
+            pool_id: &'a str,
+            scope_type: &'a str,
+            scope_id: &'a str,
+            max_sats: u64,
+            fee_bps: u32,
+            requires_verifier: bool,
+            exp: &'a DateTime<Utc>,
+        }
+
+        let issued_at = Utc::now();
+        let request_fingerprint_sha256 = canonical_sha256(&OfferFingerprint {
+            schema: CREDIT_OFFER_REQUEST_SCHEMA_V1,
+            agent_id: agent_id.as_str(),
+            pool_id: pool_id.as_str(),
+            scope_type: body.scope_type.as_str(),
+            scope_id: scope_id.as_str(),
+            max_sats: body.max_sats,
+            fee_bps: body.fee_bps,
+            requires_verifier: body.requires_verifier,
+            exp: &body.exp,
+        })
+        .map_err(CreditError::Internal)?;
+
+        let offer_id = format!("cepo_{}", &request_fingerprint_sha256[..24]);
+
+        let offer = CreditOfferRow {
+            offer_id,
+            agent_id,
+            pool_id,
+            scope_type: body.scope_type.as_str().to_string(),
+            scope_id,
+            max_sats: i64::try_from(body.max_sats).map_err(|_| {
+                CreditError::InvalidRequest("max_sats too large".to_string())
+            })?,
+            fee_bps: i32::try_from(body.fee_bps).map_err(|_| {
+                CreditError::InvalidRequest("fee_bps too large".to_string())
+            })?,
+            requires_verifier: body.requires_verifier,
+            exp: body.exp,
+            status: CreditOfferStatusV1::Offered.as_str().to_string(),
+            issued_at,
+        };
+
+        let stored = self
+            .store
+            .create_or_get_offer(offer, request_fingerprint_sha256)
+            .await
+            .map_err(map_store_error)?;
+
+        Ok(CreditOfferResponseV1 {
+            schema: CREDIT_OFFER_RESPONSE_SCHEMA_V1.to_string(),
+            offer: stored,
+        })
+    }
+
+    pub async fn envelope(
+        &self,
+        body: CreditEnvelopeRequestV1,
+    ) -> Result<CreditEnvelopeResponseV1, CreditError> {
+        if body.schema.trim() != CREDIT_ENVELOPE_REQUEST_SCHEMA_V1 {
+            return Err(CreditError::InvalidRequest(format!(
+                "schema must be {CREDIT_ENVELOPE_REQUEST_SCHEMA_V1}"
+            )));
+        }
+
+        let offer_id = body.offer_id.trim().to_string();
+        if offer_id.is_empty() {
+            return Err(CreditError::InvalidRequest("offer_id is required".to_string()));
+        }
+        let provider_id = sanitize_pubkey(&body.provider_id)?;
+
+        let offer = self
+            .store
+            .get_offer(offer_id.as_str())
+            .await
+            .map_err(map_store_error)?
+            .ok_or(CreditError::NotFound)?;
+
+        if offer.status != CreditOfferStatusV1::Offered.as_str() {
+            return Err(CreditError::Conflict(
+                "offer is not in offered status".to_string(),
+            ));
+        }
+        if offer.exp <= Utc::now() {
+            return Err(CreditError::InvalidRequest("offer expired".to_string()));
+        }
+
+        #[derive(Serialize)]
+        struct EnvelopeFingerprint<'a> {
+            schema: &'a str,
+            offer_id: &'a str,
+            provider_id: &'a str,
+        }
+
+        let request_fingerprint_sha256 = canonical_sha256(&EnvelopeFingerprint {
+            schema: CREDIT_ENVELOPE_REQUEST_SCHEMA_V1,
+            offer_id: offer_id.as_str(),
+            provider_id: provider_id.as_str(),
+        })
+        .map_err(CreditError::Internal)?;
+
+        let envelope_id = format!("cepe_{}", &request_fingerprint_sha256[..24]);
+
+        let issued_at = Utc::now();
+        let envelope = CreditEnvelopeRow {
+            envelope_id: envelope_id.clone(),
+            offer_id: offer.offer_id.clone(),
+            agent_id: offer.agent_id.clone(),
+            pool_id: offer.pool_id.clone(),
+            provider_id: provider_id.clone(),
+            scope_type: offer.scope_type.clone(),
+            scope_id: offer.scope_id.clone(),
+            max_sats: offer.max_sats,
+            fee_bps: offer.fee_bps,
+            exp: offer.exp,
+            status: CreditEnvelopeStatusV1::Accepted.as_str().to_string(),
+            issued_at,
+        };
+
+        let stored = self
+            .store
+            .create_or_get_envelope(envelope, request_fingerprint_sha256)
+            .await
+            .map_err(map_store_error)?;
+
+        // Mark offer accepted (best-effort; offer immutability isn't critical for settlement).
+        let _ = self
+            .store
+            .update_offer_status(offer_id.as_str(), CreditOfferStatusV1::Accepted.as_str(), issued_at)
+            .await;
+
+        let receipt = build_envelope_issue_receipt(&stored, self.receipt_signing_key.as_ref())?;
+        store_receipt(self.store.as_ref(), "envelope", stored.envelope_id.as_str(), &receipt)
+            .await?;
+
+        Ok(CreditEnvelopeResponseV1 {
+            schema: CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1.to_string(),
+            envelope: stored,
+            receipt,
+        })
+    }
+
+    pub async fn settle(&self, body: CreditSettleRequestV1) -> Result<CreditSettleResponseV1, CreditError> {
+        if body.schema.trim() != CREDIT_SETTLE_REQUEST_SCHEMA_V1 {
+            return Err(CreditError::InvalidRequest(format!(
+                "schema must be {CREDIT_SETTLE_REQUEST_SCHEMA_V1}"
+            )));
+        }
+
+        let envelope_id = body.envelope_id.trim().to_string();
+        if envelope_id.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "envelope_id is required".to_string(),
+            ));
+        }
+        let verification_receipt_sha256 = body.verification_receipt_sha256.trim().to_string();
+        if verification_receipt_sha256.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "verification_receipt_sha256 is required".to_string(),
+            ));
+        }
+
+        let Some(envelope) = self
+            .store
+            .get_envelope(envelope_id.as_str())
+            .await
+            .map_err(map_store_error)?
+        else {
+            return Err(CreditError::NotFound);
+        };
+
+        if let Some(existing) = self
+            .store
+            .get_settlement_by_envelope(envelope_id.as_str())
+            .await
+            .map_err(map_store_error)?
+        {
+            let schema = if existing.outcome == CreditSettlementOutcomeV1::Success.as_str() {
+                ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1
+            } else {
+                DEFAULT_NOTICE_SCHEMA_V1
+            };
+            let receipt_row = self
+                .store
+                .get_receipt_by_unique("settlement", existing.settlement_id.as_str(), schema)
+                .await
+                .map_err(map_store_error)?
+                .ok_or_else(|| CreditError::Internal("missing stored receipt".to_string()))?;
+            return Ok(CreditSettleResponseV1 {
+                schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
+                envelope_id,
+                outcome: existing.outcome,
+                spent_sats: u64::try_from(existing.spent_sats).unwrap_or(0),
+                fee_sats: u64::try_from(existing.fee_sats).unwrap_or(0),
+                verification_receipt_sha256: existing.verification_receipt_sha256,
+                liquidity_receipt_sha256: existing.liquidity_receipt_sha256,
+                receipt: receipt_row.receipt_json,
+            });
+        }
+
+        let now = Utc::now();
+        if envelope.status != CreditEnvelopeStatusV1::Accepted.as_str() {
+            return Err(CreditError::Conflict(
+                "envelope is not in accepted status".to_string(),
+            ));
+        }
+
+        let request_fingerprint_sha256 = canonical_sha256(&json!({
+            "schema": CREDIT_SETTLE_REQUEST_SCHEMA_V1,
+            "envelope_id": envelope.envelope_id,
+            "verification_passed": body.verification_passed,
+            "verification_receipt_sha256": verification_receipt_sha256,
+            "provider_invoice_hash": sha256_hex(body.provider_invoice.as_bytes()),
+            "provider_host": body.provider_host.trim().to_ascii_lowercase(),
+            "max_fee_msats": body.max_fee_msats,
+        }))
+        .map_err(CreditError::Internal)?;
+
+        let settlement_id = format!("ceps_{}", &request_fingerprint_sha256[..24]);
+
+        if now > envelope.exp {
+            let receipt = build_default_notice(
+                &envelope,
+                settlement_id.as_str(),
+                "expired",
+                0,
+                Some(verification_receipt_sha256.as_str()),
+                self.receipt_signing_key.as_ref(),
+            )?;
+            let (row, _created) = self
+                .store
+                .create_or_get_settlement(
+                    CreditSettlementRow {
+                        settlement_id: settlement_id.clone(),
+                        envelope_id: envelope.envelope_id.clone(),
+                        outcome: CreditSettlementOutcomeV1::Expired.as_str().to_string(),
+                        spent_sats: 0,
+                        fee_sats: 0,
+                        verification_receipt_sha256: verification_receipt_sha256.clone(),
+                        liquidity_receipt_sha256: None,
+                        created_at: now,
+                    },
+                    request_fingerprint_sha256.clone(),
+                )
+                .await
+                .map_err(map_store_error)?;
+            self.store
+                .update_envelope_status(
+                    envelope.envelope_id.as_str(),
+                    CreditEnvelopeStatusV1::Defaulted.as_str(),
+                    now,
+                )
+                .await
+                .map_err(map_store_error)?;
+            store_receipt(self.store.as_ref(), "settlement", row.settlement_id.as_str(), &receipt)
+                .await?;
+            return Ok(CreditSettleResponseV1 {
+                schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
+                envelope_id,
+                outcome: row.outcome,
+                spent_sats: 0,
+                fee_sats: 0,
+                verification_receipt_sha256,
+                liquidity_receipt_sha256: None,
+                receipt: serde_json::to_value(receipt)
+                    .map_err(|error| CreditError::Internal(error.to_string()))?,
+            });
+        }
+
+        if !body.verification_passed {
+            let receipt = build_default_notice(
+                &envelope,
+                settlement_id.as_str(),
+                "verification_failed",
+                0,
+                Some(verification_receipt_sha256.as_str()),
+                self.receipt_signing_key.as_ref(),
+            )?;
+            let (row, _created) = self
+                .store
+                .create_or_get_settlement(
+                    CreditSettlementRow {
+                        settlement_id: settlement_id.clone(),
+                        envelope_id: envelope.envelope_id.clone(),
+                        outcome: CreditSettlementOutcomeV1::Failed.as_str().to_string(),
+                        spent_sats: 0,
+                        fee_sats: 0,
+                        verification_receipt_sha256: verification_receipt_sha256.clone(),
+                        liquidity_receipt_sha256: None,
+                        created_at: now,
+                    },
+                    request_fingerprint_sha256.clone(),
+                )
+                .await
+                .map_err(map_store_error)?;
+            self.store
+                .update_envelope_status(
+                    envelope.envelope_id.as_str(),
+                    CreditEnvelopeStatusV1::Defaulted.as_str(),
+                    now,
+                )
+                .await
+                .map_err(map_store_error)?;
+            store_receipt(self.store.as_ref(), "settlement", row.settlement_id.as_str(), &receipt)
+                .await?;
+            return Ok(CreditSettleResponseV1 {
+                schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
+                envelope_id,
+                outcome: row.outcome,
+                spent_sats: 0,
+                fee_sats: 0,
+                verification_receipt_sha256,
+                liquidity_receipt_sha256: None,
+                receipt: serde_json::to_value(receipt)
+                    .map_err(|error| CreditError::Internal(error.to_string()))?,
+            });
+        }
+
+        let invoice = body.provider_invoice.trim().to_string();
+        if invoice.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "provider_invoice is required".to_string(),
+            ));
+        }
+        let host = body.provider_host.trim().to_ascii_lowercase();
+        if host.is_empty() {
+            return Err(CreditError::InvalidRequest(
+                "provider_host is required".to_string(),
+            ));
+        }
+        let amount_msats = Bolt11::amount_msats(invoice.as_str()).ok_or_else(|| {
+            CreditError::InvalidRequest(
+                "provider_invoice must be a bolt11 with amount".to_string(),
+            )
+        })?;
+
+        let max_amount_msats = u64::try_from(envelope.max_sats)
+            .map_err(|_| CreditError::Internal("envelope.max_sats invalid".to_string()))?
+            .saturating_mul(1000);
+        if amount_msats > max_amount_msats {
+            return Err(CreditError::InvalidRequest(
+                "invoice exceeds envelope max_sats".to_string(),
+            ));
+        }
+
+        // Pay provider invoice via liquidity service (issuer pays provider).
+        let policy_context = json!({
+            "schema": "openagents.credit.policy_context.v1",
+            "envelope_id": envelope.envelope_id,
+            "agent_id": envelope.agent_id,
+            "pool_id": envelope.pool_id,
+            "provider_id": envelope.provider_id,
+            "scope_type": envelope.scope_type,
+            "scope_id": envelope.scope_id,
+            "caller_context": body.policy_context
+        });
+
+        let quote = self
+            .liquidity
+            .quote_pay(QuotePayRequestV1 {
+                schema: crate::liquidity::types::QUOTE_PAY_REQUEST_SCHEMA_V1.to_string(),
+                idempotency_key: format!("cep:quote:{}", &request_fingerprint_sha256[..24]),
+                invoice: invoice.clone(),
+                host: host.clone(),
+                max_amount_msats,
+                max_fee_msats: body.max_fee_msats,
+                urgency: Some("normal".to_string()),
+                policy_context,
+            })
+            .await
+            .map_err(map_liquidity_error)?;
+
+        let paid = self
+            .liquidity
+            .pay(PayRequestV1 {
+                schema: crate::liquidity::types::PAY_REQUEST_SCHEMA_V1.to_string(),
+                quote_id: quote.quote_id.clone(),
+                run_id: None,
+                trajectory_hash: None,
+            })
+            .await
+            .map_err(map_liquidity_error)?;
+
+        if paid.status != "succeeded" {
+            return Err(CreditError::DependencyUnavailable(format!(
+                "liquidity pay failed: {} {:?}",
+                paid.status, paid.error_code
+            )));
+        }
+
+        let spent_sats = msats_to_sats_ceil(amount_msats);
+        let fee_bps = u64::try_from(envelope.fee_bps)
+            .map_err(|_| CreditError::Internal("envelope.fee_bps invalid".to_string()))?;
+        let fee_sats = compute_fee_sats(spent_sats, fee_bps);
+
+        let label_event = maybe_build_label_event(
+            self.receipt_signing_key.as_ref(),
+            true,
+            envelope.agent_id.as_str(),
+            envelope.provider_id.as_str(),
+            envelope.envelope_id.as_str(),
+            envelope.scope_id.as_str(),
+        );
+        let (label_event_id, label_event_sha256, label_event_json) = match &label_event {
+            Some(event) => {
+                let sha = canonical_sha256(event).ok();
+                (Some(event.id.clone()), sha, serde_json::to_value(event).ok())
+            }
+            None => (None, None, None),
+        };
+
+        let settlement_receipt = build_settlement_receipt(
+            &envelope,
+            CreditSettlementOutcomeV1::Success.as_str(),
+            spent_sats,
+            fee_sats,
+            verification_receipt_sha256.as_str(),
+            paid.receipt.canonical_json_sha256.as_str(),
+            label_event_id.as_deref(),
+            label_event_sha256.as_deref(),
+            label_event_json.clone(),
+            now,
+            self.receipt_signing_key.as_ref(),
+        )?;
+
+        let (row, _created) = self
+            .store
+            .create_or_get_settlement(
+                CreditSettlementRow {
+                    settlement_id: settlement_id.clone(),
+                    envelope_id: envelope.envelope_id.clone(),
+                    outcome: CreditSettlementOutcomeV1::Success.as_str().to_string(),
+                    spent_sats: i64::try_from(spent_sats).unwrap_or(i64::MAX),
+                    fee_sats: i64::try_from(fee_sats).unwrap_or(i64::MAX),
+                    verification_receipt_sha256: verification_receipt_sha256.clone(),
+                    liquidity_receipt_sha256: Some(paid.receipt.canonical_json_sha256.clone()),
+                    created_at: now,
+                },
+                request_fingerprint_sha256,
+            )
+            .await
+            .map_err(map_store_error)?;
+        self.store
+            .update_envelope_status(
+                envelope.envelope_id.as_str(),
+                CreditEnvelopeStatusV1::Settled.as_str(),
+                now,
+            )
+            .await
+            .map_err(map_store_error)?;
+        store_receipt(
+            self.store.as_ref(),
+            "settlement",
+            row.settlement_id.as_str(),
+            &settlement_receipt,
+        )
+        .await?;
+
+        Ok(CreditSettleResponseV1 {
+            schema: CREDIT_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
+            envelope_id,
+            outcome: row.outcome,
+            spent_sats,
+            fee_sats,
+            verification_receipt_sha256,
+            liquidity_receipt_sha256: row.liquidity_receipt_sha256.clone(),
+            receipt: serde_json::to_value(settlement_receipt)
+                .map_err(|error| CreditError::Internal(error.to_string()))?,
+        })
+    }
+}
+
+fn sanitize_pubkey(raw: &str) -> Result<String, CreditError> {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.len() != 64 || !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(CreditError::InvalidRequest(
+            "agent_id/pool_id/provider_id must be 64-char hex pubkeys".to_string(),
+        ));
+    }
+    Ok(trimmed)
+}
+
+fn msats_to_sats_ceil(amount_msats: u64) -> u64 {
+    amount_msats
+        .saturating_add(999)
+        .saturating_div(1000)
+        .max(1)
+}
+
+fn compute_fee_sats(spent_sats: u64, fee_bps: u64) -> u64 {
+    let numer = (spent_sats as u128).saturating_mul(fee_bps as u128);
+    let fee = (numer + 9_999) / 10_000;
+    u64::try_from(fee).unwrap_or(u64::MAX)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+fn canonical_sha256(value: &impl Serialize) -> Result<String, String> {
+    let canonical_json =
+        protocol::hash::canonical_json(value).map_err(|error| error.to_string())?;
+    let digest = Sha256::digest(canonical_json.as_bytes());
+    Ok(hex::encode(digest))
+}
+
+fn map_store_error(error: CreditStoreError) -> CreditError {
+    match error {
+        CreditStoreError::Conflict(message) => CreditError::Conflict(message),
+        CreditStoreError::NotFound(_) => CreditError::NotFound,
+        CreditStoreError::Db(message) => CreditError::Internal(message),
+    }
+}
+
+fn map_liquidity_error(error: LiquidityError) -> CreditError {
+    match error {
+        LiquidityError::InvalidRequest(message) => CreditError::InvalidRequest(message),
+        LiquidityError::NotFound => CreditError::DependencyUnavailable("quote not found".to_string()),
+        LiquidityError::Conflict(message) => CreditError::Conflict(message),
+        LiquidityError::DependencyUnavailable(message) => CreditError::DependencyUnavailable(message),
+        LiquidityError::Internal(message) => CreditError::Internal(message),
+    }
+}
+
+fn build_envelope_issue_receipt(
+    envelope: &CreditEnvelopeRow,
+    receipt_signing_key: Option<&[u8; 32]>,
+) -> Result<EnvelopeIssueReceiptV1, CreditError> {
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        offer_id: &'a str,
+        envelope_id: &'a str,
+        agent_id: &'a str,
+        pool_id: &'a str,
+        provider_id: &'a str,
+        scope_type: &'a str,
+        scope_id: &'a str,
+        max_sats: i64,
+        fee_bps: i32,
+        exp: &'a DateTime<Utc>,
+        issued_at: &'a DateTime<Utc>,
+    }
+
+    let canonical_json_sha256 = canonical_sha256(&ReceiptHashInput {
+        schema: ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1,
+        offer_id: envelope.offer_id.as_str(),
+        envelope_id: envelope.envelope_id.as_str(),
+        agent_id: envelope.agent_id.as_str(),
+        pool_id: envelope.pool_id.as_str(),
+        provider_id: envelope.provider_id.as_str(),
+        scope_type: envelope.scope_type.as_str(),
+        scope_id: envelope.scope_id.as_str(),
+        max_sats: envelope.max_sats,
+        fee_bps: envelope.fee_bps,
+        exp: &envelope.exp,
+        issued_at: &envelope.issued_at,
+    })
+    .map_err(CreditError::Internal)?;
+    let receipt_id = format!("ceir_{}", &canonical_json_sha256[..24]);
+    let signature = match receipt_signing_key {
+        Some(secret_key) => Some(
+            sign_receipt_sha256(secret_key, canonical_json_sha256.as_str())
+                .map_err(|error| CreditError::Internal(error.to_string()))?,
+        ),
+        None => None,
+    };
+
+    Ok(EnvelopeIssueReceiptV1 {
+        schema: ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1.to_string(),
+        receipt_id,
+        offer_id: envelope.offer_id.clone(),
+        envelope_id: envelope.envelope_id.clone(),
+        agent_id: envelope.agent_id.clone(),
+        pool_id: envelope.pool_id.clone(),
+        provider_id: envelope.provider_id.clone(),
+        scope_type: envelope.scope_type.clone(),
+        scope_id: envelope.scope_id.clone(),
+        max_sats: u64::try_from(envelope.max_sats)
+            .map_err(|_| CreditError::Internal("max_sats invalid".to_string()))?,
+        fee_bps: u32::try_from(envelope.fee_bps)
+            .map_err(|_| CreditError::Internal("fee_bps invalid".to_string()))?,
+        exp: envelope.exp,
+        issued_at: envelope.issued_at,
+        canonical_json_sha256,
+        signature,
+    })
+}
+
+fn build_settlement_receipt(
+    envelope: &CreditEnvelopeRow,
+    outcome: &str,
+    spent_sats: u64,
+    fee_sats: u64,
+    verification_receipt_sha256: &str,
+    liquidity_receipt_sha256: &str,
+    label_event_id: Option<&str>,
+    label_event_sha256: Option<&str>,
+    label_event_json: Option<Value>,
+    created_at: DateTime<Utc>,
+    receipt_signing_key: Option<&[u8; 32]>,
+) -> Result<EnvelopeSettlementReceiptV1, CreditError> {
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        envelope_id: &'a str,
+        agent_id: &'a str,
+        pool_id: &'a str,
+        provider_id: &'a str,
+        scope_type: &'a str,
+        scope_id: &'a str,
+        outcome: &'a str,
+        spent_sats: u64,
+        fee_sats: u64,
+        verification_receipt_sha256: &'a str,
+        liquidity_receipt_sha256: &'a str,
+        label_event_id: Option<&'a str>,
+        label_event_sha256: Option<&'a str>,
+        created_at: &'a DateTime<Utc>,
+    }
+
+    let canonical_json_sha256 = canonical_sha256(&ReceiptHashInput {
+        schema: ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
+        envelope_id: envelope.envelope_id.as_str(),
+        agent_id: envelope.agent_id.as_str(),
+        pool_id: envelope.pool_id.as_str(),
+        provider_id: envelope.provider_id.as_str(),
+        scope_type: envelope.scope_type.as_str(),
+        scope_id: envelope.scope_id.as_str(),
+        outcome,
+        spent_sats,
+        fee_sats,
+        verification_receipt_sha256,
+        liquidity_receipt_sha256,
+        label_event_id,
+        label_event_sha256,
+        created_at: &created_at,
+    })
+    .map_err(CreditError::Internal)?;
+    let receipt_id = format!("cesr_{}", &canonical_json_sha256[..24]);
+    let signature = match receipt_signing_key {
+        Some(secret_key) => Some(
+            sign_receipt_sha256(secret_key, canonical_json_sha256.as_str())
+                .map_err(|error| CreditError::Internal(error.to_string()))?,
+        ),
+        None => None,
+    };
+
+    Ok(EnvelopeSettlementReceiptV1 {
+        schema: ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1.to_string(),
+        receipt_id,
+        envelope_id: envelope.envelope_id.clone(),
+        agent_id: envelope.agent_id.clone(),
+        pool_id: envelope.pool_id.clone(),
+        provider_id: envelope.provider_id.clone(),
+        scope_type: envelope.scope_type.clone(),
+        scope_id: envelope.scope_id.clone(),
+        outcome: outcome.to_string(),
+        spent_sats,
+        fee_sats,
+        verification_receipt_sha256: verification_receipt_sha256.to_string(),
+        liquidity_receipt_sha256: liquidity_receipt_sha256.to_string(),
+        label_event_id: label_event_id.map(str::to_string),
+        label_event_sha256: label_event_sha256.map(str::to_string),
+        label_event: label_event_json,
+        created_at,
+        canonical_json_sha256,
+        signature,
+    })
+}
+
+fn build_default_notice(
+    envelope: &CreditEnvelopeRow,
+    settlement_id: &str,
+    reason: &str,
+    loss_sats: u64,
+    verification_receipt_sha256: Option<&str>,
+    receipt_signing_key: Option<&[u8; 32]>,
+) -> Result<DefaultNoticeV1, CreditError> {
+    let label_event = maybe_build_label_event(
+        receipt_signing_key,
+        false,
+        envelope.agent_id.as_str(),
+        envelope.provider_id.as_str(),
+        envelope.envelope_id.as_str(),
+        envelope.scope_id.as_str(),
+    );
+    let (label_event_id, label_event_sha256, label_event_json) = match &label_event {
+        Some(event) => {
+            let sha = canonical_sha256(event).ok();
+            (Some(event.id.clone()), sha, serde_json::to_value(event).ok())
+        }
+        None => (None, None, None),
+    };
+
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        settlement_id: &'a str,
+        envelope_id: &'a str,
+        agent_id: &'a str,
+        pool_id: &'a str,
+        provider_id: &'a str,
+        scope_type: &'a str,
+        scope_id: &'a str,
+        reason: &'a str,
+        loss_sats: u64,
+        verification_receipt_sha256: Option<&'a str>,
+        label_event_id: Option<&'a str>,
+        label_event_sha256: Option<&'a str>,
+        created_at: &'a DateTime<Utc>,
+    }
+
+    let created_at = Utc::now();
+    let canonical_json_sha256 = canonical_sha256(&ReceiptHashInput {
+        schema: DEFAULT_NOTICE_SCHEMA_V1,
+        settlement_id,
+        envelope_id: envelope.envelope_id.as_str(),
+        agent_id: envelope.agent_id.as_str(),
+        pool_id: envelope.pool_id.as_str(),
+        provider_id: envelope.provider_id.as_str(),
+        scope_type: envelope.scope_type.as_str(),
+        scope_id: envelope.scope_id.as_str(),
+        reason,
+        loss_sats,
+        verification_receipt_sha256,
+        label_event_id: label_event_id.as_deref(),
+        label_event_sha256: label_event_sha256.as_deref(),
+        created_at: &created_at,
+    })
+    .map_err(CreditError::Internal)?;
+    let receipt_id = format!("cedn_{}", &canonical_json_sha256[..24]);
+    let signature = match receipt_signing_key {
+        Some(secret_key) => Some(
+            sign_receipt_sha256(secret_key, canonical_json_sha256.as_str())
+                .map_err(|error| CreditError::Internal(error.to_string()))?,
+        ),
+        None => None,
+    };
+
+    Ok(DefaultNoticeV1 {
+        schema: DEFAULT_NOTICE_SCHEMA_V1.to_string(),
+        receipt_id,
+        envelope_id: envelope.envelope_id.clone(),
+        agent_id: envelope.agent_id.clone(),
+        pool_id: envelope.pool_id.clone(),
+        provider_id: envelope.provider_id.clone(),
+        scope_type: envelope.scope_type.clone(),
+        scope_id: envelope.scope_id.clone(),
+        reason: reason.to_string(),
+        loss_sats,
+        verification_receipt_sha256: verification_receipt_sha256.map(str::to_string),
+        label_event_id,
+        label_event_sha256,
+        label_event: label_event_json,
+        created_at,
+        canonical_json_sha256,
+        signature,
+    })
+}
+
+fn maybe_build_label_event(
+    signing_key: Option<&[u8; 32]>,
+    success: bool,
+    agent_pubkey: &str,
+    provider_pubkey: &str,
+    envelope_id: &str,
+    scope_id: &str,
+) -> Option<Event> {
+    let secret_key = signing_key?;
+
+    let value = if success { "success" } else { "default" };
+    let labels = vec![Label::new(value, "openagents.credit")];
+    let targets = vec![
+        LabelTarget::pubkey(agent_pubkey.to_string(), None::<String>),
+        LabelTarget::pubkey(provider_pubkey.to_string(), None::<String>),
+        LabelTarget::topic(format!("openagents.credit:scope:{scope_id}")),
+    ];
+    let label_event = LabelEvent::new(labels, targets)
+        .with_content(format!("envelope={envelope_id} scope={scope_id}"));
+
+    if label_event.validate().is_err() {
+        return None;
+    }
+
+    let template = EventTemplate {
+        created_at: Utc::now().timestamp().max(0) as u64,
+        kind: nostr::nip32::KIND_LABEL as u16,
+        tags: label_event.to_tags(),
+        content: label_event.content,
+    };
+
+    finalize_event(&template, secret_key).ok()
+}
+
+async fn store_receipt<T: Serialize>(
+    store: &dyn CreditStore,
+    entity_kind: &str,
+    entity_id: &str,
+    receipt: &T,
+) -> Result<(), CreditError> {
+    let receipt_value = serde_json::to_value(receipt)
+        .map_err(|error| CreditError::Internal(error.to_string()))?;
+    let canonical_json_sha256 = receipt_value
+        .get("canonical_json_sha256")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let receipt_id = receipt_value
+        .get("receipt_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let schema = receipt_value
+        .get("schema")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if canonical_json_sha256.is_empty() || receipt_id.is_empty() || schema.is_empty() {
+        return Err(CreditError::Internal(
+            "receipt missing receipt_id/schema/canonical_json_sha256".to_string(),
+        ));
+    }
+
+    let signature_json = receipt_value.get("signature").cloned().filter(|value| !value.is_null());
+
+    store
+        .put_receipt(CreditReceiptInsertInput {
+            receipt_id,
+            entity_kind: entity_kind.to_string(),
+            entity_id: entity_id.to_string(),
+            schema,
+            canonical_json_sha256,
+            signature_json,
+            receipt_json: receipt_value,
+            created_at: Utc::now(),
+        })
+        .await
+        .map_err(map_store_error)?;
+    Ok(())
+}

@@ -35,6 +35,11 @@ use crate::{
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
+    credit::{
+        service::{CreditError, CreditService},
+        store as credit_store,
+        types::{CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1, CreditSettleResponseV1},
+    },
     liquidity::store,
     liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
     liquidity::{LiquidityError, LiquidityService},
@@ -72,6 +77,7 @@ pub struct AppState {
     db: Option<Arc<RuntimeDb>>,
     liquidity: Arc<LiquidityService>,
     liquidity_pool: Arc<LiquidityPoolService>,
+    credit: Arc<CreditService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
@@ -106,6 +112,11 @@ impl AppState {
             Some(db) => liquidity_pool_store::postgres(db),
             None => liquidity_pool_store::memory(),
         };
+
+        let credit_store = match db.clone() {
+            Some(db) => credit_store::postgres(db),
+            None => credit_store::memory(),
+        };
         let wallet_executor_client: Arc<dyn WalletExecutorClient> =
             match HttpWalletExecutorClient::new(
                 config.liquidity_wallet_executor_base_url.clone(),
@@ -116,20 +127,28 @@ impl AppState {
                 Err(error) => Arc::new(UnavailableWalletExecutorClient::new(error.to_string())),
             };
 
+        let liquidity = Arc::new(LiquidityService::new(
+            liquidity_store,
+            config.liquidity_wallet_executor_base_url.clone(),
+            config.liquidity_wallet_executor_auth_token.clone(),
+            config.liquidity_wallet_executor_timeout_ms,
+            config.liquidity_quote_ttl_seconds,
+            config.bridge_nostr_secret_key,
+        ));
+        let credit = Arc::new(CreditService::new(
+            credit_store,
+            liquidity.clone(),
+            config.bridge_nostr_secret_key,
+        ));
+
         let state = Self {
-            liquidity: Arc::new(LiquidityService::new(
-                liquidity_store,
-                config.liquidity_wallet_executor_base_url.clone(),
-                config.liquidity_wallet_executor_auth_token.clone(),
-                config.liquidity_wallet_executor_timeout_ms,
-                config.liquidity_quote_ttl_seconds,
-                config.bridge_nostr_secret_key,
-            )),
+            liquidity,
             liquidity_pool: Arc::new(LiquidityPoolService::new(
                 pool_store,
                 wallet_executor_client,
                 config.bridge_nostr_secret_key,
             )),
+            credit,
             db,
             config,
             orchestrator,
@@ -909,6 +928,9 @@ pub fn build_router(state: AppState) -> Router {
             post(liquidity_quote_pay),
         )
         .route("/internal/v1/liquidity/pay", post(liquidity_pay))
+        .route("/internal/v1/credit/offer", post(credit_offer))
+        .route("/internal/v1/credit/envelope", post(credit_envelope))
+        .route("/internal/v1/credit/settle", post(credit_settle))
         .route(
             "/internal/v1/pools/:pool_id/admin/create",
             post(liquidity_pool_create_pool),
@@ -2592,6 +2614,45 @@ async fn liquidity_pay(
     Ok(Json(response))
 }
 
+async fn credit_offer(
+    State(state): State<AppState>,
+    Json(body): Json<CreditOfferRequestV1>,
+) -> Result<Json<CreditOfferResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .offer(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_envelope(
+    State(state): State<AppState>,
+    Json(body): Json<CreditEnvelopeRequestV1>,
+) -> Result<Json<CreditEnvelopeResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .envelope(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_settle(
+    State(state): State<AppState>,
+    Json(body): Json<CreditSettleRequestV1>,
+) -> Result<Json<CreditSettleResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let response = state
+        .credit
+        .settle(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
 async fn liquidity_pool_create_pool(
     State(state): State<AppState>,
     Path(pool_id): Path<String>,
@@ -3348,6 +3409,16 @@ fn api_error_from_liquidity_pool(error: LiquidityPoolError) -> ApiError {
         LiquidityPoolError::Conflict(message) => ApiError::Conflict(message),
         LiquidityPoolError::DependencyUnavailable(message) => ApiError::Internal(message),
         LiquidityPoolError::Internal(message) => ApiError::Internal(message),
+    }
+}
+
+fn api_error_from_credit(error: CreditError) -> ApiError {
+    match error {
+        CreditError::InvalidRequest(message) => ApiError::InvalidRequest(message),
+        CreditError::NotFound => ApiError::NotFound,
+        CreditError::Conflict(message) => ApiError::Conflict(message),
+        CreditError::DependencyUnavailable(message) => ApiError::Internal(message),
+        CreditError::Internal(message) => ApiError::Internal(message),
     }
 }
 
