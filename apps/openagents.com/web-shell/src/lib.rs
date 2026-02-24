@@ -2840,7 +2840,6 @@ mod wasm {
         topics
     }
 
-
     fn load_tokens() -> Option<StoredAuthTokens> {
         let window = web_sys::window()?;
         let storage = window.local_storage().ok()??;
@@ -5965,7 +5964,6 @@ mod wasm {
         let _ = row.append_child(&bubble);
         let _ = messages_container.append_child(&row);
     }
-
 }
 
 #[cfg(target_arch = "wasm32")]

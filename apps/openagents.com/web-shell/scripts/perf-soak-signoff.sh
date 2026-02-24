@@ -10,12 +10,24 @@ DIST_DIR="${WEB_SHELL_DIR}/dist"
 MANIFEST_PATH="${DIST_DIR}/manifest.json"
 OUTPUT_DIR="${WEB_SHELL_DIR}/perf"
 
-BIND_ADDR="${BIND_ADDR:-127.0.0.1:8787}"
+BIND_ADDR="${BIND_ADDR:-}"
+if [[ -z "${BIND_ADDR}" ]]; then
+  DYNAMIC_PORT="$(python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+)"
+  BIND_ADDR="127.0.0.1:${DYNAMIC_PORT}"
+fi
 BASE_URL="${BASE_URL:-http://${BIND_ADDR}}"
 LATENCY_SAMPLES="${LATENCY_SAMPLES:-60}"
 AUTH_CHURN_SAMPLES="${AUTH_CHURN_SAMPLES:-40}"
 SOAK_SECONDS="${SOAK_SECONDS:-180}"
 FAIL_ON_BUDGET="${FAIL_ON_BUDGET:-1}"
+RSS_WARMUP_SECONDS="${RSS_WARMUP_SECONDS:-5}"
 
 ROOT_P95_BUDGET_MS="${ROOT_P95_BUDGET_MS:-120}"
 MANIFEST_P95_BUDGET_MS="${MANIFEST_P95_BUDGET_MS:-100}"
@@ -84,11 +96,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Build control service ahead of launch so RSS sampling tracks the service binary,
+# not the short-lived cargo wrapper process.
+cargo build --manifest-path "${SERVICE_MANIFEST}" --bin openagents-control-service >/dev/null
+SERVICE_BIN="${REPO_ROOT}/target/debug/openagents-control-service"
+if [[ ! -x "${SERVICE_BIN}" ]]; then
+  echo "error: control service binary missing: ${SERVICE_BIN}" >&2
+  exit 1
+fi
+
 OA_AUTH_PROVIDER_MODE=mock \
 OA_CONTROL_STATIC_DIR="${DIST_DIR}" \
 OA_CONTROL_BIND_ADDR="${BIND_ADDR}" \
-cargo run --manifest-path "${SERVICE_MANIFEST}" --bin openagents-control-service >"${SERVICE_LOG}" 2>&1 &
+"${SERVICE_BIN}" >"${SERVICE_LOG}" 2>&1 &
 SERVICE_PID=$!
+
+if ! kill -0 "${SERVICE_PID}" >/dev/null 2>&1; then
+  echo "error: control service process failed to launch" >&2
+  echo "service log: ${SERVICE_LOG}" >&2
+  exit 1
+fi
 
 for _ in $(seq 1 120); do
   if curl -fsS "${BASE_URL}/healthz" >/dev/null 2>&1; then
@@ -209,7 +236,8 @@ SOAK_ERRORS=0
 SOAK_START="$(date +%s)"
 while true; do
   NOW="$(date +%s)"
-  if [[ $((NOW - SOAK_START)) -ge "${SOAK_SECONDS}" ]]; then
+  ELAPSED="$((NOW - SOAK_START))"
+  if [[ "${ELAPSED}" -ge "${SOAK_SECONDS}" ]]; then
     break
   fi
 
@@ -221,7 +249,7 @@ while true; do
   fi
 
   RSS_KB="$(ps -o rss= -p "${SERVICE_PID}" | tr -d ' ' || true)"
-  if [[ -n "${RSS_KB}" ]]; then
+  if [[ -n "${RSS_KB}" && "${ELAPSED}" -ge "${RSS_WARMUP_SECONDS}" ]]; then
     echo "${RSS_KB}" >>"${RSS_SAMPLES_FILE}"
   fi
 
@@ -232,6 +260,7 @@ RSS_MIN_KB="$(awk 'NR==1 {min=$1} {if ($1<min) min=$1} END {if (NR==0) print 0; 
 RSS_MAX_KB="$(awk 'NR==1 {max=$1} {if ($1>max) max=$1} END {if (NR==0) print 0; else print max}' "${RSS_SAMPLES_FILE}")"
 RSS_AVG_KB="$(awk '{sum+=$1} END {if (NR==0) printf "0"; else printf "%.0f", sum/NR }' "${RSS_SAMPLES_FILE}")"
 RSS_GROWTH_KB=$((RSS_MAX_KB - RSS_MIN_KB))
+RSS_SAMPLE_COUNT="$(wc -l <"${RSS_SAMPLES_FILE}" | tr -d ' ')"
 
 ROOT_P95_MS="$(metric_percentile_ms "${ROOT_TIMES}" 95)"
 MANIFEST_P95_MS="$(metric_percentile_ms "${MANIFEST_TIMES}" 95)"
@@ -248,6 +277,7 @@ if awk -v a="${SYNC_P95_MS}" -v b="${SYNC_TOKEN_P95_BUDGET_MS}" 'BEGIN{exit !(a>
 if [[ "${SOAK_ERRORS}" -gt "${SOAK_ERRORS_BUDGET}" ]]; then BUDGET_FAILS+=("soak.errors>${SOAK_ERRORS_BUDGET}"); fi
 if [[ "${AUTH_ERRORS}" -gt 0 ]]; then BUDGET_FAILS+=("auth_churn.errors>0"); fi
 if [[ "${RSS_GROWTH_KB}" -gt "${RSS_GROWTH_BUDGET_KB}" ]]; then BUDGET_FAILS+=("rss_growth_kb>${RSS_GROWTH_BUDGET_KB}"); fi
+if [[ "${RSS_SAMPLE_COUNT}" -eq 0 ]]; then BUDGET_FAILS+=("rss_samples_missing"); fi
 if [[ "${JS_ASSET_BYTES}" -gt "${JS_ASSET_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.js_bytes>${JS_ASSET_BUDGET_BYTES}"); fi
 if [[ "${WASM_ASSET_BYTES}" -gt "${WASM_ASSET_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.wasm_bytes>${WASM_ASSET_BUDGET_BYTES}"); fi
 if [[ "${HOST_SHIM_BYTES}" -gt "${HOST_SHIM_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.host_shim_bytes>${HOST_SHIM_BUDGET_BYTES}"); fi
@@ -273,6 +303,7 @@ jq -n \
   --argjson latency_samples "${LATENCY_SAMPLES}" \
   --argjson auth_churn_samples "${AUTH_CHURN_SAMPLES}" \
   --argjson soak_seconds "${SOAK_SECONDS}" \
+  --argjson rss_warmup_seconds "${RSS_WARMUP_SECONDS}" \
   --argjson pass "${PASS}" \
   --argjson budget_failures "${FAILS_JSON}" \
   --arg root_p95_ms "${ROOT_P95_MS}" \
@@ -294,6 +325,7 @@ jq -n \
   --argjson rss_max_kb "${RSS_MAX_KB}" \
   --argjson rss_avg_kb "${RSS_AVG_KB}" \
   --argjson rss_growth_kb "${RSS_GROWTH_KB}" \
+  --argjson rss_samples "${RSS_SAMPLE_COUNT}" \
   --argjson js_asset_bytes "${JS_ASSET_BYTES}" \
   --argjson wasm_asset_bytes "${WASM_ASSET_BYTES}" \
   --argjson host_shim_bytes "${HOST_SHIM_BYTES}" \
@@ -315,7 +347,7 @@ jq -n \
     timestamp: $timestamp,
     build_id: $build_id,
     base_url: $base_url,
-    samples: { latency: $latency_samples, auth_churn: $auth_churn_samples, soak_seconds: $soak_seconds },
+    samples: { latency: $latency_samples, auth_churn: $auth_churn_samples, soak_seconds: $soak_seconds, rss_warmup_seconds: $rss_warmup_seconds },
     budgets: $budgets,
     metrics: {
       boot: {
@@ -337,7 +369,7 @@ jq -n \
       soak: {
         manifest_poll: { p95_ms: ($soak_p95_ms|tonumber), avg_ms: ($soak_avg_ms|tonumber) },
         errors: $soak_errors,
-        rss_kb: { min: $rss_min_kb, max: $rss_max_kb, avg: $rss_avg_kb, growth: $rss_growth_kb }
+        rss_kb: { min: $rss_min_kb, max: $rss_max_kb, avg: $rss_avg_kb, growth: $rss_growth_kb, samples: $rss_samples }
       }
     },
     pass: $pass,
