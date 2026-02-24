@@ -840,6 +840,149 @@ impl Config {
     }
 }
 
+#[cfg(test)]
+impl Config {
+    #[must_use]
+    pub fn for_tests(static_dir: PathBuf) -> Self {
+        Self {
+            bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+            log_filter: "debug".to_string(),
+            static_dir,
+            auth_provider_mode: "mock".to_string(),
+            workos_client_id: None,
+            workos_api_key: None,
+            workos_api_base_url: DEFAULT_WORKOS_API_BASE_URL.to_string(),
+            mock_magic_code: DEFAULT_MOCK_MAGIC_CODE.to_string(),
+            auth_local_test_login_enabled: false,
+            auth_local_test_login_allowed_emails: Vec::new(),
+            auth_local_test_login_signing_key: None,
+            auth_api_signup_enabled: false,
+            auth_api_signup_allowed_domains: Vec::new(),
+            auth_api_signup_default_token_name: DEFAULT_AUTH_API_SIGNUP_DEFAULT_TOKEN_NAME
+                .to_string(),
+            admin_emails: vec![
+                "chris@openagents.com".to_string(),
+                "routes@openagents.com".to_string(),
+            ],
+            khala_token_enabled: true,
+            khala_token_signing_key: Some("khala-test-signing-key".to_string()),
+            khala_token_issuer: "https://openagents.test".to_string(),
+            khala_token_audience: "openagents-khala-test".to_string(),
+            khala_token_subject_prefix: "user".to_string(),
+            khala_token_key_id: "khala-auth-test-v1".to_string(),
+            khala_token_claims_version: DEFAULT_KHALA_TOKEN_CLAIMS_VERSION.to_string(),
+            khala_token_ttl_seconds: DEFAULT_KHALA_TOKEN_TTL_SECONDS,
+            khala_token_min_ttl_seconds: DEFAULT_KHALA_TOKEN_MIN_TTL_SECONDS,
+            khala_token_max_ttl_seconds: DEFAULT_KHALA_TOKEN_MAX_TTL_SECONDS,
+            auth_store_path: None,
+            auth_challenge_ttl_seconds: DEFAULT_AUTH_CHALLENGE_TTL_SECONDS,
+            auth_access_ttl_seconds: DEFAULT_AUTH_ACCESS_TTL_SECONDS,
+            auth_refresh_ttl_seconds: 86_400,
+            sync_token_enabled: true,
+            sync_token_signing_key: Some("sync-test-signing-key".to_string()),
+            sync_token_issuer: "https://openagents.test".to_string(),
+            sync_token_audience: "openagents-sync-test".to_string(),
+            sync_token_key_id: "sync-auth-test-v1".to_string(),
+            sync_token_claims_version: DEFAULT_SYNC_TOKEN_CLAIMS_VERSION.to_string(),
+            sync_token_ttl_seconds: DEFAULT_SYNC_TOKEN_TTL_SECONDS,
+            sync_token_min_ttl_seconds: DEFAULT_SYNC_TOKEN_MIN_TTL_SECONDS,
+            sync_token_max_ttl_seconds: DEFAULT_SYNC_TOKEN_MAX_TTL_SECONDS,
+            sync_token_allowed_scopes: vec![
+                "runtime.codex_worker_events".to_string(),
+                "runtime.codex_worker_summaries".to_string(),
+                "runtime.run_summaries".to_string(),
+            ],
+            sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
+            route_split_enabled: true,
+            route_split_mode: "cohort".to_string(),
+            route_split_rust_routes: vec![
+                "/chat".to_string(),
+                "/workspace".to_string(),
+                "/login".to_string(),
+                "/register".to_string(),
+                "/authenticate".to_string(),
+                "/onboarding".to_string(),
+                "/account".to_string(),
+                "/settings".to_string(),
+                "/l402".to_string(),
+                "/billing".to_string(),
+                "/admin".to_string(),
+            ],
+            route_split_cohort_percentage: 100,
+            route_split_salt: "route-split-test-salt".to_string(),
+            route_split_force_legacy: false,
+            route_split_legacy_base_url: Some("https://legacy.openagents.test".to_string()),
+            runtime_sync_revoke_base_url: None,
+            runtime_sync_revoke_path: DEFAULT_RUNTIME_SYNC_REVOKE_PATH.to_string(),
+            runtime_signature_secret: None,
+            runtime_signature_ttl_seconds: DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS,
+            runtime_internal_shared_secret: None,
+            runtime_internal_key_id: DEFAULT_RUNTIME_INTERNAL_KEY_ID.to_string(),
+            runtime_internal_signature_ttl_seconds: DEFAULT_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS,
+            runtime_internal_secret_fetch_path: DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH
+                .to_string(),
+            runtime_internal_secret_cache_ttl_ms: DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS,
+            runtime_elixir_base_url: None,
+            liquidity_stats_pool_ids: vec!["llp-main".to_string()],
+            runtime_signing_key: None,
+            runtime_signing_key_id: DEFAULT_RUNTIME_SIGNING_KEY_ID.to_string(),
+            runtime_comms_delivery_ingest_path: DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH
+                .to_string(),
+            runtime_comms_delivery_timeout_ms: DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS,
+            runtime_comms_delivery_max_retries: DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES,
+            runtime_comms_delivery_retry_backoff_ms:
+                DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS,
+            smoke_stream_secret: Some("secret".to_string()),
+            resend_webhook_secret: None,
+            resend_webhook_tolerance_seconds: DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS,
+            google_oauth_client_id: None,
+            google_oauth_client_secret: None,
+            google_oauth_redirect_uri: None,
+            google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
+            google_oauth_token_url: DEFAULT_GOOGLE_OAUTH_TOKEN_URL.to_string(),
+            google_gmail_api_base_url: DEFAULT_GOOGLE_GMAIL_API_BASE_URL.to_string(),
+            runtime_driver: "legacy".to_string(),
+            runtime_force_driver: None,
+            runtime_force_legacy: false,
+            runtime_canary_user_percent: 0,
+            runtime_canary_autopilot_percent: 0,
+            runtime_canary_seed: DEFAULT_RUNTIME_CANARY_SEED.to_string(),
+            runtime_overrides_enabled: true,
+            runtime_shadow_enabled: false,
+            runtime_shadow_sample_rate: 1.0,
+            runtime_shadow_max_capture_bytes: DEFAULT_RUNTIME_SHADOW_MAX_CAPTURE_BYTES,
+            codex_thread_store_path: None,
+            domain_store_path: None,
+            maintenance_mode_enabled: false,
+            maintenance_bypass_token: None,
+            maintenance_bypass_cookie_name: DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME.to_string(),
+            maintenance_bypass_cookie_ttl_seconds: DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS,
+            maintenance_allowed_paths: vec!["/healthz".to_string(), "/readyz".to_string()],
+            compat_control_enforced: false,
+            compat_control_protocol_version: DEFAULT_COMPAT_CONTROL_PROTOCOL_VERSION.to_string(),
+            compat_control_min_client_build_id: DEFAULT_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID
+                .to_string(),
+            compat_control_max_client_build_id: None,
+            compat_control_min_schema_version: DEFAULT_COMPAT_CONTROL_MIN_SCHEMA_VERSION,
+            compat_control_max_schema_version: DEFAULT_COMPAT_CONTROL_MAX_SCHEMA_VERSION,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_fixture_covers_all_config_fields() {
+        let config = Config::for_tests(PathBuf::from("."));
+        assert_eq!(config.bind_addr.port(), 0);
+        assert!(!config.route_split_rust_routes.is_empty());
+        assert!(config.sync_token_signing_key.is_some());
+    }
+}
+
 fn parse_csv(value: String) -> Vec<String> {
     value
         .split(',')
