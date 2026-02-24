@@ -7,7 +7,10 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::db::RuntimeDb;
-use crate::credit::types::{CreditEnvelopeRow, CreditOfferRow, CreditSettlementRow};
+use crate::credit::types::{
+    CreditEnvelopeRow, CreditLiquidityPayEventRow, CreditOfferRow, CreditSettlementRow,
+    CreditUnderwritingAuditRow,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreditStoreError {
@@ -86,6 +89,41 @@ pub trait CreditStore: Send + Sync {
         entity_id: &str,
         schema: &str,
     ) -> Result<Option<CreditReceiptInsertInput>, CreditStoreError>;
+
+    async fn put_underwriting_audit(
+        &self,
+        audit: CreditUnderwritingAuditRow,
+    ) -> Result<(), CreditStoreError>;
+
+    async fn put_liquidity_pay_event(
+        &self,
+        event: CreditLiquidityPayEventRow,
+    ) -> Result<(), CreditStoreError>;
+
+    async fn list_recent_settlements(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError>;
+
+    async fn list_recent_settlements_for_agent(
+        &self,
+        agent_id: &str,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError>;
+
+    async fn get_agent_open_envelope_stats(
+        &self,
+        agent_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError>;
+
+    async fn list_recent_liquidity_pay_events(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditLiquidityPayEventRow>, CreditStoreError>;
 }
 
 pub fn memory() -> Arc<dyn CreditStore> {
@@ -108,6 +146,8 @@ struct MemoryCreditStoreInner {
     settlements_by_envelope: HashMap<String, (CreditSettlementRow, String)>,
     receipts_by_unique: HashMap<(String, String, String), String>,
     receipts_by_id: HashMap<String, CreditReceiptInsertInput>,
+    underwriting_audit_by_offer: HashMap<String, CreditUnderwritingAuditRow>,
+    liquidity_pay_events_by_quote: HashMap<String, CreditLiquidityPayEventRow>,
 }
 
 #[async_trait]
@@ -284,6 +324,142 @@ impl CreditStore for MemoryCreditStore {
             return Ok(None);
         };
         Ok(inner.receipts_by_id.get(receipt_id).cloned())
+    }
+
+    async fn put_underwriting_audit(
+        &self,
+        audit: CreditUnderwritingAuditRow,
+    ) -> Result<(), CreditStoreError> {
+        let mut inner = self.inner.lock().await;
+        if let Some(existing) = inner
+            .underwriting_audit_by_offer
+            .get(&audit.offer_id)
+            .cloned()
+        {
+            if existing.canonical_json_sha256 != audit.canonical_json_sha256 {
+                return Err(CreditStoreError::Conflict(
+                    "underwriting audit already exists for offer_id with different digest"
+                        .to_string(),
+                ));
+            }
+            return Ok(());
+        }
+        inner
+            .underwriting_audit_by_offer
+            .insert(audit.offer_id.clone(), audit);
+        Ok(())
+    }
+
+    async fn put_liquidity_pay_event(
+        &self,
+        event: CreditLiquidityPayEventRow,
+    ) -> Result<(), CreditStoreError> {
+        let mut inner = self.inner.lock().await;
+        if let Some(existing) = inner
+            .liquidity_pay_events_by_quote
+            .get(&event.quote_id)
+            .cloned()
+        {
+            if existing.status != event.status
+                || existing.error_code != event.error_code
+                || existing.amount_msats != event.amount_msats
+                || existing.host != event.host
+                || existing.envelope_id != event.envelope_id
+            {
+                return Err(CreditStoreError::Conflict(
+                    "liquidity pay event already exists for quote_id with different fields"
+                        .to_string(),
+                ));
+            }
+            return Ok(());
+        }
+        inner
+            .liquidity_pay_events_by_quote
+            .insert(event.quote_id.clone(), event);
+        Ok(())
+    }
+
+    async fn list_recent_settlements(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError> {
+        let inner = self.inner.lock().await;
+        let mut rows: Vec<CreditSettlementRow> = inner
+            .settlements_by_envelope
+            .values()
+            .map(|(row, _)| row.clone())
+            .filter(|row| row.created_at >= since)
+            .collect();
+        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        rows.truncate(limit as usize);
+        Ok(rows)
+    }
+
+    async fn list_recent_settlements_for_agent(
+        &self,
+        agent_id: &str,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError> {
+        let inner = self.inner.lock().await;
+        let mut out = Vec::new();
+        for (row, _) in inner.settlements_by_envelope.values() {
+            if row.created_at < since {
+                continue;
+            }
+            let Some((envelope, _)) = inner.envelopes.get(&row.envelope_id) else {
+                continue;
+            };
+            if envelope.agent_id != agent_id {
+                continue;
+            }
+            out.push(row.clone());
+        }
+        out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        out.truncate(limit as usize);
+        Ok(out)
+    }
+
+    async fn get_agent_open_envelope_stats(
+        &self,
+        agent_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError> {
+        let inner = self.inner.lock().await;
+        let mut count: u64 = 0;
+        let mut exposure: i64 = 0;
+        for (row, _) in inner.envelopes.values() {
+            if row.agent_id != agent_id {
+                continue;
+            }
+            if row.status != "accepted" {
+                continue;
+            }
+            if row.exp <= now {
+                continue;
+            }
+            count = count.saturating_add(1);
+            exposure = exposure.saturating_add(row.max_sats);
+        }
+        Ok((count, exposure))
+    }
+
+    async fn list_recent_liquidity_pay_events(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditLiquidityPayEventRow>, CreditStoreError> {
+        let inner = self.inner.lock().await;
+        let mut rows: Vec<CreditLiquidityPayEventRow> = inner
+            .liquidity_pay_events_by_quote
+            .values()
+            .cloned()
+            .filter(|row| row.created_at >= since)
+            .collect();
+        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        rows.truncate(limit as usize);
+        Ok(rows)
     }
 }
 
@@ -723,6 +899,256 @@ impl CreditStore for PostgresCreditStore {
             .map(map_receipt_row)
             .transpose()
             .map_err(CreditStoreError::Db)?)
+    }
+
+    async fn put_underwriting_audit(
+        &self,
+        audit: CreditUnderwritingAuditRow,
+    ) -> Result<(), CreditStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT canonical_json_sha256
+                  FROM runtime.credit_underwriting_audit
+                 WHERE offer_id = $1
+                "#,
+                &[&audit.offer_id],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        if let Some(row) = existing {
+            let sha: String = row.get("canonical_json_sha256");
+            if sha != audit.canonical_json_sha256 {
+                return Err(CreditStoreError::Conflict(
+                    "underwriting audit already exists for offer_id with different digest"
+                        .to_string(),
+                ));
+            }
+            tx.commit()
+                .await
+                .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+            return Ok(());
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO runtime.credit_underwriting_audit (
+                offer_id, canonical_json_sha256, audit_json, created_at
+            ) VALUES ($1,$2,$3,$4)
+            "#,
+            &[
+                &audit.offer_id,
+                &audit.canonical_json_sha256,
+                &audit.audit_json,
+                &audit.created_at,
+            ],
+        )
+        .await
+        .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn put_liquidity_pay_event(
+        &self,
+        event: CreditLiquidityPayEventRow,
+    ) -> Result<(), CreditStoreError> {
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT quote_id, envelope_id, status, error_code, amount_msats, host
+                  FROM runtime.credit_liquidity_pay_events
+                 WHERE quote_id = $1
+                "#,
+                &[&event.quote_id],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        if let Some(row) = existing {
+            let status: String = row.get("status");
+            let error_code: Option<String> = row.get("error_code");
+            let amount_msats: i64 = row.get("amount_msats");
+            let host: String = row.get("host");
+            let envelope_id: String = row.get("envelope_id");
+            if status != event.status
+                || error_code != event.error_code
+                || amount_msats != event.amount_msats
+                || host != event.host
+                || envelope_id != event.envelope_id
+            {
+                return Err(CreditStoreError::Conflict(
+                    "liquidity pay event already exists for quote_id with different fields"
+                        .to_string(),
+                ));
+            }
+            tx.commit()
+                .await
+                .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+            return Ok(());
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO runtime.credit_liquidity_pay_events (
+                quote_id, envelope_id, status, error_code, amount_msats, host, created_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            "#,
+            &[
+                &event.quote_id,
+                &event.envelope_id,
+                &event.status,
+                &event.error_code,
+                &event.amount_msats,
+                &event.host,
+                &event.created_at,
+            ],
+        )
+        .await
+        .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn list_recent_settlements(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let rows = client
+            .query(
+                r#"
+                SELECT settlement_id, envelope_id, outcome, spent_sats, fee_sats,
+                       verification_receipt_sha256, liquidity_receipt_sha256, created_at
+                  FROM runtime.credit_settlements
+                 WHERE created_at >= $1
+                 ORDER BY created_at DESC
+                 LIMIT $2
+                "#,
+                &[&since, &(limit as i64)],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(map_settlement_row(&row).map_err(CreditStoreError::Db)?);
+        }
+        Ok(out)
+    }
+
+    async fn list_recent_settlements_for_agent(
+        &self,
+        agent_id: &str,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditSettlementRow>, CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let rows = client
+            .query(
+                r#"
+                SELECT s.settlement_id, s.envelope_id, s.outcome, s.spent_sats, s.fee_sats,
+                       s.verification_receipt_sha256, s.liquidity_receipt_sha256, s.created_at
+                  FROM runtime.credit_settlements s
+                  JOIN runtime.credit_envelopes e
+                    ON e.envelope_id = s.envelope_id
+                 WHERE e.agent_id = $1 AND s.created_at >= $2
+                 ORDER BY s.created_at DESC
+                 LIMIT $3
+                "#,
+                &[&agent_id, &since, &(limit as i64)],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(map_settlement_row(&row).map_err(CreditStoreError::Db)?);
+        }
+        Ok(out)
+    }
+
+    async fn get_agent_open_envelope_stats(
+        &self,
+        agent_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(u64, i64), CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_one(
+                r#"
+                SELECT COUNT(*) AS open_count, COALESCE(SUM(max_sats), 0) AS exposure_sats
+                  FROM runtime.credit_envelopes
+                 WHERE agent_id = $1 AND status = 'accepted' AND exp > $2
+                "#,
+                &[&agent_id, &now],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        let open_count: i64 = row.get("open_count");
+        let exposure_sats: i64 = row.get("exposure_sats");
+        Ok((
+            u64::try_from(open_count).unwrap_or(0),
+            exposure_sats,
+        ))
+    }
+
+    async fn list_recent_liquidity_pay_events(
+        &self,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<CreditLiquidityPayEventRow>, CreditStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let rows = client
+            .query(
+                r#"
+                SELECT quote_id, envelope_id, status, error_code, amount_msats, host, created_at
+                  FROM runtime.credit_liquidity_pay_events
+                 WHERE created_at >= $1
+                 ORDER BY created_at DESC
+                 LIMIT $2
+                "#,
+                &[&since, &(limit as i64)],
+            )
+            .await
+            .map_err(|error| CreditStoreError::Db(error.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(CreditLiquidityPayEventRow {
+                quote_id: row.get("quote_id"),
+                envelope_id: row.get("envelope_id"),
+                status: row.get("status"),
+                error_code: row.get("error_code"),
+                amount_msats: row.get("amount_msats"),
+                host: row.get("host"),
+                created_at: row.get("created_at"),
+            });
+        }
+        Ok(out)
     }
 }
 

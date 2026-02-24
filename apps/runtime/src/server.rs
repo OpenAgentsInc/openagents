@@ -38,7 +38,7 @@ use crate::{
     credit::{
         service::{CreditError, CreditService},
         store as credit_store,
-        types::{CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1, CreditSettleResponseV1},
+        types::{CreditAgentExposureResponseV1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditHealthResponseV1, CreditOfferRequestV1, CreditOfferResponseV1, CreditSettleRequestV1, CreditSettleResponseV1},
     },
     liquidity::store,
     liquidity::types::{PayRequestV1, PayResponseV1, QuotePayRequestV1, QuotePayResponseV1},
@@ -931,6 +931,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/credit/offer", post(credit_offer))
         .route("/internal/v1/credit/envelope", post(credit_envelope))
         .route("/internal/v1/credit/settle", post(credit_settle))
+        .route("/internal/v1/credit/health", get(credit_health))
+        .route(
+            "/internal/v1/credit/agents/:agent_id/exposure",
+            get(credit_agent_exposure),
+        )
         .route(
             "/internal/v1/pools/:pool_id/admin/create",
             post(liquidity_pool_create_pool),
@@ -2648,6 +2653,29 @@ async fn credit_settle(
     let response = state
         .credit
         .settle(body)
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_health(
+    State(state): State<AppState>,
+) -> Result<Json<CreditHealthResponseV1>, ApiError> {
+    let response = state
+        .credit
+        .health()
+        .await
+        .map_err(api_error_from_credit)?;
+    Ok(Json(response))
+}
+
+async fn credit_agent_exposure(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<CreditAgentExposureResponseV1>, ApiError> {
+    let response = state
+        .credit
+        .agent_exposure(agent_id.as_str())
         .await
         .map_err(api_error_from_credit)?;
     Ok(Json(response))

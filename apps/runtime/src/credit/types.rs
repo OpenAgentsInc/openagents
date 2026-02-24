@@ -10,6 +10,10 @@ pub const CREDIT_ENVELOPE_REQUEST_SCHEMA_V1: &str = "openagents.credit.envelope_
 pub const CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1: &str = "openagents.credit.envelope_response.v1";
 pub const CREDIT_SETTLE_REQUEST_SCHEMA_V1: &str = "openagents.credit.settle_request.v1";
 pub const CREDIT_SETTLE_RESPONSE_SCHEMA_V1: &str = "openagents.credit.settle_response.v1";
+pub const CREDIT_HEALTH_RESPONSE_SCHEMA_V1: &str = "openagents.credit.health_response.v1";
+pub const CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1: &str =
+    "openagents.credit.agent_exposure_response.v1";
+pub const CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1: &str = "openagents.credit.underwriting_audit.v1";
 
 pub const ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1: &str = "openagents.credit.envelope_issue_receipt.v1";
 pub const ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1: &str =
@@ -264,3 +268,56 @@ pub struct DefaultNoticeV1 {
     pub signature: Option<ReceiptSignatureV1>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditCircuitBreakersV1 {
+    pub halt_new_envelopes: bool,
+    pub halt_large_settlements: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditHealthResponseV1 {
+    pub schema: String,
+    pub generated_at: DateTime<Utc>,
+    pub settlement_sample: u64,
+    pub loss_count: u64,
+    pub loss_rate: f64,
+    pub ln_pay_sample: u64,
+    pub ln_fail_count: u64,
+    pub ln_failure_rate: f64,
+    pub breakers: CreditCircuitBreakersV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditAgentExposureResponseV1 {
+    pub schema: String,
+    pub agent_id: String,
+    pub open_envelope_count: u64,
+    pub open_exposure_sats: u64,
+    pub settled_count_30d: u64,
+    pub success_volume_sats_30d: u64,
+    pub pass_rate_30d: f64,
+    pub loss_count_30d: u64,
+    pub underwriting_limit_sats: u64,
+    pub underwriting_fee_bps: u32,
+    pub requires_verifier: bool,
+    pub computed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditUnderwritingAuditRow {
+    pub offer_id: String,
+    pub canonical_json_sha256: String,
+    pub audit_json: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditLiquidityPayEventRow {
+    pub quote_id: String,
+    pub envelope_id: String,
+    pub status: String,
+    pub error_code: Option<String>,
+    pub amount_msats: i64,
+    pub host: String,
+    pub created_at: DateTime<Utc>,
+}

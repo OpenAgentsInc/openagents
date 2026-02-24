@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -12,14 +12,17 @@ use nostr::nip32::{Label, LabelEvent, LabelTarget};
 use crate::artifacts::sign_receipt_sha256;
 use crate::credit::store::{CreditReceiptInsertInput, CreditStore, CreditStoreError};
 use crate::credit::types::{
-    CREDIT_ENVELOPE_REQUEST_SCHEMA_V1, CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1,
+    CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1, CREDIT_ENVELOPE_REQUEST_SCHEMA_V1,
+    CREDIT_ENVELOPE_RESPONSE_SCHEMA_V1, CREDIT_HEALTH_RESPONSE_SCHEMA_V1,
     CREDIT_OFFER_REQUEST_SCHEMA_V1, CREDIT_OFFER_RESPONSE_SCHEMA_V1, CREDIT_SETTLE_REQUEST_SCHEMA_V1,
-    CREDIT_SETTLE_RESPONSE_SCHEMA_V1, CreditEnvelopeRequestV1, CreditEnvelopeResponseV1,
-    CreditEnvelopeRow, CreditEnvelopeStatusV1, CreditOfferRequestV1, CreditOfferResponseV1,
-    CreditOfferRow, CreditOfferStatusV1, CreditScopeTypeV1, CreditSettlementOutcomeV1,
-    CreditSettleRequestV1, CreditSettleResponseV1, CreditSettlementRow, DEFAULT_NOTICE_SCHEMA_V1,
-    DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1, ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1,
-    EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
+    CREDIT_SETTLE_RESPONSE_SCHEMA_V1, CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1,
+    CreditAgentExposureResponseV1, CreditCircuitBreakersV1, CreditEnvelopeRequestV1,
+    CreditEnvelopeResponseV1, CreditEnvelopeRow, CreditEnvelopeStatusV1, CreditHealthResponseV1,
+    CreditLiquidityPayEventRow, CreditOfferRequestV1, CreditOfferResponseV1, CreditOfferRow,
+    CreditOfferStatusV1, CreditScopeTypeV1, CreditSettlementOutcomeV1, CreditSettleRequestV1,
+    CreditSettleResponseV1, CreditSettlementRow, CreditUnderwritingAuditRow,
+    DEFAULT_NOTICE_SCHEMA_V1, DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1,
+    ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1, EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
 };
 use crate::liquidity::{LiquidityError, LiquidityService};
 use crate::liquidity::types::{QuotePayRequestV1, PayRequestV1};
@@ -60,11 +63,63 @@ impl CreditError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CreditPolicyConfig {
+    pub max_sats_per_envelope: u64,
+    pub max_outstanding_envelopes_per_agent: u64,
+    pub max_offer_ttl_seconds: u64,
+
+    pub underwriting_history_days: i64,
+    pub underwriting_base_sats: u64,
+    pub underwriting_k: f64,
+    pub underwriting_default_penalty_multiplier: f64,
+
+    pub min_fee_bps: u32,
+    pub max_fee_bps: u32,
+    pub fee_risk_scaler: f64,
+
+    pub health_window_seconds: i64,
+    pub health_settlement_sample_limit: u32,
+    pub health_ln_pay_sample_limit: u32,
+    pub circuit_breaker_min_sample: u64,
+    pub loss_rate_halt_threshold: f64,
+    pub ln_failure_rate_halt_threshold: f64,
+    pub ln_failure_large_settlement_cap_sats: u64,
+}
+
+impl Default for CreditPolicyConfig {
+    fn default() -> Self {
+        Self {
+            max_sats_per_envelope: 100_000,
+            max_outstanding_envelopes_per_agent: 3,
+            max_offer_ttl_seconds: 60 * 60,
+
+            underwriting_history_days: 30,
+            underwriting_base_sats: 2_000,
+            underwriting_k: 150.0,
+            underwriting_default_penalty_multiplier: 2.0,
+
+            min_fee_bps: 50,
+            max_fee_bps: 2_000,
+            fee_risk_scaler: 400.0,
+
+            health_window_seconds: 6 * 60 * 60,
+            health_settlement_sample_limit: 200,
+            health_ln_pay_sample_limit: 200,
+            circuit_breaker_min_sample: 5,
+            loss_rate_halt_threshold: 0.50,
+            ln_failure_rate_halt_threshold: 0.50,
+            ln_failure_large_settlement_cap_sats: 5_000,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CreditService {
     store: Arc<dyn CreditStore>,
     liquidity: Arc<LiquidityService>,
     receipt_signing_key: Option<[u8; 32]>,
+    policy: CreditPolicyConfig,
 }
 
 impl CreditService {
@@ -73,11 +128,47 @@ impl CreditService {
         liquidity: Arc<LiquidityService>,
         receipt_signing_key: Option<[u8; 32]>,
     ) -> Self {
+        Self::new_with_policy(store, liquidity, receipt_signing_key, CreditPolicyConfig::default())
+    }
+
+    pub fn new_with_policy(
+        store: Arc<dyn CreditStore>,
+        liquidity: Arc<LiquidityService>,
+        receipt_signing_key: Option<[u8; 32]>,
+        policy: CreditPolicyConfig,
+    ) -> Self {
         Self {
             store,
             liquidity,
             receipt_signing_key,
+            policy,
         }
+    }
+
+    pub async fn health(&self) -> Result<CreditHealthResponseV1, CreditError> {
+        let now = Utc::now();
+        self.compute_health(now).await
+    }
+
+    pub async fn agent_exposure(&self, agent_id: &str) -> Result<CreditAgentExposureResponseV1, CreditError> {
+        let now = Utc::now();
+        let agent_id = sanitize_pubkey(agent_id)?;
+        let decision = self.compute_underwriting_decision(agent_id.as_str(), now).await?;
+
+        Ok(CreditAgentExposureResponseV1 {
+            schema: CREDIT_AGENT_EXPOSURE_RESPONSE_SCHEMA_V1.to_string(),
+            agent_id,
+            open_envelope_count: decision.stats.open_envelope_count,
+            open_exposure_sats: decision.stats.open_exposure_sats,
+            settled_count_30d: decision.stats.settled_count_30d,
+            success_volume_sats_30d: decision.stats.success_volume_sats_30d,
+            pass_rate_30d: decision.stats.pass_rate_30d,
+            loss_count_30d: decision.stats.loss_count_30d,
+            underwriting_limit_sats: decision.limit_sats,
+            underwriting_fee_bps: decision.fee_bps,
+            requires_verifier: decision.requires_verifier,
+            computed_at: now,
+        })
     }
 
     pub async fn offer(&self, body: CreditOfferRequestV1) -> Result<CreditOfferResponseV1, CreditError> {
@@ -101,9 +192,35 @@ impl CreditService {
         if body.max_sats == 0 {
             return Err(CreditError::InvalidRequest("max_sats must be > 0".to_string()));
         }
-        if body.exp <= Utc::now() {
+        if body.max_sats > self.policy.max_sats_per_envelope {
+            return Err(CreditError::InvalidRequest(format!(
+                "max_sats exceeds max_sats_per_envelope ({})",
+                self.policy.max_sats_per_envelope
+            )));
+        }
+
+        let issued_at = Utc::now();
+        if body.exp <= issued_at {
             return Err(CreditError::InvalidRequest("exp must be in the future".to_string()));
         }
+
+        let max_exp = issued_at + Duration::seconds(self.policy.max_offer_ttl_seconds as i64);
+        if body.exp > max_exp {
+            return Err(CreditError::InvalidRequest(format!(
+                "exp exceeds max_offer_ttl_seconds ({})",
+                self.policy.max_offer_ttl_seconds
+            )));
+        }
+
+        let decision = self
+            .compute_underwriting_decision(agent_id.as_str(), issued_at)
+            .await?;
+        let underwriting_limit_sats = body
+            .max_sats
+            .min(decision.limit_sats)
+            .max(1);
+        let underwriting_fee_bps = decision.fee_bps;
+        let requires_verifier = decision.requires_verifier;
 
         #[derive(Serialize)]
         struct OfferFingerprint<'a> {
@@ -118,7 +235,6 @@ impl CreditService {
             exp: &'a DateTime<Utc>,
         }
 
-        let issued_at = Utc::now();
         let request_fingerprint_sha256 = canonical_sha256(&OfferFingerprint {
             schema: CREDIT_OFFER_REQUEST_SCHEMA_V1,
             agent_id: agent_id.as_str(),
@@ -140,13 +256,13 @@ impl CreditService {
             pool_id,
             scope_type: body.scope_type.as_str().to_string(),
             scope_id,
-            max_sats: i64::try_from(body.max_sats).map_err(|_| {
+            max_sats: i64::try_from(underwriting_limit_sats).map_err(|_| {
                 CreditError::InvalidRequest("max_sats too large".to_string())
             })?,
-            fee_bps: i32::try_from(body.fee_bps).map_err(|_| {
+            fee_bps: i32::try_from(underwriting_fee_bps).map_err(|_| {
                 CreditError::InvalidRequest("fee_bps too large".to_string())
             })?,
-            requires_verifier: body.requires_verifier,
+            requires_verifier,
             exp: body.exp,
             status: CreditOfferStatusV1::Offered.as_str().to_string(),
             issued_at,
@@ -157,6 +273,34 @@ impl CreditService {
             .create_or_get_offer(offer, request_fingerprint_sha256)
             .await
             .map_err(map_store_error)?;
+
+        let audit_json = json!({
+            "schema": CREDIT_UNDERWRITING_AUDIT_SCHEMA_V1,
+            "offerId": stored.offer_id,
+            "issuedAt": stored.issued_at,
+            "inputs": decision.audit_inputs,
+            "decision": {
+                "limitSats": decision.limit_sats,
+                "feeBps": decision.fee_bps,
+                "requiresVerifier": decision.requires_verifier,
+                "riskScore": decision.risk_score
+            }
+        });
+        let audit_sha256 = canonical_sha256(&audit_json).map_err(CreditError::Internal)?;
+        match self
+            .store
+            .put_underwriting_audit(CreditUnderwritingAuditRow {
+                offer_id: stored.offer_id.clone(),
+                canonical_json_sha256: audit_sha256,
+                audit_json,
+                created_at: stored.issued_at,
+            })
+            .await
+        {
+            Ok(()) => {}
+            Err(CreditStoreError::Conflict(_)) => {}
+            Err(error) => return Err(map_store_error(error)),
+        }
 
         Ok(CreditOfferResponseV1 {
             schema: CREDIT_OFFER_RESPONSE_SCHEMA_V1.to_string(),
@@ -192,8 +336,37 @@ impl CreditService {
                 "offer is not in offered status".to_string(),
             ));
         }
-        if offer.exp <= Utc::now() {
+        let now = Utc::now();
+        if offer.exp <= now {
             return Err(CreditError::InvalidRequest("offer expired".to_string()));
+        }
+        if !offer.requires_verifier {
+            return Err(CreditError::InvalidRequest(
+                "offer.requires_verifier must be true".to_string(),
+            ));
+        }
+        if u64::try_from(offer.max_sats).unwrap_or(u64::MAX) > self.policy.max_sats_per_envelope {
+            return Err(CreditError::InvalidRequest(
+                "offer.max_sats exceeds max_sats_per_envelope".to_string(),
+            ));
+        }
+
+        let health = self.compute_health(now).await?;
+        if health.breakers.halt_new_envelopes {
+            return Err(CreditError::DependencyUnavailable(
+                "credit circuit breaker: halt_new_envelopes".to_string(),
+            ));
+        }
+
+        let (open_count, _open_exposure_sats) = self
+            .store
+            .get_agent_open_envelope_stats(offer.agent_id.as_str(), now)
+            .await
+            .map_err(map_store_error)?;
+        if open_count >= self.policy.max_outstanding_envelopes_per_agent {
+            return Err(CreditError::Conflict(
+                "max outstanding envelopes exceeded".to_string(),
+            ));
         }
 
         #[derive(Serialize)]
@@ -454,6 +627,16 @@ impl CreditService {
             ));
         }
 
+        let spent_sats_preview = msats_to_sats_ceil(amount_msats);
+        let health = self.compute_health(now).await?;
+        if health.breakers.halt_large_settlements
+            && spent_sats_preview > self.policy.ln_failure_large_settlement_cap_sats
+        {
+            return Err(CreditError::DependencyUnavailable(
+                "credit circuit breaker: halt_large_settlements".to_string(),
+            ));
+        }
+
         // Pay provider invoice via liquidity service (issuer pays provider).
         let policy_context = json!({
             "schema": "openagents.credit.policy_context.v1",
@@ -492,6 +675,19 @@ impl CreditService {
             .await
             .map_err(map_liquidity_error)?;
 
+        self.store
+            .put_liquidity_pay_event(CreditLiquidityPayEventRow {
+                quote_id: quote.quote_id.clone(),
+                envelope_id: envelope.envelope_id.clone(),
+                status: paid.status.clone(),
+                error_code: paid.error_code.clone(),
+                amount_msats: i64::try_from(amount_msats).unwrap_or(i64::MAX),
+                host: host.clone(),
+                created_at: now,
+            })
+            .await
+            .map_err(map_store_error)?;
+
         if paid.status != "succeeded" {
             return Err(CreditError::DependencyUnavailable(format!(
                 "liquidity pay failed: {} {:?}",
@@ -499,7 +695,7 @@ impl CreditService {
             )));
         }
 
-        let spent_sats = msats_to_sats_ceil(amount_msats);
+        let spent_sats = spent_sats_preview;
         let fee_bps = u64::try_from(envelope.fee_bps)
             .map_err(|_| CreditError::Internal("envelope.fee_bps invalid".to_string()))?;
         let fee_sats = compute_fee_sats(spent_sats, fee_bps);
@@ -578,6 +774,201 @@ impl CreditService {
             receipt: serde_json::to_value(settlement_receipt)
                 .map_err(|error| CreditError::Internal(error.to_string()))?,
         })
+    }
+
+    async fn compute_underwriting_decision(
+        &self,
+        agent_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<UnderwritingDecision, CreditError> {
+        let since = now - Duration::days(self.policy.underwriting_history_days.max(1));
+        let settlements = self
+            .store
+            .list_recent_settlements_for_agent(
+                agent_id,
+                since,
+                self.policy.health_settlement_sample_limit.max(200),
+            )
+            .await
+            .map_err(map_store_error)?;
+
+        let mut success_volume_sats_30d: u64 = 0;
+        let mut success_count_30d: u64 = 0;
+        let mut loss_count_30d: u64 = 0;
+        let mut weighted_loss_score: f64 = 0.0;
+
+        for row in &settlements {
+            if row.outcome == CreditSettlementOutcomeV1::Success.as_str() {
+                success_count_30d = success_count_30d.saturating_add(1);
+                let spent = u64::try_from(row.spent_sats).unwrap_or(0);
+                success_volume_sats_30d = success_volume_sats_30d.saturating_add(spent);
+            } else {
+                loss_count_30d = loss_count_30d.saturating_add(1);
+                weighted_loss_score += loss_weight(now, row.created_at);
+            }
+        }
+
+        let settled_count_30d: u64 = settlements.len() as u64;
+        let pass_rate_30d = if settled_count_30d == 0 {
+            1.0
+        } else {
+            (success_count_30d as f64) / (settled_count_30d as f64)
+        };
+
+        let (open_envelope_count, open_exposure_sats_i64) = self
+            .store
+            .get_agent_open_envelope_stats(agent_id, now)
+            .await
+            .map_err(map_store_error)?;
+        let open_exposure_sats = u64::try_from(open_exposure_sats_i64).unwrap_or(0);
+
+        let raw_limit = (self.policy.underwriting_base_sats as f64)
+            + (self.policy.underwriting_k * (success_volume_sats_30d as f64).sqrt());
+        let loss_penalty = 1.0
+            / (1.0 + (weighted_loss_score * self.policy.underwriting_default_penalty_multiplier));
+        let exposure_penalty = if raw_limit <= 1.0 {
+            1.0
+        } else {
+            1.0 / (1.0 + ((open_exposure_sats as f64) / raw_limit.max(1.0)))
+        };
+
+        let limit_sats = (raw_limit * loss_penalty * exposure_penalty)
+            .round()
+            .clamp(1.0, self.policy.max_sats_per_envelope as f64) as u64;
+
+        let risk_score = (1.0 - pass_rate_30d).max(0.0) * 2.0
+            + (weighted_loss_score * 0.5)
+            + ((open_exposure_sats as f64) / 50_000.0).min(50.0).sqrt();
+        let fee_bps = (risk_score * self.policy.fee_risk_scaler)
+            .round()
+            .clamp(self.policy.min_fee_bps as f64, self.policy.max_fee_bps as f64) as u32;
+
+        let stats = UnderwritingStats {
+            settled_count_30d,
+            success_volume_sats_30d,
+            pass_rate_30d,
+            loss_count_30d,
+            open_envelope_count,
+            open_exposure_sats,
+            weighted_loss_score,
+        };
+
+        let audit_inputs = json!({
+            "schema": "openagents.credit.underwriting_inputs.v1",
+            "agentId": agent_id,
+            "since": since,
+            "settledCount30d": stats.settled_count_30d,
+            "successVolumeSats30d": stats.success_volume_sats_30d,
+            "passRate30d": stats.pass_rate_30d,
+            "lossCount30d": stats.loss_count_30d,
+            "weightedLossScore": stats.weighted_loss_score,
+            "openEnvelopeCount": stats.open_envelope_count,
+            "openExposureSats": stats.open_exposure_sats,
+            "policy": {
+                "baseSats": self.policy.underwriting_base_sats,
+                "k": self.policy.underwriting_k,
+                "defaultPenaltyMultiplier": self.policy.underwriting_default_penalty_multiplier,
+                "maxSatsPerEnvelope": self.policy.max_sats_per_envelope
+            }
+        });
+
+        Ok(UnderwritingDecision {
+            limit_sats,
+            fee_bps,
+            requires_verifier: true,
+            risk_score,
+            stats,
+            audit_inputs,
+        })
+    }
+
+    async fn compute_health(&self, now: DateTime<Utc>) -> Result<CreditHealthResponseV1, CreditError> {
+        let since = now - Duration::seconds(self.policy.health_window_seconds.max(60));
+
+        let settlements = self
+            .store
+            .list_recent_settlements(since, self.policy.health_settlement_sample_limit.max(50))
+            .await
+            .map_err(map_store_error)?;
+        let settlement_sample = settlements.len() as u64;
+        let loss_count = settlements
+            .iter()
+            .filter(|row| row.outcome != CreditSettlementOutcomeV1::Success.as_str())
+            .count() as u64;
+        let loss_rate = if settlement_sample == 0 {
+            0.0
+        } else {
+            (loss_count as f64) / (settlement_sample as f64)
+        };
+
+        let ln_pay_events = self
+            .store
+            .list_recent_liquidity_pay_events(since, self.policy.health_ln_pay_sample_limit.max(50))
+            .await
+            .map_err(map_store_error)?;
+        let ln_pay_sample = ln_pay_events.len() as u64;
+        let ln_fail_count = ln_pay_events
+            .iter()
+            .filter(|row| row.status != "succeeded")
+            .count() as u64;
+        let ln_failure_rate = if ln_pay_sample == 0 {
+            0.0
+        } else {
+            (ln_fail_count as f64) / (ln_pay_sample as f64)
+        };
+
+        let breakers = CreditCircuitBreakersV1 {
+            halt_new_envelopes: settlement_sample >= self.policy.circuit_breaker_min_sample
+                && loss_rate > self.policy.loss_rate_halt_threshold,
+            halt_large_settlements: ln_pay_sample >= self.policy.circuit_breaker_min_sample
+                && ln_failure_rate > self.policy.ln_failure_rate_halt_threshold,
+        };
+
+        Ok(CreditHealthResponseV1 {
+            schema: CREDIT_HEALTH_RESPONSE_SCHEMA_V1.to_string(),
+            generated_at: now,
+            settlement_sample,
+            loss_count,
+            loss_rate,
+            ln_pay_sample,
+            ln_fail_count,
+            ln_failure_rate,
+            breakers,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct UnderwritingStats {
+    settled_count_30d: u64,
+    success_volume_sats_30d: u64,
+    pass_rate_30d: f64,
+    loss_count_30d: u64,
+    open_envelope_count: u64,
+    open_exposure_sats: u64,
+    weighted_loss_score: f64,
+}
+
+#[derive(Debug, Clone)]
+struct UnderwritingDecision {
+    limit_sats: u64,
+    fee_bps: u32,
+    requires_verifier: bool,
+    risk_score: f64,
+    stats: UnderwritingStats,
+    audit_inputs: Value,
+}
+
+fn loss_weight(now: DateTime<Utc>, created_at: DateTime<Utc>) -> f64 {
+    let age_seconds = (now - created_at).num_seconds().max(0);
+    if age_seconds <= 3600 {
+        1.0
+    } else if age_seconds <= 86_400 {
+        0.75
+    } else if age_seconds <= 7 * 86_400 {
+        0.50
+    } else {
+        0.25
     }
 }
 
