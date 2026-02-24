@@ -113,13 +113,16 @@ use crate::web_htmx::{
 use crate::web_maud::{
     ChatMessageView, ChatThreadView, ComputeDeviceView, ComputeMetricsView, ComputeProviderView,
     FeedItemView, FeedZoneView, IntegrationStatusView, L402DeploymentView, L402PaywallView,
-    L402TransactionView, L402WalletSummaryView, SessionView, WebBody, WebPage,
+    L402TransactionView, L402WalletSummaryView, LiquidityPoolView, LiquidityStatsMetricsView,
+    SessionView, WebBody, WebPage,
     render_chat_thread_select_fragment as render_maud_chat_thread_select_fragment,
     render_compute_fleet_fragment as render_maud_compute_fleet_fragment,
     render_compute_metrics_fragment as render_maud_compute_metrics_fragment,
     render_feed_items_append_fragment as render_maud_feed_items_append_fragment,
     render_feed_main_select_fragment as render_maud_feed_main_select_fragment,
     render_main_fragment as render_maud_main_fragment, render_page as render_maud_page,
+    render_stats_metrics_fragment as render_maud_stats_metrics_fragment,
+    render_stats_pools_fragment as render_maud_stats_pools_fragment,
 };
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -1454,6 +1457,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             "/compute/providers/:worker_id/disable",
             post(web_compute_provider_disable),
         )
+        .route("/stats", get(stats_page))
+        .route("/stats/fragments/main", get(stats_main_fragment))
+        .route("/stats/fragments/metrics", get(stats_metrics_fragment))
+        .route("/stats/fragments/pools", get(stats_pools_fragment))
         .route("/feed", get(feed_page))
         .route("/feed/fragments/main", get(feed_main_fragment))
         .route("/feed/fragments/items", get(feed_items_fragment))
@@ -8930,6 +8937,36 @@ struct ComputeRuntimeWorkerStatusTransitionRequest {
     reason: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RuntimePoolRow {
+    pool_kind: String,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimePoolStatusResponseV1 {
+    pool: RuntimePoolRow,
+    share_price_sats: i64,
+    total_shares: i64,
+    pending_withdrawals_sats_estimate: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimePoolSnapshotRowV1 {
+    snapshot_id: String,
+    as_of: chrono::DateTime<Utc>,
+    #[serde(default)]
+    assets_json: serde_json::Value,
+    canonical_json_sha256: String,
+    #[serde(default)]
+    signature_json: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuntimePoolSnapshotResponseV1 {
+    snapshot: RuntimePoolSnapshotRowV1,
+}
+
 async fn compute_page(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -9075,6 +9112,122 @@ async fn compute_fleet_fragment(
     Ok(compute_fleet_fragment_response(&providers, &devices))
 }
 
+async fn stats_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let status = query_param_value(uri.query(), "status");
+    let mut effective_status = status;
+
+    let session = session_bundle_from_headers(&state, &headers)
+        .await
+        .ok()
+        .map(|bundle| session_view_from_bundle(&bundle));
+
+    let (metrics, pools) = match fetch_stats_dashboard_views(&state).await {
+        Ok(views) => views,
+        Err(error) => {
+            tracing::warn!(error = %error, "stats dashboard fetch failed");
+            effective_status = Some("stats-runtime-unavailable".to_string());
+            (empty_stats_metrics_view(), Vec::new())
+        }
+    };
+
+    let page = WebPage {
+        title: "Stats".to_string(),
+        path: "/stats".to_string(),
+        session,
+        body: WebBody::Stats {
+            status: effective_status,
+            metrics,
+            pools,
+        },
+    };
+
+    Ok(web_response_for_page(&state, &headers, &uri, page).await)
+}
+
+async fn stats_main_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    let htmx_mode = state.route_split.htmx_mode_for_path("/stats").await;
+    if !htmx.is_hx_request || htmx_mode.mode == HtmxModeTarget::FullPage {
+        let suffix = uri
+            .query()
+            .map(|query| format!("?{query}"))
+            .unwrap_or_default();
+        return Ok(Redirect::temporary(&format!("/stats{suffix}")).into_response());
+    }
+
+    let status = query_param_value(uri.query(), "status");
+    let mut effective_status = status;
+
+    let session = session_bundle_from_headers(&state, &headers)
+        .await
+        .ok()
+        .map(|bundle| session_view_from_bundle(&bundle));
+
+    let (metrics, pools) = match fetch_stats_dashboard_views(&state).await {
+        Ok(views) => views,
+        Err(error) => {
+            tracing::warn!(error = %error, "stats dashboard fetch failed");
+            effective_status = Some("stats-runtime-unavailable".to_string());
+            (empty_stats_metrics_view(), Vec::new())
+        }
+    };
+
+    let page = WebPage {
+        title: "Stats".to_string(),
+        path: "/stats".to_string(),
+        session,
+        body: WebBody::Stats {
+            status: effective_status,
+            metrics,
+            pools,
+        },
+    };
+
+    Ok(web_fragment_response(&page))
+}
+
+async fn stats_metrics_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    if !htmx.is_hx_request {
+        return Ok(Redirect::temporary("/stats").into_response());
+    }
+
+    let metrics = fetch_stats_metrics_view(&state).await.unwrap_or_else(|error| {
+        tracing::warn!(error = %error, "stats metrics fetch failed");
+        empty_stats_metrics_view()
+    });
+
+    Ok(stats_metrics_fragment_response(&metrics))
+}
+
+async fn stats_pools_fragment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)> {
+    let htmx = classify_htmx_request(&headers);
+    if !htmx.is_hx_request {
+        return Ok(Redirect::temporary("/stats").into_response());
+    }
+
+    let pools = fetch_stats_pools_view(&state).await.unwrap_or_else(|error| {
+        tracing::warn!(error = %error, "stats pools fetch failed");
+        Vec::new()
+    });
+
+    Ok(stats_pools_fragment_response(&pools))
+}
+
 async fn web_compute_provider_disable(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -9172,6 +9325,27 @@ fn compute_fleet_fragment_response(
     response
 }
 
+fn stats_metrics_fragment_response(metrics: &LiquidityStatsMetricsView) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_stats_metrics_fragment(metrics),
+        StatusCode::OK,
+    );
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_SHORT_LIVED));
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+fn stats_pools_fragment_response(pools: &[LiquidityPoolView]) -> Response {
+    let mut response = crate::web_htmx::fragment_response(
+        render_maud_stats_pools_fragment(pools),
+        StatusCode::OK,
+    );
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
 fn runtime_dashboard_base_url(state: &AppState) -> Option<String> {
     state
         .config
@@ -9198,6 +9372,151 @@ fn empty_compute_metrics_view() -> ComputeMetricsView {
         released_msats_total: 0,
         released_count: 0,
         withheld_count: 0,
+    }
+}
+
+fn empty_stats_metrics_view() -> LiquidityStatsMetricsView {
+    LiquidityStatsMetricsView {
+        pool_count: 0,
+        total_assets_sats: 0,
+        total_shares: 0,
+        pending_withdrawals_sats_estimate: 0,
+        last_snapshot_at: None,
+    }
+}
+
+async fn fetch_stats_dashboard_views(
+    state: &AppState,
+) -> Result<(LiquidityStatsMetricsView, Vec<LiquidityPoolView>), String> {
+    let pools = fetch_stats_pools_view(state).await?;
+    let metrics = build_stats_metrics_view(&pools);
+    Ok((metrics, pools))
+}
+
+async fn fetch_stats_metrics_view(state: &AppState) -> Result<LiquidityStatsMetricsView, String> {
+    let pools = fetch_stats_pools_view(state).await?;
+    Ok(build_stats_metrics_view(&pools))
+}
+
+async fn fetch_stats_pools_view(state: &AppState) -> Result<Vec<LiquidityPoolView>, String> {
+    let Some(base_url) = runtime_dashboard_base_url(state) else {
+        return Err("runtime misconfigured".to_string());
+    };
+    let pool_ids = state.config.liquidity_stats_pool_ids.clone();
+    if pool_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut out = Vec::new();
+    for pool_id in pool_ids {
+        let status_url = format!(
+            "{}/internal/v1/pools/{}/status",
+            base_url.trim_end_matches('/'),
+            pool_id
+        );
+        let status = runtime_get_optional_json::<RuntimePoolStatusResponseV1>(status_url.as_str())
+            .await?;
+
+        let snapshot_url = format!(
+            "{}/internal/v1/pools/{}/snapshots/latest",
+            base_url.trim_end_matches('/'),
+            pool_id
+        );
+        let snapshot =
+            runtime_get_optional_json::<RuntimePoolSnapshotResponseV1>(snapshot_url.as_str())
+                .await?;
+
+        out.push(build_pool_view(pool_id, status.as_ref(), snapshot.as_ref()));
+    }
+
+    Ok(out)
+}
+
+fn build_pool_view(
+    pool_id: String,
+    status: Option<&RuntimePoolStatusResponseV1>,
+    snapshot: Option<&RuntimePoolSnapshotResponseV1>,
+) -> LiquidityPoolView {
+    let (pool_kind, pool_status, share_price_sats, total_shares, pending_withdrawals) = match status
+    {
+        Some(status) => (
+            status.pool.pool_kind.clone(),
+            status.pool.status.clone(),
+            status.share_price_sats,
+            status.total_shares,
+            status.pending_withdrawals_sats_estimate,
+        ),
+        None => (
+            "-".to_string(),
+            "not_found".to_string(),
+            0,
+            0,
+            0,
+        ),
+    };
+
+    let (snapshot_id, snapshot_as_of, snapshot_sha256, snapshot_signed, wallet_balance_sats) =
+        match snapshot {
+            Some(snapshot) => {
+                let wallet_balance_sats = snapshot
+                    .snapshot
+                    .assets_json
+                    .pointer("/walletBalanceSats")
+                    .and_then(serde_json::Value::as_i64);
+                (
+                    Some(snapshot.snapshot.snapshot_id.clone()),
+                    Some(timestamp(snapshot.snapshot.as_of)),
+                    Some(snapshot.snapshot.canonical_json_sha256.clone()),
+                    snapshot.snapshot.signature_json.is_some(),
+                    wallet_balance_sats,
+                )
+            }
+            None => (None, None, None, false, None),
+        };
+
+    LiquidityPoolView {
+        pool_id,
+        pool_kind,
+        status: pool_status,
+        share_price_sats,
+        total_shares,
+        pending_withdrawals_sats_estimate: pending_withdrawals,
+        latest_snapshot_id: snapshot_id,
+        latest_snapshot_as_of: snapshot_as_of,
+        latest_snapshot_sha256: snapshot_sha256,
+        latest_snapshot_signed: snapshot_signed,
+        wallet_balance_sats,
+    }
+}
+
+fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> LiquidityStatsMetricsView {
+    let mut total_assets_sats = 0_i64;
+    let mut total_shares = 0_i64;
+    let mut pending_withdrawals_sats_estimate = 0_i64;
+    let mut last_snapshot_at: Option<String> = None;
+
+    for pool in pools {
+        total_assets_sats = total_assets_sats.saturating_add(pool.wallet_balance_sats.unwrap_or(0));
+        total_shares = total_shares.saturating_add(pool.total_shares);
+        pending_withdrawals_sats_estimate =
+            pending_withdrawals_sats_estimate.saturating_add(pool.pending_withdrawals_sats_estimate);
+        if let Some(ts) = pool.latest_snapshot_as_of.clone() {
+            if last_snapshot_at
+                .as_deref()
+                .map(|prev| ts.as_str() > prev)
+                .unwrap_or(true)
+            {
+                last_snapshot_at = Some(ts);
+            }
+        }
+    }
+
+    LiquidityStatsMetricsView {
+        pool_count: pools.len(),
+        total_assets_sats,
+        total_shares,
+        pending_withdrawals_sats_estimate,
+        last_snapshot_at,
     }
 }
 
@@ -9426,6 +9745,40 @@ where
     }
 
     serde_json::from_slice::<T>(&bytes)
+        .map_err(|error| format!("runtime_json_decode_failed:{error}"))
+}
+
+async fn runtime_get_optional_json<T>(url: &str) -> Result<Option<T>, String>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let timeout = std::time::Duration::from_millis(COMPUTE_DASHBOARD_TIMEOUT_MS.max(250));
+    let response = reqwest::Client::new()
+        .get(url)
+        .header("x-request-id", format!("req_{}", Uuid::new_v4().simple()))
+        .timeout(timeout)
+        .send()
+        .await
+        .map_err(|error| format!("runtime_request_failed:{error}"))?;
+
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("runtime_read_failed:{error}"))?;
+
+    if status.as_u16() == 404 {
+        return Ok(None);
+    }
+
+    if !status.is_success() {
+        let body = non_empty(String::from_utf8_lossy(&bytes).to_string())
+            .unwrap_or_else(|| "<empty>".to_string());
+        return Err(format!("runtime_http_{status}:{body}"));
+    }
+
+    serde_json::from_slice::<T>(&bytes)
+        .map(Some)
         .map_err(|error| format!("runtime_json_decode_failed:{error}"))
 }
 
@@ -17993,6 +18346,7 @@ mod tests {
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
             runtime_elixir_base_url: None,
+            liquidity_stats_pool_ids: vec!["llp-main".to_string()],
             runtime_signing_key: None,
             runtime_signing_key_id: "runtime-v1".to_string(),
             runtime_comms_delivery_ingest_path: "/internal/v1/comms/delivery-events".to_string(),

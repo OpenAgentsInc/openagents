@@ -55,6 +55,7 @@ const DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH: &str = "/internal/v1/comms/del
 const DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES: u32 = 2;
 const DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS: u64 = 200;
+const DEFAULT_LIQUIDITY_STATS_POOL_IDS: &str = "llp-main";
 const DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS: u64 = 300;
 const DEFAULT_GOOGLE_OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send";
 const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -136,6 +137,7 @@ pub struct Config {
     pub runtime_internal_secret_fetch_path: String,
     pub runtime_internal_secret_cache_ttl_ms: u64,
     pub runtime_elixir_base_url: Option<String>,
+    pub liquidity_stats_pool_ids: Vec<String>,
     pub runtime_signing_key: Option<String>,
     pub runtime_signing_key_id: String,
     pub runtime_comms_delivery_ingest_path: String,
@@ -516,6 +518,12 @@ impl Config {
             .map(|value| value.trim().trim_end_matches('/').to_string())
             .filter(|value| !value.is_empty());
 
+        let liquidity_stats_pool_ids = parse_csv(
+            env::var("OA_LIQUIDITY_STATS_POOL_IDS")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_LIQUIDITY_STATS_POOL_IDS.to_string()),
+        );
+
         let runtime_signing_key = env::var("OA_RUNTIME_SIGNING_KEY")
             .ok()
             .map(|value| value.trim().to_string())
@@ -781,6 +789,7 @@ impl Config {
             runtime_internal_secret_fetch_path,
             runtime_internal_secret_cache_ttl_ms,
             runtime_elixir_base_url,
+            liquidity_stats_pool_ids,
             runtime_signing_key,
             runtime_signing_key_id,
             runtime_comms_delivery_ingest_path,

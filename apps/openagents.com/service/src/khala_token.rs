@@ -314,6 +314,7 @@ mod tests {
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: 60_000,
             runtime_elixir_base_url: None,
+            liquidity_stats_pool_ids: vec!["llp-main".to_string()],
             runtime_signing_key: None,
             runtime_signing_key_id: "runtime-v1".to_string(),
             runtime_comms_delivery_ingest_path: "/internal/v1/comms/delivery-events".to_string(),

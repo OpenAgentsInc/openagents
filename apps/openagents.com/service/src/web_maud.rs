@@ -86,6 +86,30 @@ pub struct ComputeDeviceView {
 }
 
 #[derive(Debug, Clone)]
+pub struct LiquidityStatsMetricsView {
+    pub pool_count: usize,
+    pub total_assets_sats: i64,
+    pub total_shares: i64,
+    pub pending_withdrawals_sats_estimate: i64,
+    pub last_snapshot_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LiquidityPoolView {
+    pub pool_id: String,
+    pub pool_kind: String,
+    pub status: String,
+    pub share_price_sats: i64,
+    pub total_shares: i64,
+    pub pending_withdrawals_sats_estimate: i64,
+    pub latest_snapshot_id: Option<String>,
+    pub latest_snapshot_as_of: Option<String>,
+    pub latest_snapshot_sha256: Option<String>,
+    pub latest_snapshot_signed: bool,
+    pub wallet_balance_sats: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
 pub struct IntegrationStatusView {
     pub provider: String,
     pub connected: bool,
@@ -156,6 +180,11 @@ pub enum WebBody {
         metrics: ComputeMetricsView,
         providers: Vec<ComputeProviderView>,
         devices: Vec<ComputeDeviceView>,
+    },
+    Stats {
+        status: Option<String>,
+        metrics: LiquidityStatsMetricsView,
+        pools: Vec<LiquidityPoolView>,
     },
     Settings {
         status: Option<String>,
@@ -262,6 +291,7 @@ fn topbar(path: &str, session: Option<&SessionView>) -> Markup {
     let nav = [
         ("/", "Codex"),
         ("/compute", "Compute"),
+        ("/stats", "Stats"),
         ("/feed", "Feed"),
         ("/billing", "Billing"),
         ("/l402", "L402"),
@@ -342,6 +372,9 @@ fn render_main_fragment_markup(page: &WebPage) -> Markup {
                     devices,
                 } => {
                     (compute_panel(status.as_deref(), metrics, providers, devices))
+                }
+                WebBody::Stats { status, metrics, pools } => {
+                    (stats_panel(status.as_deref(), metrics, pools))
                 }
                 WebBody::Settings {
                     status,
@@ -837,6 +870,127 @@ fn compute_panel(
             (compute_metrics_panel(metrics, false))
             (compute_devices_panel(devices, false))
             (compute_providers_panel(providers, false))
+        }
+    }
+}
+
+fn stats_panel(
+    status: Option<&str>,
+    metrics: &LiquidityStatsMetricsView,
+    pools: &[LiquidityPoolView],
+) -> Markup {
+    html! {
+        section id="stats-surface" class="oa-grid stats" {
+            aside class="oa-card" {
+                h2 { "Liquidity" }
+                p class="oa-muted" { "Pool proofs + core health metrics." }
+                (status_slot("stats-status", status))
+                div class="oa-actions" {
+                    a class="oa-btn primary" href="/compute" { "Provide liquidity" }
+                    a class="oa-btn subtle" href="/compute" { "View compute" }
+                }
+                p class="oa-muted" {
+                    "Deposit instructions: fund your provider wallet in Autopilot Desktop, then verify shares minted here."
+                }
+            }
+
+            (stats_metrics_panel(metrics, false))
+            (stats_pools_panel(pools, false))
+        }
+    }
+}
+
+pub fn render_stats_metrics_fragment(metrics: &LiquidityStatsMetricsView) -> String {
+    stats_metrics_panel(metrics, false).into_string()
+}
+
+pub fn render_stats_pools_fragment(pools: &[LiquidityPoolView]) -> String {
+    stats_pools_panel(pools, false).into_string()
+}
+
+fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -> Markup {
+    let body = html! {
+        h3 { "Metrics" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "Pools" } strong { (metrics.pool_count) } }
+                div class="oa-kv" { span { "Total assets (sats)" } strong { (metrics.total_assets_sats) } }
+                div class="oa-kv" { span { "Total shares" } strong { (metrics.total_shares) } }
+            }
+            div {
+                div class="oa-kv" { span { "Pending withdrawals (sats est.)" } strong { (metrics.pending_withdrawals_sats_estimate) } }
+                div class="oa-kv" { span { "Last snapshot" } strong { (metrics.last_snapshot_at.clone().unwrap_or_else(|| "-".to_string())) } }
+            }
+        }
+    };
+
+    if out_of_band {
+        html! {
+            article id="stats-metrics-panel"
+                class="oa-card"
+                hx-swap-oob="outerHTML" {
+                (body)
+            }
+        }
+    } else {
+        html! {
+            article id="stats-metrics-panel"
+                class="oa-card"
+                hx-get="/stats/fragments/metrics"
+                hx-trigger="load, every 15s"
+                hx-swap="outerHTML" {
+                (body)
+            }
+        }
+    }
+}
+
+fn stats_pools_panel(pools: &[LiquidityPoolView], out_of_band: bool) -> Markup {
+    let body = html! {
+        h3 { "Pools" }
+        @if pools.is_empty() {
+            p class="oa-muted" { "No pools configured." }
+        } @else {
+            div class="oa-grid two" {
+                @for pool in pools {
+                    div class="oa-pool-card" {
+                        header class="oa-pool-header" {
+                            strong { (pool.pool_id) }
+                            span class="oa-badge" { (pool.status) }
+                        }
+                        dl class="oa-kv" {
+                            dt { "Kind" } dd { (pool.pool_kind) }
+                            dt { "Share price (sats)" } dd { (pool.share_price_sats) }
+                            dt { "Total shares" } dd { (pool.total_shares) }
+                            dt { "Pending withdrawals (sats est.)" } dd { (pool.pending_withdrawals_sats_estimate) }
+                            dt { "Wallet balance (sats)" } dd { (pool.wallet_balance_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Snapshot as-of" } dd { (pool.latest_snapshot_as_of.clone().unwrap_or_else(|| "-".to_string())) }
+                            dt { "Snapshot hash" } dd { (pool.latest_snapshot_sha256.clone().unwrap_or_else(|| "-".to_string())) }
+                            dt { "Signature" } dd { (if pool.latest_snapshot_signed { "signed" } else { "unsigned" }) }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    if out_of_band {
+        html! {
+            article id="stats-pools-panel"
+                class="oa-card"
+                hx-swap-oob="outerHTML" {
+                (body)
+            }
+        }
+    } else {
+        html! {
+            article id="stats-pools-panel"
+                class="oa-card"
+                hx-get="/stats/fragments/pools"
+                hx-trigger="load, every 10s"
+                hx-swap="outerHTML" {
+                (body)
+            }
         }
     }
 }
@@ -1511,6 +1665,7 @@ fn status_message(status: &str) -> &'static str {
         "compute-provider-disabled" => "Provider disabled.",
         "compute-runtime-unavailable" => "Runtime unavailable.",
         "compute-action-failed" => "Compute action failed.",
+        "stats-runtime-unavailable" => "Runtime unavailable.",
         "admin-forbidden" => "Admin role required.",
         "settings-action-failed" => "Settings action failed.",
         _ => "Action completed.",
@@ -1592,10 +1747,19 @@ body {
 .oa-grid.chat { grid-template-columns: minmax(260px, 320px) 1fr; }
 .oa-grid.feed { grid-template-columns: minmax(220px, 280px) 1fr; }
 .oa-grid.compute { grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; }
+.oa-grid.stats { grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; }
 .oa-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .oa-grid.settings { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .oa-grid.compute #compute-devices-panel,
 .oa-grid.compute #compute-providers-panel { grid-column: 1 / -1; }
+.oa-grid.stats #stats-pools-panel { grid-column: 1 / -1; }
+.oa-pool-card {
+  border: 1px solid rgba(126, 150, 187, 0.18);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: rgba(255,255,255,0.02);
+}
+.oa-pool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 .oa-kv span { color: var(--muted); }
 .oa-kv strong { justify-self: end; }
 .oa-badge {
@@ -1666,6 +1830,7 @@ body {
 .oa-btn.subtle { background: rgba(16, 28, 51, 0.38); }
 .oa-form { display: grid; gap: 0.55rem; margin-top: 0.8rem; }
 .oa-action-row { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
+.oa-actions { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; margin: 0.75rem 0; }
 .oa-form[aria-busy="true"] button[type="submit"] {
   opacity: 0.58;
   cursor: progress;
@@ -1766,7 +1931,7 @@ input:focus, textarea:focus {
 @media (max-width: 980px) {
   .oa-topbar { grid-template-columns: 1fr; }
   .oa-session { justify-content: space-between; }
-  .oa-grid.chat, .oa-grid.feed, .oa-grid.compute, .oa-grid.two { grid-template-columns: 1fr; }
+  .oa-grid.chat, .oa-grid.feed, .oa-grid.compute, .oa-grid.stats, .oa-grid.two { grid-template-columns: 1fr; }
 }
 "#
 }
