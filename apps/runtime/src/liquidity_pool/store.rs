@@ -26,6 +26,7 @@ pub enum LiquidityPoolStoreError {
 pub struct DepositInsertInput {
     pub deposit_id: String,
     pub pool_id: String,
+    pub partition_kind: String,
     pub lp_id: String,
     pub rail: String,
     pub amount_sats: i64,
@@ -44,6 +45,7 @@ pub struct DepositInsertInput {
 pub struct WithdrawalInsertInput {
     pub withdrawal_id: String,
     pub pool_id: String,
+    pub partition_kind: String,
     pub lp_id: String,
     pub shares_burned: i64,
     pub amount_sats_estimate: i64,
@@ -148,14 +150,26 @@ pub trait LiquidityPoolStore: Send + Sync {
     async fn get_lp_account(
         &self,
         pool_id: &str,
+        partition_kind: &str,
         lp_id: &str,
     ) -> Result<Option<LpAccountRow>, LiquidityPoolStoreError>;
 
-    async fn get_total_shares(&self, pool_id: &str) -> Result<i64, LiquidityPoolStoreError>;
+    async fn get_total_shares(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError>;
+
+    async fn get_confirmed_deposits_total_sats(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError>;
 
     async fn get_pending_withdrawals_estimate_sats(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<i64, LiquidityPoolStoreError>;
 
     async fn create_or_get_snapshot(
@@ -166,7 +180,15 @@ pub trait LiquidityPoolStore: Send + Sync {
     async fn get_latest_snapshot(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<Option<PoolSnapshotRow>, LiquidityPoolStoreError>;
+
+    /// CEP-specific liabilities: reserved commitments from accepted credit envelopes.
+    async fn get_credit_reserved_commitments_sats(
+        &self,
+        pool_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<i64, LiquidityPoolStoreError>;
 
     async fn put_receipt(&self, receipt: ReceiptInsertInput)
     -> Result<(), LiquidityPoolStoreError>;
@@ -234,12 +256,12 @@ struct MemoryLiquidityPoolStore {
 #[derive(Default)]
 struct MemoryPoolInner {
     pools: HashMap<String, PoolRow>,
-    lp_accounts: HashMap<(String, String), LpAccountRow>,
+    lp_accounts: HashMap<(String, String, String), LpAccountRow>,
     deposits: HashMap<String, (DepositRow, String)>,
-    deposit_by_idempotency: HashMap<(String, String, String), String>,
+    deposit_by_idempotency: HashMap<(String, String, String, String), String>,
     withdrawals: HashMap<String, (WithdrawalRow, String)>,
-    withdrawal_by_idempotency: HashMap<(String, String, String), String>,
-    latest_snapshot_by_pool: HashMap<String, PoolSnapshotRow>,
+    withdrawal_by_idempotency: HashMap<(String, String, String, String), String>,
+    latest_snapshot_by_pool_partition: HashMap<(String, String), PoolSnapshotRow>,
     receipts_by_unique: HashMap<(String, String, String), String>,
     receipts_by_id: HashMap<String, ReceiptInsertInput>,
     signer_sets_by_pool: HashMap<String, PoolSignerSetRow>,
@@ -277,6 +299,7 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let mut inner = self.inner.lock().await;
         let key = (
             input.pool_id.clone(),
+            input.partition_kind.clone(),
             input.lp_id.clone(),
             input.idempotency_key.clone(),
         );
@@ -296,6 +319,7 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let row = DepositRow {
             deposit_id: input.deposit_id.clone(),
             pool_id: input.pool_id.clone(),
+            partition_kind: input.partition_kind.clone(),
             lp_id: input.lp_id.clone(),
             rail: input.rail.clone(),
             amount_sats: input.amount_sats,
@@ -348,12 +372,17 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         updated.status = "confirmed".to_string();
         updated.confirmed_at = Some(confirmed_at);
 
-        let lp_key = (updated.pool_id.clone(), updated.lp_id.clone());
+        let lp_key = (
+            updated.pool_id.clone(),
+            updated.partition_kind.clone(),
+            updated.lp_id.clone(),
+        );
         let account = inner
             .lp_accounts
             .entry(lp_key.clone())
             .or_insert_with(|| LpAccountRow {
                 pool_id: updated.pool_id.clone(),
+                partition_kind: updated.partition_kind.clone(),
                 lp_id: updated.lp_id.clone(),
                 shares_total: 0,
                 updated_at: confirmed_at,
@@ -377,6 +406,7 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let mut inner = self.inner.lock().await;
         let key = (
             input.pool_id.clone(),
+            input.partition_kind.clone(),
             input.lp_id.clone(),
             input.idempotency_key.clone(),
         );
@@ -396,6 +426,7 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         let row = WithdrawalRow {
             withdrawal_id: input.withdrawal_id.clone(),
             pool_id: input.pool_id.clone(),
+            partition_kind: input.partition_kind.clone(),
             lp_id: input.lp_id.clone(),
             shares_burned: input.shares_burned,
             amount_sats_estimate: input.amount_sats_estimate,
@@ -486,7 +517,11 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             ));
         }
 
-        let lp_key = (row.pool_id.clone(), row.lp_id.clone());
+        let lp_key = (
+            row.pool_id.clone(),
+            row.partition_kind.clone(),
+            row.lp_id.clone(),
+        );
         let Some(account) = inner.lp_accounts.get_mut(&lp_key) else {
             return Err(LiquidityPoolStoreError::Conflict(
                 "lp account not found".to_string(),
@@ -518,20 +553,29 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
     async fn get_lp_account(
         &self,
         pool_id: &str,
+        partition_kind: &str,
         lp_id: &str,
     ) -> Result<Option<LpAccountRow>, LiquidityPoolStoreError> {
         let inner = self.inner.lock().await;
         Ok(inner
             .lp_accounts
-            .get(&(pool_id.to_string(), lp_id.to_string()))
+            .get(&(
+                pool_id.to_string(),
+                partition_kind.to_string(),
+                lp_id.to_string(),
+            ))
             .cloned())
     }
 
-    async fn get_total_shares(&self, pool_id: &str) -> Result<i64, LiquidityPoolStoreError> {
+    async fn get_total_shares(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError> {
         let inner = self.inner.lock().await;
         let mut total = 0_i64;
-        for ((pool, _), row) in inner.lp_accounts.iter() {
-            if pool == pool_id {
+        for ((pool, partition, _), row) in inner.lp_accounts.iter() {
+            if pool == pool_id && partition == partition_kind {
                 total = total.checked_add(row.shares_total).ok_or_else(|| {
                     LiquidityPoolStoreError::Db("share accounting overflow".to_string())
                 })?;
@@ -540,14 +584,34 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         Ok(total)
     }
 
+    async fn get_confirmed_deposits_total_sats(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        let mut total = 0_i64;
+        for (row, _) in inner.deposits.values() {
+            if row.pool_id == pool_id
+                && row.partition_kind == partition_kind
+                && row.status == "confirmed"
+            {
+                total = total.saturating_add(row.amount_sats);
+            }
+        }
+        Ok(total)
+    }
+
     async fn get_pending_withdrawals_estimate_sats(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<i64, LiquidityPoolStoreError> {
         let inner = self.inner.lock().await;
         let mut total = 0_i64;
         for (row, _) in inner.withdrawals.values() {
             if row.pool_id == pool_id
+                && row.partition_kind == partition_kind
                 && (row.status == "requested" || row.status == "queued" || row.status == "approved")
             {
                 total = total.saturating_add(row.amount_sats_estimate);
@@ -562,25 +626,38 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
     ) -> Result<PoolSnapshotRow, LiquidityPoolStoreError> {
         let mut inner = self.inner.lock().await;
         if let Some(existing) = inner
-            .latest_snapshot_by_pool
-            .get(&snapshot.pool_id)
+            .latest_snapshot_by_pool_partition
+            .get(&(snapshot.pool_id.clone(), snapshot.partition_kind.clone()))
             .filter(|existing| existing.snapshot_id == snapshot.snapshot_id)
             .cloned()
         {
             return Ok(existing);
         }
-        inner
-            .latest_snapshot_by_pool
-            .insert(snapshot.pool_id.clone(), snapshot.clone());
+        inner.latest_snapshot_by_pool_partition.insert(
+            (snapshot.pool_id.clone(), snapshot.partition_kind.clone()),
+            snapshot.clone(),
+        );
         Ok(snapshot)
     }
 
     async fn get_latest_snapshot(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<Option<PoolSnapshotRow>, LiquidityPoolStoreError> {
         let inner = self.inner.lock().await;
-        Ok(inner.latest_snapshot_by_pool.get(pool_id).cloned())
+        Ok(inner
+            .latest_snapshot_by_pool_partition
+            .get(&(pool_id.to_string(), partition_kind.to_string()))
+            .cloned())
+    }
+
+    async fn get_credit_reserved_commitments_sats(
+        &self,
+        _pool_id: &str,
+        _now: DateTime<Utc>,
+    ) -> Result<i64, LiquidityPoolStoreError> {
+        Ok(0)
     }
 
     async fn put_receipt(
@@ -942,6 +1019,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT deposit_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        rail,
                        amount_sats,
@@ -957,10 +1035,16 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                        confirmed_at
                   FROM runtime.liquidity_deposits
                  WHERE pool_id = $1
-                   AND lp_id = $2
-                   AND idempotency_key = $3
+                   AND partition_kind = $2
+                   AND lp_id = $3
+                   AND idempotency_key = $4
                 "#,
-                &[&input.pool_id, &input.lp_id, &input.idempotency_key],
+                &[
+                    &input.pool_id,
+                    &input.partition_kind,
+                    &input.lp_id,
+                    &input.idempotency_key,
+                ],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -985,6 +1069,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 INSERT INTO runtime.liquidity_deposits (
                   deposit_id,
                   pool_id,
+                  partition_kind,
                   lp_id,
                   rail,
                   amount_sats,
@@ -998,9 +1083,10 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                   deposit_address,
                   created_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                 RETURNING deposit_id,
                           pool_id,
+                          partition_kind,
                           lp_id,
                           rail,
                           amount_sats,
@@ -1018,6 +1104,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 &[
                     &input.deposit_id,
                     &input.pool_id,
+                    &input.partition_kind,
                     &input.lp_id,
                     &input.rail,
                     &input.amount_sats,
@@ -1059,6 +1146,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT deposit_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        rail,
                        amount_sats,
@@ -1107,6 +1195,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
 
         let shares_minted: i64 = row.get("shares_minted");
         let lp_id: String = row.get("lp_id");
+        let partition_kind: String = row.get("partition_kind");
 
         let updated = tx
             .query_one(
@@ -1117,6 +1206,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                  WHERE deposit_id = $1
                  RETURNING deposit_id,
                           pool_id,
+                          partition_kind,
                           lp_id,
                           rail,
                           amount_sats,
@@ -1139,11 +1229,11 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         // Upsert LP account, then credit shares.
         tx.execute(
             r#"
-            INSERT INTO runtime.liquidity_lp_accounts (pool_id, lp_id, shares_total, updated_at)
-            VALUES ($1,$2,0,$3)
-            ON CONFLICT (pool_id, lp_id) DO NOTHING
+            INSERT INTO runtime.liquidity_lp_accounts (pool_id, partition_kind, lp_id, shares_total, updated_at)
+            VALUES ($1,$2,$3,0,$4)
+            ON CONFLICT (pool_id, lp_id, partition_kind) DO NOTHING
             "#,
-            &[&pool_id, &lp_id, &confirmed_at],
+            &[&pool_id, &partition_kind, &lp_id, &confirmed_at],
         )
         .await
         .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1154,9 +1244,16 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                SET shares_total = shares_total + $3,
                    updated_at = $4
              WHERE pool_id = $1
-               AND lp_id = $2
+               AND partition_kind = $2
+               AND lp_id = $5
             "#,
-            &[&pool_id, &lp_id, &shares_minted, &confirmed_at],
+            &[
+                &pool_id,
+                &partition_kind,
+                &shares_minted,
+                &confirmed_at,
+                &lp_id,
+            ],
         )
         .await
         .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1186,6 +1283,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT withdrawal_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        shares_burned,
                        amount_sats_estimate,
@@ -1202,10 +1300,16 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                        paid_at
                   FROM runtime.liquidity_withdrawals
                  WHERE pool_id = $1
-                   AND lp_id = $2
-                   AND idempotency_key = $3
+                   AND partition_kind = $2
+                   AND lp_id = $3
+                   AND idempotency_key = $4
                 "#,
-                &[&input.pool_id, &input.lp_id, &input.idempotency_key],
+                &[
+                    &input.pool_id,
+                    &input.partition_kind,
+                    &input.lp_id,
+                    &input.idempotency_key,
+                ],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1230,6 +1334,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 INSERT INTO runtime.liquidity_withdrawals (
                   withdrawal_id,
                   pool_id,
+                  partition_kind,
                   lp_id,
                   shares_burned,
                   amount_sats_estimate,
@@ -1243,9 +1348,10 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                   payout_address,
                   created_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                 RETURNING withdrawal_id,
                           pool_id,
+                          partition_kind,
                           lp_id,
                           shares_burned,
                           amount_sats_estimate,
@@ -1264,6 +1370,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 &[
                     &input.withdrawal_id,
                     &input.pool_id,
+                    &input.partition_kind,
                     &input.lp_id,
                     &input.shares_burned,
                     &input.amount_sats_estimate,
@@ -1299,6 +1406,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT withdrawal_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        shares_burned,
                        amount_sats_estimate,
@@ -1341,6 +1449,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT withdrawal_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        shares_burned,
                        amount_sats_estimate,
@@ -1400,6 +1509,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT withdrawal_id,
                        pool_id,
+                       partition_kind,
                        lp_id,
                        shares_burned,
                        amount_sats_estimate,
@@ -1455,14 +1565,16 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
             .execute(
                 r#"
                 UPDATE runtime.liquidity_lp_accounts
-                   SET shares_total = shares_total - $3,
-                       updated_at = $4
+                   SET shares_total = shares_total - $4,
+                       updated_at = $5
                  WHERE pool_id = $1
-                   AND lp_id = $2
-                   AND shares_total >= $3
+                   AND partition_kind = $2
+                   AND lp_id = $3
+                   AND shares_total >= $4
                 "#,
                 &[
                     &existing_row.pool_id,
+                    &existing_row.partition_kind,
                     &existing_row.lp_id,
                     &burned,
                     &paid_at,
@@ -1487,6 +1599,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                    AND withdrawal_id = $2
                 RETURNING withdrawal_id,
                           pool_id,
+                          partition_kind,
                           lp_id,
                           shares_burned,
                           amount_sats_estimate,
@@ -1517,6 +1630,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
     async fn get_lp_account(
         &self,
         pool_id: &str,
+        partition_kind: &str,
         lp_id: &str,
     ) -> Result<Option<LpAccountRow>, LiquidityPoolStoreError> {
         let client = self.db.client();
@@ -1524,12 +1638,13 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         let row = client
             .query_opt(
                 r#"
-                SELECT pool_id, lp_id, shares_total, updated_at
+                SELECT pool_id, partition_kind, lp_id, shares_total, updated_at
                   FROM runtime.liquidity_lp_accounts
                  WHERE pool_id = $1
-                   AND lp_id = $2
+                   AND partition_kind = $2
+                   AND lp_id = $3
                 "#,
-                &[&pool_id, &lp_id],
+                &[&pool_id, &partition_kind, &lp_id],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1541,7 +1656,11 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         ))
     }
 
-    async fn get_total_shares(&self, pool_id: &str) -> Result<i64, LiquidityPoolStoreError> {
+    async fn get_total_shares(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError> {
         let client = self.db.client();
         let client = client.lock().await;
         let row = client
@@ -1550,17 +1669,42 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 SELECT COALESCE(SUM(shares_total), 0)::BIGINT AS total_shares
                   FROM runtime.liquidity_lp_accounts
                  WHERE pool_id = $1
+                   AND partition_kind = $2
                 "#,
-                &[&pool_id],
+                &[&pool_id, &partition_kind],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
         Ok(row.get::<_, i64>("total_shares"))
     }
 
+    async fn get_confirmed_deposits_total_sats(
+        &self,
+        pool_id: &str,
+        partition_kind: &str,
+    ) -> Result<i64, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_one(
+                r#"
+                SELECT COALESCE(SUM(amount_sats), 0)::BIGINT AS total_sats
+                  FROM runtime.liquidity_deposits
+                 WHERE pool_id = $1
+                   AND partition_kind = $2
+                   AND status = 'confirmed'
+                "#,
+                &[&pool_id, &partition_kind],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        Ok(row.get::<_, i64>("total_sats"))
+    }
+
     async fn get_pending_withdrawals_estimate_sats(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<i64, LiquidityPoolStoreError> {
         let client = self.db.client();
         let client = client.lock().await;
@@ -1570,9 +1714,10 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 SELECT COALESCE(SUM(amount_sats_estimate), 0)::BIGINT AS total_sats
                   FROM runtime.liquidity_withdrawals
                  WHERE pool_id = $1
+                   AND partition_kind = $2
                    AND status IN ('requested','queued','approved')
                 "#,
-                &[&pool_id],
+                &[&pool_id, &partition_kind],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1595,6 +1740,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT snapshot_id,
                        pool_id,
+                       partition_kind,
                        as_of,
                        assets_json,
                        liabilities_json,
@@ -1624,6 +1770,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 INSERT INTO runtime.liquidity_pool_snapshots (
                   snapshot_id,
                   pool_id,
+                  partition_kind,
                   as_of,
                   assets_json,
                   liabilities_json,
@@ -1632,9 +1779,10 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                   signature_json,
                   created_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 RETURNING snapshot_id,
                           pool_id,
+                          partition_kind,
                           as_of,
                           assets_json,
                           liabilities_json,
@@ -1646,6 +1794,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 &[
                     &snapshot.snapshot_id,
                     &snapshot.pool_id,
+                    &snapshot.partition_kind,
                     &snapshot.as_of,
                     &snapshot.assets_json,
                     &snapshot.liabilities_json,
@@ -1667,6 +1816,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
     async fn get_latest_snapshot(
         &self,
         pool_id: &str,
+        partition_kind: &str,
     ) -> Result<Option<PoolSnapshotRow>, LiquidityPoolStoreError> {
         let client = self.db.client();
         let client = client.lock().await;
@@ -1675,6 +1825,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                 r#"
                 SELECT snapshot_id,
                        pool_id,
+                       partition_kind,
                        as_of,
                        assets_json,
                        liabilities_json,
@@ -1684,10 +1835,11 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                        created_at
                   FROM runtime.liquidity_pool_snapshots
                  WHERE pool_id = $1
+                   AND partition_kind = $2
                  ORDER BY as_of DESC
                  LIMIT 1
                 "#,
-                &[&pool_id],
+                &[&pool_id, &partition_kind],
             )
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
@@ -1697,6 +1849,29 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
         Ok(Some(
             map_snapshot_row(&row).map_err(LiquidityPoolStoreError::Db)?,
         ))
+    }
+
+    async fn get_credit_reserved_commitments_sats(
+        &self,
+        pool_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<i64, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_one(
+                r#"
+                SELECT COALESCE(SUM(max_sats), 0)::BIGINT AS total_sats
+                  FROM runtime.credit_envelopes
+                 WHERE pool_id = $1
+                   AND status = 'accepted'
+                   AND exp > $2
+                "#,
+                &[&pool_id, &now],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        Ok(row.get::<_, i64>("total_sats"))
     }
 
     async fn put_receipt(
@@ -2280,6 +2455,7 @@ fn map_pool_row(row: &tokio_postgres::Row) -> Result<PoolRow, String> {
 fn map_lp_account_row(row: &tokio_postgres::Row) -> Result<LpAccountRow, String> {
     Ok(LpAccountRow {
         pool_id: row.get("pool_id"),
+        partition_kind: row.get("partition_kind"),
         lp_id: row.get("lp_id"),
         shares_total: row.get("shares_total"),
         updated_at: row.get("updated_at"),
@@ -2290,6 +2466,7 @@ fn map_deposit_row(row: &tokio_postgres::Row) -> Result<DepositRow, String> {
     Ok(DepositRow {
         deposit_id: row.get("deposit_id"),
         pool_id: row.get("pool_id"),
+        partition_kind: row.get("partition_kind"),
         lp_id: row.get("lp_id"),
         rail: row.get("rail"),
         amount_sats: row.get("amount_sats"),
@@ -2309,6 +2486,7 @@ fn map_withdrawal_row(row: &tokio_postgres::Row) -> Result<WithdrawalRow, String
     Ok(WithdrawalRow {
         withdrawal_id: row.get("withdrawal_id"),
         pool_id: row.get("pool_id"),
+        partition_kind: row.get("partition_kind"),
         lp_id: row.get("lp_id"),
         shares_burned: row.get("shares_burned"),
         amount_sats_estimate: row.get("amount_sats_estimate"),
@@ -2329,6 +2507,7 @@ fn map_snapshot_row(row: &tokio_postgres::Row) -> Result<PoolSnapshotRow, String
     Ok(PoolSnapshotRow {
         snapshot_id: row.get("snapshot_id"),
         pool_id: row.get("pool_id"),
+        partition_kind: row.get("partition_kind"),
         as_of: row.get("as_of"),
         assets_json: row.get("assets_json"),
         liabilities_json: row.get("liabilities_json"),

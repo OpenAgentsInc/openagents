@@ -30,9 +30,9 @@ use crate::liquidity_pool::types::{
     POOL_SIGNING_REQUEST_RESPONSE_SCHEMA_V1, POOL_SNAPSHOT_RECEIPT_SCHEMA_V1,
     POOL_SNAPSHOT_SCHEMA_V1, POOL_STATUS_SCHEMA_V1, POOL_TREASURY_ACTION_RECEIPT_SCHEMA_V1,
     POOL_TREASURY_CLOSE_CHANNEL_REQUEST_SCHEMA_V1, POOL_TREASURY_OPEN_CHANNEL_REQUEST_SCHEMA_V1,
-    PoolCreateRequestV1, PoolCreateResponseV1, PoolKindV1, PoolRow, PoolSignerPolicyV1,
-    PoolSignerSetResponseV1, PoolSignerSetRow, PoolSignerSetUpsertRequestV1,
-    PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1,
+    PoolCreateRequestV1, PoolCreateResponseV1, PoolKindV1, PoolPartitionKindV1,
+    PoolPartitionStatusV1, PoolRow, PoolSignerPolicyV1, PoolSignerSetResponseV1, PoolSignerSetRow,
+    PoolSignerSetUpsertRequestV1, PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1,
     PoolSigningRequestExecuteResponseV1, PoolSigningRequestListResponseV1,
     PoolSigningRequestResponseV1, PoolSigningRequestRow, PoolSnapshotReceiptV1,
     PoolSnapshotResponseV1, PoolSnapshotRow, PoolStatusResponseV1, PoolStatusV1,
@@ -1081,6 +1081,8 @@ impl LiquidityPoolService {
         struct DepositFingerprint<'a> {
             schema: &'a str,
             pool_id: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            partition_kind: Option<&'a str>,
             lp_id: &'a str,
             rail: &'a str,
             amount_sats: u64,
@@ -1088,10 +1090,15 @@ impl LiquidityPoolService {
             expiry_secs: Option<u64>,
         }
 
+        let partition_kind = body.partition_kind.unwrap_or(PoolPartitionKindV1::Llp);
+        let partition_kind_str = partition_kind.as_str();
+
         let rail = body.rail.as_str().to_string();
         let request_fingerprint_sha256 = canonical_sha256(&DepositFingerprint {
             schema: DEPOSIT_QUOTE_REQUEST_SCHEMA_V1,
             pool_id,
+            partition_kind: (partition_kind != PoolPartitionKindV1::Llp)
+                .then_some(partition_kind_str),
             lp_id: lp_id.as_str(),
             rail: rail.as_str(),
             amount_sats: body.amount_sats,
@@ -1107,7 +1114,7 @@ impl LiquidityPoolService {
         let created_at = Utc::now();
         let share_price_sats = self
             .store
-            .get_latest_snapshot(pool_id)
+            .get_latest_snapshot(pool_id, partition_kind_str)
             .await
             .map_err(map_store_error)?
             .map(|row| row.share_price_sats)
@@ -1131,8 +1138,13 @@ impl LiquidityPoolService {
 
         let (invoice_bolt11, invoice_hash, deposit_address) = match body.rail {
             DepositRailV1::LightningInvoice => {
+                let scoped_idempotency_key = if partition_kind == PoolPartitionKindV1::Llp {
+                    idempotency_key.clone()
+                } else {
+                    format!("{partition_kind_str}:{idempotency_key}")
+                };
                 let wallet_request_id =
-                    wallet_request_id("deposit", pool_id, lp_id.as_str(), &idempotency_key);
+                    wallet_request_id("deposit", pool_id, lp_id.as_str(), &scoped_idempotency_key);
                 let created = self
                     .wallet
                     .create_invoice(
@@ -1156,6 +1168,7 @@ impl LiquidityPoolService {
             .create_or_get_deposit(DepositInsertInput {
                 deposit_id: deposit_id.clone(),
                 pool_id: pool_id.to_string(),
+                partition_kind: partition_kind_str.to_string(),
                 lp_id: lp_id.clone(),
                 rail: rail.clone(),
                 amount_sats: amount_sats_i64,
@@ -1282,6 +1295,8 @@ impl LiquidityPoolService {
         struct WithdrawFingerprint<'a> {
             schema: &'a str,
             pool_id: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            partition_kind: Option<&'a str>,
             lp_id: &'a str,
             shares_burned: u64,
             rail_preference: &'a str,
@@ -1289,10 +1304,13 @@ impl LiquidityPoolService {
             payout_address: Option<&'a str>,
         }
 
+        let partition_kind = body.partition_kind.unwrap_or(PoolPartitionKindV1::Llp);
+        let partition_kind_str = partition_kind.as_str();
+
         let rail_preference = body.rail_preference.as_str().to_string();
         let latest_share_price_sats = self
             .store
-            .get_latest_snapshot(pool_id)
+            .get_latest_snapshot(pool_id, partition_kind_str)
             .await
             .map_err(map_store_error)?
             .map(|row| row.share_price_sats)
@@ -1363,6 +1381,8 @@ impl LiquidityPoolService {
         let request_fingerprint_sha256 = canonical_sha256(&WithdrawFingerprint {
             schema: WITHDRAW_REQUEST_SCHEMA_V1,
             pool_id,
+            partition_kind: (partition_kind != PoolPartitionKindV1::Llp)
+                .then_some(partition_kind_str),
             lp_id: lp_id.as_str(),
             shares_burned: body.shares_burned,
             rail_preference: rail_preference.as_str(),
@@ -1381,6 +1401,7 @@ impl LiquidityPoolService {
             .create_or_get_withdrawal(WithdrawalInsertInput {
                 withdrawal_id: withdrawal_id.clone(),
                 pool_id: pool_id.to_string(),
+                partition_kind: partition_kind_str.to_string(),
                 lp_id: lp_id.clone(),
                 shares_burned: i64::try_from(body.shares_burned).map_err(|_| {
                     LiquidityPoolError::InvalidRequest("shares_burned too large".to_string())
@@ -1642,48 +1663,108 @@ impl LiquidityPoolService {
             .map_err(map_store_error)?
             .ok_or(LiquidityPoolError::NotFound)?;
 
-        let share_price_sats = self
-            .store
-            .get_latest_snapshot(pool_id)
-            .await
-            .map_err(map_store_error)?
-            .map(|row| row.share_price_sats)
-            .unwrap_or(1);
-        let total_shares = self
-            .store
-            .get_total_shares(pool_id)
-            .await
-            .map_err(map_store_error)?;
-        let pending_withdrawals_sats_estimate = self
-            .store
-            .get_pending_withdrawals_estimate_sats(pool_id)
-            .await
-            .map_err(map_store_error)?;
+        let now = Utc::now();
+        let partition_kinds = [
+            PoolPartitionKindV1::Llp,
+            PoolPartitionKindV1::Cep,
+            PoolPartitionKindV1::Rrp,
+        ];
+        let mut partitions = Vec::with_capacity(partition_kinds.len());
+
+        for partition_kind in partition_kinds {
+            let partition_kind_str = partition_kind.as_str();
+            let total_shares = self
+                .store
+                .get_total_shares(pool_id, partition_kind_str)
+                .await
+                .map_err(map_store_error)?;
+            let assets_sats_estimate = self
+                .store
+                .get_confirmed_deposits_total_sats(pool_id, partition_kind_str)
+                .await
+                .map_err(map_store_error)?;
+            let pending_withdrawals_sats_estimate = self
+                .store
+                .get_pending_withdrawals_estimate_sats(pool_id, partition_kind_str)
+                .await
+                .map_err(map_store_error)?;
+
+            let mut liabilities_sats_estimate = pending_withdrawals_sats_estimate;
+            if partition_kind == PoolPartitionKindV1::Cep {
+                let reserved = self
+                    .store
+                    .get_credit_reserved_commitments_sats(pool_id, now)
+                    .await
+                    .map_err(map_store_error)?;
+                liabilities_sats_estimate = liabilities_sats_estimate.saturating_add(reserved);
+            }
+
+            let share_price_sats = self
+                .store
+                .get_latest_snapshot(pool_id, partition_kind_str)
+                .await
+                .map_err(map_store_error)?
+                .map(|row| row.share_price_sats)
+                .unwrap_or_else(|| {
+                    if total_shares > 0 {
+                        let per_share = assets_sats_estimate / total_shares;
+                        per_share.max(1)
+                    } else {
+                        1
+                    }
+                });
+
+            partitions.push(PoolPartitionStatusV1 {
+                partition_kind,
+                assets_sats_estimate,
+                liabilities_sats_estimate,
+                share_price_sats,
+                total_shares,
+                pending_withdrawals_sats_estimate,
+            });
+        }
+
+        let llp = partitions
+            .iter()
+            .find(|entry| entry.partition_kind == PoolPartitionKindV1::Llp)
+            .cloned()
+            .unwrap_or(PoolPartitionStatusV1 {
+                partition_kind: PoolPartitionKindV1::Llp,
+                assets_sats_estimate: 0,
+                liabilities_sats_estimate: 0,
+                share_price_sats: 1,
+                total_shares: 0,
+                pending_withdrawals_sats_estimate: 0,
+            });
 
         Ok(PoolStatusResponseV1 {
             schema: POOL_STATUS_SCHEMA_V1.to_string(),
             pool,
-            share_price_sats,
-            total_shares,
-            pending_withdrawals_sats_estimate,
-            updated_at: Utc::now(),
+            share_price_sats: llp.share_price_sats,
+            total_shares: llp.total_shares,
+            pending_withdrawals_sats_estimate: llp.pending_withdrawals_sats_estimate,
+            partitions,
+            updated_at: now,
         })
     }
 
     pub async fn latest_snapshot(
         &self,
         pool_id: &str,
+        partition_kind: PoolPartitionKindV1,
     ) -> Result<Option<PoolSnapshotResponseV1>, LiquidityPoolError> {
+        let partition_kind_str = partition_kind.as_str();
         let Some(snapshot) = self
             .store
-            .get_latest_snapshot(pool_id)
+            .get_latest_snapshot(pool_id, partition_kind_str)
             .await
             .map_err(map_store_error)?
         else {
             return Ok(None);
         };
 
-        let receipt = build_snapshot_receipt(&snapshot, self.receipt_signing_key.as_ref())?;
+        let receipt =
+            build_snapshot_receipt(&snapshot, partition_kind, self.receipt_signing_key.as_ref())?;
         Ok(Some(PoolSnapshotResponseV1 {
             schema: POOL_SNAPSHOT_SCHEMA_V1.to_string(),
             snapshot,
@@ -1694,6 +1775,7 @@ impl LiquidityPoolService {
     pub async fn generate_snapshot(
         &self,
         pool_id: &str,
+        partition_kind: PoolPartitionKindV1,
     ) -> Result<PoolSnapshotResponseV1, LiquidityPoolError> {
         let pool = self
             .store
@@ -1753,21 +1835,34 @@ impl LiquidityPoolService {
             }
         }
 
+        let partition_kind_str = partition_kind.as_str();
         let total_shares = self
             .store
-            .get_total_shares(pool_id)
+            .get_total_shares(pool_id, partition_kind_str)
+            .await
+            .map_err(map_store_error)?;
+        let book_assets_sats = self
+            .store
+            .get_confirmed_deposits_total_sats(pool_id, partition_kind_str)
             .await
             .map_err(map_store_error)?;
         let pending_withdrawals_sats_estimate = self
             .store
-            .get_pending_withdrawals_estimate_sats(pool_id)
+            .get_pending_withdrawals_estimate_sats(pool_id, partition_kind_str)
             .await
             .map_err(map_store_error)?;
 
-        let assets_json = json!({
-            "schema": "openagents.liquidity.pool_assets.v1",
-            "walletBalanceSats": wallet_balance_sats,
-            "lightning": {
+        let credit_reserved_commitments_sats = if partition_kind == PoolPartitionKindV1::Cep {
+            self.store
+                .get_credit_reserved_commitments_sats(pool_id, as_of)
+                .await
+                .map_err(map_store_error)?
+        } else {
+            0
+        };
+
+        let lightning_json = if partition_kind == PoolPartitionKindV1::Llp {
+            json!({
                 "schema": "openagents.liquidity.llp_lightning_snapshot.v1",
                 "backend": lightning_backend,
                 "onchainSats": onchain_sats,
@@ -1777,19 +1872,34 @@ impl LiquidityPoolService {
                 "channelCount": channel_count,
                 "connectedChannelCount": connected_channel_count,
                 "lastError": lightning_last_error,
-            }
+            })
+        } else {
+            Value::Null
+        };
+
+        let assets_json = json!({
+            "schema": "openagents.liquidity.pool_assets.v1",
+            "partitionKind": partition_kind_str,
+            "walletBalanceSats": wallet_balance_sats,
+            "bookAssetsSats": book_assets_sats,
+            "lightning": lightning_json
         });
 
         let liabilities_json = json!({
             "schema": "openagents.liquidity.pool_liabilities.v1",
+            "partitionKind": partition_kind_str,
             "sharesOutstanding": total_shares,
             "pendingWithdrawalsSatsEstimate": pending_withdrawals_sats_estimate,
+            "creditReservedCommitmentsSats": credit_reserved_commitments_sats,
         });
 
         let share_price_sats = if total_shares > 0 {
             let denom = u64::try_from(total_shares)
                 .map_err(|_| LiquidityPoolError::Internal("total_shares invalid".to_string()))?;
-            let per_share = wallet_balance_sats / denom;
+            let assets_sats = u64::try_from(book_assets_sats.max(0)).map_err(|_| {
+                LiquidityPoolError::Internal("book_assets_sats invalid".to_string())
+            })?;
+            let per_share = assets_sats / denom;
             i64::try_from(per_share.max(1)).map_err(|_| {
                 LiquidityPoolError::Internal("share_price_sats too large".to_string())
             })?
@@ -1806,6 +1916,8 @@ impl LiquidityPoolService {
         struct SnapshotHashInput<'a> {
             schema: &'a str,
             pool_id: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            partition_kind: Option<&'a str>,
             as_of: &'a DateTime<Utc>,
             assets_json_sha256: &'a str,
             liabilities_json_sha256: &'a str,
@@ -1816,6 +1928,8 @@ impl LiquidityPoolService {
         let canonical_json_sha256 = canonical_sha256(&SnapshotHashInput {
             schema: POOL_SNAPSHOT_RECEIPT_SCHEMA_V1,
             pool_id,
+            partition_kind: (partition_kind != PoolPartitionKindV1::Llp)
+                .then_some(partition_kind_str),
             as_of: &as_of,
             assets_json_sha256: assets_json_sha256.as_str(),
             liabilities_json_sha256: liabilities_json_sha256.as_str(),
@@ -1839,6 +1953,7 @@ impl LiquidityPoolService {
             receipt_id: format!("lpsr_{}", &canonical_json_sha256[..24]),
             pool_id: pool_id.to_string(),
             snapshot_id: snapshot_id.clone(),
+            partition_kind: (partition_kind != PoolPartitionKindV1::Llp).then_some(partition_kind),
             as_of,
             assets_json_sha256: assets_json_sha256.clone(),
             liabilities_json_sha256: liabilities_json_sha256.clone(),
@@ -1860,6 +1975,7 @@ impl LiquidityPoolService {
         let snapshot_row = PoolSnapshotRow {
             snapshot_id: snapshot_id.clone(),
             pool_id: pool_id.to_string(),
+            partition_kind: partition_kind_str.to_string(),
             as_of,
             assets_json,
             liabilities_json,
@@ -2437,12 +2553,25 @@ fn build_deposit_receipt(
     created_at: DateTime<Utc>,
     receipt_signing_key: Option<&[u8; 32]>,
 ) -> Result<DepositReceiptV1, LiquidityPoolError> {
+    let partition_kind = match deposit.partition_kind.as_str() {
+        "llp" => None,
+        "cep" => Some(PoolPartitionKindV1::Cep),
+        "rrp" => Some(PoolPartitionKindV1::Rrp),
+        other => {
+            return Err(LiquidityPoolError::Internal(format!(
+                "invalid deposit partition_kind: {other}"
+            )));
+        }
+    };
+
     #[derive(Serialize)]
     struct ReceiptHashInput<'a> {
         schema: &'a str,
         pool_id: &'a str,
         lp_id: &'a str,
         deposit_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        partition_kind: Option<&'a str>,
         rail: &'a str,
         amount_sats: u64,
         share_price_sats: i64,
@@ -2457,6 +2586,7 @@ fn build_deposit_receipt(
         pool_id: deposit.pool_id.as_str(),
         lp_id: deposit.lp_id.as_str(),
         deposit_id: deposit.deposit_id.as_str(),
+        partition_kind: partition_kind.map(PoolPartitionKindV1::as_str),
         rail: rail.as_str(),
         amount_sats,
         share_price_sats: deposit.share_price_sats,
@@ -2481,6 +2611,7 @@ fn build_deposit_receipt(
         pool_id: deposit.pool_id.clone(),
         lp_id: deposit.lp_id.clone(),
         deposit_id: deposit.deposit_id.clone(),
+        partition_kind,
         rail,
         amount_sats,
         share_price_sats: deposit.share_price_sats,
@@ -2499,12 +2630,25 @@ fn build_withdraw_request_receipt(
     created_at: DateTime<Utc>,
     receipt_signing_key: Option<&[u8; 32]>,
 ) -> Result<WithdrawRequestReceiptV1, LiquidityPoolError> {
+    let partition_kind = match withdrawal.partition_kind.as_str() {
+        "llp" => None,
+        "cep" => Some(PoolPartitionKindV1::Cep),
+        "rrp" => Some(PoolPartitionKindV1::Rrp),
+        other => {
+            return Err(LiquidityPoolError::Internal(format!(
+                "invalid withdrawal partition_kind: {other}"
+            )));
+        }
+    };
+
     #[derive(Serialize)]
     struct ReceiptHashInput<'a> {
         schema: &'a str,
         pool_id: &'a str,
         lp_id: &'a str,
         withdrawal_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        partition_kind: Option<&'a str>,
         shares_burned: i64,
         amount_sats_estimate: i64,
         rail_preference: &'a str,
@@ -2517,6 +2661,7 @@ fn build_withdraw_request_receipt(
         pool_id: withdrawal.pool_id.as_str(),
         lp_id: withdrawal.lp_id.as_str(),
         withdrawal_id: withdrawal.withdrawal_id.as_str(),
+        partition_kind: partition_kind.map(PoolPartitionKindV1::as_str),
         shares_burned: withdrawal.shares_burned,
         amount_sats_estimate: withdrawal.amount_sats_estimate,
         rail_preference: rail.as_str(),
@@ -2539,6 +2684,7 @@ fn build_withdraw_request_receipt(
         pool_id: withdrawal.pool_id.clone(),
         lp_id: withdrawal.lp_id.clone(),
         withdrawal_id: withdrawal.withdrawal_id.clone(),
+        partition_kind,
         shares_burned: withdrawal.shares_burned,
         amount_sats_estimate: withdrawal.amount_sats_estimate,
         rail_preference: rail,
@@ -2558,12 +2704,25 @@ fn build_withdraw_settlement_receipt(
     paid_at: DateTime<Utc>,
     receipt_signing_key: Option<&[u8; 32]>,
 ) -> Result<WithdrawSettlementReceiptV1, LiquidityPoolError> {
+    let partition_kind = match withdrawal.partition_kind.as_str() {
+        "llp" => None,
+        "cep" => Some(PoolPartitionKindV1::Cep),
+        "rrp" => Some(PoolPartitionKindV1::Rrp),
+        other => {
+            return Err(LiquidityPoolError::Internal(format!(
+                "invalid withdrawal partition_kind: {other}"
+            )));
+        }
+    };
+
     #[derive(Serialize)]
     struct ReceiptHashInput<'a> {
         schema: &'a str,
         pool_id: &'a str,
         lp_id: &'a str,
         withdrawal_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        partition_kind: Option<&'a str>,
         amount_sats: i64,
         rail: &'a str,
         payout_invoice_hash: Option<&'a str>,
@@ -2579,6 +2738,7 @@ fn build_withdraw_settlement_receipt(
         pool_id: withdrawal.pool_id.as_str(),
         lp_id: withdrawal.lp_id.as_str(),
         withdrawal_id: withdrawal.withdrawal_id.as_str(),
+        partition_kind: partition_kind.map(PoolPartitionKindV1::as_str),
         amount_sats: withdrawal.amount_sats_estimate,
         rail: rail.as_str(),
         payout_invoice_hash: withdrawal.payout_invoice_hash.as_deref(),
@@ -2604,6 +2764,7 @@ fn build_withdraw_settlement_receipt(
         pool_id: withdrawal.pool_id.clone(),
         lp_id: withdrawal.lp_id.clone(),
         withdrawal_id: withdrawal.withdrawal_id.clone(),
+        partition_kind,
         amount_sats: withdrawal.amount_sats_estimate,
         rail,
         payout_invoice_hash: withdrawal.payout_invoice_hash.clone(),
@@ -2624,8 +2785,26 @@ fn build_withdraw_settlement_receipt(
 
 fn build_snapshot_receipt(
     snapshot: &PoolSnapshotRow,
+    partition_kind: PoolPartitionKindV1,
     receipt_signing_key: Option<&[u8; 32]>,
 ) -> Result<PoolSnapshotReceiptV1, LiquidityPoolError> {
+    if snapshot.partition_kind != partition_kind.as_str() {
+        return Err(LiquidityPoolError::Internal(
+            "snapshot partition_kind mismatch".to_string(),
+        ));
+    }
+
+    let partition_kind = match snapshot.partition_kind.as_str() {
+        "llp" => None,
+        "cep" => Some(PoolPartitionKindV1::Cep),
+        "rrp" => Some(PoolPartitionKindV1::Rrp),
+        other => {
+            return Err(LiquidityPoolError::Internal(format!(
+                "invalid snapshot partition_kind: {other}"
+            )));
+        }
+    };
+
     let assets_json_sha256 =
         canonical_sha256(&snapshot.assets_json).map_err(LiquidityPoolError::Internal)?;
     let liabilities_json_sha256 =
@@ -2658,6 +2837,7 @@ fn build_snapshot_receipt(
         receipt_id: format!("lpsr_{}", &canonical_json_sha256[..24]),
         pool_id: snapshot.pool_id.clone(),
         snapshot_id: snapshot.snapshot_id.clone(),
+        partition_kind,
         as_of: snapshot.as_of,
         assets_json_sha256,
         liabilities_json_sha256,

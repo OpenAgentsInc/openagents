@@ -54,8 +54,8 @@ use crate::{
             DepositQuoteRequestV1, DepositQuoteResponseV1, PoolCreateRequestV1,
             PoolCreateResponseV1, PoolSignerSetResponseV1, PoolSignerSetUpsertRequestV1,
             PoolSigningApprovalSubmitRequestV1, PoolSigningRequestExecuteResponseV1,
-            PoolSigningRequestListResponseV1, PoolSigningRequestResponseV1, PoolSnapshotResponseV1,
-            PoolStatusResponseV1, PoolTreasuryCloseChannelRequestV1,
+            PoolSigningRequestListResponseV1, PoolSigningRequestResponseV1, PoolPartitionKindV1,
+            PoolSnapshotResponseV1, PoolStatusResponseV1, PoolTreasuryCloseChannelRequestV1,
             PoolTreasuryOpenChannelRequestV1, WithdrawRequestV1, WithdrawResponseV1,
             POOL_SIGNER_SET_RESPONSE_SCHEMA_V1,
         },
@@ -2927,6 +2927,8 @@ async fn liquidity_pool_status(
 struct PoolLatestSnapshotQuery {
     #[serde(default)]
     generate: Option<bool>,
+    #[serde(default)]
+    partition_kind: Option<PoolPartitionKindV1>,
 }
 
 async fn liquidity_pool_latest_snapshot(
@@ -2934,11 +2936,12 @@ async fn liquidity_pool_latest_snapshot(
     Path(pool_id): Path<String>,
     Query(query): Query<PoolLatestSnapshotQuery>,
 ) -> Result<Json<PoolSnapshotResponseV1>, ApiError> {
+    let partition_kind = query.partition_kind.unwrap_or(PoolPartitionKindV1::Llp);
     if query.generate.unwrap_or(false) {
         ensure_runtime_write_authority(&state)?;
         let response = state
             .liquidity_pool
-            .generate_snapshot(pool_id.as_str())
+            .generate_snapshot(pool_id.as_str(), partition_kind)
             .await
             .map_err(api_error_from_liquidity_pool)?;
         return Ok(Json(response));
@@ -2946,7 +2949,7 @@ async fn liquidity_pool_latest_snapshot(
 
     let response = state
         .liquidity_pool
-        .latest_snapshot(pool_id.as_str())
+        .latest_snapshot(pool_id.as_str(), partition_kind)
         .await
         .map_err(api_error_from_liquidity_pool)?
         .ok_or(ApiError::NotFound)?;

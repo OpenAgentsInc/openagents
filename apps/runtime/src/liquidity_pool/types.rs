@@ -264,6 +264,24 @@ impl PoolKindV1 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum PoolPartitionKindV1 {
+    Llp,
+    Cep,
+    Rrp,
+}
+
+impl PoolPartitionKindV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Llp => "llp",
+            Self::Cep => "cep",
+            Self::Rrp => "rrp",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PoolStatusV1 {
     Active,
     Paused,
@@ -381,6 +399,8 @@ pub struct DepositQuoteRequestV1 {
     pub schema: String,
     pub lp_id: String,
     pub idempotency_key: String,
+    #[serde(default)]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub rail: DepositRailV1,
     pub amount_sats: u64,
     #[serde(default)]
@@ -401,6 +421,8 @@ pub struct WithdrawRequestV1 {
     pub schema: String,
     pub lp_id: String,
     pub idempotency_key: String,
+    #[serde(default)]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub shares_burned: u64,
     pub rail_preference: WithdrawalRailPreferenceV1,
     #[serde(default)]
@@ -423,7 +445,19 @@ pub struct PoolStatusResponseV1 {
     pub share_price_sats: i64,
     pub total_shares: i64,
     pub pending_withdrawals_sats_estimate: i64,
+    #[serde(default)]
+    pub partitions: Vec<PoolPartitionStatusV1>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolPartitionStatusV1 {
+    pub partition_kind: PoolPartitionKindV1,
+    pub assets_sats_estimate: i64,
+    pub liabilities_sats_estimate: i64,
+    pub share_price_sats: i64,
+    pub total_shares: i64,
+    pub pending_withdrawals_sats_estimate: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -440,6 +474,8 @@ pub struct DepositReceiptV1 {
     pub pool_id: String,
     pub lp_id: String,
     pub deposit_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub rail: DepositRailV1,
     pub amount_sats: u64,
     pub share_price_sats: i64,
@@ -461,6 +497,8 @@ pub struct WithdrawRequestReceiptV1 {
     pub pool_id: String,
     pub lp_id: String,
     pub withdrawal_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub shares_burned: i64,
     pub amount_sats_estimate: i64,
     pub rail_preference: WithdrawalRailPreferenceV1,
@@ -478,6 +516,8 @@ pub struct WithdrawSettlementReceiptV1 {
     pub pool_id: String,
     pub lp_id: String,
     pub withdrawal_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub amount_sats: i64,
     pub rail: WithdrawalRailPreferenceV1,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -502,6 +542,8 @@ pub struct PoolSnapshotReceiptV1 {
     pub receipt_id: String,
     pub pool_id: String,
     pub snapshot_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_kind: Option<PoolPartitionKindV1>,
     pub as_of: DateTime<Utc>,
     pub assets_json_sha256: String,
     pub liabilities_json_sha256: String,
@@ -525,6 +567,7 @@ pub struct PoolRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LpAccountRow {
     pub pool_id: String,
+    pub partition_kind: String,
     pub lp_id: String,
     pub shares_total: i64,
     pub updated_at: DateTime<Utc>,
@@ -534,6 +577,7 @@ pub struct LpAccountRow {
 pub struct DepositRow {
     pub deposit_id: String,
     pub pool_id: String,
+    pub partition_kind: String,
     pub lp_id: String,
     pub rail: String,
     pub amount_sats: i64,
@@ -556,6 +600,7 @@ pub struct DepositRow {
 pub struct WithdrawalRow {
     pub withdrawal_id: String,
     pub pool_id: String,
+    pub partition_kind: String,
     pub lp_id: String,
     pub shares_burned: i64,
     pub amount_sats_estimate: i64,
@@ -580,6 +625,7 @@ pub struct WithdrawalRow {
 pub struct PoolSnapshotRow {
     pub snapshot_id: String,
     pub pool_id: String,
+    pub partition_kind: String,
     pub as_of: DateTime<Utc>,
     pub assets_json: Value,
     pub liabilities_json: Value,
