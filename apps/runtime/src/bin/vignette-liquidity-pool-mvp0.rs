@@ -58,6 +58,17 @@ struct PoolSnapshotResponse {
     receipt: Value,
 }
 
+#[derive(Debug, Deserialize)]
+struct WithdrawRequestResponse {
+    withdrawal: Value,
+    receipt: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct SigningRequestListResponse {
+    requests: Vec<Value>,
+}
+
 struct RuntimeHandle {
     base_url: String,
     shutdown: oneshot::Sender<()>,
@@ -68,6 +79,8 @@ struct MockWalletState {
     auth_token: String,
     invoices_by_request: Arc<Mutex<HashMap<String, (String, String, u64)>>>,
     payments_by_request: Arc<Mutex<HashMap<String, Value>>>,
+    onchain_quotes_by_plan: Arc<Mutex<HashMap<String, Value>>>,
+    onchain_commits_by_plan: Arc<Mutex<HashMap<String, Value>>>,
     balance_sats: Arc<Mutex<u64>>,
 }
 
@@ -98,7 +111,13 @@ async fn main() -> Result<()> {
     // Start mock wallet executor (no external network).
     let wallet_token = "vignette-wallet-token".to_string();
     let wallet = start_mock_wallet_executor(wallet_token.clone()).await?;
-    wait_for_http_ok(&client, &wallet.base_url, "/healthz", Duration::from_secs(3)).await?;
+    wait_for_http_ok(
+        &client,
+        &wallet.base_url,
+        "/healthz",
+        Duration::from_secs(3),
+    )
+    .await?;
 
     // Start runtime with wallet executor configured.
     let runtime = start_runtime(RuntimeDeps {
@@ -108,7 +127,13 @@ async fn main() -> Result<()> {
         receipt_signing_key: Some(deterministic_secret("vignette-liquidity-pool-mvp0")),
     })
     .await?;
-    wait_for_http_ok(&client, &runtime.base_url, "/healthz", Duration::from_secs(3)).await?;
+    wait_for_http_ok(
+        &client,
+        &runtime.base_url,
+        "/healthz",
+        Duration::from_secs(3),
+    )
+    .await?;
 
     let mut events = Vec::<Value>::new();
 
@@ -208,6 +233,32 @@ async fn main() -> Result<()> {
         "invoice_bolt11": invoice_1,
         "receipt_id": deposit_resp_1.receipt.get("receipt_id").and_then(Value::as_str),
         "receipt_sha256": deposit_resp_1.receipt.get("canonical_json_sha256").and_then(Value::as_str),
+    }));
+
+    let deposit_shares_minted = deposit_resp_1
+        .deposit
+        .get("shares_minted")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if deposit_shares_minted <= 0 {
+        return Err(anyhow!("deposit_quote missing shares_minted"));
+    }
+    let deposit_shares_minted =
+        u64::try_from(deposit_shares_minted).context("deposit_quote shares_minted invalid")?;
+
+    let confirm_deposit_resp = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        &format!("/internal/v1/pools/{pool_id}/deposits/{deposit_id_1}/confirm"),
+        json!({}),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "deposit_confirm",
+        "pool_id": pool_id,
+        "deposit_id": deposit_id_1,
+        "response": confirm_deposit_resp,
     }));
 
     // 2) Liquidity quote + pay (uses liquidity service; independent from pool deposit).
@@ -316,7 +367,9 @@ async fn main() -> Result<()> {
         .unwrap_or("")
         .to_string();
     if receipt_id.is_empty() || receipt_sha256.is_empty() {
-        return Err(anyhow!("liquidity pay missing receipt_id/canonical_json_sha256"));
+        return Err(anyhow!(
+            "liquidity pay missing receipt_id/canonical_json_sha256"
+        ));
     }
 
     // Idempotency: second pay call returns stable response.
@@ -331,7 +384,9 @@ async fn main() -> Result<()> {
     )
     .await?;
     if pay_resp_2.receipt != pay_resp_1.receipt {
-        return Err(anyhow!("liquidity pay idempotency violated: receipt mismatch"));
+        return Err(anyhow!(
+            "liquidity pay idempotency violated: receipt mismatch"
+        ));
     }
 
     events.push(json!({
@@ -360,7 +415,9 @@ async fn main() -> Result<()> {
         .map(|v| v.is_null())
         .unwrap_or(true)
     {
-        return Err(anyhow!("snapshot receipt missing signature (expected when configured)"));
+        return Err(anyhow!(
+            "snapshot receipt missing signature (expected when configured)"
+        ));
     }
 
     events.push(json!({
@@ -371,6 +428,319 @@ async fn main() -> Result<()> {
         "share_price_sats": snapshot.snapshot.get("share_price_sats"),
         "receipt_id": snapshot.receipt.get("receipt_id").and_then(Value::as_str),
         "receipt_sha256": snapshot.receipt.get("canonical_json_sha256").and_then(Value::as_str),
+    }));
+
+    // 4) Small lightning withdrawal + executor tick (Gate L: pay-after-verify like behavior).
+    let share_price_sats = snapshot
+        .snapshot
+        .get("share_price_sats")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .max(1);
+    let share_price_u64 =
+        u64::try_from(share_price_sats).context("snapshot share_price_sats invalid")?;
+
+    const WITHDRAW_AUTOPAY_MAX_SATS: u64 = 100_000;
+    let max_shares_for_autopay = WITHDRAW_AUTOPAY_MAX_SATS / share_price_u64;
+    if max_shares_for_autopay == 0 {
+        return Err(anyhow!(
+            "snapshot share_price_sats too high to test autopay"
+        ));
+    }
+    let withdraw_ln_shares_burned = deposit_shares_minted
+        .min(1_000)
+        .min(max_shares_for_autopay)
+        .max(1);
+    let withdraw_ln_amount_sats = withdraw_ln_shares_burned
+        .checked_mul(share_price_u64)
+        .ok_or_else(|| anyhow!("withdraw-ln amount overflow"))?;
+    let withdraw_ln_idem = "idem:withdraw-ln-1";
+    let withdraw_ln_invoice =
+        build_synthetic_bolt11_invoice_msats(withdraw_ln_amount_sats.saturating_mul(1_000));
+    let withdraw_ln_body = json!({
+        "schema": "openagents.liquidity.pool.withdraw_request.v1",
+        "lp_id": lp_id,
+        "idempotency_key": withdraw_ln_idem,
+        "shares_burned": withdraw_ln_shares_burned,
+        "rail_preference": "lightning",
+        "payout_invoice_bolt11": withdraw_ln_invoice,
+    });
+    let withdraw_ln_resp_1: WithdrawRequestResponse = post_json_expect_ok_typed(
+        &client,
+        &runtime.base_url,
+        &format!("/internal/v1/pools/{pool_id}/withdraw_request"),
+        withdraw_ln_body.clone(),
+    )
+    .await?;
+
+    let withdraw_ln_id = withdraw_ln_resp_1
+        .withdrawal
+        .get("withdrawal_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if withdraw_ln_id.is_empty() {
+        return Err(anyhow!("withdraw-ln response missing withdrawal_id"));
+    }
+
+    // Withdrawal request receipt must be signed when receipt signing key is configured.
+    if withdraw_ln_resp_1
+        .receipt
+        .get("signature")
+        .map(|v| v.is_null())
+        .unwrap_or(true)
+    {
+        return Err(anyhow!(
+            "withdraw request receipt missing signature (expected when configured)"
+        ));
+    }
+
+    let tick_resp_1 = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        "/internal/v1/pools/admin/withdrawals/execute_due",
+        json!({}),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_ln_tick",
+        "response": tick_resp_1,
+    }));
+
+    let mut withdraw_ln_paid: Option<WithdrawRequestResponse> = None;
+    for _ in 0..25 {
+        let current: WithdrawRequestResponse = post_json_expect_ok_typed(
+            &client,
+            &runtime.base_url,
+            &format!("/internal/v1/pools/{pool_id}/withdraw_request"),
+            withdraw_ln_body.clone(),
+        )
+        .await?;
+        let status = current
+            .withdrawal
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if status == "paid" {
+            withdraw_ln_paid = Some(current);
+            break;
+        }
+
+        let _ = post_json_expect_ok(
+            &client,
+            &runtime.base_url,
+            "/internal/v1/pools/admin/withdrawals/execute_due",
+            json!({}),
+        )
+        .await?;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let withdraw_ln_paid = withdraw_ln_paid.ok_or_else(|| anyhow!("withdraw-ln did not settle"))?;
+    let withdraw_ln_wallet_receipt_sha256 = withdraw_ln_paid
+        .withdrawal
+        .get("wallet_receipt_sha256")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if withdraw_ln_wallet_receipt_sha256.is_empty() {
+        return Err(anyhow!(
+            "withdraw-ln missing wallet_receipt_sha256 after settlement"
+        ));
+    }
+
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_ln_paid",
+        "withdrawal_id": withdraw_ln_id,
+        "wallet_receipt_sha256": withdraw_ln_wallet_receipt_sha256,
+    }));
+
+    // 5) On-chain withdrawal executed via signer-set approval + execute.
+    let signer_secret = deterministic_secret("vignette-liquidity-pool-signer-1");
+    let dummy_sha = "00".repeat(32);
+    let signer_pubkey = openagents_runtime_service::artifacts::sign_receipt_sha256(
+        &signer_secret,
+        dummy_sha.as_str(),
+    )?
+    .signer_pubkey;
+
+    let signer_set_resp = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        &format!("/internal/v1/pools/{pool_id}/admin/signer_set"),
+        json!({
+            "schema": "openagents.liquidity.pool_signer_set_upsert_request.v1",
+            "threshold": 1,
+            "signers": [{ "pubkey": signer_pubkey, "label": "vignette-signer-1" }],
+        }),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "pool_signer_set_upsert",
+        "response": signer_set_resp,
+    }));
+
+    let withdraw_onchain_shares_burned = 500_u64;
+    let withdraw_onchain_amount_sats = withdraw_onchain_shares_burned
+        .checked_mul(share_price_u64)
+        .ok_or_else(|| anyhow!("withdraw-onchain amount overflow"))?;
+    let withdraw_onchain_idem = "idem:withdraw-onchain-1";
+    let withdraw_onchain_body = json!({
+        "schema": "openagents.liquidity.pool.withdraw_request.v1",
+        "lp_id": lp_id,
+        "idempotency_key": withdraw_onchain_idem,
+        "shares_burned": withdraw_onchain_shares_burned,
+        "rail_preference": "onchain",
+        "payout_address": "bc1qvignette000000000000000000000000000000",
+    });
+    let withdraw_onchain_resp_1: WithdrawRequestResponse = post_json_expect_ok_typed(
+        &client,
+        &runtime.base_url,
+        &format!("/internal/v1/pools/{pool_id}/withdraw_request"),
+        withdraw_onchain_body.clone(),
+    )
+    .await?;
+    let withdraw_onchain_id = withdraw_onchain_resp_1
+        .withdrawal
+        .get("withdrawal_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if withdraw_onchain_id.is_empty() {
+        return Err(anyhow!("withdraw-onchain response missing withdrawal_id"));
+    }
+
+    let tick_resp_2 = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        "/internal/v1/pools/admin/withdrawals/execute_due",
+        json!({}),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_onchain_tick",
+        "response": tick_resp_2,
+    }));
+
+    let signing_requests: SigningRequestListResponse = get_json_expect_ok_typed(
+        &client,
+        &runtime.base_url,
+        &format!("/internal/v1/pools/{pool_id}/admin/signing_requests?status=pending&limit=50"),
+    )
+    .await?;
+    let signing_request = signing_requests
+        .requests
+        .iter()
+        .find(|req| {
+            req.get("action_class")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                == "onchain_withdrawal_batch"
+                && req
+                    .pointer("/payload_json/withdrawal_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    == withdraw_onchain_id.as_str()
+        })
+        .cloned()
+        .ok_or_else(|| anyhow!("missing onchain withdrawal signing request"))?;
+
+    let signing_request_id = signing_request
+        .get("request_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let payload_sha256 = signing_request
+        .get("payload_sha256")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if signing_request_id.is_empty() || payload_sha256.is_empty() {
+        return Err(anyhow!("signing request missing request_id/payload_sha256"));
+    }
+
+    let approval_sig =
+        openagents_runtime_service::artifacts::sign_receipt_sha256(&signer_secret, &payload_sha256)
+            .context("sign onchain withdrawal payload")?;
+
+    let approve_resp = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        &format!(
+            "/internal/v1/pools/{pool_id}/admin/signing_requests/{signing_request_id}/approve"
+        ),
+        json!({
+            "schema": "openagents.liquidity.pool_signing_approval_submit_request.v1",
+            "signature": approval_sig,
+        }),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_onchain_approve",
+        "signing_request_id": signing_request_id,
+        "response": approve_resp,
+    }));
+
+    let execute_resp = post_json_expect_ok(
+        &client,
+        &runtime.base_url,
+        &format!(
+            "/internal/v1/pools/{pool_id}/admin/signing_requests/{signing_request_id}/execute"
+        ),
+        json!({}),
+    )
+    .await?;
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_onchain_execute",
+        "signing_request_id": signing_request_id,
+        "response": execute_resp,
+    }));
+
+    let mut withdraw_onchain_paid: Option<WithdrawRequestResponse> = None;
+    for _ in 0..25 {
+        let current: WithdrawRequestResponse = post_json_expect_ok_typed(
+            &client,
+            &runtime.base_url,
+            &format!("/internal/v1/pools/{pool_id}/withdraw_request"),
+            withdraw_onchain_body.clone(),
+        )
+        .await?;
+        let status = current
+            .withdrawal
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if status == "paid" {
+            withdraw_onchain_paid = Some(current);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let withdraw_onchain_paid =
+        withdraw_onchain_paid.ok_or_else(|| anyhow!("withdraw-onchain did not settle"))?;
+    let withdraw_onchain_wallet_receipt_sha256 = withdraw_onchain_paid
+        .withdrawal
+        .get("wallet_receipt_sha256")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if withdraw_onchain_wallet_receipt_sha256.is_empty() {
+        return Err(anyhow!(
+            "withdraw-onchain missing wallet_receipt_sha256 after settlement"
+        ));
+    }
+
+    events.push(json!({
+        "at": Utc::now().to_rfc3339(),
+        "step": "withdraw_onchain_paid",
+        "withdrawal_id": withdraw_onchain_id,
+        "wallet_receipt_sha256": withdraw_onchain_wallet_receipt_sha256,
+        "amount_sats": withdraw_onchain_amount_sats,
     }));
 
     // Write artifacts.
@@ -385,6 +755,10 @@ async fn main() -> Result<()> {
         "liquidity_quote_id": quote_resp_1.quote_id,
         "liquidity_receipt_id": receipt_id,
         "liquidity_receipt_sha256": receipt_sha256,
+        "withdraw_ln_id": withdraw_ln_id,
+        "withdraw_ln_wallet_receipt_sha256": withdraw_ln_wallet_receipt_sha256,
+        "withdraw_onchain_id": withdraw_onchain_id,
+        "withdraw_onchain_wallet_receipt_sha256": withdraw_onchain_wallet_receipt_sha256,
         "generated_at": Utc::now().to_rfc3339(),
     });
     std::fs::write(
@@ -420,6 +794,7 @@ async fn start_runtime(deps: RuntimeDeps) -> Result<RuntimeHandle> {
     config.bind_addr = "127.0.0.1:0".parse().context("parse bind addr")?;
     config.liquidity_wallet_executor_base_url = Some(deps.wallet_base_url);
     config.liquidity_wallet_executor_auth_token = Some(deps.wallet_auth_token);
+    config.liquidity_pool_withdraw_delay_hours = 0;
     config.bridge_nostr_secret_key = deps.receipt_signing_key;
     config.bridge_nostr_relays = Vec::new();
 
@@ -452,6 +827,8 @@ async fn start_mock_wallet_executor(auth_token: String) -> Result<MockWalletHand
         auth_token,
         invoices_by_request: Arc::new(Mutex::new(HashMap::new())),
         payments_by_request: Arc::new(Mutex::new(HashMap::new())),
+        onchain_quotes_by_plan: Arc::new(Mutex::new(HashMap::new())),
+        onchain_commits_by_plan: Arc::new(Mutex::new(HashMap::new())),
         balance_sats: Arc::new(Mutex::new(250_000)), // non-zero so snapshots are meaningful
     };
 
@@ -461,6 +838,8 @@ async fn start_mock_wallet_executor(auth_token: String) -> Result<MockWalletHand
         .route("/create-invoice", post(wallet_create_invoice))
         .route("/receive-address", get(wallet_receive_address))
         .route("/pay-bolt11", post(wallet_pay_bolt11))
+        .route("/send-onchain/quote", post(wallet_send_onchain_quote))
+        .route("/send-onchain/commit", post(wallet_send_onchain_commit))
         .with_state(state.clone());
 
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -505,7 +884,9 @@ async fn wallet_status(
     if !is_authorized(&headers, &state.auth_token) {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
         );
     }
     let balance_sats = *state.balance_sats.lock().await;
@@ -533,13 +914,17 @@ async fn wallet_create_invoice(
     if !is_authorized(&headers, &state.auth_token) {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
         );
     }
     if body.amount_sats == 0 {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"ok": false, "error": {"code": "invalid_request", "message": "amount_sats must be > 0"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "invalid_request", "message": "amount_sats must be > 0"}}),
+            ),
         );
     }
     // Included for schema parity, but not used for mock invoice generation.
@@ -557,7 +942,8 @@ async fn wallet_create_invoice(
     let (invoice, invoice_hash, amount_sats) = match invoices.get(request_id).cloned() {
         Some(existing) => existing,
         None => {
-            let invoice = build_synthetic_bolt11_invoice_msats(body.amount_sats.saturating_mul(1000));
+            let invoice =
+                build_synthetic_bolt11_invoice_msats(body.amount_sats.saturating_mul(1000));
             let invoice_hash = sha256_hex(invoice.as_bytes());
             let record = (invoice, invoice_hash, body.amount_sats);
             invoices.insert(request_id.to_string(), record.clone());
@@ -591,12 +977,16 @@ async fn wallet_receive_address(
     if !is_authorized(&headers, &state.auth_token) {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
         );
     }
     (
         StatusCode::OK,
-        Json(json!({"ok": true, "result": {"sparkAddress": "vignette@spark.mock", "bitcoinAddress": "bc1qvignette000000000000000000000000000000"}})),
+        Json(
+            json!({"ok": true, "result": {"sparkAddress": "vignette@spark.mock", "bitcoinAddress": "bc1qvignette000000000000000000000000000000"}}),
+        ),
     )
 }
 
@@ -623,7 +1013,9 @@ async fn wallet_pay_bolt11(
     if !is_authorized(&headers, &state.auth_token) {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}})),
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
         );
     }
 
@@ -640,29 +1032,233 @@ async fn wallet_pay_bolt11(
     }
 
     let paid_at_ms = Utc::now().timestamp_millis();
-    let receipt_sha256 = sha256_hex(format!("{request_id}|{}", body.payment.host).as_bytes());
-    let preimage_sha256 = sha256_hex(format!("preimage|{request_id}").as_bytes());
+    let wallet_id = "mock-wallet";
+    let invoice_hash = sha256_hex(body.payment.invoice.as_bytes());
+    let payment_id_seed = sha256_hex(format!("{request_id}|{}", body.payment.host).as_bytes());
+    let payment_id = format!("mock-pay-{}", &payment_id_seed[..16]);
+    let preimage_hex = sha256_hex(format!("preimage-hex|{request_id}").as_bytes());
+    let preimage_sha256 = sha256_hex(preimage_hex.as_bytes());
+    let receipt_sha256 = sha256_hex(
+        format!(
+            "{request_id}|{wallet_id}|{payment_id}|{invoice_hash}|{}|{paid_at_ms}",
+            body.payment.max_amount_msats
+        )
+        .as_bytes(),
+    );
+
+    {
+        let amount_sats = body.payment.max_amount_msats / 1_000;
+        let mut balance = state.balance_sats.lock().await;
+        *balance = balance.saturating_sub(amount_sats);
+    }
 
     let response = json!({
         "ok": true,
         "result": {
-            "paymentId": format!("mock-pay-{}", &receipt_sha256[..16]),
             "receipt": {
-                "schema": "openagents.lightning.wallet_receipt.v1",
+                "receiptVersion": "openagents.lightning.wallet_receipt.v1",
                 "receiptId": format!("wrec_{}", &receipt_sha256[..24]),
-                "canonicalJsonSha256": receipt_sha256,
+                "requestId": request_id,
+                "walletId": wallet_id,
+                "host": body.payment.host,
+                "paymentId": payment_id,
+                "invoiceHash": invoice_hash,
+                "quotedAmountMsats": body.payment.max_amount_msats,
+                "settledAmountMsats": body.payment.max_amount_msats,
                 "preimageSha256": preimage_sha256,
-                "paidAtMs": paid_at_ms
-            },
+                "paidAtMs": paid_at_ms,
+                "rail": "lightning",
+                "assetId": "BTC_LN",
+                "canonicalJsonSha256": receipt_sha256,
+             },
+            "requestId": request_id,
+            "walletId": wallet_id,
             "payment": {
-                "invoice": body.payment.invoice,
-                "maxAmountMsats": body.payment.max_amount_msats,
-                "host": body.payment.host
-            }
+                "paymentId": payment_id,
+                "amountMsats": body.payment.max_amount_msats,
+                "preimageHex": preimage_hex,
+                "paidAtMs": paid_at_ms,
+            },
+            "quotedAmountMsats": body.payment.max_amount_msats,
+            "windowSpendMsatsAfterPayment": body.payment.max_amount_msats,
         }
     });
 
     payments.insert(request_id.to_string(), response.clone());
+    (StatusCode::OK, Json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainQuoteBody {
+    #[serde(default)]
+    request_id: Option<String>,
+    payment: SendOnchainQuotePayment,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainQuotePayment {
+    address: String,
+    amount_sats: u64,
+    confirmation_speed: String,
+}
+
+async fn wallet_send_onchain_quote(
+    headers: HeaderMap,
+    State(state): State<MockWalletState>,
+    Json(body): Json<SendOnchainQuoteBody>,
+) -> impl IntoResponse {
+    if !is_authorized(&headers, &state.auth_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
+        );
+    }
+
+    let plan_id = body
+        .request_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("mock-plan")
+        .to_string();
+
+    let mut quotes = state.onchain_quotes_by_plan.lock().await;
+    if let Some(existing) = quotes.get(&plan_id).cloned() {
+        return (StatusCode::OK, Json(existing));
+    }
+
+    let fee_sats = (body.payment.amount_sats / 1000).max(1).min(500);
+    let total_sats = body.payment.amount_sats.saturating_add(fee_sats);
+    let quoted_at_ms = Utc::now().timestamp_millis();
+
+    let response = json!({
+        "ok": true,
+        "result": {
+            "planId": plan_id,
+            "walletId": "mock-wallet",
+            "address": body.payment.address,
+            "amountSats": body.payment.amount_sats,
+            "confirmationSpeed": body.payment.confirmation_speed,
+            "feeSats": fee_sats,
+            "totalSats": total_sats,
+            "quotedAtMs": quoted_at_ms,
+        }
+    });
+
+    quotes.insert(
+        response
+            .pointer("/result/planId")
+            .and_then(Value::as_str)
+            .unwrap_or("mock-plan")
+            .to_string(),
+        response.clone(),
+    );
+    (StatusCode::OK, Json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainCommitBody {
+    plan_id: String,
+}
+
+async fn wallet_send_onchain_commit(
+    headers: HeaderMap,
+    State(state): State<MockWalletState>,
+    Json(body): Json<SendOnchainCommitBody>,
+) -> impl IntoResponse {
+    if !is_authorized(&headers, &state.auth_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(
+                json!({"ok": false, "error": {"code": "unauthorized", "message": "missing/invalid token"}}),
+            ),
+        );
+    }
+
+    let plan_id = body.plan_id.trim().to_string();
+    if plan_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                json!({"ok": false, "error": {"code": "invalid_request", "message": "plan_id is required"}}),
+            ),
+        );
+    }
+
+    let commits = state.onchain_commits_by_plan.lock().await;
+    if let Some(existing) = commits.get(&plan_id).cloned() {
+        return (StatusCode::OK, Json(existing));
+    }
+    drop(commits);
+
+    let quotes = state.onchain_quotes_by_plan.lock().await;
+    let Some(quote) = quotes.get(&plan_id).cloned() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                json!({"ok": false, "error": {"code": "invalid_request", "message": "unknown plan_id"}}),
+            ),
+        );
+    };
+    drop(quotes);
+
+    let address = quote
+        .pointer("/result/address")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let amount_sats = quote
+        .pointer("/result/amountSats")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let confirmation_speed = quote
+        .pointer("/result/confirmationSpeed")
+        .and_then(Value::as_str)
+        .unwrap_or("normal")
+        .to_string();
+    let fee_sats = quote
+        .pointer("/result/feeSats")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    let total_sats = amount_sats.saturating_add(fee_sats);
+
+    let txid = sha256_hex(format!("tx|{plan_id}|{address}|{amount_sats}").as_bytes());
+    let receipt_sha256 = sha256_hex(format!("onchain|{plan_id}|{txid}").as_bytes());
+    let paid_at_ms = Utc::now().timestamp_millis();
+
+    {
+        let mut balance = state.balance_sats.lock().await;
+        *balance = balance.saturating_sub(total_sats);
+    }
+
+    let response = json!({
+        "ok": true,
+        "result": {
+            "planId": plan_id,
+            "walletId": "mock-wallet",
+            "address": address,
+            "amountSats": amount_sats,
+            "confirmationSpeed": confirmation_speed,
+            "feeSats": fee_sats,
+            "totalSats": total_sats,
+            "txid": txid,
+            "paidAtMs": paid_at_ms,
+            "receipt": {
+                "receiptVersion": "openagents.lightning.onchain_send_receipt.v1",
+                "receiptId": format!("losr_{}", &receipt_sha256[..24]),
+                "canonicalJsonSha256": receipt_sha256,
+            }
+        }
+    });
+
+    let mut commits = state.onchain_commits_by_plan.lock().await;
+    commits.insert(plan_id, response.clone());
+
     (StatusCode::OK, Json(response))
 }
 
@@ -729,7 +1325,12 @@ async fn post_json_expect_ok(
     let status = resp.status();
     let json = resp.json::<Value>().await.unwrap_or(Value::Null);
     if !status.is_success() {
-        return Err(anyhow!("POST {} failed: http_{}: {}", path, status.as_u16(), json));
+        return Err(anyhow!(
+            "POST {} failed: http_{}: {}",
+            path,
+            status.as_u16(),
+            json
+        ));
     }
     Ok(json)
 }
@@ -758,7 +1359,12 @@ async fn get_json_expect_ok_typed<T: for<'de> Deserialize<'de>>(
     let status = resp.status();
     let json = resp.json::<Value>().await.unwrap_or(Value::Null);
     if !status.is_success() {
-        return Err(anyhow!("GET {} failed: http_{}: {}", path, status.as_u16(), json));
+        return Err(anyhow!(
+            "GET {} failed: http_{}: {}",
+            path,
+            status.as_u16(),
+            json
+        ));
     }
     serde_json::from_value(json).with_context(|| format!("parse response from {}", path))
 }

@@ -52,6 +52,9 @@ pub struct WithdrawalInsertInput {
     pub request_fingerprint_sha256: String,
     pub idempotency_key: String,
     pub earliest_settlement_at: DateTime<Utc>,
+    pub payout_invoice_bolt11: Option<String>,
+    pub payout_invoice_hash: Option<String>,
+    pub payout_address: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -120,6 +123,26 @@ pub trait LiquidityPoolStore: Send + Sync {
     async fn create_or_get_withdrawal(
         &self,
         input: WithdrawalInsertInput,
+    ) -> Result<WithdrawalRow, LiquidityPoolStoreError>;
+
+    async fn get_withdrawal(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+    ) -> Result<Option<WithdrawalRow>, LiquidityPoolStoreError>;
+
+    async fn list_due_withdrawals(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<WithdrawalRow>, LiquidityPoolStoreError>;
+
+    async fn mark_withdrawal_paid_and_burn_shares(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+        wallet_receipt_sha256: &str,
+        paid_at: DateTime<Utc>,
     ) -> Result<WithdrawalRow, LiquidityPoolStoreError>;
 
     async fn get_lp_account(
@@ -380,8 +403,9 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             status: input.status.clone(),
             idempotency_key: input.idempotency_key.clone(),
             earliest_settlement_at: input.earliest_settlement_at,
-            payout_invoice_hash: None,
-            payout_address: None,
+            payout_invoice_bolt11: input.payout_invoice_bolt11.clone(),
+            payout_invoice_hash: input.payout_invoice_hash.clone(),
+            payout_address: input.payout_address.clone(),
             wallet_receipt_sha256: None,
             created_at: input.created_at,
             paid_at: None,
@@ -395,6 +419,100 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             (row.clone(), input.request_fingerprint_sha256),
         );
         Ok(row)
+    }
+
+    async fn get_withdrawal(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+    ) -> Result<Option<WithdrawalRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        let Some((row, _)) = inner.withdrawals.get(withdrawal_id) else {
+            return Ok(None);
+        };
+        if row.pool_id != pool_id {
+            return Ok(None);
+        }
+        Ok(Some(row.clone()))
+    }
+
+    async fn list_due_withdrawals(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<WithdrawalRow>, LiquidityPoolStoreError> {
+        let inner = self.inner.lock().await;
+        let mut rows = inner
+            .withdrawals
+            .values()
+            .map(|(row, _)| row.clone())
+            .filter(|row| {
+                (row.status == "queued" || row.status == "approved")
+                    && row.paid_at.is_none()
+                    && row.earliest_settlement_at <= now
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|a, b| a.earliest_settlement_at.cmp(&b.earliest_settlement_at));
+        let limit = usize::try_from(limit.max(1).min(5_000)).unwrap_or(5_000);
+        rows.truncate(limit);
+        Ok(rows)
+    }
+
+    async fn mark_withdrawal_paid_and_burn_shares(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+        wallet_receipt_sha256: &str,
+        paid_at: DateTime<Utc>,
+    ) -> Result<WithdrawalRow, LiquidityPoolStoreError> {
+        let mut inner = self.inner.lock().await;
+        let Some((row, fingerprint)) = inner.withdrawals.get(withdrawal_id).cloned() else {
+            return Err(LiquidityPoolStoreError::NotFound(
+                "withdrawal not found".to_string(),
+            ));
+        };
+        if row.pool_id != pool_id {
+            return Err(LiquidityPoolStoreError::NotFound(
+                "withdrawal not found".to_string(),
+            ));
+        }
+        if row.paid_at.is_some() || row.status == "paid" {
+            return Ok(row);
+        }
+        if row.status != "queued" && row.status != "approved" {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "withdrawal not in a payable state".to_string(),
+            ));
+        }
+
+        let lp_key = (row.pool_id.clone(), row.lp_id.clone());
+        let Some(account) = inner.lp_accounts.get_mut(&lp_key) else {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "lp account not found".to_string(),
+            ));
+        };
+        let new_total = account
+            .shares_total
+            .checked_sub(row.shares_burned)
+            .ok_or_else(|| LiquidityPoolStoreError::Conflict("insufficient shares".to_string()))?;
+        if new_total < 0 {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "insufficient shares".to_string(),
+            ));
+        }
+        account.shares_total = new_total;
+        account.updated_at = paid_at;
+
+        let mut updated = row.clone();
+        updated.status = "paid".to_string();
+        updated.wallet_receipt_sha256 = Some(wallet_receipt_sha256.trim().to_string());
+        updated.paid_at = Some(paid_at);
+
+        inner
+            .withdrawals
+            .insert(withdrawal_id.to_string(), (updated.clone(), fingerprint));
+        Ok(updated)
     }
 
     async fn get_lp_account(
@@ -553,8 +671,11 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
         );
 
         if let Some(existing_id) = inner.signing_request_by_idempotency.get(&key) {
-            let (row, fingerprint) =
-                inner.signing_requests.get(existing_id).cloned().ok_or_else(|| {
+            let (row, fingerprint) = inner
+                .signing_requests
+                .get(existing_id)
+                .cloned()
+                .ok_or_else(|| {
                     LiquidityPoolStoreError::Db("missing signing request row".to_string())
                 })?;
             if fingerprint != input.payload_sha256 {
@@ -572,8 +693,9 @@ impl LiquidityPoolStore for MemoryLiquidityPoolStore {
             idempotency_key: input.idempotency_key.clone(),
             payload_json: input.payload_json.clone(),
             payload_sha256: input.payload_sha256.clone(),
-            required_signatures: u32::try_from(input.required_signatures)
-                .map_err(|_| LiquidityPoolStoreError::Db("required_signatures overflow".to_string()))?,
+            required_signatures: u32::try_from(input.required_signatures).map_err(|_| {
+                LiquidityPoolStoreError::Db("required_signatures overflow".to_string())
+            })?,
             status: input.status.clone(),
             execution_result_json: None,
             created_at: input.created_at,
@@ -1072,6 +1194,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                        request_fingerprint_sha256,
                        idempotency_key,
                        earliest_settlement_at,
+                       payout_invoice_bolt11,
                        payout_invoice_hash,
                        payout_address,
                        wallet_receipt_sha256,
@@ -1115,9 +1238,12 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                   request_fingerprint_sha256,
                   idempotency_key,
                   earliest_settlement_at,
+                  payout_invoice_bolt11,
+                  payout_invoice_hash,
+                  payout_address,
                   created_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                 RETURNING withdrawal_id,
                           pool_id,
                           lp_id,
@@ -1128,6 +1254,7 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                           request_fingerprint_sha256,
                           idempotency_key,
                           earliest_settlement_at,
+                          payout_invoice_bolt11,
                           payout_invoice_hash,
                           payout_address,
                           wallet_receipt_sha256,
@@ -1145,6 +1272,9 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
                     &input.request_fingerprint_sha256,
                     &input.idempotency_key,
                     &input.earliest_settlement_at,
+                    &input.payout_invoice_bolt11,
+                    &input.payout_invoice_hash,
+                    &input.payout_address,
                     &input.created_at,
                 ],
             )
@@ -1155,6 +1285,233 @@ impl LiquidityPoolStore for PostgresLiquidityPoolStore {
             .await
             .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
         map_withdrawal_row(&inserted).map_err(LiquidityPoolStoreError::Db)
+    }
+
+    async fn get_withdrawal(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+    ) -> Result<Option<WithdrawalRow>, LiquidityPoolStoreError> {
+        let client = self.db.client();
+        let client = client.lock().await;
+        let row = client
+            .query_opt(
+                r#"
+                SELECT withdrawal_id,
+                       pool_id,
+                       lp_id,
+                       shares_burned,
+                       amount_sats_estimate,
+                       rail_preference,
+                       status,
+                       request_fingerprint_sha256,
+                       idempotency_key,
+                       earliest_settlement_at,
+                       payout_invoice_bolt11,
+                       payout_invoice_hash,
+                       payout_address,
+                       wallet_receipt_sha256,
+                       created_at,
+                       paid_at
+                  FROM runtime.liquidity_withdrawals
+                 WHERE pool_id = $1
+                   AND withdrawal_id = $2
+                "#,
+                &[&pool_id, &withdrawal_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        Ok(row
+            .as_ref()
+            .map(map_withdrawal_row)
+            .transpose()
+            .map_err(LiquidityPoolStoreError::Db)?)
+    }
+
+    async fn list_due_withdrawals(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<WithdrawalRow>, LiquidityPoolStoreError> {
+        let limit = limit.max(1).min(5_000);
+        let client = self.db.client();
+        let client = client.lock().await;
+        let rows = client
+            .query(
+                r#"
+                SELECT withdrawal_id,
+                       pool_id,
+                       lp_id,
+                       shares_burned,
+                       amount_sats_estimate,
+                       rail_preference,
+                       status,
+                       request_fingerprint_sha256,
+                       idempotency_key,
+                       earliest_settlement_at,
+                       payout_invoice_bolt11,
+                       payout_invoice_hash,
+                       payout_address,
+                       wallet_receipt_sha256,
+                       created_at,
+                       paid_at
+                  FROM runtime.liquidity_withdrawals
+                 WHERE (status = 'queued' OR status = 'approved')
+                   AND paid_at IS NULL
+                   AND earliest_settlement_at <= $1
+                 ORDER BY earliest_settlement_at ASC, created_at ASC
+                 LIMIT $2
+                "#,
+                &[&now, &limit],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            out.push(map_withdrawal_row(&row).map_err(LiquidityPoolStoreError::Db)?);
+        }
+        Ok(out)
+    }
+
+    async fn mark_withdrawal_paid_and_burn_shares(
+        &self,
+        pool_id: &str,
+        withdrawal_id: &str,
+        wallet_receipt_sha256: &str,
+        paid_at: DateTime<Utc>,
+    ) -> Result<WithdrawalRow, LiquidityPoolStoreError> {
+        let wallet_receipt_sha256 = wallet_receipt_sha256.trim().to_string();
+        if wallet_receipt_sha256.is_empty() {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "wallet_receipt_sha256 is required".to_string(),
+            ));
+        }
+
+        let client = self.db.client();
+        let mut client = client.lock().await;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let existing = tx
+            .query_opt(
+                r#"
+                SELECT withdrawal_id,
+                       pool_id,
+                       lp_id,
+                       shares_burned,
+                       amount_sats_estimate,
+                       rail_preference,
+                       status,
+                       request_fingerprint_sha256,
+                       idempotency_key,
+                       earliest_settlement_at,
+                       payout_invoice_bolt11,
+                       payout_invoice_hash,
+                       payout_address,
+                       wallet_receipt_sha256,
+                       created_at,
+                       paid_at
+                  FROM runtime.liquidity_withdrawals
+                 WHERE pool_id = $1
+                   AND withdrawal_id = $2
+                 FOR UPDATE
+                "#,
+                &[&pool_id, &withdrawal_id],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        let Some(existing) = existing else {
+            return Err(LiquidityPoolStoreError::NotFound(
+                "withdrawal not found".to_string(),
+            ));
+        };
+
+        let existing_row = map_withdrawal_row(&existing).map_err(LiquidityPoolStoreError::Db)?;
+        if existing_row.status == "paid" || existing_row.paid_at.is_some() {
+            tx.commit()
+                .await
+                .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+            return Ok(existing_row);
+        }
+        if existing_row.status != "queued" && existing_row.status != "approved" {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "withdrawal not in a payable state".to_string(),
+            ));
+        }
+
+        // Burn shares.
+        let burned = existing_row.shares_burned;
+        if burned <= 0 {
+            return Err(LiquidityPoolStoreError::Db(
+                "shares_burned invalid".to_string(),
+            ));
+        }
+
+        let updated_lp = tx
+            .execute(
+                r#"
+                UPDATE runtime.liquidity_lp_accounts
+                   SET shares_total = shares_total - $3,
+                       updated_at = $4
+                 WHERE pool_id = $1
+                   AND lp_id = $2
+                   AND shares_total >= $3
+                "#,
+                &[
+                    &existing_row.pool_id,
+                    &existing_row.lp_id,
+                    &burned,
+                    &paid_at,
+                ],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+        if updated_lp == 0 {
+            return Err(LiquidityPoolStoreError::Conflict(
+                "insufficient shares".to_string(),
+            ));
+        }
+
+        let updated = tx
+            .query_one(
+                r#"
+                UPDATE runtime.liquidity_withdrawals
+                   SET status = 'paid',
+                       wallet_receipt_sha256 = $3,
+                       paid_at = $4
+                 WHERE pool_id = $1
+                   AND withdrawal_id = $2
+                RETURNING withdrawal_id,
+                          pool_id,
+                          lp_id,
+                          shares_burned,
+                          amount_sats_estimate,
+                          rail_preference,
+                          status,
+                          request_fingerprint_sha256,
+                          idempotency_key,
+                          earliest_settlement_at,
+                          payout_invoice_bolt11,
+                          payout_invoice_hash,
+                          payout_address,
+                          wallet_receipt_sha256,
+                          created_at,
+                          paid_at
+                "#,
+                &[&pool_id, &withdrawal_id, &wallet_receipt_sha256, &paid_at],
+            )
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|error| LiquidityPoolStoreError::Db(error.to_string()))?;
+
+        map_withdrawal_row(&updated).map_err(LiquidityPoolStoreError::Db)
     }
 
     async fn get_lp_account(
@@ -1959,6 +2316,7 @@ fn map_withdrawal_row(row: &tokio_postgres::Row) -> Result<WithdrawalRow, String
         status: row.get("status"),
         idempotency_key: row.get("idempotency_key"),
         earliest_settlement_at: row.get("earliest_settlement_at"),
+        payout_invoice_bolt11: row.get("payout_invoice_bolt11"),
         payout_invoice_hash: row.get("payout_invoice_hash"),
         payout_address: row.get("payout_address"),
         wallet_receipt_sha256: row.get("wallet_receipt_sha256"),

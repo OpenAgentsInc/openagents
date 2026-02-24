@@ -13,8 +13,9 @@ use crate::error::{
 };
 use crate::gateway::{PaymentGateway, SparkPaymentStatus};
 use crate::receipt::{
-    InvoiceReceipt, InvoiceReceiptInput, WalletExecutionReceipt, WalletExecutionReceiptInput,
-    build_invoice_receipt, build_wallet_execution_receipt,
+    InvoiceReceipt, InvoiceReceiptInput, OnchainSendReceipt, OnchainSendReceiptInput,
+    WalletExecutionReceipt, WalletExecutionReceiptInput, build_invoice_receipt,
+    build_onchain_send_receipt, build_wallet_execution_receipt,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -58,6 +59,34 @@ pub struct CreateInvoiceResult {
     pub receipt: InvoiceReceipt,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendOnchainQuoteResult {
+    pub plan_id: String,
+    pub wallet_id: String,
+    pub address: String,
+    pub amount_sats: u64,
+    pub confirmation_speed: String,
+    pub fee_sats: u64,
+    pub total_sats: u64,
+    pub quoted_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendOnchainCommitResult {
+    pub plan_id: String,
+    pub wallet_id: String,
+    pub address: String,
+    pub amount_sats: u64,
+    pub confirmation_speed: String,
+    pub fee_sats: u64,
+    pub total_sats: u64,
+    pub txid: String,
+    pub paid_at_ms: i64,
+    pub receipt: OnchainSendReceipt,
+}
+
 #[derive(Debug, Clone)]
 struct PaymentIdempotencyRecord {
     fingerprint: String,
@@ -82,6 +111,20 @@ enum InvoiceIdempotencyOutcome {
     InFlight,
     Completed(CreateInvoiceResult),
     TerminalSparkError(SparkGatewayError),
+}
+
+#[derive(Debug, Clone)]
+struct OnchainPlanRecord {
+    fingerprint: String,
+    prepared: crate::gateway::SparkPreparedPayment,
+    address: String,
+    amount_sats: u64,
+    confirmation_speed: spark::OnchainConfirmationSpeed,
+    confirmation_speed_label: String,
+    fee_sats: u64,
+    quoted_at_ms: i64,
+    commit_in_flight: bool,
+    committed: Option<SendOnchainCommitResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,6 +209,7 @@ impl Default for StatusState {
 
 #[derive(Debug)]
 pub enum WalletExecutorError {
+    InvalidRequest(String),
     Policy(PolicyDeniedError),
     Idempotency(IdempotencyError),
     Spark(SparkGatewayError),
@@ -178,6 +222,7 @@ pub struct WalletExecutorService {
     history: Mutex<Vec<PaymentHistoryItem>>,
     idempotency: Mutex<HashMap<String, PaymentIdempotencyRecord>>,
     invoice_idempotency: Mutex<HashMap<String, InvoiceIdempotencyRecord>>,
+    onchain_plans: Mutex<HashMap<String, OnchainPlanRecord>>,
 }
 
 impl WalletExecutorService {
@@ -189,6 +234,7 @@ impl WalletExecutorService {
             history: Mutex::new(Vec::new()),
             idempotency: Mutex::new(HashMap::new()),
             invoice_idempotency: Mutex::new(HashMap::new()),
+            onchain_plans: Mutex::new(HashMap::new()),
         }
     }
 
@@ -306,6 +352,302 @@ impl WalletExecutorService {
         result
     }
 
+    pub async fn send_onchain_quote(
+        &self,
+        address: String,
+        amount_sats: u64,
+        confirmation_speed: String,
+        plan_id: Option<String>,
+    ) -> Result<SendOnchainQuoteResult, WalletExecutorError> {
+        let plan_id = plan_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let address = address.trim().to_string();
+        if address.is_empty() {
+            return Err(WalletExecutorError::InvalidRequest(
+                "address is required".to_string(),
+            ));
+        }
+        if amount_sats == 0 {
+            return Err(WalletExecutorError::InvalidRequest(
+                "amount_sats must be > 0".to_string(),
+            ));
+        }
+
+        let Some((speed_enum, speed_label)) =
+            normalize_onchain_confirmation_speed(confirmation_speed.as_str())
+        else {
+            return Err(WalletExecutorError::InvalidRequest(
+                "confirmation_speed must be one of: slow, medium, fast".to_string(),
+            ));
+        };
+
+        let fingerprint = onchain_plan_fingerprint(
+            &self.config.wallet_id,
+            address.as_str(),
+            amount_sats,
+            speed_label.as_str(),
+        );
+
+        {
+            let plans = self.onchain_plans.lock().await;
+            if let Some(existing) = plans.get(&plan_id) {
+                if existing.fingerprint != fingerprint {
+                    return Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                        IdempotencyErrorCode::Conflict,
+                        format!("plan_id {plan_id} reused with different parameters"),
+                    )));
+                }
+                let total_sats = existing.amount_sats.saturating_add(existing.fee_sats);
+                return Ok(SendOnchainQuoteResult {
+                    plan_id: plan_id.clone(),
+                    wallet_id: self.config.wallet_id.clone(),
+                    address: existing.address.clone(),
+                    amount_sats: existing.amount_sats,
+                    confirmation_speed: existing.confirmation_speed_label.clone(),
+                    fee_sats: existing.fee_sats,
+                    total_sats,
+                    quoted_at_ms: existing.quoted_at_ms,
+                });
+            }
+        }
+
+        self.bootstrap().await.map_err(WalletExecutorError::Spark)?;
+        let prepared = self
+            .gateway
+            .prepare_payment(address.as_str(), Some(amount_sats))
+            .await
+            .map_err(WalletExecutorError::Spark)?;
+
+        if prepared.payment_method_type != "bitcoinAddress" {
+            return Err(WalletExecutorError::Spark(SparkGatewayError::new(
+                SparkGatewayErrorCode::UnsupportedPaymentMethod,
+                format!(
+                    "unsupported payment method: {}",
+                    prepared.payment_method_type
+                ),
+            )));
+        }
+
+        let fee_quote = prepared.onchain_fee_quote.clone().ok_or_else(|| {
+            WalletExecutorError::Spark(SparkGatewayError::new(
+                SparkGatewayErrorCode::PrepareFailed,
+                "missing on-chain fee quote from gateway",
+            ))
+        })?;
+
+        let fee_sats = match speed_enum {
+            spark::OnchainConfirmationSpeed::Fast => fee_quote.speed_fast.total_fee_sat(),
+            spark::OnchainConfirmationSpeed::Medium => fee_quote.speed_medium.total_fee_sat(),
+            spark::OnchainConfirmationSpeed::Slow => fee_quote.speed_slow.total_fee_sat(),
+        };
+
+        let quoted_at_ms = chrono::Utc::now().timestamp_millis();
+        let total_sats = amount_sats.saturating_add(fee_sats);
+        let result = SendOnchainQuoteResult {
+            plan_id: plan_id.clone(),
+            wallet_id: self.config.wallet_id.clone(),
+            address: address.clone(),
+            amount_sats,
+            confirmation_speed: speed_label.clone(),
+            fee_sats,
+            total_sats,
+            quoted_at_ms,
+        };
+
+        let mut plans = self.onchain_plans.lock().await;
+        if let Some(existing) = plans.get(&plan_id) {
+            if existing.fingerprint != fingerprint {
+                return Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                    IdempotencyErrorCode::Conflict,
+                    format!("plan_id {plan_id} reused with different parameters"),
+                )));
+            }
+            let total_sats = existing.amount_sats.saturating_add(existing.fee_sats);
+            return Ok(SendOnchainQuoteResult {
+                plan_id: plan_id.clone(),
+                wallet_id: self.config.wallet_id.clone(),
+                address: existing.address.clone(),
+                amount_sats: existing.amount_sats,
+                confirmation_speed: existing.confirmation_speed_label.clone(),
+                fee_sats: existing.fee_sats,
+                total_sats,
+                quoted_at_ms: existing.quoted_at_ms,
+            });
+        }
+
+        plans.insert(
+            plan_id.clone(),
+            OnchainPlanRecord {
+                fingerprint,
+                prepared,
+                address,
+                amount_sats,
+                confirmation_speed: speed_enum,
+                confirmation_speed_label: speed_label,
+                fee_sats,
+                quoted_at_ms,
+                commit_in_flight: false,
+                committed: None,
+            },
+        );
+
+        Ok(result)
+    }
+
+    pub async fn send_onchain_commit(
+        &self,
+        plan_id: &str,
+    ) -> Result<SendOnchainCommitResult, WalletExecutorError> {
+        let plan_id = plan_id.trim().to_string();
+        if plan_id.is_empty() {
+            return Err(WalletExecutorError::InvalidRequest(
+                "plan_id is required".to_string(),
+            ));
+        }
+
+        let (mut prepared, address, amount_sats, fee_sats, speed_enum, speed_label) = {
+            let mut plans = self.onchain_plans.lock().await;
+            let Some(plan) = plans.get_mut(&plan_id) else {
+                return Err(WalletExecutorError::InvalidRequest(
+                    "unknown plan_id (quote may have expired)".to_string(),
+                ));
+            };
+            if let Some(existing) = plan.committed.clone() {
+                return Ok(existing);
+            }
+            if plan.commit_in_flight {
+                return Err(WalletExecutorError::Idempotency(IdempotencyError::new(
+                    IdempotencyErrorCode::InFlight,
+                    format!("on-chain commit already in flight for plan_id {plan_id}"),
+                )));
+            }
+            plan.commit_in_flight = true;
+            (
+                plan.prepared.clone(),
+                plan.address.clone(),
+                plan.amount_sats,
+                plan.fee_sats,
+                plan.confirmation_speed.clone(),
+                plan.confirmation_speed_label.clone(),
+            )
+        };
+
+        let result = async {
+            self.bootstrap().await.map_err(WalletExecutorError::Spark)?;
+
+            let total_sats = amount_sats.saturating_add(fee_sats);
+            let total_msats = total_sats.saturating_mul(1_000);
+            if total_msats == 0 {
+                return Err(WalletExecutorError::InvalidRequest(
+                    "amount too large".to_string(),
+                ));
+            }
+
+            if total_msats > self.config.request_cap_msats {
+                let mut error = PolicyDeniedError::new(
+                    PolicyDenialCode::QuotedAmountExceedsCap,
+                    format!("quoted amount {} msats exceeds cap", total_msats),
+                );
+                error.host = Some("onchain".to_string());
+                error.max_allowed_msats = Some(self.config.request_cap_msats);
+                error.quoted_amount_msats = Some(total_msats);
+                return Err(WalletExecutorError::Policy(error));
+            }
+
+            let _window_spend_before = self
+                .enforce_window_cap("onchain", total_msats)
+                .await
+                .map_err(WalletExecutorError::Policy)?;
+
+            prepared.onchain_confirmation_speed = Some(speed_enum);
+            let sent = self
+                .gateway
+                .send_payment(prepared.clone(), self.config.payment_timeout_secs)
+                .await
+                .map_err(WalletExecutorError::Spark)?;
+
+            if sent.status == SparkPaymentStatus::Pending {
+                return Err(WalletExecutorError::Spark(SparkGatewayError::new(
+                    SparkGatewayErrorCode::PaymentPending,
+                    "payment did not complete before timeout",
+                )));
+            }
+            if sent.status == SparkPaymentStatus::Failed {
+                return Err(WalletExecutorError::Spark(SparkGatewayError::new(
+                    SparkGatewayErrorCode::PaymentFailed,
+                    "payment failed",
+                )));
+            }
+
+            let txid = sent.txid.clone().ok_or_else(|| {
+                WalletExecutorError::Spark(SparkGatewayError::new(
+                    SparkGatewayErrorCode::SendFailed,
+                    "on-chain send completed without a txid",
+                ))
+            })?;
+
+            {
+                let mut history = self.history.lock().await;
+                prune_window(&mut history, sent.paid_at_ms, self.config.window_ms);
+                history.push(PaymentHistoryItem {
+                    amount_msats: total_msats,
+                    paid_at_ms: sent.paid_at_ms,
+                });
+            }
+
+            let receipt = build_onchain_send_receipt(&OnchainSendReceiptInput {
+                plan_id: plan_id.clone(),
+                wallet_id: self.config.wallet_id.clone(),
+                address: address.clone(),
+                amount_sats,
+                fee_sats,
+                confirmation_speed: speed_label.clone(),
+                txid: txid.clone(),
+                sent_at_ms: sent.paid_at_ms,
+            });
+
+            self.refresh_status_from_gateway_best_effort().await;
+
+            {
+                let history_len = self.history.lock().await.len();
+                let mut status = self.status.lock().await;
+                status.lifecycle = Lifecycle::Connected;
+                status.recent_payments_count = history_len;
+                status.last_payment_id = Some(sent.payment_id.clone());
+                status.last_payment_at_ms = Some(sent.paid_at_ms);
+                status.last_error_code = None;
+                status.last_error_message = None;
+                status.updated_at_ms = chrono::Utc::now().timestamp_millis();
+            }
+
+            Ok(SendOnchainCommitResult {
+                plan_id: plan_id.clone(),
+                wallet_id: self.config.wallet_id.clone(),
+                address,
+                amount_sats,
+                confirmation_speed: speed_label,
+                fee_sats,
+                total_sats,
+                txid,
+                paid_at_ms: sent.paid_at_ms,
+                receipt,
+            })
+        }
+        .await;
+
+        let mut plans = self.onchain_plans.lock().await;
+        if let Some(plan) = plans.get_mut(&plan_id) {
+            plan.commit_in_flight = false;
+            if let Ok(ok) = &result {
+                plan.committed = Some(ok.clone());
+            } else {
+                // Discard failed plans. Clients should re-quote.
+                let _ = plans.remove(&plan_id);
+            }
+        }
+
+        result
+    }
+
     pub async fn create_invoice(
         &self,
         amount_sats: u64,
@@ -412,7 +754,7 @@ impl WalletExecutorService {
 
         let prepared = self
             .gateway
-            .prepare_payment(&request.invoice)
+            .prepare_payment(&request.invoice, None)
             .await
             .map_err(WalletExecutorError::Spark)?;
 
@@ -736,6 +1078,35 @@ fn payment_request_fingerprint(
     hex::encode(hasher.finalize())
 }
 
+fn onchain_plan_fingerprint(
+    wallet_id: &str,
+    address: &str,
+    amount_sats: u64,
+    confirmation_speed: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(wallet_id.trim().as_bytes());
+    hasher.update(b"|");
+    hasher.update(address.trim().to_ascii_lowercase().as_bytes());
+    hasher.update(b"|");
+    hasher.update(amount_sats.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(confirmation_speed.trim().to_ascii_lowercase().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn normalize_onchain_confirmation_speed(
+    value: &str,
+) -> Option<(spark::OnchainConfirmationSpeed, String)> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "fast" => Some((spark::OnchainConfirmationSpeed::Fast, normalized)),
+        "medium" => Some((spark::OnchainConfirmationSpeed::Medium, normalized)),
+        "slow" => Some((spark::OnchainConfirmationSpeed::Slow, normalized)),
+        _ => None,
+    }
+}
+
 fn prune_window(rows: &mut Vec<PaymentHistoryItem>, now_ms: i64, window_ms: u64) {
     let window_ms = i64::try_from(window_ms).unwrap_or(i64::MAX);
     rows.retain(|row| now_ms.saturating_sub(row.paid_at_ms) <= window_ms);
@@ -784,10 +1155,13 @@ mod tests {
 
         async fn prepare_payment(
             &self,
-            invoice: &str,
+            payment_request: &str,
+            amount_sats: Option<u64>,
         ) -> Result<SparkPreparedPayment, SparkGatewayError> {
             self.prepare_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.prepare_payment(invoice).await
+            self.inner
+                .prepare_payment(payment_request, amount_sats)
+                .await
         }
 
         async fn send_payment(

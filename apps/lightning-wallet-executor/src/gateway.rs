@@ -21,6 +21,8 @@ pub struct SparkPreparedPayment {
     pub prepare_id: String,
     pub amount_msats: u64,
     pub payment_method_type: String,
+    pub onchain_fee_quote: Option<spark::SendOnchainFeeQuote>,
+    pub onchain_confirmation_speed: Option<spark::OnchainConfirmationSpeed>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +52,7 @@ pub struct SparkSentPayment {
     pub status: SparkPaymentStatus,
     pub amount_msats: u64,
     pub preimage_hex: Option<String>,
+    pub txid: Option<String>,
     pub paid_at_ms: i64,
 }
 
@@ -59,7 +62,8 @@ pub trait PaymentGateway: Send + Sync {
     async fn get_info(&self) -> Result<SparkWalletInfo, SparkGatewayError>;
     async fn prepare_payment(
         &self,
-        invoice: &str,
+        payment_request: &str,
+        amount_sats: Option<u64>,
     ) -> Result<SparkPreparedPayment, SparkGatewayError>;
     async fn send_payment(
         &self,
@@ -157,7 +161,8 @@ impl PaymentGateway for MockPaymentGateway {
 
     async fn prepare_payment(
         &self,
-        _invoice: &str,
+        payment_request: &str,
+        amount_sats: Option<u64>,
     ) -> Result<SparkPreparedPayment, SparkGatewayError> {
         if self.fail_prepare {
             return Err(SparkGatewayError::new(
@@ -166,16 +171,60 @@ impl PaymentGateway for MockPaymentGateway {
             ));
         }
 
+        let normalized = payment_request.trim().to_ascii_lowercase();
+        let is_onchain_address = normalized.starts_with("bc1")
+            || normalized.starts_with("tb1")
+            || normalized.starts_with("bcrt1");
+
+        let (amount_msats, payment_method_type, onchain_fee_quote) = if is_onchain_address {
+            let amount_sats = amount_sats.unwrap_or(0);
+            if amount_sats == 0 {
+                return Err(SparkGatewayError::new(
+                    SparkGatewayErrorCode::PrepareFailed,
+                    "amount_sats is required for on-chain sends",
+                ));
+            }
+
+            let fee_quote = spark::SendOnchainFeeQuote {
+                id: format!("mock-onchain-quote-{}", Uuid::new_v4()),
+                expires_at: u64::try_from(chrono::Utc::now().timestamp())
+                    .unwrap_or_default()
+                    .saturating_add(600),
+                speed_fast: spark::SendOnchainSpeedFeeQuote {
+                    user_fee_sat: 50,
+                    l1_broadcast_fee_sat: 25,
+                },
+                speed_medium: spark::SendOnchainSpeedFeeQuote {
+                    user_fee_sat: 25,
+                    l1_broadcast_fee_sat: 15,
+                },
+                speed_slow: spark::SendOnchainSpeedFeeQuote {
+                    user_fee_sat: 10,
+                    l1_broadcast_fee_sat: 5,
+                },
+            };
+
+            (
+                amount_sats.saturating_mul(1_000),
+                "bitcoinAddress".to_string(),
+                Some(fee_quote),
+            )
+        } else {
+            (self.quoted_amount_msats, "bolt11Invoice".to_string(), None)
+        };
+
         Ok(SparkPreparedPayment {
             prepare_id: Uuid::new_v4().to_string(),
-            amount_msats: self.quoted_amount_msats,
-            payment_method_type: "bolt11Invoice".to_string(),
+            amount_msats,
+            payment_method_type,
+            onchain_fee_quote,
+            onchain_confirmation_speed: None,
         })
     }
 
     async fn send_payment(
         &self,
-        _prepared: SparkPreparedPayment,
+        prepared: SparkPreparedPayment,
         _payment_timeout_secs: u64,
     ) -> Result<SparkSentPayment, SparkGatewayError> {
         if self.fail_send {
@@ -189,15 +238,16 @@ impl PaymentGateway for MockPaymentGateway {
         let payment_id = format!("mock-pay-{}", state.next_payment_id);
         state.next_payment_id = state.next_payment_id.saturating_add(1);
 
-        let amount_sats = self.quoted_amount_msats / 1_000;
+        let amount_sats = prepared.amount_msats / 1_000;
         state.balance_sats = state.balance_sats.saturating_sub(amount_sats);
 
         if self.pending_on_send {
             return Ok(SparkSentPayment {
                 payment_id,
                 status: SparkPaymentStatus::Pending,
-                amount_msats: self.quoted_amount_msats,
+                amount_msats: prepared.amount_msats,
                 preimage_hex: None,
+                txid: None,
                 paid_at_ms: chrono::Utc::now().timestamp_millis(),
             });
         }
@@ -205,11 +255,20 @@ impl PaymentGateway for MockPaymentGateway {
         Ok(SparkSentPayment {
             payment_id,
             status: SparkPaymentStatus::Completed,
-            amount_msats: self.quoted_amount_msats,
-            preimage_hex: if self.missing_preimage {
-                None
+            amount_msats: prepared.amount_msats,
+            preimage_hex: if prepared.payment_method_type == "bolt11Invoice" {
+                if self.missing_preimage {
+                    None
+                } else {
+                    Some("ab".repeat(32))
+                }
             } else {
-                Some("ab".repeat(32))
+                None
+            },
+            txid: if prepared.payment_method_type == "bitcoinAddress" {
+                Some(format!("mock-txid-{}", Uuid::new_v4()))
+            } else {
+                None
             },
             paid_at_ms: chrono::Utc::now().timestamp_millis(),
         })
@@ -362,11 +421,12 @@ impl PaymentGateway for LivePaymentGateway {
 
     async fn prepare_payment(
         &self,
-        invoice: &str,
+        payment_request: &str,
+        amount_sats: Option<u64>,
     ) -> Result<SparkPreparedPayment, SparkGatewayError> {
         let wallet = self.ensure_wallet().await?;
         let prepared = wallet
-            .prepare_send_payment(invoice, None)
+            .prepare_send_payment(payment_request, amount_sats)
             .await
             .map_err(|error| {
                 SparkGatewayError::new(
@@ -377,6 +437,10 @@ impl PaymentGateway for LivePaymentGateway {
 
         let amount_sats = u64::try_from(prepared.amount).unwrap_or(u64::MAX);
         let payment_method_type = payment_method_type_label(&prepared.payment_method).to_string();
+        let onchain_fee_quote = match &prepared.payment_method {
+            spark::SendPaymentMethod::BitcoinAddress { fee_quote, .. } => Some(fee_quote.clone()),
+            _ => None,
+        };
         let prepare_id = Uuid::new_v4().to_string();
 
         self.prepared
@@ -388,6 +452,8 @@ impl PaymentGateway for LivePaymentGateway {
             prepare_id,
             amount_msats: amount_sats.saturating_mul(1_000),
             payment_method_type,
+            onchain_fee_quote,
+            onchain_confirmation_speed: None,
         })
     }
 
@@ -419,6 +485,17 @@ impl PaymentGateway for LivePaymentGateway {
                     None,
                 )
                 .await
+        } else if prepared.payment_method_type == "bitcoinAddress" {
+            let confirmation_speed = prepared
+                .onchain_confirmation_speed
+                .unwrap_or(spark::OnchainConfirmationSpeed::Medium);
+            wallet
+                .send_payment_with_options(
+                    raw_prepare,
+                    spark::SendPaymentOptions::BitcoinAddress { confirmation_speed },
+                    None,
+                )
+                .await
         } else {
             wallet.send_payment(raw_prepare, None).await
         }
@@ -437,6 +514,7 @@ impl PaymentGateway for LivePaymentGateway {
 
         let amount_sats = u64::try_from(sent.payment.amount).unwrap_or(u64::MAX);
         let preimage_hex = extract_preimage_hex(sent.payment.details.as_ref());
+        let txid = extract_withdraw_txid(sent.payment.details.as_ref());
         let paid_at_ms = to_paid_at_ms(sent.payment.timestamp);
 
         Ok(SparkSentPayment {
@@ -444,6 +522,7 @@ impl PaymentGateway for LivePaymentGateway {
             status,
             amount_msats: amount_sats.saturating_mul(1_000),
             preimage_hex,
+            txid,
             paid_at_ms,
         })
     }
@@ -516,6 +595,24 @@ pub fn extract_preimage_hex(details: Option<&spark::PaymentDetails>) -> Option<S
         return None;
     }
     if !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return None;
+    }
+
+    Some(normalized)
+}
+
+pub fn extract_withdraw_txid(details: Option<&spark::PaymentDetails>) -> Option<String> {
+    let value = match details {
+        Some(spark::PaymentDetails::Withdraw { tx_id }) => tx_id.clone(),
+        _ => return None,
+    };
+
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    // avoid overly strict validation (depends on backend), but require hex.
+    if normalized.len() % 2 != 0 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return None;
     }
 

@@ -93,6 +93,87 @@ async fn serves_status_and_pay_endpoints() {
 }
 
 #[tokio::test]
+async fn serves_send_onchain_quote_and_commit_endpoints() {
+    let mut config = test_config();
+    config.request_cap_msats = 100_000_000_000;
+    config.window_cap_msats = 200_000_000_000;
+
+    let server = spawn_server(config, None).await;
+    let client = reqwest::Client::new();
+
+    let quote = client
+        .post(format!("{}/send-onchain/quote", server.address))
+        .header("content-type", "application/json")
+        .body(
+            serde_json::json!({
+                "requestId": "http-integration-onchain-quote-1",
+                "payment": {
+                    "address": "bc1qmockaddress000000000000000000000000000",
+                    "amountSats": 50000,
+                    "confirmationSpeed": "medium",
+                }
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("quote call should succeed");
+
+    assert_eq!(quote.status(), reqwest::StatusCode::OK);
+    let quote_json: Value = quote.json().await.expect("quote body should parse");
+    assert_eq!(quote_json["ok"], Value::Bool(true));
+    let plan_id = quote_json["result"]["planId"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert_eq!(plan_id, "http-integration-onchain-quote-1");
+    assert_eq!(
+        quote_json["result"]["confirmationSpeed"],
+        Value::String("medium".to_string())
+    );
+
+    let commit = client
+        .post(format!("{}/send-onchain/commit", server.address))
+        .header("content-type", "application/json")
+        .body(serde_json::json!({ "planId": plan_id }).to_string())
+        .send()
+        .await
+        .expect("commit call should succeed");
+
+    assert_eq!(commit.status(), reqwest::StatusCode::OK);
+    let commit_json: Value = commit.json().await.expect("commit body should parse");
+    assert_eq!(commit_json["ok"], Value::Bool(true));
+
+    let txid = commit_json["result"]["txid"].as_str().unwrap_or_default();
+    assert!(!txid.is_empty());
+
+    let receipt_version = commit_json["result"]["receipt"]["receiptVersion"]
+        .as_str()
+        .unwrap_or_default();
+    assert_eq!(
+        receipt_version,
+        "openagents.lightning.onchain_send_receipt.v1"
+    );
+
+    // Commit is idempotent by plan id.
+    let commit_again = client
+        .post(format!("{}/send-onchain/commit", server.address))
+        .header("content-type", "application/json")
+        .body(serde_json::json!({ "planId": "http-integration-onchain-quote-1" }).to_string())
+        .send()
+        .await
+        .expect("commit call should succeed");
+    assert_eq!(commit_again.status(), reqwest::StatusCode::OK);
+    let commit_again_json: Value = commit_again.json().await.expect("commit body should parse");
+    assert_eq!(
+        commit_again_json["result"]["txid"],
+        commit_json["result"]["txid"]
+    );
+
+    let _ = server.close().await;
+}
+
+#[tokio::test]
 async fn returns_typed_deny_reason_for_disallowed_host() {
     let server = spawn_server(test_config(), None).await;
     let client = reqwest::Client::new();

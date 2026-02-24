@@ -7,6 +7,10 @@ const RECEIPT_ASSET_ID: &str = "BTC_LN";
 
 const INVOICE_RECEIPT_VERSION: &str = "openagents.lightning.invoice_receipt.v1";
 
+const ONCHAIN_SEND_RECEIPT_VERSION: &str = "openagents.lightning.onchain_send_receipt.v1";
+const ONCHAIN_SEND_RECEIPT_RAIL: &str = "onchain";
+const ONCHAIN_SEND_RECEIPT_ASSET_ID: &str = "BTC";
+
 #[derive(Debug, Clone)]
 pub struct WalletExecutionReceiptInput {
     pub request_id: String,
@@ -28,6 +32,18 @@ pub struct InvoiceReceiptInput {
     pub amount_msats: u64,
     pub created_at_ms: i64,
     pub expires_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OnchainSendReceiptInput {
+    pub plan_id: String,
+    pub wallet_id: String,
+    pub address: String,
+    pub amount_sats: u64,
+    pub fee_sats: u64,
+    pub confirmation_speed: String,
+    pub txid: String,
+    pub sent_at_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +82,25 @@ pub struct InvoiceReceipt {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OnchainSendReceipt {
+    pub receipt_version: String,
+    pub receipt_id: String,
+    pub plan_id: String,
+    pub wallet_id: String,
+    pub address: String,
+    pub amount_sats: u64,
+    pub fee_sats: u64,
+    pub total_sats: u64,
+    pub confirmation_speed: String,
+    pub txid: String,
+    pub sent_at_ms: i64,
+    pub rail: String,
+    pub asset_id: String,
+    pub canonical_json_sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CanonicalPayload {
     receipt_version: String,
     request_id: String,
@@ -93,6 +128,23 @@ struct CanonicalInvoicePayload {
     expires_at_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CanonicalOnchainSendPayload {
+    receipt_version: String,
+    plan_id: String,
+    wallet_id: String,
+    address: String,
+    amount_sats: u64,
+    fee_sats: u64,
+    total_sats: u64,
+    confirmation_speed: String,
+    txid: String,
+    sent_at_ms: i64,
+    rail: String,
+    asset_id: String,
+}
+
 pub fn canonicalize_wallet_execution_receipt(input: &WalletExecutionReceiptInput) -> String {
     let payload = canonical_payload(input);
     serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
@@ -103,12 +155,21 @@ pub fn canonicalize_invoice_receipt(input: &InvoiceReceiptInput) -> String {
     serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
+pub fn canonicalize_onchain_send_receipt(input: &OnchainSendReceiptInput) -> String {
+    let payload = canonical_onchain_send_payload(input);
+    serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
+}
+
 pub fn canonical_wallet_execution_receipt_hash(input: &WalletExecutionReceiptInput) -> String {
     sha256_hex(canonicalize_wallet_execution_receipt(input).as_bytes())
 }
 
 pub fn canonical_invoice_receipt_hash(input: &InvoiceReceiptInput) -> String {
     sha256_hex(canonicalize_invoice_receipt(input).as_bytes())
+}
+
+pub fn canonical_onchain_send_receipt_hash(input: &OnchainSendReceiptInput) -> String {
+    sha256_hex(canonicalize_onchain_send_receipt(input).as_bytes())
 }
 
 pub fn build_wallet_execution_receipt(
@@ -154,6 +215,29 @@ pub fn build_invoice_receipt(input: &InvoiceReceiptInput) -> InvoiceReceipt {
     }
 }
 
+pub fn build_onchain_send_receipt(input: &OnchainSendReceiptInput) -> OnchainSendReceipt {
+    let payload = canonical_onchain_send_payload(input);
+    let canonical_json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+    let canonical_json_sha256 = sha256_hex(canonical_json.as_bytes());
+
+    OnchainSendReceipt {
+        receipt_version: payload.receipt_version,
+        receipt_id: format!("losr_{}", &canonical_json_sha256[..24]),
+        plan_id: payload.plan_id,
+        wallet_id: payload.wallet_id,
+        address: payload.address,
+        amount_sats: payload.amount_sats,
+        fee_sats: payload.fee_sats,
+        total_sats: payload.total_sats,
+        confirmation_speed: payload.confirmation_speed,
+        txid: payload.txid,
+        sent_at_ms: payload.sent_at_ms,
+        rail: payload.rail,
+        asset_id: payload.asset_id,
+        canonical_json_sha256,
+    }
+}
+
 fn canonical_payload(input: &WalletExecutionReceiptInput) -> CanonicalPayload {
     let paid_at_ms = input.paid_at_ms.max(0);
 
@@ -185,6 +269,28 @@ fn canonical_invoice_payload(input: &InvoiceReceiptInput) -> CanonicalInvoicePay
         amount_msats: input.amount_msats,
         created_at_ms,
         expires_at_ms,
+    }
+}
+
+fn canonical_onchain_send_payload(input: &OnchainSendReceiptInput) -> CanonicalOnchainSendPayload {
+    let sent_at_ms = input.sent_at_ms.max(0);
+    let address = input.address.trim().to_ascii_lowercase();
+    let txid = input.txid.trim().to_ascii_lowercase();
+    let total_sats = input.amount_sats.saturating_add(input.fee_sats);
+
+    CanonicalOnchainSendPayload {
+        receipt_version: ONCHAIN_SEND_RECEIPT_VERSION.to_string(),
+        plan_id: input.plan_id.trim().to_string(),
+        wallet_id: input.wallet_id.trim().to_string(),
+        address,
+        amount_sats: input.amount_sats,
+        fee_sats: input.fee_sats,
+        total_sats,
+        confirmation_speed: input.confirmation_speed.trim().to_ascii_lowercase(),
+        txid,
+        sent_at_ms,
+        rail: ONCHAIN_SEND_RECEIPT_RAIL.to_string(),
+        asset_id: ONCHAIN_SEND_RECEIPT_ASSET_ID.to_string(),
     }
 }
 
@@ -279,5 +385,38 @@ mod tests {
         assert_eq!(first.receipt_id, second.receipt_id);
         assert_eq!(first.invoice_hash, "abcdef1234");
         assert!(first.receipt_id.starts_with("lir_"));
+    }
+
+    #[test]
+    fn stable_hash_for_identical_onchain_send_facts() {
+        let input = OnchainSendReceiptInput {
+            plan_id: "plan-123".to_string(),
+            wallet_id: "wallet-ep212".to_string(),
+            address: "BC1QEXAMPLEADDRESS".to_string(),
+            amount_sats: 50_000,
+            fee_sats: 42,
+            confirmation_speed: "MEDIUM".to_string(),
+            txid: "ABCDEF".repeat(10),
+            sent_at_ms: 1_777_000_000_000,
+        };
+
+        let first = build_onchain_send_receipt(&input);
+        let second = build_onchain_send_receipt(&OnchainSendReceiptInput {
+            address: "bc1qexampleaddress".to_string(),
+            confirmation_speed: "medium".to_string(),
+            txid: input.txid.to_ascii_lowercase(),
+            ..input
+        });
+
+        assert_eq!(first.canonical_json_sha256, second.canonical_json_sha256);
+        assert_eq!(first.receipt_id, second.receipt_id);
+        assert_eq!(first.address, "bc1qexampleaddress");
+        assert_eq!(first.confirmation_speed, "medium");
+        assert_eq!(first.txid, input.txid.to_ascii_lowercase());
+        assert_eq!(
+            first.receipt_version,
+            "openagents.lightning.onchain_send_receipt.v1"
+        );
+        assert!(first.receipt_id.starts_with("losr_"));
     }
 }

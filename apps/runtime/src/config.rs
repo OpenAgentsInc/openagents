@@ -56,6 +56,7 @@ pub struct Config {
     pub liquidity_wallet_executor_auth_token: Option<String>,
     pub liquidity_wallet_executor_timeout_ms: u64,
     pub liquidity_quote_ttl_seconds: u64,
+    pub liquidity_pool_withdraw_delay_hours: i64,
     pub treasury_reconciliation_enabled: bool,
     pub treasury_reservation_ttl_seconds: u64,
     pub treasury_reconciliation_interval_seconds: u64,
@@ -145,6 +146,8 @@ pub enum ConfigError {
     InvalidLiquidityWalletExecutorTimeoutMs(String),
     #[error("invalid RUNTIME_LIQUIDITY_QUOTE_TTL_SECONDS: {0}")]
     InvalidLiquidityQuoteTtlSeconds(String),
+    #[error("invalid RUNTIME_LIQUIDITY_POOL_WITHDRAW_DELAY_HOURS: {0}")]
+    InvalidLiquidityPoolWithdrawDelayHours(String),
 }
 
 impl Config {
@@ -427,6 +430,15 @@ impl Config {
             .map_err(|error| ConfigError::InvalidLiquidityQuoteTtlSeconds(error.to_string()))?
             .max(5)
             .min(3600);
+
+        let liquidity_pool_withdraw_delay_hours =
+            env::var("RUNTIME_LIQUIDITY_POOL_WITHDRAW_DELAY_HOURS")
+                .unwrap_or_else(|_| "24".to_string())
+                .parse::<i64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawDelayHours(error.to_string())
+                })?
+                .clamp(0, 168);
         Ok(Self {
             service_name,
             bind_addr,
@@ -473,6 +485,7 @@ impl Config {
             liquidity_wallet_executor_auth_token,
             liquidity_wallet_executor_timeout_ms,
             liquidity_quote_ttl_seconds,
+            liquidity_pool_withdraw_delay_hours,
             treasury_reconciliation_enabled,
             treasury_reservation_ttl_seconds,
             treasury_reconciliation_interval_seconds,

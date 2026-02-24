@@ -80,6 +80,8 @@ fn build_router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/status", get(status))
         .route("/pay-bolt11", post(pay_bolt11))
+        .route("/send-onchain/quote", post(send_onchain_quote))
+        .route("/send-onchain/commit", post(send_onchain_commit))
         .route("/create-invoice", post(create_invoice))
         .route("/receive-address", get(receive_address))
         .route("/wallets/create", post(wallets_create))
@@ -119,6 +121,8 @@ async fn status(State(state): State<AppState>, headers: HeaderMap) -> Response {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PayBolt11Body {
+    // Historical callers have sent either `requestId` or `request_id`. Accept both.
+    #[serde(alias = "request_id")]
     request_id: Option<String>,
     payment: PayBolt11PaymentBody,
 }
@@ -154,6 +158,95 @@ async fn pay_bolt11(State(state): State<AppState>, headers: HeaderMap, body: Byt
     match state
         .service
         .pay_bolt11(payment, parsed.request_id.or(Some(request_id.clone())))
+        .await
+    {
+        Ok(result) => json_response(
+            StatusCode::OK,
+            &request_id,
+            json!({ "ok": true, "requestId": request_id, "result": result }),
+            false,
+        ),
+        Err(error) => wallet_executor_error_response(error, &request_id),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainQuoteBody {
+    #[serde(default)]
+    request_id: Option<String>,
+    payment: SendOnchainQuotePaymentBody,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainQuotePaymentBody {
+    address: String,
+    amount_sats: u64,
+    confirmation_speed: String,
+}
+
+async fn send_onchain_quote(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let request_id = request_id_from_headers(&headers);
+
+    if let Some(response) = authorize(&state, &headers, &request_id) {
+        return response;
+    }
+
+    let parsed: SendOnchainQuoteBody = match parse_json_body(&body) {
+        Ok(value) => value,
+        Err(message) => return invalid_request_response(&request_id, &message),
+    };
+
+    match state
+        .service
+        .send_onchain_quote(
+            parsed.payment.address,
+            parsed.payment.amount_sats,
+            parsed.payment.confirmation_speed,
+            parsed.request_id.or(Some(request_id.clone())),
+        )
+        .await
+    {
+        Ok(result) => json_response(
+            StatusCode::OK,
+            &request_id,
+            json!({ "ok": true, "requestId": request_id, "result": result }),
+            false,
+        ),
+        Err(error) => wallet_executor_error_response(error, &request_id),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendOnchainCommitBody {
+    plan_id: String,
+}
+
+async fn send_onchain_commit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let request_id = request_id_from_headers(&headers);
+
+    if let Some(response) = authorize(&state, &headers, &request_id) {
+        return response;
+    }
+
+    let parsed: SendOnchainCommitBody = match parse_json_body(&body) {
+        Ok(value) => value,
+        Err(message) => return invalid_request_response(&request_id, &message),
+    };
+
+    match state
+        .service
+        .send_onchain_commit(parsed.plan_id.as_str())
         .await
     {
         Ok(result) => json_response(
@@ -553,6 +646,9 @@ fn invalid_request_response(request_id: &str, message: &str) -> Response {
 
 fn wallet_executor_error_response(error: WalletExecutorError, request_id: &str) -> Response {
     match error {
+        WalletExecutorError::InvalidRequest(message) => {
+            invalid_request_response(request_id, &message)
+        }
         WalletExecutorError::Policy(error) => {
             let mut details = serde_json::Map::new();
             if let Some(host) = error.host {

@@ -21,6 +21,7 @@ use axum::{
 use chrono::Utc;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -149,12 +150,15 @@ impl AppState {
 
         let state = Self {
             liquidity,
-            liquidity_pool: Arc::new(LiquidityPoolService::new_with_lightning_node(
-                pool_store,
-                wallet_executor_client,
-                llp_lightning_node,
-                config.bridge_nostr_secret_key,
-            )),
+            liquidity_pool: Arc::new(
+                LiquidityPoolService::new_with_lightning_node(
+                    pool_store,
+                    wallet_executor_client,
+                    llp_lightning_node,
+                    config.bridge_nostr_secret_key,
+                )
+                .with_withdraw_delay_hours(config.liquidity_pool_withdraw_delay_hours),
+            ),
             credit,
             db,
             config,
@@ -175,6 +179,7 @@ impl AppState {
 
         maybe_spawn_provider_multihoming_autopilot(&state);
         maybe_spawn_treasury_reconciliation_worker(&state);
+        maybe_spawn_liquidity_pool_withdrawal_executor(&state);
 
         state
     }
@@ -942,6 +947,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/credit/agents/:agent_id/exposure",
             get(credit_agent_exposure),
+        )
+        .route(
+            "/internal/v1/pools/admin/withdrawals/execute_due",
+            post(liquidity_pool_execute_due_withdrawals),
         )
         .route(
             "/internal/v1/pools/:pool_id/admin/create",
@@ -2870,6 +2879,21 @@ async fn liquidity_pool_confirm_deposit(
         deposit,
         shares_minted,
     }))
+}
+
+async fn liquidity_pool_execute_due_withdrawals(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let outcome = state
+        .liquidity_pool
+        .execute_due_withdrawals(Utc::now(), None)
+        .await
+        .map_err(api_error_from_liquidity_pool)?;
+    Ok(Json(json!({
+        "schema": "openagents.liquidity.pool.execute_due_withdrawals_response.v1",
+        "outcome": outcome,
+    })))
 }
 
 async fn liquidity_pool_withdraw_request(
@@ -4950,6 +4974,42 @@ fn maybe_spawn_treasury_reconciliation_worker(state: &AppState) {
     });
 }
 
+const LIQUIDITY_POOL_WITHDRAWAL_EXECUTOR_INTERVAL_SECS: u64 = 30;
+
+fn maybe_spawn_liquidity_pool_withdrawal_executor(state: &AppState) {
+    if !state.config.authority_write_mode.writes_enabled() {
+        return;
+    }
+
+    let liquidity_pool = state.liquidity_pool.clone();
+
+    tokio::spawn(async move {
+        loop {
+            match liquidity_pool.execute_due_withdrawals(Utc::now(), None).await {
+                Ok(outcome) => {
+                    if outcome.paid > 0 || outcome.signing_requests_created > 0 || outcome.failed > 0 {
+                        tracing::info!(
+                            attempted = outcome.attempted,
+                            paid = outcome.paid,
+                            signing_requests_created = outcome.signing_requests_created,
+                            failed = outcome.failed,
+                            "liquidity pool withdrawal executor tick"
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(reason = %error, "liquidity pool withdrawal executor tick failed");
+                }
+            }
+
+            tokio::time::sleep(Duration::from_secs(
+                LIQUIDITY_POOL_WITHDRAWAL_EXECUTOR_INTERVAL_SECS,
+            ))
+            .await;
+        }
+    });
+}
+
 fn provider_ad_payload_from_snapshot(snapshot: &WorkerSnapshot) -> Option<ProviderAdV1> {
     if !is_provider_worker(&snapshot.worker) {
         return None;
@@ -5355,6 +5415,7 @@ mod tests {
             liquidity_wallet_executor_auth_token: None,
             liquidity_wallet_executor_timeout_ms: 12_000,
             liquidity_quote_ttl_seconds: 60,
+            liquidity_pool_withdraw_delay_hours: 0,
             treasury_reconciliation_enabled: false,
             treasury_reservation_ttl_seconds: 3600,
             treasury_reconciliation_interval_seconds: 60,

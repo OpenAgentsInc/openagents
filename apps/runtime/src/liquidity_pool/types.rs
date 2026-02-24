@@ -128,8 +128,13 @@ impl PoolSignerPolicyV1 {
         }
     }
 
-    pub fn policy_for_action(&self, action: TreasuryActionClassV1) -> Option<&PoolSignerActionPolicyV1> {
-        self.actions.iter().find(|entry| entry.action_class == action)
+    pub fn policy_for_action(
+        &self,
+        action: TreasuryActionClassV1,
+    ) -> Option<&PoolSignerActionPolicyV1> {
+        self.actions
+            .iter()
+            .find(|entry| entry.action_class == action)
     }
 }
 
@@ -398,6 +403,10 @@ pub struct WithdrawRequestV1 {
     pub idempotency_key: String,
     pub shares_burned: u64,
     pub rail_preference: WithdrawalRailPreferenceV1,
+    #[serde(default)]
+    pub payout_invoice_bolt11: Option<String>,
+    #[serde(default)]
+    pub payout_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,6 +486,10 @@ pub struct WithdrawSettlementReceiptV1 {
     pub payout_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet_receipt_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_payment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_txid: Option<String>,
     pub paid_at: DateTime<Utc>,
     pub canonical_json_sha256: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -550,6 +563,8 @@ pub struct WithdrawalRow {
     pub status: String,
     pub idempotency_key: String,
     pub earliest_settlement_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_invoice_bolt11: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout_invoice_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

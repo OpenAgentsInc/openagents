@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use openagents_l402::Bolt11;
+
 use crate::artifacts::{sign_receipt_sha256, verify_receipt_signature};
 use crate::bridge::{
     BridgeNostrPublisher, LiquidityReceiptPointerV1, PoolSnapshotBridgeV1, bridge_relays_from_env,
@@ -30,18 +32,23 @@ use crate::liquidity_pool::types::{
     POOL_TREASURY_CLOSE_CHANNEL_REQUEST_SCHEMA_V1, POOL_TREASURY_OPEN_CHANNEL_REQUEST_SCHEMA_V1,
     PoolCreateRequestV1, PoolCreateResponseV1, PoolKindV1, PoolRow, PoolSignerPolicyV1,
     PoolSignerSetResponseV1, PoolSignerSetRow, PoolSignerSetUpsertRequestV1,
-    PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1, PoolSigningRequestExecuteResponseV1,
-    PoolSigningRequestListResponseV1, PoolSigningRequestResponseV1, PoolSigningRequestRow,
-    PoolSnapshotReceiptV1, PoolSnapshotResponseV1, PoolSnapshotRow, PoolStatusResponseV1,
-    PoolStatusV1, PoolTreasuryActionReceiptV1, PoolTreasuryCloseChannelRequestV1,
+    PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1,
+    PoolSigningRequestExecuteResponseV1, PoolSigningRequestListResponseV1,
+    PoolSigningRequestResponseV1, PoolSigningRequestRow, PoolSnapshotReceiptV1,
+    PoolSnapshotResponseV1, PoolSnapshotRow, PoolStatusResponseV1, PoolStatusV1,
+    PoolTreasuryActionReceiptV1, PoolTreasuryCloseChannelRequestV1,
     PoolTreasuryOpenChannelRequestV1, TreasuryActionClassV1, WITHDRAW_REQUEST_RECEIPT_SCHEMA_V1,
-    WITHDRAW_REQUEST_SCHEMA_V1, WITHDRAW_RESPONSE_SCHEMA_V1, WithdrawRequestReceiptV1,
-    WithdrawRequestV1, WithdrawResponseV1, WithdrawalRailPreferenceV1, WithdrawalRow,
-    WithdrawalStatusV1,
+    WITHDRAW_REQUEST_SCHEMA_V1, WITHDRAW_RESPONSE_SCHEMA_V1, WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1,
+    WithdrawRequestReceiptV1, WithdrawRequestV1, WithdrawResponseV1, WithdrawSettlementReceiptV1,
+    WithdrawalRailPreferenceV1, WithdrawalRow, WithdrawalStatusV1,
 };
 
 const SIGNING_REQUEST_STATUS_PENDING: &str = "pending";
 const SIGNING_REQUEST_STATUS_EXECUTED: &str = "executed";
+
+const WITHDRAWAL_WALLET_HOST: &str = "l402.openagents.com";
+const WITHDRAWAL_AUTOPAY_MAX_SATS: u64 = 100_000;
+const WITHDRAWAL_EXECUTION_DEFAULT_LIMIT: i64 = 50;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiquidityPoolError {
@@ -77,6 +84,14 @@ impl LiquidityPoolError {
             Self::NotFound => "not found".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecuteDueWithdrawalsOutcome {
+    pub attempted: usize,
+    pub paid: usize,
+    pub signing_requests_created: usize,
+    pub failed: usize,
 }
 
 #[derive(Clone)]
@@ -115,6 +130,12 @@ impl LiquidityPoolService {
             default_withdraw_delay_hours: 24,
             receipt_signing_key,
         }
+    }
+
+    #[must_use]
+    pub fn with_withdraw_delay_hours(mut self, hours: i64) -> Self {
+        self.default_withdraw_delay_hours = hours.clamp(0, 168);
+        self
     }
 
     pub async fn create_pool(
@@ -336,12 +357,11 @@ impl LiquidityPoolService {
                 LiquidityPoolError::Conflict("pool signer set not configured".to_string())
             })?;
 
-        let required_signatures =
-            required_signatures_for_action(
-                &signer_set,
-                TreasuryActionClassV1::OpenChannel,
-                Some(body.amount_sats),
-            )?;
+        let required_signatures = required_signatures_for_action(
+            &signer_set,
+            TreasuryActionClassV1::OpenChannel,
+            Some(body.amount_sats),
+        )?;
 
         #[derive(Serialize)]
         struct Payload<'a> {
@@ -616,6 +636,303 @@ impl LiquidityPoolService {
 
         let action_class = request.action_class.clone();
         let execution_result_json = match action_class.as_str() {
+            "invoice_pay_small" | "invoice_pay_large" => {
+                let withdrawal_id = request
+                    .payload_json
+                    .get("withdrawal_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                let amount_sats = request
+                    .payload_json
+                    .get("amount_sats")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let payout_invoice_hash = request
+                    .payload_json
+                    .get("payout_invoice_hash")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                if withdrawal_id.is_empty() || amount_sats == 0 || payout_invoice_hash.is_empty() {
+                    return Err(LiquidityPoolError::InvalidRequest(
+                        "invalid invoice_pay payload".to_string(),
+                    ));
+                }
+
+                let Some(withdrawal) = self
+                    .store
+                    .get_withdrawal(pool_id, withdrawal_id.as_str())
+                    .await
+                    .map_err(map_store_error)?
+                else {
+                    return Err(LiquidityPoolError::NotFound);
+                };
+
+                if withdrawal.status == WithdrawalStatusV1::Paid.as_str()
+                    || withdrawal.paid_at.is_some()
+                {
+                    json!({
+                        "schema": "openagents.liquidity.pool.withdrawal_execution_result.v1",
+                        "status": "already_paid",
+                        "withdrawal_id": withdrawal.withdrawal_id,
+                        "wallet_receipt_sha256": withdrawal.wallet_receipt_sha256,
+                        "paid_at": withdrawal.paid_at.map(|t| t.to_rfc3339()),
+                    })
+                } else {
+                    if withdrawal.status != WithdrawalStatusV1::Queued.as_str()
+                        && withdrawal.status != WithdrawalStatusV1::Approved.as_str()
+                    {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal not in a payable state".to_string(),
+                        ));
+                    }
+
+                    if withdrawal.earliest_settlement_at > Utc::now() {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal is not yet due".to_string(),
+                        ));
+                    }
+
+                    if withdrawal.amount_sats_estimate != i64::try_from(amount_sats).unwrap_or(0) {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal amount does not match signing payload".to_string(),
+                        ));
+                    }
+
+                    let expected_invoice_hash = withdrawal
+                        .payout_invoice_hash
+                        .as_deref()
+                        .unwrap_or("")
+                        .trim()
+                        .to_ascii_lowercase();
+                    if expected_invoice_hash.is_empty()
+                        || expected_invoice_hash != payout_invoice_hash.to_ascii_lowercase()
+                    {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal invoice hash does not match signing payload".to_string(),
+                        ));
+                    }
+
+                    let invoice = withdrawal
+                        .payout_invoice_bolt11
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| {
+                            LiquidityPoolError::Conflict(
+                                "withdrawal payout invoice missing".to_string(),
+                            )
+                        })?;
+                    let computed_hash = hex::encode(Sha256::digest(invoice.as_bytes()));
+                    if !computed_hash.eq_ignore_ascii_case(expected_invoice_hash.as_str()) {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal payout invoice hash mismatch".to_string(),
+                        ));
+                    }
+
+                    let expected_msats = amount_sats.saturating_mul(1_000);
+                    let invoice_amount_msats = Bolt11::amount_msats(invoice).ok_or_else(|| {
+                        LiquidityPoolError::Conflict(
+                            "withdrawal payout invoice missing amount".to_string(),
+                        )
+                    })?;
+                    if invoice_amount_msats != expected_msats {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal payout invoice amount mismatch".to_string(),
+                        ));
+                    }
+
+                    let wallet_request_id = wallet_request_id(
+                        "withdrawal_signing",
+                        withdrawal.pool_id.as_str(),
+                        withdrawal.lp_id.as_str(),
+                        request.request_id.as_str(),
+                    );
+                    let paid = self
+                        .wallet
+                        .pay_bolt11(
+                            wallet_request_id.as_str(),
+                            invoice.to_string(),
+                            invoice_amount_msats,
+                            WITHDRAWAL_WALLET_HOST.to_string(),
+                        )
+                        .await?;
+
+                    let paid_at = Utc::now();
+                    let updated = self
+                        .store
+                        .mark_withdrawal_paid_and_burn_shares(
+                            withdrawal.pool_id.as_str(),
+                            withdrawal.withdrawal_id.as_str(),
+                            paid.wallet_receipt_sha256.as_str(),
+                            paid_at,
+                        )
+                        .await
+                        .map_err(map_store_error)?;
+
+                    let _receipt = self
+                        .persist_withdraw_settlement_receipt(
+                            &updated,
+                            WithdrawalRailPreferenceV1::Lightning,
+                            paid.wallet_receipt_sha256.as_str(),
+                            Some(paid.payment_id.as_str()),
+                            None,
+                            paid_at,
+                        )
+                        .await?;
+
+                    json!({
+                        "schema": "openagents.liquidity.pool.withdrawal_execution_result.v1",
+                        "withdrawal_id": updated.withdrawal_id,
+                        "rail": "lightning",
+                        "amount_sats": amount_sats,
+                        "wallet_receipt_sha256": paid.wallet_receipt_sha256,
+                        "payment_id": paid.payment_id,
+                        "paid_at": paid_at.to_rfc3339(),
+                    })
+                }
+            }
+            "onchain_withdrawal_batch" => {
+                let withdrawal_id = request
+                    .payload_json
+                    .get("withdrawal_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                let amount_sats = request
+                    .payload_json
+                    .get("amount_sats")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let payout_address = request
+                    .payload_json
+                    .get("payout_address")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                let confirmation_speed = request
+                    .payload_json
+                    .get("confirmation_speed")
+                    .and_then(Value::as_str)
+                    .unwrap_or("normal")
+                    .trim()
+                    .to_string();
+
+                if withdrawal_id.is_empty() || amount_sats == 0 || payout_address.is_empty() {
+                    return Err(LiquidityPoolError::InvalidRequest(
+                        "invalid onchain_withdrawal_batch payload".to_string(),
+                    ));
+                }
+
+                let Some(withdrawal) = self
+                    .store
+                    .get_withdrawal(pool_id, withdrawal_id.as_str())
+                    .await
+                    .map_err(map_store_error)?
+                else {
+                    return Err(LiquidityPoolError::NotFound);
+                };
+
+                if withdrawal.status == WithdrawalStatusV1::Paid.as_str()
+                    || withdrawal.paid_at.is_some()
+                {
+                    json!({
+                        "schema": "openagents.liquidity.pool.withdrawal_execution_result.v1",
+                        "status": "already_paid",
+                        "withdrawal_id": withdrawal.withdrawal_id,
+                        "wallet_receipt_sha256": withdrawal.wallet_receipt_sha256,
+                        "paid_at": withdrawal.paid_at.map(|t| t.to_rfc3339()),
+                    })
+                } else {
+                    if withdrawal.status != WithdrawalStatusV1::Queued.as_str()
+                        && withdrawal.status != WithdrawalStatusV1::Approved.as_str()
+                    {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal not in a payable state".to_string(),
+                        ));
+                    }
+                    if withdrawal.earliest_settlement_at > Utc::now() {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal is not yet due".to_string(),
+                        ));
+                    }
+                    if withdrawal.amount_sats_estimate != i64::try_from(amount_sats).unwrap_or(0) {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal amount does not match signing payload".to_string(),
+                        ));
+                    }
+
+                    let expected_address = withdrawal
+                        .payout_address
+                        .as_deref()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if expected_address.is_empty()
+                        || expected_address.to_ascii_lowercase()
+                            != payout_address.to_ascii_lowercase()
+                    {
+                        return Err(LiquidityPoolError::Conflict(
+                            "withdrawal payout address does not match signing payload".to_string(),
+                        ));
+                    }
+
+                    let wallet_request_id = wallet_request_id(
+                        "withdrawal_onchain",
+                        withdrawal.pool_id.as_str(),
+                        withdrawal.lp_id.as_str(),
+                        request.request_id.as_str(),
+                    );
+                    let sent = self
+                        .wallet
+                        .send_onchain(
+                            wallet_request_id.as_str(),
+                            payout_address,
+                            amount_sats,
+                            confirmation_speed,
+                        )
+                        .await?;
+
+                    let paid_at = Utc::now();
+                    let updated = self
+                        .store
+                        .mark_withdrawal_paid_and_burn_shares(
+                            withdrawal.pool_id.as_str(),
+                            withdrawal.withdrawal_id.as_str(),
+                            sent.wallet_receipt_sha256.as_str(),
+                            paid_at,
+                        )
+                        .await
+                        .map_err(map_store_error)?;
+
+                    let _receipt = self
+                        .persist_withdraw_settlement_receipt(
+                            &updated,
+                            WithdrawalRailPreferenceV1::Onchain,
+                            sent.wallet_receipt_sha256.as_str(),
+                            None,
+                            Some(sent.txid.as_str()),
+                            paid_at,
+                        )
+                        .await?;
+
+                    json!({
+                        "schema": "openagents.liquidity.pool.withdrawal_execution_result.v1",
+                        "withdrawal_id": updated.withdrawal_id,
+                        "rail": "onchain",
+                        "amount_sats": amount_sats,
+                        "wallet_receipt_sha256": sent.wallet_receipt_sha256,
+                        "txid": sent.txid,
+                        "paid_at": paid_at.to_rfc3339(),
+                    })
+                }
+            }
             "open_channel" => {
                 let peer_id = request
                     .payload_json
@@ -890,18 +1207,16 @@ impl LiquidityPoolService {
             .await
             .map_err(map_store_error)?;
 
-        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
-            LiquidityReceiptPointerV1 {
-                receipt_id: receipt.receipt_id.clone(),
-                pool_id: Some(receipt.pool_id.clone()),
-                lp_id: Some(receipt.lp_id.clone()),
-                deposit_id: Some(receipt.deposit_id.clone()),
-                withdrawal_id: None,
-                quote_id: None,
-                receipt_sha256: receipt.canonical_json_sha256.clone(),
-                receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
-            },
-        );
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(LiquidityReceiptPointerV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            pool_id: Some(receipt.pool_id.clone()),
+            lp_id: Some(receipt.lp_id.clone()),
+            deposit_id: Some(receipt.deposit_id.clone()),
+            withdrawal_id: None,
+            quote_id: None,
+            receipt_sha256: receipt.canonical_json_sha256.clone(),
+            receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+        });
 
         Ok(DepositQuoteResponseV1 {
             schema: DEPOSIT_QUOTE_RESPONSE_SCHEMA_V1.to_string(),
@@ -970,18 +1285,11 @@ impl LiquidityPoolService {
             lp_id: &'a str,
             shares_burned: u64,
             rail_preference: &'a str,
+            payout_invoice_hash: Option<&'a str>,
+            payout_address: Option<&'a str>,
         }
 
         let rail_preference = body.rail_preference.as_str().to_string();
-        let request_fingerprint_sha256 = canonical_sha256(&WithdrawFingerprint {
-            schema: WITHDRAW_REQUEST_SCHEMA_V1,
-            pool_id,
-            lp_id: lp_id.as_str(),
-            shares_burned: body.shares_burned,
-            rail_preference: rail_preference.as_str(),
-        })
-        .map_err(LiquidityPoolError::Internal)?;
-
         let latest_share_price_sats = self
             .store
             .get_latest_snapshot(pool_id)
@@ -992,6 +1300,76 @@ impl LiquidityPoolService {
 
         let amount_sats_estimate =
             estimate_withdraw_amount_sats(body.shares_burned, latest_share_price_sats)?;
+
+        let payout_invoice_bolt11 = body
+            .payout_invoice_bolt11
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let payout_address = body
+            .payout_address
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+
+        let payout_invoice_hash = match body.rail_preference {
+            WithdrawalRailPreferenceV1::Lightning => {
+                let invoice = payout_invoice_bolt11.as_deref().ok_or_else(|| {
+                    LiquidityPoolError::InvalidRequest(
+                        "payout_invoice_bolt11 is required for lightning withdrawals".to_string(),
+                    )
+                })?;
+
+                let amount_msats = Bolt11::amount_msats(invoice).ok_or_else(|| {
+                    LiquidityPoolError::InvalidRequest(
+                        "payout_invoice_bolt11 must include an amount".to_string(),
+                    )
+                })?;
+                if amount_msats % 1_000 != 0 {
+                    return Err(LiquidityPoolError::InvalidRequest(
+                        "payout_invoice_bolt11 amount must be a whole number of sats".to_string(),
+                    ));
+                }
+                let amount_sats = amount_msats / 1_000;
+                if amount_sats == 0 {
+                    return Err(LiquidityPoolError::InvalidRequest(
+                        "payout_invoice_bolt11 amount must be > 0".to_string(),
+                    ));
+                }
+                let expected_sats = u64::try_from(amount_sats_estimate).map_err(|_| {
+                    LiquidityPoolError::Internal("withdraw estimate invalid".to_string())
+                })?;
+                if amount_sats != expected_sats {
+                    return Err(LiquidityPoolError::InvalidRequest(format!(
+                        "payout invoice amount {} sats does not match withdrawal estimate {} sats",
+                        amount_sats, expected_sats
+                    )));
+                }
+
+                Some(hex::encode(Sha256::digest(invoice.as_bytes())))
+            }
+            WithdrawalRailPreferenceV1::Onchain => {
+                if payout_address.is_none() {
+                    return Err(LiquidityPoolError::InvalidRequest(
+                        "payout_address is required for onchain withdrawals".to_string(),
+                    ));
+                }
+                None
+            }
+        };
+
+        let request_fingerprint_sha256 = canonical_sha256(&WithdrawFingerprint {
+            schema: WITHDRAW_REQUEST_SCHEMA_V1,
+            pool_id,
+            lp_id: lp_id.as_str(),
+            shares_burned: body.shares_burned,
+            rail_preference: rail_preference.as_str(),
+            payout_invoice_hash: payout_invoice_hash.as_deref(),
+            payout_address: payout_address.as_deref(),
+        })
+        .map_err(LiquidityPoolError::Internal)?;
         let earliest_settlement_at =
             Utc::now() + Duration::hours(self.default_withdraw_delay_hours);
 
@@ -1009,10 +1387,13 @@ impl LiquidityPoolService {
                 })?,
                 amount_sats_estimate,
                 rail_preference: rail_preference.clone(),
-                status: WithdrawalStatusV1::Requested.as_str().to_string(),
+                status: WithdrawalStatusV1::Queued.as_str().to_string(),
                 request_fingerprint_sha256,
                 idempotency_key: idempotency_key.clone(),
                 earliest_settlement_at,
+                payout_invoice_bolt11,
+                payout_invoice_hash,
+                payout_address,
                 created_at,
             })
             .await
@@ -1049,24 +1430,208 @@ impl LiquidityPoolService {
             .await
             .map_err(map_store_error)?;
 
-        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
-            LiquidityReceiptPointerV1 {
-                receipt_id: receipt.receipt_id.clone(),
-                pool_id: Some(receipt.pool_id.clone()),
-                lp_id: Some(receipt.lp_id.clone()),
-                deposit_id: None,
-                withdrawal_id: Some(receipt.withdrawal_id.clone()),
-                quote_id: None,
-                receipt_sha256: receipt.canonical_json_sha256.clone(),
-                receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
-            },
-        );
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(LiquidityReceiptPointerV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            pool_id: Some(receipt.pool_id.clone()),
+            lp_id: Some(receipt.lp_id.clone()),
+            deposit_id: None,
+            withdrawal_id: Some(receipt.withdrawal_id.clone()),
+            quote_id: None,
+            receipt_sha256: receipt.canonical_json_sha256.clone(),
+            receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+        });
 
         Ok(WithdrawResponseV1 {
             schema: WITHDRAW_RESPONSE_SCHEMA_V1.to_string(),
             withdrawal: stored,
             receipt,
         })
+    }
+
+    pub async fn execute_due_withdrawals(
+        &self,
+        now: DateTime<Utc>,
+        limit: Option<i64>,
+    ) -> Result<ExecuteDueWithdrawalsOutcome, LiquidityPoolError> {
+        let limit = limit
+            .unwrap_or(WITHDRAWAL_EXECUTION_DEFAULT_LIMIT)
+            .max(1)
+            .min(5000);
+
+        let due = self
+            .store
+            .list_due_withdrawals(now, limit)
+            .await
+            .map_err(map_store_error)?;
+
+        let mut outcome = ExecuteDueWithdrawalsOutcome {
+            attempted: 0,
+            paid: 0,
+            signing_requests_created: 0,
+            failed: 0,
+        };
+
+        for withdrawal in due {
+            outcome.attempted = outcome.attempted.saturating_add(1);
+
+            if withdrawal.status == WithdrawalStatusV1::Paid.as_str()
+                || withdrawal.paid_at.is_some()
+            {
+                continue;
+            }
+
+            let amount_sats = match u64::try_from(withdrawal.amount_sats_estimate) {
+                Ok(value) if value > 0 => value,
+                _ => {
+                    outcome.failed = outcome.failed.saturating_add(1);
+                    tracing::warn!(
+                        pool_id = withdrawal.pool_id,
+                        withdrawal_id = withdrawal.withdrawal_id,
+                        amount_sats_estimate = withdrawal.amount_sats_estimate,
+                        "liquidity pool withdrawal executor skipped invalid amount_sats_estimate"
+                    );
+                    continue;
+                }
+            };
+
+            match withdrawal.rail_preference.as_str() {
+                rail if rail == WithdrawalRailPreferenceV1::Lightning.as_str() => {
+                    if amount_sats <= WITHDRAWAL_AUTOPAY_MAX_SATS {
+                        match self
+                            .execute_lightning_withdrawal_direct(&withdrawal, amount_sats, now)
+                            .await
+                        {
+                            Ok(_) => outcome.paid = outcome.paid.saturating_add(1),
+                            Err(error) => {
+                                outcome.failed = outcome.failed.saturating_add(1);
+                                tracing::warn!(
+                                    pool_id = withdrawal.pool_id,
+                                    withdrawal_id = withdrawal.withdrawal_id,
+                                    reason = %error,
+                                    "liquidity pool withdrawal executor failed lightning payout"
+                                );
+                            }
+                        }
+                        continue;
+                    }
+
+                    let signer_set = match self
+                        .store
+                        .get_signer_set(withdrawal.pool_id.as_str())
+                        .await
+                        .map_err(map_store_error)?
+                    {
+                        Some(value) => value,
+                        None => {
+                            outcome.failed = outcome.failed.saturating_add(1);
+                            tracing::warn!(
+                                pool_id = withdrawal.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                "liquidity pool withdrawal executor missing signer set for large lightning withdrawal"
+                            );
+                            continue;
+                        }
+                    };
+
+                    match self
+                        .ensure_invoice_pay_signing_request(
+                            &withdrawal,
+                            &signer_set,
+                            TreasuryActionClassV1::InvoicePayLarge,
+                            amount_sats,
+                            now,
+                        )
+                        .await
+                    {
+                        Ok((request, created)) => {
+                            if created {
+                                outcome.signing_requests_created =
+                                    outcome.signing_requests_created.saturating_add(1);
+                            }
+
+                            tracing::info!(
+                                pool_id = request.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                signing_request_id = request.request_id,
+                                "liquidity pool withdrawal executor queued signing request for large lightning withdrawal"
+                            );
+                        }
+                        Err(error) => {
+                            outcome.failed = outcome.failed.saturating_add(1);
+                            tracing::warn!(
+                                pool_id = withdrawal.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                reason = %error,
+                                "liquidity pool withdrawal executor failed to queue signing request for large lightning withdrawal"
+                            );
+                        }
+                    }
+                }
+                rail if rail == WithdrawalRailPreferenceV1::Onchain.as_str() => {
+                    let signer_set = match self
+                        .store
+                        .get_signer_set(withdrawal.pool_id.as_str())
+                        .await
+                        .map_err(map_store_error)?
+                    {
+                        Some(value) => value,
+                        None => {
+                            outcome.failed = outcome.failed.saturating_add(1);
+                            tracing::warn!(
+                                pool_id = withdrawal.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                "liquidity pool withdrawal executor missing signer set for onchain withdrawal"
+                            );
+                            continue;
+                        }
+                    };
+
+                    match self
+                        .ensure_onchain_withdrawal_signing_request(
+                            &withdrawal,
+                            &signer_set,
+                            amount_sats,
+                            now,
+                        )
+                        .await
+                    {
+                        Ok((request, created)) => {
+                            if created {
+                                outcome.signing_requests_created =
+                                    outcome.signing_requests_created.saturating_add(1);
+                            }
+
+                            tracing::info!(
+                                pool_id = request.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                signing_request_id = request.request_id,
+                                "liquidity pool withdrawal executor queued signing request for onchain withdrawal"
+                            );
+                        }
+                        Err(error) => {
+                            outcome.failed = outcome.failed.saturating_add(1);
+                            tracing::warn!(
+                                pool_id = withdrawal.pool_id,
+                                withdrawal_id = withdrawal.withdrawal_id,
+                                reason = %error,
+                                "liquidity pool withdrawal executor failed to queue signing request for onchain withdrawal"
+                            );
+                        }
+                    }
+                }
+                other => {
+                    outcome.failed = outcome.failed.saturating_add(1);
+                    tracing::warn!(
+                        pool_id = withdrawal.pool_id,
+                        withdrawal_id = withdrawal.withdrawal_id,
+                        rail_preference = other,
+                        "liquidity pool withdrawal executor skipped unsupported rail_preference"
+                    );
+                }
+            }
+        }
+
+        Ok(outcome)
     }
 
     pub async fn status(&self, pool_id: &str) -> Result<PoolStatusResponseV1, LiquidityPoolError> {
@@ -1147,8 +1712,12 @@ impl LiquidityPoolService {
         let wallet_balance_sats = wallet_status.balance_sats.unwrap_or(0);
 
         let lightning_backend = self.lightning_node.backend().to_string();
-        let (mut onchain_sats, mut channel_total_sats, mut channel_outbound_sats, mut channel_inbound_sats) =
-            (0u64, 0u64, 0u64, 0u64);
+        let (
+            mut onchain_sats,
+            mut channel_total_sats,
+            mut channel_outbound_sats,
+            mut channel_inbound_sats,
+        ) = (0u64, 0u64, 0u64, 0u64);
         let (mut channel_count, mut connected_channel_count) = (0u64, 0u64);
         let mut lightning_last_error: Option<String> = None;
 
@@ -1330,7 +1899,281 @@ impl LiquidityPoolService {
         })
     }
 
-    fn maybe_spawn_nostr_liquidity_receipt_pointer_mirror(&self, payload: LiquidityReceiptPointerV1) {
+    async fn execute_lightning_withdrawal_direct(
+        &self,
+        withdrawal: &WithdrawalRow,
+        amount_sats: u64,
+        now: DateTime<Utc>,
+    ) -> Result<WithdrawalRow, LiquidityPoolError> {
+        let invoice = withdrawal
+            .payout_invoice_bolt11
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                LiquidityPoolError::Conflict("withdrawal payout invoice missing".to_string())
+            })?;
+        let expected_hash = withdrawal
+            .payout_invoice_hash
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                LiquidityPoolError::Internal("withdrawal invoice hash missing".to_string())
+            })?;
+        let computed_hash = hex::encode(Sha256::digest(invoice.as_bytes()));
+        if !computed_hash.eq_ignore_ascii_case(expected_hash) {
+            return Err(LiquidityPoolError::Conflict(
+                "withdrawal payout invoice hash mismatch".to_string(),
+            ));
+        }
+
+        let amount_msats = Bolt11::amount_msats(invoice).ok_or_else(|| {
+            LiquidityPoolError::Conflict("withdrawal payout invoice missing amount".to_string())
+        })?;
+        let expected_msats = amount_sats.saturating_mul(1_000);
+        if amount_msats != expected_msats {
+            return Err(LiquidityPoolError::Conflict(
+                "withdrawal payout invoice amount mismatch".to_string(),
+            ));
+        }
+
+        let wallet_request_id = wallet_request_id(
+            "withdrawal_payout",
+            withdrawal.pool_id.as_str(),
+            withdrawal.lp_id.as_str(),
+            withdrawal.withdrawal_id.as_str(),
+        );
+
+        let paid = self
+            .wallet
+            .pay_bolt11(
+                wallet_request_id.as_str(),
+                invoice.to_string(),
+                amount_msats,
+                WITHDRAWAL_WALLET_HOST.to_string(),
+            )
+            .await?;
+
+        let paid_at = now;
+        let updated = self
+            .store
+            .mark_withdrawal_paid_and_burn_shares(
+                withdrawal.pool_id.as_str(),
+                withdrawal.withdrawal_id.as_str(),
+                paid.wallet_receipt_sha256.as_str(),
+                paid_at,
+            )
+            .await
+            .map_err(map_store_error)?;
+
+        let _receipt = self
+            .persist_withdraw_settlement_receipt(
+                &updated,
+                WithdrawalRailPreferenceV1::Lightning,
+                paid.wallet_receipt_sha256.as_str(),
+                Some(paid.payment_id.as_str()),
+                None,
+                paid_at,
+            )
+            .await?;
+
+        Ok(updated)
+    }
+
+    async fn ensure_invoice_pay_signing_request(
+        &self,
+        withdrawal: &WithdrawalRow,
+        signer_set: &PoolSignerSetRow,
+        action_class: TreasuryActionClassV1,
+        amount_sats: u64,
+        now: DateTime<Utc>,
+    ) -> Result<(PoolSigningRequestRow, bool), LiquidityPoolError> {
+        let payout_invoice_hash = withdrawal
+            .payout_invoice_hash
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                LiquidityPoolError::InvalidRequest(
+                    "withdrawal missing payout invoice hash".to_string(),
+                )
+            })?;
+
+        let required_signatures =
+            required_signatures_for_action(signer_set, action_class, Some(amount_sats))?;
+
+        #[derive(Serialize)]
+        struct Payload<'a> {
+            schema: &'a str,
+            pool_id: &'a str,
+            action_class: &'a str,
+            withdrawal_id: &'a str,
+            amount_sats: u64,
+            payout_invoice_hash: &'a str,
+        }
+
+        let payload = Payload {
+            schema: "openagents.liquidity.pool.withdrawal_invoice_pay_action.v1",
+            pool_id: withdrawal.pool_id.as_str(),
+            action_class: action_class.as_str(),
+            withdrawal_id: withdrawal.withdrawal_id.as_str(),
+            amount_sats,
+            payout_invoice_hash,
+        };
+        let payload_sha256 = canonical_sha256(&payload).map_err(LiquidityPoolError::Internal)?;
+        let payload_json = serde_json::to_value(&payload)
+            .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?;
+
+        let request_id = format!("sigreq_{}", Uuid::now_v7());
+        let request = self
+            .store
+            .create_or_get_signing_request(SigningRequestInsertInput {
+                request_id: request_id.clone(),
+                pool_id: withdrawal.pool_id.clone(),
+                action_class: action_class.as_str().to_string(),
+                idempotency_key: format!("withdrawal:{}", withdrawal.withdrawal_id),
+                payload_json,
+                payload_sha256,
+                required_signatures: i64::from(required_signatures),
+                status: SIGNING_REQUEST_STATUS_PENDING.to_string(),
+                created_at: now,
+            })
+            .await
+            .map_err(map_store_error)?;
+
+        Ok((request.clone(), request.request_id == request_id))
+    }
+
+    async fn ensure_onchain_withdrawal_signing_request(
+        &self,
+        withdrawal: &WithdrawalRow,
+        signer_set: &PoolSignerSetRow,
+        amount_sats: u64,
+        now: DateTime<Utc>,
+    ) -> Result<(PoolSigningRequestRow, bool), LiquidityPoolError> {
+        let payout_address = withdrawal
+            .payout_address
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                LiquidityPoolError::InvalidRequest("withdrawal missing payout address".to_string())
+            })?;
+
+        let required_signatures = required_signatures_for_action(
+            signer_set,
+            TreasuryActionClassV1::OnchainWithdrawalBatch,
+            Some(amount_sats),
+        )?;
+
+        #[derive(Serialize)]
+        struct Payload<'a> {
+            schema: &'a str,
+            pool_id: &'a str,
+            action_class: &'a str,
+            withdrawal_id: &'a str,
+            amount_sats: u64,
+            payout_address: &'a str,
+            confirmation_speed: &'a str,
+        }
+
+        let payload = Payload {
+            schema: "openagents.liquidity.pool.withdrawal_onchain_action.v1",
+            pool_id: withdrawal.pool_id.as_str(),
+            action_class: TreasuryActionClassV1::OnchainWithdrawalBatch.as_str(),
+            withdrawal_id: withdrawal.withdrawal_id.as_str(),
+            amount_sats,
+            payout_address,
+            confirmation_speed: "normal",
+        };
+        let payload_sha256 = canonical_sha256(&payload).map_err(LiquidityPoolError::Internal)?;
+        let payload_json = serde_json::to_value(&payload)
+            .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?;
+
+        let request_id = format!("sigreq_{}", Uuid::now_v7());
+        let request = self
+            .store
+            .create_or_get_signing_request(SigningRequestInsertInput {
+                request_id: request_id.clone(),
+                pool_id: withdrawal.pool_id.clone(),
+                action_class: TreasuryActionClassV1::OnchainWithdrawalBatch
+                    .as_str()
+                    .to_string(),
+                idempotency_key: format!("withdrawal:{}", withdrawal.withdrawal_id),
+                payload_json,
+                payload_sha256,
+                required_signatures: i64::from(required_signatures),
+                status: SIGNING_REQUEST_STATUS_PENDING.to_string(),
+                created_at: now,
+            })
+            .await
+            .map_err(map_store_error)?;
+
+        Ok((request.clone(), request.request_id == request_id))
+    }
+
+    async fn persist_withdraw_settlement_receipt(
+        &self,
+        withdrawal: &WithdrawalRow,
+        rail: WithdrawalRailPreferenceV1,
+        wallet_receipt_sha256: &str,
+        payout_payment_id: Option<&str>,
+        payout_txid: Option<&str>,
+        paid_at: DateTime<Utc>,
+    ) -> Result<WithdrawSettlementReceiptV1, LiquidityPoolError> {
+        let receipt = build_withdraw_settlement_receipt(
+            withdrawal,
+            rail,
+            wallet_receipt_sha256,
+            payout_payment_id,
+            payout_txid,
+            paid_at,
+            self.receipt_signing_key.as_ref(),
+        )?;
+
+        let signature_json = match receipt.signature.as_ref() {
+            Some(sig) => Some(
+                serde_json::to_value(sig)
+                    .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+            )
+            .filter(|value| !value.is_null()),
+            None => None,
+        };
+
+        self.store
+            .put_receipt(ReceiptInsertInput {
+                receipt_id: receipt.receipt_id.clone(),
+                entity_kind: "withdraw_settlement".to_string(),
+                entity_id: withdrawal.withdrawal_id.clone(),
+                schema: receipt.schema.clone(),
+                canonical_json_sha256: receipt.canonical_json_sha256.clone(),
+                signature_json,
+                receipt_json: serde_json::to_value(&receipt)
+                    .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+                created_at: paid_at,
+            })
+            .await
+            .map_err(map_store_error)?;
+
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(LiquidityReceiptPointerV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            pool_id: Some(receipt.pool_id.clone()),
+            lp_id: Some(receipt.lp_id.clone()),
+            deposit_id: None,
+            withdrawal_id: Some(receipt.withdrawal_id.clone()),
+            quote_id: None,
+            receipt_sha256: receipt.canonical_json_sha256.clone(),
+            receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+        });
+
+        Ok(receipt)
+    }
+
+    fn maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
+        &self,
+        payload: LiquidityReceiptPointerV1,
+    ) {
         let relays = bridge_relays_from_env();
         if relays.is_empty() {
             return;
@@ -1340,17 +2183,16 @@ impl LiquidityPoolService {
         };
 
         tokio::spawn(async move {
-            let event =
-                match build_liquidity_receipt_pointer_event(&secret_key, None, &payload) {
-                    Ok(event) => event,
-                    Err(error) => {
-                        tracing::warn!(
-                            reason = %error,
-                            "bridge nostr mirror failed to build liquidity receipt pointer"
-                        );
-                        return;
-                    }
-                };
+            let event = match build_liquidity_receipt_pointer_event(&secret_key, None, &payload) {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::warn!(
+                        reason = %error,
+                        "bridge nostr mirror failed to build liquidity receipt pointer"
+                    );
+                    return;
+                }
+            };
             let publisher = BridgeNostrPublisher::new(relays);
             if let Err(error) = publisher.connect().await {
                 tracing::warn!(
@@ -1707,6 +2549,79 @@ fn build_withdraw_request_receipt(
     })
 }
 
+fn build_withdraw_settlement_receipt(
+    withdrawal: &WithdrawalRow,
+    rail: WithdrawalRailPreferenceV1,
+    wallet_receipt_sha256: &str,
+    payout_payment_id: Option<&str>,
+    payout_txid: Option<&str>,
+    paid_at: DateTime<Utc>,
+    receipt_signing_key: Option<&[u8; 32]>,
+) -> Result<WithdrawSettlementReceiptV1, LiquidityPoolError> {
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        pool_id: &'a str,
+        lp_id: &'a str,
+        withdrawal_id: &'a str,
+        amount_sats: i64,
+        rail: &'a str,
+        payout_invoice_hash: Option<&'a str>,
+        payout_address: Option<&'a str>,
+        wallet_receipt_sha256: &'a str,
+        payout_payment_id: Option<&'a str>,
+        payout_txid: Option<&'a str>,
+        paid_at: &'a DateTime<Utc>,
+    }
+
+    let canonical_json_sha256 = canonical_sha256(&ReceiptHashInput {
+        schema: WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1,
+        pool_id: withdrawal.pool_id.as_str(),
+        lp_id: withdrawal.lp_id.as_str(),
+        withdrawal_id: withdrawal.withdrawal_id.as_str(),
+        amount_sats: withdrawal.amount_sats_estimate,
+        rail: rail.as_str(),
+        payout_invoice_hash: withdrawal.payout_invoice_hash.as_deref(),
+        payout_address: withdrawal.payout_address.as_deref(),
+        wallet_receipt_sha256: wallet_receipt_sha256.trim(),
+        payout_payment_id,
+        payout_txid,
+        paid_at: &paid_at,
+    })
+    .map_err(LiquidityPoolError::Internal)?;
+
+    let signature = match receipt_signing_key {
+        Some(secret_key) => Some(
+            sign_receipt_sha256(secret_key, canonical_json_sha256.as_str())
+                .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+        ),
+        None => None,
+    };
+
+    Ok(WithdrawSettlementReceiptV1 {
+        schema: WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1.to_string(),
+        receipt_id: format!("lpwds_{}", &canonical_json_sha256[..24]),
+        pool_id: withdrawal.pool_id.clone(),
+        lp_id: withdrawal.lp_id.clone(),
+        withdrawal_id: withdrawal.withdrawal_id.clone(),
+        amount_sats: withdrawal.amount_sats_estimate,
+        rail,
+        payout_invoice_hash: withdrawal.payout_invoice_hash.clone(),
+        payout_address: withdrawal.payout_address.clone(),
+        wallet_receipt_sha256: Some(wallet_receipt_sha256.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        payout_payment_id: payout_payment_id
+            .map(|value| value.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        payout_txid: payout_txid
+            .map(|value| value.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        paid_at,
+        canonical_json_sha256,
+        signature,
+    })
+}
+
 fn build_snapshot_receipt(
     snapshot: &PoolSnapshotRow,
     receipt_signing_key: Option<&[u8; 32]>,
@@ -1801,6 +2716,20 @@ pub struct WalletStatusSummary {
     pub balance_sats: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct WalletPayBolt11Result {
+    pub payment_id: String,
+    pub wallet_receipt_sha256: String,
+    pub paid_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WalletSendOnchainResult {
+    pub txid: String,
+    pub wallet_receipt_sha256: String,
+    pub paid_at_ms: Option<i64>,
+}
+
 #[async_trait::async_trait]
 pub trait WalletExecutorClient: Send + Sync {
     async fn create_invoice(
@@ -1814,6 +2743,22 @@ pub trait WalletExecutorClient: Send + Sync {
     async fn get_receive_addresses(&self) -> Result<WalletReceiveAddresses, LiquidityPoolError>;
 
     async fn get_status(&self) -> Result<WalletStatusSummary, LiquidityPoolError>;
+
+    async fn pay_bolt11(
+        &self,
+        request_id: &str,
+        invoice: String,
+        max_amount_msats: u64,
+        host: String,
+    ) -> Result<WalletPayBolt11Result, LiquidityPoolError>;
+
+    async fn send_onchain(
+        &self,
+        request_id: &str,
+        address: String,
+        amount_sats: u64,
+        confirmation_speed: String,
+    ) -> Result<WalletSendOnchainResult, LiquidityPoolError>;
 }
 
 pub struct HttpWalletExecutorClient {
@@ -2003,6 +2948,189 @@ impl WalletExecutorClient for HttpWalletExecutorClient {
 
         Ok(WalletStatusSummary { balance_sats })
     }
+
+    async fn pay_bolt11(
+        &self,
+        request_id: &str,
+        invoice: String,
+        max_amount_msats: u64,
+        host: String,
+    ) -> Result<WalletPayBolt11Result, LiquidityPoolError> {
+        let url = format!("{}/pay-bolt11", self.base_url.trim_end_matches('/'));
+        let resp = self
+            .client()
+            .post(url.as_str())
+            .timeout(std::time::Duration::from_millis(self.timeout_ms))
+            .header("authorization", format!("Bearer {}", self.auth_token))
+            .header("x-request-id", request_id)
+            .json(&json!({
+                "requestId": request_id,
+                "payment": {
+                    "invoice": invoice,
+                    "maxAmountMsats": max_amount_msats,
+                    "host": host,
+                }
+            }))
+            .send()
+            .await
+            .map_err(|error| {
+                LiquidityPoolError::DependencyUnavailable(format!(
+                    "wallet executor pay-bolt11 transport error: {error}"
+                ))
+            })?;
+
+        let status = resp.status();
+        let json = resp.json::<Value>().await.unwrap_or(Value::Null);
+        if !status.is_success() {
+            let code = json
+                .pointer("/error/code")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| status.as_str())
+                .to_string();
+            let message = json
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or("wallet executor pay-bolt11 failed")
+                .to_string();
+            return Err(LiquidityPoolError::DependencyUnavailable(format!(
+                "wallet executor pay-bolt11 failed: {code}: {message}"
+            )));
+        }
+
+        let payment_id = json
+            .pointer("/result/payment/paymentId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let wallet_receipt_sha256 = json
+            .pointer("/result/receipt/canonicalJsonSha256")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if payment_id.is_empty() || wallet_receipt_sha256.is_empty() {
+            return Err(LiquidityPoolError::DependencyUnavailable(
+                "wallet executor pay-bolt11 returned incomplete result".to_string(),
+            ));
+        }
+        let paid_at_ms = json
+            .pointer("/result/receipt/paidAtMs")
+            .and_then(Value::as_i64);
+
+        Ok(WalletPayBolt11Result {
+            payment_id,
+            wallet_receipt_sha256,
+            paid_at_ms,
+        })
+    }
+
+    async fn send_onchain(
+        &self,
+        request_id: &str,
+        address: String,
+        amount_sats: u64,
+        confirmation_speed: String,
+    ) -> Result<WalletSendOnchainResult, LiquidityPoolError> {
+        let quote_url = format!("{}/send-onchain/quote", self.base_url.trim_end_matches('/'));
+        let quote_resp = self
+            .client()
+            .post(quote_url.as_str())
+            .timeout(std::time::Duration::from_millis(self.timeout_ms))
+            .header("authorization", format!("Bearer {}", self.auth_token))
+            .header("x-request-id", request_id)
+            .json(&json!({
+                "requestId": request_id,
+                "payment": {
+                    "address": address,
+                    "amountSats": amount_sats,
+                    "confirmationSpeed": confirmation_speed,
+                }
+            }))
+            .send()
+            .await
+            .map_err(|error| {
+                LiquidityPoolError::DependencyUnavailable(format!(
+                    "wallet executor send-onchain quote transport error: {error}"
+                ))
+            })?;
+
+        if !quote_resp.status().is_success() {
+            let status = quote_resp.status();
+            let json = quote_resp.json::<Value>().await.unwrap_or(Value::Null);
+            let code = json
+                .pointer("/error/code")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| status.as_str())
+                .to_string();
+            let message = json
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or("wallet executor send-onchain quote failed")
+                .to_string();
+            return Err(LiquidityPoolError::DependencyUnavailable(format!(
+                "wallet executor send-onchain quote failed: {code}: {message}"
+            )));
+        }
+
+        let commit_url = format!(
+            "{}/send-onchain/commit",
+            self.base_url.trim_end_matches('/')
+        );
+        let commit_resp = self
+            .client()
+            .post(commit_url.as_str())
+            .timeout(std::time::Duration::from_millis(self.timeout_ms))
+            .header("authorization", format!("Bearer {}", self.auth_token))
+            .header("x-request-id", request_id)
+            .json(&json!({ "planId": request_id }))
+            .send()
+            .await
+            .map_err(|error| {
+                LiquidityPoolError::DependencyUnavailable(format!(
+                    "wallet executor send-onchain commit transport error: {error}"
+                ))
+            })?;
+
+        let status = commit_resp.status();
+        let json = commit_resp.json::<Value>().await.unwrap_or(Value::Null);
+        if !status.is_success() {
+            let code = json
+                .pointer("/error/code")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| status.as_str())
+                .to_string();
+            let message = json
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or("wallet executor send-onchain commit failed")
+                .to_string();
+            return Err(LiquidityPoolError::DependencyUnavailable(format!(
+                "wallet executor send-onchain commit failed: {code}: {message}"
+            )));
+        }
+
+        let txid = json
+            .pointer("/result/txid")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let wallet_receipt_sha256 = json
+            .pointer("/result/receipt/canonicalJsonSha256")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if txid.is_empty() || wallet_receipt_sha256.is_empty() {
+            return Err(LiquidityPoolError::DependencyUnavailable(
+                "wallet executor send-onchain returned incomplete result".to_string(),
+            ));
+        }
+        let paid_at_ms = json.pointer("/result/paidAtMs").and_then(Value::as_i64);
+
+        Ok(WalletSendOnchainResult {
+            txid,
+            wallet_receipt_sha256,
+            paid_at_ms,
+        })
+    }
 }
 
 pub struct UnavailableWalletExecutorClient {
@@ -2036,6 +3164,30 @@ impl WalletExecutorClient for UnavailableWalletExecutorClient {
     }
 
     async fn get_status(&self) -> Result<WalletStatusSummary, LiquidityPoolError> {
+        Err(LiquidityPoolError::DependencyUnavailable(
+            self.reason.clone(),
+        ))
+    }
+
+    async fn pay_bolt11(
+        &self,
+        _request_id: &str,
+        _invoice: String,
+        _max_amount_msats: u64,
+        _host: String,
+    ) -> Result<WalletPayBolt11Result, LiquidityPoolError> {
+        Err(LiquidityPoolError::DependencyUnavailable(
+            self.reason.clone(),
+        ))
+    }
+
+    async fn send_onchain(
+        &self,
+        _request_id: &str,
+        _address: String,
+        _amount_sats: u64,
+        _confirmation_speed: String,
+    ) -> Result<WalletSendOnchainResult, LiquidityPoolError> {
         Err(LiquidityPoolError::DependencyUnavailable(
             self.reason.clone(),
         ))
