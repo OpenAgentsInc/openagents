@@ -52,19 +52,25 @@ pub(crate) struct AppState {
     pub(crate) renderer: Renderer,
     pub(crate) text_system: TextSystem,
     pub(crate) event_context: EventContext,
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "clipboard host bridge retained for native platform integration"
+    )]
     pub(crate) clipboard: Rc<RefCell<Option<arboard::Clipboard>>>,
     pub(crate) command_palette: CommandPalette,
     pub(crate) command_palette_action_rx: Option<mpsc::UnboundedReceiver<String>>,
     pub(crate) input: TextInput,
     pub(crate) mouse_pos: (f32, f32),
     pub(crate) modifiers: ModifiersState,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "tick timer retained for future frame pacing hooks")]
     pub(crate) last_tick: Instant,
     pub(crate) modal_state: ModalState,
     /// Input focus state - determines which component receives keyboard input
     pub(crate) input_focus: InputFocus,
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "panel layout retained for staged migration from legacy pane renderer"
+    )]
     pub(crate) panel_layout: PanelLayout,
     pub(crate) left_sidebar_open: bool,
     pub(crate) right_sidebar_open: bool,
@@ -102,7 +108,10 @@ pub(crate) struct AppState {
     /// Selected agent backend (Codex)
     pub(crate) agent_selection: AgentSelection,
     /// Agent availability registry
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "agent registry retained for capability discovery during startup hydration"
+    )]
     pub(crate) agent_registry: AgentRegistry,
 
     // === Plan sidebar state ===

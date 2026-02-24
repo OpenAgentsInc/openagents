@@ -208,6 +208,16 @@ Refresh baseline only when intentional reductions are merged:
 ./scripts/panic-surface-gate.sh snapshot
 ```
 
+## Allow-Attribute Policy
+
+Allow attributes are exception-only. Use these rules:
+
+- Prefer refactoring over `#[allow(...)]` in production paths.
+- If unavoidable, scope narrowly to the smallest item and include a reason.
+- Prefer `#[expect(..., reason = \"...\")]` for known temporary debt with explicit intent.
+- Do not add crate-wide/module-wide broad allows for convenience.
+- Any PR adding/refactoring `#[allow(...)]` in core crates must include rationale and follow-up removal intent.
+
 ## Temporary Bypass (Use Sparingly)
 
 ```bash

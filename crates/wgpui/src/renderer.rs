@@ -26,7 +26,7 @@ struct SvgTextureKey {
 
 /// GPU resources for a rasterized SVG.
 struct SvgGpuResources {
-    #[allow(dead_code)] // Kept to prevent texture from being dropped
+    #[expect(dead_code, reason = "texture handle retained to preserve bind-group backing lifetime")]
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
 }
@@ -54,7 +54,10 @@ pub struct Renderer {
     image_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    #[allow(dead_code)] // Stored for potential future pipeline creation
+    #[expect(
+        dead_code,
+        reason = "bind group layout retained for renderer extension points"
+    )]
     uniform_bind_group_layout: wgpu::BindGroupLayout,
     image_bind_group_layout: wgpu::BindGroupLayout,
     atlas_texture: wgpu::Texture,
@@ -556,7 +559,6 @@ impl Renderer {
         );
     }
 
-    #[allow(dead_code)]
     pub fn update_atlas(&self, queue: &wgpu::Queue, data: &[u8], size: u32) {
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -852,14 +854,12 @@ impl Renderer {
 
     /// Clear the SVG texture cache.
     /// Call this periodically to free unused textures.
-    #[allow(dead_code)]
     pub fn clear_svg_cache(&mut self) {
         self.svg_texture_cache.clear();
         self.svg_renderer.clear_cache();
     }
 
     /// Get the number of cached SVG textures.
-    #[allow(dead_code)]
     pub fn svg_cache_size(&self) -> usize {
         self.svg_texture_cache.len()
     }

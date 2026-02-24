@@ -10,9 +10,15 @@ pub(crate) struct SessionInfo {
     pub(crate) codex_thread_id: Option<String>,
     pub(crate) tool_count: usize,
     pub(crate) tools: Vec<String>,
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "output style field kept for cross-surface serialization compatibility"
+    )]
     pub(crate) output_style: String,
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "slash command metadata retained for pending command-palette migration"
+    )]
     pub(crate) slash_commands: Vec<String>,
 }
 

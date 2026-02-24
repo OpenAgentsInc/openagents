@@ -408,37 +408,31 @@ pub fn is_p2p_order_kind(kind: u16) -> bool {
 }
 
 /// Create order ID tag
-#[allow(dead_code)]
 pub fn create_order_id_tag(order_id: String) -> Vec<String> {
     vec!["d".to_string(), order_id]
 }
 
 /// Create order type tag
-#[allow(dead_code)]
 pub fn create_order_type_tag(order_type: OrderType) -> Vec<String> {
     vec!["k".to_string(), order_type.as_str().to_string()]
 }
 
 /// Create currency tag (ISO 4217)
-#[allow(dead_code)]
 pub fn create_currency_tag(currency: String) -> Vec<String> {
     vec!["f".to_string(), currency]
 }
 
 /// Create status tag
-#[allow(dead_code)]
 pub fn create_status_tag(status: OrderStatus) -> Vec<String> {
     vec!["s".to_string(), status.as_str().to_string()]
 }
 
 /// Create amount tag
-#[allow(dead_code)]
 pub fn create_amount_tag(amount_sats: u64) -> Vec<String> {
     vec!["amt".to_string(), amount_sats.to_string()]
 }
 
 /// Create fiat amount tag
-#[allow(dead_code)]
 pub fn create_fiat_amount_tag(amounts: Vec<u64>) -> Vec<String> {
     let mut tag = vec!["fa".to_string()];
     tag.extend(amounts.iter().map(|a| a.to_string()));
@@ -446,7 +440,6 @@ pub fn create_fiat_amount_tag(amounts: Vec<u64>) -> Vec<String> {
 }
 
 /// Create payment method tag
-#[allow(dead_code)]
 pub fn create_payment_method_tag(methods: Vec<String>) -> Vec<String> {
     let mut tag = vec!["pm".to_string()];
     tag.extend(methods);
@@ -454,25 +447,21 @@ pub fn create_payment_method_tag(methods: Vec<String>) -> Vec<String> {
 }
 
 /// Create layer tag
-#[allow(dead_code)]
 pub fn create_layer_tag(layer: BitcoinLayer) -> Vec<String> {
     vec!["layer".to_string(), layer.as_str().to_string()]
 }
 
 /// Create platform tag
-#[allow(dead_code)]
 pub fn create_platform_tag(platform: String) -> Vec<String> {
     vec!["y".to_string(), platform]
 }
 
 /// Create document type tag
-#[allow(dead_code)]
 pub fn create_document_tag() -> Vec<String> {
     vec!["z".to_string(), DOCUMENT_TYPE.to_string()]
 }
 
 /// Builder for creating P2P order events
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct P2POrderBuilder {
     order_id: String,
@@ -493,7 +482,6 @@ pub struct P2POrderBuilder {
     bond: Option<u64>,
 }
 
-#[allow(dead_code)]
 impl P2POrderBuilder {
     /// Create a new order builder
     pub fn new(order_id: impl Into<String>) -> Self {

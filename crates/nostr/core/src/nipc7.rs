@@ -41,7 +41,6 @@ pub struct QuoteReference {
 
 /// A chat message
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct ChatMessage {
     /// Message content
     pub content: String,
@@ -49,7 +48,6 @@ pub struct ChatMessage {
     pub quote: Option<QuoteReference>,
 }
 
-#[allow(dead_code)]
 impl ChatMessage {
     /// Create a new standalone chat message
     pub fn new(content: String) -> Self {
@@ -140,7 +138,6 @@ pub fn get_quote_reference(event: &Event) -> Result<Option<QuoteReference>, NipC
 }
 
 /// Create a quote tag
-#[allow(dead_code)]
 pub fn create_quote_tag(quote: &QuoteReference) -> Vec<String> {
     let mut tag = vec![QUOTE_TAG.to_string(), quote.event_id.clone()];
 
@@ -160,7 +157,6 @@ pub fn create_quote_tag(quote: &QuoteReference) -> Vec<String> {
 }
 
 /// Add a quote tag to an event's tags
-#[allow(dead_code)]
 pub fn add_quote_tag(tags: &mut Vec<Vec<String>>, quote: &QuoteReference) {
     tags.push(create_quote_tag(quote));
 }

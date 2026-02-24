@@ -1247,7 +1247,10 @@ impl AppState {
             .clear_conversation(&mut self.chat, &mut self.tools);
     }
 
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "session reset path retained for command routing while UI action wiring is finalized"
+    )]
     pub(super) fn start_new_session(&mut self) {
         self.session
             .start_new_session(&mut self.chat, &mut self.tools);
@@ -1261,7 +1264,10 @@ impl AppState {
         self.chat.interrupt_query();
     }
 
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "abort command retained for parity with legacy terminal controls"
+    )]
     pub(super) fn abort_query(&mut self) {
         self.chat.abort_query();
     }
