@@ -159,11 +159,6 @@ pub(super) async fn stats_page(
     let status = query_param_value(uri.query(), "status");
     let mut effective_status = status;
 
-    let session = session_bundle_from_headers(&state, &headers)
-        .await
-        .ok()
-        .map(|bundle| session_view_from_bundle(&bundle));
-
     let (metrics, pools) = match fetch_stats_dashboard_views(&state).await {
         Ok(views) => views,
         Err(error) => {
@@ -176,7 +171,7 @@ pub(super) async fn stats_page(
     let page = WebPage {
         title: "Stats".to_string(),
         path: "/stats".to_string(),
-        session,
+        session: None,
         body: WebBody::Stats {
             status: effective_status,
             metrics,
@@ -184,7 +179,11 @@ pub(super) async fn stats_page(
         },
     };
 
-    Ok(web_response_for_page(&state, &headers, &uri, page).await)
+    let mut response = web_response_for_page(&state, &headers, &uri, page).await;
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_SHORT_LIVED));
+    Ok(response)
 }
 
 pub(super) async fn stats_main_fragment(
@@ -205,11 +204,6 @@ pub(super) async fn stats_main_fragment(
     let status = query_param_value(uri.query(), "status");
     let mut effective_status = status;
 
-    let session = session_bundle_from_headers(&state, &headers)
-        .await
-        .ok()
-        .map(|bundle| session_view_from_bundle(&bundle));
-
     let (metrics, pools) = match fetch_stats_dashboard_views(&state).await {
         Ok(views) => views,
         Err(error) => {
@@ -222,7 +216,7 @@ pub(super) async fn stats_main_fragment(
     let page = WebPage {
         title: "Stats".to_string(),
         path: "/stats".to_string(),
-        session,
+        session: None,
         body: WebBody::Stats {
             status: effective_status,
             metrics,
@@ -230,7 +224,11 @@ pub(super) async fn stats_main_fragment(
         },
     };
 
-    Ok(web_fragment_response(&page))
+    let mut response = web_fragment_response(&page);
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_SHORT_LIVED));
+    Ok(response)
 }
 
 pub(super) async fn stats_metrics_fragment(
@@ -371,6 +369,9 @@ pub(super) fn stats_metrics_fragment_response(metrics: &LiquidityStatsMetricsVie
 pub(super) fn stats_pools_fragment_response(pools: &[LiquidityPoolView]) -> Response {
     let mut response =
         crate::web_htmx::fragment_response(render_maud_stats_pools_fragment(pools), StatusCode::OK);
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_SHORT_LIVED));
     apply_html_security_headers(response.headers_mut());
     response
 }
@@ -411,6 +412,13 @@ pub(super) fn empty_stats_metrics_view() -> LiquidityStatsMetricsView {
     LiquidityStatsMetricsView {
         pool_count: 0,
         total_assets_sats: 0,
+        total_wallet_sats: 0,
+        total_onchain_sats: 0,
+        total_channel_sats: 0,
+        total_channel_outbound_sats: 0,
+        total_channel_inbound_sats: 0,
+        total_channel_count: 0,
+        total_connected_channel_count: 0,
         total_shares: 0,
         pending_withdrawals_sats_estimate: 0,
         last_snapshot_at: None,
@@ -475,24 +483,89 @@ pub(super) fn build_pool_view(
         None => ("-".to_string(), "not_found".to_string(), 0, 0, 0),
     };
 
-    let (snapshot_id, snapshot_as_of, snapshot_sha256, snapshot_signed, wallet_balance_sats) =
-        match snapshot {
-            Some(snapshot) => {
-                let wallet_balance_sats = snapshot
-                    .snapshot
-                    .assets_json
-                    .pointer("/walletBalanceSats")
-                    .and_then(serde_json::Value::as_i64);
-                (
-                    Some(snapshot.snapshot.snapshot_id.clone()),
-                    Some(timestamp(snapshot.snapshot.as_of)),
-                    Some(snapshot.snapshot.canonical_json_sha256.clone()),
-                    snapshot.snapshot.signature_json.is_some(),
-                    wallet_balance_sats,
-                )
-            }
-            None => (None, None, None, false, None),
-        };
+    let (
+        snapshot_id,
+        snapshot_as_of,
+        snapshot_sha256,
+        snapshot_signed,
+        wallet_balance_sats,
+        lightning_backend,
+        lightning_onchain_sats,
+        lightning_channel_total_sats,
+        lightning_channel_outbound_sats,
+        lightning_channel_inbound_sats,
+        lightning_channel_count,
+        lightning_connected_channel_count,
+        lightning_last_error,
+    ) = match snapshot {
+        Some(snapshot) => {
+            let wallet_balance_sats = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/walletBalanceSats")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_backend = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/backend")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            let lightning_onchain_sats = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/onchainSats")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_channel_total_sats = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/channelTotalSats")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_channel_outbound_sats = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/channelOutboundSats")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_channel_inbound_sats = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/channelInboundSats")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_channel_count = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/channelCount")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_connected_channel_count = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/connectedChannelCount")
+                .and_then(serde_json::Value::as_i64);
+            let lightning_last_error = snapshot
+                .snapshot
+                .assets_json
+                .pointer("/lightning/lastError")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            (
+                Some(snapshot.snapshot.snapshot_id.clone()),
+                Some(timestamp(snapshot.snapshot.as_of)),
+                Some(snapshot.snapshot.canonical_json_sha256.clone()),
+                snapshot.snapshot.signature_json.is_some(),
+                wallet_balance_sats,
+                lightning_backend,
+                lightning_onchain_sats,
+                lightning_channel_total_sats,
+                lightning_channel_outbound_sats,
+                lightning_channel_inbound_sats,
+                lightning_channel_count,
+                lightning_connected_channel_count,
+                lightning_last_error,
+            )
+        }
+        None => (
+            None, None, None, false, None, None, None, None, None, None, None, None, None,
+        ),
+    };
 
     LiquidityPoolView {
         pool_id,
@@ -506,17 +579,47 @@ pub(super) fn build_pool_view(
         latest_snapshot_sha256: snapshot_sha256,
         latest_snapshot_signed: snapshot_signed,
         wallet_balance_sats,
+        lightning_backend,
+        lightning_onchain_sats,
+        lightning_channel_total_sats,
+        lightning_channel_outbound_sats,
+        lightning_channel_inbound_sats,
+        lightning_channel_count,
+        lightning_connected_channel_count,
+        lightning_last_error,
     }
 }
 
 pub(super) fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> LiquidityStatsMetricsView {
     let mut total_assets_sats = 0_i64;
+    let mut total_wallet_sats = 0_i64;
+    let mut total_onchain_sats = 0_i64;
+    let mut total_channel_sats = 0_i64;
+    let mut total_channel_outbound_sats = 0_i64;
+    let mut total_channel_inbound_sats = 0_i64;
+    let mut total_channel_count = 0_i64;
+    let mut total_connected_channel_count = 0_i64;
     let mut total_shares = 0_i64;
     let mut pending_withdrawals_sats_estimate = 0_i64;
     let mut last_snapshot_at: Option<String> = None;
 
     for pool in pools {
-        total_assets_sats = total_assets_sats.saturating_add(pool.wallet_balance_sats.unwrap_or(0));
+        let wallet = pool.wallet_balance_sats.unwrap_or(0);
+        let onchain = pool.lightning_onchain_sats.unwrap_or(0);
+        let channel_total = pool.lightning_channel_total_sats.unwrap_or(0);
+        total_wallet_sats = total_wallet_sats.saturating_add(wallet);
+        total_onchain_sats = total_onchain_sats.saturating_add(onchain);
+        total_channel_sats = total_channel_sats.saturating_add(channel_total);
+        total_assets_sats = total_assets_sats
+            .saturating_add(wallet.saturating_add(onchain).saturating_add(channel_total));
+        total_channel_outbound_sats = total_channel_outbound_sats
+            .saturating_add(pool.lightning_channel_outbound_sats.unwrap_or(0));
+        total_channel_inbound_sats = total_channel_inbound_sats
+            .saturating_add(pool.lightning_channel_inbound_sats.unwrap_or(0));
+        total_channel_count =
+            total_channel_count.saturating_add(pool.lightning_channel_count.unwrap_or(0));
+        total_connected_channel_count = total_connected_channel_count
+            .saturating_add(pool.lightning_connected_channel_count.unwrap_or(0));
         total_shares = total_shares.saturating_add(pool.total_shares);
         pending_withdrawals_sats_estimate = pending_withdrawals_sats_estimate
             .saturating_add(pool.pending_withdrawals_sats_estimate);
@@ -534,6 +637,13 @@ pub(super) fn build_stats_metrics_view(pools: &[LiquidityPoolView]) -> Liquidity
     LiquidityStatsMetricsView {
         pool_count: pools.len(),
         total_assets_sats,
+        total_wallet_sats,
+        total_onchain_sats,
+        total_channel_sats,
+        total_channel_outbound_sats,
+        total_channel_inbound_sats,
+        total_channel_count,
+        total_connected_channel_count,
         total_shares,
         pending_withdrawals_sats_estimate,
         last_snapshot_at,

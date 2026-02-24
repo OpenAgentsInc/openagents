@@ -89,6 +89,13 @@ pub struct ComputeDeviceView {
 pub struct LiquidityStatsMetricsView {
     pub pool_count: usize,
     pub total_assets_sats: i64,
+    pub total_wallet_sats: i64,
+    pub total_onchain_sats: i64,
+    pub total_channel_sats: i64,
+    pub total_channel_outbound_sats: i64,
+    pub total_channel_inbound_sats: i64,
+    pub total_channel_count: i64,
+    pub total_connected_channel_count: i64,
     pub total_shares: i64,
     pub pending_withdrawals_sats_estimate: i64,
     pub last_snapshot_at: Option<String>,
@@ -107,6 +114,14 @@ pub struct LiquidityPoolView {
     pub latest_snapshot_sha256: Option<String>,
     pub latest_snapshot_signed: bool,
     pub wallet_balance_sats: Option<i64>,
+    pub lightning_backend: Option<String>,
+    pub lightning_onchain_sats: Option<i64>,
+    pub lightning_channel_total_sats: Option<i64>,
+    pub lightning_channel_outbound_sats: Option<i64>,
+    pub lightning_channel_inbound_sats: Option<i64>,
+    pub lightning_channel_count: Option<i64>,
+    pub lightning_connected_channel_count: Option<i64>,
+    pub lightning_last_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -915,9 +930,15 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
             div {
                 div class="oa-kv" { span { "Pools" } strong { (metrics.pool_count) } }
                 div class="oa-kv" { span { "Total assets (sats)" } strong { (metrics.total_assets_sats) } }
+                div class="oa-kv" { span { "Wallet sats" } strong { (metrics.total_wallet_sats) } }
+                div class="oa-kv" { span { "On-chain sats" } strong { (metrics.total_onchain_sats) } }
                 div class="oa-kv" { span { "Total shares" } strong { (metrics.total_shares) } }
             }
             div {
+                div class="oa-kv" { span { "Channel sats" } strong { (metrics.total_channel_sats) } }
+                div class="oa-kv" { span { "Channel outbound sats" } strong { (metrics.total_channel_outbound_sats) } }
+                div class="oa-kv" { span { "Channel inbound sats" } strong { (metrics.total_channel_inbound_sats) } }
+                div class="oa-kv" { span { "Channels connected/total" } strong { (format!("{}/{}", metrics.total_connected_channel_count, metrics.total_channel_count)) } }
                 div class="oa-kv" { span { "Pending withdrawals (sats est.)" } strong { (metrics.pending_withdrawals_sats_estimate) } }
                 div class="oa-kv" { span { "Last snapshot" } strong { (metrics.last_snapshot_at.clone().unwrap_or_else(|| "-".to_string())) } }
             }
@@ -937,7 +958,7 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
             article id="stats-metrics-panel"
                 class="oa-card"
                 hx-get="/stats/fragments/metrics"
-                hx-trigger="load, every 15s"
+                hx-trigger="load, every 60s"
                 hx-swap="outerHTML" {
                 (body)
             }
@@ -964,6 +985,17 @@ fn stats_pools_panel(pools: &[LiquidityPoolView], out_of_band: bool) -> Markup {
                             dt { "Total shares" } dd { (pool.total_shares) }
                             dt { "Pending withdrawals (sats est.)" } dd { (pool.pending_withdrawals_sats_estimate) }
                             dt { "Wallet balance (sats)" } dd { (pool.wallet_balance_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Lightning backend" } dd { (pool.lightning_backend.clone().unwrap_or_else(|| "-".to_string())) }
+                            dt { "On-chain sats" } dd { (pool.lightning_onchain_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Channel total sats" } dd { (pool.lightning_channel_total_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Channel outbound sats" } dd { (pool.lightning_channel_outbound_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Channel inbound sats" } dd { (pool.lightning_channel_inbound_sats.map_or("-".to_string(), |v| v.to_string())) }
+                            dt { "Channels connected/total" } dd { (format!(
+                                "{}/{}",
+                                pool.lightning_connected_channel_count.map_or("-".to_string(), |v| v.to_string()),
+                                pool.lightning_channel_count.map_or("-".to_string(), |v| v.to_string())
+                            )) }
+                            dt { "Lightning lastError" } dd { (pool.lightning_last_error.clone().unwrap_or_else(|| "-".to_string())) }
                             dt { "Snapshot as-of" } dd { (pool.latest_snapshot_as_of.clone().unwrap_or_else(|| "-".to_string())) }
                             dt { "Snapshot hash" } dd { (pool.latest_snapshot_sha256.clone().unwrap_or_else(|| "-".to_string())) }
                             dt { "Signature" } dd { (if pool.latest_snapshot_signed { "signed" } else { "unsigned" }) }
@@ -987,7 +1019,7 @@ fn stats_pools_panel(pools: &[LiquidityPoolView], out_of_band: bool) -> Markup {
             article id="stats-pools-panel"
                 class="oa-card"
                 hx-get="/stats/fragments/pools"
-                hx-trigger="load, every 10s"
+                hx-trigger="load, every 60s"
                 hx-swap="outerHTML" {
                 (body)
             }
