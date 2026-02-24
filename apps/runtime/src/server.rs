@@ -128,10 +128,11 @@ impl AppState {
             config.liquidity_quote_ttl_seconds,
             config.bridge_nostr_secret_key,
         ));
-        let credit = Arc::new(CreditService::new(
+        let credit = Arc::new(CreditService::new_with_policy(
             credit_store,
             liquidity.clone(),
             config.bridge_nostr_secret_key,
+            config.credit_policy.clone(),
         ));
 
         let pool_store = match db.clone() {

@@ -21,8 +21,9 @@ use crate::credit::types::{
     CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditEnvelopeRow, CreditEnvelopeStatusV1,
     CreditHealthResponseV1, CreditIntentRequestV1, CreditIntentResponseV1, CreditIntentRow,
     CreditLiquidityPayEventRow, CreditOfferRequestV1, CreditOfferResponseV1, CreditOfferRow,
-    CreditOfferStatusV1, CreditScopeTypeV1, CreditSettleRequestV1, CreditSettleResponseV1,
-    CreditSettlementOutcomeV1, CreditSettlementRow, CreditUnderwritingAuditRow,
+    CreditOfferStatusV1, CreditPolicySnapshotV1, CreditScopeTypeV1, CreditSettleRequestV1,
+    CreditSettleResponseV1, CreditSettlementOutcomeV1, CreditSettlementRow,
+    CreditUnderwritingAuditRow,
     DEFAULT_NOTICE_SCHEMA_V1, DefaultNoticeV1, ENVELOPE_ISSUE_RECEIPT_SCHEMA_V1,
     ENVELOPE_SETTLEMENT_RECEIPT_SCHEMA_V1, EnvelopeIssueReceiptV1, EnvelopeSettlementReceiptV1,
 };
@@ -1136,6 +1137,27 @@ impl CreditService {
             ln_fail_count,
             ln_failure_rate,
             breakers,
+            policy: CreditPolicySnapshotV1 {
+                max_sats_per_envelope: self.policy.max_sats_per_envelope,
+                max_outstanding_envelopes_per_agent: self.policy.max_outstanding_envelopes_per_agent,
+                max_offer_ttl_seconds: self.policy.max_offer_ttl_seconds,
+                underwriting_history_days: self.policy.underwriting_history_days,
+                underwriting_base_sats: self.policy.underwriting_base_sats,
+                underwriting_k: self.policy.underwriting_k,
+                underwriting_default_penalty_multiplier: self
+                    .policy
+                    .underwriting_default_penalty_multiplier,
+                min_fee_bps: self.policy.min_fee_bps,
+                max_fee_bps: self.policy.max_fee_bps,
+                fee_risk_scaler: self.policy.fee_risk_scaler,
+                health_window_seconds: self.policy.health_window_seconds,
+                health_settlement_sample_limit: self.policy.health_settlement_sample_limit,
+                health_ln_pay_sample_limit: self.policy.health_ln_pay_sample_limit,
+                circuit_breaker_min_sample: self.policy.circuit_breaker_min_sample,
+                loss_rate_halt_threshold: self.policy.loss_rate_halt_threshold,
+                ln_failure_rate_halt_threshold: self.policy.ln_failure_rate_halt_threshold,
+                ln_failure_large_settlement_cap_sats: self.policy.ln_failure_large_settlement_cap_sats,
+            },
         })
     }
 }

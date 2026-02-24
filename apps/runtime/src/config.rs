@@ -6,6 +6,7 @@ use std::{
 
 use thiserror::Error;
 
+use crate::credit::service::CreditPolicyConfig;
 use crate::fanout::{FanoutLimitConfig, FanoutTierLimits, QosTier};
 use nostr::nsec_to_private_key;
 
@@ -62,6 +63,7 @@ pub struct Config {
     pub liquidity_pool_snapshot_interval_seconds: u64,
     pub liquidity_pool_snapshot_jitter_seconds: u64,
     pub liquidity_pool_snapshot_retention_count: i64,
+    pub credit_policy: CreditPolicyConfig,
     pub treasury_reconciliation_enabled: bool,
     pub treasury_reservation_ttl_seconds: u64,
     pub treasury_reconciliation_interval_seconds: u64,
@@ -161,6 +163,8 @@ pub enum ConfigError {
     InvalidLiquidityPoolSnapshotJitterSeconds(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_RETENTION_COUNT: {0}")]
     InvalidLiquidityPoolSnapshotRetentionCount(String),
+    #[error("invalid credit policy config: {0}")]
+    InvalidCreditPolicyConfig(String),
 }
 
 impl Config {
@@ -487,6 +491,7 @@ impl Config {
                     ConfigError::InvalidLiquidityPoolSnapshotRetentionCount(error.to_string())
                 })?
                 .clamp(1, 10_000);
+        let credit_policy = parse_credit_policy_from_env(|key| env::var(key).ok())?;
         Ok(Self {
             service_name,
             bind_addr,
@@ -539,6 +544,7 @@ impl Config {
             liquidity_pool_snapshot_interval_seconds,
             liquidity_pool_snapshot_jitter_seconds,
             liquidity_pool_snapshot_retention_count,
+            credit_policy,
             treasury_reconciliation_enabled,
             treasury_reservation_ttl_seconds,
             treasury_reconciliation_interval_seconds,
@@ -574,6 +580,223 @@ impl Config {
                 max_payload_bytes: self.khala_fallback_max_payload_bytes,
             },
         }
+    }
+}
+
+fn parse_credit_policy_from_env(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<CreditPolicyConfig, ConfigError> {
+    let defaults = CreditPolicyConfig::default();
+
+    let max_sats_per_envelope = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_MAX_SATS_PER_ENVELOPE",
+        defaults.max_sats_per_envelope,
+        1,
+        u64::MAX,
+    )?;
+    let max_outstanding_envelopes_per_agent = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_MAX_OUTSTANDING_ENVELOPES_PER_AGENT",
+        defaults.max_outstanding_envelopes_per_agent,
+        1,
+        u64::MAX,
+    )?;
+    let max_offer_ttl_seconds = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_MAX_OFFER_TTL_SECONDS",
+        defaults.max_offer_ttl_seconds,
+        1,
+        86_400,
+    )?;
+
+    let underwriting_history_days = parse_i64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_UNDERWRITING_HISTORY_DAYS",
+        defaults.underwriting_history_days,
+        1,
+        365,
+    )?;
+    let underwriting_base_sats = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_UNDERWRITING_BASE_SATS",
+        defaults.underwriting_base_sats,
+        1,
+        u64::MAX,
+    )?;
+    let underwriting_k = parse_f64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_UNDERWRITING_K",
+        defaults.underwriting_k,
+        0.0,
+        10_000.0,
+    )?;
+    let underwriting_default_penalty_multiplier = parse_f64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_UNDERWRITING_DEFAULT_PENALTY_MULTIPLIER",
+        defaults.underwriting_default_penalty_multiplier,
+        0.0,
+        100.0,
+    )?;
+
+    let min_fee_bps = parse_u32_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_MIN_FEE_BPS",
+        defaults.min_fee_bps,
+        0,
+        100_000,
+    )?;
+    let max_fee_bps = parse_u32_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_MAX_FEE_BPS",
+        defaults.max_fee_bps,
+        min_fee_bps,
+        100_000,
+    )?;
+    let fee_risk_scaler = parse_f64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_FEE_RISK_SCALER",
+        defaults.fee_risk_scaler,
+        0.0,
+        100_000.0,
+    )?;
+
+    let health_window_seconds = parse_i64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_HEALTH_WINDOW_SECONDS",
+        defaults.health_window_seconds,
+        60,
+        7 * 24 * 60 * 60,
+    )?;
+    let health_settlement_sample_limit = parse_u32_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_HEALTH_SETTLEMENT_SAMPLE_LIMIT",
+        defaults.health_settlement_sample_limit,
+        1,
+        100_000,
+    )?;
+    let health_ln_pay_sample_limit = parse_u32_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_HEALTH_LN_PAY_SAMPLE_LIMIT",
+        defaults.health_ln_pay_sample_limit,
+        1,
+        100_000,
+    )?;
+    let circuit_breaker_min_sample = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_CIRCUIT_BREAKER_MIN_SAMPLE",
+        defaults.circuit_breaker_min_sample,
+        1,
+        100_000,
+    )?;
+    let loss_rate_halt_threshold = parse_f64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_LOSS_RATE_HALT_THRESHOLD",
+        defaults.loss_rate_halt_threshold,
+        0.0,
+        1.0,
+    )?;
+    let ln_failure_rate_halt_threshold = parse_f64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_LN_FAILURE_RATE_HALT_THRESHOLD",
+        defaults.ln_failure_rate_halt_threshold,
+        0.0,
+        1.0,
+    )?;
+    let ln_failure_large_settlement_cap_sats = parse_u64_env_lookup(
+        &lookup,
+        "RUNTIME_CREDIT_LN_FAILURE_LARGE_SETTLEMENT_CAP_SATS",
+        defaults.ln_failure_large_settlement_cap_sats,
+        1,
+        u64::MAX,
+    )?;
+
+    Ok(CreditPolicyConfig {
+        max_sats_per_envelope,
+        max_outstanding_envelopes_per_agent,
+        max_offer_ttl_seconds,
+        underwriting_history_days,
+        underwriting_base_sats,
+        underwriting_k,
+        underwriting_default_penalty_multiplier,
+        min_fee_bps,
+        max_fee_bps,
+        fee_risk_scaler,
+        health_window_seconds,
+        health_settlement_sample_limit,
+        health_ln_pay_sample_limit,
+        circuit_breaker_min_sample,
+        loss_rate_halt_threshold,
+        ln_failure_rate_halt_threshold,
+        ln_failure_large_settlement_cap_sats,
+    })
+}
+
+fn parse_u64_env_lookup(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64, ConfigError> {
+    parse_with_lookup(lookup, key, default, |raw| {
+        raw.parse::<u64>()
+            .map_err(|error| ConfigError::InvalidCreditPolicyConfig(format!("{key}: {error}")))
+            .map(|value| value.clamp(min, max))
+    })
+}
+
+fn parse_u32_env_lookup(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: u32,
+    min: u32,
+    max: u32,
+) -> Result<u32, ConfigError> {
+    parse_with_lookup(lookup, key, default, |raw| {
+        raw.parse::<u32>()
+            .map_err(|error| ConfigError::InvalidCreditPolicyConfig(format!("{key}: {error}")))
+            .map(|value| value.clamp(min, max))
+    })
+}
+
+fn parse_i64_env_lookup(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: i64,
+    min: i64,
+    max: i64,
+) -> Result<i64, ConfigError> {
+    parse_with_lookup(lookup, key, default, |raw| {
+        raw.parse::<i64>()
+            .map_err(|error| ConfigError::InvalidCreditPolicyConfig(format!("{key}: {error}")))
+            .map(|value| value.clamp(min, max))
+    })
+}
+
+fn parse_f64_env_lookup(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: f64,
+    min: f64,
+    max: f64,
+) -> Result<f64, ConfigError> {
+    parse_with_lookup(lookup, key, default, |raw| {
+        raw.parse::<f64>()
+            .map_err(|error| ConfigError::InvalidCreditPolicyConfig(format!("{key}: {error}")))
+            .map(|value| value.clamp(min, max))
+    })
+}
+
+fn parse_with_lookup<T>(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: T,
+    parser: impl FnOnce(String) -> Result<T, ConfigError>,
+) -> Result<T, ConfigError> {
+    match lookup(key) {
+        Some(raw) => parser(raw),
+        None => Ok(default),
     }
 }
 
@@ -622,4 +845,54 @@ fn parse_bridge_nostr_secret_key(value: &str) -> Result<[u8; 32], ConfigError> {
     let mut out = [0u8; 32];
     out.copy_from_slice(&bytes);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::{ConfigError, parse_credit_policy_from_env};
+
+    #[test]
+    fn credit_policy_parser_applies_env_overrides() {
+        let values = HashMap::from([
+            ("RUNTIME_CREDIT_MAX_SATS_PER_ENVELOPE", "2500"),
+            ("RUNTIME_CREDIT_MAX_OUTSTANDING_ENVELOPES_PER_AGENT", "7"),
+            ("RUNTIME_CREDIT_MAX_OFFER_TTL_SECONDS", "90"),
+            ("RUNTIME_CREDIT_UNDERWRITING_BASE_SATS", "500"),
+            ("RUNTIME_CREDIT_UNDERWRITING_K", "12.5"),
+            ("RUNTIME_CREDIT_MIN_FEE_BPS", "25"),
+            ("RUNTIME_CREDIT_MAX_FEE_BPS", "500"),
+            ("RUNTIME_CREDIT_CIRCUIT_BREAKER_MIN_SAMPLE", "9"),
+            ("RUNTIME_CREDIT_LOSS_RATE_HALT_THRESHOLD", "0.35"),
+            ("RUNTIME_CREDIT_LN_FAILURE_RATE_HALT_THRESHOLD", "0.4"),
+            ("RUNTIME_CREDIT_LN_FAILURE_LARGE_SETTLEMENT_CAP_SATS", "750"),
+        ]);
+        let policy = parse_credit_policy_from_env(|key| values.get(key).map(ToString::to_string))
+            .expect("policy parse");
+        assert_eq!(policy.max_sats_per_envelope, 2500);
+        assert_eq!(policy.max_outstanding_envelopes_per_agent, 7);
+        assert_eq!(policy.max_offer_ttl_seconds, 90);
+        assert_eq!(policy.underwriting_base_sats, 500);
+        assert_eq!(policy.underwriting_k, 12.5);
+        assert_eq!(policy.min_fee_bps, 25);
+        assert_eq!(policy.max_fee_bps, 500);
+        assert_eq!(policy.circuit_breaker_min_sample, 9);
+        assert_eq!(policy.loss_rate_halt_threshold, 0.35);
+        assert_eq!(policy.ln_failure_rate_halt_threshold, 0.4);
+        assert_eq!(policy.ln_failure_large_settlement_cap_sats, 750);
+    }
+
+    #[test]
+    fn credit_policy_parser_rejects_invalid_env_values() {
+        let values = HashMap::from([("RUNTIME_CREDIT_UNDERWRITING_K", "not-a-number")]);
+        let error = parse_credit_policy_from_env(|key| values.get(key).map(ToString::to_string))
+            .expect_err("invalid value should fail");
+        match error {
+            ConfigError::InvalidCreditPolicyConfig(message) => {
+                assert!(message.contains("RUNTIME_CREDIT_UNDERWRITING_K"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
 }

@@ -104,6 +104,7 @@ fn build_test_router_with_config(
         liquidity_pool_snapshot_interval_seconds: 60,
         liquidity_pool_snapshot_jitter_seconds: 0,
         liquidity_pool_snapshot_retention_count: 120,
+        credit_policy: crate::credit::service::CreditPolicyConfig::default(),
         treasury_reconciliation_enabled: false,
         treasury_reservation_ttl_seconds: 3600,
         treasury_reconciliation_interval_seconds: 60,
@@ -1088,6 +1089,75 @@ async fn credit_envelope_conflicts_when_offer_already_consumed() -> Result<()> {
         )
         .await?;
     assert_eq!(envelope_2.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn credit_health_exposes_effective_policy_from_config() -> Result<()> {
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.credit_policy.max_sats_per_envelope = 1_234;
+            config.credit_policy.max_outstanding_envelopes_per_agent = 9;
+            config.credit_policy.max_offer_ttl_seconds = 321;
+            config.credit_policy.circuit_breaker_min_sample = 7;
+            config.credit_policy.loss_rate_halt_threshold = 0.42;
+            config.credit_policy.ln_failure_rate_halt_threshold = 0.33;
+            config.credit_policy.ln_failure_large_settlement_cap_sats = 777;
+        });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/credit/health")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(json["schema"], "openagents.credit.health_response.v1");
+    assert_eq!(json["policy"]["max_sats_per_envelope"], 1_234);
+    assert_eq!(json["policy"]["max_outstanding_envelopes_per_agent"], 9);
+    assert_eq!(json["policy"]["max_offer_ttl_seconds"], 321);
+    assert_eq!(json["policy"]["circuit_breaker_min_sample"], 7);
+    assert_eq!(json["policy"]["loss_rate_halt_threshold"], 0.42);
+    assert_eq!(json["policy"]["ln_failure_rate_halt_threshold"], 0.33);
+    assert_eq!(json["policy"]["ln_failure_large_settlement_cap_sats"], 777);
+    Ok(())
+}
+
+#[tokio::test]
+async fn credit_offer_enforces_overridden_max_sats_policy() -> Result<()> {
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.credit_policy.max_sats_per_envelope = 900;
+        });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/credit/offer")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.credit.offer_request.v1",
+                    "agent_id": "a".repeat(64),
+                    "pool_id": "b".repeat(64),
+                    "scope_type": "nip90",
+                    "scope_id": "oa.sandbox_run.v1:max-policy",
+                    "max_sats": 901,
+                    "fee_bps": 100,
+                    "requires_verifier": true,
+                    "exp": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    let json = response_json(response).await?;
+    let message = json
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(message.contains("max_sats_per_envelope"));
     Ok(())
 }
 

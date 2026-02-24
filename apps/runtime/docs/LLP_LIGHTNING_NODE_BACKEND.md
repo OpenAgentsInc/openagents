@@ -112,3 +112,33 @@ For `POST /internal/v1/liquidity/pay`:
   migration debt and should not be deployed.
 - Spark is a **wallet rail** (quick user wallets) used behind the wallet-executor custody boundary.
   LLP liquidity is channel-backed and node-backed (LND Phase 0).
+
+## CEP Credit Policy Configuration (MVP-1)
+
+Runtime credit-envelope policy is fully configurable via environment variables. Defaults are safe
+for staging bootstrap and can be tuned per deployment.
+
+- `RUNTIME_CREDIT_MAX_SATS_PER_ENVELOPE` (default `100000`)
+- `RUNTIME_CREDIT_MAX_OUTSTANDING_ENVELOPES_PER_AGENT` (default `3`)
+- `RUNTIME_CREDIT_MAX_OFFER_TTL_SECONDS` (default `3600`)
+- `RUNTIME_CREDIT_UNDERWRITING_HISTORY_DAYS` (default `30`)
+- `RUNTIME_CREDIT_UNDERWRITING_BASE_SATS` (default `2000`)
+- `RUNTIME_CREDIT_UNDERWRITING_K` (default `150.0`)
+- `RUNTIME_CREDIT_UNDERWRITING_DEFAULT_PENALTY_MULTIPLIER` (default `2.0`)
+- `RUNTIME_CREDIT_MIN_FEE_BPS` (default `50`)
+- `RUNTIME_CREDIT_MAX_FEE_BPS` (default `2000`)
+- `RUNTIME_CREDIT_FEE_RISK_SCALER` (default `400.0`)
+- `RUNTIME_CREDIT_HEALTH_WINDOW_SECONDS` (default `21600`)
+- `RUNTIME_CREDIT_HEALTH_SETTLEMENT_SAMPLE_LIMIT` (default `200`)
+- `RUNTIME_CREDIT_HEALTH_LN_PAY_SAMPLE_LIMIT` (default `200`)
+- `RUNTIME_CREDIT_CIRCUIT_BREAKER_MIN_SAMPLE` (default `5`)
+- `RUNTIME_CREDIT_LOSS_RATE_HALT_THRESHOLD` (default `0.5`)
+- `RUNTIME_CREDIT_LN_FAILURE_RATE_HALT_THRESHOLD` (default `0.5`)
+- `RUNTIME_CREDIT_LN_FAILURE_LARGE_SETTLEMENT_CAP_SATS` (default `5000`)
+
+Operator introspection:
+
+- `GET /internal/v1/credit/health` returns:
+  - breaker status (`halt_new_envelopes`, `halt_large_settlements`)
+  - settlement/LN sample counts used in breaker decisions
+  - effective policy values under `policy`

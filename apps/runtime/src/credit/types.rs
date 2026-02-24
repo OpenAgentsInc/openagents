@@ -310,6 +310,27 @@ pub struct CreditCircuitBreakersV1 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditPolicySnapshotV1 {
+    pub max_sats_per_envelope: u64,
+    pub max_outstanding_envelopes_per_agent: u64,
+    pub max_offer_ttl_seconds: u64,
+    pub underwriting_history_days: i64,
+    pub underwriting_base_sats: u64,
+    pub underwriting_k: f64,
+    pub underwriting_default_penalty_multiplier: f64,
+    pub min_fee_bps: u32,
+    pub max_fee_bps: u32,
+    pub fee_risk_scaler: f64,
+    pub health_window_seconds: i64,
+    pub health_settlement_sample_limit: u32,
+    pub health_ln_pay_sample_limit: u32,
+    pub circuit_breaker_min_sample: u64,
+    pub loss_rate_halt_threshold: f64,
+    pub ln_failure_rate_halt_threshold: f64,
+    pub ln_failure_large_settlement_cap_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditHealthResponseV1 {
     pub schema: String,
     pub generated_at: DateTime<Utc>,
@@ -320,6 +341,7 @@ pub struct CreditHealthResponseV1 {
     pub ln_fail_count: u64,
     pub ln_failure_rate: f64,
     pub breakers: CreditCircuitBreakersV1,
+    pub policy: CreditPolicySnapshotV1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
