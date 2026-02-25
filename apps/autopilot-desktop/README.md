@@ -2,6 +2,19 @@
 
 Native Rust/WGPUI desktop app for Codex runtime workflows.
 
+## Source Layout
+
+Desktop domain responsibilities are now split by module under `apps/autopilot-desktop/src/`:
+
+- `main.rs`: app bootstrap, window/event-loop wiring, pane orchestration.
+- `runtime_auth.rs`: runtime auth persistence and login flow.
+- `runtime_codex_proto.rs`: runtime Codex protocol parse/emit helpers.
+- `codex_control.rs`: remote control auto-response decisions.
+- `identity_domain.rs`: local NIP-06 identity load/init and config normalization.
+- `provider_domain.rs`: in-process NIP-90 provider lifecycle + DVM status/history.
+- `wallet_domain.rs`: Spark wallet status, invoice, and payment execution.
+- `inbox_domain.rs`: inbox bridge to shared domain crate.
+
 ## Inbox Domain Integration
 
 Inbox mailbox policy/draft/audit domain logic now lives in shared crate:

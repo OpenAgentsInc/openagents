@@ -12,9 +12,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use arboard::Clipboard;
 use autopilot_app::{
-    App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
-    InboxAuditEntry, InboxSnapshot, InboxThreadSummary, LiquidityProviderStatus, PylonStatus,
-    RuntimeAuthStateView, SessionId, UserAction, WalletPaymentSummary, WalletStatus,
+    App as AutopilotApp, AppConfig, AppEvent, EventRecorder, InboxAuditEntry, InboxSnapshot,
+    InboxThreadSummary, LiquidityProviderStatus, RuntimeAuthStateView, SessionId, UserAction,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -44,15 +43,8 @@ use openagents_client_core::auth::{
     ENV_CONTROL_BASE_URL, ENV_CONTROL_BASE_URL_LEGACY,
     normalize_base_url as normalize_control_base_url, resolve_control_base_url,
 };
-use openagents_spark::{
-    Network as SparkNetwork, PaymentStatus as SparkPaymentStatus, PaymentType as SparkPaymentType,
-    SparkSigner, SparkWallet, WalletConfig,
-};
 use pylon::PylonConfig;
-use pylon::db::{PylonDb, jobs::JobStatus};
-use pylon::provider::{ProviderError, PylonProvider};
 use reqwest::{Client as HttpClient, Method};
-use runtime::UnifiedIdentity;
 use serde_json::{Map, Value, json};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use tracing_subscriber::EnvFilter;
@@ -68,12 +60,23 @@ use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
 
+mod codex_control;
 mod full_auto;
+mod identity_domain;
 mod inbox_domain;
+mod provider_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
+mod wallet_domain;
 
+use codex_control::build_auto_response;
+use identity_domain::load_pylon_config;
 use inbox_domain::DesktopInboxState;
+use provider_domain::{
+    InProcessPylon, dvm_provider_status_error, fetch_dvm_history, fetch_dvm_provider_status,
+    init_pylon_identity, pylon_status_error, refresh_pylon_status, start_pylon_in_process,
+    stop_pylon_in_process,
+};
 use runtime_auth::{
     DEFAULT_AUTH_BASE_URL, RuntimeSyncAuthFlow, RuntimeSyncAuthState, clear_runtime_auth_state,
     load_runtime_auth_state, login_with_email_code, persist_runtime_auth_state,
@@ -86,6 +89,7 @@ use runtime_codex_proto::{
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
 };
+use wallet_domain::{create_wallet_invoice, fetch_wallet_status, pay_wallet_request};
 
 const WINDOW_TITLE: &str = "Autopilot";
 const WINDOW_WIDTH: f64 = 1280.0;
@@ -2044,22 +2048,6 @@ struct RuntimeRemoteControlDispatchError {
     code: &'static str,
     message: String,
     details: Option<Value>,
-}
-
-struct InProcessPylon {
-    provider: Option<PylonProvider>,
-    started_at: Option<std::time::Instant>,
-    last_error: Option<String>,
-}
-
-impl InProcessPylon {
-    fn new() -> Self {
-        Self {
-            provider: None,
-            started_at: None,
-            last_error: None,
-        }
-    }
 }
 
 fn main() -> Result<()> {
@@ -5935,543 +5923,6 @@ async fn run_guidance_router(
         fallback_guidance_response(goal_intent),
         vec!["GuidanceRouterSignature".to_string()],
     ))
-}
-
-fn build_tool_input_response(params: &Value) -> Value {
-    let mut answers = serde_json::Map::new();
-    let questions = params
-        .get("questions")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    for question in questions {
-        let id = question
-            .get("id")
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string());
-        let answer = question
-            .get("options")
-            .and_then(|value| value.as_array())
-            .and_then(|options| options.first())
-            .and_then(|option| option.get("id"))
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "yes".to_string());
-
-        if let Some(id) = id {
-            answers.insert(
-                id,
-                json!({
-                    "answers": [answer],
-                }),
-            );
-        }
-    }
-
-    json!({ "answers": answers })
-}
-
-fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
-    match method {
-        "execCommandApproval" | "applyPatchApproval" => Some(json!({ "decision": "approved" })),
-        "item/tool/requestUserInput" => params.map(build_tool_input_response),
-        _ => None,
-    }
-}
-
-fn load_pylon_config() -> Result<PylonConfig> {
-    let mut config = PylonConfig::load()?;
-    if config.default_model.trim().is_empty() {
-        config.default_model = "llama3.2".to_string();
-    }
-    Ok(config)
-}
-
-fn identity_path_for_config(config: &PylonConfig) -> Result<PathBuf> {
-    Ok(config.data_path()?.join("identity.mnemonic"))
-}
-
-fn pylon_identity_exists(config: &PylonConfig) -> bool {
-    identity_path_for_config(config)
-        .map(|path| path.exists())
-        .unwrap_or(false)
-}
-
-fn load_or_init_identity(config: &PylonConfig) -> Result<UnifiedIdentity> {
-    let identity_path = identity_path_for_config(config)?;
-    if identity_path.exists() {
-        let mnemonic = std::fs::read_to_string(&identity_path)?.trim().to_string();
-        return UnifiedIdentity::from_mnemonic(&mnemonic, "")
-            .map_err(|err| anyhow::anyhow!("Failed to load identity: {err}"));
-    }
-
-    if let Some(parent) = identity_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let identity = UnifiedIdentity::generate()
-        .map_err(|err| anyhow::anyhow!("Failed to generate identity: {err}"))?;
-    std::fs::write(&identity_path, identity.mnemonic())?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&identity_path, std::fs::Permissions::from_mode(0o600))?;
-    }
-
-    Ok(identity)
-}
-
-fn pylon_status_error(err: impl Into<String>) -> PylonStatus {
-    PylonStatus {
-        last_error: Some(err.into()),
-        ..PylonStatus::default()
-    }
-}
-
-fn dvm_provider_status_error(err: impl Into<String>) -> DvmProviderStatus {
-    DvmProviderStatus {
-        last_error: Some(err.into()),
-        ..DvmProviderStatus::default()
-    }
-}
-
-async fn init_pylon_identity(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
-    match load_or_init_identity(config) {
-        Ok(_) => state.last_error = None,
-        Err(err) => state.last_error = Some(err.to_string()),
-    }
-    refresh_pylon_status(state, config).await
-}
-
-async fn start_pylon_in_process(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
-    if let Some(provider) = state.provider.as_ref() {
-        let provider_status = provider.status().await;
-        if provider_status.running {
-            state.last_error = None;
-            return refresh_pylon_status(state, config).await;
-        }
-    }
-
-    let identity = match load_or_init_identity(config) {
-        Ok(identity) => identity,
-        Err(err) => {
-            state.last_error = Some(err.to_string());
-            return refresh_pylon_status(state, config).await;
-        }
-    };
-
-    let mut provider = match state.provider.take() {
-        Some(provider) => provider,
-        None => match PylonProvider::new(config.clone()).await {
-            Ok(provider) => provider,
-            Err(err) => {
-                state.last_error = Some(err.to_string());
-                return refresh_pylon_status(state, config).await;
-            }
-        },
-    };
-
-    if let Err(err) = provider.init_with_identity(identity).await {
-        state.last_error = Some(err.to_string());
-        state.provider = None;
-        state.started_at = None;
-        return refresh_pylon_status(state, config).await;
-    }
-
-    let provider_status = provider.status().await;
-    if provider_status.backends.is_empty() && provider_status.agent_backends.is_empty() {
-        state.last_error =
-            Some("No provider backends detected (inference or Codex agent).".to_string());
-        state.provider = None;
-        state.started_at = None;
-        return refresh_pylon_status(state, config).await;
-    }
-
-    match provider.start().await {
-        Ok(()) | Err(ProviderError::AlreadyRunning) => {
-            if state.started_at.is_none() {
-                state.started_at = Some(std::time::Instant::now());
-            }
-            state.last_error = None;
-            state.provider = Some(provider);
-        }
-        Err(err) => {
-            state.last_error = Some(err.to_string());
-            state.provider = None;
-            state.started_at = None;
-        }
-    }
-
-    refresh_pylon_status(state, config).await
-}
-
-async fn stop_pylon_in_process(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
-    if let Some(provider) = state.provider.as_mut() {
-        match provider.stop().await {
-            Ok(()) | Err(ProviderError::NotRunning) => {
-                state.started_at = None;
-                state.last_error = None;
-            }
-            Err(err) => {
-                state.last_error = Some(err.to_string());
-            }
-        }
-    } else {
-        state.started_at = None;
-    }
-
-    refresh_pylon_status(state, config).await
-}
-
-async fn refresh_pylon_status(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
-    let identity_exists = pylon_identity_exists(config);
-    let (running, jobs_completed, earnings_msats) = if let Some(provider) = state.provider.as_ref()
-    {
-        let provider_status = provider.status().await;
-        (
-            provider_status.running,
-            provider_status.jobs_processed,
-            provider_status.total_earnings_msats,
-        )
-    } else {
-        (false, 0, 0)
-    };
-
-    if running && state.started_at.is_none() {
-        state.started_at = Some(std::time::Instant::now());
-    }
-    if !running {
-        state.started_at = None;
-    }
-
-    PylonStatus {
-        running,
-        pid: None,
-        uptime_secs: state.started_at.as_ref().map(|t| t.elapsed().as_secs()),
-        provider_active: Some(running),
-        host_active: Some(false),
-        jobs_completed,
-        earnings_msats,
-        identity_exists,
-        last_error: state.last_error.clone(),
-    }
-}
-
-async fn fetch_dvm_provider_status(
-    state: &mut InProcessPylon,
-    config: &PylonConfig,
-) -> DvmProviderStatus {
-    let provider_status = if let Some(provider) = state.provider.as_ref() {
-        Some(provider.status().await)
-    } else {
-        None
-    };
-    let running = provider_status
-        .as_ref()
-        .map(|status| status.running)
-        .unwrap_or(false);
-    let agent_backends = provider_status
-        .as_ref()
-        .map(|status| status.agent_backends.clone())
-        .unwrap_or_default();
-    let supported_bazaar_kinds = provider_status
-        .as_ref()
-        .map(|status| status.supported_bazaar_kinds.clone())
-        .unwrap_or_default();
-
-    DvmProviderStatus {
-        running,
-        provider_active: Some(running),
-        host_active: Some(false),
-        min_price_msats: config.min_price_msats,
-        require_payment: config.require_payment,
-        default_model: config.default_model.clone(),
-        backend_preference: config.backend_preference.clone(),
-        agent_backends,
-        supported_bazaar_kinds,
-        network: config.network.clone(),
-        enable_payments: config.enable_payments,
-        last_error: state.last_error.clone(),
-    }
-}
-
-fn fetch_dvm_history() -> DvmHistorySnapshot {
-    let mut snapshot = DvmHistorySnapshot::default();
-
-    let config = match PylonConfig::load() {
-        Ok(config) => config,
-        Err(err) => {
-            snapshot.last_error = Some(format!("Failed to load Pylon config: {err}"));
-            return snapshot;
-        }
-    };
-
-    let data_dir = match config.data_path() {
-        Ok(path) => path,
-        Err(err) => {
-            snapshot.last_error = Some(format!("Failed to resolve Pylon data dir: {err}"));
-            return snapshot;
-        }
-    };
-
-    let path = data_dir.join("pylon.db");
-
-    let db = match PylonDb::open(path) {
-        Ok(db) => db,
-        Err(err) => {
-            snapshot.last_error = Some(format!("Failed to open Pylon DB: {err}"));
-            return snapshot;
-        }
-    };
-
-    match db.get_earnings_summary() {
-        Ok(summary) => {
-            snapshot.summary.total_msats = summary.total_msats;
-            snapshot.summary.total_sats = summary.total_sats;
-            snapshot.summary.job_count = summary.job_count;
-            let mut sources = summary
-                .by_source
-                .into_iter()
-                .collect::<Vec<(String, u64)>>();
-            sources.sort_by(|a, b| a.0.cmp(&b.0));
-            snapshot.summary.by_source = sources;
-        }
-        Err(err) => {
-            snapshot.last_error = Some(format!("Failed to load earnings summary: {err}"));
-        }
-    }
-
-    match db.count_jobs_by_status() {
-        Ok(counts) => {
-            let mut status_counts = counts
-                .into_iter()
-                .map(|(status, count)| (status.as_str().to_string(), count))
-                .collect::<Vec<_>>();
-            status_counts.sort_by(|a, b| a.0.cmp(&b.0));
-            snapshot.status_counts = status_counts;
-        }
-        Err(err) => {
-            snapshot.last_error = Some(format!("Failed to load job counts: {err}"));
-        }
-    }
-
-    let mut jobs = Vec::new();
-    for status in [
-        JobStatus::Completed,
-        JobStatus::Failed,
-        JobStatus::Processing,
-        JobStatus::Pending,
-    ] {
-        if let Ok(list) = db.list_jobs_by_status(status, 25) {
-            jobs.extend(list);
-        }
-    }
-    jobs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    jobs.truncate(25);
-    snapshot.jobs = jobs
-        .into_iter()
-        .map(|job| autopilot_app::DvmJobSummary {
-            id: job.id,
-            status: job.status.as_str().to_string(),
-            kind: job.kind,
-            price_msats: job.price_msats,
-            created_at: job.created_at,
-        })
-        .collect();
-
-    snapshot
-}
-
-fn spark_network_for_pylon(network: &str) -> SparkNetwork {
-    match network.to_lowercase().as_str() {
-        "mainnet" => SparkNetwork::Mainnet,
-        "testnet" => SparkNetwork::Testnet,
-        "signet" => SparkNetwork::Signet,
-        _ => SparkNetwork::Regtest,
-    }
-}
-
-struct LocalSparkWalletContext {
-    wallet: SparkWallet,
-    network: String,
-}
-
-async fn connect_local_spark_wallet() -> Result<LocalSparkWalletContext, String> {
-    let config =
-        PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
-    let data_dir = config
-        .data_path()
-        .map_err(|err| format!("Failed to resolve Pylon data dir: {err}"))?;
-    let identity_path = data_dir.join("identity.mnemonic");
-    if !identity_path.exists() {
-        return Err(format!(
-            "No identity found. Run 'pylon init' first. Expected: {}",
-            identity_path.display()
-        ));
-    }
-
-    let mnemonic = std::fs::read_to_string(&identity_path)
-        .map_err(|err| format!("Failed to read identity: {err}"))?
-        .trim()
-        .to_string();
-    let signer = SparkSigner::from_mnemonic(&mnemonic, "")
-        .map_err(|err| format!("Failed to derive Spark signer: {err}"))?;
-    let wallet_config = WalletConfig {
-        network: spark_network_for_pylon(&config.network),
-        api_key: None,
-        storage_dir: data_dir.join("spark"),
-    };
-    let wallet = SparkWallet::new(signer, wallet_config)
-        .await
-        .map_err(|err| format!("Failed to init Spark wallet: {err}"))?;
-
-    Ok(LocalSparkWalletContext {
-        wallet,
-        network: config.network,
-    })
-}
-
-fn map_wallet_payment_status(status: SparkPaymentStatus) -> String {
-    match status {
-        SparkPaymentStatus::Completed => "completed".to_string(),
-        SparkPaymentStatus::Pending => "pending".to_string(),
-        SparkPaymentStatus::Failed => "failed".to_string(),
-    }
-}
-
-fn map_wallet_payment_direction(direction: SparkPaymentType) -> String {
-    match direction {
-        SparkPaymentType::Send => "send".to_string(),
-        SparkPaymentType::Receive => "receive".to_string(),
-    }
-}
-
-async fn fetch_wallet_status(
-    last_invoice: Option<String>,
-    last_payment_id: Option<String>,
-) -> WalletStatus {
-    let mut status = WalletStatus {
-        network: None,
-        network_status: None,
-        spark_sats: 0,
-        lightning_sats: 0,
-        onchain_sats: 0,
-        total_sats: 0,
-        spark_address: None,
-        bitcoin_address: None,
-        last_invoice,
-        last_payment_id,
-        recent_payments: Vec::new(),
-        identity_exists: false,
-        last_error: None,
-    };
-
-    let wallet_ctx = match connect_local_spark_wallet().await {
-        Ok(wallet_ctx) => wallet_ctx,
-        Err(err) => {
-            status.last_error = Some(err);
-            return status;
-        }
-    };
-    status.network = Some(wallet_ctx.network.clone());
-    status.identity_exists = true;
-
-    let network_report = wallet_ctx
-        .wallet
-        .network_status(Duration::from_secs(5))
-        .await;
-    status.network_status = Some(network_report.status.as_str().to_ascii_lowercase());
-    if let Some(detail) = network_report.detail {
-        status.last_error = Some(format!("Wallet connectivity: {detail}"));
-    }
-
-    match wallet_ctx.wallet.get_balance().await {
-        Ok(balance) => {
-            status.spark_sats = balance.spark_sats;
-            status.lightning_sats = balance.lightning_sats;
-            status.onchain_sats = balance.onchain_sats;
-            status.total_sats = balance.total_sats();
-        }
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch balance: {err}"));
-            return status;
-        }
-    }
-
-    match wallet_ctx.wallet.get_spark_address().await {
-        Ok(address) => status.spark_address = Some(address),
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch Spark address: {err}"));
-        }
-    }
-
-    match wallet_ctx.wallet.get_bitcoin_address().await {
-        Ok(address) => status.bitcoin_address = Some(address),
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch Bitcoin address: {err}"));
-        }
-    }
-
-    match wallet_ctx.wallet.list_payments(Some(25), None).await {
-        Ok(payments) => {
-            status.recent_payments = payments
-                .into_iter()
-                .take(10)
-                .map(|payment| WalletPaymentSummary {
-                    id: payment.id,
-                    direction: map_wallet_payment_direction(payment.payment_type),
-                    status: map_wallet_payment_status(payment.status),
-                    amount_sats: payment.amount as u64,
-                    timestamp: payment.timestamp,
-                })
-                .collect();
-        }
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch wallet history: {err}"));
-        }
-    }
-
-    status
-}
-
-async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
-    if amount_sats == 0 {
-        return Err("Amount must be > 0 sats.".to_string());
-    }
-
-    let wallet_ctx = connect_local_spark_wallet().await?;
-    let response = wallet_ctx
-        .wallet
-        .create_invoice(
-            amount_sats,
-            Some("OpenAgents wallet receive".to_string()),
-            Some(3600),
-        )
-        .await
-        .map_err(|err| format!("Failed to create invoice: {err}"))?;
-
-    Ok(response.payment_request)
-}
-
-async fn pay_wallet_request(
-    payment_request: &str,
-    amount_sats: Option<u64>,
-) -> Result<String, String> {
-    let request = payment_request.trim();
-    if request.is_empty() {
-        return Err("Payment request is required.".to_string());
-    }
-
-    let wallet_ctx = connect_local_spark_wallet().await?;
-    let response = wallet_ctx
-        .wallet
-        .send_payment_simple(request, amount_sats)
-        .await
-        .map_err(|err| format!("Failed to send payment: {err}"))?;
-
-    Ok(response.payment.id)
 }
 
 fn map_key(key: &WinitKey) -> Option<Key> {
