@@ -9,7 +9,7 @@ Implementation sequencing: this document (`Implementation Sequencing` section)
 
 This is the single architecture authority for OpenAgents. It defines the implemented and target-steady-state system across:
 
-1. Client surfaces (web landing, desktop, Onyx).
+1. Client surfaces (web landing + desktop retained; Onyx decommission target).
 2. Control/runtime/Khala service boundaries.
 3. Economy layers (Hydra liquidity + Aegis verification/underwriting).
 4. Contracts, replay, and operations invariants.
@@ -56,7 +56,6 @@ flowchart TB
   subgraph surfaces[Client Surfaces]
     web[openagents.com landing page\nDesktop download distribution]
     desktop[autopilot-desktop\nRust native + WGPUI panes]
-    onyx[onyx\nRust local-first app]
   end
 
   subgraph controlplane[Control Plane]
@@ -92,7 +91,6 @@ flowchart TB
 
   web --> control
   desktop --> control
-  onyx --> control
 
   control --> runtime
   runtime --> khala
@@ -140,6 +138,62 @@ Does not own:
 1. Runtime execution event authority.
 2. Khala ordering authority.
 3. Wallet signing custody.
+
+Retained control API surface (desktop/runtime/lightning dependent lanes):
+
+1. Distribution and availability:
+   - `GET /`
+   - `GET /download-desktop`
+   - `GET /healthz`
+   - `GET /readyz`
+   - `GET /openapi.json`
+2. Auth/session identity:
+   - `POST /api/auth/email`
+   - `POST /api/auth/register`
+   - `POST /api/auth/verify`
+   - `POST /api/auth/refresh`
+   - `GET /api/auth/session`
+   - `GET /api/auth/sessions`
+   - `POST /api/auth/sessions/revoke`
+   - `POST /api/auth/logout`
+   - `GET /api/me`
+   - Compatibility aliases: `/api/v1/auth/*`
+3. Sync and replay authorization:
+   - `POST /api/sync/token`
+   - `POST /api/v1/sync/token`
+   - `POST /api/khala/token`
+4. Runtime operator lanes used by retained clients:
+   - `GET /api/runtime/threads`
+   - `GET|POST /api/runtime/threads/:thread_id/messages`
+   - `GET|POST /api/runtime/codex/workers`
+   - `GET /api/runtime/codex/workers/:worker_id`
+   - `GET /api/runtime/codex/workers/:worker_id/stream`
+   - `POST /api/runtime/codex/workers/:worker_id/events`
+   - `POST /api/runtime/codex/workers/:worker_id/requests`
+   - `POST /api/runtime/codex/workers/:worker_id/stop`
+   - `GET|POST /api/runtime/workers`
+   - `GET /api/runtime/workers/:worker_id`
+   - `POST /api/runtime/workers/:worker_id/heartbeat`
+   - `POST /api/runtime/workers/:worker_id/status`
+5. Internal service integration lanes:
+   - `POST /api/internal/lightning-ops/control-plane/query`
+   - `POST /api/internal/lightning-ops/control-plane/mutation`
+   - `POST /api/internal/runtime/integrations/secrets/fetch` (or configured override path)
+6. Control policy/status lanes retained for operations:
+   - `GET /api/v1/control/status`
+   - `GET /api/v1/control/route-split/status`
+   - `POST /api/v1/control/route-split/evaluate`
+   - `POST /api/v1/control/route-split/override`
+   - `GET /api/v1/control/runtime-routing/status`
+   - `POST /api/v1/control/runtime-routing/evaluate`
+   - `POST /api/v1/control/runtime-routing/override`
+
+Desktop download artifact policy:
+
+1. `OA_DESKTOP_DOWNLOAD_URL` is the single source of truth for desktop download target.
+2. Default: `https://github.com/OpenAgentsInc/openagents/releases/latest`.
+3. Deploy environments may override with a release bucket URL.
+4. Runbooks/docs must reference this env var rather than hardcoded alternate links.
 
 ### `apps/runtime` (execution authority + economy orchestration)
 
@@ -335,7 +389,7 @@ Hydra and Aegis contract authority lives in:
 4. Sync token issuance is explicit and scoped by topic grammar + ownership checks.
 5. Session/device revocation must force Khala eviction semantics.
 
-Onyx constraints (v1):
+Onyx transitional constraints (until decommission completion):
 
 1. Allowed Khala scope: `run:{run_id}:events`.
 2. Denied: `runtime.codex_worker_events`, `worker:{worker_id}:lifecycle`, and all WS mutation semantics.
@@ -345,7 +399,7 @@ Onyx constraints (v1):
 1. Shared Rust UI and state crates power retained clients.
 2. Web is reduced to a landing/download page hosted by control service.
 3. Desktop is the primary Codex operator/admin surface.
-4. Onyx remains a constrained local-first client with explicit surface policy.
+4. Onyx is a decommission target and not part of retained steady-state topology.
 5. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
 
 ## Observability and Operations
@@ -371,9 +425,14 @@ App roots:
 1. `apps/openagents.com/service/`
 2. `apps/runtime/`
 3. `apps/autopilot-desktop/`
-4. `apps/onyx/`
-5. `apps/lightning-ops/`
-6. `apps/lightning-wallet-executor/`
+4. `apps/lightning-ops/`
+5. `apps/lightning-wallet-executor/`
+
+App decommission targets:
+
+1. `apps/onyx/` (Phase 3 archive/remove)
+2. `apps/autopilot-ios/` (already removed)
+3. `apps/openagents.com/web-shell/` (already removed)
 
 Shared authority/code:
 
@@ -403,6 +462,15 @@ Rivet patterns may be harvested for websocket lifecycle, durable workflow histor
 ## Implementation Sequencing
 
 This is the consolidated migration and hardening sequence for the Rust migration program.
+
+Cleanup phase dependency order (issues `#2199` to `#2204`):
+
+1. Phase 1 (web reduction) depends on this Phase 0 topology lock.
+2. Phase 2 (iOS removal) depends on this Phase 0 topology lock.
+3. Phase 3 (Onyx archive/remove) depends on Phase 0 and should follow the web/iOS state transition.
+4. Phase 4 (retained-app stabilization) depends on Phases 1-3 completion.
+5. Phase 5 (global reference cleanup) depends on Phase 4.
+6. Phase 6 (verification/signoff) depends on Phases 1-5.
 
 ### Phase 1: Authority and topology lock
 

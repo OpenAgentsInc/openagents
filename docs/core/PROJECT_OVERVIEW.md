@@ -2,7 +2,7 @@
 
 This map reflects canonical Rust-only architecture boundaries.
 
-## Active Apps and Services
+## Active Apps and Services (Retained Topology)
 
 - `apps/openagents.com/service/`
   Rust control service: auth/session/device management, authorization, sync token issuance, and landing-page distribution.
@@ -13,14 +13,16 @@ This map reflects canonical Rust-only architecture boundaries.
 - `apps/autopilot-desktop/`
   Rust desktop surface for Codex/inbox administration and local operator workflows.
 
-- `apps/onyx/`
-  Rust local-first notes surface.
-
 - `apps/lightning-ops/`
   Rust Lightning policy/reconcile service.
 
 - `apps/lightning-wallet-executor/`
   Rust Lightning payment execution service.
+
+## Decommission Targets (Not Retained)
+
+- `apps/onyx/`
+  Planned for archive/removal; not part of retained steady-state topology.
 
 ## Shared Code
 
