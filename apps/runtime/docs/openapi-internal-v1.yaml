@@ -818,6 +818,60 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
+  /hydra/fx/quote:
+    post:
+      summary: Ingest or replay a Hydra FX quote candidate for an RFQ
+      operationId: hydraFxQuoteUpsert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HydraFxQuoteUpsertRequestV1'
+      responses:
+        '200':
+          description: Quote accepted or idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraFxQuoteUpsertResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /hydra/fx/select:
+    post:
+      summary: Deterministically select the best Hydra FX quote for an RFQ
+      operationId: hydraFxSelect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HydraFxSelectRequestV1'
+      responses:
+        '200':
+          description: Quote selected with deterministic decision hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraFxSelectResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /hydra/fx/rfq/{rfq_id}:
     get:
       summary: Read one Hydra FX RFQ by id
@@ -2035,6 +2089,174 @@ components:
           const: openagents.hydra.fx_rfq_response.v1
         rfq:
           $ref: '#/components/schemas/HydraFxRfqRecordV1'
+    HydraFxQuoteStatusV1:
+      type: string
+      enum: [active, expired, withdrawn, selected]
+    HydraFxQuoteV1:
+      type: object
+      required:
+        - quote_id
+        - rfq_id
+        - provider_id
+        - sell
+        - buy
+        - spread_bps
+        - fee_bps
+        - latency_ms
+        - reliability_bps
+        - valid_until_unix
+        - status
+        - constraints
+        - quote_sha256
+      properties:
+        quote_id:
+          type: string
+          minLength: 1
+        rfq_id:
+          type: string
+          minLength: 1
+        provider_id:
+          type: string
+          minLength: 1
+        sell:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        buy:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        latency_ms:
+          type: integer
+          minimum: 0
+        reliability_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        valid_until_unix:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/HydraFxQuoteStatusV1'
+        constraints:
+          type: object
+          additionalProperties: true
+        quote_sha256:
+          type: string
+          minLength: 1
+    HydraFxQuoteUpsertRequestV1:
+      type: object
+      required: [schema, idempotency_key, quote]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_quote_upsert_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        quote:
+          $ref: '#/components/schemas/HydraFxQuoteV1'
+    HydraFxQuoteUpsertResponseV1:
+      type: object
+      required: [schema, quote]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_quote_upsert_response.v1
+        quote:
+          $ref: '#/components/schemas/HydraFxQuoteV1'
+    HydraFxSelectRequestV1:
+      type: object
+      required: [schema, idempotency_key, rfq_id, policy]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_select_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        rfq_id:
+          type: string
+          minLength: 1
+        policy:
+          type: string
+          minLength: 1
+    HydraFxSelectionFactorsV1:
+      type: object
+      required: [expected_spread_bps, expected_fee_bps, confidence, policy_notes]
+      properties:
+        expected_spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        expected_fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        policy_notes:
+          type: array
+          items:
+            type: string
+    HydraFxDecisionReceiptLinkageV1:
+      type: object
+      required: [receipt_schema, receipt_id, canonical_json_sha256]
+      properties:
+        receipt_schema:
+          type: string
+          minLength: 1
+        receipt_id:
+          type: string
+          minLength: 1
+        canonical_json_sha256:
+          type: string
+          minLength: 1
+    HydraFxSelectResponseV1:
+      type: object
+      required:
+        - schema
+        - rfq_id
+        - policy
+        - decision_sha256
+        - selected
+        - candidates
+        - factors
+        - decided_at_unix
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_select_response.v1
+        rfq_id:
+          type: string
+          minLength: 1
+        policy:
+          type: string
+          minLength: 1
+        decision_sha256:
+          type: string
+          minLength: 1
+        selected:
+          $ref: '#/components/schemas/HydraFxQuoteV1'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HydraFxQuoteV1'
+        factors:
+          $ref: '#/components/schemas/HydraFxSelectionFactorsV1'
+        receipt:
+          allOf:
+            - $ref: '#/components/schemas/HydraFxDecisionReceiptLinkageV1'
+          nullable: true
+        decided_at_unix:
+          type: integer
+          minimum: 0
     HydraRiskCreditBreakersV1:
       type: object
       required: [halt_new_envelopes, halt_large_settlements]

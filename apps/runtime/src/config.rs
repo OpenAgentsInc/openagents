@@ -48,6 +48,10 @@ pub struct HydraFxPolicyConfig {
     pub max_fee_bps: u32,
     pub min_quote_ttl_seconds: u32,
     pub max_quote_ttl_seconds: u32,
+    pub min_quote_validity_seconds: u32,
+    pub selection_weight_cost_bps: u32,
+    pub selection_weight_latency_bps: u32,
+    pub selection_weight_reliability_bps: u32,
 }
 
 impl Default for HydraFxPolicyConfig {
@@ -62,6 +66,10 @@ impl Default for HydraFxPolicyConfig {
             max_fee_bps: 150,
             min_quote_ttl_seconds: 5,
             max_quote_ttl_seconds: 300,
+            min_quote_validity_seconds: 10,
+            selection_weight_cost_bps: 4_000,
+            selection_weight_latency_bps: 2_000,
+            selection_weight_reliability_bps: 4_000,
         }
     }
 }
@@ -1194,12 +1202,84 @@ fn parse_hydra_fx_policy_from_env(
         max_quote_ttl_seconds = min_quote_ttl_seconds;
     }
 
+    let min_quote_validity_seconds = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_MIN_QUOTE_VALIDITY_SECONDS",
+        defaults.min_quote_validity_seconds,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_MIN_QUOTE_VALIDITY_SECONDS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 3_600))
+        },
+    )?;
+
+    let selection_weight_cost_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_COST_BPS",
+        defaults.selection_weight_cost_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_COST_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.min(10_000))
+        },
+    )?;
+
+    let selection_weight_latency_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_LATENCY_BPS",
+        defaults.selection_weight_latency_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_LATENCY_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.min(10_000))
+        },
+    )?;
+
+    let selection_weight_reliability_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_RELIABILITY_BPS",
+        defaults.selection_weight_reliability_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_SELECTION_WEIGHT_RELIABILITY_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.min(10_000))
+        },
+    )?;
+    if selection_weight_cost_bps == 0
+        && selection_weight_latency_bps == 0
+        && selection_weight_reliability_bps == 0
+    {
+        return Err(ConfigError::InvalidHydraFxPolicyConfig(
+            "at least one selection weight must be greater than zero".to_string(),
+        ));
+    }
+
     Ok(HydraFxPolicyConfig {
         allowed_pairs,
         max_spread_bps,
         max_fee_bps,
         min_quote_ttl_seconds,
         max_quote_ttl_seconds,
+        min_quote_validity_seconds,
+        selection_weight_cost_bps,
+        selection_weight_latency_bps,
+        selection_weight_reliability_bps,
     })
 }
 
@@ -1279,6 +1359,10 @@ mod tests {
             ("RUNTIME_HYDRA_FX_MAX_FEE_BPS", "45"),
             ("RUNTIME_HYDRA_FX_MIN_QUOTE_TTL_SECONDS", "15"),
             ("RUNTIME_HYDRA_FX_MAX_QUOTE_TTL_SECONDS", "45"),
+            ("RUNTIME_HYDRA_FX_MIN_QUOTE_VALIDITY_SECONDS", "12"),
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_COST_BPS", "5500"),
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_LATENCY_BPS", "1500"),
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_RELIABILITY_BPS", "3000"),
         ]);
         let policy = parse_hydra_fx_policy_from_env(|key| values.get(key).map(ToString::to_string))
             .expect("hydra fx policy parse");
@@ -1288,6 +1372,10 @@ mod tests {
         assert_eq!(policy.max_fee_bps, 45);
         assert_eq!(policy.min_quote_ttl_seconds, 15);
         assert_eq!(policy.max_quote_ttl_seconds, 45);
+        assert_eq!(policy.min_quote_validity_seconds, 12);
+        assert_eq!(policy.selection_weight_cost_bps, 5500);
+        assert_eq!(policy.selection_weight_latency_bps, 1500);
+        assert_eq!(policy.selection_weight_reliability_bps, 3000);
     }
 
     #[test]
@@ -1298,6 +1386,23 @@ mod tests {
         match error {
             ConfigError::InvalidHydraFxPolicyConfig(message) => {
                 assert!(message.contains("invalid pair format"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hydra_fx_policy_parser_rejects_zero_selection_weights() {
+        let values = HashMap::from([
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_COST_BPS", "0"),
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_LATENCY_BPS", "0"),
+            ("RUNTIME_HYDRA_FX_SELECTION_WEIGHT_RELIABILITY_BPS", "0"),
+        ]);
+        let error = parse_hydra_fx_policy_from_env(|key| values.get(key).map(ToString::to_string))
+            .expect_err("zero weights should fail");
+        match error {
+            ConfigError::InvalidHydraFxPolicyConfig(message) => {
+                assert!(message.contains("selection weight"));
             }
             other => panic!("unexpected error: {other:?}"),
         }

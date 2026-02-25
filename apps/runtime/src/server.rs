@@ -54,7 +54,11 @@ use crate::{
     fraud::FraudIncidentLog,
     fx::{
         service::{FxService, FxServiceError},
-        types::{FX_RFQ_REQUEST_SCHEMA_V1, FxRfqRequestV1, FxRfqResponseV1},
+        types::{
+            FX_QUOTE_UPSERT_REQUEST_SCHEMA_V1, FX_RFQ_REQUEST_SCHEMA_V1,
+            FX_SELECT_REQUEST_SCHEMA_V1, FxQuoteUpsertRequestV1, FxQuoteUpsertResponseV1,
+            FxRfqRequestV1, FxRfqResponseV1, FxSelectRequestV1, FxSelectResponseV1,
+        },
     },
     lightning_node,
     liquidity::store,
@@ -1355,6 +1359,8 @@ pub fn build_router(state: AppState) -> Router {
             post(hydra_routing_score),
         )
         .route("/internal/v1/hydra/fx/rfq", post(hydra_fx_rfq_create))
+        .route("/internal/v1/hydra/fx/quote", post(hydra_fx_quote_upsert))
+        .route("/internal/v1/hydra/fx/select", post(hydra_fx_select))
         .route("/internal/v1/hydra/fx/rfq/:rfq_id", get(hydra_fx_rfq_get))
         .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
         .route("/internal/v1/hydra/observability", get(hydra_observability))
@@ -2749,6 +2755,44 @@ async fn hydra_fx_rfq_create(
     let response = state
         .fx
         .create_or_get_rfq(body)
+        .await
+        .map_err(api_error_from_fx)?;
+    Ok(Json(response))
+}
+
+async fn hydra_fx_quote_upsert(
+    State(state): State<AppState>,
+    Json(body): Json<FxQuoteUpsertRequestV1>,
+) -> Result<Json<FxQuoteUpsertResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    if body.schema.trim() != FX_QUOTE_UPSERT_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            FX_QUOTE_UPSERT_REQUEST_SCHEMA_V1
+        )));
+    }
+    let response = state
+        .fx
+        .upsert_quote(body)
+        .await
+        .map_err(api_error_from_fx)?;
+    Ok(Json(response))
+}
+
+async fn hydra_fx_select(
+    State(state): State<AppState>,
+    Json(body): Json<FxSelectRequestV1>,
+) -> Result<Json<FxSelectResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    if body.schema.trim() != FX_SELECT_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            FX_SELECT_REQUEST_SCHEMA_V1
+        )));
+    }
+    let response = state
+        .fx
+        .select_quote(body)
         .await
         .map_err(api_error_from_fx)?;
     Ok(Json(response))

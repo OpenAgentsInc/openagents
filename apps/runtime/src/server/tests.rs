@@ -613,6 +613,8 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
         json.pointer("/paths/~1hydra~1fx~1rfq~1{rfq_id}/get")
             .is_some()
     );
+    assert!(json.pointer("/paths/~1hydra~1fx~1quote/post").is_some());
+    assert!(json.pointer("/paths/~1hydra~1fx~1select/post").is_some());
     assert!(json.pointer("/paths/~1hydra~1risk~1health/get").is_some());
     assert!(json.pointer("/paths/~1hydra~1observability/get").is_some());
     assert!(
@@ -621,6 +623,10 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
     );
     assert!(
         json.pointer("/components/schemas/HydraFxRfqRequestV1/properties/schema")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/HydraFxSelectResponseV1/properties/decision_sha256")
             .is_some()
     );
     Ok(())
@@ -5394,6 +5400,208 @@ async fn hydra_fx_rfq_rejects_disallowed_asset_pairs() -> Result<()> {
         )
         .await?;
     assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_quote_select_is_deterministic_and_tie_break_stable() -> Result<()> {
+    let app = test_router();
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-select-idem",
+        "requester_id": "autopilot:user-1",
+        "budget_scope_id": "budget:scope-1",
+        "sell": {
+            "asset": "USD",
+            "amount": 100000,
+            "unit": "cents"
+        },
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 100,
+        "max_fee_bps": 60,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 30,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_response.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_response).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+    let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 30;
+
+    for (idempotency_key, quote_id, provider_id) in [
+        ("fx-quote-a-idem", "quote-a", "provider-a"),
+        ("fx-quote-b-idem", "quote-b", "provider-b"),
+    ] {
+        let quote_upsert = serde_json::json!({
+            "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+            "idempotency_key": idempotency_key,
+            "quote": {
+                "quote_id": quote_id,
+                "rfq_id": rfq_id,
+                "provider_id": provider_id,
+                "sell": {
+                    "asset": "USD",
+                    "amount": 100000,
+                    "unit": "cents"
+                },
+                "buy": {
+                    "asset": "BTC_LN",
+                    "amount": 2500000,
+                    "unit": "msats"
+                },
+                "spread_bps": 70,
+                "fee_bps": 20,
+                "latency_ms": 1000,
+                "reliability_bps": 9000,
+                "valid_until_unix": valid_until_unix,
+                "status": "active",
+                "constraints": {},
+                "quote_sha256": ""
+            }
+        });
+
+        let upsert_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/hydra/fx/quote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&quote_upsert)?))?,
+            )
+            .await?;
+        assert_eq!(upsert_response.status(), axum::http::StatusCode::OK);
+    }
+
+    let select_request = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-idem-1",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select_request)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first_json = response_json(first).await?;
+    assert_eq!(
+        first_json.pointer("/schema").and_then(Value::as_str),
+        Some("openagents.hydra.fx_select_response.v1")
+    );
+    assert_eq!(
+        first_json
+            .pointer("/selected/provider_id")
+            .and_then(Value::as_str),
+        Some("provider-a")
+    );
+    let decision_sha = first_json
+        .pointer("/decision_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing decision_sha256"))?
+        .to_string();
+    assert!(
+        first_json
+            .pointer("/selected/constraints/selection/weighted_score")
+            .and_then(Value::as_u64)
+            .is_some()
+    );
+
+    let replay = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select_request)?))?,
+        )
+        .await?;
+    assert_eq!(replay.status(), axum::http::StatusCode::OK);
+    let replay_json = response_json(replay).await?;
+    assert_eq!(
+        replay_json
+            .pointer("/decision_sha256")
+            .and_then(Value::as_str),
+        Some(decision_sha.as_str())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_select_returns_conflict_when_no_quotes_exist() -> Result<()> {
+    let app = test_router();
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-no-quote-idem",
+        "requester_id": "autopilot:user-1",
+        "budget_scope_id": "budget:scope-1",
+        "sell": {
+            "asset": "USD",
+            "amount": 100000,
+            "unit": "cents"
+        },
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 100,
+        "max_fee_bps": 60,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 30,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_response.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_response).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?;
+
+    let select_request = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-empty-idem",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select_request)?))?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
     Ok(())
 }
 
