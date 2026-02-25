@@ -172,6 +172,28 @@ mod tests {
     }
 
     #[test]
+    fn append_rejects_missing_mutation_scope() {
+        let claims = claims_with_scope("sync.subscribe");
+        let request = AppendSyncEventRequest {
+            stream_id: "runtime.codex.worker.worker_1".to_string(),
+            idempotency_key: "idempo_missing_scope".to_string(),
+            payload_hash: "abc123".to_string(),
+            payload_bytes: vec![1, 2, 3],
+            committed_at_unix_ms: 1_100,
+            durable_offset: 9,
+            confirmed_read: true,
+            expected_next_seq: Some(1),
+        };
+        let result = authorize_append_sync_event(&claims, &request, 1_100);
+        assert_eq!(
+            result,
+            Err(SyncAuthorizationError::MissingScope {
+                required_scope: "sync.append".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn checkpoint_rejects_expired_claims() {
         let claims = claims_with_scope("sync.checkpoint.write");
         let request = AckCheckpointRequest {
@@ -186,6 +208,25 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_rejects_cross_tenant_stream_grant() {
+        let claims = claims_with_scope("sync.checkpoint.write");
+        let request = AckCheckpointRequest {
+            client_id: "desktop_1".to_string(),
+            stream_id: "runtime.fleet.user.22.workers".to_string(),
+            last_applied_seq: 12,
+            durable_offset: 12,
+            updated_at_unix_ms: 1_500,
+        };
+        let result = authorize_ack_checkpoint(&claims, &request, 1_600);
+        assert_eq!(
+            result,
+            Err(SyncAuthorizationError::StreamNotGranted {
+                stream_id: "runtime.fleet.user.22.workers".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn subscription_accepts_valid_scope_stream_and_time_window() {
         let claims = claims_with_scope("sync.subscribe");
         let result = authorize_subscription(
@@ -197,5 +238,21 @@ mod tests {
             1_100,
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn subscription_rejects_not_yet_valid_claims() {
+        let mut claims = claims_with_scope("sync.subscribe");
+        claims.not_before_unix_ms = 5_000;
+        claims.expires_at_unix_ms = 6_000;
+        let result = authorize_subscription(
+            &claims,
+            &SubscriptionQuerySet::StreamEvents {
+                stream_id: "runtime.codex.worker.worker_1".to_string(),
+                after_seq: 0,
+            },
+            4_999,
+        );
+        assert_eq!(result, Err(SyncAuthorizationError::NotYetValid));
     }
 }

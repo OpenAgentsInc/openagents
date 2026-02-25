@@ -3389,7 +3389,7 @@ async fn khala_topic_messages_requires_valid_sync_token() -> Result<()> {
         Some(1),
         Some("user:1"),
         "expired-token",
-        -10,
+        -120,
     );
     let expired_auth = app
         .clone()

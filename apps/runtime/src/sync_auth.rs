@@ -425,6 +425,22 @@ mod tests {
     }
 
     #[test]
+    fn malformed_token_is_rejected() {
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: "sync-test-key".to_string(),
+            fallback_signing_keys: Vec::new(),
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
+            revoked_jtis: HashSet::new(),
+        });
+        let result = authorizer.authenticate("this-is-not-a-jwt");
+        assert_eq!(result, Err(SyncAuthError::InvalidToken));
+    }
+
+    #[test]
     fn revoked_jti_is_rejected() {
         let key = "sync-test-key";
         let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
