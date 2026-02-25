@@ -38,6 +38,68 @@ pub struct PreflightConfig {
 
     /// Available CLI tools
     pub tools: ToolsInfo,
+
+    /// Core collaboration/session readiness gates (blocking for canonical flow)
+    #[serde(default)]
+    pub core_readiness: CoreReadiness,
+
+    /// Optional integration readiness for adapter lanes (non-blocking)
+    #[serde(default)]
+    pub integration_readiness: IntegrationReadiness,
+}
+
+/// Canonical readiness checks that gate core session/collaboration flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoreReadiness {
+    /// Whether core flow can proceed
+    pub ready: bool,
+
+    /// Individual readiness checks
+    #[serde(default)]
+    pub checks: Vec<CoreReadinessCheck>,
+}
+
+impl Default for CoreReadiness {
+    fn default() -> Self {
+        Self {
+            ready: true,
+            checks: Vec::new(),
+        }
+    }
+}
+
+/// Single core readiness check result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoreReadinessCheck {
+    /// Stable identifier for the check
+    pub id: String,
+
+    /// Whether this check passed
+    pub ok: bool,
+
+    /// Human-readable check detail
+    pub detail: String,
+}
+
+/// Optional integration readiness for adapter lanes.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationReadiness {
+    /// Local git adapter capability
+    pub git: IntegrationCapability,
+
+    /// GitHub adapter capability
+    pub github: IntegrationCapability,
+}
+
+/// Status for an individual optional integration capability.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationCapability {
+    /// Whether the adapter appears available
+    pub available: bool,
+
+    /// Non-blocking warnings about capability health/configuration
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// Git repository information
@@ -239,6 +301,10 @@ pub struct ToolsInfo {
 
     /// Cargo path and version
     pub cargo: Option<ToolInfo>,
+
+    /// GitHub CLI path and version
+    #[serde(default)]
+    pub gh: Option<ToolInfo>,
 }
 
 /// Information about an installed tool
@@ -270,6 +336,8 @@ impl PreflightConfig {
         let project = detect_project(&working_directory);
         let inference = detect_inference();
         let tools = detect_tools();
+        let core_readiness = evaluate_core_readiness(&working_directory);
+        let integration_readiness = evaluate_integration_readiness(git.as_ref(), &tools);
 
         let config = PreflightConfig {
             created_at,
@@ -280,6 +348,8 @@ impl PreflightConfig {
             project,
             inference,
             tools,
+            core_readiness,
+            integration_readiness,
         };
 
         info!("Preflight complete");
@@ -351,23 +421,57 @@ impl PreflightConfig {
         ));
         lines.push(String::new());
 
-        // Git info
+        lines.push("## Core Readiness".to_string());
+        lines.push(format!(
+            "- Status: {}",
+            if self.core_readiness.ready {
+                "ready"
+            } else {
+                "blocked"
+            }
+        ));
+        for check in &self.core_readiness.checks {
+            lines.push(format!(
+                "- [{}] {}: {}",
+                if check.ok { "OK" } else { "BLOCKED" },
+                check.id,
+                check.detail
+            ));
+        }
+        lines.push(String::new());
+
+        lines.push("## Integration Readiness".to_string());
+        lines.push(format!(
+            "- Git adapter: {}",
+            if self.integration_readiness.git.available {
+                "available"
+            } else {
+                "unavailable (non-blocking)"
+            }
+        ));
+        for warning in &self.integration_readiness.git.warnings {
+            lines.push(format!("  - warning: {}", warning));
+        }
         if let Some(ref git) = self.git {
-            lines.push("## Git Repository".to_string());
             if let Some(ref branch) = git.branch {
-                lines.push(format!("- Branch: {}", branch));
+                lines.push(format!("  - branch: {}", branch));
             }
             if let Some(ref url) = git.remote_url {
-                lines.push(format!("- Remote: {}", url));
+                lines.push(format!("  - remote: {}", url));
             }
-            if git.has_changes {
-                lines.push("- Status: Has uncommitted changes".to_string());
-            }
-            if git.unpushed_commits > 0 {
-                lines.push(format!("- Unpushed commits: {}", git.unpushed_commits));
-            }
-            lines.push(String::new());
         }
+        lines.push(format!(
+            "- GitHub adapter: {}",
+            if self.integration_readiness.github.available {
+                "available"
+            } else {
+                "unavailable (non-blocking)"
+            }
+        ));
+        for warning in &self.integration_readiness.github.warnings {
+            lines.push(format!("  - warning: {}", warning));
+        }
+        lines.push(String::new());
 
         // Project info
         if let Some(ref project) = self.project {
@@ -417,6 +521,9 @@ impl PreflightConfig {
         if let Some(ref opencode) = self.tools.opencode {
             lines.push(format!("- opencode: {}", opencode.path.display()));
         }
+        if let Some(ref gh) = self.tools.gh {
+            lines.push(format!("- gh: {}", gh.path.display()));
+        }
 
         lines.join("\n")
     }
@@ -443,6 +550,82 @@ fn chrono_now() -> String {
 
     // Simple ISO-ish format without chrono dependency
     format!("{}.{}", secs, nanos)
+}
+
+fn evaluate_core_readiness(working_directory: &Path) -> CoreReadiness {
+    let checks = vec![
+        CoreReadinessCheck {
+            id: "working_directory_exists".to_string(),
+            ok: working_directory.exists(),
+            detail: format!("Path {}", working_directory.display()),
+        },
+        CoreReadinessCheck {
+            id: "working_directory_is_directory".to_string(),
+            ok: working_directory.is_dir(),
+            detail: format!("Path {} is a directory", working_directory.display()),
+        },
+    ];
+    let ready = checks.iter().all(|check| check.ok);
+    CoreReadiness { ready, checks }
+}
+
+fn evaluate_integration_readiness(
+    git: Option<&GitInfo>,
+    tools: &ToolsInfo,
+) -> IntegrationReadiness {
+    let mut git_warnings = Vec::new();
+    let git_available = if let Some(git) = git {
+        if git.remote_url.is_none() {
+            git_warnings
+                .push("No origin remote configured; git export remains local-only.".to_string());
+        }
+        if git.has_changes {
+            git_warnings.push(
+                "Working tree has uncommitted changes; exports may include in-progress state."
+                    .to_string(),
+            );
+        }
+        if git.unpushed_commits > 0 {
+            git_warnings.push(format!(
+                "{} unpushed commit(s) detected.",
+                git.unpushed_commits
+            ));
+        }
+        true
+    } else {
+        git_warnings.push(
+            "No git repository detected; git adapter is disabled for this session.".to_string(),
+        );
+        false
+    };
+
+    let mut github_warnings = Vec::new();
+    let has_gh_cli = tools.gh.is_some();
+    let has_github_remote = git
+        .and_then(|git| git.remote_url.as_ref())
+        .map(|url| url.contains("github.com"))
+        .unwrap_or(false);
+    if !has_github_remote {
+        github_warnings
+            .push("No GitHub remote detected from origin; GitHub adapter is disabled.".to_string());
+    }
+    if !has_gh_cli {
+        github_warnings.push(
+            "GitHub CLI (`gh`) not detected; GitHub adapter commands unavailable.".to_string(),
+        );
+    }
+    let github_available = has_github_remote && has_gh_cli;
+
+    IntegrationReadiness {
+        git: IntegrationCapability {
+            available: git_available,
+            warnings: git_warnings,
+        },
+        github: IntegrationCapability {
+            available: github_available,
+            warnings: github_warnings,
+        },
+    }
 }
 
 fn detect_git(working_dir: &Path) -> Option<GitInfo> {
@@ -712,6 +895,7 @@ fn detect_tools() -> ToolsInfo {
         opencode: detect_tool("opencode"),
         git: detect_tool("git"),
         cargo: detect_tool("cargo"),
+        gh: detect_tool("gh"),
     }
 }
 
@@ -747,6 +931,7 @@ pub fn run_preflight(working_dir: &Path) -> Result<PreflightConfig> {
 mod tests {
     use super::*;
     use std::env;
+    use tempfile::tempdir;
 
     #[test]
     fn test_hash_path() {
@@ -765,6 +950,7 @@ mod tests {
         let config = result.unwrap();
         assert!(!config.path_hash.is_empty());
         assert_eq!(config.working_directory, cwd.canonicalize().unwrap_or(cwd));
+        assert!(config.core_readiness.ready);
     }
 
     #[test]
@@ -797,5 +983,16 @@ mod tests {
         let prompt = config.to_system_prompt();
         assert!(prompt.contains("Autopilot Environment Configuration"));
         assert!(prompt.contains("Working directory:"));
+        assert!(prompt.contains("Core Readiness"));
+        assert!(prompt.contains("Integration Readiness"));
+    }
+
+    #[test]
+    fn test_preflight_core_ready_without_git_repo() {
+        let tmp = tempdir().unwrap();
+        let config = PreflightConfig::run(tmp.path()).unwrap();
+
+        assert!(config.core_readiness.ready);
+        assert!(!config.integration_readiness.git.available);
     }
 }

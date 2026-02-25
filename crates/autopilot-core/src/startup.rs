@@ -2685,17 +2685,97 @@ impl StartupState {
     }
 
     fn display_preflight_results(&mut self, config: &PreflightConfig, elapsed: f32) {
-        if let Some(ref git) = config.git {
-            if let Some(ref branch) = git.branch {
-                self.add_line(
-                    &format!("  Git: {} branch", branch),
-                    LogStatus::Success,
-                    elapsed,
-                );
-            }
-            if git.has_changes {
-                self.add_line("  Git: has uncommitted changes", LogStatus::Info, elapsed);
-            }
+        self.add_line("  Core readiness:", LogStatus::Info, elapsed);
+        self.add_line(
+            &format!(
+                "    Status: {}",
+                if config.core_readiness.ready {
+                    "ready"
+                } else {
+                    "blocked"
+                }
+            ),
+            if config.core_readiness.ready {
+                LogStatus::Success
+            } else {
+                LogStatus::Error
+            },
+            elapsed,
+        );
+        for check in &config.core_readiness.checks {
+            self.add_line(
+                &format!(
+                    "    [{}] {}: {}",
+                    if check.ok { "OK" } else { "BLOCKED" },
+                    check.id,
+                    check.detail
+                ),
+                if check.ok {
+                    LogStatus::Success
+                } else {
+                    LogStatus::Error
+                },
+                elapsed,
+            );
+        }
+
+        self.add_line("  Integration readiness:", LogStatus::Info, elapsed);
+        self.add_line(
+            &format!(
+                "    git: {}",
+                if config.integration_readiness.git.available {
+                    "available"
+                } else {
+                    "unavailable (non-blocking)"
+                }
+            ),
+            if config.integration_readiness.git.available {
+                LogStatus::Success
+            } else {
+                LogStatus::Info
+            },
+            elapsed,
+        );
+        for warning in &config.integration_readiness.git.warnings {
+            self.add_line(
+                &format!("      warning: {}", warning),
+                LogStatus::Info,
+                elapsed,
+            );
+        }
+
+        self.add_line(
+            &format!(
+                "    github: {}",
+                if config.integration_readiness.github.available {
+                    "available"
+                } else {
+                    "unavailable (non-blocking)"
+                }
+            ),
+            if config.integration_readiness.github.available {
+                LogStatus::Success
+            } else {
+                LogStatus::Info
+            },
+            elapsed,
+        );
+        for warning in &config.integration_readiness.github.warnings {
+            self.add_line(
+                &format!("      warning: {}", warning),
+                LogStatus::Info,
+                elapsed,
+            );
+        }
+
+        if let Some(ref git) = config.git
+            && let Some(ref branch) = git.branch
+        {
+            self.add_line(
+                &format!("    git branch: {}", branch),
+                LogStatus::Success,
+                elapsed,
+            );
         }
 
         if let Some(ref project) = config.project {

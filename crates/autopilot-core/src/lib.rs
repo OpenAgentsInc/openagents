@@ -87,7 +87,8 @@ pub use guidance::{
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use preflight::{
-    AuthInfo, ComputeMix, GitInfo, InferenceInfo, PreflightConfig, ProjectInfo, ProviderAuth,
+    AuthInfo, ComputeMix, CoreReadiness, CoreReadinessCheck, GitInfo, InferenceInfo,
+    IntegrationCapability, IntegrationReadiness, PreflightConfig, ProjectInfo, ProviderAuth,
     PylonInfo, SwarmProvider, ToolInfo, ToolsInfo, run_preflight,
 };
 
