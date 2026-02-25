@@ -74,6 +74,7 @@ mod inbox_domain;
 mod provider_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
+mod sync_apply_engine;
 mod sync_lifecycle;
 mod wallet_domain;
 
@@ -97,6 +98,7 @@ use runtime_codex_proto::{
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
 };
+use sync_apply_engine::{ApplyDecision, RuntimeSyncApplyEngine};
 use sync_lifecycle::{
     RuntimeSyncDisconnectReason, RuntimeSyncHealthSnapshot, RuntimeSyncLifecycleManager,
     classify_disconnect_reason,
@@ -189,6 +191,7 @@ struct RuntimeCodexSync {
     seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
     terminal_control_receipts: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    apply_engine: Arc<tokio::sync::Mutex<RuntimeSyncApplyEngine>>,
     lifecycle: Arc<tokio::sync::Mutex<RuntimeSyncLifecycleManager>>,
     remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
@@ -269,6 +272,7 @@ impl RuntimeCodexSync {
             seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             terminal_control_receipts: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            apply_engine: Arc::new(tokio::sync::Mutex::new(RuntimeSyncApplyEngine::default())),
             lifecycle: Arc::new(tokio::sync::Mutex::new(
                 RuntimeSyncLifecycleManager::default(),
             )),
@@ -495,6 +499,7 @@ impl RuntimeCodexSync {
     }
 
     async fn run_worker_stream_loop(&self, worker_id: String) {
+        let stream_id = runtime_sync_worker_stream_id(worker_id.as_str());
         let mut cursor = match self.fetch_worker_latest_seq(&worker_id).await {
             Ok(latest_seq) => latest_seq,
             Err(error) => {
@@ -502,6 +507,10 @@ impl RuntimeCodexSync {
                 0
             }
         };
+        {
+            let mut apply_engine = self.apply_engine.lock().await;
+            apply_engine.seed_stream_checkpoint(stream_id.as_str(), cursor);
+        }
         {
             let mut lifecycle = self.lifecycle.lock().await;
             lifecycle.mark_connecting(&worker_id);
@@ -545,6 +554,8 @@ impl RuntimeCodexSync {
 
             if reconnect_plan.reset_cursor {
                 cursor = 0;
+                let mut apply_engine = self.apply_engine.lock().await;
+                apply_engine.rewind_stream_checkpoint(stream_id.as_str(), cursor);
                 tracing::warn!(
                     worker_id = %worker_id,
                     "runtime sync cursor reset due to stale replay window"
@@ -845,6 +856,7 @@ impl RuntimeCodexSync {
         cursor: &mut u64,
         payload: &Value,
     ) -> Result<(), String> {
+        let stream_id = runtime_sync_worker_stream_id(worker_id);
         let events =
             extract_runtime_events_from_khala_update(payload, RUNTIME_SYNC_KHALA_TOPIC, worker_id);
         if events.is_empty() {
@@ -856,21 +868,81 @@ impl RuntimeCodexSync {
 
         for event in events {
             let seq = stream_event_seq(&event);
-            if let Some(seq_value) = seq {
-                next_cursor = next_cursor.max(seq_value);
+            let Some(seq_value) = seq else {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    "runtime sync skipped event without sequence for deterministic apply contract"
+                );
+                continue;
+            };
+
+            let apply_preview = {
+                let apply_engine = self.apply_engine.lock().await;
+                apply_engine.inspect_delta(stream_id.as_str(), seq_value)
+            };
+
+            match apply_preview {
+                ApplyDecision::Duplicate { watermark } => {
+                    tracing::debug!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        seq = seq_value,
+                        watermark,
+                        "runtime sync skipped duplicate stream event"
+                    );
+                    next_cursor = next_cursor.max(watermark);
+                    continue;
+                }
+                ApplyDecision::OutOfOrder {
+                    watermark,
+                    incoming,
+                } => {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        incoming,
+                        watermark,
+                        "runtime sync out-of-order event detected; rewinding replay cursor"
+                    );
+                    retry_cursor = Some(merge_retry_cursor(retry_cursor, incoming));
+                    continue;
+                }
+                ApplyDecision::SnapshotRequired {
+                    watermark,
+                    incoming,
+                } => {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        incoming,
+                        watermark,
+                        "runtime sync apply requires snapshot seed; forcing replay bootstrap"
+                    );
+                    retry_cursor = Some(0);
+                    let mut apply_engine = self.apply_engine.lock().await;
+                    apply_engine.seed_stream_checkpoint(stream_id.as_str(), 0);
+                    continue;
+                }
+                ApplyDecision::Applied { .. } => {}
             }
 
             if let Err(error) = self.handle_worker_stream_event(worker_id, &event).await {
                 tracing::warn!(
                     worker_id = %worker_id,
-                    seq = ?seq,
+                    seq = seq_value,
                     error = %error,
                     "runtime sync khala event processing failed"
                 );
+                retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
+                continue;
+            }
 
-                if let Some(seq_value) = seq {
-                    retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
-                }
+            let applied = {
+                let mut apply_engine = self.apply_engine.lock().await;
+                apply_engine.apply_delta(stream_id.as_str(), seq_value)
+            };
+            if let ApplyDecision::Applied { watermark } = applied {
+                next_cursor = next_cursor.max(watermark);
             }
         }
 
@@ -880,6 +952,8 @@ impl RuntimeCodexSync {
                 cursor = replay_cursor,
                 "runtime sync khala rewinding cursor to retry handshake processing"
             );
+            let mut apply_engine = self.apply_engine.lock().await;
+            apply_engine.rewind_stream_checkpoint(stream_id.as_str(), replay_cursor);
             *cursor = replay_cursor;
         } else {
             *cursor = next_cursor;
@@ -1476,6 +1550,11 @@ fn sanitize_worker_component(value: &str) -> String {
     }
 
     out
+}
+
+fn runtime_sync_worker_stream_id(worker_id: &str) -> String {
+    let normalized = sanitize_worker_component(worker_id).replace(':', ".");
+    format!("runtime.codex.worker.events.{normalized}")
 }
 
 fn parse_session_id(raw: &str) -> Option<SessionId> {
