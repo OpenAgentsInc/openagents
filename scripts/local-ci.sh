@@ -11,6 +11,7 @@ CROSS_SURFACE_TRIGGER_PATTERN='^(apps/autopilot-desktop/|docs/autopilot/testing/
 RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/autopilot-desktop/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|scripts/local-ci\.sh$)'
 RUST_CLIPPY_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 ALLOW_ATTR_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
+ARCHITECTURE_BUDGET_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/|apps/runtime/src/|apps/autopilot-desktop/src/|crates/autopilot/src/|crates/autopilot-core/src/|scripts/(architecture-budget-gate|allow-attribute-gate|local-ci)\.sh$|docs/ci/(architecture-budget-baseline|allow-attribute-baseline)\.env$|docs/core/LOCAL_CI\.md$)'
 RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN='^(apps/openagents\.com/(app/Http/Controllers/Api/RuntimeCodexWorkersController\.php|app/AI/Runtime/RuntimeCodexClient\.php|config/runtime\.php|routes/api\.php|tests/Feature/Api/RuntimeCodexWorkersApiTest\.php))'
 INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
 
@@ -164,6 +165,8 @@ run_trigger_tests() {
   assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "docs/core/README.md" "false"
   assert_trigger "allow-attrs" "$ALLOW_ATTR_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "allow-attrs" "$ALLOW_ATTR_TRIGGER_PATTERN" "docs/core/README.md" "false"
+  assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "apps/openagents.com/service/src/route_domains.rs" "true"
+  assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "docs/core/README.md" "false"
 
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php" "true"
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/ChatStreamingTest.php" "false"
@@ -315,6 +318,14 @@ run_allow_attribute_gate() {
   )
 }
 
+run_architecture_budget_gate() {
+  echo "==> architecture budget gate"
+  (
+    cd "$ROOT_DIR"
+    ./scripts/architecture-budget-gate.sh check
+  )
+}
+
 run_rust_clippy_checks() {
   echo "==> workspace rust clippy (critical crates)"
   (
@@ -349,6 +360,7 @@ run_all_rust() {
   run_workspace_compile
   run_panic_surface_gate
   run_allow_attribute_gate
+  run_architecture_budget_gate
   run_runtime_checks
   run_proto_checks
   run_runtime_history_checks
@@ -399,6 +411,10 @@ run_changed() {
 
   if has_match "$ALLOW_ATTR_TRIGGER_PATTERN" "$changed_files"; then
     run_allow_attribute_gate
+  fi
+
+  if has_match "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "$changed_files"; then
+    run_architecture_budget_gate
   fi
 
   if has_match "$RUST_CLIPPY_TRIGGER_PATTERN" "$changed_files"; then
@@ -463,6 +479,9 @@ case "$MODE" in
   allow-attrs)
     run_allow_attribute_gate
     ;;
+  architecture-budgets)
+    run_architecture_budget_gate
+    ;;
   clippy-rust)
     run_rust_clippy_checks
     ;;
@@ -488,7 +507,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

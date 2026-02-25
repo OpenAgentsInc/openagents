@@ -45,6 +45,7 @@ Supported lanes:
 - `workspace-compile`
 - `panic-surface`
 - `allow-attrs`
+- `architecture-budgets`
 - `clippy-rust`
 - `cross-surface`
 - `inbox-gmail`
@@ -58,6 +59,7 @@ Examples:
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
 ./scripts/local-ci.sh allow-attrs
+./scripts/local-ci.sh architecture-budgets
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh cross-surface
 ./scripts/local-ci.sh inbox-gmail
@@ -79,6 +81,7 @@ Changed-mode trigger note:
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
 - `panic-surface` lane auto-runs for Rust workspace paths and enforces no-net-growth panic-surface policy against `docs/ci/panic-surface-baseline.env`.
 - `allow-attrs` lane auto-runs for Rust workspace paths and enforces no-net-growth of unjustified `#[allow(...)]` usage in critical crates against `docs/ci/allow-attribute-baseline.env`.
+- `architecture-budgets` lane auto-runs for architecture-critical Rust surfaces and enforces route-count/file-size/suppression no-net-growth checks against `docs/ci/architecture-budget-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
 - `cross-surface` lane auto-triggers for retained desktop/runtime harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 - `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com/service`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
@@ -98,6 +101,7 @@ Run additional gates manually before pushing when needed:
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
 ./scripts/local-ci.sh allow-attrs
+./scripts/local-ci.sh architecture-budgets
 OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh inbox-gmail
@@ -216,6 +220,45 @@ Refresh the baseline only after intentional debt reduction:
 
 ```bash
 ./scripts/allow-attribute-gate.sh snapshot
+```
+
+## Architecture Budget Policy
+
+`./scripts/local-ci.sh architecture-budgets` runs:
+
+```bash
+./scripts/architecture-budget-gate.sh check
+```
+
+Budgeted metrics:
+
+- Control service route count (`apps/openagents.com/service/src/route_domains.rs`).
+- Maximum production module file size across critical Rust surfaces.
+- Suppression growth via composed `allow-attrs` check.
+
+Baseline file:
+
+- `docs/ci/architecture-budget-baseline.env`
+
+Refresh baseline only when intentional architecture debt reduction or approved threshold resets are merged:
+
+```bash
+./scripts/architecture-budget-gate.sh snapshot
+```
+
+### Exception Path (Required Approval Artifact)
+
+Budget exceedance is blocked by default. A temporary exception requires:
+
+1. A checked-in approval artifact file.
+2. The token `ARCH_BUDGET_EXCEPTION_APPROVED`.
+3. Metric-specific approval lines:
+   - `ARCH_BUDGET_EXCEPTION_APPROVED: service_route_count`
+   - and/or `ARCH_BUDGET_EXCEPTION_APPROVED: prod_max_file_bytes`
+4. Running with:
+
+```bash
+OA_ARCH_BUDGET_EXCEPTION_FILE=<path-to-approved-artifact> ./scripts/architecture-budget-gate.sh check
 ```
 
 ## Temporary Bypass (Use Sparingly)
