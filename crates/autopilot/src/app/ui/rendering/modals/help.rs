@@ -150,7 +150,8 @@ fn render_help_modal(
                     "Sessions",
                     vec![
                         "/session list - list sessions; /session resume <id> - resume".to_string(),
-                        "/session fork - fork current; /session export - export markdown".to_string(),
+                        "/session fork - fork snapshot; /session export - export markdown".to_string(),
+                        "/session export-git - export snapshot to local git branch".to_string(),
                         "/review [inline|detached] [target] - run code review".to_string(),
                     ],
                 ),

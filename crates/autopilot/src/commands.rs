@@ -13,6 +13,7 @@ pub enum Command {
     SessionResume(String),
     SessionFork,
     SessionExport,
+    SessionExportGitBranch,
     WorkspaceList,
     WorkspaceAdd,
     WorkspaceConnect(String),
@@ -187,6 +188,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         usage: "/session export",
         description: "Export the current session to markdown",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/session export-git",
+        description: "Export the current session snapshot to a local git branch",
         requires_args: false,
     },
     CommandSpec {
@@ -901,7 +907,11 @@ fn parse_session_command(args: Vec<String>) -> Command {
             Command::SessionResume(id)
         }
         Some("fork") => Command::SessionFork,
-        Some("export") => Command::SessionExport,
+        Some("export") => match parts.next().as_deref() {
+            Some("git") | Some("git-branch") | Some("branch") => Command::SessionExportGitBranch,
+            _ => Command::SessionExport,
+        },
+        Some("export-git") | Some("export-branch") => Command::SessionExportGitBranch,
         Some(other) => Command::Custom(format!("session {}", other), parts.collect()),
         None => Command::Custom("session".to_string(), Vec::new()),
     }
@@ -1181,5 +1191,21 @@ mod tests {
     fn parse_chainviz_prompt() {
         let parsed = parse_command("/chainviz summarize readme").unwrap();
         assert_eq!(parsed, Command::ChainViz("summarize readme".to_string()));
+    }
+
+    #[test]
+    fn parse_session_export_git_branch_aliases() {
+        assert_eq!(
+            parse_command("/session export-git").unwrap(),
+            Command::SessionExportGitBranch
+        );
+        assert_eq!(
+            parse_command("/session export git").unwrap(),
+            Command::SessionExportGitBranch
+        );
+        assert_eq!(
+            parse_command("/session export branch").unwrap(),
+            Command::SessionExportGitBranch
+        );
     }
 }

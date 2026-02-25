@@ -116,6 +116,10 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.export_session();
             CommandAction::None
         }
+        Command::SessionExportGitBranch => {
+            state.export_session_git_branch();
+            CommandAction::None
+        }
         Command::WorkspaceList => {
             let summary = state.workspaces.list_workspace_summary();
             state.push_system_message(summary);

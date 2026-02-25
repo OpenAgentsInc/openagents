@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 use anyhow::Result;
 use serde_json::Value;
@@ -282,8 +283,8 @@ impl AppState {
         );
         push_command(
             command_palette_ids::SESSION_FORK,
-            "Fork Session",
-            "Create a new branch of this session",
+            "Fork Session Snapshot",
+            "Fork the current session timeline",
             "Session",
             None,
         );
@@ -291,6 +292,13 @@ impl AppState {
             command_palette_ids::SESSION_EXPORT,
             "Export Session",
             "Export conversation to markdown",
+            "Session",
+            None,
+        );
+        push_command(
+            command_palette_ids::SESSION_EXPORT_GIT_BRANCH,
+            "Export Session to Git Branch",
+            "Create a local git branch snapshot for this session",
             "Session",
             None,
         );
@@ -1294,6 +1302,16 @@ impl AppState {
         }
     }
 
+    pub(super) fn export_session_git_branch(&mut self) {
+        match export_session_to_git_branch(self) {
+            Ok(branch) => self.push_system_message(format!(
+                "Exported session snapshot to git branch {}.",
+                branch
+            )),
+            Err(err) => self.push_system_message(format!("Failed to export git branch: {}.", err)),
+        }
+    }
+
     pub(super) fn push_system_message(&mut self, message: String) {
         if self.workspaces.active_workspace_id.is_some() {
             self.workspaces.status_message = Some(message);
@@ -1343,6 +1361,103 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     }
 
     Ok(path)
+}
+
+fn export_session_to_git_branch(state: &AppState) -> Result<String, String> {
+    let workspace_dir = session_git_workspace_dir(state);
+    ensure_git_repository(&workspace_dir)?;
+
+    let branch_name = session_git_branch_name(state);
+    let branch_exists = ProcessCommand::new("git")
+        .args(["show-ref", "--verify", "--quiet"])
+        .arg(format!("refs/heads/{branch_name}"))
+        .current_dir(&workspace_dir)
+        .status()
+        .map(|status| status.success())
+        .map_err(|err| format!("failed to check branch state: {}", err))?;
+    if branch_exists {
+        return Ok(branch_name);
+    }
+
+    let output = ProcessCommand::new("git")
+        .args(["branch", &branch_name])
+        .current_dir(&workspace_dir)
+        .output()
+        .map_err(|err| format!("failed to run git branch: {}", err))?;
+    if output.status.success() {
+        Ok(branch_name)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message = stderr.trim();
+        if message.is_empty() {
+            Err(format!(
+                "git branch exited with status {}",
+                output
+                    .status
+                    .code()
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ))
+        } else {
+            Err(message.to_string())
+        }
+    }
+}
+
+fn ensure_git_repository(workspace_dir: &PathBuf) -> Result<(), String> {
+    let output = ProcessCommand::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(workspace_dir)
+        .output()
+        .map_err(|err| format!("failed to run git rev-parse: {}", err))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} is not a git repository",
+            workspace_dir.display()
+        ))
+    }
+}
+
+fn session_git_workspace_dir(state: &AppState) -> PathBuf {
+    if let Some(active_workspace_id) = state.workspaces.active_workspace_id.as_ref()
+        && let Some(active_workspace) = state
+            .workspaces
+            .workspaces
+            .iter()
+            .find(|workspace| &workspace.id == active_workspace_id)
+    {
+        return PathBuf::from(active_workspace.path.clone());
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn session_git_branch_name(state: &AppState) -> String {
+    let raw = if state.session.session_info.session_id.trim().is_empty() {
+        "session".to_string()
+    } else {
+        state.session.session_info.session_id.clone()
+    };
+    let normalized = raw
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let suffix = if normalized.is_empty() {
+        "session".to_string()
+    } else {
+        normalized
+    };
+    let short_suffix = suffix.chars().take(40).collect::<String>();
+    format!("autopilot/session-{}", short_suffix)
 }
 
 fn should_fetch_codex_sessions() -> bool {

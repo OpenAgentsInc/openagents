@@ -3242,6 +3242,9 @@ impl AutopilotApp {
             command_palette_ids::SESSION_EXPORT => {
                 Some(handle_command(state, Command::SessionExport))
             }
+            command_palette_ids::SESSION_EXPORT_GIT_BRANCH => {
+                Some(handle_command(state, Command::SessionExportGitBranch))
+            }
             command_palette_ids::CLEAR_CONVERSATION => Some(handle_command(state, Command::Clear)),
             command_palette_ids::UNDO_LAST => Some(handle_command(state, Command::Undo)),
             command_palette_ids::COMPACT_CONTEXT => Some(handle_command(state, Command::Compact)),

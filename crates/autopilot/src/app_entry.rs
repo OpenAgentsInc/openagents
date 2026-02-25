@@ -24,6 +24,7 @@ mod command_palette_ids {
     pub const SESSION_LIST: &str = "session.list";
     pub const SESSION_FORK: &str = "session.fork";
     pub const SESSION_EXPORT: &str = "session.export";
+    pub const SESSION_EXPORT_GIT_BRANCH: &str = "session.export_git_branch";
     pub const CLEAR_CONVERSATION: &str = "session.clear";
     pub const UNDO_LAST: &str = "session.undo";
     pub const COMPACT_CONTEXT: &str = "context.compact";
