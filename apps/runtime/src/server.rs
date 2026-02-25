@@ -63,6 +63,7 @@ use crate::{
         LiquidityPoolError, LiquidityPoolService,
         service::{
             HttpWalletExecutorClient, UnavailableWalletExecutorClient, WalletExecutorClient,
+            WithdrawThrottlePolicy,
         },
         store as liquidity_pool_store,
         types::{
@@ -169,7 +170,37 @@ impl AppState {
                     lightning_node::from_env(),
                     config.bridge_nostr_secret_key,
                 )
-                .with_withdraw_delay_hours(config.liquidity_pool_withdraw_delay_hours),
+                .with_withdraw_delay_hours(config.liquidity_pool_withdraw_delay_hours)
+                .with_withdraw_throttle_policy(WithdrawThrottlePolicy {
+                    lp_mode_enabled: config.liquidity_pool_withdraw_throttle.lp_mode_enabled,
+                    stress_liability_ratio_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .stress_liability_ratio_bps,
+                    halt_liability_ratio_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .halt_liability_ratio_bps,
+                    stress_connected_ratio_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .stress_connected_ratio_bps,
+                    halt_connected_ratio_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .halt_connected_ratio_bps,
+                    stress_outbound_coverage_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .stress_outbound_coverage_bps,
+                    halt_outbound_coverage_bps: config
+                        .liquidity_pool_withdraw_throttle
+                        .halt_outbound_coverage_bps,
+                    stress_extra_delay_hours: config
+                        .liquidity_pool_withdraw_throttle
+                        .stress_extra_delay_hours,
+                    halt_extra_delay_hours: config
+                        .liquidity_pool_withdraw_throttle
+                        .halt_extra_delay_hours,
+                    stress_execution_cap_per_tick: config
+                        .liquidity_pool_withdraw_throttle
+                        .stress_execution_cap_per_tick,
+                }),
             ),
             db,
             config,
@@ -731,6 +762,14 @@ struct HydraRiskLiquidityStateV1 {
     wallet_executor_reachable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    withdraw_throttle_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    withdraw_throttle_reasons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    withdraw_throttle_extra_delay_hours: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    withdraw_throttle_execution_cap_per_tick: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2394,11 +2433,65 @@ async fn compute_hydra_risk_health(
 ) -> Result<HydraRiskHealthResponseV1, ApiError> {
     let credit = state.credit.health().await.map_err(api_error_from_credit)?;
     let liquidity = state.liquidity.status().await;
+    let mut withdraw_throttle_mode: Option<String> = None;
+    let mut withdraw_throttle_reasons: Vec<String> = Vec::new();
+    let mut withdraw_throttle_extra_delay_hours: Option<i64> = None;
+    let mut withdraw_throttle_execution_cap_per_tick: Option<u32> = None;
+    let mut withdraw_throttle_halted = false;
+    let mut withdraw_throttle_stressed = false;
 
     let mut reasons = Vec::new();
-    let direct_disabled = !liquidity.wallet_executor_configured || !liquidity.wallet_executor_reachable;
+    let mut direct_disabled =
+        !liquidity.wallet_executor_configured || !liquidity.wallet_executor_reachable;
     if direct_disabled {
         reasons.push("direct_liquidity_unavailable".to_string());
+    }
+    if state
+        .config
+        .liquidity_pool_withdraw_throttle
+        .lp_mode_enabled
+    {
+        if let Some(primary_pool_id) = state
+            .config
+            .liquidity_pool_snapshot_pool_ids
+            .first()
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            match state
+                .liquidity_pool
+                .withdraw_throttle_status(primary_pool_id)
+                .await
+            {
+                Ok(throttle) => {
+                    withdraw_throttle_mode = Some(throttle.mode.as_str().to_string());
+                    withdraw_throttle_reasons = throttle.reasons.clone();
+                    withdraw_throttle_extra_delay_hours = Some(throttle.extra_delay_hours);
+                    withdraw_throttle_execution_cap_per_tick = throttle.execution_cap_per_tick;
+                    withdraw_throttle_halted = throttle.mode
+                        == crate::liquidity_pool::types::WithdrawThrottleModeV1::Halted;
+                    withdraw_throttle_stressed = throttle.mode
+                        == crate::liquidity_pool::types::WithdrawThrottleModeV1::Stressed;
+                    if withdraw_throttle_halted {
+                        direct_disabled = true;
+                        reasons.push("llp_withdrawals_halted".to_string());
+                    } else if withdraw_throttle_stressed {
+                        reasons.push("llp_withdrawals_stressed".to_string());
+                    }
+                }
+                Err(LiquidityPoolError::NotFound) => {
+                    reasons.push("llp_pool_not_found".to_string());
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        pool_id = primary_pool_id,
+                        reason = %error,
+                        "hydra risk health failed to read withdraw throttle status"
+                    );
+                    reasons.push("llp_throttle_unavailable".to_string());
+                }
+            }
+        }
     }
     if credit.breakers.halt_new_envelopes {
         reasons.push("cep_halt_new_envelopes".to_string());
@@ -2417,7 +2510,9 @@ async fn compute_hydra_risk_health(
         || credit.breakers.halt_new_envelopes
         || credit.breakers.halt_large_settlements
         || credit.loss_rate > 0.35
-        || credit.ln_failure_rate > 0.35;
+        || credit.ln_failure_rate > 0.35
+        || withdraw_throttle_stressed
+        || withdraw_throttle_halted;
 
     Ok(HydraRiskHealthResponseV1 {
         schema: HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1.to_string(),
@@ -2430,6 +2525,10 @@ async fn compute_hydra_risk_health(
             wallet_executor_configured: liquidity.wallet_executor_configured,
             wallet_executor_reachable: liquidity.wallet_executor_reachable,
             error_code: liquidity.error_code,
+            withdraw_throttle_mode,
+            withdraw_throttle_reasons,
+            withdraw_throttle_extra_delay_hours,
+            withdraw_throttle_execution_cap_per_tick,
         },
         routing: HydraRiskRoutingStateV1 {
             degraded,
@@ -2686,8 +2785,7 @@ async fn hydra_routing_score(
     let mut confidence =
         ((reliability_score * 0.60) + (price_position * 0.20) + (latency_score * 0.20))
             .clamp(0.0, 1.0);
-    let mut liquidity_score =
-        ((reliability_score * 0.60) + (breadth_score * 0.40)).clamp(0.0, 1.0);
+    let mut liquidity_score = ((reliability_score * 0.60) + (breadth_score * 0.40)).clamp(0.0, 1.0);
     if risk_health.routing.degraded {
         confidence = (confidence * 0.75).clamp(0.0, 1.0);
         liquidity_score = (liquidity_score * 0.80).clamp(0.0, 1.0);

@@ -11,6 +11,37 @@ use crate::fanout::{FanoutLimitConfig, FanoutTierLimits, QosTier};
 use nostr::nsec_to_private_key;
 
 #[derive(Clone, Debug)]
+pub struct LiquidityPoolWithdrawThrottleConfig {
+    pub lp_mode_enabled: bool,
+    pub stress_liability_ratio_bps: u32,
+    pub halt_liability_ratio_bps: u32,
+    pub stress_connected_ratio_bps: u32,
+    pub halt_connected_ratio_bps: u32,
+    pub stress_outbound_coverage_bps: u32,
+    pub halt_outbound_coverage_bps: u32,
+    pub stress_extra_delay_hours: i64,
+    pub halt_extra_delay_hours: i64,
+    pub stress_execution_cap_per_tick: u32,
+}
+
+impl Default for LiquidityPoolWithdrawThrottleConfig {
+    fn default() -> Self {
+        Self {
+            lp_mode_enabled: false,
+            stress_liability_ratio_bps: 2_500,
+            halt_liability_ratio_bps: 5_000,
+            stress_connected_ratio_bps: 7_500,
+            halt_connected_ratio_bps: 4_000,
+            stress_outbound_coverage_bps: 10_000,
+            halt_outbound_coverage_bps: 5_000,
+            stress_extra_delay_hours: 24,
+            halt_extra_delay_hours: 72,
+            stress_execution_cap_per_tick: 5,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Config {
     pub service_name: String,
     pub bind_addr: SocketAddr,
@@ -58,6 +89,7 @@ pub struct Config {
     pub liquidity_wallet_executor_timeout_ms: u64,
     pub liquidity_quote_ttl_seconds: u64,
     pub liquidity_pool_withdraw_delay_hours: i64,
+    pub liquidity_pool_withdraw_throttle: LiquidityPoolWithdrawThrottleConfig,
     pub liquidity_pool_snapshot_worker_enabled: bool,
     pub liquidity_pool_snapshot_pool_ids: Vec<String>,
     pub liquidity_pool_snapshot_interval_seconds: u64,
@@ -155,6 +187,8 @@ pub enum ConfigError {
     InvalidLiquidityQuoteTtlSeconds(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_WITHDRAW_DELAY_HOURS: {0}")]
     InvalidLiquidityPoolWithdrawDelayHours(String),
+    #[error("invalid liquidity pool withdrawal throttle config: {0}")]
+    InvalidLiquidityPoolWithdrawThrottleConfig(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_WORKER_ENABLED: {0}")]
     InvalidLiquidityPoolSnapshotWorkerEnabled(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_INTERVAL_SECONDS: {0}")]
@@ -456,6 +490,8 @@ impl Config {
                     ConfigError::InvalidLiquidityPoolWithdrawDelayHours(error.to_string())
                 })?
                 .clamp(0, 168);
+        let liquidity_pool_withdraw_throttle =
+            parse_liquidity_pool_withdraw_throttle_from_env(|key| env::var(key).ok())?;
         let liquidity_pool_snapshot_worker_enabled =
             parse_bool_env("RUNTIME_LIQUIDITY_POOL_SNAPSHOT_WORKER_ENABLED", true).map_err(
                 |error| ConfigError::InvalidLiquidityPoolSnapshotWorkerEnabled(error.to_string()),
@@ -539,6 +575,7 @@ impl Config {
             liquidity_wallet_executor_timeout_ms,
             liquidity_quote_ttl_seconds,
             liquidity_pool_withdraw_delay_hours,
+            liquidity_pool_withdraw_throttle,
             liquidity_pool_snapshot_worker_enabled,
             liquidity_pool_snapshot_pool_ids,
             liquidity_pool_snapshot_interval_seconds,
@@ -730,6 +767,180 @@ fn parse_credit_policy_from_env(
         ln_failure_rate_halt_threshold,
         ln_failure_large_settlement_cap_sats,
     })
+}
+
+fn parse_liquidity_pool_withdraw_throttle_from_env(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<LiquidityPoolWithdrawThrottleConfig, ConfigError> {
+    let defaults = LiquidityPoolWithdrawThrottleConfig::default();
+
+    let lp_mode_enabled = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_LP_MODE_ENABLED",
+        defaults.lp_mode_enabled,
+        |raw| match raw.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Ok(true),
+            "0" | "false" | "no" | "off" => Ok(false),
+            other => Err(ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(
+                format!("RUNTIME_LIQUIDITY_POOL_LP_MODE_ENABLED: {other}"),
+            )),
+        },
+    )?;
+
+    let stress_liability_ratio_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_LIABILITY_RATIO_BPS",
+        defaults.stress_liability_ratio_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_LIABILITY_RATIO_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 10_000))
+        },
+    )?;
+    let halt_liability_ratio_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_LIABILITY_RATIO_BPS",
+        defaults.halt_liability_ratio_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_LIABILITY_RATIO_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 10_000))
+        },
+    )?;
+    let stress_connected_ratio_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_CONNECTED_RATIO_BPS",
+        defaults.stress_connected_ratio_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_CONNECTED_RATIO_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 10_000))
+        },
+    )?;
+    let halt_connected_ratio_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_CONNECTED_RATIO_BPS",
+        defaults.halt_connected_ratio_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_CONNECTED_RATIO_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 10_000))
+        },
+    )?;
+    let stress_outbound_coverage_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_OUTBOUND_COVERAGE_BPS",
+        defaults.stress_outbound_coverage_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_OUTBOUND_COVERAGE_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 50_000))
+        },
+    )?;
+    let halt_outbound_coverage_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_OUTBOUND_COVERAGE_BPS",
+        defaults.halt_outbound_coverage_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_OUTBOUND_COVERAGE_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 50_000))
+        },
+    )?;
+    let stress_extra_delay_hours = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_EXTRA_DELAY_HOURS",
+        defaults.stress_extra_delay_hours,
+        |raw| {
+            raw.parse::<i64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_EXTRA_DELAY_HOURS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 336))
+        },
+    )?;
+    let halt_extra_delay_hours = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_EXTRA_DELAY_HOURS",
+        defaults.halt_extra_delay_hours,
+        |raw| {
+            raw.parse::<i64>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_HALT_EXTRA_DELAY_HOURS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 336))
+        },
+    )?;
+    let stress_execution_cap_per_tick = parse_with_lookup(
+        &lookup,
+        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_EXECUTION_CAP_PER_TICK",
+        defaults.stress_execution_cap_per_tick,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidLiquidityPoolWithdrawThrottleConfig(format!(
+                        "RUNTIME_LIQUIDITY_POOL_WITHDRAW_THROTTLE_STRESS_EXECUTION_CAP_PER_TICK: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 5_000))
+        },
+    )?;
+
+    let mut config = LiquidityPoolWithdrawThrottleConfig {
+        lp_mode_enabled,
+        stress_liability_ratio_bps,
+        halt_liability_ratio_bps,
+        stress_connected_ratio_bps,
+        halt_connected_ratio_bps,
+        stress_outbound_coverage_bps,
+        halt_outbound_coverage_bps,
+        stress_extra_delay_hours,
+        halt_extra_delay_hours,
+        stress_execution_cap_per_tick,
+    };
+
+    if config.halt_liability_ratio_bps < config.stress_liability_ratio_bps {
+        config.halt_liability_ratio_bps = config.stress_liability_ratio_bps;
+    }
+    if config.halt_connected_ratio_bps > config.stress_connected_ratio_bps {
+        config.halt_connected_ratio_bps = config.stress_connected_ratio_bps;
+    }
+    if config.halt_outbound_coverage_bps > config.stress_outbound_coverage_bps {
+        config.halt_outbound_coverage_bps = config.stress_outbound_coverage_bps;
+    }
+    if config.halt_extra_delay_hours < config.stress_extra_delay_hours {
+        config.halt_extra_delay_hours = config.stress_extra_delay_hours;
+    }
+
+    Ok(config)
 }
 
 fn parse_u64_env_lookup(

@@ -99,6 +99,18 @@ fn build_test_router_with_config(
         liquidity_wallet_executor_timeout_ms: 12_000,
         liquidity_quote_ttl_seconds: 60,
         liquidity_pool_withdraw_delay_hours: 24,
+        liquidity_pool_withdraw_throttle: crate::config::LiquidityPoolWithdrawThrottleConfig {
+            lp_mode_enabled: false,
+            stress_liability_ratio_bps: 2_500,
+            halt_liability_ratio_bps: 5_000,
+            stress_connected_ratio_bps: 7_500,
+            halt_connected_ratio_bps: 4_000,
+            stress_outbound_coverage_bps: 10_000,
+            halt_outbound_coverage_bps: 5_000,
+            stress_extra_delay_hours: 24,
+            halt_extra_delay_hours: 72,
+            stress_execution_cap_per_tick: 5,
+        },
         liquidity_pool_snapshot_worker_enabled: false,
         liquidity_pool_snapshot_pool_ids: vec!["llp-main".to_string()],
         liquidity_pool_snapshot_interval_seconds: 60,
@@ -5329,9 +5341,11 @@ async fn hydra_routing_score_filters_cep_candidate_when_breaker_halts_envelopes(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    assert!(notes
-        .iter()
-        .any(|value| value.as_str() == Some("cep_candidate_filtered_by_breaker")));
+    assert!(
+        notes
+            .iter()
+            .any(|value| value.as_str() == Some("cep_candidate_filtered_by_breaker"))
+    );
     Ok(())
 }
 

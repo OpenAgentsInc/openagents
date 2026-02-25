@@ -23,7 +23,11 @@ pub const WITHDRAW_REQUEST_RECEIPT_SCHEMA_V1: &str =
     "openagents.liquidity.withdraw_request_receipt.v1";
 pub const WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1: &str =
     "openagents.liquidity.withdraw_settlement_receipt.v1";
+pub const WITHDRAW_THROTTLE_RECEIPT_SCHEMA_V1: &str =
+    "openagents.liquidity.withdraw_throttle_receipt.v1";
 pub const POOL_SNAPSHOT_RECEIPT_SCHEMA_V1: &str = "openagents.liquidity.pool_snapshot_receipt.v1";
+pub const POOL_WITHDRAW_THROTTLE_STATUS_SCHEMA_V1: &str =
+    "openagents.liquidity.pool_withdraw_throttle_status.v1";
 
 pub const POOL_SIGNER_SET_UPSERT_REQUEST_SCHEMA_V1: &str =
     "openagents.liquidity.pool_signer_set_upsert_request.v1";
@@ -436,6 +440,8 @@ pub struct WithdrawResponseV1 {
     pub schema: String,
     pub withdrawal: WithdrawalRow,
     pub receipt: WithdrawRequestReceiptV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdraw_throttle: Option<WithdrawThrottleStatusV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,7 +453,48 @@ pub struct PoolStatusResponseV1 {
     pub pending_withdrawals_sats_estimate: i64,
     #[serde(default)]
     pub partitions: Vec<PoolPartitionStatusV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdraw_throttle: Option<WithdrawThrottleStatusV1>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WithdrawThrottleModeV1 {
+    Normal,
+    Stressed,
+    Halted,
+}
+
+impl WithdrawThrottleModeV1 {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Stressed => "stressed",
+            Self::Halted => "halted",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawThrottleStatusV1 {
+    pub schema: String,
+    pub pool_id: String,
+    pub lp_mode_enabled: bool,
+    pub mode: WithdrawThrottleModeV1,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    pub liabilities_pressure_bps: u32,
+    pub pending_withdrawals_sats_estimate: i64,
+    pub cep_reserved_commitments_sats: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_connected_ratio_bps: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_outbound_coverage_bps: Option<u32>,
+    pub extra_delay_hours: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_cap_per_tick: Option<u32>,
+    pub generated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -531,6 +578,25 @@ pub struct WithdrawSettlementReceiptV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout_txid: Option<String>,
     pub paid_at: DateTime<Utc>,
+    pub canonical_json_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ReceiptSignatureV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawThrottleReceiptV1 {
+    pub schema: String,
+    pub receipt_id: String,
+    pub pool_id: String,
+    pub withdrawal_id: String,
+    pub action: String,
+    pub mode: WithdrawThrottleModeV1,
+    pub extra_delay_hours: i64,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_cap_per_tick: Option<u32>,
+    pub created_at: DateTime<Utc>,
     pub canonical_json_sha256: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<ReceiptSignatureV1>,

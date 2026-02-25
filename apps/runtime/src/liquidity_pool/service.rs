@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
@@ -30,17 +30,20 @@ use crate::liquidity_pool::types::{
     POOL_SIGNING_REQUEST_RESPONSE_SCHEMA_V1, POOL_SNAPSHOT_RECEIPT_SCHEMA_V1,
     POOL_SNAPSHOT_SCHEMA_V1, POOL_STATUS_SCHEMA_V1, POOL_TREASURY_ACTION_RECEIPT_SCHEMA_V1,
     POOL_TREASURY_CLOSE_CHANNEL_REQUEST_SCHEMA_V1, POOL_TREASURY_OPEN_CHANNEL_REQUEST_SCHEMA_V1,
-    PoolCreateRequestV1, PoolCreateResponseV1, PoolKindV1, PoolPartitionKindV1,
-    PoolPartitionStatusV1, PoolRow, PoolSignerPolicyV1, PoolSignerSetResponseV1, PoolSignerSetRow,
-    PoolSignerSetUpsertRequestV1, PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1,
+    POOL_WITHDRAW_THROTTLE_STATUS_SCHEMA_V1, PoolCreateRequestV1, PoolCreateResponseV1, PoolKindV1,
+    PoolPartitionKindV1, PoolPartitionStatusV1, PoolRow, PoolSignerPolicyV1,
+    PoolSignerSetResponseV1, PoolSignerSetRow, PoolSignerSetUpsertRequestV1,
+    PoolSigningApprovalRow, PoolSigningApprovalSubmitRequestV1,
     PoolSigningRequestExecuteResponseV1, PoolSigningRequestListResponseV1,
     PoolSigningRequestResponseV1, PoolSigningRequestRow, PoolSnapshotReceiptV1,
     PoolSnapshotResponseV1, PoolSnapshotRow, PoolStatusResponseV1, PoolStatusV1,
     PoolTreasuryActionReceiptV1, PoolTreasuryCloseChannelRequestV1,
     PoolTreasuryOpenChannelRequestV1, TreasuryActionClassV1, WITHDRAW_REQUEST_RECEIPT_SCHEMA_V1,
     WITHDRAW_REQUEST_SCHEMA_V1, WITHDRAW_RESPONSE_SCHEMA_V1, WITHDRAW_SETTLEMENT_RECEIPT_SCHEMA_V1,
-    WithdrawRequestReceiptV1, WithdrawRequestV1, WithdrawResponseV1, WithdrawSettlementReceiptV1,
-    WithdrawalRailPreferenceV1, WithdrawalRow, WithdrawalStatusV1,
+    WITHDRAW_THROTTLE_RECEIPT_SCHEMA_V1, WithdrawRequestReceiptV1, WithdrawRequestV1,
+    WithdrawResponseV1, WithdrawSettlementReceiptV1, WithdrawThrottleModeV1,
+    WithdrawThrottleReceiptV1, WithdrawThrottleStatusV1, WithdrawalRailPreferenceV1, WithdrawalRow,
+    WithdrawalStatusV1,
 };
 
 const SIGNING_REQUEST_STATUS_PENDING: &str = "pending";
@@ -91,7 +94,67 @@ pub struct ExecuteDueWithdrawalsOutcome {
     pub attempted: usize,
     pub paid: usize,
     pub signing_requests_created: usize,
+    pub throttled: usize,
     pub failed: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct WithdrawThrottlePolicy {
+    pub lp_mode_enabled: bool,
+    pub stress_liability_ratio_bps: u32,
+    pub halt_liability_ratio_bps: u32,
+    pub stress_connected_ratio_bps: u32,
+    pub halt_connected_ratio_bps: u32,
+    pub stress_outbound_coverage_bps: u32,
+    pub halt_outbound_coverage_bps: u32,
+    pub stress_extra_delay_hours: i64,
+    pub halt_extra_delay_hours: i64,
+    pub stress_execution_cap_per_tick: u32,
+}
+
+impl Default for WithdrawThrottlePolicy {
+    fn default() -> Self {
+        Self {
+            lp_mode_enabled: false,
+            stress_liability_ratio_bps: 2_500,
+            halt_liability_ratio_bps: 5_000,
+            stress_connected_ratio_bps: 7_500,
+            halt_connected_ratio_bps: 4_000,
+            stress_outbound_coverage_bps: 10_000,
+            halt_outbound_coverage_bps: 5_000,
+            stress_extra_delay_hours: 24,
+            halt_extra_delay_hours: 72,
+            stress_execution_cap_per_tick: 5,
+        }
+    }
+}
+
+impl WithdrawThrottlePolicy {
+    fn normalized(mut self) -> Self {
+        self.stress_liability_ratio_bps = self.stress_liability_ratio_bps.clamp(1, 10_000);
+        self.halt_liability_ratio_bps = self.halt_liability_ratio_bps.clamp(1, 10_000);
+        self.stress_connected_ratio_bps = self.stress_connected_ratio_bps.clamp(0, 10_000);
+        self.halt_connected_ratio_bps = self.halt_connected_ratio_bps.clamp(0, 10_000);
+        self.stress_outbound_coverage_bps = self.stress_outbound_coverage_bps.clamp(0, 50_000);
+        self.halt_outbound_coverage_bps = self.halt_outbound_coverage_bps.clamp(0, 50_000);
+        self.stress_extra_delay_hours = self.stress_extra_delay_hours.clamp(0, 336);
+        self.halt_extra_delay_hours = self.halt_extra_delay_hours.clamp(0, 336);
+        self.stress_execution_cap_per_tick = self.stress_execution_cap_per_tick.clamp(1, 5_000);
+
+        if self.halt_liability_ratio_bps < self.stress_liability_ratio_bps {
+            self.halt_liability_ratio_bps = self.stress_liability_ratio_bps;
+        }
+        if self.halt_connected_ratio_bps > self.stress_connected_ratio_bps {
+            self.halt_connected_ratio_bps = self.stress_connected_ratio_bps;
+        }
+        if self.halt_outbound_coverage_bps > self.stress_outbound_coverage_bps {
+            self.halt_outbound_coverage_bps = self.stress_outbound_coverage_bps;
+        }
+        if self.halt_extra_delay_hours < self.stress_extra_delay_hours {
+            self.halt_extra_delay_hours = self.stress_extra_delay_hours;
+        }
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -100,6 +163,7 @@ pub struct LiquidityPoolService {
     wallet: Arc<dyn WalletExecutorClient>,
     lightning_node: Arc<dyn LightningNode>,
     default_withdraw_delay_hours: i64,
+    withdraw_throttle_policy: WithdrawThrottlePolicy,
     receipt_signing_key: Option<[u8; 32]>,
 }
 
@@ -128,6 +192,7 @@ impl LiquidityPoolService {
             wallet,
             lightning_node,
             default_withdraw_delay_hours: 24,
+            withdraw_throttle_policy: WithdrawThrottlePolicy::default(),
             receipt_signing_key,
         }
     }
@@ -135,6 +200,12 @@ impl LiquidityPoolService {
     #[must_use]
     pub fn with_withdraw_delay_hours(mut self, hours: i64) -> Self {
         self.default_withdraw_delay_hours = hours.clamp(0, 168);
+        self
+    }
+
+    #[must_use]
+    pub fn with_withdraw_throttle_policy(mut self, policy: WithdrawThrottlePolicy) -> Self {
+        self.withdraw_throttle_policy = policy.normalized();
         self
     }
 
@@ -1390,11 +1461,31 @@ impl LiquidityPoolService {
             payout_address: payout_address.as_deref(),
         })
         .map_err(LiquidityPoolError::Internal)?;
-        let earliest_settlement_at =
-            Utc::now() + Duration::hours(self.default_withdraw_delay_hours);
+        let created_at = Utc::now();
+        let withdraw_throttle = if self.withdraw_throttle_policy.lp_mode_enabled {
+            let throttle = self
+                .withdraw_throttle_status_for_pool(pool_id, created_at)
+                .await?;
+            if throttle.mode == WithdrawThrottleModeV1::Halted {
+                return Err(LiquidityPoolError::Conflict(format!(
+                    "withdrawals halted by throttle: {}",
+                    throttle.reasons.join(",")
+                )));
+            }
+            Some(throttle)
+        } else {
+            None
+        };
+
+        let total_delay_hours = self.default_withdraw_delay_hours.saturating_add(
+            withdraw_throttle
+                .as_ref()
+                .map(|value| value.extra_delay_hours)
+                .unwrap_or(0),
+        );
+        let earliest_settlement_at = created_at + Duration::hours(total_delay_hours);
 
         let withdrawal_id = format!("liqwd_{}", Uuid::now_v7());
-        let created_at = Utc::now();
 
         let stored = self
             .store
@@ -1419,6 +1510,19 @@ impl LiquidityPoolService {
             })
             .await
             .map_err(map_store_error)?;
+
+        if let Some(withdraw_throttle) = withdraw_throttle.as_ref()
+            && (withdraw_throttle.mode != WithdrawThrottleModeV1::Normal
+                || withdraw_throttle.extra_delay_hours > 0)
+        {
+            self.persist_withdraw_throttle_receipt(
+                &stored,
+                "request_delay_applied",
+                withdraw_throttle,
+                stored.created_at,
+            )
+            .await?;
+        }
 
         let receipt = build_withdraw_request_receipt(
             &stored,
@@ -1466,6 +1570,7 @@ impl LiquidityPoolService {
             schema: WITHDRAW_RESPONSE_SCHEMA_V1.to_string(),
             withdrawal: stored,
             receipt,
+            withdraw_throttle,
         })
     }
 
@@ -1489,8 +1594,11 @@ impl LiquidityPoolService {
             attempted: 0,
             paid: 0,
             signing_requests_created: 0,
+            throttled: 0,
             failed: 0,
         };
+        let mut throttle_by_pool: HashMap<String, WithdrawThrottleStatusV1> = HashMap::new();
+        let mut executed_by_pool: HashMap<String, usize> = HashMap::new();
 
         for withdrawal in due {
             outcome.attempted = outcome.attempted.saturating_add(1);
@@ -1499,6 +1607,48 @@ impl LiquidityPoolService {
                 || withdrawal.paid_at.is_some()
             {
                 continue;
+            }
+
+            if self.withdraw_throttle_policy.lp_mode_enabled {
+                let throttle = if let Some(existing) = throttle_by_pool.get(&withdrawal.pool_id) {
+                    existing.clone()
+                } else {
+                    let computed = self
+                        .withdraw_throttle_status_for_pool(withdrawal.pool_id.as_str(), now)
+                        .await?;
+                    throttle_by_pool.insert(withdrawal.pool_id.clone(), computed.clone());
+                    computed
+                };
+
+                if throttle.mode == WithdrawThrottleModeV1::Halted {
+                    outcome.throttled = outcome.throttled.saturating_add(1);
+                    self.persist_withdraw_throttle_receipt(
+                        &withdrawal,
+                        "execution_halted",
+                        &throttle,
+                        withdrawal.created_at,
+                    )
+                    .await?;
+                    continue;
+                }
+
+                if let Some(cap) = throttle.execution_cap_per_tick {
+                    let executed = executed_by_pool
+                        .entry(withdrawal.pool_id.clone())
+                        .or_insert(0);
+                    if *executed >= usize::try_from(cap).unwrap_or(usize::MAX) {
+                        outcome.throttled = outcome.throttled.saturating_add(1);
+                        self.persist_withdraw_throttle_receipt(
+                            &withdrawal,
+                            "execution_deferred_throttle_cap",
+                            &throttle,
+                            withdrawal.created_at,
+                        )
+                        .await?;
+                        continue;
+                    }
+                    *executed = executed.saturating_add(1);
+                }
             }
 
             let amount_sats = match u64::try_from(withdrawal.amount_sats_estimate) {
@@ -1736,6 +1886,11 @@ impl LiquidityPoolService {
                 total_shares: 0,
                 pending_withdrawals_sats_estimate: 0,
             });
+        let withdraw_throttle = if self.withdraw_throttle_policy.lp_mode_enabled {
+            Some(self.withdraw_throttle_status_for_pool(pool_id, now).await?)
+        } else {
+            None
+        };
 
         Ok(PoolStatusResponseV1 {
             schema: POOL_STATUS_SCHEMA_V1.to_string(),
@@ -1744,7 +1899,205 @@ impl LiquidityPoolService {
             total_shares: llp.total_shares,
             pending_withdrawals_sats_estimate: llp.pending_withdrawals_sats_estimate,
             partitions,
+            withdraw_throttle,
             updated_at: now,
+        })
+    }
+
+    pub async fn withdraw_throttle_status(
+        &self,
+        pool_id: &str,
+    ) -> Result<WithdrawThrottleStatusV1, LiquidityPoolError> {
+        self.store
+            .get_pool(pool_id)
+            .await
+            .map_err(map_store_error)?
+            .ok_or(LiquidityPoolError::NotFound)?;
+        self.withdraw_throttle_status_for_pool(pool_id, Utc::now())
+            .await
+    }
+
+    async fn withdraw_throttle_status_for_pool(
+        &self,
+        pool_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<WithdrawThrottleStatusV1, LiquidityPoolError> {
+        let pending_withdrawals_sats_estimate = self
+            .store
+            .get_pending_withdrawals_estimate_sats(pool_id, PoolPartitionKindV1::Llp.as_str())
+            .await
+            .map_err(map_store_error)?
+            .max(0);
+        let llp_assets_sats_estimate = self
+            .store
+            .get_confirmed_deposits_total_sats(pool_id, PoolPartitionKindV1::Llp.as_str())
+            .await
+            .map_err(map_store_error)?
+            .max(0);
+        let cep_reserved_commitments_sats = self
+            .store
+            .get_credit_reserved_commitments_sats(pool_id, now)
+            .await
+            .map_err(map_store_error)?
+            .max(0);
+
+        let liabilities_sats = pending_withdrawals_sats_estimate
+            .saturating_add(cep_reserved_commitments_sats)
+            .max(0);
+        let liabilities_pressure_bps = if liabilities_sats <= 0 {
+            0
+        } else {
+            let denom = llp_assets_sats_estimate.max(1);
+            let scaled = (i128::from(liabilities_sats) * i128::from(10_000)) / i128::from(denom);
+            u32::try_from(scaled.clamp(0, i128::from(u32::MAX))).unwrap_or(u32::MAX)
+        };
+
+        let latest_llp_snapshot = self
+            .store
+            .get_latest_snapshot(pool_id, PoolPartitionKindV1::Llp.as_str())
+            .await
+            .map_err(map_store_error)?;
+        let channel_count = latest_llp_snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .assets_json
+                    .pointer("/lightning/channelCount")
+                    .and_then(Value::as_i64)
+            })
+            .filter(|value| *value >= 0)
+            .unwrap_or(0);
+        let connected_channel_count = latest_llp_snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .assets_json
+                    .pointer("/lightning/connectedChannelCount")
+                    .and_then(Value::as_i64)
+            })
+            .filter(|value| *value >= 0)
+            .unwrap_or(0);
+        let channel_outbound_sats = latest_llp_snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .assets_json
+                    .pointer("/lightning/channelOutboundSats")
+                    .and_then(Value::as_i64)
+            })
+            .filter(|value| *value >= 0)
+            .unwrap_or(0);
+        let channel_last_error = latest_llp_snapshot.as_ref().and_then(|snapshot| {
+            snapshot
+                .assets_json
+                .pointer("/lightning/lastError")
+                .and_then(Value::as_str)
+        });
+
+        let channel_connected_ratio_bps = if channel_count > 0 {
+            let connected = connected_channel_count.clamp(0, channel_count);
+            let ratio = (i128::from(connected) * i128::from(10_000)) / i128::from(channel_count);
+            Some(u32::try_from(ratio.clamp(0, 10_000)).unwrap_or(0))
+        } else {
+            None
+        };
+        let channel_outbound_coverage_bps = if pending_withdrawals_sats_estimate > 0 {
+            let ratio = (i128::from(channel_outbound_sats.max(0)) * i128::from(10_000))
+                / i128::from(pending_withdrawals_sats_estimate);
+            Some(u32::try_from(ratio.clamp(0, i128::from(u32::MAX))).unwrap_or(u32::MAX))
+        } else {
+            None
+        };
+
+        if !self.withdraw_throttle_policy.lp_mode_enabled {
+            return Ok(WithdrawThrottleStatusV1 {
+                schema: POOL_WITHDRAW_THROTTLE_STATUS_SCHEMA_V1.to_string(),
+                pool_id: pool_id.to_string(),
+                lp_mode_enabled: false,
+                mode: WithdrawThrottleModeV1::Normal,
+                reasons: vec!["lp_mode_disabled".to_string()],
+                liabilities_pressure_bps,
+                pending_withdrawals_sats_estimate,
+                cep_reserved_commitments_sats,
+                channel_connected_ratio_bps,
+                channel_outbound_coverage_bps,
+                extra_delay_hours: 0,
+                execution_cap_per_tick: None,
+                generated_at: now,
+            });
+        }
+
+        let policy = &self.withdraw_throttle_policy;
+        let mut stress_reasons = Vec::new();
+        let mut halt_reasons = Vec::new();
+
+        if liabilities_pressure_bps >= policy.halt_liability_ratio_bps {
+            halt_reasons.push("liabilities_pressure_halt_threshold".to_string());
+        } else if liabilities_pressure_bps >= policy.stress_liability_ratio_bps {
+            stress_reasons.push("liabilities_pressure_stress_threshold".to_string());
+        }
+
+        if let Some(ratio) = channel_connected_ratio_bps {
+            if ratio <= policy.halt_connected_ratio_bps {
+                halt_reasons.push("channel_connectivity_halt_threshold".to_string());
+            } else if ratio <= policy.stress_connected_ratio_bps {
+                stress_reasons.push("channel_connectivity_stress_threshold".to_string());
+            }
+        }
+
+        if let Some(ratio) = channel_outbound_coverage_bps {
+            if ratio <= policy.halt_outbound_coverage_bps {
+                halt_reasons.push("outbound_coverage_halt_threshold".to_string());
+            } else if ratio <= policy.stress_outbound_coverage_bps {
+                stress_reasons.push("outbound_coverage_stress_threshold".to_string());
+            }
+        }
+
+        if latest_llp_snapshot.is_none() && liabilities_sats > 0 {
+            stress_reasons.push("llp_lightning_snapshot_missing".to_string());
+        }
+        if channel_last_error.is_some() {
+            stress_reasons.push("llp_lightning_last_error".to_string());
+        }
+
+        let mode = if !halt_reasons.is_empty() {
+            WithdrawThrottleModeV1::Halted
+        } else if !stress_reasons.is_empty() {
+            WithdrawThrottleModeV1::Stressed
+        } else {
+            WithdrawThrottleModeV1::Normal
+        };
+        let mut reasons = match mode {
+            WithdrawThrottleModeV1::Halted => halt_reasons,
+            WithdrawThrottleModeV1::Stressed => stress_reasons,
+            WithdrawThrottleModeV1::Normal => vec!["healthy".to_string()],
+        };
+        reasons.sort();
+        reasons.dedup();
+
+        let (extra_delay_hours, execution_cap_per_tick) = match mode {
+            WithdrawThrottleModeV1::Normal => (0, None),
+            WithdrawThrottleModeV1::Stressed => (
+                policy.stress_extra_delay_hours,
+                Some(policy.stress_execution_cap_per_tick),
+            ),
+            WithdrawThrottleModeV1::Halted => (policy.halt_extra_delay_hours, Some(0)),
+        };
+
+        Ok(WithdrawThrottleStatusV1 {
+            schema: POOL_WITHDRAW_THROTTLE_STATUS_SCHEMA_V1.to_string(),
+            pool_id: pool_id.to_string(),
+            lp_mode_enabled: true,
+            mode,
+            reasons,
+            liabilities_pressure_bps,
+            pending_withdrawals_sats_estimate,
+            cep_reserved_commitments_sats,
+            channel_connected_ratio_bps,
+            channel_outbound_coverage_bps,
+            extra_delay_hours,
+            execution_cap_per_tick,
+            generated_at: now,
         })
     }
 
@@ -2299,6 +2652,59 @@ impl LiquidityPoolService {
         Ok(receipt)
     }
 
+    async fn persist_withdraw_throttle_receipt(
+        &self,
+        withdrawal: &WithdrawalRow,
+        action: &str,
+        throttle: &WithdrawThrottleStatusV1,
+        created_at: DateTime<Utc>,
+    ) -> Result<WithdrawThrottleReceiptV1, LiquidityPoolError> {
+        let receipt = build_withdraw_throttle_receipt(
+            withdrawal,
+            action,
+            throttle,
+            created_at,
+            self.receipt_signing_key.as_ref(),
+        )?;
+
+        let signature_json = match receipt.signature.as_ref() {
+            Some(sig) => Some(
+                serde_json::to_value(sig)
+                    .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+            )
+            .filter(|value| !value.is_null()),
+            None => None,
+        };
+
+        self.store
+            .put_receipt(ReceiptInsertInput {
+                receipt_id: receipt.receipt_id.clone(),
+                entity_kind: format!("withdraw_throttle_{}", action.trim()),
+                entity_id: withdrawal.withdrawal_id.clone(),
+                schema: receipt.schema.clone(),
+                canonical_json_sha256: receipt.canonical_json_sha256.clone(),
+                signature_json,
+                receipt_json: serde_json::to_value(&receipt)
+                    .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+                created_at,
+            })
+            .await
+            .map_err(map_store_error)?;
+
+        self.maybe_spawn_nostr_liquidity_receipt_pointer_mirror(LiquidityReceiptPointerV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            pool_id: Some(receipt.pool_id.clone()),
+            lp_id: Some(withdrawal.lp_id.clone()),
+            deposit_id: None,
+            withdrawal_id: Some(receipt.withdrawal_id.clone()),
+            quote_id: None,
+            receipt_sha256: receipt.canonical_json_sha256.clone(),
+            receipt_url: format!("openagents://receipt/{}", receipt.receipt_id),
+        });
+
+        Ok(receipt)
+    }
+
     fn maybe_spawn_nostr_liquidity_receipt_pointer_mirror(
         &self,
         payload: LiquidityReceiptPointerV1,
@@ -2791,6 +3197,70 @@ fn build_withdraw_settlement_receipt(
             .map(|value| value.trim().to_string())
             .filter(|v| !v.is_empty()),
         paid_at,
+        canonical_json_sha256,
+        signature,
+    })
+}
+
+fn build_withdraw_throttle_receipt(
+    withdrawal: &WithdrawalRow,
+    action: &str,
+    throttle: &WithdrawThrottleStatusV1,
+    created_at: DateTime<Utc>,
+    receipt_signing_key: Option<&[u8; 32]>,
+) -> Result<WithdrawThrottleReceiptV1, LiquidityPoolError> {
+    let action = action.trim().to_ascii_lowercase();
+    if action.is_empty() {
+        return Err(LiquidityPoolError::Internal(
+            "withdraw throttle action must not be empty".to_string(),
+        ));
+    }
+
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        pool_id: &'a str,
+        withdrawal_id: &'a str,
+        action: &'a str,
+        mode: &'a str,
+        extra_delay_hours: i64,
+        reasons: &'a [String],
+        execution_cap_per_tick: Option<u32>,
+        created_at: &'a DateTime<Utc>,
+    }
+
+    let canonical_json_sha256 = canonical_sha256(&ReceiptHashInput {
+        schema: WITHDRAW_THROTTLE_RECEIPT_SCHEMA_V1,
+        pool_id: withdrawal.pool_id.as_str(),
+        withdrawal_id: withdrawal.withdrawal_id.as_str(),
+        action: action.as_str(),
+        mode: throttle.mode.as_str(),
+        extra_delay_hours: throttle.extra_delay_hours,
+        reasons: throttle.reasons.as_slice(),
+        execution_cap_per_tick: throttle.execution_cap_per_tick,
+        created_at: &created_at,
+    })
+    .map_err(LiquidityPoolError::Internal)?;
+
+    let signature = match receipt_signing_key {
+        Some(secret_key) => Some(
+            sign_receipt_sha256(secret_key, canonical_json_sha256.as_str())
+                .map_err(|error| LiquidityPoolError::Internal(error.to_string()))?,
+        ),
+        None => None,
+    };
+
+    Ok(WithdrawThrottleReceiptV1 {
+        schema: WITHDRAW_THROTTLE_RECEIPT_SCHEMA_V1.to_string(),
+        receipt_id: format!("lpwdt_{}", &canonical_json_sha256[..24]),
+        pool_id: withdrawal.pool_id.clone(),
+        withdrawal_id: withdrawal.withdrawal_id.clone(),
+        action,
+        mode: throttle.mode,
+        extra_delay_hours: throttle.extra_delay_hours,
+        reasons: throttle.reasons.clone(),
+        execution_cap_per_tick: throttle.execution_cap_per_tick,
+        created_at,
         canonical_json_sha256,
         signature,
     })
@@ -3384,5 +3854,251 @@ impl WalletExecutorClient for UnavailableWalletExecutorClient {
         Err(LiquidityPoolError::DependencyUnavailable(
             self.reason.clone(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::liquidity_pool::store;
+    use crate::liquidity_pool::types::{POOL_CREATE_REQUEST_SCHEMA_V1, PoolSnapshotRow};
+
+    fn throttle_policy_for_tests() -> WithdrawThrottlePolicy {
+        WithdrawThrottlePolicy {
+            lp_mode_enabled: true,
+            stress_liability_ratio_bps: 2_500,
+            halt_liability_ratio_bps: 5_000,
+            stress_connected_ratio_bps: 8_000,
+            halt_connected_ratio_bps: 5_000,
+            stress_outbound_coverage_bps: 10_000,
+            halt_outbound_coverage_bps: 5_000,
+            stress_extra_delay_hours: 12,
+            halt_extra_delay_hours: 48,
+            stress_execution_cap_per_tick: 1,
+        }
+    }
+
+    async fn build_service(
+        policy: WithdrawThrottlePolicy,
+        withdraw_delay_hours: i64,
+    ) -> (
+        LiquidityPoolService,
+        Arc<dyn crate::liquidity_pool::store::LiquidityPoolStore>,
+    ) {
+        let pool_store = store::memory();
+        let service = LiquidityPoolService::new_with_lightning_node(
+            pool_store.clone(),
+            Arc::new(UnavailableWalletExecutorClient::new(
+                "wallet unavailable in test".to_string(),
+            )),
+            Arc::new(NoopLightningNode),
+            None,
+        )
+        .with_withdraw_delay_hours(withdraw_delay_hours)
+        .with_withdraw_throttle_policy(policy);
+        (service, pool_store)
+    }
+
+    async fn ensure_pool(service: &LiquidityPoolService, pool_id: &str) {
+        let body = PoolCreateRequestV1 {
+            schema: POOL_CREATE_REQUEST_SCHEMA_V1.to_string(),
+            operator_id: "operator:test".to_string(),
+            pool_kind: Some(PoolKindV1::Llp),
+            status: Some(PoolStatusV1::Active),
+            config: json!({}),
+        };
+        service
+            .create_pool(pool_id, body)
+            .await
+            .expect("pool create");
+    }
+
+    async fn put_llp_snapshot(
+        store: &Arc<dyn crate::liquidity_pool::store::LiquidityPoolStore>,
+        pool_id: &str,
+        channel_count: i64,
+        connected_channel_count: i64,
+        channel_outbound_sats: i64,
+    ) {
+        let now = Utc::now();
+        let assets_json = json!({
+            "schema": "openagents.liquidity.pool_assets.v1",
+            "partitionKind": "llp",
+            "walletBalanceSats": 0,
+            "bookAssetsSats": 0,
+            "lightning": {
+                "schema": "openagents.liquidity.llp_lightning_snapshot.v1",
+                "backend": "noop",
+                "onchainSats": 0,
+                "channelTotalSats": channel_outbound_sats,
+                "channelOutboundSats": channel_outbound_sats,
+                "channelInboundSats": 0,
+                "channelCount": channel_count,
+                "connectedChannelCount": connected_channel_count,
+                "lastError": null
+            }
+        });
+        let liabilities_json = json!({
+            "schema": "openagents.liquidity.pool_liabilities.v1",
+            "partitionKind": "llp",
+            "sharesOutstanding": 0,
+            "pendingWithdrawalsSatsEstimate": 0,
+            "creditReservedCommitmentsSats": 0
+        });
+        let digest = canonical_sha256(&json!({
+            "pool_id": pool_id,
+            "channel_count": channel_count,
+            "connected_channel_count": connected_channel_count,
+            "channel_outbound_sats": channel_outbound_sats
+        }))
+        .expect("snapshot digest");
+        let snapshot = PoolSnapshotRow {
+            snapshot_id: format!("lips_{}", &digest[..24]),
+            pool_id: pool_id.to_string(),
+            partition_kind: "llp".to_string(),
+            as_of: now,
+            assets_json,
+            liabilities_json,
+            share_price_sats: 1,
+            canonical_json_sha256: digest,
+            signature_json: None,
+            created_at: now,
+        };
+        store
+            .create_or_get_snapshot(snapshot)
+            .await
+            .expect("store snapshot");
+    }
+
+    async fn seed_confirmed_deposit(
+        store: &Arc<dyn crate::liquidity_pool::store::LiquidityPoolStore>,
+        pool_id: &str,
+        lp_id: &str,
+        deposit_id: &str,
+        amount_sats: i64,
+    ) {
+        let now = Utc::now();
+        store
+            .create_or_get_deposit(store::DepositInsertInput {
+                deposit_id: deposit_id.to_string(),
+                pool_id: pool_id.to_string(),
+                partition_kind: "llp".to_string(),
+                lp_id: lp_id.to_string(),
+                rail: "onchain".to_string(),
+                amount_sats,
+                share_price_sats: 1,
+                shares_minted: amount_sats,
+                status: DepositStatusV1::Pending.as_str().to_string(),
+                request_fingerprint_sha256: canonical_sha256(&json!({
+                    "deposit_id": deposit_id,
+                    "pool_id": pool_id,
+                    "lp_id": lp_id,
+                    "amount_sats": amount_sats
+                }))
+                .expect("deposit fingerprint"),
+                idempotency_key: format!("idem:deposit:{deposit_id}"),
+                invoice_bolt11: None,
+                invoice_hash: None,
+                deposit_address: Some("bc1qtestdeposit00000000000000000000000000".to_string()),
+                created_at: now,
+            })
+            .await
+            .expect("seed deposit");
+        store
+            .confirm_deposit_and_mint_shares(pool_id, deposit_id, now)
+            .await
+            .expect("confirm seed deposit");
+    }
+
+    fn onchain_withdraw_body(idempotency_key: &str) -> WithdrawRequestV1 {
+        WithdrawRequestV1 {
+            schema: WITHDRAW_REQUEST_SCHEMA_V1.to_string(),
+            lp_id: "lp:test".to_string(),
+            idempotency_key: idempotency_key.to_string(),
+            partition_kind: Some(PoolPartitionKindV1::Llp),
+            shares_burned: 1,
+            rail_preference: WithdrawalRailPreferenceV1::Onchain,
+            payout_invoice_bolt11: None,
+            payout_address: Some("bc1qtestaddress00000000000000000000000000".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn withdraw_throttle_status_reports_normal_when_healthy() {
+        let (service, store) = build_service(throttle_policy_for_tests(), 24).await;
+        ensure_pool(&service, "llp-main").await;
+        put_llp_snapshot(&store, "llp-main", 10, 10, 200_000).await;
+
+        let status = service
+            .withdraw_throttle_status("llp-main")
+            .await
+            .expect("throttle status");
+        assert_eq!(status.mode, WithdrawThrottleModeV1::Normal);
+        assert_eq!(status.extra_delay_hours, 0);
+        assert!(status.execution_cap_per_tick.is_none());
+    }
+
+    #[tokio::test]
+    async fn withdraw_request_applies_stress_delay_when_pool_is_stressed() {
+        let (service, store) = build_service(throttle_policy_for_tests(), 4).await;
+        ensure_pool(&service, "llp-main").await;
+        put_llp_snapshot(&store, "llp-main", 10, 7, 200_000).await;
+
+        let response = service
+            .withdraw_request("llp-main", onchain_withdraw_body("idem:stress-1"))
+            .await
+            .expect("withdraw request");
+        let throttle = response
+            .withdraw_throttle
+            .expect("withdraw throttle status should be present");
+        assert_eq!(throttle.mode, WithdrawThrottleModeV1::Stressed);
+        assert_eq!(throttle.extra_delay_hours, 12);
+        assert_eq!(
+            (response.withdrawal.earliest_settlement_at - response.withdrawal.created_at)
+                .num_hours(),
+            16
+        );
+    }
+
+    #[tokio::test]
+    async fn withdraw_request_rejects_when_throttle_is_halted() {
+        let mut policy = throttle_policy_for_tests();
+        policy.halt_connected_ratio_bps = 8_000;
+        let (service, store) = build_service(policy, 0).await;
+        ensure_pool(&service, "llp-main").await;
+        put_llp_snapshot(&store, "llp-main", 10, 7, 200_000).await;
+
+        let error = service
+            .withdraw_request("llp-main", onchain_withdraw_body("idem:halt-1"))
+            .await
+            .expect_err("withdraw should halt");
+        assert!(matches!(error, LiquidityPoolError::Conflict(_)));
+        assert!(error.to_string().contains("withdrawals halted by throttle"));
+    }
+
+    #[tokio::test]
+    async fn execute_due_withdrawals_enforces_stress_execution_cap() {
+        let mut policy = throttle_policy_for_tests();
+        policy.stress_extra_delay_hours = 0;
+        let (service, store) = build_service(policy, 0).await;
+        ensure_pool(&service, "llp-main").await;
+        put_llp_snapshot(&store, "llp-main", 10, 7, 200_000).await;
+        seed_confirmed_deposit(&store, "llp-main", "lp:test", "dep_seed_cap", 100_000).await;
+
+        service
+            .withdraw_request("llp-main", onchain_withdraw_body("idem:cap-1"))
+            .await
+            .expect("withdraw request 1");
+        service
+            .withdraw_request("llp-main", onchain_withdraw_body("idem:cap-2"))
+            .await
+            .expect("withdraw request 2");
+
+        let outcome = service
+            .execute_due_withdrawals(Utc::now() + Duration::hours(1), Some(20))
+            .await
+            .expect("execute due withdrawals");
+        assert_eq!(outcome.throttled, 1);
+        assert_eq!(outcome.attempted, 2);
     }
 }
