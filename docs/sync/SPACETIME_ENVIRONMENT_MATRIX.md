@@ -22,6 +22,13 @@ Optional:
 
 1. `OA_SPACETIME_<ENV>_WEBSOCKET_PATH` (default: `/v1/database/{database}/subscribe`)
 2. `OA_SPACETIME_<ENV>_HEALTH_PATH` (default: `/health`)
+3. `RUNTIME_SYNC_TOKEN_FALLBACK_SIGNING_KEYS` (comma-separated previous HS256 keys accepted during key rotation windows)
+4. `RUNTIME_SYNC_TOKEN_CLOCK_SKEW_SECONDS` (JWT leeway for `nbf`/`exp`; default `30`)
+
+Control token lease expectations:
+
+1. Spacetime token mint responses include `refresh_after_in` and `refresh_after`.
+2. Desktop/runtime clients should remint before `refresh_after` and retry with a fresh token on auth failures.
 
 ## Environment Targets
 
@@ -58,4 +65,3 @@ This command validates:
 1. required env var presence,
 2. base URL format,
 3. health endpoint reachability.
-

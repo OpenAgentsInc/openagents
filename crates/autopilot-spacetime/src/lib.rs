@@ -3,3 +3,4 @@
 pub mod schema;
 pub mod reducers;
 pub mod subscriptions;
+pub mod auth;

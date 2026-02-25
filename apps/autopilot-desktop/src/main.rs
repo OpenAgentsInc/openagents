@@ -517,10 +517,13 @@ impl RuntimeCodexSync {
         worker_id: &str,
         cursor: &mut u64,
     ) -> Result<(), String> {
-        let khala_token = self
-            .mint_khala_sync_token(vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()])
+        let sync_token = self
+            .mint_runtime_sync_token(
+                vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
+                vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
+            )
             .await?;
-        let websocket_url = self.build_khala_websocket_url(&khala_token).await?;
+        let websocket_url = self.build_khala_websocket_url(&sync_token).await?;
         let (mut socket, _response) = connect_async(websocket_url.as_str())
             .await
             .map_err(|error| error.to_string())?;
@@ -597,17 +600,45 @@ impl RuntimeCodexSync {
         }
     }
 
-    async fn mint_khala_sync_token(&self, scopes: Vec<String>) -> Result<String, String> {
-        let response = self
-            .post_json("/api/khala/token", json!({ "scope": scopes }))
-            .await?;
+    async fn mint_runtime_sync_token(
+        &self,
+        scopes: Vec<String>,
+        streams: Vec<String>,
+    ) -> Result<String, String> {
+        let payload = json!({
+            "scopes": scopes,
+            "streams": streams,
+        });
+        let response = match self
+            .post_json("/api/spacetime/token", payload.clone())
+            .await
+        {
+            Ok(response) => response,
+            Err(primary_error) => {
+                tracing::warn!(
+                    error = %primary_error,
+                    "runtime sync spacetime token mint failed; falling back to /api/sync/token"
+                );
+                self.post_json("/api/sync/token", payload).await?
+            }
+        };
+        if let Some(refresh_after_in) = response
+            .get("data")
+            .and_then(|value| value.get("refresh_after_in"))
+            .and_then(Value::as_u64)
+        {
+            tracing::debug!(
+                refresh_after_in,
+                "runtime sync token lease received from control"
+            );
+        }
         response
             .get("data")
             .and_then(|value| value.get("token"))
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .map(ToString::to_string)
-            .ok_or_else(|| "runtime sync khala token response missing token".to_string())
+            .ok_or_else(|| "runtime sync token response missing token".to_string())
     }
 
     async fn build_khala_websocket_url(&self, token: &str) -> Result<String, String> {

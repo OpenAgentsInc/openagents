@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug)]
 pub struct SyncAuthConfig {
     pub signing_key: String,
+    pub fallback_signing_keys: Vec<String>,
     pub issuer: String,
     pub audience: String,
     pub require_jti: bool,
     pub max_token_age_seconds: u64,
+    pub clock_skew_leeway_seconds: u64,
     pub revoked_jtis: HashSet<String>,
 }
 
@@ -35,6 +37,10 @@ pub struct SyncTokenClaims {
     pub oa_client_surface: Option<String>,
     #[serde(default)]
     pub oa_sync_scopes: Vec<String>,
+    #[serde(default)]
+    pub oa_sync_topics: Vec<String>,
+    #[serde(default)]
+    pub oa_sync_streams: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +50,7 @@ pub struct SyncPrincipal {
     pub device_id: Option<String>,
     pub client_surface: Option<String>,
     pub scopes: HashSet<String>,
+    pub allowed_streams: Option<HashSet<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,6 +71,8 @@ pub enum SyncAuthError {
     InvalidToken,
     #[error("sync token expired")]
     TokenExpired,
+    #[error("sync token is not valid yet")]
+    TokenNotYetValid,
     #[error("sync token missing jti")]
     MissingJti,
     #[error("sync token missing iat")]
@@ -94,6 +103,7 @@ impl SyncAuthError {
             Self::InvalidAuthorizationScheme => "invalid_authorization_scheme",
             Self::InvalidToken => "invalid_token",
             Self::TokenExpired => "token_expired",
+            Self::TokenNotYetValid => "token_not_yet_valid",
             Self::MissingJti => "missing_jti",
             Self::MissingIssuedAt => "missing_iat",
             Self::TokenTooOld => "token_too_old",
@@ -112,6 +122,7 @@ impl SyncAuthError {
                 | Self::InvalidAuthorizationScheme
                 | Self::InvalidToken
                 | Self::TokenExpired
+                | Self::TokenNotYetValid
                 | Self::MissingJti
                 | Self::MissingIssuedAt
                 | Self::TokenTooOld
@@ -123,6 +134,7 @@ impl SyncAuthError {
 #[derive(Clone)]
 pub struct SyncAuthorizer {
     decoding_key: DecodingKey,
+    fallback_decoding_keys: Vec<DecodingKey>,
     validation: Validation,
     require_jti: bool,
     max_token_age_seconds: u64,
@@ -135,9 +147,15 @@ impl SyncAuthorizer {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&[config.issuer.as_str()]);
         validation.set_audience(&[config.audience.as_str()]);
-        validation.leeway = 0;
+        validation.validate_nbf = true;
+        validation.leeway = config.clock_skew_leeway_seconds;
         Self {
             decoding_key: DecodingKey::from_secret(config.signing_key.as_bytes()),
+            fallback_decoding_keys: config
+                .fallback_signing_keys
+                .into_iter()
+                .map(|value| DecodingKey::from_secret(value.as_bytes()))
+                .collect(),
             validation,
             require_jti: config.require_jti,
             max_token_age_seconds: config.max_token_age_seconds.max(1),
@@ -160,13 +178,7 @@ impl SyncAuthorizer {
 
     pub fn authenticate(&self, token: &str) -> Result<SyncPrincipal, SyncAuthError> {
         let now = chrono::Utc::now().timestamp().max(0) as usize;
-        let claims = match decode::<SyncTokenClaims>(token, &self.decoding_key, &self.validation) {
-            Ok(decoded) => decoded.claims,
-            Err(error) => match error.kind() {
-                ErrorKind::ExpiredSignature => return Err(SyncAuthError::TokenExpired),
-                _ => return Err(SyncAuthError::InvalidToken),
-            },
-        };
+        let claims = self.decode_claims(token)?;
 
         if claims.iat == 0 {
             return Err(SyncAuthError::MissingIssuedAt);
@@ -187,6 +199,7 @@ impl SyncAuthorizer {
             device_id: claims.oa_device_id,
             client_surface: normalize_client_surface(claims.oa_client_surface.as_deref()),
             scopes: claims.oa_sync_scopes.into_iter().collect(),
+            allowed_streams: normalize_stream_grants(claims.oa_sync_topics, claims.oa_sync_streams),
         })
     }
 
@@ -197,6 +210,7 @@ impl SyncAuthorizer {
     ) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
         let normalized_topic = topic.trim();
         let authorized_topic = parse_topic(normalized_topic)?;
+        ensure_stream_grant(principal, normalized_topic)?;
         match &authorized_topic {
             AuthorizedKhalaTopic::CodexWorkerEvents => {
                 ensure_scope(
@@ -238,6 +252,67 @@ impl SyncAuthorizer {
             }
         }
         Ok(authorized_topic)
+    }
+
+    fn decode_claims(&self, token: &str) -> Result<SyncTokenClaims, SyncAuthError> {
+        match decode::<SyncTokenClaims>(token, &self.decoding_key, &self.validation) {
+            Ok(decoded) => Ok(decoded.claims),
+            Err(primary_error) => {
+                if is_signature_error(&primary_error) {
+                    for key in &self.fallback_decoding_keys {
+                        if let Ok(decoded) = decode::<SyncTokenClaims>(token, key, &self.validation)
+                        {
+                            return Ok(decoded.claims);
+                        }
+                    }
+                }
+                Err(map_decode_error(primary_error))
+            }
+        }
+    }
+}
+
+fn normalize_stream_grants(
+    topics: Vec<String>,
+    streams: Vec<String>,
+) -> Option<HashSet<String>> {
+    let mut grants = HashSet::new();
+    for value in topics.into_iter().chain(streams) {
+        let normalized = value.trim().to_string();
+        if !normalized.is_empty() {
+            grants.insert(normalized);
+        }
+    }
+    if grants.is_empty() {
+        None
+    } else {
+        Some(grants)
+    }
+}
+
+fn ensure_stream_grant(principal: &SyncPrincipal, stream: &str) -> Result<(), SyncAuthError> {
+    if let Some(grants) = principal.allowed_streams.as_ref()
+        && !grants.contains(stream)
+    {
+        return Err(SyncAuthError::ForbiddenTopic {
+            topic: stream.to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn is_signature_error(error: &jsonwebtoken::errors::Error) -> bool {
+    matches!(
+        error.kind(),
+        ErrorKind::InvalidSignature | ErrorKind::InvalidAlgorithm
+    )
+}
+
+fn map_decode_error(error: jsonwebtoken::errors::Error) -> SyncAuthError {
+    match error.kind() {
+        ErrorKind::ExpiredSignature => SyncAuthError::TokenExpired,
+        ErrorKind::ImmatureSignature => SyncAuthError::TokenNotYetValid,
+        _ => SyncAuthError::InvalidToken,
     }
 }
 
@@ -354,10 +429,12 @@ mod tests {
         let key = "sync-test-key";
         let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
             require_jti: true,
             max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
             revoked_jtis: HashSet::from([String::from("revoked-jti")]),
         });
         let claims = SyncTokenClaims {
@@ -373,6 +450,8 @@ mod tests {
             oa_device_id: Some("ios-device".to_string()),
             oa_client_surface: Some("ios".to_string()),
             oa_sync_scopes: vec!["runtime.codex_worker_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec![],
         };
         let token = make_token(claims, key);
         let result = authorizer.authenticate(&token);
@@ -384,10 +463,12 @@ mod tests {
         let key = "sync-test-key";
         let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
             require_jti: true,
             max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
             revoked_jtis: HashSet::new(),
         });
         let claims = SyncTokenClaims {
@@ -403,6 +484,13 @@ mod tests {
             oa_device_id: Some("ios-device".to_string()),
             oa_client_surface: Some("ios".to_string()),
             oa_sync_scopes: vec!["runtime.codex_worker_events".to_string()],
+            oa_sync_topics: vec![
+                "worker:desktopw:shared:lifecycle".to_string(),
+                "fleet:user:1:workers".to_string(),
+                "fleet:user:2:workers".to_string(),
+                "run:019c7f93:events".to_string(),
+            ],
+            oa_sync_streams: vec![],
         };
         let token = make_token(claims, key);
         let principal = authorizer.authenticate(&token).expect("principal");
@@ -447,10 +535,12 @@ mod tests {
         let key = "sync-test-key";
         let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
             require_jti: true,
             max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
             revoked_jtis: HashSet::new(),
         });
         let now = Utc::now().timestamp() as usize;
@@ -467,6 +557,8 @@ mod tests {
             oa_device_id: Some("ios-device".to_string()),
             oa_client_surface: Some("ios".to_string()),
             oa_sync_scopes: vec!["runtime.run_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec![],
         };
         let token = make_token(claims, key);
         let result = authorizer.authenticate(&token);
@@ -478,10 +570,12 @@ mod tests {
         let key = "sync-test-key";
         let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
             require_jti: true,
             max_token_age_seconds: 30,
+            clock_skew_leeway_seconds: 0,
             revoked_jtis: HashSet::new(),
         });
         let now = Utc::now().timestamp() as usize;
@@ -498,9 +592,119 @@ mod tests {
             oa_device_id: Some("ios-device".to_string()),
             oa_client_surface: Some("ios".to_string()),
             oa_sync_scopes: vec!["runtime.run_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec![],
         };
         let token = make_token(claims, key);
         let result = authorizer.authenticate(&token);
         assert_eq!(result, Err(SyncAuthError::TokenTooOld));
+    }
+
+    #[test]
+    fn token_signed_with_fallback_key_is_accepted() {
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: "primary-signing-key".to_string(),
+            fallback_signing_keys: vec!["previous-signing-key".to_string()],
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
+            revoked_jtis: HashSet::new(),
+        });
+        let now = Utc::now().timestamp() as usize;
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: "user:1".to_string(),
+            exp: now + 60,
+            nbf: now,
+            iat: now,
+            jti: "fallback-key-token".to_string(),
+            oa_user_id: Some(1),
+            oa_org_id: Some("user:1".to_string()),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_client_surface: Some("ios".to_string()),
+            oa_sync_scopes: vec!["runtime.codex_worker_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec![],
+        };
+        let token = make_token(claims, "previous-signing-key");
+        let principal = authorizer.authenticate(&token);
+        assert!(principal.is_ok());
+    }
+
+    #[test]
+    fn explicit_stream_grants_are_enforced() {
+        let key = "sync-test-key";
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 0,
+            revoked_jtis: HashSet::new(),
+        });
+        let now = Utc::now().timestamp() as usize;
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: "user:1".to_string(),
+            exp: now + 60,
+            nbf: now,
+            iat: now,
+            jti: "stream-grant-token".to_string(),
+            oa_user_id: Some(1),
+            oa_org_id: Some("user:1".to_string()),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_client_surface: Some("ios".to_string()),
+            oa_sync_scopes: vec!["runtime.codex_worker_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec!["worker:desktopw:shared:lifecycle".to_string()],
+        };
+        let token = make_token(claims, key);
+        let principal = authorizer.authenticate(&token).expect("principal");
+
+        let denied = authorizer
+            .authorize_topic(&principal, "worker:other-worker:lifecycle")
+            .expect_err("worker stream outside grant must be denied");
+        assert!(matches!(denied, SyncAuthError::ForbiddenTopic { .. }));
+    }
+
+    #[test]
+    fn token_not_yet_valid_is_rejected_when_outside_leeway() {
+        let key = "sync-test-key";
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: key.to_string(),
+            fallback_signing_keys: Vec::new(),
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
+            clock_skew_leeway_seconds: 5,
+            revoked_jtis: HashSet::new(),
+        });
+        let now = Utc::now().timestamp() as usize;
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: "user:1".to_string(),
+            exp: now + 120,
+            nbf: now + 30,
+            iat: now,
+            jti: "immature-token".to_string(),
+            oa_user_id: Some(1),
+            oa_org_id: Some("user:1".to_string()),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_client_surface: Some("ios".to_string()),
+            oa_sync_scopes: vec!["runtime.codex_worker_events".to_string()],
+            oa_sync_topics: vec![],
+            oa_sync_streams: vec![],
+        };
+        let token = make_token(claims, key);
+        let result = authorizer.authenticate(&token);
+        assert_eq!(result, Err(SyncAuthError::TokenNotYetValid));
     }
 }

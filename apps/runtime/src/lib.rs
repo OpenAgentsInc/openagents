@@ -67,10 +67,12 @@ pub async fn build_runtime_state(config: Config) -> Result<AppState> {
     ));
     let sync_auth = Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
         signing_key: config.sync_token_signing_key.clone(),
+        fallback_signing_keys: config.sync_token_fallback_signing_keys.clone(),
         issuer: config.sync_token_issuer.clone(),
         audience: config.sync_token_audience.clone(),
         require_jti: config.sync_token_require_jti,
         max_token_age_seconds: config.sync_token_max_age_seconds,
+        clock_skew_leeway_seconds: config.sync_token_clock_skew_seconds,
         revoked_jtis: config.sync_revoked_jtis.clone(),
     }));
     Ok(AppState::new(

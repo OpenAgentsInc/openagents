@@ -108,10 +108,12 @@ pub struct Config {
     pub khala_codex_worker_events_max_payload_bytes: usize,
     pub khala_fallback_max_payload_bytes: usize,
     pub sync_token_signing_key: String,
+    pub sync_token_fallback_signing_keys: Vec<String>,
     pub sync_token_issuer: String,
     pub sync_token_audience: String,
     pub sync_token_require_jti: bool,
     pub sync_token_max_age_seconds: u64,
+    pub sync_token_clock_skew_seconds: u64,
     pub sync_revoked_jtis: HashSet<String>,
     pub verifier_strict: bool,
     pub verifier_allowed_signer_pubkeys: HashSet<String>,
@@ -199,6 +201,8 @@ pub enum ConfigError {
     InvalidSyncTokenRequireJti(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS: {0}")]
     InvalidSyncTokenMaxAgeSeconds(String),
+    #[error("invalid RUNTIME_SYNC_TOKEN_CLOCK_SKEW_SECONDS: {0}")]
+    InvalidSyncTokenClockSkewSeconds(String),
     #[error("invalid RUNTIME_VERIFIER_STRICT: {0}")]
     InvalidVerifierStrict(String),
     #[error("invalid RUNTIME_VERIFIER_ALLOWED_SIGNER_PUBKEYS: {0}")]
@@ -409,6 +413,16 @@ impl Config {
         let khala_consumer_registry_capacity = khala_consumer_registry_capacity.max(1);
         let sync_token_signing_key = env::var("RUNTIME_SYNC_TOKEN_SIGNING_KEY")
             .unwrap_or_else(|_| "dev-sync-key".to_string());
+        let sync_token_fallback_signing_keys = env::var("RUNTIME_SYNC_TOKEN_FALLBACK_SIGNING_KEYS")
+            .ok()
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let sync_token_issuer = env::var("RUNTIME_SYNC_TOKEN_ISSUER")
             .unwrap_or_else(|_| "https://openagents.com".to_string());
         let sync_token_audience = env::var("RUNTIME_SYNC_TOKEN_AUDIENCE")
@@ -424,6 +438,10 @@ impl Config {
             .parse::<u64>()
             .map_err(|error| ConfigError::InvalidSyncTokenMaxAgeSeconds(error.to_string()))?
             .max(1);
+        let sync_token_clock_skew_seconds = env::var("RUNTIME_SYNC_TOKEN_CLOCK_SKEW_SECONDS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidSyncTokenClockSkewSeconds(error.to_string()))?;
         let sync_revoked_jtis = env::var("RUNTIME_SYNC_REVOKED_JTIS")
             .ok()
             .map(|raw| {
@@ -598,10 +616,12 @@ impl Config {
             khala_codex_worker_events_max_payload_bytes,
             khala_fallback_max_payload_bytes,
             sync_token_signing_key,
+            sync_token_fallback_signing_keys,
             sync_token_issuer,
             sync_token_audience,
             sync_token_require_jti,
             sync_token_max_age_seconds,
+            sync_token_clock_skew_seconds,
             sync_revoked_jtis,
             verifier_strict,
             verifier_allowed_signer_pubkeys,
