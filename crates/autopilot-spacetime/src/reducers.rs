@@ -8,6 +8,11 @@ pub enum ReducerError {
     EmptyField(&'static str),
     AssignmentMissing(String),
     BridgeEventMissing(String),
+    SequenceConflict {
+        stream_id: String,
+        expected_next_seq: u64,
+        actual_next_seq: u64,
+    },
 }
 
 /// Core sync event row.
@@ -88,6 +93,14 @@ pub struct AppendSyncEventRequest {
     pub payload_bytes: Vec<u8>,
     pub committed_at_unix_ms: u64,
     pub confirmed_read: bool,
+    pub expected_next_seq: Option<u64>,
+}
+
+/// Append reducer outcome, including explicit duplicate-idempotency outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppendSyncEventOutcome {
+    Applied(SyncEvent),
+    Duplicate(SyncEvent),
 }
 
 /// Checkpoint reducer request.
@@ -158,6 +171,7 @@ pub struct MarkBridgeEventSentRequest {
 pub struct ReducerStore {
     stream_heads: HashMap<String, u64>,
     stream_events: HashMap<String, Vec<SyncEvent>>,
+    idempotency_index: HashMap<(String, String), u64>,
     checkpoints: HashMap<(String, String), SyncCheckpoint>,
     session_presence: HashMap<String, SessionPresence>,
     provider_capabilities: HashMap<String, ProviderCapability>,
@@ -170,23 +184,47 @@ impl ReducerStore {
     pub fn append_sync_event(
         &mut self,
         request: AppendSyncEventRequest,
-    ) -> Result<SyncEvent, ReducerError> {
+    ) -> Result<AppendSyncEventOutcome, ReducerError> {
         require_non_empty(&request.stream_id, "stream_id")?;
         require_non_empty(&request.idempotency_key, "idempotency_key")?;
         require_non_empty(&request.payload_hash, "payload_hash")?;
+
+        let stream_id = request.stream_id.clone();
+        let idempotency_key = request.idempotency_key.clone();
+        let idempotency_lookup_key = (stream_id.clone(), idempotency_key.clone());
+        if let Some(existing_seq) = self.idempotency_index.get(&idempotency_lookup_key).copied() {
+            if let Some(existing) = self
+                .stream_events
+                .get(stream_id.as_str())
+                .and_then(|rows| rows.iter().find(|row| row.seq == existing_seq))
+                .cloned()
+            {
+                return Ok(AppendSyncEventOutcome::Duplicate(existing));
+            }
+        }
 
         let next_seq = self
             .stream_heads
             .get(request.stream_id.as_str())
             .copied()
-            .unwrap_or(0)
-            + 1;
+            .unwrap_or(0);
+        let next_seq = next_seq + 1;
+        if let Some(expected_next_seq) = request.expected_next_seq
+            && expected_next_seq != next_seq
+        {
+            return Err(ReducerError::SequenceConflict {
+                stream_id,
+                expected_next_seq,
+                actual_next_seq: next_seq,
+            });
+        }
+
         self.stream_heads.insert(request.stream_id.clone(), next_seq);
 
         let event = SyncEvent {
             stream_id: request.stream_id.clone(),
             seq: next_seq,
-            idempotency_key: request.idempotency_key,
+            idempotency_key,
             payload_hash: request.payload_hash,
             payload_bytes: request.payload_bytes,
             committed_at_unix_ms: request.committed_at_unix_ms,
@@ -197,7 +235,9 @@ impl ReducerStore {
             .entry(request.stream_id)
             .or_default()
             .push(event.clone());
-        Ok(event)
+        self.idempotency_index
+            .insert(idempotency_lookup_key, event.seq);
+        Ok(AppendSyncEventOutcome::Applied(event))
     }
 
     /// Upserts a client stream checkpoint.
@@ -372,8 +412,8 @@ fn require_non_empty(value: &str, field: &'static str) -> Result<(), ReducerErro
 #[cfg(test)]
 mod tests {
     use super::{
-        AckCheckpointRequest, AppendSyncEventRequest, BridgeOutboxStatus, EnqueueBridgeEventRequest,
-        MarkBridgeEventSentRequest, OpenComputeAssignmentRequest,
+        AckCheckpointRequest, AppendSyncEventOutcome, AppendSyncEventRequest, BridgeOutboxStatus,
+        EnqueueBridgeEventRequest, MarkBridgeEventSentRequest, OpenComputeAssignmentRequest,
         PublishProviderCapabilityRequest, ReducerStore, UpdateComputeAssignmentRequest,
         UpsertPresenceRequest,
     };
@@ -388,12 +428,17 @@ mod tests {
             payload_bytes: vec![1],
             committed_at_unix_ms: 10,
             confirmed_read: false,
+            expected_next_seq: Some(1),
         });
         assert!(first.is_ok());
         let first = match first {
-            Ok(value) => value,
+            Ok(AppendSyncEventOutcome::Applied(value)) => value,
             Err(_) => {
                 assert!(false, "first append should succeed");
+                return;
+            }
+            Ok(AppendSyncEventOutcome::Duplicate(_)) => {
+                assert!(false, "first append should not be duplicate");
                 return;
             }
         };
@@ -406,16 +451,80 @@ mod tests {
             payload_bytes: vec![2],
             committed_at_unix_ms: 20,
             confirmed_read: true,
+            expected_next_seq: Some(2),
         });
         assert!(second.is_ok());
         let second = match second {
-            Ok(value) => value,
+            Ok(AppendSyncEventOutcome::Applied(value)) => value,
             Err(_) => {
                 assert!(false, "second append should succeed");
                 return;
             }
+            Ok(AppendSyncEventOutcome::Duplicate(_)) => {
+                assert!(false, "second append should not be duplicate");
+                return;
+            }
         };
         assert_eq!(second.seq, 2);
+    }
+
+    #[test]
+    fn append_sync_event_returns_duplicate_on_idempotency_collision() {
+        let mut store = ReducerStore::default();
+        let first = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.run.run_7".to_string(),
+            idempotency_key: "idem-dup".to_string(),
+            payload_hash: "sha256:x".to_string(),
+            payload_bytes: vec![1, 2],
+            committed_at_unix_ms: 30,
+            confirmed_read: false,
+            expected_next_seq: Some(1),
+        });
+        assert!(matches!(first, Ok(AppendSyncEventOutcome::Applied(_))));
+
+        let duplicate = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.run.run_7".to_string(),
+            idempotency_key: "idem-dup".to_string(),
+            payload_hash: "sha256:x".to_string(),
+            payload_bytes: vec![1, 2],
+            committed_at_unix_ms: 31,
+            confirmed_read: false,
+            expected_next_seq: Some(2),
+        });
+        assert!(matches!(
+            duplicate,
+            Ok(AppendSyncEventOutcome::Duplicate(_))
+        ));
+        assert_eq!(store.stream_events("runtime.run.run_7").len(), 1);
+    }
+
+    #[test]
+    fn append_sync_event_returns_sequence_conflict() {
+        let mut store = ReducerStore::default();
+        let first = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.run.run_9".to_string(),
+            idempotency_key: "idem-1".to_string(),
+            payload_hash: "sha256:x".to_string(),
+            payload_bytes: vec![1],
+            committed_at_unix_ms: 40,
+            confirmed_read: false,
+            expected_next_seq: Some(1),
+        });
+        assert!(first.is_ok());
+
+        let conflict = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.run.run_9".to_string(),
+            idempotency_key: "idem-2".to_string(),
+            payload_hash: "sha256:y".to_string(),
+            payload_bytes: vec![2],
+            committed_at_unix_ms: 41,
+            confirmed_read: false,
+            expected_next_seq: Some(7),
+        });
+        assert!(matches!(
+            conflict,
+            Err(super::ReducerError::SequenceConflict { .. })
+        ));
     }
 
     #[test]
