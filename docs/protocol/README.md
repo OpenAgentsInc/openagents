@@ -20,6 +20,7 @@ This directory is the Rust-era protocol system-of-record.
 ## Fixtures and Taxonomy
 
 - `docs/protocol/fixtures/`
+- `docs/protocol/fixtures/sync-v2-envelope-v1.json`
 - `docs/protocol/testdata/spacetime_payload_hash_vectors.v1.json`
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json`
 
