@@ -11,6 +11,7 @@ Current-state Khala sync documentation and runbooks (legacy lane during replacem
 - `SPACETIME_CLIENT_CRATE.md`: typed client API for negotiation, subscribe/resume, reducer calls, and reconnect helpers
 - `SPACETIME_DESKTOP_CONNECTION_LIFECYCLE.md`: desktop reconnect/token-refresh lifecycle policy and UI health contract
 - `SPACETIME_DESKTOP_APPLY_ENGINE.md`: deterministic `(stream_id, seq)` apply contract, duplicate suppression, and replay rewind behavior
+- `SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE.md`: local checkpoint format, restart resume policy, stale clamp, and persistence/recovery guarantees
 - canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
 
 Spacetime replacement authority plans:

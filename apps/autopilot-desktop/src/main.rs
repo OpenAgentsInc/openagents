@@ -75,6 +75,7 @@ mod provider_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
 mod sync_apply_engine;
+mod sync_checkpoint_store;
 mod sync_lifecycle;
 mod wallet_domain;
 
@@ -99,6 +100,9 @@ use runtime_codex_proto::{
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
 };
 use sync_apply_engine::{ApplyDecision, RuntimeSyncApplyEngine};
+use sync_checkpoint_store::{
+    ResumeCursorSource, RuntimeSyncCheckpointStore, resolve_resume_cursor,
+};
 use sync_lifecycle::{
     RuntimeSyncDisconnectReason, RuntimeSyncHealthSnapshot, RuntimeSyncLifecycleManager,
     classify_disconnect_reason,
@@ -192,6 +196,7 @@ struct RuntimeCodexSync {
     seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
     terminal_control_receipts: Arc<tokio::sync::Mutex<HashSet<String>>>,
     apply_engine: Arc<tokio::sync::Mutex<RuntimeSyncApplyEngine>>,
+    checkpoints: Arc<tokio::sync::Mutex<RuntimeSyncCheckpointStore>>,
     lifecycle: Arc<tokio::sync::Mutex<RuntimeSyncLifecycleManager>>,
     remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
@@ -273,6 +278,9 @@ impl RuntimeCodexSync {
             seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             terminal_control_receipts: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             apply_engine: Arc::new(tokio::sync::Mutex::new(RuntimeSyncApplyEngine::default())),
+            checkpoints: Arc::new(tokio::sync::Mutex::new(
+                RuntimeSyncCheckpointStore::load_default(),
+            )),
             lifecycle: Arc::new(tokio::sync::Mutex::new(
                 RuntimeSyncLifecycleManager::default(),
             )),
@@ -500,13 +508,81 @@ impl RuntimeCodexSync {
 
     async fn run_worker_stream_loop(&self, worker_id: String) {
         let stream_id = runtime_sync_worker_stream_id(worker_id.as_str());
-        let mut cursor = match self.fetch_worker_latest_seq(&worker_id).await {
-            Ok(latest_seq) => latest_seq,
+        let remote_latest = match self.fetch_worker_latest_seq(&worker_id).await {
+            Ok(latest_seq) => Some(latest_seq),
             Err(error) => {
-                tracing::warn!(worker_id = %worker_id, error = %error, "runtime sync khala bootstrap fallback to cursor=0");
-                0
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    error = %error,
+                    "runtime sync khala bootstrap missing latest_seq; relying on local checkpoint or cursor=0"
+                );
+                None
             }
         };
+        let local_checkpoint = self
+            .checkpoint_watermark(&worker_id, stream_id.as_str())
+            .await;
+        let resume_decision = resolve_resume_cursor(local_checkpoint, remote_latest);
+        let mut cursor = resume_decision.cursor;
+        match resume_decision.source {
+            ResumeCursorSource::LocalCheckpoint => {
+                tracing::info!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    cursor,
+                    "runtime sync resuming from local checkpoint watermark"
+                );
+            }
+            ResumeCursorSource::RemoteLatest => {
+                tracing::info!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    cursor,
+                    "runtime sync seeded from remote latest sequence"
+                );
+                if let Err(error) = self
+                    .checkpoint_upsert(&worker_id, stream_id.as_str(), cursor)
+                    .await
+                {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        cursor,
+                        error = %error,
+                        "runtime sync failed to persist initial remote checkpoint"
+                    );
+                }
+            }
+            ResumeCursorSource::ClampedToRemoteHead => {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    cursor,
+                    local_checkpoint = local_checkpoint.unwrap_or_default(),
+                    remote_latest = remote_latest.unwrap_or_default(),
+                    "runtime sync local checkpoint exceeded remote head; clamping"
+                );
+                if let Err(error) = self
+                    .checkpoint_rewind(&worker_id, stream_id.as_str(), cursor)
+                    .await
+                {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        cursor,
+                        error = %error,
+                        "runtime sync failed to persist clamped checkpoint"
+                    );
+                }
+            }
+            ResumeCursorSource::FallbackZero => {
+                tracing::info!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    "runtime sync bootstrap fallback to cursor=0"
+                );
+            }
+        }
         {
             let mut apply_engine = self.apply_engine.lock().await;
             apply_engine.seed_stream_checkpoint(stream_id.as_str(), cursor);
@@ -556,6 +632,17 @@ impl RuntimeCodexSync {
                 cursor = 0;
                 let mut apply_engine = self.apply_engine.lock().await;
                 apply_engine.rewind_stream_checkpoint(stream_id.as_str(), cursor);
+                if let Err(error) = self
+                    .checkpoint_rewind(&worker_id, stream_id.as_str(), cursor)
+                    .await
+                {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        stream_id = stream_id.as_str(),
+                        error = %error,
+                        "runtime sync failed to persist stale-cursor rewind"
+                    );
+                }
                 tracing::warn!(
                     worker_id = %worker_id,
                     "runtime sync cursor reset due to stale replay window"
@@ -857,6 +944,7 @@ impl RuntimeCodexSync {
         payload: &Value,
     ) -> Result<(), String> {
         let stream_id = runtime_sync_worker_stream_id(worker_id);
+        let starting_cursor = *cursor;
         let events =
             extract_runtime_events_from_khala_update(payload, RUNTIME_SYNC_KHALA_TOPIC, worker_id);
         if events.is_empty() {
@@ -955,8 +1043,33 @@ impl RuntimeCodexSync {
             let mut apply_engine = self.apply_engine.lock().await;
             apply_engine.rewind_stream_checkpoint(stream_id.as_str(), replay_cursor);
             *cursor = replay_cursor;
+            if let Err(error) = self
+                .checkpoint_rewind(worker_id, stream_id.as_str(), replay_cursor)
+                .await
+            {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    cursor = replay_cursor,
+                    error = %error,
+                    "runtime sync failed to persist replay rewind checkpoint"
+                );
+            }
         } else {
             *cursor = next_cursor;
+            if next_cursor > starting_cursor
+                && let Err(error) = self
+                    .checkpoint_upsert(worker_id, stream_id.as_str(), next_cursor)
+                    .await
+            {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    stream_id = stream_id.as_str(),
+                    cursor = next_cursor,
+                    error = %error,
+                    "runtime sync failed to persist replay watermark checkpoint"
+                );
+            }
         }
 
         Ok(())
@@ -1280,6 +1393,31 @@ impl RuntimeCodexSync {
             .and_then(|data| data.get("latest_seq"))
             .and_then(|latest_seq| latest_seq.as_u64())
             .ok_or_else(|| "runtime sync worker snapshot missing latest_seq".to_string())
+    }
+
+    async fn checkpoint_watermark(&self, worker_id: &str, stream_id: &str) -> Option<u64> {
+        let store = self.checkpoints.lock().await;
+        store.watermark(worker_id, stream_id)
+    }
+
+    async fn checkpoint_upsert(
+        &self,
+        worker_id: &str,
+        stream_id: &str,
+        watermark: u64,
+    ) -> Result<(), String> {
+        let mut store = self.checkpoints.lock().await;
+        store.upsert(worker_id, stream_id, watermark)
+    }
+
+    async fn checkpoint_rewind(
+        &self,
+        worker_id: &str,
+        stream_id: &str,
+        watermark: u64,
+    ) -> Result<(), String> {
+        let mut store = self.checkpoints.lock().await;
+        store.rewind(worker_id, stream_id, watermark)
     }
 
     async fn set_worker_session_id(&self, worker_id: &str, session_id: SessionId) {
