@@ -10,8 +10,8 @@ Scope owner: repo-wide (apps, workspace manifests, scripts, docs, deploy runbook
 2. Web presence is reduced to a simple page with a desktop download link.
 3. Mobile app is removed entirely.
 4. Onyx is moved to `~/code/backroom` and removed from this repo.
-5. `apps/` is eradicated completely (no app code left under `apps/`).
-6. Reusable libraries may remain, but outside `apps/`.
+5. `apps/` remains for retained app surfaces (`apps/openagents.com`, `apps/autopilot-desktop`, `apps/runtime`, `apps/lightning-ops`, `apps/lightning-wallet-executor`).
+6. Reusable libraries remain in `crates/`; only targeted app surfaces are removed.
 
 ## Preflight Authority Check
 
@@ -110,7 +110,12 @@ Onyx is also coupled to:
 6. `apps/lightning-wallet-executor`
 7. `apps/onyx`
 
-If `apps/` is eradicated completely, these paths must be moved and all manifests/path dependencies updated.
+These entries show where targeted removals will touch workspace members and path references.
+Retained `apps/` surfaces should stay in place. Required workspace/path changes are limited to removing targeted members and references:
+
+1. `apps/autopilot-ios` (remove from workspace and references).
+2. `apps/onyx` (archive/remove and remove from workspace/references).
+3. `apps/openagents.com/web-shell` (remove only if no longer needed for the simple landing-page target).
 
 ### CI and automation
 
@@ -151,7 +156,7 @@ If iOS and Onyx are removed, these become stale and require supersede/archive de
 Decide and document:
 
 1. Whether control-plane APIs currently used by desktop remain active.
-2. Final location for retained non-library services currently in `apps/`:
+2. Retained services stay under existing `apps/` locations unless explicitly changed:
    - runtime
    - control service (if retained)
    - lightning services
@@ -159,7 +164,7 @@ Decide and document:
 3. Canonical destination for the static download page.
 4. Desktop download URL source of truth (release page/object storage path).
 
-Without this, "eradicate `apps/`" will break runtime/deploy flows.
+Without this, removals can break desktop/runtime dependencies and release flows.
 
 ## Phase 1: Web product reduction to landing-only
 
@@ -183,21 +188,21 @@ Without this, "eradicate `apps/`" will break runtime/deploy flows.
 3. Remove Onyx workspace entry.
 4. Remove Onyx-specific runtime policy/tests and contract docs (`ADR-0007`, `onyx-integration-contract-v1`) or replace with superseded records.
 
-## Phase 4: Eradicate `apps/` path completely
+## Phase 4: Retained Apps Stabilization (No `apps/` Eradication)
 
-Because `apps/` currently also hosts runtime/desktop/lightning services, full eradication requires moving retained app crates:
+Keep retained app surfaces in `apps/` and stabilize references after removals:
 
-1. `apps/runtime` -> new non-`apps` location.
-2. `apps/autopilot-desktop` -> new non-`apps` location.
-3. `apps/lightning-ops` -> new non-`apps` location.
-4. `apps/lightning-wallet-executor` -> new non-`apps` location.
-5. `apps/openagents.com/service` -> new non-`apps` location if retained.
-
-Then:
-
-1. update root workspace members,
-2. update all path-based scripts and docs,
-3. remove empty `apps/`.
+1. Keep:
+   - `apps/openagents.com` (reduced to landing-page web presence + any retained control API path).
+   - `apps/autopilot-desktop`
+   - `apps/runtime`
+   - `apps/lightning-ops`
+   - `apps/lightning-wallet-executor`
+2. Remove from workspace/path references only:
+   - `apps/autopilot-ios`
+   - `apps/onyx`
+   - `apps/openagents.com/web-shell` if landing-only mode removes it.
+3. Update scripts/docs that referenced removed surfaces.
 
 ## Phase 5: Global reference cleanup
 
@@ -209,12 +214,13 @@ Then:
 
 Required checks after migration:
 
-1. `test ! -d apps`
-2. `rg "apps/"` returns only archival/historical references explicitly marked historical.
-3. `cargo check --workspace` passes with new paths.
-4. `./scripts/local-ci.sh docs` passes with updated docs-check expectations.
-5. Any retained deploy smoke scripts pass with relocated paths.
-6. Web endpoint behavior verified:
+1. `test -d apps`
+2. `test ! -d apps/autopilot-ios`
+3. `test ! -d apps/onyx`
+4. `cargo check --workspace` passes with updated workspace members.
+5. `./scripts/local-ci.sh docs` passes with updated docs-check expectations.
+6. Any retained deploy smoke scripts pass with existing retained paths.
+7. Web endpoint behavior verified:
    - root page renders download-only landing
    - no interactive web app routes remain.
 
@@ -233,15 +239,16 @@ For requested archive/delete behavior:
 
 1. Over-removing control APIs can break desktop auth/runtime flows.
 2. Deleting iOS/Onyx without cleaning CI/docs causes persistent gate failures.
-3. Moving runtime/control/lightning crates without synchronized script/doc updates will break deploy runbooks.
+3. Removing web-shell/control pieces without preserving required desktop/runtime API contracts can break active clients.
 4. ADR/protocol drift if removed surfaces stay described as active.
-5. Partial `apps/` deletion leaves path ambiguity and broken workspace members.
+5. Accidental deletion of retained `apps/` surfaces can break deploy and local CI lanes.
 
 ## Recommended Execution Order
 
 1. Final topology decision (Phase 0) and write it into canonical docs.
-2. Perform path moves for retained services/apps first (Phase 4 foundations).
-3. Then remove web/mobile/Onyx surfaces.
-4. Finish with docs/CI/runbook cleanup and validation.
+2. Reduce web surface to landing-only while preserving required retained APIs.
+3. Remove `apps/autopilot-ios`.
+4. Archive/remove `apps/onyx`.
+5. Finish with docs/CI/runbook cleanup and validation.
 
 This order minimizes broken intermediate states and keeps verification lanes meaningful throughout migration.
