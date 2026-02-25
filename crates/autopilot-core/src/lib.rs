@@ -111,8 +111,9 @@ pub use utils::{sanitize_text, shorten_path, wrap_text};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use workflow::{
-    GitHubExportDispatchResult, GitHubExportEnqueueResult, GitHubExportIntent, GitHubExportKind,
-    GitHubExportStatus, GitHubWorkflow, IssueWorkflowResult, WorkflowReceipt,
+    GitHubExportCheckpointSnapshot, GitHubExportDispatchResult, GitHubExportEnqueueResult,
+    GitHubExportIntent, GitHubExportKind, GitHubExportStatus, GitHubWorkflow, IssueWorkflowResult,
+    WorkflowReceipt,
 };
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -1,10 +1,14 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 
 use crate::github::{GitHubClient, branch_name_for_issue};
+use crate::paths::openagents_home;
 
 /// GitHub workflow orchestrator for autopilot.
 ///
@@ -14,25 +18,47 @@ pub struct GitHubWorkflow {
     client: Option<GitHubClient>,
     agent_identity: String,
     export_queue: Arc<Mutex<GitHubExportQueue>>,
+    queue_store: GitHubExportQueueStore,
 }
 
 impl GitHubWorkflow {
     /// Create a new GitHub workflow with authentication.
     pub fn new(token: &str, agent_identity: String) -> Result<Self> {
         let client = GitHubClient::new(token)?;
-        Ok(Self {
-            client: Some(client),
+        Ok(Self::new_with_store(
+            Some(client),
             agent_identity,
-            export_queue: Arc::new(Mutex::new(GitHubExportQueue::default())),
-        })
+            GitHubExportQueueStore::default(),
+        ))
     }
 
     /// Create a workflow that can queue exports without an active GitHub client.
     pub fn without_client(agent_identity: String) -> Self {
+        Self::new_with_store(None, agent_identity, GitHubExportQueueStore::default())
+    }
+
+    fn new_with_store(
+        client: Option<GitHubClient>,
+        agent_identity: String,
+        queue_store: GitHubExportQueueStore,
+    ) -> Self {
+        let loaded_queue = match queue_store.load() {
+            Ok(queue) => queue,
+            Err(error) => {
+                warn!(
+                    "Failed to load persisted GitHub export queue from {}: {}",
+                    queue_store.path.display(),
+                    error
+                );
+                GitHubExportQueue::default()
+            }
+        };
+
         Self {
-            client: None,
+            client,
             agent_identity,
-            export_queue: Arc::new(Mutex::new(GitHubExportQueue::default())),
+            export_queue: Arc::new(Mutex::new(loaded_queue)),
+            queue_store,
         }
     }
 
@@ -70,16 +96,32 @@ impl GitHubWorkflow {
             branch_name.clone(),
             base_sha.to_string(),
         );
+        let branch_export_intent_id = match enqueue {
+            Ok(result) => {
+                info!(
+                    "Queued branch export intent #{} for issue #{}",
+                    result.intent_id, issue_number
+                );
+                Some(result.intent_id)
+            }
+            Err(error) => {
+                warn!(
+                    "Issue #{} core workflow progressed but branch export queueing failed: {}",
+                    issue_number, error
+                );
+                None
+            }
+        };
 
         info!(
-            "GitHub workflow initialized for issue #{} (branch export intent #{})",
-            issue_number, enqueue.intent_id
+            "GitHub workflow initialized for issue #{} (branch export intent: {:?})",
+            issue_number, branch_export_intent_id
         );
 
         Ok(IssueWorkflowResult {
             branch_name,
             issue_number,
-            branch_export_intent_id: enqueue.intent_id,
+            branch_export_intent_id,
         })
     }
 
@@ -102,7 +144,7 @@ impl GitHubWorkflow {
             base_branch.to_string(),
             pr_title.to_string(),
             pr_body.to_string(),
-        );
+        )?;
 
         info!(
             "Queued PR export intent #{} for issue #{} in {}/{}",
@@ -114,10 +156,14 @@ impl GitHubWorkflow {
 
     /// Dispatch one queued/failed export intent.
     pub async fn dispatch_next_export(&self) -> Result<Option<GitHubExportDispatchResult>> {
-        let Some(candidate) = self.mark_next_intent_dispatching() else {
+        let has_dispatchable = self.has_dispatchable_intent();
+        if !has_dispatchable {
+            return Ok(None);
+        }
+        let client = self.require_client()?;
+        let Some(candidate) = self.mark_next_intent_dispatching()? else {
             return Ok(None);
         };
-        let client = self.require_client()?;
 
         let execution = match &candidate.payload {
             GitHubExportPayload::CreateBranch {
@@ -172,7 +218,7 @@ impl GitHubWorkflow {
                 }
 
                 let snapshot =
-                    self.complete_intent(candidate.summary.intent_id, result.external_id);
+                    self.complete_intent(candidate.summary.intent_id, result.external_id)?;
                 Ok(Some(GitHubExportDispatchResult {
                     intent_id: snapshot.intent_id,
                     kind: snapshot.kind,
@@ -184,26 +230,35 @@ impl GitHubWorkflow {
             }
             Err(error) => {
                 let error_text = error.to_string();
-                let snapshot = self.fail_intent(candidate.summary.intent_id, error_text.clone());
+                let duplicate = is_idempotent_duplicate_error(candidate.summary.kind, &error_text);
+                let snapshot = if duplicate {
+                    warn!(
+                        "Export intent #{} observed duplicate adapter side effect; treating as completed: {}",
+                        candidate.summary.intent_id, error_text
+                    );
+                    self.complete_intent(candidate.summary.intent_id, None)?
+                } else {
+                    self.fail_intent(candidate.summary.intent_id, error_text.clone())?
+                };
                 Ok(Some(GitHubExportDispatchResult {
                     intent_id: snapshot.intent_id,
                     kind: snapshot.kind,
                     status: snapshot.status,
                     attempts: snapshot.attempts,
                     external_id: snapshot.external_id,
-                    error: Some(error_text),
+                    error: if duplicate { None } else { Some(error_text) },
                 }))
             }
         }
     }
 
     /// Retry a failed export intent by returning it to queued state.
-    pub fn retry_export(&self, intent_id: u64) -> bool {
+    pub fn retry_export(&self, intent_id: u64) -> Result<bool> {
         let mut queue = self
             .export_queue
             .lock()
             .expect("export queue mutex poisoned");
-        if let Some(intent) = queue
+        let updated = if let Some(intent) = queue
             .intents
             .iter_mut()
             .find(|intent| intent.summary.intent_id == intent_id)
@@ -211,10 +266,18 @@ impl GitHubWorkflow {
             if intent.summary.status == GitHubExportStatus::Failed {
                 intent.summary.status = GitHubExportStatus::Queued;
                 intent.summary.last_error = None;
-                return true;
+                queue.checkpoint.last_retried_intent_id = Some(intent_id);
+                true
+            } else {
+                false
             }
+        } else {
+            false
+        };
+        if updated {
+            self.persist_locked_queue(&queue)?;
         }
-        false
+        Ok(updated)
     }
 
     /// Observable export queue state for diagnostics.
@@ -228,6 +291,21 @@ impl GitHubWorkflow {
             .iter()
             .map(|intent| intent.summary.clone())
             .collect()
+    }
+
+    /// Observable checkpoint/watermark state for adapter replay.
+    pub fn export_checkpoint_snapshot(&self) -> GitHubExportCheckpointSnapshot {
+        let queue = self
+            .export_queue
+            .lock()
+            .expect("export queue mutex poisoned");
+        GitHubExportCheckpointSnapshot {
+            last_enqueued_intent_id: queue.checkpoint.last_enqueued_intent_id,
+            last_dispatched_intent_id: queue.checkpoint.last_dispatched_intent_id,
+            last_completed_intent_id: queue.checkpoint.last_completed_intent_id,
+            last_failed_intent_id: queue.checkpoint.last_failed_intent_id,
+            last_retried_intent_id: queue.checkpoint.last_retried_intent_id,
+        }
     }
 
     /// Post a receipt comment on the PR with execution details.
@@ -257,7 +335,7 @@ impl GitHubWorkflow {
         issue_number: u64,
         branch_name: String,
         base_sha: String,
-    ) -> GitHubExportEnqueueResult {
+    ) -> Result<GitHubExportEnqueueResult> {
         let idempotency_key = format!(
             "branch:{}:{}:{}:{}:{}",
             owner, repo, issue_number, branch_name, base_sha
@@ -284,7 +362,7 @@ impl GitHubWorkflow {
         base_branch: String,
         title: String,
         body: String,
-    ) -> GitHubExportEnqueueResult {
+    ) -> Result<GitHubExportEnqueueResult> {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         title.hash(&mut hasher);
         body.hash(&mut hasher);
@@ -317,7 +395,7 @@ impl GitHubWorkflow {
         kind: GitHubExportKind,
         idempotency_key: String,
         payload: GitHubExportPayload,
-    ) -> GitHubExportEnqueueResult {
+    ) -> Result<GitHubExportEnqueueResult> {
         let mut queue = self
             .export_queue
             .lock()
@@ -328,12 +406,12 @@ impl GitHubWorkflow {
             .iter()
             .find(|intent| intent.summary.idempotency_key == idempotency_key)
         {
-            return GitHubExportEnqueueResult {
+            return Ok(GitHubExportEnqueueResult {
                 intent_id: existing.summary.intent_id,
                 idempotency_key: existing.summary.idempotency_key.clone(),
                 status: existing.summary.status,
                 deduplicated: true,
-            };
+            });
         }
 
         queue.next_intent_id = queue.next_intent_id.saturating_add(1);
@@ -354,30 +432,48 @@ impl GitHubWorkflow {
         queue
             .intents
             .push_back(QueuedGitHubExportIntent { summary, payload });
+        queue.checkpoint.last_enqueued_intent_id = Some(intent_id);
+        self.persist_locked_queue(&queue)?;
 
-        GitHubExportEnqueueResult {
+        Ok(GitHubExportEnqueueResult {
             intent_id,
             idempotency_key,
             status: GitHubExportStatus::Queued,
             deduplicated: false,
-        }
+        })
     }
 
-    fn mark_next_intent_dispatching(&self) -> Option<QueuedGitHubExportIntent> {
+    fn has_dispatchable_intent(&self) -> bool {
+        let queue = self
+            .export_queue
+            .lock()
+            .expect("export queue mutex poisoned");
+        queue.intents.iter().any(|intent| {
+            matches!(
+                intent.summary.status,
+                GitHubExportStatus::Queued | GitHubExportStatus::Failed
+            )
+        })
+    }
+
+    fn mark_next_intent_dispatching(&self) -> Result<Option<QueuedGitHubExportIntent>> {
         let mut queue = self
             .export_queue
             .lock()
             .expect("export queue mutex poisoned");
-        let intent = queue
+        let Some(intent) = queue
             .intents
-            .iter_mut()
+            .iter()
             .find(|intent| {
                 matches!(
                     intent.summary.status,
                     GitHubExportStatus::Queued | GitHubExportStatus::Failed
                 )
-            })?
-            .clone();
+            })
+            .cloned()
+        else {
+            return Ok(None);
+        };
 
         if let Some(entry) = queue
             .intents
@@ -387,13 +483,21 @@ impl GitHubWorkflow {
             entry.summary.status = GitHubExportStatus::Dispatching;
             entry.summary.attempts = entry.summary.attempts.saturating_add(1);
             entry.summary.last_error = None;
-            return Some(entry.clone());
+            let snapshot = entry.clone();
+            let dispatched_id = entry.summary.intent_id;
+            queue.checkpoint.last_dispatched_intent_id = Some(dispatched_id);
+            self.persist_locked_queue(&queue)?;
+            return Ok(Some(snapshot));
         }
 
-        None
+        Ok(None)
     }
 
-    fn complete_intent(&self, intent_id: u64, external_id: Option<u64>) -> GitHubExportIntent {
+    fn complete_intent(
+        &self,
+        intent_id: u64,
+        external_id: Option<u64>,
+    ) -> Result<GitHubExportIntent> {
         let mut queue = self
             .export_queue
             .lock()
@@ -406,10 +510,13 @@ impl GitHubWorkflow {
         intent.summary.status = GitHubExportStatus::Completed;
         intent.summary.external_id = external_id;
         intent.summary.last_error = None;
-        intent.summary.clone()
+        let snapshot = intent.summary.clone();
+        queue.checkpoint.last_completed_intent_id = Some(intent_id);
+        self.persist_locked_queue(&queue)?;
+        Ok(snapshot)
     }
 
-    fn fail_intent(&self, intent_id: u64, error: String) -> GitHubExportIntent {
+    fn fail_intent(&self, intent_id: u64, error: String) -> Result<GitHubExportIntent> {
         let mut queue = self
             .export_queue
             .lock()
@@ -421,7 +528,14 @@ impl GitHubWorkflow {
             .expect("intent must exist when failing");
         intent.summary.status = GitHubExportStatus::Failed;
         intent.summary.last_error = Some(error);
-        intent.summary.clone()
+        let snapshot = intent.summary.clone();
+        queue.checkpoint.last_failed_intent_id = Some(intent_id);
+        self.persist_locked_queue(&queue)?;
+        Ok(snapshot)
+    }
+
+    fn persist_locked_queue(&self, queue: &GitHubExportQueue) -> Result<()> {
+        self.queue_store.save(queue)
     }
 
     fn require_client(&self) -> Result<&GitHubClient> {
@@ -431,13 +545,15 @@ impl GitHubWorkflow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GitHubExportKind {
     CreateBranch,
     CreatePullRequest,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GitHubExportStatus {
     Queued,
     Dispatching,
@@ -445,7 +561,7 @@ pub enum GitHubExportStatus {
     Failed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubExportIntent {
     pub intent_id: u64,
     pub idempotency_key: String,
@@ -477,12 +593,21 @@ pub struct GitHubExportDispatchResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitHubExportCheckpointSnapshot {
+    pub last_enqueued_intent_id: Option<u64>,
+    pub last_dispatched_intent_id: Option<u64>,
+    pub last_completed_intent_id: Option<u64>,
+    pub last_failed_intent_id: Option<u64>,
+    pub last_retried_intent_id: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 struct GitHubExportExecutionResult {
     external_id: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum GitHubExportPayload {
     CreateBranch {
         branch_name: String,
@@ -496,16 +621,46 @@ enum GitHubExportPayload {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct QueuedGitHubExportIntent {
     summary: GitHubExportIntent,
     payload: GitHubExportPayload,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct GitHubExportQueueCheckpoint {
+    #[serde(default)]
+    last_enqueued_intent_id: Option<u64>,
+    #[serde(default)]
+    last_dispatched_intent_id: Option<u64>,
+    #[serde(default)]
+    last_completed_intent_id: Option<u64>,
+    #[serde(default)]
+    last_failed_intent_id: Option<u64>,
+    #[serde(default)]
+    last_retried_intent_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GitHubExportQueue {
+    #[serde(default = "default_export_queue_version")]
+    version: u32,
     next_intent_id: u64,
+    #[serde(default)]
+    checkpoint: GitHubExportQueueCheckpoint,
+    #[serde(default)]
     intents: VecDeque<QueuedGitHubExportIntent>,
+}
+
+impl Default for GitHubExportQueue {
+    fn default() -> Self {
+        Self {
+            version: default_export_queue_version(),
+            next_intent_id: 0,
+            checkpoint: GitHubExportQueueCheckpoint::default(),
+            intents: VecDeque::new(),
+        }
+    }
 }
 
 /// Result of initializing an issue workflow.
@@ -513,7 +668,7 @@ struct GitHubExportQueue {
 pub struct IssueWorkflowResult {
     pub branch_name: String,
     pub issue_number: u64,
-    pub branch_export_intent_id: u64,
+    pub branch_export_intent_id: Option<u64>,
 }
 
 /// Execution receipt for transparency.
@@ -564,9 +719,151 @@ fn format_receipt_comment(receipt: &WorkflowReceipt) -> String {
     comment
 }
 
+const EXPORT_QUEUE_VERSION: u32 = 1;
+
+fn default_export_queue_version() -> u32 {
+    EXPORT_QUEUE_VERSION
+}
+
+fn is_idempotent_duplicate_error(kind: GitHubExportKind, error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    let contains_duplicate = normalized.contains("already exists")
+        || normalized.contains("reference already exists")
+        || normalized.contains("name already exists");
+    if !contains_duplicate {
+        return false;
+    }
+    match kind {
+        GitHubExportKind::CreateBranch => true,
+        GitHubExportKind::CreatePullRequest => {
+            normalized.contains("pull request") || normalized.contains("a pull request")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GitHubExportQueueStore {
+    path: PathBuf,
+}
+
+impl Default for GitHubExportQueueStore {
+    fn default() -> Self {
+        Self {
+            path: openagents_home()
+                .join("workflow")
+                .join("github-export-queue.json"),
+        }
+    }
+}
+
+impl GitHubExportQueueStore {
+    #[cfg(test)]
+    fn with_path(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    fn load(&self) -> Result<GitHubExportQueue> {
+        if !self.path.exists() {
+            return Ok(GitHubExportQueue::default());
+        }
+        let raw = fs::read_to_string(&self.path).with_context(|| {
+            format!(
+                "failed to read GitHub export queue at {}",
+                self.path.display()
+            )
+        })?;
+        let queue = serde_json::from_str::<GitHubExportQueue>(&raw).with_context(|| {
+            format!(
+                "failed to parse GitHub export queue at {}",
+                self.path.display()
+            )
+        })?;
+        Ok(normalize_loaded_queue(queue))
+    }
+
+    fn save(&self, queue: &GitHubExportQueue) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "failed to create GitHub export queue directory {}",
+                    parent.display()
+                )
+            })?;
+        }
+        let mut persisted = queue.clone();
+        persisted.version = default_export_queue_version();
+        let json = serde_json::to_string_pretty(&persisted)
+            .context("failed to serialize GitHub export queue")?;
+
+        let tmp_path = temporary_queue_path(&self.path);
+        fs::write(&tmp_path, json).with_context(|| {
+            format!(
+                "failed to write temporary GitHub export queue {}",
+                tmp_path.display()
+            )
+        })?;
+        fs::rename(&tmp_path, &self.path).with_context(|| {
+            format!(
+                "failed to commit GitHub export queue {}",
+                self.path.display()
+            )
+        })?;
+
+        Ok(())
+    }
+}
+
+fn temporary_queue_path(path: &Path) -> PathBuf {
+    let mut tmp = path.to_path_buf();
+    let extension = path
+        .extension()
+        .map(|ext| format!("{}.tmp", ext.to_string_lossy()))
+        .unwrap_or_else(|| "tmp".to_string());
+    tmp.set_extension(extension);
+    tmp
+}
+
+fn normalize_loaded_queue(mut queue: GitHubExportQueue) -> GitHubExportQueue {
+    if queue.version == 0 {
+        queue.version = default_export_queue_version();
+    }
+
+    for intent in queue.intents.iter_mut() {
+        if intent.summary.status == GitHubExportStatus::Dispatching {
+            intent.summary.status = GitHubExportStatus::Failed;
+            if intent.summary.last_error.is_none() {
+                intent.summary.last_error =
+                    Some("Recovered interrupted dispatch; safe to retry.".to_string());
+            }
+        }
+    }
+
+    if let Some(max_id) = queue
+        .intents
+        .iter()
+        .map(|intent| intent.summary.intent_id)
+        .max()
+    {
+        queue.next_intent_id = queue.next_intent_id.max(max_id);
+    }
+    queue
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    fn workflow_without_client_for_tests() -> (GitHubWorkflow, TempDir) {
+        let tmp = tempfile::tempdir().expect("tempdir should be created");
+        let queue_path = tmp.path().join("github-export-queue.json");
+        let workflow = GitHubWorkflow::new_with_store(
+            None,
+            "autopilot-agent".to_string(),
+            GitHubExportQueueStore::with_path(queue_path),
+        );
+        (workflow, tmp)
+    }
 
     #[test]
     fn test_format_receipt() {
@@ -592,7 +889,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_pr_queues_deferred_export_and_deduplicates() {
-        let workflow = GitHubWorkflow::without_client("autopilot-agent".to_string());
+        let (workflow, _tmp) = workflow_without_client_for_tests();
 
         let first = workflow
             .create_pr(
@@ -628,16 +925,106 @@ mod tests {
         assert_eq!(snapshot[0].kind, GitHubExportKind::CreatePullRequest);
         assert_eq!(snapshot[0].status, GitHubExportStatus::Queued);
         assert_eq!(snapshot[0].attempts, 0);
+        let checkpoint = workflow.export_checkpoint_snapshot();
+        assert_eq!(checkpoint.last_enqueued_intent_id, Some(first.intent_id));
     }
 
     #[tokio::test]
     async fn dispatch_next_export_returns_none_when_queue_is_empty() {
-        let workflow = GitHubWorkflow::without_client("autopilot-agent".to_string());
+        let (workflow, _tmp) = workflow_without_client_for_tests();
 
         let dispatched = workflow
             .dispatch_next_export()
             .await
             .expect("dispatch should succeed");
         assert!(dispatched.is_none());
+    }
+
+    #[tokio::test]
+    async fn export_intents_are_persisted_and_reloaded() {
+        let tmp = tempfile::tempdir().expect("tempdir should be created");
+        let queue_path = tmp.path().join("github-export-queue.json");
+
+        let workflow_one = GitHubWorkflow::new_with_store(
+            None,
+            "autopilot-agent".to_string(),
+            GitHubExportQueueStore::with_path(queue_path.clone()),
+        );
+        let first = workflow_one
+            .create_pr(
+                "openagents",
+                "autopilot",
+                77,
+                "autopilot/77-feature",
+                "main",
+                "Feature",
+                "Body",
+            )
+            .await
+            .expect("enqueue should succeed");
+        drop(workflow_one);
+
+        let workflow_two = GitHubWorkflow::new_with_store(
+            None,
+            "autopilot-agent".to_string(),
+            GitHubExportQueueStore::with_path(queue_path),
+        );
+        let snapshot = workflow_two.export_queue_snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].intent_id, first.intent_id);
+        assert_eq!(snapshot[0].status, GitHubExportStatus::Queued);
+    }
+
+    #[test]
+    fn loading_queue_recovers_dispatching_intents() {
+        let tmp = tempfile::tempdir().expect("tempdir should be created");
+        let queue_path = tmp.path().join("github-export-queue.json");
+
+        let mut intents = VecDeque::new();
+        intents.push_back(QueuedGitHubExportIntent {
+            summary: GitHubExportIntent {
+                intent_id: 1,
+                idempotency_key: "branch:openagents:autopilot:1:autopilot/1:abc".to_string(),
+                kind: GitHubExportKind::CreateBranch,
+                owner: "openagents".to_string(),
+                repo: "autopilot".to_string(),
+                issue_number: 1,
+                status: GitHubExportStatus::Dispatching,
+                attempts: 1,
+                external_id: None,
+                last_error: None,
+            },
+            payload: GitHubExportPayload::CreateBranch {
+                branch_name: "autopilot/1".to_string(),
+                base_sha: "abc".to_string(),
+            },
+        });
+        let queue = GitHubExportQueue {
+            version: 1,
+            next_intent_id: 1,
+            checkpoint: GitHubExportQueueCheckpoint::default(),
+            intents,
+        };
+        std::fs::write(
+            &queue_path,
+            serde_json::to_string_pretty(&queue).expect("serialize queue"),
+        )
+        .expect("write queue");
+
+        let workflow = GitHubWorkflow::new_with_store(
+            None,
+            "autopilot-agent".to_string(),
+            GitHubExportQueueStore::with_path(queue_path),
+        );
+        let snapshot = workflow.export_queue_snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].status, GitHubExportStatus::Failed);
+        assert!(
+            snapshot[0]
+                .last_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Recovered interrupted dispatch")
+        );
     }
 }
