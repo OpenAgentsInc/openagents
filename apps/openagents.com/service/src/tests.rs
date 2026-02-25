@@ -6504,12 +6504,15 @@ async fn sync_token_v1_alias_matches_primary_contract_shape() -> Result<()> {
 
     for key in [
         "token_type",
+        "transport",
+        "protocol_version",
         "issuer",
         "audience",
         "claims_version",
         "session_id",
         "device_id",
         "org_id",
+        "refresh_after_in",
     ] {
         assert_eq!(alias_body["data"][key], primary_body["data"][key]);
     }
@@ -6518,6 +6521,74 @@ async fn sync_token_v1_alias_matches_primary_contract_shape() -> Result<()> {
         alias_body["data"]["granted_topics"],
         primary_body["data"]["granted_topics"]
     );
+    assert_eq!(
+        alias_body["data"]["granted_streams"],
+        primary_body["data"]["granted_streams"]
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn spacetime_token_routes_match_primary_sync_token_contract_shape() -> Result<()> {
+    let app = build_router(test_config(std::env::temp_dir()));
+    let token = authenticate_token(app.clone(), "spacetime-route-alias@openagents.com").await?;
+    let payload = r#"{"scopes":["runtime.codex_worker_events"]}"#;
+
+    let primary_request = Request::builder()
+        .method("POST")
+        .uri("/api/sync/token")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(payload))?;
+    let primary_response = app.clone().oneshot(primary_request).await?;
+    assert_eq!(primary_response.status(), StatusCode::OK);
+    let primary_body = read_json(primary_response).await?;
+
+    let spacetime_request = Request::builder()
+        .method("POST")
+        .uri("/api/spacetime/token")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(payload))?;
+    let spacetime_response = app.clone().oneshot(spacetime_request).await?;
+    assert_eq!(spacetime_response.status(), StatusCode::OK);
+    let spacetime_body = read_json(spacetime_response).await?;
+
+    let v1_spacetime_request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/spacetime/token")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-oa-client-build-id", "20260221T130000Z")
+        .header("x-oa-protocol-version", "openagents.control.v1")
+        .header("x-oa-schema-version", "1")
+        .body(Body::from(payload))?;
+    let v1_spacetime_response = app.oneshot(v1_spacetime_request).await?;
+    assert_eq!(v1_spacetime_response.status(), StatusCode::OK);
+    let v1_spacetime_body = read_json(v1_spacetime_response).await?;
+
+    for body in [&spacetime_body, &v1_spacetime_body] {
+        for key in [
+            "token_type",
+            "transport",
+            "protocol_version",
+            "issuer",
+            "audience",
+            "claims_version",
+            "session_id",
+            "device_id",
+            "org_id",
+            "refresh_after_in",
+        ] {
+            assert_eq!(body["data"][key], primary_body["data"][key]);
+        }
+        assert_eq!(body["data"]["scopes"], primary_body["data"]["scopes"]);
+        assert_eq!(
+            body["data"]["granted_streams"],
+            primary_body["data"]["granted_streams"]
+        );
+    }
 
     Ok(())
 }
@@ -6539,6 +6610,20 @@ async fn sync_token_v1_alias_uses_compatibility_handshake_controls() -> Result<(
     );
     let missing_body = read_json(missing_handshake_response).await?;
     assert_eq!(missing_body["error"]["code"], json!("invalid_client_build"));
+
+    let missing_handshake_spacetime_request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/spacetime/token")
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+    let missing_handshake_spacetime_response = app
+        .clone()
+        .oneshot(missing_handshake_spacetime_request)
+        .await?;
+    assert_eq!(
+        missing_handshake_spacetime_response.status(),
+        StatusCode::UPGRADE_REQUIRED
+    );
 
     let handshake_without_auth = Request::builder()
         .method("POST")
@@ -6690,8 +6775,26 @@ async fn sync_token_mint_enforces_scope_and_org_policy() -> Result<()> {
     assert_eq!(success_response.status(), StatusCode::OK);
     let success_body = read_json(success_response).await?;
     assert_eq!(success_body["data"]["token_type"], "Bearer");
+    assert_eq!(success_body["data"]["transport"], "spacetime_ws");
+    assert_eq!(
+        success_body["data"]["protocol_version"],
+        "spacetime.sync.v1"
+    );
+    assert!(
+        success_body["data"]["refresh_after_in"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
     assert_eq!(success_body["data"]["issuer"], "https://openagents.test");
     assert_eq!(success_body["data"]["claims_version"], "oa_sync_claims_v1");
+    assert!(
+        !success_body["data"]["granted_streams"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .is_empty()
+    );
 
     Ok(())
 }

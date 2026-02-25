@@ -118,13 +118,14 @@ use crate::openapi::{
     ROUTE_SETTINGS_INTEGRATIONS_GOOGLE, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK,
     ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT, ROUTE_SETTINGS_INTEGRATIONS_RESEND,
     ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST, ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS,
-    ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
-    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SPACETIME_TOKEN, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
+    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
     ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
-    ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SYNC_TOKEN,
-    ROUTE_WEBHOOKS_RESEND, ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
+    ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SPACETIME_TOKEN,
+    ROUTE_V1_SYNC_TOKEN, ROUTE_WEBHOOKS_RESEND, ROUTE_WHISPERS, ROUTE_WHISPERS_READ,
+    openapi_document,
 };
 use crate::render::{
     apply_html_security_headers, apply_static_security_headers,
@@ -1061,6 +1062,8 @@ struct UpdateSettingsAutopilotRequestPayload {
 struct SyncTokenRequestPayload {
     #[serde(default)]
     scopes: Vec<String>,
+    #[serde(default)]
+    streams: Vec<String>,
     #[serde(default)]
     topics: Vec<String>,
     #[serde(default)]
@@ -2309,7 +2312,10 @@ fn compatibility_lane_is_sunset_path(path: &str) -> bool {
     if path.starts_with("/api/v1/control/") {
         return true;
     }
-    if path.starts_with("/api/v1/auth/") || path == ROUTE_V1_SYNC_TOKEN {
+    if path.starts_with("/api/v1/auth/")
+        || path == ROUTE_V1_SYNC_TOKEN
+        || path == ROUTE_V1_SPACETIME_TOKEN
+    {
         return true;
     }
     if path == "/api/chat/guest-session" || path == ROUTE_LEGACY_CHAT_STREAM {
@@ -2327,7 +2333,7 @@ fn compatibility_surface_for_path(path: &str) -> Option<CompatibilitySurface> {
         return Some(CompatibilitySurface::ControlApi);
     }
 
-    if path == ROUTE_V1_SYNC_TOKEN {
+    if path == ROUTE_V1_SYNC_TOKEN || path == ROUTE_V1_SPACETIME_TOKEN {
         return Some(CompatibilitySurface::ControlApi);
     }
 

@@ -66,6 +66,7 @@ pub const ROUTE_INBOX_THREAD_REJECT: &str = "/api/inbox/threads/:thread_id/draft
 pub const ROUTE_INBOX_REPLY_SEND: &str = "/api/inbox/threads/:thread_id/reply/send";
 pub const ROUTE_INBOX_REFRESH: &str = "/api/inbox/refresh";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
+pub const ROUTE_SPACETIME_TOKEN: &str = "/api/spacetime/token";
 pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
 pub const ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY: &str =
@@ -104,6 +105,7 @@ pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE: &str =
 pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE: &str =
     "/api/v1/control/runtime-routing/evaluate";
 pub const ROUTE_V1_SYNC_TOKEN: &str = "/api/v1/sync/token";
+pub const ROUTE_V1_SPACETIME_TOKEN: &str = "/api/v1/spacetime/token";
 
 #[derive(Clone, Copy)]
 struct OpenApiContract {
@@ -976,7 +978,19 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         method: "post",
         route_path: ROUTE_SYNC_TOKEN,
         operation_id: "syncToken",
-        summary: "Issue a Khala WebSocket sync token.",
+        summary: "Issue a Spacetime WebSocket sync token.",
+        tag: "sync",
+        secured: true,
+        deprecated: false,
+        success_status: "200",
+        request_example: Some("sync_token"),
+        response_example: Some("sync_token"),
+    },
+    OpenApiContract {
+        method: "post",
+        route_path: ROUTE_SPACETIME_TOKEN,
+        operation_id: "spacetimeToken",
+        summary: "Issue a Spacetime WebSocket token using the canonical route.",
         tag: "sync",
         secured: true,
         deprecated: false,
@@ -1357,6 +1371,18 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         response_example: Some("sync_token"),
     },
     OpenApiContract {
+        method: "post",
+        route_path: ROUTE_V1_SPACETIME_TOKEN,
+        operation_id: "v1SpacetimeToken",
+        summary: "Compatibility alias for canonical Spacetime token issuance.",
+        tag: "compat",
+        secured: true,
+        deprecated: true,
+        success_status: "200",
+        request_example: Some("sync_token"),
+        response_example: Some("sync_token"),
+    },
+    OpenApiContract {
         method: "get",
         route_path: ROUTE_SMOKE_STREAM,
         operation_id: "smokeStream",
@@ -1546,7 +1572,10 @@ fn compatibility_lane_has_sunset(path: &str) -> bool {
     if path.starts_with("/api/v1/control/") {
         return true;
     }
-    if path.starts_with("/api/v1/auth/") || path == ROUTE_V1_SYNC_TOKEN {
+    if path.starts_with("/api/v1/auth/")
+        || path == ROUTE_V1_SYNC_TOKEN
+        || path == ROUTE_V1_SPACETIME_TOKEN
+    {
         return true;
     }
     if path == ROUTE_LEGACY_CHAT_STREAM || path == ROUTE_LEGACY_CHATS_STREAM {
@@ -1716,7 +1745,7 @@ fn request_example(key: &str) -> Option<Value> {
         })),
         "sync_token" => Some(json!({
             "scopes": ["runtime.codex_worker_events"],
-            "topics": ["org:openagents:worker_events"],
+            "streams": ["org:openagents:worker_events"],
             "ttl_seconds": 300,
             "device_id": "ios:device"
         })),
@@ -2794,6 +2823,11 @@ fn response_example(key: &str) -> Option<Value> {
             "data": {
                 "token": "eyJ...",
                 "token_type": "Bearer",
+                "transport": "spacetime_ws",
+                "protocol_version": "spacetime.sync.v1",
+                "refresh_after_in": 270,
+                "refresh_after": "2026-02-22T00:04:30Z",
+                "granted_streams": [{"stream":"org:openagents:worker_events","required_scope":"runtime.codex_worker_events"}],
                 "expires_at": "2026-02-22T00:00:00Z"
             }
         })),

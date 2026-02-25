@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 
 pub(super) async fn sync_token(
     State(state): State<AppState>,
@@ -16,6 +17,7 @@ pub(super) async fn sync_token(
         .map_err(map_auth_error)?;
 
     let is_pat_session = session.session.session_id.starts_with("pat:");
+    let requested_streams = merge_stream_requests(payload.streams, payload.topics);
 
     let device_id = payload
         .device_id
@@ -36,7 +38,8 @@ pub(super) async fn sync_token(
             session_id: session.session.session_id.clone(),
             device_id,
             requested_scopes: payload.scopes,
-            requested_topics: payload.topics,
+            requested_streams,
+            requested_topics: Vec::new(),
             requested_ttl_seconds: payload.ttl_seconds,
         })
         .map_err(map_sync_error)?;
@@ -79,4 +82,15 @@ pub(super) async fn sync_token(
         .increment_counter("sync.token.issued", &request_id);
 
     Ok(ok_data(issued))
+}
+
+fn merge_stream_requests(streams: Vec<String>, topics: Vec<String>) -> Vec<String> {
+    let mut merged = BTreeSet::new();
+    for value in streams.into_iter().chain(topics) {
+        let normalized = value.trim().to_string();
+        if !normalized.is_empty() {
+            merged.insert(normalized);
+        }
+    }
+    merged.into_iter().collect()
 }

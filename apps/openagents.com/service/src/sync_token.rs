@@ -11,6 +11,8 @@ use uuid::Uuid;
 use crate::config::Config;
 
 type HmacSha256 = Hmac<Sha256>;
+const SPACETIME_SYNC_TRANSPORT: &str = "spacetime_ws";
+const SPACETIME_SYNC_PROTOCOL_VERSION: &str = "spacetime.sync.v1";
 
 #[derive(Debug, Clone)]
 pub struct SyncTokenIssuer {
@@ -44,6 +46,7 @@ pub struct SyncTokenIssueRequest {
     pub session_id: String,
     pub device_id: String,
     pub requested_scopes: Vec<String>,
+    pub requested_streams: Vec<String>,
     pub requested_topics: Vec<String>,
     pub requested_ttl_seconds: Option<u32>,
 }
@@ -55,11 +58,21 @@ pub struct SyncTopicGrant {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct SyncStreamGrant {
+    pub stream: String,
+    pub required_scope: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SyncTokenResult {
     pub token: String,
     pub token_type: &'static str,
+    pub transport: &'static str,
+    pub protocol_version: &'static str,
     pub expires_in: u32,
+    pub refresh_after_in: u32,
     pub issued_at: String,
+    pub refresh_after: String,
     pub expires_at: String,
     pub issuer: String,
     pub audience: String,
@@ -68,6 +81,7 @@ pub struct SyncTokenResult {
     pub claims_version: String,
     pub scopes: Vec<String>,
     pub granted_topics: Vec<SyncTopicGrant>,
+    pub granted_streams: Vec<SyncStreamGrant>,
     pub kid: String,
     pub token_id: String,
     pub session_id: String,
@@ -148,17 +162,36 @@ impl SyncTokenIssuer {
             });
         }
 
+        let requested_topics = if request.requested_streams.is_empty() {
+            request.requested_topics.clone()
+        } else {
+            request.requested_streams.clone()
+        };
+
         let granted_topics = derive_topics(
             &scopes,
-            &request.requested_topics,
+            &requested_topics,
             &request.user_id,
             &request.org_id,
         )?;
 
         let issued_at = Utc::now();
         let expires_at = issued_at + Duration::seconds(ttl_seconds as i64);
+        let refresh_after_in = ttl_seconds.saturating_sub(30).max(1);
+        let refresh_after = issued_at + Duration::seconds(refresh_after_in as i64);
         let subject = format!("user:{}", request.user_id);
         let token_id = format!("sync_{}", Uuid::new_v4().simple());
+        let granted_stream_values = granted_topics
+            .iter()
+            .map(|topic| topic.topic.clone())
+            .collect::<Vec<_>>();
+        let granted_streams = granted_topics
+            .iter()
+            .map(|topic| SyncStreamGrant {
+                stream: topic.topic.clone(),
+                required_scope: topic.required_scope.clone(),
+            })
+            .collect::<Vec<_>>();
 
         let header = serde_json::json!({
             "alg": "HS256",
@@ -179,7 +212,11 @@ impl SyncTokenIssuer {
             "oa_session_id": request.session_id,
             "oa_device_id": request.device_id,
             "oa_sync_scopes": scopes,
-            "oa_sync_topics": granted_topics.iter().map(|topic| topic.topic.clone()).collect::<Vec<_>>(),
+            "oa_sync_topics": granted_stream_values,
+            "oa_sync_streams": granted_streams
+                .iter()
+                .map(|stream| stream.stream.clone())
+                .collect::<Vec<_>>(),
             "oa_claims_version": self.claims_version,
         });
 
@@ -188,8 +225,12 @@ impl SyncTokenIssuer {
         Ok(SyncTokenResult {
             token,
             token_type: "Bearer",
+            transport: SPACETIME_SYNC_TRANSPORT,
+            protocol_version: SPACETIME_SYNC_PROTOCOL_VERSION,
             expires_in: ttl_seconds,
+            refresh_after_in,
             issued_at: timestamp(issued_at),
+            refresh_after: timestamp(refresh_after),
             expires_at: timestamp(expires_at),
             issuer: self.issuer.clone(),
             audience: self.audience.clone(),
@@ -198,6 +239,7 @@ impl SyncTokenIssuer {
             claims_version: self.claims_version.clone(),
             scopes,
             granted_topics,
+            granted_streams,
             kid: self.key_id.clone(),
             token_id,
             session_id: request.session_id,
@@ -382,6 +424,7 @@ mod tests {
             session_id: "sess_123".to_string(),
             device_id: "mobile:autopilot-ios".to_string(),
             requested_scopes: vec!["runtime.run_summaries".to_string()],
+            requested_streams: vec![],
             requested_topics: vec![],
             requested_ttl_seconds: None,
         }
