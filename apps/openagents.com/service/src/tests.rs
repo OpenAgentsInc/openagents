@@ -912,6 +912,33 @@ async fn download_desktop_route_redirects_to_configured_release_url() -> Result<
 }
 
 #[tokio::test]
+async fn interactive_web_routes_are_not_mounted() -> Result<()> {
+    let app = build_router(test_config(std::env::temp_dir()));
+    let cases = [
+        ("GET", "/compute"),
+        ("GET", "/stats"),
+        ("GET", "/feed"),
+        ("POST", "/chat/new"),
+        ("POST", "/admin/route-split/evaluate"),
+    ];
+
+    for (method, uri) in cases {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())?;
+        let response = app.clone().oneshot(request).await?;
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "expected {uri} to be removed"
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn api_preflight_options_returns_cors_headers_without_auth() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
     let request = Request::builder()
