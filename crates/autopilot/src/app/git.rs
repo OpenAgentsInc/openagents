@@ -168,7 +168,8 @@ impl Default for GitRuntime {
 }
 
 pub(crate) struct GitState {
-    pub(crate) runtime: GitRuntime,
+    pub(crate) runtime: Option<GitRuntime>,
+    integration_enabled: bool,
     pub(crate) center_mode: CenterMode,
     pub(crate) panel_mode: GitPanelMode,
     pub(crate) selected_diff_path: Option<String>,
@@ -191,9 +192,14 @@ pub(crate) struct GitState {
 }
 
 impl GitState {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(integration_enabled: bool) -> Self {
         Self {
-            runtime: GitRuntime::new(),
+            runtime: if integration_enabled {
+                Some(GitRuntime::new())
+            } else {
+                None
+            },
+            integration_enabled,
             center_mode: CenterMode::Chat,
             panel_mode: GitPanelMode::Diff,
             selected_diff_path: None,
@@ -216,6 +222,10 @@ impl GitState {
         }
     }
 
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.integration_enabled
+    }
+
     pub(crate) fn set_active_workspace(&mut self, workspace_id: Option<&str>) {
         self.center_mode = CenterMode::Chat;
         self.selected_diff_path = None;
@@ -231,6 +241,9 @@ impl GitState {
     }
 
     pub(crate) fn select_diff_path(&mut self, path: String) {
+        if !self.integration_enabled {
+            return;
+        }
         if self.selected_diff_path.as_deref() != Some(path.as_str()) {
             self.pending_scroll_to = Some(path.clone());
         }
@@ -247,6 +260,9 @@ impl GitState {
     }
 
     pub(crate) fn force_refresh(&mut self, workspace_id: &str) {
+        if !self.integration_enabled {
+            return;
+        }
         self.status_refresh_at.remove(workspace_id);
         self.diff_refresh_at.remove(workspace_id);
         self.log_refresh_at.remove(workspace_id);
@@ -343,7 +359,13 @@ impl GitState {
     }
 
     pub(crate) fn refresh_if_needed(&mut self, workspace: Option<&WorkspaceInfo>) {
+        if !self.integration_enabled {
+            return;
+        }
         let Some(workspace) = workspace else {
+            return;
+        };
+        let Some(runtime) = self.runtime.as_ref() else {
             return;
         };
         let now = Instant::now();
@@ -355,8 +377,7 @@ impl GitState {
         if status_due && !self.status_in_flight.contains(&workspace.id) {
             self.status_in_flight.insert(workspace.id.clone());
             self.status_refresh_at.insert(workspace.id.clone(), now);
-            self.runtime
-                .refresh_status(workspace.id.clone(), PathBuf::from(&workspace.path));
+            runtime.refresh_status(workspace.id.clone(), PathBuf::from(&workspace.path));
         }
 
         if self.center_mode == CenterMode::Diff {
@@ -369,8 +390,7 @@ impl GitState {
             if (diff_due || diff_stale) && !self.diff_in_flight.contains(&workspace.id) {
                 self.diff_in_flight.insert(workspace.id.clone());
                 self.diff_refresh_at.insert(workspace.id.clone(), now);
-                self.runtime
-                    .refresh_diffs(workspace.id.clone(), PathBuf::from(&workspace.path));
+                runtime.refresh_diffs(workspace.id.clone(), PathBuf::from(&workspace.path));
             }
         }
 
@@ -383,15 +403,13 @@ impl GitState {
             if log_due && !self.log_in_flight.contains(&workspace.id) {
                 self.log_in_flight.insert(workspace.id.clone());
                 self.log_refresh_at.insert(workspace.id.clone(), now);
-                self.runtime
-                    .refresh_log(workspace.id.clone(), PathBuf::from(&workspace.path));
+                runtime.refresh_log(workspace.id.clone(), PathBuf::from(&workspace.path));
             }
             if !self.remote_by_workspace.contains_key(&workspace.id)
                 && !self.remote_in_flight.contains(&workspace.id)
             {
                 self.remote_in_flight.insert(workspace.id.clone());
-                self.runtime
-                    .refresh_remote(workspace.id.clone(), PathBuf::from(&workspace.path));
+                runtime.refresh_remote(workspace.id.clone(), PathBuf::from(&workspace.path));
             }
         }
     }
@@ -399,7 +417,7 @@ impl GitState {
 
 impl Default for GitState {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
@@ -725,4 +743,29 @@ fn read_git_remote(path: &Path) -> Result<Option<String>, String> {
     };
     let remote = repo.find_remote(&target).map_err(|e| e.to_string())?;
     Ok(remote.url().map(|value| value.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_git_integration_keeps_diff_view_inactive() {
+        let mut git = GitState::new(false);
+        assert!(!git.is_enabled());
+        assert!(git.runtime.is_none());
+        assert_eq!(git.center_mode, CenterMode::Chat);
+
+        git.select_diff_path("src/main.rs".to_string());
+        assert_eq!(git.center_mode, CenterMode::Chat);
+        assert!(git.selected_diff_path.is_none());
+    }
+
+    #[test]
+    fn disabled_git_force_refresh_is_noop() {
+        let mut git = GitState::new(false);
+        git.force_refresh("workspace-1");
+        assert!(git.diff_stale.is_empty());
+        assert!(git.status_refresh_at.is_empty());
+    }
 }

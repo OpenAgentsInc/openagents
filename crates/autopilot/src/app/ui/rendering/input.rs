@@ -56,7 +56,7 @@ fn render_input(
     logical_height: f32,
     scale_factor: f32,
 ) {
-    if state.git.center_mode == crate::app::CenterMode::Diff {
+    if state.git.is_enabled() && state.git.center_mode == crate::app::CenterMode::Diff {
         return;
     }
 

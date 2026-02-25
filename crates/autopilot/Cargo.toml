@@ -10,8 +10,9 @@ name = "autopilot"
 path = "src/main.rs"
 
 [features]
-default = ["single-instance"]
+default = ["single-instance", "git-integration"]
 single-instance = ["dep:sysinfo"]
+git-integration = []
 
 [dependencies]
 # Single instance management

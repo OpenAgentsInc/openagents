@@ -45,7 +45,7 @@ pub(crate) fn render_app(state: &mut AppState) {
     } else {
         // NORMAL MODE: Render full UI
         render_sidebars(state, &mut scene, &palette, &sidebar_layout);
-        if state.git.center_mode == crate::app::CenterMode::Diff {
+        if state.git.is_enabled() && state.git.center_mode == crate::app::CenterMode::Diff {
             render_git_diff_viewer(
                 state,
                 &mut scene,

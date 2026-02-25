@@ -121,6 +121,7 @@ fn render_sidebars(
                 .with_border(palette.panel_border, 1.0),
         );
 
+        let git_enabled = state.git.is_enabled();
         let active_workspace_id = state.workspaces.active_workspace_id.as_ref();
         let status = active_workspace_id
             .and_then(|id| state.git.status_for_workspace(id));
@@ -128,7 +129,11 @@ fn render_sidebars(
         let panel_layout = git_diff_panel_layout(right_bounds, file_count);
 
         let header_run = state.text_system.layout_styled_mono(
-            "GIT DIFF",
+            if git_enabled {
+                "GIT INTEGRATION"
+            } else {
+                "GIT INTEGRATION (DISABLED)"
+            },
             Point::new(
                 panel_layout.header_bounds.origin.x,
                 panel_layout.header_bounds.origin.y,
@@ -139,11 +144,15 @@ fn render_sidebars(
         );
         scene.draw_text(header_run);
 
-        let totals_text = status
-            .map(|status| {
-                format!("+{} / -{}", status.total_additions, status.total_deletions)
-            })
-            .unwrap_or_else(|| "+0 / -0".to_string());
+        let totals_text = if git_enabled {
+            status
+                .map(|status| {
+                    format!("+{} / -{}", status.total_additions, status.total_deletions)
+                })
+                .unwrap_or_else(|| "+0 / -0".to_string())
+        } else {
+            "adapter off".to_string()
+        };
         let totals_width = state.text_system.measure_styled_mono(
             &totals_text,
             10.0,
@@ -162,7 +171,9 @@ fn render_sidebars(
         );
         scene.draw_text(totals_run);
 
-        let diff_status = if active_workspace_id.is_none() {
+        let diff_status = if !git_enabled {
+            "Optional adapter only. Set OA_GIT_INTEGRATION=1 to enable git panel.".to_string()
+        } else if active_workspace_id.is_none() {
             "Select a workspace to view changes.".to_string()
         } else if let Some(status) = status {
             if status.error.is_some() {
@@ -191,10 +202,14 @@ fn render_sidebars(
         );
         scene.draw_text(diff_status_run);
 
-        let branch_label = status
-            .map(|status| status.branch_name.as_str())
-            .filter(|branch| !branch.trim().is_empty())
-            .unwrap_or("unknown");
+        let branch_label = if git_enabled {
+            status
+                .map(|status| status.branch_name.as_str())
+                .filter(|branch| !branch.trim().is_empty())
+                .unwrap_or("unknown")
+        } else {
+            "integration only"
+        };
         let branch_run = state.text_system.layout_styled_mono(
             branch_label,
             Point::new(
@@ -209,7 +224,16 @@ fn render_sidebars(
 
         let list_origin = panel_layout.list_bounds.origin;
         let list_width = panel_layout.list_bounds.size.width;
-        if let Some(status) = status {
+        if !git_enabled {
+            let disabled_run = state.text_system.layout_styled_mono(
+                "Core collaboration remains active without git.",
+                Point::new(list_origin.x, list_origin.y),
+                11.0,
+                palette.text_dim,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(disabled_run);
+        } else if let Some(status) = status {
             if let Some(error) = status.error.as_ref() {
                 let error_text = truncate_preview(error, 140);
                 let error_run = state.text_system.layout_styled_mono(

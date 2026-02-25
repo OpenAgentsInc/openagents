@@ -72,6 +72,22 @@ use super::settings::{
     apply_codex_oss_env, fetch_rate_limits, load_keybindings, load_settings, settings_model_option,
 };
 
+fn git_integration_enabled() -> bool {
+    if !cfg!(feature = "git-integration") {
+        return false;
+    }
+    match std::env::var("OA_GIT_INTEGRATION") {
+        Ok(raw) => {
+            let normalized = raw.trim().to_ascii_lowercase();
+            !matches!(
+                normalized.as_str(),
+                "0" | "false" | "off" | "disabled" | "disable" | "no"
+            )
+        }
+        Err(_) => true,
+    }
+}
+
 impl ApplicationHandler for AutopilotApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
@@ -176,6 +192,7 @@ impl ApplicationHandler for AutopilotApp {
             let permission_default_allow =
                 coder_mode_default_allow(coder_mode, permission_config.default_allow);
             let coder_mode_label_str = coder_mode_label(coder_mode).to_string();
+            let git_integration_enabled = git_integration_enabled();
             let cwd = std::env::current_dir().unwrap_or_default();
             let (mcp_project_servers, mcp_project_error) = load_mcp_project_servers(&cwd);
             let mcp_project_path = Some(mcp_project_file(&cwd));
@@ -235,7 +252,7 @@ impl ApplicationHandler for AutopilotApp {
                 new_session_button_hovered: false,
                 chat: ChatState::new(&settings, resolved_theme),
                 tools: ToolsState::new(),
-                git: GitState::new(),
+                git: GitState::new(git_integration_enabled),
                 session: SessionState::new(
                     selected_model,
                     coder_mode_label_str,
@@ -296,6 +313,15 @@ impl ApplicationHandler for AutopilotApp {
         let runtime_handle = self.runtime_handle.clone();
         self.state = Some(state);
         tracing::info!("Window initialized");
+
+        if let Some(state) = &mut self.state
+            && !state.git.is_enabled()
+        {
+            state.push_system_message(
+                "Git integration capability is disabled (set OA_GIT_INTEGRATION=1 to enable)."
+                    .to_string(),
+            );
+        }
 
         // Start bootloader in the GPU UI
         if let Some(state) = &mut self.state {
@@ -371,7 +397,9 @@ impl ApplicationHandler for AutopilotApp {
             }
             WindowEvent::Focused(true) => {
                 state.workspaces.refresh_on_focus();
-                if let Some(active_id) = state.workspaces.active_workspace_id.as_ref() {
+                if state.git.is_enabled()
+                    && let Some(active_id) = state.workspaces.active_workspace_id.as_ref()
+                {
                     state.git.force_refresh(active_id);
                 }
             }
@@ -595,7 +623,7 @@ impl ApplicationHandler for AutopilotApp {
                     state.window.set_cursor(CursorIcon::Default);
                 }
 
-                if state.git.center_mode == crate::app::CenterMode::Diff {
+                if state.git.is_enabled() && state.git.center_mode == crate::app::CenterMode::Diff {
                     let back_bounds = diff_back_button_bounds(&sidebar_layout);
                     let hovered = back_bounds.contains(Point::new(x, y));
                     if state.git.back_button_hovered != hovered {
@@ -1033,7 +1061,9 @@ impl ApplicationHandler for AutopilotApp {
                 if button_state == ElementState::Pressed
                     && matches!(button, winit::event::MouseButton::Left)
                 {
-                    if state.git.center_mode == crate::app::CenterMode::Diff {
+                    if state.git.is_enabled()
+                        && state.git.center_mode == crate::app::CenterMode::Diff
+                    {
                         let back_bounds = diff_back_button_bounds(&sidebar_layout);
                         if back_bounds.contains(Point::new(x, y)) {
                             state.git.exit_diff_view();
@@ -1044,82 +1074,80 @@ impl ApplicationHandler for AutopilotApp {
                     if state.right_sidebar_open {
                         if let Some(right_bounds) = sidebar_layout.right {
                             if let Some(active_id) = state.workspaces.active_workspace_id.clone() {
-                                if let Some(status) = state.git.status_for_workspace(&active_id) {
-                                    let file_paths: Vec<String> =
-                                        status.files.iter().map(|file| file.path.clone()).collect();
-                                    let panel_layout =
-                                        git_diff_panel_layout(right_bounds, file_paths.len());
-                                    if panel_layout.list_bounds.contains(Point::new(x, y)) {
-                                        for (index, bounds) in &panel_layout.row_bounds {
-                                            if bounds.contains(Point::new(x, y)) {
-                                                if let Some(path) = file_paths.get(*index) {
-                                                    state.git.select_diff_path(path.clone());
-                                                    if let Some(active_id) = state
-                                                        .workspaces
-                                                        .active_workspace_id
-                                                        .as_ref()
-                                                    {
-                                                        state.git.force_refresh(active_id);
-                                                    }
-                                                    state.window.request_redraw();
-                                                    return;
-                                                }
+                                let status = state.git.status_for_workspace(&active_id);
+                                let file_paths: Vec<String> = status
+                                    .map(|status| {
+                                        status.files.iter().map(|file| file.path.clone()).collect()
+                                    })
+                                    .unwrap_or_default();
+                                let panel_layout =
+                                    git_diff_panel_layout(right_bounds, file_paths.len());
+                                if state.git.is_enabled()
+                                    && panel_layout.list_bounds.contains(Point::new(x, y))
+                                {
+                                    for (index, bounds) in &panel_layout.row_bounds {
+                                        if bounds.contains(Point::new(x, y))
+                                            && let Some(path) = file_paths.get(*index)
+                                        {
+                                            state.git.select_diff_path(path.clone());
+                                            if let Some(active_id) =
+                                                state.workspaces.active_workspace_id.as_ref()
+                                            {
+                                                state.git.force_refresh(active_id);
                                             }
+                                            state.window.request_redraw();
+                                            return;
                                         }
                                     }
+                                }
 
-                                    let approvals = state
-                                        .workspaces
-                                        .approvals_for_workspace(&active_id)
-                                        .to_vec();
-                                    if let Some(approvals_layout) = approvals_panel_layout(
-                                        right_bounds,
-                                        &panel_layout,
-                                        approvals.len(),
-                                    ) {
-                                        for (index, bounds) in &approvals_layout.approve_bounds {
-                                            if bounds.contains(Point::new(x, y)) {
-                                                if let Some(request) = approvals.get(*index) {
-                                                    let response = app_server::ApprovalResponse {
-                                                        decision:
-                                                            app_server::ApprovalDecision::Accept,
-                                                        accept_settings: None,
-                                                    };
-                                                    state.workspaces.runtime.respond_to_request(
-                                                        active_id.clone(),
-                                                        request.id.clone(),
-                                                        response,
-                                                    );
-                                                    state.workspaces.remove_approval(
-                                                        &active_id,
-                                                        &request.id_label(),
-                                                    );
-                                                    state.window.request_redraw();
-                                                    return;
-                                                }
-                                            }
+                                let approvals = state
+                                    .workspaces
+                                    .approvals_for_workspace(&active_id)
+                                    .to_vec();
+                                if let Some(approvals_layout) = approvals_panel_layout(
+                                    right_bounds,
+                                    &panel_layout,
+                                    approvals.len(),
+                                ) {
+                                    for (index, bounds) in &approvals_layout.approve_bounds {
+                                        if bounds.contains(Point::new(x, y))
+                                            && let Some(request) = approvals.get(*index)
+                                        {
+                                            let response = app_server::ApprovalResponse {
+                                                decision: app_server::ApprovalDecision::Accept,
+                                                accept_settings: None,
+                                            };
+                                            state.workspaces.runtime.respond_to_request(
+                                                active_id.clone(),
+                                                request.id.clone(),
+                                                response,
+                                            );
+                                            state
+                                                .workspaces
+                                                .remove_approval(&active_id, &request.id_label());
+                                            state.window.request_redraw();
+                                            return;
                                         }
-                                        for (index, bounds) in &approvals_layout.decline_bounds {
-                                            if bounds.contains(Point::new(x, y)) {
-                                                if let Some(request) = approvals.get(*index) {
-                                                    let response = app_server::ApprovalResponse {
-                                                        decision:
-                                                            app_server::ApprovalDecision::Decline,
-                                                        accept_settings: None,
-                                                    };
-                                                    state.workspaces.runtime.respond_to_request(
-                                                        active_id.clone(),
-                                                        request.id.clone(),
-                                                        response,
-                                                    );
-                                                    state.workspaces.remove_approval(
-                                                        &active_id,
-                                                        &request.id_label(),
-                                                    );
-                                                    state.window.request_redraw();
-                                                    return;
-                                                }
-                                            }
+                                    }
+                                    for (index, bounds) in &approvals_layout.decline_bounds {
+                                        if bounds.contains(Point::new(x, y))
+                                            && let Some(request) = approvals.get(*index)
+                                        {
+                                            let response = app_server::ApprovalResponse {
+                                                decision: app_server::ApprovalDecision::Decline,
+                                                accept_settings: None,
+                                            };
+                                            state.workspaces.runtime.respond_to_request(
+                                                active_id.clone(),
+                                                request.id.clone(),
+                                                response,
+                                            );
+                                            state
+                                                .workspaces
+                                                .remove_approval(&active_id, &request.id_label());
+                                            state.window.request_redraw();
+                                            return;
                                         }
                                     }
                                 }
@@ -1128,7 +1156,7 @@ impl ApplicationHandler for AutopilotApp {
                     }
                 }
 
-                if state.git.center_mode == crate::app::CenterMode::Diff {
+                if state.git.is_enabled() && state.git.center_mode == crate::app::CenterMode::Diff {
                     state.window.request_redraw();
                     return;
                 }
@@ -1549,7 +1577,7 @@ impl ApplicationHandler for AutopilotApp {
                     state.window.request_redraw();
                     return;
                 }
-                if state.git.center_mode == crate::app::CenterMode::Diff {
+                if state.git.is_enabled() && state.git.center_mode == crate::app::CenterMode::Diff {
                     state.git.diff_scroll_offset =
                         (state.git.diff_scroll_offset - dy * 40.0).max(0.0);
                     state.window.request_redraw();
@@ -1629,7 +1657,9 @@ impl ApplicationHandler for AutopilotApp {
 
                     let modifiers = convert_modifiers(&state.modifiers);
 
-                    if state.git.center_mode == crate::app::CenterMode::Diff {
+                    if state.git.is_enabled()
+                        && state.git.center_mode == crate::app::CenterMode::Diff
+                    {
                         if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
                             state.git.exit_diff_view();
                             state.window.request_redraw();
@@ -1660,7 +1690,9 @@ impl ApplicationHandler for AutopilotApp {
                         }
                     }
 
-                    if state.git.center_mode != crate::app::CenterMode::Diff {
+                    if !state.git.is_enabled()
+                        || state.git.center_mode != crate::app::CenterMode::Diff
+                    {
                         if state.handle_chat_shortcut(
                             &key_event.logical_key,
                             modifiers,
@@ -1709,7 +1741,9 @@ impl ApplicationHandler for AutopilotApp {
                         }
                     }
 
-                    if state.git.center_mode != crate::app::CenterMode::Diff {
+                    if !state.git.is_enabled()
+                        || state.git.center_mode != crate::app::CenterMode::Diff
+                    {
                         // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
                         if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
                             if !state.modifiers.shift_key() {

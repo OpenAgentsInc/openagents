@@ -2883,9 +2883,20 @@ impl AutopilotApp {
         let Some(state) = &mut self.state else {
             return;
         };
+        if !state.git.is_enabled() {
+            return;
+        }
+        let Some(runtime) = state.git.runtime.as_mut() else {
+            return;
+        };
+
+        let mut drained_events = Vec::new();
+        while let Ok(event) = runtime.event_rx.try_recv() {
+            drained_events.push(event);
+        }
 
         let mut should_redraw = false;
-        while let Ok(event) = state.git.runtime.event_rx.try_recv() {
+        for event in drained_events {
             match event {
                 crate::app::git::GitEvent::StatusUpdated {
                     workspace_id,
