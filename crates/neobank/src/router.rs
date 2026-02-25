@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use crate::budgets::{BudgetError, BudgetFinalizeDisposition, BudgetHooks};
 use crate::rails::runtime::{
     CreditEnvelopeRequestV1, CreditOfferRequestV1, CreditScopeTypeV1, CreditSettleRequestV1,
-    LiquidityPayRequestV1, LiquidityQuotePayRequestV1, RuntimeClientError,
-    RuntimeInternalApiClient,
+    LiquidityPayRequestV1, LiquidityQuotePayRequestV1, RoutingCandidateQuoteV1,
+    RoutingScoreRequestV1, RuntimeClientError, RuntimeInternalApiClient,
 };
 use crate::receipts::{
     PaymentAttemptReceiptInput, PaymentAttemptReceiptV1, PaymentRouteKind, ReceiptSigner,
@@ -84,6 +84,26 @@ pub struct QuoteAndPayBolt11Response {
     pub receipt: PaymentAttemptReceiptV1,
 }
 
+const HYDRA_ROUTING_SCORE_REQUEST_SCHEMA_V1: &str = "openagents.hydra.routing_score_request.v1";
+const HYDRA_ROUTING_POLICY_BALANCED_V1: &str = "balanced_v1";
+const HYDRA_ROUTE_PROVIDER_DIRECT: &str = "route-direct";
+const HYDRA_ROUTE_PROVIDER_CEP: &str = "route-cep";
+const HYDRA_ROUTING_CAPABILITY_PAY_BOLT11_V1: &str = "oa.liquidity.pay_bolt11.v1";
+
+#[derive(Debug, Clone, Default)]
+struct RoutingDecisionContext {
+    decision_sha256: Option<String>,
+    policy_notes: Vec<String>,
+    confidence: Option<f64>,
+    liquidity_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolvedRouteKind {
+    Direct,
+    Cep,
+}
+
 pub struct TreasuryRouter {
     runtime: RuntimeInternalApiClient,
     budget_hooks: Arc<dyn BudgetHooks>,
@@ -130,27 +150,33 @@ impl TreasuryRouter {
             .map_err(map_budget_error)?;
 
         let created_at = Utc::now();
-        let direct_allowed =
-            should_use_direct_path(max_amount_forwarded_msats, sanitized.route_policy.as_ref());
+        let (resolved_route, routing_context) = self
+            .resolve_route_kind(&sanitized, amount_msats, max_amount_forwarded_msats)
+            .await;
 
-        let result = if direct_allowed {
-            self.pay_direct(
-                &sanitized,
-                amount_msats,
-                created_at,
-                policy_context_sha256.as_str(),
-                reservation.reservation_id.as_str(),
-            )
-            .await
-        } else {
-            self.pay_via_cep(
-                &sanitized,
-                amount_msats,
-                created_at,
-                policy_context_sha256.as_str(),
-                reservation.reservation_id.as_str(),
-            )
-            .await
+        let result = match resolved_route {
+            ResolvedRouteKind::Direct => {
+                self.pay_direct(
+                    &sanitized,
+                    amount_msats,
+                    created_at,
+                    policy_context_sha256.as_str(),
+                    reservation.reservation_id.as_str(),
+                    &routing_context,
+                )
+                .await
+            }
+            ResolvedRouteKind::Cep => {
+                self.pay_via_cep(
+                    &sanitized,
+                    amount_msats,
+                    created_at,
+                    policy_context_sha256.as_str(),
+                    reservation.reservation_id.as_str(),
+                    &routing_context,
+                )
+                .await
+            }
         };
 
         match result {
@@ -173,6 +199,134 @@ impl TreasuryRouter {
         }
     }
 
+    async fn resolve_route_kind(
+        &self,
+        request: &SanitizedRequest,
+        amount_msats: u64,
+        max_amount_forwarded_msats: u64,
+    ) -> (ResolvedRouteKind, RoutingDecisionContext) {
+        match request.route_policy.as_ref() {
+            RoutePolicy::DirectOnly => {
+                return (ResolvedRouteKind::Direct, RoutingDecisionContext::default());
+            }
+            RoutePolicy::ForceCep => {
+                if request.cep.is_some() {
+                    return (ResolvedRouteKind::Cep, RoutingDecisionContext::default());
+                }
+                return (ResolvedRouteKind::Direct, RoutingDecisionContext::default());
+            }
+            RoutePolicy::PreferAgentBalance { .. } => {}
+        }
+
+        let fallback_direct =
+            should_use_direct_path(max_amount_forwarded_msats, request.route_policy.as_ref());
+        let fallback = if fallback_direct || request.cep.is_none() {
+            ResolvedRouteKind::Direct
+        } else {
+            ResolvedRouteKind::Cep
+        };
+
+        let Some(run_id) = request.run_id.as_ref() else {
+            return (fallback, RoutingDecisionContext::default());
+        };
+
+        let (agent_balance_sats, min_reserve_sats, direct_allowed) = match request.route_policy.as_ref() {
+            RoutePolicy::PreferAgentBalance {
+                agent_balance_sats,
+                min_reserve_sats,
+                direct_allowed,
+            } => (*agent_balance_sats, *min_reserve_sats, *direct_allowed),
+            _ => (0, 0, true),
+        };
+        let required_sats = msats_to_sats_ceil(max_amount_forwarded_msats);
+        let has_direct_headroom = agent_balance_sats.saturating_sub(min_reserve_sats) >= required_sats;
+        let direct_reliability_bps = if direct_allowed && has_direct_headroom {
+            9_600
+        } else if direct_allowed {
+            7_200
+        } else {
+            2_000
+        };
+
+        let mut candidates = vec![RoutingCandidateQuoteV1 {
+            marketplace_id: "openagents".to_string(),
+            provider_id: HYDRA_ROUTE_PROVIDER_DIRECT.to_string(),
+            provider_worker_id: None,
+            total_price_msats: max_amount_forwarded_msats,
+            latency_ms: Some(120),
+            reliability_bps: direct_reliability_bps,
+            constraints: serde_json::json!({
+                "routeKind": "direct_liquidity",
+                "directAllowed": direct_allowed,
+                "hasHeadroom": has_direct_headroom
+            }),
+            quote_id: None,
+            quote_sha256: None,
+        }];
+
+        if request.cep.is_some() {
+            let cep_premium_msats = amount_msats.saturating_div(100);
+            let cep_reliability_bps = if has_direct_headroom { 9_000 } else { 9_700 };
+            candidates.push(RoutingCandidateQuoteV1 {
+                marketplace_id: "openagents".to_string(),
+                provider_id: HYDRA_ROUTE_PROVIDER_CEP.to_string(),
+                provider_worker_id: None,
+                total_price_msats: max_amount_forwarded_msats.saturating_add(cep_premium_msats),
+                latency_ms: Some(220),
+                reliability_bps: cep_reliability_bps,
+                constraints: serde_json::json!({
+                    "routeKind": "cep_envelope",
+                    "providerId": request.cep.as_ref().map(|value| value.provider_id.clone())
+                }),
+                quote_id: None,
+                quote_sha256: None,
+            });
+        }
+
+        if candidates.len() < 2 {
+            return (fallback, RoutingDecisionContext::default());
+        }
+
+        let routing_response = self
+            .runtime
+            .hydra_routing_score(RoutingScoreRequestV1 {
+                schema: HYDRA_ROUTING_SCORE_REQUEST_SCHEMA_V1.to_string(),
+                idempotency_key: format!("{}:routing", request.idempotency_key),
+                run_id: run_id.clone(),
+                marketplace_id: "openagents".to_string(),
+                capability: HYDRA_ROUTING_CAPABILITY_PAY_BOLT11_V1.to_string(),
+                policy: HYDRA_ROUTING_POLICY_BALANCED_V1.to_string(),
+                objective_hash: request.trajectory_hash.clone(),
+                decided_at_unix: Utc::now().timestamp().max(0) as u64,
+                candidates,
+            })
+            .await;
+
+        let response = match routing_response {
+            Ok(response) => response,
+            Err(_) => return (fallback, RoutingDecisionContext::default()),
+        };
+
+        let context = RoutingDecisionContext {
+            decision_sha256: Some(response.decision_sha256.clone()),
+            policy_notes: response.factors.policy_notes.clone(),
+            confidence: Some(response.factors.confidence),
+            liquidity_score: Some(response.factors.liquidity_score),
+        };
+
+        if response.selected.provider_id == HYDRA_ROUTE_PROVIDER_CEP {
+            if request.cep.is_some() {
+                return (ResolvedRouteKind::Cep, context);
+            }
+            return (ResolvedRouteKind::Direct, context);
+        }
+        if response.selected.provider_id == HYDRA_ROUTE_PROVIDER_DIRECT {
+            return (ResolvedRouteKind::Direct, context);
+        }
+
+        (fallback, context)
+    }
+
     async fn pay_direct(
         &self,
         request: &SanitizedRequest,
@@ -180,6 +334,7 @@ impl TreasuryRouter {
         created_at: chrono::DateTime<Utc>,
         policy_context_sha256: &str,
         reservation_id: &str,
+        routing_context: &RoutingDecisionContext,
     ) -> Result<QuoteAndPayBolt11Response, NeobankError> {
         let quote = self
             .runtime
@@ -232,6 +387,10 @@ impl TreasuryRouter {
                 credit_offer_id: None,
                 credit_envelope_id: None,
                 credit_settlement_receipt_sha256: None,
+                routing_decision_sha256: routing_context.decision_sha256.clone(),
+                routing_policy_notes: routing_context.policy_notes.clone(),
+                routing_confidence: routing_context.confidence,
+                routing_liquidity_score: routing_context.liquidity_score,
                 error_code: None,
                 error_message: None,
                 created_at,
@@ -260,6 +419,7 @@ impl TreasuryRouter {
         created_at: chrono::DateTime<Utc>,
         policy_context_sha256: &str,
         reservation_id: &str,
+        routing_context: &RoutingDecisionContext,
     ) -> Result<QuoteAndPayBolt11Response, NeobankError> {
         let Some(cep) = request.cep.as_ref() else {
             return Err(NeobankError::InvalidRequest(
@@ -365,6 +525,10 @@ impl TreasuryRouter {
                 credit_offer_id: Some(offer.offer.offer_id.clone()),
                 credit_envelope_id: Some(envelope.envelope.envelope_id.clone()),
                 credit_settlement_receipt_sha256: Some(liquidity_receipt_sha256.clone()),
+                routing_decision_sha256: routing_context.decision_sha256.clone(),
+                routing_policy_notes: routing_context.policy_notes.clone(),
+                routing_confidence: routing_context.confidence,
+                routing_liquidity_score: routing_context.liquidity_score,
                 error_code: None,
                 error_message: None,
                 created_at,
@@ -522,4 +686,382 @@ fn extract_canonical_sha256(receipt: &Value) -> Option<String> {
                 .and_then(Value::as_str)
                 .map(str::to_string)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use anyhow::Result;
+    use axum::{
+        Json, Router,
+        extract::State,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::post,
+    };
+    use chrono::Utc;
+    use serde_json::{Value, json};
+    use tokio::net::TcpListener;
+    use tokio::sync::{Mutex, oneshot};
+
+    use super::{
+        CepPaymentContext, HYDRA_ROUTE_PROVIDER_CEP, QuoteAndPayBolt11Request, RoutePolicy,
+        TreasuryRouter,
+    };
+    use crate::{
+        budgets::InMemoryBudgetHooks, rails::runtime::RuntimeInternalApiClient,
+        receipts::PaymentRouteKind,
+    };
+
+    #[derive(Debug, Clone, Copy)]
+    enum RoutingStubMode {
+        SelectCep,
+        Error,
+    }
+
+    #[derive(Clone)]
+    struct RoutingStubState {
+        mode: RoutingStubMode,
+        calls: Arc<Mutex<Vec<String>>>,
+    }
+
+    struct RuntimeStub {
+        base_url: String,
+        calls: Arc<Mutex<Vec<String>>>,
+        shutdown: Option<oneshot::Sender<()>>,
+    }
+
+    impl RuntimeStub {
+        async fn stop(mut self) {
+            if let Some(shutdown) = self.shutdown.take() {
+                let _ = shutdown.send(());
+            }
+        }
+    }
+
+    async fn spawn_runtime_stub(mode: RoutingStubMode) -> Result<RuntimeStub> {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let state = RoutingStubState {
+            mode,
+            calls: calls.clone(),
+        };
+        let app = Router::new()
+            .route("/internal/v1/hydra/routing/score", post(hydra_routing_score))
+            .route("/internal/v1/liquidity/quote_pay", post(liquidity_quote_pay))
+            .route("/internal/v1/liquidity/pay", post(liquidity_pay))
+            .route("/internal/v1/credit/offer", post(credit_offer))
+            .route("/internal/v1/credit/envelope", post(credit_envelope))
+            .route("/internal/v1/credit/settle", post(credit_settle))
+            .with_state(state);
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        tokio::spawn(async move {
+            let server = axum::serve(listener, app).with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            });
+            let _ = server.await;
+        });
+
+        Ok(RuntimeStub {
+            base_url: format!("http://{addr}"),
+            calls,
+            shutdown: Some(shutdown_tx),
+        })
+    }
+
+    async fn record_call(calls: &Arc<Mutex<Vec<String>>>, name: &str) {
+        let mut guard = calls.lock().await;
+        guard.push(name.to_string());
+    }
+
+    async fn hydra_routing_score(
+        State(state): State<RoutingStubState>,
+        Json(body): Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "hydra_routing_score").await;
+        match state.mode {
+            RoutingStubMode::Error => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": {
+                        "code": "dependency_unavailable",
+                        "message": "hydra unavailable"
+                    }
+                })),
+            )
+                .into_response(),
+            RoutingStubMode::SelectCep => {
+                let run_id = body
+                    .get("run_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let objective_hash = body.get("objective_hash").cloned().unwrap_or(Value::Null);
+                let decided_at_unix = body
+                    .get("decided_at_unix")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                Json(json!({
+                    "schema": "openagents.hydra.routing_score_response.v1",
+                    "decision_sha256": "d".repeat(64),
+                    "policy": "balanced_v1",
+                    "run_id": run_id,
+                    "marketplace_id": "openagents",
+                    "capability": "oa.liquidity.pay_bolt11.v1",
+                    "objective_hash": objective_hash,
+                    "selected": {
+                        "marketplace_id": "openagents",
+                        "provider_id": HYDRA_ROUTE_PROVIDER_CEP,
+                        "total_price_msats": 110,
+                        "latency_ms": 200,
+                        "reliability_bps": 9700,
+                        "constraints": {"routeKind":"cep_envelope"}
+                    },
+                    "candidates": [
+                        {
+                            "marketplace_id": "openagents",
+                            "provider_id": "route-direct",
+                            "total_price_msats": 100,
+                            "latency_ms": 100,
+                            "reliability_bps": 9600,
+                            "constraints": {"routeKind":"direct_liquidity"}
+                        },
+                        {
+                            "marketplace_id": "openagents",
+                            "provider_id": HYDRA_ROUTE_PROVIDER_CEP,
+                            "total_price_msats": 110,
+                            "latency_ms": 200,
+                            "reliability_bps": 9700,
+                            "constraints": {"routeKind":"cep_envelope"}
+                        }
+                    ],
+                    "factors": {
+                        "expected_fee_msats": 2,
+                        "confidence": 0.94,
+                        "liquidity_score": 0.88,
+                        "policy_notes": ["route:selected=cep"]
+                    },
+                    "receipt": {
+                        "receipt_schema": "openagents.hydra.routing_decision_receipt.v1",
+                        "receipt_id": "hydrart_test",
+                        "canonical_json_sha256": "e".repeat(64)
+                    },
+                    "nostr_event": {},
+                    "decided_at_unix": decided_at_unix
+                }))
+                    .into_response()
+            }
+        }
+    }
+
+    async fn liquidity_quote_pay(
+        State(state): State<RoutingStubState>,
+        Json(body): Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "liquidity_quote_pay").await;
+        let now = Utc::now().to_rfc3339();
+        Json(json!({
+            "schema": "openagents.liquidity.quote_pay_response.v1",
+            "quote_id": "liq_quote_1",
+            "idempotency_key": body.get("idempotency_key").and_then(Value::as_str).unwrap_or(""),
+            "invoice_hash": "inv_hash_1",
+            "host": body.get("host").and_then(Value::as_str).unwrap_or(""),
+            "quoted_amount_msats": 100,
+            "max_amount_msats": 120,
+            "max_fee_msats": 20,
+            "policy_context_sha256": "policy_sha_1",
+            "valid_until": now,
+            "created_at": now
+        }))
+    }
+
+    async fn liquidity_pay(
+        State(state): State<RoutingStubState>,
+        _body: Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "liquidity_pay").await;
+        Json(json!({
+            "schema": "openagents.liquidity.pay_response.v1",
+            "quote_id": "liq_quote_1",
+            "status": "succeeded",
+            "wallet_receipt_sha256": "f".repeat(64),
+            "preimage_sha256": "a".repeat(64),
+            "paid_at_ms": 1700000000000_i64,
+            "error_code": null,
+            "error_message": null,
+            "receipt": {
+                "schema": "openagents.liquidity.invoice_pay_receipt.v1",
+                "receipt_id": "liq_receipt_1",
+                "canonical_json_sha256": "f".repeat(64)
+            },
+            "payment_proof": {
+                "type": "lightning_preimage",
+                "value": "abcd"
+            }
+        }))
+    }
+
+    async fn credit_offer(
+        State(state): State<RoutingStubState>,
+        _body: Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "credit_offer").await;
+        let now = Utc::now().to_rfc3339();
+        Json(json!({
+            "schema": "openagents.credit.offer_response.v1",
+            "offer": {
+                "offer_id": "offer_1",
+                "agent_id": "agent_1",
+                "pool_id": "pool_1",
+                "scope_type": "nip90",
+                "scope_id": "scope_1",
+                "max_sats": 1,
+                "fee_bps": 100,
+                "requires_verifier": true,
+                "exp": now,
+                "status": "offered",
+                "issued_at": now
+            }
+        }))
+    }
+
+    async fn credit_envelope(
+        State(state): State<RoutingStubState>,
+        _body: Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "credit_envelope").await;
+        let now = Utc::now().to_rfc3339();
+        Json(json!({
+            "schema": "openagents.credit.envelope_response.v1",
+            "envelope": {
+                "envelope_id": "envelope_1",
+                "offer_id": "offer_1",
+                "agent_id": "agent_1",
+                "pool_id": "pool_1",
+                "provider_id": "provider_1",
+                "scope_type": "nip90",
+                "scope_id": "scope_1",
+                "max_sats": 1,
+                "fee_bps": 100,
+                "exp": now,
+                "status": "accepted",
+                "issued_at": now
+            },
+            "receipt": {
+                "schema": "openagents.credit.envelope_issue_receipt.v1"
+            }
+        }))
+    }
+
+    async fn credit_settle(
+        State(state): State<RoutingStubState>,
+        _body: Json<Value>,
+    ) -> impl IntoResponse {
+        record_call(&state.calls, "credit_settle").await;
+        Json(json!({
+            "schema": "openagents.credit.settle_response.v1",
+            "envelope_id": "envelope_1",
+            "settlement_id": "settle_1",
+            "outcome": "success",
+            "spent_sats": 1,
+            "fee_sats": 0,
+            "verification_receipt_sha256": "v".repeat(64),
+            "liquidity_receipt_sha256": "l".repeat(64),
+            "receipt": {
+                "schema": "openagents.credit.envelope_settlement_receipt.v1",
+                "canonical_json_sha256": "l".repeat(64)
+            }
+        }))
+    }
+
+    fn test_cep_context() -> CepPaymentContext {
+        CepPaymentContext {
+            agent_id: "agent_1".to_string(),
+            pool_id: "pool_1".to_string(),
+            provider_id: "provider_1".to_string(),
+            scope_id: "scope_1".to_string(),
+            max_sats_cap: Some(10),
+            offer_ttl_seconds: Some(600),
+            verification_passed: true,
+            verification_receipt_sha256: Some("v".repeat(64)),
+        }
+    }
+
+    #[tokio::test]
+    async fn route_selection_uses_hydra_score_and_can_flip_to_cep() -> Result<()> {
+        let stub = spawn_runtime_stub(RoutingStubMode::SelectCep).await?;
+        let runtime = RuntimeInternalApiClient::new(stub.base_url.clone(), None);
+        let budget_hooks = Arc::new(InMemoryBudgetHooks::default());
+        let router = TreasuryRouter::new(runtime, budget_hooks);
+
+        let response = router
+            .quote_and_pay_bolt11(QuoteAndPayBolt11Request {
+                invoice: "lnbc1n1test".to_string(),
+                host: "l402.openagents.com".to_string(),
+                max_fee_msats: 20,
+                urgency: None,
+                policy_context: json!({"schema":"test.policy_context.v1"}),
+                run_id: Some(uuid::Uuid::new_v4().to_string()),
+                trajectory_hash: Some("sha256:traj".to_string()),
+                idempotency_key: "idem-route-cep".to_string(),
+                route_policy: RoutePolicy::PreferAgentBalance {
+                    agent_balance_sats: 100_000,
+                    min_reserve_sats: 0,
+                    direct_allowed: true,
+                },
+                cep: Some(test_cep_context()),
+            })
+            .await?;
+
+        assert_eq!(response.route_kind, PaymentRouteKind::CepEnvelope);
+        assert!(response.receipt.routing_decision_sha256.is_some());
+        assert!(!response.receipt.routing_policy_notes.is_empty());
+
+        let calls = stub.calls.lock().await.clone();
+        assert!(calls.iter().any(|entry| entry == "hydra_routing_score"));
+        assert!(calls.iter().any(|entry| entry == "credit_settle"));
+
+        stub.stop().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_selection_falls_back_when_hydra_unavailable() -> Result<()> {
+        let stub = spawn_runtime_stub(RoutingStubMode::Error).await?;
+        let runtime = RuntimeInternalApiClient::new(stub.base_url.clone(), None);
+        let budget_hooks = Arc::new(InMemoryBudgetHooks::default());
+        let router = TreasuryRouter::new(runtime, budget_hooks);
+
+        let response = router
+            .quote_and_pay_bolt11(QuoteAndPayBolt11Request {
+                invoice: "lnbc1n1test".to_string(),
+                host: "l402.openagents.com".to_string(),
+                max_fee_msats: 20,
+                urgency: None,
+                policy_context: json!({"schema":"test.policy_context.v1"}),
+                run_id: Some(uuid::Uuid::new_v4().to_string()),
+                trajectory_hash: Some("sha256:traj".to_string()),
+                idempotency_key: "idem-route-fallback".to_string(),
+                route_policy: RoutePolicy::PreferAgentBalance {
+                    agent_balance_sats: 100_000,
+                    min_reserve_sats: 0,
+                    direct_allowed: true,
+                },
+                cep: Some(test_cep_context()),
+            })
+            .await?;
+
+        assert_eq!(response.route_kind, PaymentRouteKind::DirectLiquidity);
+        assert!(response.receipt.routing_decision_sha256.is_none());
+
+        let calls = stub.calls.lock().await.clone();
+        assert!(calls.iter().any(|entry| entry == "hydra_routing_score"));
+        assert!(calls.iter().any(|entry| entry == "liquidity_pay"));
+
+        stub.stop().await;
+        Ok(())
+    }
 }

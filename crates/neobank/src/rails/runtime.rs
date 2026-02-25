@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
 use openagents_proto::hydra_credit::HydraCreditConversionError;
-use openagents_proto::hydra_routing::HydraRoutingConversionError;
 pub use openagents_proto::hydra_credit::{
     CreditEnvelopeRequestV1, CreditEnvelopeResponseV1, CreditOfferRequestV1, CreditOfferResponseV1,
     CreditScopeTypeV1, CreditSettleRequestV1, CreditSettleResponseV1,
 };
-pub use openagents_proto::hydra_routing::{RoutingScoreRequestV1, RoutingScoreResponseV1};
+use openagents_proto::hydra_routing::HydraRoutingConversionError;
+pub use openagents_proto::hydra_routing::{
+    RoutingCandidateQuoteV1, RoutingScoreRequestV1, RoutingScoreResponseV1,
+};
 use openagents_proto::wire::openagents::hydra::v1 as wire_hydra;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -105,7 +107,9 @@ impl RuntimeInternalApiClient {
         body: RoutingScoreRequestV1,
     ) -> Result<RoutingScoreResponseV1, RuntimeClientError> {
         let body = normalize_routing_score_request(body)?;
-        let response = self.post_json("/internal/v1/hydra/routing/score", &body).await?;
+        let response = self
+            .post_json("/internal/v1/hydra/routing/score", &body)
+            .await?;
         normalize_routing_score_response(response)
     }
 
