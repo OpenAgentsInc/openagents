@@ -16,7 +16,7 @@ Under the hood, the system is built around a shared runtime/control model so age
 
 [apps/lightning-wallet-executor/](apps/lightning-wallet-executor/) is the Rust HTTP payment execution service for wallet actions such as BOLT11 pay, invoice creation, and on-chain send flows.
 
-Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning credits and strengthening supply liquidity.
+Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning bitcoin and strengthening supply liquidity.
 
 Core services:
 - Runtime authority: `apps/runtime/`
