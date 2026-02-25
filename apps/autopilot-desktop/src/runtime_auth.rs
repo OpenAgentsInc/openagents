@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use openagents_client_core::auth::{
-    normalize_base_url as normalize_base_url_core, normalize_email as normalize_email_core,
+    DEFAULT_CONTROL_BASE_URL, normalize_base_url as normalize_base_url_core,
+    normalize_email as normalize_email_core,
     normalize_verification_code as normalize_verification_code_core,
 };
 use reqwest::{Client as HttpClient, Method};
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-pub const DEFAULT_AUTH_BASE_URL: &str = "https://openagents.com";
+pub const DEFAULT_AUTH_BASE_URL: &str = DEFAULT_CONTROL_BASE_URL;
 const AUTH_STATE_FILE_NAME: &str = "autopilot-desktop-runtime-auth.json";
 const AUTH_CLIENT_HEADER: &str = "autopilot-desktop";
 const AUTH_USER_AGENT: &str = concat!("autopilot-desktop/", env!("CARGO_PKG_VERSION"));

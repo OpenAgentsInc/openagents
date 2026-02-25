@@ -38,6 +38,22 @@ Auth state is persisted at:
 
 The app automatically uses this saved auth token for runtime worker sync (`/api/runtime/codex/workers*`) unless explicit `OPENAGENTS_RUNTIME_SYNC_*` env overrides are set.
 
+Endpoint resolution (local-first):
+
+- Runtime sync/auth base defaults to `http://127.0.0.1:8787`.
+- Override order:
+  - `OPENAGENTS_RUNTIME_SYNC_BASE_URL` (runtime-specific)
+  - `OPENAGENTS_CONTROL_BASE_URL` (shared control base)
+  - `OPENAGENTS_AUTH_BASE_URL` (legacy alias)
+  - saved auth-state base URL
+  - local default
+- CommunityFeed proxy defaults to `http://127.0.0.1:8787/api/communityfeed/api`.
+- CommunityFeed overrides:
+  - `OPENAGENTS_COMMUNITYFEED_API_BASE`
+  - `OA_COMMUNITYFEED_API_BASE` (legacy alias)
+  - `OA_API` (appends `/communityfeed/api`)
+  - `COMMUNITYFEED_API_BASE` for direct CommunityFeed live API.
+
 ### CLI Fallback (Automation / Headless)
 
 Login once via CLI:

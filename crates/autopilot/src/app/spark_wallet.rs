@@ -417,14 +417,65 @@ async fn run_spark_wallet_loop(
     }
 }
 
-const OPENAGENTS_API_BASE: &str = "https://openagents.com/api";
+const DEFAULT_OPENAGENTS_API_BASE: &str = "http://127.0.0.1:8787/api";
+const ENV_OPENAGENTS_API_BASE_URL: &str = "OPENAGENTS_API_BASE_URL";
+const ENV_OA_API: &str = "OA_API";
+const ENV_CONTROL_BASE_URL: &str = "OPENAGENTS_CONTROL_BASE_URL";
+const ENV_CONTROL_BASE_URL_LEGACY: &str = "OPENAGENTS_AUTH_BASE_URL";
+
+fn resolve_openagents_api_base() -> Result<(String, &'static str), String> {
+    if let Some(base) = validated_url_from_env(ENV_OPENAGENTS_API_BASE_URL)? {
+        return Ok((normalize_api_base_path(&base), ENV_OPENAGENTS_API_BASE_URL));
+    }
+    if let Some(base) = validated_url_from_env(ENV_OA_API)? {
+        return Ok((normalize_api_base_path(&base), ENV_OA_API));
+    }
+    if let Some(base) = validated_url_from_env(ENV_CONTROL_BASE_URL)? {
+        return Ok((normalize_api_base_path(&base), ENV_CONTROL_BASE_URL));
+    }
+    if let Some(base) = validated_url_from_env(ENV_CONTROL_BASE_URL_LEGACY)? {
+        return Ok((normalize_api_base_path(&base), ENV_CONTROL_BASE_URL_LEGACY));
+    }
+    Ok((DEFAULT_OPENAGENTS_API_BASE.to_string(), "default_local"))
+}
+
+fn validated_url_from_env(key: &str) -> Result<Option<String>, String> {
+    let Some(value) = std::env::var(key).ok() else {
+        return Ok(None);
+    };
+    let trimmed = value.trim().trim_end_matches('/').to_string();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    match reqwest::Url::parse(&trimmed) {
+        Ok(url) => {
+            if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+                return Err(format!(
+                    "{key} must be an absolute http(s) URL (got `{trimmed}`)"
+                ));
+            }
+            Ok(Some(trimmed))
+        }
+        Err(error) => Err(format!("{key} has invalid URL `{trimmed}`: {error}")),
+    }
+}
+
+fn normalize_api_base_path(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with("/api") {
+        return trimmed.to_string();
+    }
+    format!("{trimmed}/api")
+}
 
 async fn fetch_openagents_wallet_linked(
     api_key: &str,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let (api_base, _) =
+        resolve_openagents_api_base().map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("{}/agents/me/wallet", OPENAGENTS_API_BASE))
+        .get(format!("{api_base}/agents/me/wallet"))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await?;
@@ -436,13 +487,15 @@ async fn post_openagents_wallet(
     spark_address: &str,
     lud16: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (api_base, _) =
+        resolve_openagents_api_base().map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({ "spark_address": spark_address });
     if let Some(l) = lud16 {
         body["lud16"] = serde_json::Value::String(l.to_string());
     }
     let resp = client
-        .post(format!("{}/agents/me/wallet", OPENAGENTS_API_BASE))
+        .post(format!("{api_base}/agents/me/wallet"))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -595,6 +648,39 @@ fn summarize_payments(payments: Vec<Payment>) -> Vec<SparkPaymentSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_env<T>(overrides: &[(&str, Option<&str>)], test: impl FnOnce() -> T) -> T {
+        let lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous = overrides
+            .iter()
+            .map(|(key, _)| (*key, std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in overrides {
+            if let Some(value) = value {
+                unsafe { std::env::set_var(key, value) };
+            } else {
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+
+        let result = test();
+
+        for (key, value) in previous {
+            if let Some(value) = value {
+                unsafe { std::env::set_var(key, value) };
+            } else {
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+
+        result
+    }
 
     #[test]
     fn spark_wallet_status_labels() {
@@ -606,5 +692,50 @@ mod tests {
     #[test]
     fn parse_network_defaults_to_regtest() {
         assert_eq!(parse_network("unknown"), Network::Regtest);
+    }
+
+    #[test]
+    fn resolve_openagents_api_base_defaults_local() {
+        with_env(
+            &[
+                (ENV_OPENAGENTS_API_BASE_URL, None),
+                (ENV_OA_API, None),
+                (ENV_CONTROL_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+            ],
+            || {
+                let (base_url, source) =
+                    resolve_openagents_api_base().expect("local default should resolve");
+                assert_eq!(base_url, DEFAULT_OPENAGENTS_API_BASE);
+                assert_eq!(source, "default_local");
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_openagents_api_base_prefers_explicit_override() {
+        with_env(
+            &[
+                (
+                    ENV_OPENAGENTS_API_BASE_URL,
+                    Some("https://staging.openagents.com/api/"),
+                ),
+                (ENV_OA_API, Some("https://ignored.openagents.com/api")),
+            ],
+            || {
+                let (base_url, source) =
+                    resolve_openagents_api_base().expect("explicit override should resolve");
+                assert_eq!(base_url, "https://staging.openagents.com/api");
+                assert_eq!(source, ENV_OPENAGENTS_API_BASE_URL);
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_openagents_api_base_rejects_invalid_url() {
+        with_env(&[(ENV_OPENAGENTS_API_BASE_URL, Some("not-a-url"))], || {
+            let error = resolve_openagents_api_base().expect_err("invalid URL must fail");
+            assert!(error.contains(ENV_OPENAGENTS_API_BASE_URL));
+        });
     }
 }

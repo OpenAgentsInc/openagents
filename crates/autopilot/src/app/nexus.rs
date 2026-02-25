@@ -3,7 +3,22 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-const DEFAULT_STATS_URL: &str = "https://nexus.openagents.com/api/stats";
+const DEFAULT_STATS_URL: &str = "http://127.0.0.1:8787/api/stats";
+const ENV_NEXUS_STATS_URL: &str = "OPENAGENTS_NEXUS_STATS_URL";
+
+fn resolve_stats_url() -> String {
+    let Some(raw) = std::env::var(ENV_NEXUS_STATS_URL).ok() else {
+        return DEFAULT_STATS_URL.to_string();
+    };
+    let trimmed = raw.trim().trim_end_matches('/').to_string();
+    if trimmed.is_empty() {
+        return DEFAULT_STATS_URL.to_string();
+    }
+    match reqwest::Url::parse(&trimmed) {
+        Ok(url) if matches!(url.scheme(), "http" | "https") && url.host_str().is_some() => trimmed,
+        _ => DEFAULT_STATS_URL.to_string(),
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) enum NexusStatus {
@@ -139,7 +154,7 @@ impl NexusState {
             snapshot: None,
             status_message: None,
             last_refresh: None,
-            stats_url: DEFAULT_STATS_URL.to_string(),
+            stats_url: resolve_stats_url(),
         }
     }
 
@@ -232,10 +247,54 @@ async fn run_nexus_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_env<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
+        let lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous = std::env::var(ENV_NEXUS_STATS_URL).ok();
+        if let Some(value) = value {
+            unsafe { std::env::set_var(ENV_NEXUS_STATS_URL, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_NEXUS_STATS_URL) };
+        }
+
+        let result = test();
+
+        if let Some(value) = previous {
+            unsafe { std::env::set_var(ENV_NEXUS_STATS_URL, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_NEXUS_STATS_URL) };
+        }
+        result
+    }
 
     #[test]
     fn nexus_status_labels() {
         assert_eq!(NexusStatus::Idle.label(), "Idle");
         assert_eq!(NexusStatus::Refreshing.label(), "Refreshing");
+    }
+
+    #[test]
+    fn resolve_stats_url_defaults_local() {
+        with_env(None, || {
+            assert_eq!(resolve_stats_url(), DEFAULT_STATS_URL);
+        });
+    }
+
+    #[test]
+    fn resolve_stats_url_accepts_env_override() {
+        with_env(
+            Some("https://nexus.staging.openagents.com/api/stats"),
+            || {
+                assert_eq!(
+                    resolve_stats_url(),
+                    "https://nexus.staging.openagents.com/api/stats"
+                );
+            },
+        );
     }
 }

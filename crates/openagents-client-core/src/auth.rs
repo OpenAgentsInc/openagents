@@ -1,12 +1,16 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_CONTROL_BASE_URL: &str = "https://openagents.com";
+pub const DEFAULT_CONTROL_BASE_URL: &str = "http://127.0.0.1:8787";
+pub const ENV_CONTROL_BASE_URL: &str = "OPENAGENTS_CONTROL_BASE_URL";
+pub const ENV_CONTROL_BASE_URL_LEGACY: &str = "OPENAGENTS_AUTH_BASE_URL";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuthInputError {
     #[error("base url must not be empty")]
     EmptyBaseUrl,
+    #[error("base url must use http:// or https:// and include a host")]
+    InvalidBaseUrl,
     #[error("email must not be empty")]
     EmptyEmail,
     #[error("verification code must not be empty")]
@@ -64,12 +68,39 @@ pub trait AuthApiTransport {
     async fn logout(&self, access_token: &str) -> Result<(), Self::Error>;
 }
 
+pub fn resolve_control_base_url() -> Result<(String, &'static str), AuthInputError> {
+    if let Some(base_url) = env_non_empty(ENV_CONTROL_BASE_URL) {
+        return normalize_base_url(&base_url).map(|normalized| (normalized, ENV_CONTROL_BASE_URL));
+    }
+    if let Some(base_url) = env_non_empty(ENV_CONTROL_BASE_URL_LEGACY) {
+        return normalize_base_url(&base_url)
+            .map(|normalized| (normalized, ENV_CONTROL_BASE_URL_LEGACY));
+    }
+    normalize_base_url(DEFAULT_CONTROL_BASE_URL).map(|normalized| (normalized, "default_local"))
+}
+
 pub fn normalize_base_url(raw: &str) -> Result<String, AuthInputError> {
     let trimmed = raw.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return Err(AuthInputError::EmptyBaseUrl);
     }
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return Err(AuthInputError::InvalidBaseUrl);
+    }
+    let Some((_, remainder)) = trimmed.split_once("://") else {
+        return Err(AuthInputError::InvalidBaseUrl);
+    };
+    if remainder.trim().is_empty() || remainder.starts_with('/') {
+        return Err(AuthInputError::InvalidBaseUrl);
+    }
     Ok(trimmed.to_string())
+}
+
+fn env_non_empty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub fn normalize_email(raw: &str) -> Result<String, AuthInputError> {
@@ -108,11 +139,86 @@ pub fn normalize_verification_code(raw: &str) -> Result<String, AuthInputError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_env<T>(primary: Option<&str>, legacy: Option<&str>, test: impl FnOnce() -> T) -> T {
+        let lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous_primary = std::env::var(ENV_CONTROL_BASE_URL).ok();
+        let previous_legacy = std::env::var(ENV_CONTROL_BASE_URL_LEGACY).ok();
+
+        if let Some(value) = primary {
+            unsafe { std::env::set_var(ENV_CONTROL_BASE_URL, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_CONTROL_BASE_URL) };
+        }
+
+        if let Some(value) = legacy {
+            unsafe { std::env::set_var(ENV_CONTROL_BASE_URL_LEGACY, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_CONTROL_BASE_URL_LEGACY) };
+        }
+
+        let result = test();
+
+        if let Some(value) = previous_primary {
+            unsafe { std::env::set_var(ENV_CONTROL_BASE_URL, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_CONTROL_BASE_URL) };
+        }
+        if let Some(value) = previous_legacy {
+            unsafe { std::env::set_var(ENV_CONTROL_BASE_URL_LEGACY, value) };
+        } else {
+            unsafe { std::env::remove_var(ENV_CONTROL_BASE_URL_LEGACY) };
+        }
+
+        result
+    }
 
     #[test]
     fn normalize_base_url_trims_and_drops_trailing_slash() {
         let normalized = normalize_base_url(" https://openagents.com/ ").expect("valid base url");
         assert_eq!(normalized, "https://openagents.com");
+    }
+
+    #[test]
+    fn normalize_base_url_requires_http_scheme() {
+        let error = normalize_base_url("openagents.com").expect_err("expected invalid url");
+        assert_eq!(error, AuthInputError::InvalidBaseUrl);
+    }
+
+    #[test]
+    fn resolve_control_base_url_defaults_local() {
+        with_env(None, None, || {
+            let (resolved, source) = resolve_control_base_url().expect("default local url");
+            assert_eq!(resolved, DEFAULT_CONTROL_BASE_URL);
+            assert_eq!(source, "default_local");
+        });
+    }
+
+    #[test]
+    fn resolve_control_base_url_prefers_primary_env() {
+        with_env(
+            Some("https://staging.openagents.com/"),
+            Some("https://legacy.example.com"),
+            || {
+                let (resolved, source) = resolve_control_base_url().expect("env url");
+                assert_eq!(resolved, "https://staging.openagents.com");
+                assert_eq!(source, ENV_CONTROL_BASE_URL);
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_control_base_url_uses_legacy_env_when_primary_missing() {
+        with_env(None, Some("https://legacy.example.com/"), || {
+            let (resolved, source) = resolve_control_base_url().expect("legacy env url");
+            assert_eq!(resolved, "https://legacy.example.com");
+            assert_eq!(source, ENV_CONTROL_BASE_URL_LEGACY);
+        });
     }
 
     #[test]

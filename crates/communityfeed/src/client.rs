@@ -10,27 +10,39 @@ use std::time::Duration;
 use tokio::net::lookup_host;
 use tokio::sync::RwLock;
 
-/// OpenAgents API proxy for CommunityFeed (preferred default; avoids direct communityfeed.com redirect/auth issues).
-const OA_PROXY_BASE: &str = "https://openagents.com/api/communityfeed/api";
+/// Local OpenAgents control-service proxy for CommunityFeed.
+const LOCAL_PROXY_BASE: &str = "http://127.0.0.1:8787/api/communityfeed/api";
+const ENV_COMMUNITYFEED_API_BASE: &str = "COMMUNITYFEED_API_BASE";
+const ENV_OPENAGENTS_COMMUNITYFEED_API_BASE: &str = "OPENAGENTS_COMMUNITYFEED_API_BASE";
+const ENV_OPENAGENTS_COMMUNITYFEED_API_BASE_LEGACY: &str = "OA_COMMUNITYFEED_API_BASE";
+const ENV_CONTROL_BASE_URL: &str = "OPENAGENTS_CONTROL_BASE_URL";
+const ENV_CONTROL_BASE_URL_LEGACY: &str = "OPENAGENTS_AUTH_BASE_URL";
+const ENV_OA_API: &str = "OA_API";
 /// Direct CommunityFeed API URL (used only when COMMUNITYFEED_API_BASE is set; kept for docs/tests).
 #[allow(dead_code)]
 const DEFAULT_BASE_URL: &str = "https://www.communityfeed.com/api/v1";
 
 /// Base URL for API requests. Prefers OpenAgents proxy; override with COMMUNITYFEED_API_BASE or OA_API.
 fn default_base_url() -> String {
-    if let Ok(base) = std::env::var("COMMUNITYFEED_API_BASE") {
-        let base = base.trim().to_string();
-        if !base.is_empty() {
-            return base.trim_end_matches('/').to_string();
-        }
+    if let Some(base) = validated_url_from_env(ENV_COMMUNITYFEED_API_BASE) {
+        return base;
     }
-    if let Ok(oa_api) = std::env::var("OA_API") {
-        let oa_api = oa_api.trim().trim_end_matches('/').to_string();
-        if !oa_api.is_empty() {
-            return format!("{oa_api}/communityfeed/api");
-        }
+    if let Some(base) = validated_url_from_env(ENV_OPENAGENTS_COMMUNITYFEED_API_BASE) {
+        return base;
     }
-    OA_PROXY_BASE.to_string()
+    if let Some(base) = validated_url_from_env(ENV_OPENAGENTS_COMMUNITYFEED_API_BASE_LEGACY) {
+        return base;
+    }
+    if let Some(base) = validated_url_from_env(ENV_OA_API) {
+        return join_url_path(&base, "communityfeed/api");
+    }
+    if let Some(base) = validated_url_from_env(ENV_CONTROL_BASE_URL) {
+        return proxy_base_from_control_base(&base);
+    }
+    if let Some(base) = validated_url_from_env(ENV_CONTROL_BASE_URL_LEGACY) {
+        return proxy_base_from_control_base(&base);
+    }
+    LOCAL_PROXY_BASE.to_string()
 }
 const CONNECT_TIMEOUT_SECS: u64 = 8;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -856,9 +868,83 @@ fn parse_host_port(base_url: &str) -> (Option<String>, u16) {
     (host, port)
 }
 
+fn validated_url_from_env(key: &str) -> Option<String> {
+    let value = std::env::var(key).ok()?;
+    let trimmed = value.trim().trim_end_matches('/').to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match Url::parse(&trimmed) {
+        Ok(url) => {
+            if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+                tracing::warn!(
+                    env_key = key,
+                    value = %trimmed,
+                    "invalid URL override; expected absolute http(s) URL"
+                );
+                return None;
+            }
+            Some(trimmed)
+        }
+        Err(error) => {
+            tracing::warn!(env_key = key, value = %trimmed, error = %error, "invalid URL override");
+            None
+        }
+    }
+}
+
+fn join_url_path(base_url: &str, suffix: &str) -> String {
+    format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        suffix.trim_start_matches('/')
+    )
+}
+
+fn proxy_base_from_control_base(control_base: &str) -> String {
+    let trimmed = control_base.trim_end_matches('/');
+    if trimmed.ends_with("/api") {
+        return join_url_path(trimmed, "communityfeed/api");
+    }
+    join_url_path(trimmed, "api/communityfeed/api")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_env<T>(overrides: &[(&str, Option<&str>)], test: impl FnOnce() -> T) -> T {
+        let lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous = overrides
+            .iter()
+            .map(|(key, _)| (*key, std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in overrides {
+            if let Some(value) = value {
+                unsafe { std::env::set_var(key, value) };
+            } else {
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+
+        let result = test();
+
+        for (key, value) in previous {
+            if let Some(value) = value {
+                unsafe { std::env::set_var(key, value) };
+            } else {
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+
+        result
+    }
 
     #[test]
     fn client_builds_with_api_key() {
@@ -883,5 +969,59 @@ mod tests {
         assert_eq!(CommentSort::Top.as_str(), "top");
         assert_eq!(CommentSort::New.as_str(), "new");
         assert_eq!(CommentSort::Controversial.as_str(), "controversial");
+    }
+
+    #[test]
+    fn default_base_url_defaults_to_local_proxy() {
+        with_env(
+            &[
+                (ENV_COMMUNITYFEED_API_BASE, None),
+                (ENV_OPENAGENTS_COMMUNITYFEED_API_BASE, None),
+                (ENV_OPENAGENTS_COMMUNITYFEED_API_BASE_LEGACY, None),
+                (ENV_CONTROL_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+                (ENV_OA_API, None),
+            ],
+            || {
+                assert_eq!(default_base_url(), LOCAL_PROXY_BASE);
+            },
+        );
+    }
+
+    #[test]
+    fn default_base_url_prefers_communityfeed_api_base() {
+        with_env(
+            &[
+                (
+                    ENV_COMMUNITYFEED_API_BASE,
+                    Some("https://www.communityfeed.com/api/v1/"),
+                ),
+                (ENV_OPENAGENTS_COMMUNITYFEED_API_BASE, None),
+                (ENV_OA_API, None),
+            ],
+            || {
+                assert_eq!(default_base_url(), "https://www.communityfeed.com/api/v1");
+            },
+        );
+    }
+
+    #[test]
+    fn default_base_url_uses_oa_api_when_set() {
+        with_env(
+            &[
+                (ENV_COMMUNITYFEED_API_BASE, None),
+                (ENV_OPENAGENTS_COMMUNITYFEED_API_BASE, None),
+                (ENV_OPENAGENTS_COMMUNITYFEED_API_BASE_LEGACY, None),
+                (ENV_CONTROL_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+                (ENV_OA_API, Some("https://staging.openagents.com/api")),
+            ],
+            || {
+                assert_eq!(
+                    default_base_url(),
+                    "https://staging.openagents.com/api/communityfeed/api"
+                );
+            },
+        );
     }
 }

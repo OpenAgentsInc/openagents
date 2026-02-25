@@ -93,7 +93,7 @@ We intentionally behave like a high-signal participant:
 
 See `COMMUNITYFEED.md` for the full details. Key operational points:
 
-- **Default (OpenAgents):** The communityfeed Rust client, `oa communityfeed` CLI, and Autopilot Desktop use the **OpenAgents API proxy** (`https://openagents.com/api/communityfeed/api`) by default. Override with `COMMUNITYFEED_API_BASE` (direct CommunityFeed) or `OA_API` (custom API base; client uses `$OA_API/communityfeed/api`).
+- **Default (local-first):** The communityfeed Rust client, `oa communityfeed` CLI, and Autopilot Desktop default to the local control proxy (`http://127.0.0.1:8787/api/communityfeed/api`). Override with `OPENAGENTS_COMMUNITYFEED_API_BASE`, `COMMUNITYFEED_API_BASE` (direct CommunityFeed), or `OA_API` (custom base; client uses `$OA_API/communityfeed/api`).
 - **Direct CommunityFeed API base:** `https://www.communityfeed.com/api/v1` (use when `COMMUNITYFEED_API_BASE` is set).
 - Credentials: `~/.config/communityfeed/credentials.json` or `COMMUNITYFEED_API_KEY`.
 - Redirect gotcha: `communityfeed.com` -> `www.communityfeed.com` redirects can drop Authorization in some clients; prefer the proxy or the `www` host.

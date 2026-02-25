@@ -44,6 +44,10 @@ use full_auto::{
 use futures::{SinkExt, StreamExt};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
+use openagents_client_core::auth::{
+    ENV_CONTROL_BASE_URL, ENV_CONTROL_BASE_URL_LEGACY,
+    normalize_base_url as normalize_control_base_url, resolve_control_base_url,
+};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
@@ -93,10 +97,12 @@ const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
 const ENV_COMMUNITYFEED_PROXY_BASE: &str = "OPENAGENTS_COMMUNITYFEED_API_BASE";
+const ENV_COMMUNITYFEED_PROXY_BASE_LEGACY: &str = "OA_COMMUNITYFEED_API_BASE";
 const ENV_COMMUNITYFEED_LIVE_BASE: &str = "COMMUNITYFEED_API_BASE";
+const ENV_OA_API: &str = "OA_API";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";
-const DEFAULT_COMMUNITYFEED_PROXY_BASE: &str = "https://openagents.com/api/communityfeed/api";
+const DEFAULT_COMMUNITYFEED_PROXY_BASE: &str = "http://127.0.0.1:8787/api/communityfeed/api";
 const DEFAULT_COMMUNITYFEED_LIVE_BASE: &str = "https://www.communityfeed.com/api/v1";
 const COMMUNITYFEED_CACHE_LIMIT: usize = 200;
 const COMMUNITYFEED_CACHE_DB: &str = "communityfeed.db";
@@ -113,6 +119,7 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
+const RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH: &str = "runtime_auth_state";
 const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
 const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
 const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
@@ -190,16 +197,8 @@ impl RuntimeCodexSync {
         remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     ) -> Option<Self> {
         let stored_auth = load_runtime_auth_state();
-        let env_base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
-            .ok()
-            .map(|value| value.trim().trim_end_matches('/').to_string())
-            .filter(|value| !value.is_empty());
-        let base_url = env_base_url.clone().or_else(|| {
-            stored_auth
-                .as_ref()
-                .map(|value| value.base_url.trim().trim_end_matches('/').to_string())
-                .filter(|value| !value.is_empty())
-        });
+        let (base_url, base_url_source, base_url_locked_by_env) =
+            resolve_runtime_sync_base_url(stored_auth.as_ref());
         let env_token = env::var(ENV_RUNTIME_SYNC_TOKEN)
             .ok()
             .map(|value| value.trim().to_string())
@@ -235,13 +234,18 @@ impl RuntimeCodexSync {
             .unwrap_or(30_000)
             .max(1_000);
 
+        tracing::info!(
+            base_url = %base_url,
+            source = %base_url_source,
+            token_locked_by_env = env_token.is_some(),
+            "runtime sync endpoint resolved"
+        );
+
         Some(Self {
             client: HttpClient::new(),
-            base_url: Arc::new(tokio::sync::RwLock::new(
-                base_url.unwrap_or_else(|| DEFAULT_AUTH_BASE_URL.to_string()),
-            )),
+            base_url: Arc::new(tokio::sync::RwLock::new(base_url)),
             token: Arc::new(tokio::sync::RwLock::new(token)),
-            base_url_locked_by_env: env_base_url.is_some(),
+            base_url_locked_by_env,
             token_locked_by_env: env_token.is_some(),
             workspace_ref,
             codex_home_ref,
@@ -1450,10 +1454,8 @@ async fn runtime_auth_state_view(
             .unwrap_or(false);
         (Some(base_url), token_present)
     } else {
-        let base_url = stored
-            .as_ref()
-            .map(|state| state.base_url.clone())
-            .or_else(|| Some(DEFAULT_AUTH_BASE_URL.to_string()));
+        let (resolved_base_url, _, _) = resolve_runtime_sync_base_url(stored.as_ref());
+        let base_url = Some(resolved_base_url);
         let token_present = stored
             .as_ref()
             .map(|state| !state.token.trim().is_empty())
@@ -2679,6 +2681,17 @@ fn spawn_event_bridge(
                 action_tx.clone(),
                 remote_control_tx,
             ));
+            let (communityfeed_proxy_endpoint, communityfeed_proxy_source) =
+                resolve_communityfeed_proxy_base();
+            let (communityfeed_live_endpoint, communityfeed_live_source) =
+                resolve_communityfeed_live_base();
+            tracing::info!(
+                communityfeed_proxy_base = %communityfeed_proxy_endpoint,
+                communityfeed_proxy_source = communityfeed_proxy_source,
+                communityfeed_live_base = %communityfeed_live_endpoint,
+                communityfeed_live_source = communityfeed_live_source,
+                "communityfeed endpoints resolved"
+            );
             let pending_runtime_auth_flow =
                 Arc::new(tokio::sync::Mutex::new(None::<RuntimeSyncAuthFlow>));
             if let Some(sync) = runtime_sync.as_ref() {
@@ -3623,7 +3636,10 @@ fn spawn_event_bridge(
                                 let base_url = if let Some(sync) = runtime_sync.as_ref() {
                                     sync.current_base_url().await
                                 } else {
-                                    DEFAULT_AUTH_BASE_URL.to_string()
+                                    let stored = load_runtime_auth_state();
+                                    let (resolved_base_url, _, _) =
+                                        resolve_runtime_sync_base_url(stored.as_ref());
+                                    resolved_base_url
                                 };
                                 let mut flow = match RuntimeSyncAuthFlow::new(&base_url) {
                                     Ok(flow) => flow,
@@ -5909,23 +5925,124 @@ fn build_communityfeed_reply_prompt(
 fn trimmed_env_url(key: &str) -> Option<String> {
     env::var(key)
         .ok()
-        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
 
+fn validated_base_url(raw: &str, source: &str) -> Option<String> {
+    match normalize_control_base_url(raw) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(source = source, value = %raw, error = %error, "invalid endpoint URL override; ignoring");
+            None
+        }
+    }
+}
+
+fn validated_base_url_from_env(key: &str) -> Option<String> {
+    trimmed_env_url(key).and_then(|raw| validated_base_url(&raw, key))
+}
+
+fn resolve_runtime_sync_base_url(
+    stored_auth: Option<&RuntimeSyncAuthState>,
+) -> (String, String, bool) {
+    if let Some(base_url) = validated_base_url_from_env(ENV_RUNTIME_SYNC_BASE_URL) {
+        return (base_url, ENV_RUNTIME_SYNC_BASE_URL.to_string(), true);
+    }
+
+    let mut control_resolution: Option<(String, &'static str)> = None;
+    match resolve_control_base_url() {
+        Ok((base_url, source)) => {
+            if source == ENV_CONTROL_BASE_URL || source == ENV_CONTROL_BASE_URL_LEGACY {
+                return (base_url, source.to_string(), true);
+            }
+            control_resolution = Some((base_url, source));
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "invalid control base URL configuration; runtime sync will ignore control env override"
+            );
+        }
+    }
+
+    if let Some(state) = stored_auth {
+        if let Some(base_url) =
+            validated_base_url(&state.base_url, RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH)
+        {
+            return (
+                base_url,
+                RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH.to_string(),
+                false,
+            );
+        }
+    }
+
+    if let Some((base_url, source)) = control_resolution {
+        return (base_url, source.to_string(), false);
+    }
+
+    (
+        DEFAULT_AUTH_BASE_URL.to_string(),
+        "default_local_fallback".to_string(),
+        false,
+    )
+}
+
+fn join_url_path(base_url: &str, suffix: &str) -> String {
+    format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        suffix.trim_start_matches('/')
+    )
+}
+
+fn proxy_base_from_control_base(control_base: &str) -> String {
+    let trimmed = control_base.trim_end_matches('/');
+    if trimmed.ends_with("/api") {
+        return join_url_path(trimmed, "communityfeed/api");
+    }
+    join_url_path(trimmed, "api/communityfeed/api")
+}
+
+fn resolve_communityfeed_proxy_base() -> (String, &'static str) {
+    if let Some(value) = validated_base_url_from_env(ENV_COMMUNITYFEED_PROXY_BASE) {
+        return (value, ENV_COMMUNITYFEED_PROXY_BASE);
+    }
+    if let Some(value) = validated_base_url_from_env(ENV_COMMUNITYFEED_PROXY_BASE_LEGACY) {
+        return (value, ENV_COMMUNITYFEED_PROXY_BASE_LEGACY);
+    }
+    if let Some(oa_api) = validated_base_url_from_env(ENV_OA_API) {
+        return (join_url_path(&oa_api, "communityfeed/api"), ENV_OA_API);
+    }
+    match resolve_control_base_url() {
+        Ok((base_url, source)) => (proxy_base_from_control_base(&base_url), source),
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "invalid control base URL configuration; using local communityfeed proxy default"
+            );
+            (
+                DEFAULT_COMMUNITYFEED_PROXY_BASE.to_string(),
+                "default_local",
+            )
+        }
+    }
+}
+
 fn communityfeed_proxy_base() -> String {
-    if let Some(value) = trimmed_env_url(ENV_COMMUNITYFEED_PROXY_BASE) {
-        return value;
+    resolve_communityfeed_proxy_base().0
+}
+
+fn resolve_communityfeed_live_base() -> (String, &'static str) {
+    if let Some(value) = validated_base_url_from_env(ENV_COMMUNITYFEED_LIVE_BASE) {
+        return (value, ENV_COMMUNITYFEED_LIVE_BASE);
     }
-    if let Some(oa_api) = trimmed_env_url("OA_API") {
-        return format!("{oa_api}/communityfeed/api");
-    }
-    DEFAULT_COMMUNITYFEED_PROXY_BASE.to_string()
+    (DEFAULT_COMMUNITYFEED_LIVE_BASE.to_string(), "default_live")
 }
 
 fn communityfeed_live_base() -> String {
-    trimmed_env_url(ENV_COMMUNITYFEED_LIVE_BASE)
-        .unwrap_or_else(|| DEFAULT_COMMUNITYFEED_LIVE_BASE.to_string())
+    resolve_communityfeed_live_base().0
 }
 
 fn communityfeed_api_key() -> Option<String> {
@@ -7426,6 +7543,39 @@ fn to_modifiers(modifiers: ModifiersState) -> Modifiers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_env<T>(overrides: &[(&str, Option<&str>)], test: impl FnOnce() -> T) -> T {
+        let lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous = overrides
+            .iter()
+            .map(|(key, _)| (*key, env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in overrides {
+            if let Some(value) = value {
+                unsafe { env::set_var(key, value) };
+            } else {
+                unsafe { env::remove_var(key) };
+            }
+        }
+
+        let result = test();
+
+        for (key, value) in previous {
+            if let Some(value) = value {
+                unsafe { env::set_var(key, value) };
+            } else {
+                unsafe { env::remove_var(key) };
+            }
+        }
+
+        result
+    }
 
     #[test]
     fn extract_inbox_snapshot_parses_contract_shape() {
@@ -7492,5 +7642,89 @@ mod tests {
         let detail = extract_inbox_thread_detail(&payload).expect("parse detail");
         assert_eq!(detail.thread.id, "thread_1");
         assert_eq!(detail.audit_log.len(), 1);
+    }
+
+    #[test]
+    fn runtime_sync_base_prefers_runtime_sync_env() {
+        with_env(
+            &[
+                (
+                    ENV_RUNTIME_SYNC_BASE_URL,
+                    Some("https://runtime.staging.openagents.com"),
+                ),
+                (
+                    ENV_CONTROL_BASE_URL,
+                    Some("https://control.staging.openagents.com"),
+                ),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+            ],
+            || {
+                let (base_url, source, locked) = resolve_runtime_sync_base_url(None);
+                assert_eq!(base_url, "https://runtime.staging.openagents.com");
+                assert_eq!(source, ENV_RUNTIME_SYNC_BASE_URL);
+                assert!(locked);
+            },
+        );
+    }
+
+    #[test]
+    fn runtime_sync_base_uses_stored_auth_when_env_missing() {
+        with_env(
+            &[
+                (ENV_RUNTIME_SYNC_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+            ],
+            || {
+                let stored = RuntimeSyncAuthState {
+                    base_url: "https://saved.openagents.example/".to_string(),
+                    token: "token".to_string(),
+                    user_id: None,
+                    email: None,
+                    issued_at: "2026-02-25T00:00:00Z".to_string(),
+                };
+                let (base_url, source, locked) = resolve_runtime_sync_base_url(Some(&stored));
+                assert_eq!(base_url, "https://saved.openagents.example");
+                assert_eq!(source, RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH);
+                assert!(!locked);
+            },
+        );
+    }
+
+    #[test]
+    fn communityfeed_proxy_base_defaults_local() {
+        with_env(
+            &[
+                (ENV_COMMUNITYFEED_PROXY_BASE, None),
+                (ENV_COMMUNITYFEED_PROXY_BASE_LEGACY, None),
+                (ENV_OA_API, None),
+                (ENV_CONTROL_BASE_URL, None),
+                (ENV_CONTROL_BASE_URL_LEGACY, None),
+            ],
+            || {
+                let (base_url, source) = resolve_communityfeed_proxy_base();
+                assert_eq!(base_url, DEFAULT_COMMUNITYFEED_PROXY_BASE);
+                assert_eq!(source, "default_local");
+            },
+        );
+    }
+
+    #[test]
+    fn communityfeed_proxy_base_uses_oa_api_override() {
+        with_env(
+            &[
+                (ENV_COMMUNITYFEED_PROXY_BASE, None),
+                (ENV_COMMUNITYFEED_PROXY_BASE_LEGACY, None),
+                (ENV_OA_API, Some("https://staging.openagents.com/api/")),
+            ],
+            || {
+                let (base_url, source) = resolve_communityfeed_proxy_base();
+                assert_eq!(
+                    base_url,
+                    "https://staging.openagents.com/api/communityfeed/api"
+                );
+                assert_eq!(source, ENV_OA_API);
+            },
+        );
     }
 }

@@ -4,10 +4,12 @@ Rust client for the [CommunityFeed](https://www.communityfeed.com) API — the s
 
 ## Base URL
 
-By default the client uses the **OpenAgents API proxy** (`https://openagents.com/api/communityfeed/api`), which avoids direct CommunityFeed redirects and keeps auth intact. The `oa communityfeed` CLI and Autopilot Desktop use this default.
+By default the client uses the **local OpenAgents control-service proxy** (`http://127.0.0.1:8787/api/communityfeed/api`), which keeps local/dev flows portable and avoids direct CommunityFeed redirect/auth edge cases.
 
 - **Override to direct CommunityFeed:** set `COMMUNITYFEED_API_BASE=https://www.communityfeed.com/api/v1` (use `www`; redirects from `communityfeed.com` can strip the `Authorization` header).
-- **Custom API base:** set `OA_API` (e.g. `https://openagents.com/api` or `http://127.0.0.1:8787` for local dev); the client will use `$OA_API/communityfeed/api`.
+- **OpenAgents proxy override:** set `OPENAGENTS_COMMUNITYFEED_API_BASE` (`OA_COMMUNITYFEED_API_BASE` legacy alias).
+- **Custom API base:** set `OA_API` (e.g. `https://staging.openagents.com/api` or `http://127.0.0.1:8787`); the client will use `$OA_API/communityfeed/api`.
+- **Control-base override:** set `OPENAGENTS_CONTROL_BASE_URL` (`OPENAGENTS_AUTH_BASE_URL` legacy alias); the client will derive `<control>/api/communityfeed/api`.
 
 ## Features
 

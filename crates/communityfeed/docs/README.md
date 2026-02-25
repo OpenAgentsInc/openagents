@@ -63,7 +63,7 @@ Optional metadata (for triage and claim hygiene):
 
 ## Auth
 
-Reads API key from `~/.config/communityfeed/credentials.json` or `COMMUNITYFEED_API_KEY`. The communityfeed Rust client (and thus `oa communityfeed` and Autopilot Desktop) uses the **OpenAgents API proxy** by default; set `COMMUNITYFEED_API_BASE` or `OA_API` to override. See [COMMUNITYFEED.md](../../../docs/COMMUNITYFEED.md) and [OVERVIEW.md](OVERVIEW.md).
+Reads API key from `~/.config/communityfeed/credentials.json` or `COMMUNITYFEED_API_KEY`. The communityfeed Rust client (and thus `oa communityfeed` and Autopilot Desktop) defaults to the local control proxy (`http://127.0.0.1:8787/api/communityfeed/api`) and can be overridden with `COMMUNITYFEED_API_BASE`, `OPENAGENTS_COMMUNITYFEED_API_BASE`, or `OA_API`. See [COMMUNITYFEED.md](../../../docs/COMMUNITYFEED.md) and [OVERVIEW.md](OVERVIEW.md).
 
 ## Rate limits
 
