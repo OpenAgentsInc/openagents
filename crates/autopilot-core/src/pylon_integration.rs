@@ -3,11 +3,18 @@
 //! Provides functions to check pylon status, start it if needed,
 //! and discover swarm providers.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use crate::preflight::{PylonInfo, SwarmProvider};
+use nostr_client::dvm::{DvmClient, DvmProvider};
+
+const ENV_SWARM_RELAYS: &str = "OPENAGENTS_SWARM_RELAYS";
+const ENV_SWARM_RELAYS_LEGACY: &str = "OPENAGENTS_SWARM_URL";
+const DEFAULT_DISCOVERY_RELAY: &str = "wss://nexus.openagents.com";
+const DISCOVERY_JOB_KINDS: [u16; 5] = [5102, 5100, 5101, 5103, 5050];
 
 /// Check if the pylon daemon is running
 ///
@@ -164,27 +171,207 @@ fn find_pylon_binary() -> anyhow::Result<std::path::PathBuf> {
     Ok("pylon".into())
 }
 
-/// Discover swarm providers via NIP-89 (stub for now)
-///
-/// In the future, this will:
-/// 1. Connect to configured Nostr relays
-/// 2. Subscribe to kind 31990 (handler info) events
-/// 3. Filter for compute providers
-/// 4. Parse and return SwarmProvider list
 pub fn discover_swarm_providers() -> Vec<SwarmProvider> {
-    // TODO: Implement NIP-89 discovery
-    // For now, return empty list with a note about future implementation
-    debug!("NIP-89 swarm discovery not yet implemented");
-    Vec::new()
+    let relays = configured_discovery_relays();
+    if relays.is_empty() {
+        debug!("Swarm discovery skipped: no relays configured");
+        return Vec::new();
+    }
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        warn!(
+            "discover_swarm_providers called inside an async runtime; use discover_swarm_providers_async instead"
+        );
+        return Vec::new();
+    }
+
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            warn!("Failed to create discovery runtime: {}", err);
+            return Vec::new();
+        }
+    };
+
+    runtime.block_on(discover_swarm_providers_async(&relays))
 }
 
 /// Async version of swarm provider discovery
 ///
 /// This will be used in contexts where we can run async code
-pub async fn discover_swarm_providers_async(_relays: &[String]) -> Vec<SwarmProvider> {
-    // TODO: Implement async NIP-89 discovery using nostr-sdk
-    // For now, return empty list
-    Vec::new()
+pub async fn discover_swarm_providers_async(relays: &[String]) -> Vec<SwarmProvider> {
+    let relays = if relays.is_empty() {
+        configured_discovery_relays()
+    } else {
+        sanitize_relays(relays.iter().cloned())
+    };
+    if relays.is_empty() {
+        return Vec::new();
+    }
+
+    let relay_refs: Vec<&str> = relays.iter().map(String::as_str).collect();
+    let client = match DvmClient::new(discovery_private_key()) {
+        Ok(client) => client,
+        Err(err) => {
+            warn!("Failed to create DVM discovery client: {}", err);
+            return Vec::new();
+        }
+    };
+
+    let mut providers_by_pubkey: BTreeMap<String, AggregatedProvider> = BTreeMap::new();
+    for job_kind in DISCOVERY_JOB_KINDS {
+        match client.discover_providers(job_kind, &relay_refs).await {
+            Ok(providers) => {
+                merge_discovered_providers(&mut providers_by_pubkey, job_kind, providers, &relays);
+            }
+            Err(err) => {
+                warn!(
+                    job_kind,
+                    relays = relays.join(","),
+                    "Failed to discover providers for kind {}: {}",
+                    job_kind,
+                    err
+                );
+            }
+        }
+    }
+
+    let mut mapped = providers_by_pubkey
+        .into_iter()
+        .map(|(pubkey, aggregated)| {
+            let name = aggregated
+                .name
+                .unwrap_or_else(|| short_pubkey_label(&pubkey));
+            let relay = aggregated.relays.iter().next().cloned().unwrap_or_default();
+            let supported_kinds = aggregated
+                .supported_kinds
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            let relay_count = aggregated.relays.len();
+            let health = if relay_count > 0 && !supported_kinds.is_empty() {
+                "healthy"
+            } else {
+                "degraded"
+            };
+
+            SwarmProvider {
+                pubkey,
+                name,
+                price_msats: None,
+                relay,
+                supported_kinds,
+                relay_count,
+                health: health.to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    mapped.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.pubkey.cmp(&b.pubkey)));
+    mapped
+}
+
+#[derive(Debug, Default)]
+struct AggregatedProvider {
+    name: Option<String>,
+    relays: BTreeSet<String>,
+    supported_kinds: BTreeSet<u16>,
+}
+
+fn discovery_private_key() -> [u8; 32] {
+    let mut key = [0u8; 32];
+    key[31] = 1;
+    key
+}
+
+fn configured_discovery_relays() -> Vec<String> {
+    if let Some(raw) = std::env::var(ENV_SWARM_RELAYS).ok() {
+        let parsed = parse_env_relays(&raw);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+    if let Some(raw) = std::env::var(ENV_SWARM_RELAYS_LEGACY).ok() {
+        let parsed = parse_env_relays(&raw);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+
+    if let Ok(config) = pylon::PylonConfig::load() {
+        let parsed = sanitize_relays(config.relays.into_iter());
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+
+    vec![DEFAULT_DISCOVERY_RELAY.to_string()]
+}
+
+fn parse_env_relays(raw: &str) -> Vec<String> {
+    sanitize_relays(
+        raw.split([',', ' ', '\n', '\t'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+    )
+}
+
+fn sanitize_relays(relays: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for relay in relays {
+        let trimmed = relay.trim().trim_end_matches('/').to_string();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match reqwest::Url::parse(&trimmed) {
+            Ok(url)
+                if matches!(url.scheme(), "ws" | "wss")
+                    && url.host_str().is_some()
+                    && seen.insert(trimmed.clone()) =>
+            {
+                out.push(trimmed);
+            }
+            Ok(_) => debug!("Ignoring non websocket relay URL: {}", trimmed),
+            Err(err) => debug!("Ignoring invalid relay URL {}: {}", trimmed, err),
+        }
+    }
+    out
+}
+
+fn merge_discovered_providers(
+    providers_by_pubkey: &mut BTreeMap<String, AggregatedProvider>,
+    job_kind: u16,
+    discovered: Vec<DvmProvider>,
+    discovery_relays: &[String],
+) {
+    for provider in discovered {
+        let entry = providers_by_pubkey
+            .entry(provider.pubkey.clone())
+            .or_default();
+
+        if entry.name.is_none() {
+            entry.name = provider.name.clone();
+        }
+        entry.supported_kinds.extend(provider.supported_kinds);
+        entry.supported_kinds.insert(job_kind);
+
+        let provider_relays = sanitize_relays(provider.relays.into_iter());
+        if provider_relays.is_empty() {
+            entry.relays.extend(discovery_relays.iter().cloned());
+        } else {
+            entry.relays.extend(provider_relays);
+        }
+    }
+}
+
+fn short_pubkey_label(pubkey: &str) -> String {
+    let short = pubkey.chars().take(12).collect::<String>();
+    format!("provider-{}", short)
 }
 
 #[cfg(test)]
@@ -198,9 +385,53 @@ mod tests {
     }
 
     #[test]
-    fn test_discover_swarm_providers_returns_empty() {
-        // Until implemented, should return empty
-        let providers = discover_swarm_providers();
-        assert!(providers.is_empty());
+    fn test_parse_env_relays_sanitizes_and_dedupes() {
+        let relays = parse_env_relays(
+            "wss://nexus.openagents.com, wss://nexus.openagents.com, ws://relay.damus.io, https://invalid",
+        );
+        assert_eq!(relays.len(), 2);
+        assert!(relays.contains(&"wss://nexus.openagents.com".to_string()));
+        assert!(relays.contains(&"ws://relay.damus.io".to_string()));
+    }
+
+    #[test]
+    fn test_merge_discovered_providers_aggregates_metadata() {
+        let mut map = BTreeMap::new();
+        let providers = vec![
+            DvmProvider {
+                pubkey: "pubkey_a".to_string(),
+                name: Some("Provider A".to_string()),
+                about: None,
+                supported_kinds: vec![5102],
+                relays: vec!["wss://relay.one".to_string()],
+            },
+            DvmProvider {
+                pubkey: "pubkey_a".to_string(),
+                name: None,
+                about: None,
+                supported_kinds: vec![5050],
+                relays: vec!["wss://relay.two".to_string()],
+            },
+        ];
+
+        merge_discovered_providers(
+            &mut map,
+            5102,
+            providers,
+            &["wss://nexus.openagents.com".to_string()],
+        );
+
+        let provider = map.get("pubkey_a").expect("provider should be present");
+        assert_eq!(provider.name.as_deref(), Some("Provider A"));
+        assert!(provider.supported_kinds.contains(&5102));
+        assert!(provider.supported_kinds.contains(&5050));
+        assert!(provider.relays.contains("wss://relay.one"));
+        assert!(provider.relays.contains("wss://relay.two"));
+    }
+
+    #[test]
+    fn test_short_pubkey_label_falls_back() {
+        let label = short_pubkey_label("abcdef0123456789");
+        assert_eq!(label, "provider-abcdef012345");
     }
 }

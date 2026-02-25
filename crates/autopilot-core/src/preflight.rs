@@ -185,6 +185,18 @@ pub struct SwarmProvider {
 
     /// Relay where discovered
     pub relay: String,
+
+    /// NIP-90 kinds advertised by this provider.
+    #[serde(default)]
+    pub supported_kinds: Vec<u16>,
+
+    /// Number of relays where the provider was observed.
+    #[serde(default)]
+    pub relay_count: usize,
+
+    /// Basic discovery health classification used by provider selection.
+    #[serde(default)]
+    pub health: String,
 }
 
 /// Complete compute availability summary

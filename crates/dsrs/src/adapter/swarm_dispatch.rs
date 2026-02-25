@@ -15,7 +15,7 @@ use crate::privacy::{PolicyViolation, PrivacyPolicy};
 use crate::trace::nostr_bridge::NostrBridge;
 use anyhow::{Context, Result};
 use nostr::{JobInput, JobRequest as NostrJobRequest, Keypair};
-use nostr_client::dvm::DvmClient;
+use nostr_client::dvm::{DvmClient, DvmProvider};
 use protocol::jobs::{
     JobRequest,
     chunk_analysis::{ChunkAnalysisRequest, ChunkAnalysisResponse, CodeChunk, OutputConstraints},
@@ -24,8 +24,30 @@ use protocol::jobs::{
     sandbox::{SandboxConfig, SandboxRunRequest, SandboxRunResponse},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, warn};
+
+const DISCOVERY_PROVIDER_HINT_LIMIT: usize = 3;
+
+/// Health status used by dispatch-provider selection policy.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ProviderHealth {
+    Healthy,
+    Degraded,
+}
+
+/// Metadata derived from relay provider discovery and used for dispatch selection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderSelectionMetadata {
+    pub pubkey: String,
+    pub name: Option<String>,
+    pub supported_kinds: Vec<u16>,
+    pub relay_count: usize,
+    pub health: ProviderHealth,
+    pub selection_weight: i32,
+}
 
 /// Configuration for swarm dispatch.
 #[derive(Debug, Clone)]
@@ -374,14 +396,52 @@ impl SwarmDispatcher {
             }
         }
 
-        // Add trusted provider hints if privacy policy specifies them
-        // This allows the relay to prioritize routing to specific providers
+        let mut preferred_providers = Vec::new();
+
+        // Add trusted provider hints if privacy policy specifies them.
+        // This remains authoritative when policy is explicitly configured.
         if let Some(policy) = &self.privacy_policy {
             for provider in &policy.trusted_providers {
-                // Add provider pubkey as a parameter hint
-                // NIP-90: Providers can filter jobs by these hints
-                nostr_request = nostr_request.add_param("preferred_provider", provider);
+                preferred_providers.push(provider.clone());
             }
+        }
+
+        // If no policy pins providers, discover healthy provider candidates from relays.
+        if preferred_providers.is_empty() {
+            match self
+                .discover_provider_selection_metadata(kind, dvm_client.as_ref())
+                .await
+            {
+                Ok(metadata) => {
+                    preferred_providers = select_preferred_provider_pubkeys(&metadata);
+                    if preferred_providers.is_empty() {
+                        debug!(
+                            job_kind = kind,
+                            "provider discovery returned no healthy candidates; dispatch continues without provider hints"
+                        );
+                    } else {
+                        debug!(
+                            job_kind = kind,
+                            provider_count = preferred_providers.len(),
+                            "provider discovery selected preferred providers for dispatch"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        job_kind = kind,
+                        "provider discovery failed; dispatch continues with relay-only routing: {}",
+                        err
+                    );
+                }
+            }
+        }
+
+        for provider in preferred_providers
+            .iter()
+            .take(DISCOVERY_PROVIDER_HINT_LIMIT)
+        {
+            nostr_request = nostr_request.add_param("preferred_provider", provider);
         }
 
         // Submit job to relays
@@ -436,10 +496,116 @@ impl SwarmDispatcher {
         }
     }
 
+    async fn discover_provider_selection_metadata(
+        &self,
+        job_kind: u16,
+        dvm_client: &DvmClient,
+    ) -> Result<Vec<ProviderSelectionMetadata>> {
+        let relay_refs = self
+            .config
+            .relays
+            .iter()
+            .map(String::as_str)
+            .filter(|relay| !relay.trim().is_empty())
+            .collect::<Vec<_>>();
+        if relay_refs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let providers = dvm_client
+            .discover_providers(job_kind, &relay_refs)
+            .await
+            .map_err(|e| anyhow::anyhow!("provider discovery request failed: {}", e))?;
+
+        Ok(build_provider_selection_metadata(job_kind, providers))
+    }
+
     /// Get the public key of this dispatcher.
     pub fn public_key(&self) -> String {
         self.bridge.public_key_hex()
     }
+}
+
+#[derive(Debug, Default)]
+struct ProviderAggregation {
+    name: Option<String>,
+    supported_kinds: BTreeSet<u16>,
+    relays: BTreeSet<String>,
+}
+
+fn build_provider_selection_metadata(
+    job_kind: u16,
+    providers: Vec<DvmProvider>,
+) -> Vec<ProviderSelectionMetadata> {
+    let mut by_pubkey = BTreeMap::<String, ProviderAggregation>::new();
+
+    for provider in providers {
+        let entry = by_pubkey.entry(provider.pubkey.clone()).or_default();
+        if entry.name.is_none() {
+            entry.name = provider.name.clone();
+        }
+        entry.supported_kinds.extend(provider.supported_kinds);
+        for relay in provider.relays {
+            let relay = relay.trim().to_string();
+            if !relay.is_empty() {
+                entry.relays.insert(relay);
+            }
+        }
+    }
+
+    let mut metadata = by_pubkey
+        .into_iter()
+        .map(|(pubkey, aggregate)| {
+            let supported_kinds = aggregate
+                .supported_kinds
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            let relay_count = aggregate.relays.len();
+            let supports_kind = aggregate.supported_kinds.contains(&job_kind);
+            let health = if supports_kind && relay_count > 0 {
+                ProviderHealth::Healthy
+            } else {
+                ProviderHealth::Degraded
+            };
+            let selection_weight =
+                provider_selection_weight(supports_kind, relay_count, aggregate.name.is_some());
+
+            ProviderSelectionMetadata {
+                pubkey,
+                name: aggregate.name,
+                supported_kinds,
+                relay_count,
+                health,
+                selection_weight,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    metadata.sort_by(|left, right| {
+        right
+            .selection_weight
+            .cmp(&left.selection_weight)
+            .then_with(|| right.relay_count.cmp(&left.relay_count))
+            .then_with(|| left.pubkey.cmp(&right.pubkey))
+    });
+    metadata
+}
+
+fn provider_selection_weight(supports_kind: bool, relay_count: usize, has_name: bool) -> i32 {
+    let kind_weight = if supports_kind { 50 } else { 0 };
+    let relay_weight = relay_count.min(10) as i32;
+    let name_weight = if has_name { 1 } else { 0 };
+    kind_weight + relay_weight + name_weight
+}
+
+fn select_preferred_provider_pubkeys(metadata: &[ProviderSelectionMetadata]) -> Vec<String> {
+    metadata
+        .iter()
+        .filter(|provider| provider.health == ProviderHealth::Healthy)
+        .take(DISCOVERY_PROVIDER_HINT_LIMIT)
+        .map(|provider| provider.pubkey.clone())
+        .collect()
 }
 
 /// Builder for creating dispatcher with custom configuration.
@@ -543,6 +709,21 @@ fn derive_private_key_from_mnemonic(mnemonic: &str) -> Result<[u8; 32]> {
 mod tests {
     use super::*;
 
+    fn provider(
+        pubkey: &str,
+        supported_kinds: Vec<u16>,
+        relays: Vec<&str>,
+        name: Option<&str>,
+    ) -> DvmProvider {
+        DvmProvider {
+            pubkey: pubkey.to_string(),
+            name: name.map(str::to_string),
+            about: None,
+            supported_kinds,
+            relays: relays.into_iter().map(str::to_string).collect(),
+        }
+    }
+
     #[test]
     fn test_dispatcher_creation() {
         let dispatcher = SwarmDispatcher::generate();
@@ -605,5 +786,73 @@ mod tests {
             .build_connected();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn provider_selection_metadata_handles_empty_network() {
+        let metadata = build_provider_selection_metadata(5102, Vec::new());
+        assert!(metadata.is_empty());
+        let preferred = select_preferred_provider_pubkeys(&metadata);
+        assert!(preferred.is_empty());
+    }
+
+    #[test]
+    fn provider_selection_metadata_prioritizes_healthy_providers() {
+        let metadata = build_provider_selection_metadata(
+            5102,
+            vec![
+                provider(
+                    "provider_a",
+                    vec![5102],
+                    vec!["wss://relay.one", "wss://relay.two"],
+                    Some("Provider A"),
+                ),
+                provider(
+                    "provider_b",
+                    vec![5102],
+                    vec!["wss://relay.one"],
+                    Some("Provider B"),
+                ),
+                provider("provider_c", vec![5050], vec!["wss://relay.one"], None),
+            ],
+        );
+
+        assert_eq!(metadata.len(), 3);
+        assert_eq!(metadata[0].pubkey, "provider_a");
+        assert_eq!(metadata[0].health, ProviderHealth::Healthy);
+        assert_eq!(metadata[1].pubkey, "provider_b");
+        assert_eq!(metadata[1].health, ProviderHealth::Healthy);
+        assert_eq!(metadata[2].health, ProviderHealth::Degraded);
+
+        let preferred = select_preferred_provider_pubkeys(&metadata);
+        assert_eq!(
+            preferred,
+            vec!["provider_a".to_string(), "provider_b".to_string()]
+        );
+    }
+
+    #[test]
+    fn provider_selection_metadata_marks_degraded_relays() {
+        let metadata = build_provider_selection_metadata(
+            5102,
+            vec![
+                provider("provider_a", vec![5102], vec![], Some("Provider A")),
+                provider(
+                    "provider_b",
+                    vec![5050],
+                    vec!["wss://relay.one"],
+                    Some("Provider B"),
+                ),
+            ],
+        );
+
+        assert_eq!(metadata.len(), 2);
+        assert!(
+            metadata
+                .iter()
+                .all(|entry| entry.health == ProviderHealth::Degraded)
+        );
+        let preferred = select_preferred_provider_pubkeys(&metadata);
+        assert!(preferred.is_empty());
     }
 }
