@@ -9,5 +9,6 @@ Current-state Khala sync documentation and runbooks (legacy lane during replacem
 Spacetime replacement authority plans:
 - `docs/plans/spacetimedb-full-integration.md`
 - `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
+- `SPACETIME_ENVIRONMENT_MATRIX.md`
 
 Historical sync snapshots and superseded notes are archived in backroom and are not canonical current-surface guidance.

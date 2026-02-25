@@ -42,6 +42,18 @@ Cross-environment release validation gate:
    - Active lane is Rust binary execution (`cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- serve`).
    - No legacy TypeScript deploy process is canonical.
 
+## Spacetime Environment Provisioning Gate
+
+Before Spacetime sync cutover promotions, environment provisioning checks are required for `dev`, `staging`, and `prod`:
+
+1. `scripts/spacetime/provision-check.sh dev`
+2. `scripts/spacetime/provision-check.sh staging`
+3. `scripts/spacetime/provision-check.sh prod`
+
+Reference matrix:
+
+- `docs/sync/SPACETIME_ENVIRONMENT_MATRIX.md`
+
 ## Non-canonical lanes
 
 1. `openagents-web` and `openagents-migrate` are legacy Laravel resources and are not canonical deploy targets for new rollouts.
