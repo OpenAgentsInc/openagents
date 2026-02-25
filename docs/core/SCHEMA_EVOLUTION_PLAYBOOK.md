@@ -116,5 +116,5 @@ Suggested report path:
 ## Required Runbook References
 
 1. Runtime Cloud Run deploy: `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
-2. Control service canary/rollback: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+2. Control service canary/rollback: `apps/openagents.com/docs/CANARY_ROLLBACK_RUNBOOK.md`
 3. Compatibility policy: `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`

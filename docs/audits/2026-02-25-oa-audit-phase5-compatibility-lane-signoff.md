@@ -15,7 +15,7 @@ Phase 5 closes the compatibility-lane cleanup gate by removing stale legacy CI r
 - Changed-mode local CI no longer references archived PHP paths.
 
 2. Runtime-driver compatibility alias retirement:
-- `apps/openagents.com/service/src/runtime_routing.rs` now accepts only Rust-era labels:
+- `apps/openagents.com/src/runtime_routing.rs` now accepts only Rust-era labels:
   - `control_service` / `control`
   - `runtime_service` / `runtime`
 - Removed legacy alias parsing (`legacy`, `laravel`, `openagents.com`, `elixir`).
@@ -46,7 +46,7 @@ Updated to match code + sunset posture:
 
 - `docs/core/ARCHITECTURE.md`
 - `docs/core/PROJECT_OVERVIEW.md`
-- `apps/openagents.com/service/docs/RUNTIME_ROUTE_OWNERSHIP.md`
+- `apps/openagents.com/docs/RUNTIME_ROUTE_OWNERSHIP.md`
 
 ## Acceptance Criteria Mapping
 

@@ -13,8 +13,8 @@ scan_targets=(
   "apps/autopilot-desktop/src/main.rs"
   "apps/runtime/src/lib.rs"
   "apps/runtime/src/spacetime_publisher.rs"
-  "apps/openagents.com/service/src/lib.rs"
-  "apps/openagents.com/service/src/route_domains.rs"
+  "apps/openagents.com/src/lib.rs"
+  "apps/openagents.com/src/route_domains.rs"
 )
 
 blocked_patterns=(

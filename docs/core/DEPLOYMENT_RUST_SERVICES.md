@@ -15,19 +15,19 @@ Cross-environment release validation gate:
 
 1. `openagents-control-service` (production)
    - Build image:
-     - `gcloud builds submit --config apps/openagents.com/service/deploy/cloudbuild.yaml --substitutions _TAG=\"$(git rev-parse --short HEAD)\" .`
+     - `gcloud builds submit --config apps/openagents.com/deploy/cloudbuild.yaml --substitutions _TAG=\"$(git rev-parse --short HEAD)\" .`
    - Deploy:
-     - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/service/deploy/deploy-production.sh`
+     - `PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> apps/openagents.com/deploy/deploy-production.sh`
    - Rollout/rollback:
-     - `apps/openagents.com/service/deploy/canary-rollout.sh`
+     - `apps/openagents.com/deploy/canary-rollout.sh`
    - Maintenance cutover helper:
-     - `apps/openagents.com/service/deploy/maintenance-mode.sh`
+     - `apps/openagents.com/deploy/maintenance-mode.sh`
 2. `openagents-control-service-staging`
    - Deploy:
      - `gcloud run deploy openagents-control-service-staging --project openagentsgemini --region us-central1 --image us-central1-docker.pkg.dev/openagentsgemini/openagents-control-service/control:<TAG> --quiet`
-     - Optional: `apps/openagents.com/service/deploy/deploy-staging.sh` (runs local verification gates and creates a no-traffic revision; see staging runbook for traffic shift)
+     - Optional: `apps/openagents.com/deploy/deploy-staging.sh` (runs local verification gates and creates a no-traffic revision; see staging runbook for traffic shift)
    - Runbook:
-     - `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
+     - `apps/openagents.com/docs/STAGING_DEPLOY_RUNBOOK.md`
 3. `runtime` (Rust)
    - Build image:
      - `gcloud builds submit --config apps/runtime/deploy/cloudbuild.yaml --substitutions _TAG=\"$(git rev-parse --short HEAD)\" .`
@@ -66,4 +66,4 @@ Reference matrix:
 
 ## Related Gmail Inbox Runbook
 
-- `apps/openagents.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`
+- `apps/openagents.com/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`

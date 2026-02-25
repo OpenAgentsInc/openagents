@@ -67,7 +67,7 @@ crates/opencode-sdk/openapi.json
 
 docs/scratchpad/
 docs/autopilot/testing/reports/
-apps/openagents.com/service/deploy/reports/
+apps/openagents.com/deploy/reports/
 apps/openagents.com/storage/app/staging-dual-run/
 apps/openagents.com/storage/app/production-route-flip/
 apps/openagents.com/storage/app/legacy-serving-retirement/

@@ -26,10 +26,10 @@ Primary evidence surfaces:
 - `crates/autopilot-core/src/agent.rs`
 - `crates/autopilot-core/src/verification.rs`
 - `crates/openagents-app-state/src/command_bus.rs`
-- `apps/openagents.com/service/src/lib.rs`
-- `apps/openagents.com/service/src/config.rs`
-- `apps/openagents.com/service/src/route_split.rs`
-- `apps/openagents.com/service/src/runtime_routing.rs`
+- `apps/openagents.com/src/lib.rs`
+- `apps/openagents.com/src/config.rs`
+- `apps/openagents.com/src/route_split.rs`
+- `apps/openagents.com/src/runtime_routing.rs`
 - `crates/openagents-runtime-client/src/lib.rs`
 - `apps/runtime/src/server.rs`
 - `apps/runtime/src/marketplace.rs`
@@ -81,7 +81,7 @@ Recommended target split:
 | `apps/autopilot-desktop` | Native app runs local UI logic, local file/tool actions, local Codex integration | Uses control/runtime APIs for auth, worker sync (sync/spacetime token + websocket), and runtime worker ops | Local-first execution with optional sync mirror |
 | `crates/codex-client` + `crates/autopilot/src/app/codex_runtime.rs` | Spawns local `codex-app-server` process and speaks JSON-RPC over stdio | None required for local spawn path | Local machine |
 | `crates/autopilot-core` | Local verification and orchestration (git/cargo/sqlite/pylon checks) | Optional external provider/network use depending on mode | Local machine |
-| `apps/openagents.com/service` | Control-plane auth/session/sync token issuance; download distribution; many runtime-facing API routes | Calls runtime internal APIs for worker lanes; also hosts several in-memory runtime-like lanes | Shared control authority only (and thin runtime proxy where needed) |
+| `apps/openagents.com` | Control-plane auth/session/sync token issuance; download distribution; many runtime-facing API routes | Calls runtime internal APIs for worker lanes; also hosts several in-memory runtime-like lanes | Shared control authority only (and thin runtime proxy where needed) |
 | `apps/runtime` | Runtime internal authority APIs, worker registry, marketplace dispatch, hydra/credit/liquidity/treasury/verifications | May dispatch to provider `base_url`s and optional Nostr bridge relays | Shared runtime authority |
 | `apps/lightning-wallet-executor` | Rust HTTP signing/execution service (mock or Spark) | Depends on Spark/secret backends when enabled | Shared custody service (can run local in dev) |
 | `apps/lightning-ops` | Rust ops CLI/service with mock/API modes | API mode depends on control/gateway endpoints | Shared ops service (local CLI allowed) |
@@ -211,7 +211,7 @@ Replacement-readiness requirements:
    - `runtime_codex_workers_*`, `runtime_threads_*`, `runtime_tools_execute`, and runtime skill registry paths are currently handled in control-service in-memory/domain-store code paths.
    - This split obscures where runtime authority truly lives.
 
-2. Runtime routing model still carries `Legacy`/`Elixir` driver nomenclature in `apps/openagents.com/service/src/runtime_routing.rs`, which is inconsistent with current Rust-only direction.
+2. Runtime routing model still carries `Legacy`/`Elixir` driver nomenclature in `apps/openagents.com/src/runtime_routing.rs`, which is inconsistent with current Rust-only direction.
 
 3. Local clients still hardcode centralized API assumptions in places:
    - `crates/autopilot/src/app/spark_wallet.rs` uses `https://openagents.com/api` constant.
@@ -276,7 +276,7 @@ Shared runtime/control dependency evidence:
 
 1. `apps/autopilot-desktop/src/runtime_auth.rs` (`/api/auth/email`, `/api/auth/verify`)
 2. `apps/autopilot-desktop/src/main.rs` (`/api/runtime/*`, `/api/sync/token`, `/api/spacetime/token`, `/sync/socket/websocket`)
-3. `apps/openagents.com/service/src/lib.rs` (route registration + runtime worker/thread/tool handlers)
+3. `apps/openagents.com/src/lib.rs` (route registration + runtime worker/thread/tool handlers)
 4. `crates/openagents-runtime-client/src/lib.rs` (`/internal/v1/workers*`, marketplace/credit/hydra paths)
 5. `apps/runtime/src/server.rs` (`/internal/v1/*` authority route surface)
 

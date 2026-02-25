@@ -25,17 +25,17 @@ Validation evidence should be archived in backroom (not committed into `docs/`).
 - HTMX perf budget checks (`login/feed/settings/chat`) via:
 
 ```bash
-apps/openagents.com/service/scripts/htmx_perf_check.sh
+apps/openagents.com/scripts/htmx_perf_check.sh
 ```
 - HTMX browser smoke checks (`chat/feed/settings` on staging/prod token lanes) via:
 
 ```bash
-apps/openagents.com/service/scripts/htmx_browser_smoke.sh
+apps/openagents.com/scripts/htmx_browser_smoke.sh
 ```
 - HTMX route-group staged rollout canary (staging token lane) via:
 
 ```bash
-apps/openagents.com/service/scripts/htmx-route-group-canary.sh
+apps/openagents.com/scripts/htmx-route-group-canary.sh
 ```
 
 1. Gmail inbox lane (control-service)
@@ -128,7 +128,7 @@ HTMX perf lane toggle:
 
 ## Related Runbooks
 
-- `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
-- `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
+- `apps/openagents.com/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- `apps/openagents.com/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
 - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - `docs/core/SCHEMA_EVOLUTION_PLAYBOOK.md`

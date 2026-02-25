@@ -4,7 +4,7 @@ This map reflects canonical Rust-only architecture boundaries.
 
 ## Active Apps and Services (Retained Topology)
 
-- `apps/openagents.com/service/`
+- `apps/openagents.com/`
   Rust control service: auth/session/device management, authorization, sync token issuance, and landing-page distribution.
   Compatibility lanes under `/api/v1/*` and legacy chat aliases are sunset-marked (`2026-06-30`) and treated as migration debt, not new authority surface.
 

@@ -35,5 +35,5 @@ Tracked files archived and removed: `600`
 
 ## Retained under `apps/openagents.com/`
 
-1. `apps/openagents.com/service/` (canonical Rust control service surface).
+1. `apps/openagents.com/` (canonical Rust control service surface).
 2. `apps/openagents.com/.github/workflows/*` were removed in OA-AUDIT `#2213` to satisfy `INV-12`.

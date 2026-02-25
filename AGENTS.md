@@ -44,7 +44,7 @@ Documentation entry points:
 
 ## Product and Service Surfaces
 
-- Web control service: `apps/openagents.com/service/`
+- Web control service: `apps/openagents.com/`
 - Runtime service: `apps/runtime/`
 - Desktop app: `apps/autopilot-desktop/`
 - Lightning ops service: `apps/lightning-ops/`
@@ -60,7 +60,7 @@ Removed surface archive:
 - Staging/prod validation matrix: `docs/core/RUST_STAGING_PROD_VALIDATION.md`
 - Legacy infra decommission sequencing: `docs/core/RUST_LEGACY_INFRA_DECOMMISSION.md`
 - Deploy/process matrix (canonical commands): `docs/core/DEPLOYMENT_RUST_SERVICES.md`
-- Control service staging deploy runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
+- Control service staging deploy runbook: `apps/openagents.com/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Runtime deploy + migrate runbook: `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - Runtime WS incident runbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
 - Spacetime managed deployment lane: `docs/sync/SPACETIME_MAINCLOUD_MANAGED_DEPLOYMENT.md`

@@ -20,8 +20,8 @@ Tracking issue: `OA-WEBPARITY-081` (`#2051`)
 3. Regression lane evidence (includes legacy stream edge-case matrix):
    - `apps/openagents.com/storage/app/parity-regression/20260222T182319Z/summary.json`
 4. Steady-state runbook + policy links:
-   - `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
-   - `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+   - `apps/openagents.com/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
+   - `apps/openagents.com/docs/CANARY_ROLLBACK_RUNBOOK.md`
    - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
 
 ## Findings

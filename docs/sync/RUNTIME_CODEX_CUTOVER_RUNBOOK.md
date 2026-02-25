@@ -1,6 +1,6 @@
 # Spacetime Runtime/Codex Rollout Runbook
 
-Owner: sync lane (`apps/runtime`, `apps/openagents.com/service`, `apps/autopilot-desktop`)
+Owner: sync lane (`apps/runtime`, `apps/openagents.com`, `apps/autopilot-desktop`)
 Scope: retained-client sync rollout, gate enforcement, and rollback posture
 
 ## 1. Preconditions

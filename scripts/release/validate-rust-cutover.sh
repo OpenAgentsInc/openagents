@@ -84,28 +84,28 @@ run_check \
   "required" \
   "staging control health/ready endpoints" \
   env OPENAGENTS_BASE_URL="${STAGING_CONTROL_BASE_URL}" \
-  "${ROOT_DIR}/apps/openagents.com/service/deploy/smoke-health.sh"
+  "${ROOT_DIR}/apps/openagents.com/deploy/smoke-health.sh"
 
 run_check \
   "control-staging-smoke" \
   "required" \
   "staging control smoke (static host + auth/session/sync token checks when token provided)" \
   env OPENAGENTS_BASE_URL="${STAGING_CONTROL_BASE_URL}" OPENAGENTS_CONTROL_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" \
-  "${ROOT_DIR}/apps/openagents.com/service/deploy/smoke-control.sh"
+  "${ROOT_DIR}/apps/openagents.com/deploy/smoke-control.sh"
 
 run_check \
   "control-prod-health" \
   "required" \
   "production control health/ready endpoints" \
   env OPENAGENTS_BASE_URL="${PROD_CONTROL_BASE_URL}" \
-  "${ROOT_DIR}/apps/openagents.com/service/deploy/smoke-health.sh"
+  "${ROOT_DIR}/apps/openagents.com/deploy/smoke-health.sh"
 
 run_check \
   "control-prod-smoke" \
   "required" \
   "production control smoke (static host + auth/session/sync token checks when token provided)" \
   env OPENAGENTS_BASE_URL="${PROD_CONTROL_BASE_URL}" OPENAGENTS_CONTROL_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" \
-  "${ROOT_DIR}/apps/openagents.com/service/deploy/smoke-control.sh"
+  "${ROOT_DIR}/apps/openagents.com/deploy/smoke-control.sh"
 
 # A2) HTMX performance lane (staging + production).
 if [[ "${RUN_HTMX_PERF_CHECKS}" == "1" ]]; then
@@ -115,7 +115,7 @@ if [[ "${RUN_HTMX_PERF_CHECKS}" == "1" ]]; then
       "required" \
       "staging HTMX perf budget check (login/feed/settings/chat)" \
       env BASE_URL="${STAGING_CONTROL_BASE_URL}" OA_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" REQUIRE_AUTH_FLOWS=1 \
-      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_perf_check.sh"
+      "${ROOT_DIR}/apps/openagents.com/scripts/htmx_perf_check.sh"
   else
     skip_check \
       "control-staging-htmx-perf" \
@@ -130,7 +130,7 @@ if [[ "${RUN_HTMX_PERF_CHECKS}" == "1" ]]; then
       "required" \
       "production HTMX perf budget check (login/feed/settings/chat)" \
       env BASE_URL="${PROD_CONTROL_BASE_URL}" OA_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" REQUIRE_AUTH_FLOWS=1 \
-      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_perf_check.sh"
+      "${ROOT_DIR}/apps/openagents.com/scripts/htmx_perf_check.sh"
   else
     skip_check \
       "control-prod-htmx-perf" \
@@ -160,7 +160,7 @@ if [[ "${RUN_HTMX_BROWSER_SMOKE}" == "1" ]]; then
         "required" \
         "staging browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
         env BASE_URL="${STAGING_CONTROL_BASE_URL}" OA_BROWSER_SMOKE_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" OA_BROWSER_SMOKE_REQUIRE_LOGIN_FLOW=0 OA_BROWSER_SMOKE_ARTIFACT_DIR="${OUTPUT_DIR}/artifacts/control-staging-htmx-browser-smoke" \
-        "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_browser_smoke.sh"
+        "${ROOT_DIR}/apps/openagents.com/scripts/htmx_browser_smoke.sh"
     else
       skip_check \
         "control-staging-htmx-browser-smoke" \
@@ -175,7 +175,7 @@ if [[ "${RUN_HTMX_BROWSER_SMOKE}" == "1" ]]; then
         "required" \
         "production browser-level HTMX smoke (chat/feed/settings URL + fragment/history behaviors)" \
         env BASE_URL="${PROD_CONTROL_BASE_URL}" OA_BROWSER_SMOKE_ACCESS_TOKEN="${PROD_CONTROL_ACCESS_TOKEN}" OA_BROWSER_SMOKE_REQUIRE_LOGIN_FLOW=0 OA_BROWSER_SMOKE_ARTIFACT_DIR="${OUTPUT_DIR}/artifacts/control-prod-htmx-browser-smoke" \
-        "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx_browser_smoke.sh"
+        "${ROOT_DIR}/apps/openagents.com/scripts/htmx_browser_smoke.sh"
     else
       skip_check \
         "control-prod-htmx-browser-smoke" \
@@ -216,7 +216,7 @@ if [[ "${RUN_HTMX_ROUTE_GROUP_CANARY}" == "1" ]]; then
       "required" \
       "staging route-group HTMX staged rollout/rollback canary" \
       env BASE_URL="${STAGING_CONTROL_BASE_URL}" CONTROL_ACCESS_TOKEN="${STAGING_CONTROL_ACCESS_TOKEN}" \
-      "${ROOT_DIR}/apps/openagents.com/service/scripts/htmx-route-group-canary.sh"
+      "${ROOT_DIR}/apps/openagents.com/scripts/htmx-route-group-canary.sh"
   else
     skip_check \
       "control-staging-htmx-route-group-canary" \
@@ -356,7 +356,7 @@ if [[ "${RUN_LOG_PROBES}" == "1" ]]; then
       "required" \
       "control service canary status probe" \
       env PROJECT="${GCP_PROJECT}" REGION="${GCP_REGION}" SERVICE="${CONTROL_SERVICE}" \
-      "${ROOT_DIR}/apps/openagents.com/service/deploy/canary-rollout.sh" status
+      "${ROOT_DIR}/apps/openagents.com/deploy/canary-rollout.sh" status
   else
     skip_check \
       "control-error-log-probe" \

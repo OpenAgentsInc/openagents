@@ -102,8 +102,8 @@ Updated canonical docs/runbooks to match code:
 5. `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
 6. `docs/sync/SPACETIME_RUNTIME_PUBLISH_MIRROR.md`
 7. `docs/sync/SPACETIME_OBSERVABILITY_AND_ALERTS.md`
-8. `apps/openagents.com/service/README.md`
-9. `apps/openagents.com/service/deploy/smoke-control.sh`
+8. `apps/openagents.com/README.md`
+9. `apps/openagents.com/deploy/smoke-control.sh`
 
 ## Conclusion
 

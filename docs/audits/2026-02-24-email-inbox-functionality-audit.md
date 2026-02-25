@@ -121,4 +121,4 @@ The code path is complete; production success now depends on environment/operato
 
 ## Canonical Runbook
 
-- `apps/openagents.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`
+- `apps/openagents.com/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK.md`

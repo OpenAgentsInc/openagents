@@ -161,8 +161,8 @@ const deployDocs = [
   "apps/openagents.com/docs/GCP_DEPLOY_PLAN.md",
   "apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md",
   "apps/openagents.com/deploy/README.md",
-  "apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md",
-  "apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md",
+  "apps/openagents.com/docs/CANARY_ROLLBACK_RUNBOOK.md",
+  "apps/openagents.com/docs/STAGING_DEPLOY_RUNBOOK.md",
   "apps/runtime/docs/DEPLOY_CLOUD_RUN.md",
   "apps/runtime/deploy/cloudrun/README.md",
 ]

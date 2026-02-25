@@ -36,7 +36,7 @@ Constraints applied for signoff:
 
 ### Retained deploy/runbook smoke checks
 
-1. `bash -n apps/openagents.com/service/deploy/deploy-production.sh` -> `CONTROL_DEPLOY_SCRIPT_SYNTAX_OK`
+1. `bash -n apps/openagents.com/deploy/deploy-production.sh` -> `CONTROL_DEPLOY_SCRIPT_SYNTAX_OK`
 2. `bash -n apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh` -> `RUNTIME_DEPLOY_SCRIPT_SYNTAX_OK`
 3. `bash -n apps/lightning-ops/scripts/staging-reconcile.sh` -> `LIGHTNING_OPS_SCRIPT_SYNTAX_OK`
 

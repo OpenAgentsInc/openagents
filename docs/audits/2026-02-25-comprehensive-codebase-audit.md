@@ -29,9 +29,9 @@ Primary authority references:
 
 Primary code surfaces sampled:
 
-1. `apps/openagents.com/service/src/lib.rs`
-2. `apps/openagents.com/service/src/runtime_routing.rs`
-3. `apps/openagents.com/service/src/route_split.rs`
+1. `apps/openagents.com/src/lib.rs`
+2. `apps/openagents.com/src/runtime_routing.rs`
+3. `apps/openagents.com/src/route_split.rs`
 4. `apps/runtime/src/server.rs`
 5. `apps/autopilot-desktop/src/main.rs`
 6. `crates/autopilot-core/src/*`
@@ -46,7 +46,7 @@ Top conclusions:
 
 1. Rust service foundations are strong, but repository state is not truly Rust-only.
 2. Control and runtime boundaries are still blurred in API ownership and compatibility lanes.
-3. `apps/openagents.com/service/src/lib.rs`, `apps/runtime/src/server.rs`, and `apps/autopilot-desktop/src/main.rs` are monolith hotspots.
+3. `apps/openagents.com/src/lib.rs`, `apps/runtime/src/server.rs`, and `apps/autopilot-desktop/src/main.rs` are monolith hotspots.
 4. Hydra has substantial implementation presence; Aegis is still architecture/plan-only (no active code namespace).
 5. NIP-90 and Spark integrations are substantial and product-relevant, but desktop orchestration is too centralized in one file.
 6. Policy/gate posture and actual code posture are misaligned in a few places (especially legacy lanes and workflow artifacts).
@@ -72,8 +72,8 @@ Top conclusions:
 
 ### Largest single Rust files
 
-1. `apps/openagents.com/service/src/lib.rs` (`16,741` LOC)
-2. `apps/openagents.com/service/src/tests.rs` (`11,381` LOC)
+1. `apps/openagents.com/src/lib.rs` (`16,741` LOC)
+2. `apps/openagents.com/src/tests.rs` (`11,381` LOC)
 3. `apps/runtime/src/server/tests.rs` (`7,961` LOC)
 4. `apps/autopilot-desktop/src/main.rs` (`6,662` LOC)
 5. `apps/runtime/src/server.rs` (`6,507` LOC)
@@ -279,7 +279,7 @@ Risks:
 
 ### Phase 1 (near-term, 2-6 weeks): reduce monolith risk
 
-1. Split `apps/openagents.com/service/src/lib.rs` into domain routers plus composition layer.
+1. Split `apps/openagents.com/src/lib.rs` into domain routers plus composition layer.
 2. Split `apps/runtime/src/server.rs` by domain (`runs`, `workers`, `marketplace`, `hydra`, `credit/liquidity`, `treasury`, `verification`).
 3. Split `apps/autopilot-desktop/src/main.rs` into pane/domain modules (identity, provider, wallet, Codex runtime sync).
 

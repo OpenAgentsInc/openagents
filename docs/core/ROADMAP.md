@@ -17,7 +17,7 @@ Complete migration to a Rust-only production architecture with:
 ## Current Priority Phases
 
 1. Rust service and surface convergence
-- Keep `apps/runtime/` and `apps/openagents.com/service/` as the only authority services.
+- Keep `apps/runtime/` and `apps/openagents.com/` as the only authority services.
 - Continue eliminating legacy non-Rust runtime behavior from production paths.
 
 2. Sync transport replacement

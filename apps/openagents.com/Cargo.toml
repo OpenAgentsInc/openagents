@@ -1,0 +1,55 @@
+[package]
+name = "openagents-control-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+autopilot-inbox-domain.workspace = true
+autopilot_app = { path = "../../crates/autopilot_app" }
+axum = "0.7"
+base64.workspace = true
+chacha20poly1305 = "0.10"
+chrono.workspace = true
+clap.workspace = true
+hmac = "0.12"
+maud = "0.27"
+mime_guess = "2.0"
+openagents-client-core = { path = "../../crates/openagents-client-core" }
+openagents-l402 = { path = "../../crates/openagents-l402" }
+openagents-runtime-client = { path = "../../crates/openagents-runtime-client" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "request-id", "timeout", "trace"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid.workspace = true
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+anyhow.workspace = true
+http-body-util = "0.1"
+openapiv3 = "2.0"
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "openagents-control-service"
+path = "src/main.rs"
+
+[[bin]]
+name = "openagents-control-openapi-export"
+path = "src/bin/openapi_export.rs"
+
+[[bin]]
+name = "openagents-control-ops"
+path = "src/bin/ops_cli.rs"

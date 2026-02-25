@@ -55,7 +55,7 @@ Local disk usage (includes untracked local artifacts):
 
 `apps/openagents.com` is not just a static site. It currently contains:
 
-1. Rust control service (`apps/openagents.com/service`, 80 tracked files).
+1. Rust control service (`apps/openagents.com`, 80 tracked files).
 2. Rust/WASM web shell (`apps/openagents.com/web-shell`, 38 tracked files).
 3. Legacy Laravel/Inertia/React and deployment assets (602 tracked files outside `service/` and `web-shell/`).
 
@@ -103,7 +103,7 @@ Onyx is also coupled to:
 `Cargo.toml` workspace members currently include app crates under `apps/`:
 
 1. `apps/autopilot-desktop`
-2. `apps/openagents.com/service`
+2. `apps/openagents.com`
 3. `apps/openagents.com/web-shell`
 4. `apps/runtime`
 5. `apps/lightning-ops`

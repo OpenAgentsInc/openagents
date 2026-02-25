@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "apps/autopilot-desktop",
-    "apps/openagents.com/service",
+    "apps/openagents.com",
     "apps/runtime",
     "apps/lightning-ops",
     "apps/lightning-wallet-executor",

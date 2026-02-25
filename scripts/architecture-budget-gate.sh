@@ -6,7 +6,7 @@ BASELINE_FILE="$ROOT_DIR/docs/ci/architecture-budget-baseline.env"
 MODE="${1:-check}"
 
 measure_service_route_count() {
-  rg -n '\.route\(' "$ROOT_DIR/apps/openagents.com/service/src/route_domains.rs" \
+  rg -n '\.route\(' "$ROOT_DIR/apps/openagents.com/src/route_domains.rs" \
     | wc -l \
     | tr -d ' '
 }
@@ -16,7 +16,7 @@ measure_prod_max_file() {
   record="$(
     (
       cd "$ROOT_DIR"
-      find apps/runtime/src apps/openagents.com/service/src apps/autopilot-desktop/src crates/autopilot/src crates/autopilot-core/src \
+      find apps/runtime/src apps/openagents.com/src apps/autopilot-desktop/src crates/autopilot/src crates/autopilot-core/src \
         -type f -name '*.rs' \
         ! -name '*tests.rs' \
         ! -path '*/tests/*' \

@@ -50,7 +50,7 @@ This tree contains current Rust-era documentation and forward strategy only.
 
 ## Product Surfaces
 
-- `../apps/openagents.com/service/`
+- `../apps/openagents.com/`
 - `../apps/runtime/`
 - `../apps/autopilot-desktop/`
 - `../crates/`

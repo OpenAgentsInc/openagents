@@ -36,7 +36,7 @@ count_allow_attributes() {
 }
 
 read -r APPS_RUNTIME_TOTAL APPS_RUNTIME_UNJUSTIFIED < <(count_allow_attributes "apps/runtime")
-read -r APPS_CONTROL_TOTAL APPS_CONTROL_UNJUSTIFIED < <(count_allow_attributes "apps/openagents.com/service")
+read -r APPS_CONTROL_TOTAL APPS_CONTROL_UNJUSTIFIED < <(count_allow_attributes "apps/openagents.com")
 read -r APPS_AUTOPILOT_DESKTOP_TOTAL APPS_AUTOPILOT_DESKTOP_UNJUSTIFIED < <(count_allow_attributes "apps/autopilot-desktop")
 read -r CRATES_AUTOPILOT_CORE_TOTAL CRATES_AUTOPILOT_CORE_UNJUSTIFIED < <(count_allow_attributes "crates/autopilot-core")
 read -r CRATES_AUTOPILOT_TOTAL CRATES_AUTOPILOT_UNJUSTIFIED < <(count_allow_attributes "crates/autopilot")
@@ -59,7 +59,7 @@ TOTAL_UNJUSTIFIED_ALLOW_ATTRS=$((
 print_counts() {
   echo "allow-attribute counts (critical crates):"
   echo "  apps/runtime total=${APPS_RUNTIME_TOTAL} unjustified=${APPS_RUNTIME_UNJUSTIFIED}"
-  echo "  apps/openagents.com/service total=${APPS_CONTROL_TOTAL} unjustified=${APPS_CONTROL_UNJUSTIFIED}"
+  echo "  apps/openagents.com total=${APPS_CONTROL_TOTAL} unjustified=${APPS_CONTROL_UNJUSTIFIED}"
   echo "  apps/autopilot-desktop total=${APPS_AUTOPILOT_DESKTOP_TOTAL} unjustified=${APPS_AUTOPILOT_DESKTOP_UNJUSTIFIED}"
   echo "  crates/autopilot-core total=${CRATES_AUTOPILOT_CORE_TOTAL} unjustified=${CRATES_AUTOPILOT_CORE_UNJUSTIFIED}"
   echo "  crates/autopilot total=${CRATES_AUTOPILOT_TOTAL} unjustified=${CRATES_AUTOPILOT_UNJUSTIFIED}"
@@ -93,7 +93,7 @@ check_unjustified_growth() {
     failed=1
   fi
   if (( APPS_CONTROL_UNJUSTIFIED > ALLOW_ATTR_BASELINE_APPS_CONTROL_UNJUSTIFIED )); then
-    echo "allow-attribute gate failed: apps/openagents.com/service unjustified suppressions grew" >&2
+    echo "allow-attribute gate failed: apps/openagents.com unjustified suppressions grew" >&2
     failed=1
   fi
   if (( APPS_AUTOPILOT_DESKTOP_UNJUSTIFIED > ALLOW_ATTR_BASELINE_APPS_AUTOPILOT_DESKTOP_UNJUSTIFIED )); then
@@ -135,7 +135,7 @@ case "$MODE" in
     print_counts
     echo "allow-attribute baseline:"
     echo "  apps/runtime total=${ALLOW_ATTR_BASELINE_APPS_RUNTIME_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_APPS_RUNTIME_UNJUSTIFIED}"
-    echo "  apps/openagents.com/service total=${ALLOW_ATTR_BASELINE_APPS_CONTROL_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_APPS_CONTROL_UNJUSTIFIED}"
+    echo "  apps/openagents.com total=${ALLOW_ATTR_BASELINE_APPS_CONTROL_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_APPS_CONTROL_UNJUSTIFIED}"
     echo "  apps/autopilot-desktop total=${ALLOW_ATTR_BASELINE_APPS_AUTOPILOT_DESKTOP_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_APPS_AUTOPILOT_DESKTOP_UNJUSTIFIED}"
     echo "  crates/autopilot-core total=${ALLOW_ATTR_BASELINE_CRATES_AUTOPILOT_CORE_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_CRATES_AUTOPILOT_CORE_UNJUSTIFIED}"
     echo "  crates/autopilot total=${ALLOW_ATTR_BASELINE_CRATES_AUTOPILOT_TOTAL} unjustified=${ALLOW_ATTR_BASELINE_CRATES_AUTOPILOT_UNJUSTIFIED}"

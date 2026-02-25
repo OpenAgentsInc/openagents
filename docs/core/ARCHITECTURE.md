@@ -62,7 +62,7 @@ Research/optional context (not execution authority):
 ### Implemented now (`main`)
 
 1. Active app roots:
-   - `apps/openagents.com/service/`
+   - `apps/openagents.com/`
    - `apps/runtime/`
    - `apps/autopilot-desktop/`
    - `apps/lightning-ops/`
@@ -144,7 +144,7 @@ L402/paywall ops + reconcile]
 
 ## Service Boundaries (Implemented)
 
-### `apps/openagents.com/service` (control-plane authority + retained web/API lanes)
+### `apps/openagents.com` (control-plane authority + retained web/API lanes)
 
 Owns:
 
@@ -191,10 +191,10 @@ Current exposed API/web groups (implemented):
 
 Source of truth for control route inventory:
 
-1. `apps/openagents.com/service/src/openapi.rs`
-2. `apps/openagents.com/service/src/lib.rs`
-3. `apps/openagents.com/service/docs/RUNTIME_ROUTE_OWNERSHIP.md`
-4. `apps/openagents.com/service/src/route_domains.rs`
+1. `apps/openagents.com/src/openapi.rs`
+2. `apps/openagents.com/src/lib.rs`
+3. `apps/openagents.com/docs/RUNTIME_ROUTE_OWNERSHIP.md`
+4. `apps/openagents.com/src/route_domains.rs`
 
 Important reality:
 
@@ -447,7 +447,7 @@ This sequencing is dependency-driven and aligns to the active plan set.
 Active app roots:
 
 1. `apps/autopilot-desktop/`
-2. `apps/openagents.com/service/`
+2. `apps/openagents.com/`
 3. `apps/runtime/`
 4. `apps/lightning-ops/`
 5. `apps/lightning-wallet-executor/`
@@ -464,7 +464,7 @@ Shared code roots:
 
 Tracked migration-debt lanes still present under `apps/openagents.com/`:
 
-1. None. Retained tracked surface is `apps/openagents.com/service/` only.
+1. None. Retained tracked surface is `apps/openagents.com/` only.
 
 Legacy web code removal status:
 

@@ -94,7 +94,7 @@ Changed-mode trigger note:
 - `architecture-budgets` lane auto-runs for architecture-critical Rust surfaces and enforces route-count/file-size/suppression no-net-growth checks against `docs/ci/architecture-budget-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
 - `cross-surface` lane auto-triggers for retained desktop/runtime harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
-- `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com/service`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
+- `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
 - `sync-security` lane auto-runs for sync auth/token/stream authorization surfaces and executes negative-path tests for unauthorized subscribe/mutate, scope boundaries, malformed/expired token handling, and tenant stream-grant isolation.
 - `spacetime-replay-resume` lane auto-runs for replay/resume core surfaces (runtime shadow parity, shared client subscribe/resume, desktop checkpoint/apply/lifecycle) and executes `scripts/spacetime/replay-resume-parity-harness.sh`.
 - `spacetime-chaos` lane auto-runs for Spacetime chaos drill surfaces and executes `scripts/spacetime/run-chaos-drills.sh`, emitting per-scenario artifacts under `output/chaos/spacetime/`.
@@ -229,7 +229,7 @@ Refresh baseline only when intentional reductions are merged:
 ./scripts/allow-attribute-gate.sh check
 ```
 
-Policy for critical crates (`apps/runtime`, `apps/openagents.com/service`, `apps/autopilot-desktop`, `crates/autopilot-core`, `crates/autopilot`):
+Policy for critical crates (`apps/runtime`, `apps/openagents.com`, `apps/autopilot-desktop`, `crates/autopilot-core`, `crates/autopilot`):
 
 - No-net-growth on **unjustified** `#[allow(...)]` suppressions is enforced against `docs/ci/allow-attribute-baseline.env`.
 - Prefer refactoring over adding new suppressions.
@@ -252,7 +252,7 @@ Refresh the baseline only after intentional debt reduction:
 
 Budgeted metrics:
 
-- Control service route count (`apps/openagents.com/service/src/route_domains.rs`).
+- Control service route count (`apps/openagents.com/src/route_domains.rs`).
 - Maximum production module file size across critical Rust surfaces.
 - Suppression growth via composed `allow-attrs` check.
 

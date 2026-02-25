@@ -72,7 +72,7 @@ These routes use the same compatibility headers and deterministic `426` rejectio
 
 Steady-state operations for these compatibility aliases are governed by:
 
-- `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
+- `apps/openagents.com/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
 
 ## Sync WS Contract
 

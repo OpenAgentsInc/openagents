@@ -26,7 +26,7 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 
 ## Product and Runtime Surfaces
 
-- `apps/openagents.com/service/`
+- `apps/openagents.com/`
 - `apps/runtime/`
 - `apps/autopilot-desktop/`
 - `apps/lightning-ops/`
@@ -46,6 +46,6 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 
 - Contract/wire changes: `proto/` + `docs/protocol/`
 - Runtime behavior: `apps/runtime/` + `docs/execution/`
-- Web control/landing behavior: `apps/openagents.com/service/`
+- Web control/landing behavior: `apps/openagents.com/`
 - Desktop behavior: `apps/autopilot-desktop/`
 - Architecture/boundaries: `docs/core/ARCHITECTURE.md` + new ADR in `docs/adr/`

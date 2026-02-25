@@ -77,7 +77,7 @@ This section is deliberately blunt: what exists today vs what is stubbed, legacy
 
 ### A) Spark Wallet Send/Receive (Claim #1)
 
-**Rust control service endpoints exist** (`apps/openagents.com/service/src/openapi.rs`, `apps/openagents.com/service/src/lib.rs`):
+**Rust control service endpoints exist** (`apps/openagents.com/src/openapi.rs`, `apps/openagents.com/src/lib.rs`):
 
 - `GET/POST /api/agent-payments/wallet`
 - `GET /api/agent-payments/balance`
@@ -87,10 +87,10 @@ This section is deliberately blunt: what exists today vs what is stubbed, legacy
 
 **But multiple endpoints are not real:**
 
-- `agent_payments_create_invoice` returns a fake BOLT11 string (`lnbc{amount}n1{uuid}`) in `apps/openagents.com/service/src/lib.rs` (`async fn agent_payments_create_invoice`).
-- `agent_payments_send_spark` is stubbed (returns `"completed"` with generated id) in `apps/openagents.com/service/src/lib.rs` (`async fn agent_payments_send_spark`).
-- Wallet upsert generates fake mnemonic and synthetic addresses in `apps/openagents.com/service/src/lib.rs` (`async fn upsert_agent_wallet_for_user`).
-- The control-plane stores the mnemonic as plaintext in `apps/openagents.com/service/src/domain_store.rs` (`UserSparkWalletRecord.mnemonic`) which violates the custody direction in `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`.
+- `agent_payments_create_invoice` returns a fake BOLT11 string (`lnbc{amount}n1{uuid}`) in `apps/openagents.com/src/lib.rs` (`async fn agent_payments_create_invoice`).
+- `agent_payments_send_spark` is stubbed (returns `"completed"` with generated id) in `apps/openagents.com/src/lib.rs` (`async fn agent_payments_send_spark`).
+- Wallet upsert generates fake mnemonic and synthetic addresses in `apps/openagents.com/src/lib.rs` (`async fn upsert_agent_wallet_for_user`).
+- The control-plane stores the mnemonic as plaintext in `apps/openagents.com/src/domain_store.rs` (`UserSparkWalletRecord.mnemonic`) which violates the custody direction in `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`.
 
 **Wallet executor exists and can do real work**:
 
@@ -108,14 +108,14 @@ This section is deliberately blunt: what exists today vs what is stubbed, legacy
 
 **Control-plane policy and strings exist**:
 
-- Autopilot policy includes `l402RequireApproval`, `l402MaxSpendMsatsPerCall`, `l402MaxSpendMsatsPerDay`, `l402AllowedHosts` in `apps/openagents.com/service/src/lib.rs` and `apps/openagents.com/service/src/domain_store.rs`.
-- L402 receipt and credential stores exist in `apps/openagents.com/service/src/domain_store.rs`:
+- Autopilot policy includes `l402RequireApproval`, `l402MaxSpendMsatsPerCall`, `l402MaxSpendMsatsPerDay`, `l402AllowedHosts` in `apps/openagents.com/src/lib.rs` and `apps/openagents.com/src/domain_store.rs`.
+- L402 receipt and credential stores exist in `apps/openagents.com/src/domain_store.rs`:
   - `upsert_l402_credential`, `list_active_l402_credentials`
   - `record_l402_receipt`, `list_l402_receipts_for_user`
 
 **But the actual tool implementations are missing in Rust**:
 
-- `lightning_l402_fetch` and `lightning_l402_approve` are referenced as tool names in Rust, but no Rust executor exists (only strings in `apps/openagents.com/service/src/lib.rs` + `apps/openagents.com/service/src/openapi.rs`).
+- `lightning_l402_fetch` and `lightning_l402_approve` are referenced as tool names in Rust, but no Rust executor exists (only strings in `apps/openagents.com/src/lib.rs` + `apps/openagents.com/src/openapi.rs`).
 - The only working implementation is still in legacy Laravel/PHP:
   - `apps/openagents.com/app/AI/Tools/LightningL402FetchTool.php`
   - `apps/openagents.com/app/AI/Tools/LightningL402ApproveTool.php`
@@ -135,7 +135,7 @@ This section is deliberately blunt: what exists today vs what is stubbed, legacy
 **Paywall CRUD endpoints exist in Rust**:
 
 - `GET /api/l402/paywalls` is user-accessible.
-- `POST/PATCH/DELETE /api/l402/paywalls...` exist but are **admin-gated** by `admin_email_gate` in `apps/openagents.com/service/src/lib.rs` (protected router wiring).
+- `POST/PATCH/DELETE /api/l402/paywalls...` exist but are **admin-gated** by `admin_email_gate` in `apps/openagents.com/src/lib.rs` (protected router wiring).
 
 **Deployment workflow exists as a control-plane + CLI, but not self-serve productized:**
 
@@ -160,7 +160,7 @@ What exists:
 
 - Basic communication primitives:
   - Public posts: `GET/POST /api/shouts`
-  - Private messaging: `GET/POST /api/whispers` (see `whispers_store` in `apps/openagents.com/service/src/lib.rs`)
+  - Private messaging: `GET/POST /api/whispers` (see `whispers_store` in `apps/openagents.com/src/lib.rs`)
 
 What is missing for "negotiate services":
 
@@ -187,7 +187,7 @@ Gaps (based on current code and EP212 requirements):
 
 What exists:
 
-- Rust OpenAPI generation exists: `apps/openagents.com/service/src/openapi.rs` and is served at `/openapi.json` by `apps/openagents.com/service/src/lib.rs`.
+- Rust OpenAPI generation exists: `apps/openagents.com/src/openapi.rs` and is served at `/openapi.json` by `apps/openagents.com/src/lib.rs`.
 - Autopilot + threaded chat + payment routes exist.
 
 Gaps:
@@ -208,7 +208,7 @@ Work items:
 
 1. **Define custody model for user wallets (required decision).**
    - Recommended: wallet mnemonic stored only in wallet executor custody store (or secret manager reference owned by executor). Control-plane stores only `wallet_id` and public metadata.
-   - Explicitly outlaw: plaintext mnemonic in control-plane storage (`apps/openagents.com/service/src/domain_store.rs`).
+   - Explicitly outlaw: plaintext mnemonic in control-plane storage (`apps/openagents.com/src/domain_store.rs`).
 
 2. **Replace fake wallet upsert with real executor-backed wallet lifecycle.**
    - Update `POST /api/agent-payments/wallet` to:

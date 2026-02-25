@@ -36,17 +36,17 @@ Action executed in this change:
 1. Applied tracked artifact deletions under `apps/openagents.com/storage/*` and `apps/openagents.com/database/database.sqlite`.
 2. Deleted stale tracked artifact inventory file: `apps/openagents.com/.posthog-events.json`.
 3. Deleted obsolete Laravel-retirement scripts/docs that referenced removed lanes:
-   - `apps/openagents.com/service/scripts/disable-legacy-laravel-async-jobs.sh`
-   - `apps/openagents.com/service/scripts/verify-laravel-async-lanes-disabled.sh`
-   - `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`
-   - `apps/openagents.com/service/docs/LARAVEL_ASYNC_RETIREMENT.md`
+   - `apps/openagents.com/scripts/disable-legacy-laravel-async-jobs.sh`
+   - `apps/openagents.com/scripts/verify-laravel-async-lanes-disabled.sh`
+   - `apps/openagents.com/scripts/verify-laravel-serving-retired.sh`
+   - `apps/openagents.com/docs/LARAVEL_ASYNC_RETIREMENT.md`
 4. Deleted stale migration runbooks no longer referenced by active docs:
-   - `apps/openagents.com/service/docs/MIXED_VERSION_DEPLOY_SAFETY.md`
-   - `apps/openagents.com/service/docs/STAGING_DUAL_RUN_SHADOW_DIFF.md`
-   - `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`
-   - `apps/openagents.com/service/docs/PRODUCTION_STREAM_CUTOVER.md`
-5. Fixed broken deploy build input by adding `apps/openagents.com/service/Dockerfile` and updating `apps/openagents.com/service/deploy/cloudbuild.yaml` to use it.
-6. Updated `apps/openagents.com/service/README.md` and `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md` to remove broken references to deleted paths/scripts.
+   - `apps/openagents.com/docs/MIXED_VERSION_DEPLOY_SAFETY.md`
+   - `apps/openagents.com/docs/STAGING_DUAL_RUN_SHADOW_DIFF.md`
+   - `apps/openagents.com/docs/PRODUCTION_RUST_ROUTE_FLIP.md`
+   - `apps/openagents.com/docs/PRODUCTION_STREAM_CUTOVER.md`
+5. Fixed broken deploy build input by adding `apps/openagents.com/Dockerfile` and updating `apps/openagents.com/deploy/cloudbuild.yaml` to use it.
+6. Updated `apps/openagents.com/README.md` and `apps/openagents.com/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md` to remove broken references to deleted paths/scripts.
 
 ## Mandatory Preflight Authority Check
 
@@ -106,13 +106,13 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
    - `apps/*`: `116,121`
    - `crates/*`: `437,369`
 5. Largest Rust files:
-   - `apps/openagents.com/service/src/lib.rs` -> `18,044` LOC
-   - `apps/openagents.com/service/src/tests.rs` -> `11,944` LOC
+   - `apps/openagents.com/src/lib.rs` -> `18,044` LOC
+   - `apps/openagents.com/src/tests.rs` -> `11,944` LOC
    - `apps/runtime/src/server/tests.rs` -> `6,868` LOC
    - `apps/autopilot-desktop/src/main.rs` -> `6,748` LOC
    - `apps/runtime/src/server.rs` -> `6,684` LOC
 6. Router complexity proxies:
-   - `apps/openagents.com/service/src` `.route(` occurrences: `115`
+   - `apps/openagents.com/src` `.route(` occurrences: `115`
    - `apps/runtime/src` `.route(` occurrences: `83`
 7. Compatibility debt proxy:
    - `route_split|runtime_routing` references in control service source: `223`
@@ -149,7 +149,7 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 ## High
 
 4. Monolith concentration remains a major maintainability/regression risk.
-   - `apps/openagents.com/service/src/lib.rs` (`18k LOC`)
+   - `apps/openagents.com/src/lib.rs` (`18k LOC`)
    - `apps/runtime/src/server.rs` (`6.7k LOC`)
    - `apps/autopilot-desktop/src/main.rs` (`6.7k LOC`)
    - These are still the dominant blast-radius files after Spacetime closure.
@@ -176,8 +176,8 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 8. `unwrap/expect` usage remains high in non-test production paths.
    - Across `apps/*` + `crates/*` non-test/non-bench/non-example paths: `2,772` occurrences.
    - Notable service hotspots include:
-     - `apps/openagents.com/service/src/domain_store.rs` (`65`)
-     - `apps/openagents.com/service/src/auth.rs` (`19`)
+     - `apps/openagents.com/src/domain_store.rs` (`65`)
+     - `apps/openagents.com/src/auth.rs` (`19`)
      - `apps/runtime/src/liquidity_pool/service.rs` (`12`)
      - `apps/runtime/src/fx/service.rs` (`11`)
    - Recommendation is targeted reduction in authority and ingestion paths first.
@@ -190,11 +190,11 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 
 1. Spacetime-only transport regression guards pass on retained surfaces.
 2. Runtime-to-desktop Spacetime E2E suite passes.
-3. Retained source scan (`apps/runtime/src`, `apps/autopilot-desktop/src`, `apps/openagents.com/service/src`, key sync crates/proto) does not show active `khala|convex` symbol usage.
+3. Retained source scan (`apps/runtime/src`, `apps/autopilot-desktop/src`, `apps/openagents.com/src`, key sync crates/proto) does not show active `khala|convex` symbol usage.
 4. `apps/openagents.com/vendor` has been fully removed from tracked repo state.
 5. Tracked `.php/.ts/.tsx` files are fully eradicated (`0` remaining).
 6. Core package checks for retained services/clients compile successfully.
-7. Broken `apps/openagents.com/service/deploy/cloudbuild.yaml` Dockerfile path is fixed with a service-local Dockerfile.
+7. Broken `apps/openagents.com/deploy/cloudbuild.yaml` Dockerfile path is fixed with a service-local Dockerfile.
 
 ## Recommended cleanup / upgrade sequence
 

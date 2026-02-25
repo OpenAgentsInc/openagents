@@ -40,11 +40,11 @@ OpenAgents implementation and docs reviewed:
 5. `apps/runtime/src/sync_auth.rs`
 6. `apps/runtime/src/config.rs`
 7. `apps/runtime/sql/migrations/0001_runtime_sync_bootstrap.sql`
-8. `apps/openagents.com/service/src/route_domains.rs`
-9. `apps/openagents.com/service/src/sync_handlers.rs`
-10. `apps/openagents.com/service/src/sync_token.rs`
-11. `apps/openagents.com/service/src/openapi.rs`
-12. `apps/openagents.com/service/src/tests.rs`
+8. `apps/openagents.com/src/route_domains.rs`
+9. `apps/openagents.com/src/sync_handlers.rs`
+10. `apps/openagents.com/src/sync_token.rs`
+11. `apps/openagents.com/src/openapi.rs`
+12. `apps/openagents.com/src/tests.rs`
 13. `crates/autopilot-spacetime/src/client.rs`
 14. `crates/autopilot-spacetime/src/reducers.rs`
 15. `crates/autopilot-spacetime/src/schema.rs`

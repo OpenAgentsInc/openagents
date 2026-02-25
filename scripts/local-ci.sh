@@ -158,18 +158,18 @@ run_trigger_tests() {
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/src/history_compat.rs" "true"
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/docs/DEPLOY_GCP.md" "false"
 
-  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
+  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/openagents.com/src/lib.rs" "false"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
-  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
+  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/core/README.md" "false"
   assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "true"
   assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "docs/core/README.md" "false"
   assert_trigger "allow-attrs" "$ALLOW_ATTR_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "allow-attrs" "$ALLOW_ATTR_TRIGGER_PATTERN" "docs/core/README.md" "false"
-  assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "apps/openagents.com/service/src/route_domains.rs" "true"
+  assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "apps/openagents.com/src/route_domains.rs" "true"
   assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "docs/core/README.md" "false"
   assert_trigger "sync-security" "$SYNC_SECURITY_TRIGGER_PATTERN" "apps/runtime/src/sync_auth.rs" "true"
   assert_trigger "sync-security" "$SYNC_SECURITY_TRIGGER_PATTERN" "crates/autopilot-spacetime/src/auth.rs" "true"
@@ -226,7 +226,7 @@ run_staging_dual_run_diff() {
   echo "==> staging dual-run shadow diff lane"
   (
     cd "$ROOT_DIR"
-    ./apps/openagents.com/service/scripts/run-staging-dual-run-shadow-diff.sh
+    ./apps/openagents.com/scripts/run-staging-dual-run-shadow-diff.sh
   )
 }
 
@@ -241,7 +241,7 @@ run_canary_rollback_drill() {
   echo "==> canary rollback drill lane"
   (
     cd "$ROOT_DIR"
-    ./apps/openagents.com/service/deploy/run-canary-rollback-drill.sh \
+    ./apps/openagents.com/deploy/run-canary-rollback-drill.sh \
       "$stable_revision" "$canary_revision"
   )
 }
