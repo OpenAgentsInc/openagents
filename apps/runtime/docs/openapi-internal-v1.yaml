@@ -872,6 +872,33 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
+  /hydra/fx/settle:
+    post:
+      summary: Settle selected Hydra FX quote through treasury reserve/release semantics
+      operationId: hydraFxSettle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HydraFxSettleRequestV1'
+      responses:
+        '200':
+          description: FX settlement response with deterministic provenance receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraFxSettleResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /hydra/fx/rfq/{rfq_id}:
     get:
       summary: Read one Hydra FX RFQ by id
@@ -2257,6 +2284,101 @@ components:
         decided_at_unix:
           type: integer
           minimum: 0
+    HydraFxSettleRequestV1:
+      type: object
+      required: [schema, idempotency_key, rfq_id, quote_id, reservation_id, policy_context]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_settle_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        rfq_id:
+          type: string
+          minLength: 1
+        quote_id:
+          type: string
+          minLength: 1
+        reservation_id:
+          type: string
+          minLength: 1
+        policy_context:
+          type: object
+          additionalProperties: true
+    HydraFxSettlementStatusV1:
+      type: string
+      enum: [released, withheld, failed]
+    HydraFxSettlementReceiptV1:
+      type: object
+      required:
+        - schema
+        - receipt_id
+        - settlement_id
+        - rfq_id
+        - quote_id
+        - provider_id
+        - sell
+        - buy
+        - spread_bps
+        - fee_bps
+        - settled_at_unix
+        - canonical_json_sha256
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_settlement_receipt.v1
+        receipt_id:
+          type: string
+          minLength: 1
+        settlement_id:
+          type: string
+          minLength: 1
+        rfq_id:
+          type: string
+          minLength: 1
+        quote_id:
+          type: string
+          minLength: 1
+        provider_id:
+          type: string
+          minLength: 1
+        sell:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        buy:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        settled_at_unix:
+          type: integer
+          minimum: 0
+        wallet_receipt:
+          type: object
+          nullable: true
+          additionalProperties: true
+        canonical_json_sha256:
+          type: string
+          minLength: 1
+    HydraFxSettleResponseV1:
+      type: object
+      required: [schema, settlement_id, status, receipt]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_settle_response.v1
+        settlement_id:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/HydraFxSettlementStatusV1'
+        receipt:
+          $ref: '#/components/schemas/HydraFxSettlementReceiptV1'
     HydraRiskCreditBreakersV1:
       type: object
       required: [halt_new_envelopes, halt_large_settlements]

@@ -10,10 +10,13 @@ use crate::{
     config::HydraFxPolicyConfig,
     fx::types::{
         FX_QUOTE_UPSERT_RESPONSE_SCHEMA_V1, FX_RFQ_RESPONSE_SCHEMA_V1,
-        FX_SELECT_RESPONSE_SCHEMA_V1, FxDecisionReceiptLinkageV1, FxMoneyV1, FxQuoteStatusV1,
+        FX_SELECT_RESPONSE_SCHEMA_V1, FX_SETTLE_RESPONSE_SCHEMA_V1,
+        FX_SETTLEMENT_RECEIPT_SCHEMA_V1, FxDecisionReceiptLinkageV1, FxMoneyV1, FxQuoteStatusV1,
         FxQuoteUpsertRequestV1, FxQuoteUpsertResponseV1, FxQuoteV1, FxRfqRecordV1, FxRfqRequestV1,
         FxRfqResponseV1, FxSelectRequestV1, FxSelectResponseV1, FxSelectionFactorsV1,
+        FxSettleRequestV1, FxSettleResponseV1, FxSettlementReceiptV1, FxSettlementStatusV1,
     },
+    treasury::{SettlementStatus, Treasury, TreasuryError},
 };
 
 const FX_SELECTION_RECEIPT_SCHEMA_V1: &str = "openagents.hydra.fx_selection_receipt.v1";
@@ -51,6 +54,12 @@ struct FxSelectIdempotencyRecord {
     response: FxSelectResponseV1,
 }
 
+#[derive(Clone)]
+struct FxSettleIdempotencyRecord {
+    request_sha256: String,
+    response: FxSettleResponseV1,
+}
+
 #[derive(Clone, Serialize)]
 struct ScoredQuote {
     quote: FxQuoteV1,
@@ -69,6 +78,8 @@ struct FxState {
     quote_idempotency: HashMap<String, FxQuoteIdempotencyRecord>,
     select_idempotency: HashMap<String, FxSelectIdempotencyRecord>,
     selections_by_rfq: HashMap<String, FxSelectResponseV1>,
+    settle_idempotency: HashMap<String, FxSettleIdempotencyRecord>,
+    settlements_by_id: HashMap<String, FxSettleResponseV1>,
 }
 
 pub struct FxService {
@@ -432,6 +443,239 @@ impl FxService {
         state
             .selections_by_rfq
             .insert(rfq.rfq_id.clone(), response.clone());
+        Ok(response)
+    }
+
+    pub async fn settle_quote(
+        &self,
+        request: FxSettleRequestV1,
+        treasury: &Treasury,
+    ) -> Result<FxSettleResponseV1, FxServiceError> {
+        if request.idempotency_key.trim().is_empty() {
+            return Err(FxServiceError::InvalidRequest(
+                "idempotency_key must not be empty".to_string(),
+            ));
+        }
+        if request.rfq_id.trim().is_empty() {
+            return Err(FxServiceError::InvalidRequest(
+                "rfq_id must not be empty".to_string(),
+            ));
+        }
+        if request.quote_id.trim().is_empty() {
+            return Err(FxServiceError::InvalidRequest(
+                "quote_id must not be empty".to_string(),
+            ));
+        }
+        if request.reservation_id.trim().is_empty() {
+            return Err(FxServiceError::InvalidRequest(
+                "reservation_id must not be empty".to_string(),
+            ));
+        }
+        if !request.policy_context.is_object() && !request.policy_context.is_null() {
+            return Err(FxServiceError::InvalidRequest(
+                "policy_context must be a JSON object".to_string(),
+            ));
+        }
+
+        let normalized_policy_context = normalize_constraints(request.policy_context.clone());
+        let request_sha256 = compute_settle_request_sha256(
+            request.rfq_id.trim(),
+            request.quote_id.trim(),
+            request.reservation_id.trim(),
+            &normalized_policy_context,
+        )?;
+
+        let idempotency_key = request.idempotency_key.trim().to_string();
+        let (rfq, quote) = {
+            let state = self.state.lock().await;
+            if let Some(existing) = state.settle_idempotency.get(idempotency_key.as_str()) {
+                if existing.request_sha256 != request_sha256 {
+                    return Err(FxServiceError::Conflict(
+                        "idempotency key replay with different settle payload".to_string(),
+                    ));
+                }
+                return Ok(existing.response.clone());
+            }
+
+            let rfq = state
+                .rfqs_by_id
+                .get(request.rfq_id.trim())
+                .ok_or_else(|| FxServiceError::NotFound("hydra fx rfq not found".to_string()))?
+                .clone();
+            let quote = state
+                .quotes_by_id
+                .get(request.quote_id.trim())
+                .ok_or_else(|| FxServiceError::NotFound("hydra fx quote not found".to_string()))?
+                .clone();
+            if quote.rfq_id != rfq.rfq_id {
+                return Err(FxServiceError::InvalidRequest(
+                    "quote.rfq_id does not match settle.rfq_id".to_string(),
+                ));
+            }
+            if !matches!(
+                quote.status,
+                FxQuoteStatusV1::Selected | FxQuoteStatusV1::Active
+            ) {
+                return Err(FxServiceError::Conflict(
+                    "quote is not in a settle-eligible status".to_string(),
+                ));
+            }
+            (rfq, quote)
+        };
+
+        let job_hash =
+            compute_fx_settlement_job_hash(rfq.rfq_id.as_str(), quote.quote_id.as_str())?;
+        let expected_reservation_id = reservation_id_from_job_hash(job_hash.as_str());
+        if request.reservation_id.trim() != expected_reservation_id {
+            return Err(FxServiceError::Conflict(format!(
+                "reservation_id conflict: expected {expected_reservation_id}"
+            )));
+        }
+
+        let (reservation, _created) = treasury
+            .reserve_compute_job(
+                rfq.requester_id.as_str(),
+                job_hash.as_str(),
+                quote.provider_id.as_str(),
+                "hydra-fx",
+                quote.buy.amount,
+            )
+            .await
+            .map_err(map_treasury_error)?;
+        if reservation.reservation_id != expected_reservation_id {
+            return Err(FxServiceError::Conflict(
+                "treasury reservation id mismatch".to_string(),
+            ));
+        }
+
+        let now = now_unix();
+        let quote_expired = quote.valid_until_unix <= now;
+        let release_allowed_by_policy = normalized_policy_context
+            .get("release_allowed")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true);
+        let verification_passed = !quote_expired;
+        let release_allowed = !quote_expired && release_allowed_by_policy;
+        let exit_code = if quote_expired { 124 } else { 0 };
+        let (settled, _created) = treasury
+            .settle_compute_job(
+                job_hash.as_str(),
+                verification_passed,
+                exit_code,
+                release_allowed,
+            )
+            .await
+            .map_err(map_treasury_error)?;
+        let status = match settled.status {
+            SettlementStatus::Released => FxSettlementStatusV1::Released,
+            SettlementStatus::Withheld => FxSettlementStatusV1::Withheld,
+            SettlementStatus::Reserved => FxSettlementStatusV1::Failed,
+        };
+
+        #[derive(Serialize)]
+        struct SettlementIdHashInput<'a> {
+            rfq_id: &'a str,
+            quote_id: &'a str,
+            reservation_id: &'a str,
+            policy_context: &'a serde_json::Value,
+            settlement_status: &'a str,
+        }
+        let settlement_status = match status {
+            FxSettlementStatusV1::Released => "released",
+            FxSettlementStatusV1::Withheld => "withheld",
+            FxSettlementStatusV1::Failed => "failed",
+        };
+        let settlement_id_sha = protocol::hash::canonical_hash(&SettlementIdHashInput {
+            rfq_id: rfq.rfq_id.as_str(),
+            quote_id: quote.quote_id.as_str(),
+            reservation_id: reservation.reservation_id.as_str(),
+            policy_context: &normalized_policy_context,
+            settlement_status,
+        })
+        .map_err(|error| FxServiceError::Internal(format!("settlement id hash failed: {error}")))?;
+        let settlement_id = format!("fxstl_{}", &settlement_id_sha[..16]);
+
+        #[derive(Serialize)]
+        struct ReceiptHashInput<'a> {
+            schema: &'a str,
+            settlement_id: &'a str,
+            rfq_id: &'a str,
+            quote_id: &'a str,
+            provider_id: &'a str,
+            sell: &'a FxMoneyV1,
+            buy: &'a FxMoneyV1,
+            spread_bps: u32,
+            fee_bps: u32,
+            settled_at_unix: u64,
+            reservation_id: &'a str,
+            treasury_job_hash: &'a str,
+            policy_context: &'a serde_json::Value,
+            settlement_status: &'a str,
+            withheld_reason: &'a Option<String>,
+        }
+
+        let receipt_sha = protocol::hash::canonical_hash(&ReceiptHashInput {
+            schema: FX_SETTLEMENT_RECEIPT_SCHEMA_V1,
+            settlement_id: settlement_id.as_str(),
+            rfq_id: rfq.rfq_id.as_str(),
+            quote_id: quote.quote_id.as_str(),
+            provider_id: quote.provider_id.as_str(),
+            sell: &quote.sell,
+            buy: &quote.buy,
+            spread_bps: quote.spread_bps,
+            fee_bps: quote.fee_bps,
+            settled_at_unix: now,
+            reservation_id: reservation.reservation_id.as_str(),
+            treasury_job_hash: job_hash.as_str(),
+            policy_context: &normalized_policy_context,
+            settlement_status,
+            withheld_reason: &settled.withheld_reason,
+        })
+        .map_err(|error| {
+            FxServiceError::Internal(format!("settlement receipt hash failed: {error}"))
+        })?;
+        let receipt_id = format!("hydrafxsr_{}", &receipt_sha[..16]);
+        let receipt = FxSettlementReceiptV1 {
+            schema: FX_SETTLEMENT_RECEIPT_SCHEMA_V1.to_string(),
+            receipt_id,
+            settlement_id: settlement_id.clone(),
+            rfq_id: rfq.rfq_id.clone(),
+            quote_id: quote.quote_id.clone(),
+            provider_id: quote.provider_id.clone(),
+            sell: quote.sell.clone(),
+            buy: quote.buy.clone(),
+            spread_bps: quote.spread_bps,
+            fee_bps: quote.fee_bps,
+            settled_at_unix: now,
+            wallet_receipt: None,
+            canonical_json_sha256: receipt_sha,
+        };
+        let response = FxSettleResponseV1 {
+            schema: FX_SETTLE_RESPONSE_SCHEMA_V1.to_string(),
+            settlement_id,
+            status,
+            receipt,
+        };
+
+        let mut state = self.state.lock().await;
+        if let Some(existing) = state.settle_idempotency.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha256 {
+                return Err(FxServiceError::Conflict(
+                    "idempotency key replay with different settle payload".to_string(),
+                ));
+            }
+            return Ok(existing.response.clone());
+        }
+        state.settle_idempotency.insert(
+            idempotency_key,
+            FxSettleIdempotencyRecord {
+                request_sha256,
+                response: response.clone(),
+            },
+        );
+        state
+            .settlements_by_id
+            .insert(response.settlement_id.clone(), response.clone());
         Ok(response)
     }
 
@@ -870,6 +1114,77 @@ struct SelectRequestFingerprintInput<'a> {
 fn compute_select_request_sha256(rfq_id: &str, policy: &str) -> Result<String, FxServiceError> {
     protocol::hash::canonical_hash(&SelectRequestFingerprintInput { rfq_id, policy })
         .map_err(|error| FxServiceError::Internal(format!("select hash failed: {error}")))
+}
+
+#[derive(Serialize)]
+struct SettleRequestFingerprintInput<'a> {
+    rfq_id: &'a str,
+    quote_id: &'a str,
+    reservation_id: &'a str,
+    policy_context: &'a serde_json::Value,
+}
+
+fn compute_settle_request_sha256(
+    rfq_id: &str,
+    quote_id: &str,
+    reservation_id: &str,
+    policy_context: &serde_json::Value,
+) -> Result<String, FxServiceError> {
+    protocol::hash::canonical_hash(&SettleRequestFingerprintInput {
+        rfq_id,
+        quote_id,
+        reservation_id,
+        policy_context,
+    })
+    .map_err(|error| FxServiceError::Internal(format!("settle hash failed: {error}")))
+}
+
+#[derive(Serialize)]
+struct FxSettlementJobHashInput<'a> {
+    rfq_id: &'a str,
+    quote_id: &'a str,
+}
+
+fn compute_fx_settlement_job_hash(rfq_id: &str, quote_id: &str) -> Result<String, FxServiceError> {
+    let hash = protocol::hash::canonical_hash(&FxSettlementJobHashInput { rfq_id, quote_id })
+        .map_err(|error| {
+            FxServiceError::Internal(format!("settlement job hash failed: {error}"))
+        })?;
+    Ok(format!("fxjob_{}", &hash[..24]))
+}
+
+fn reservation_id_from_job_hash(job_hash: &str) -> String {
+    let normalized = job_hash.trim();
+    if normalized.len() >= 16 {
+        format!("rsv_{}", &normalized[..16])
+    } else if normalized.is_empty() {
+        "rsv_invalid".to_string()
+    } else {
+        format!("rsv_{normalized}")
+    }
+}
+
+fn map_treasury_error(error: TreasuryError) -> FxServiceError {
+    match error {
+        TreasuryError::OwnerMismatch => {
+            FxServiceError::Conflict("treasury owner mismatch for reservation".to_string())
+        }
+        TreasuryError::AmountMismatch => {
+            FxServiceError::Conflict("treasury amount mismatch for reservation".to_string())
+        }
+        TreasuryError::NotReserved => {
+            FxServiceError::Conflict("treasury reservation missing".to_string())
+        }
+        TreasuryError::AlreadySettled => {
+            FxServiceError::Conflict("treasury job already settled".to_string())
+        }
+        TreasuryError::SettlementConflict => {
+            FxServiceError::Conflict("treasury settlement conflict".to_string())
+        }
+        TreasuryError::InsufficientBudget => {
+            FxServiceError::PolicyDenied("insufficient treasury budget".to_string())
+        }
+    }
 }
 
 #[cfg(test)]

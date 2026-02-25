@@ -167,6 +167,17 @@ fn test_router() -> axum::Router {
     test_router_with_mode(AuthorityWriteMode::RustActive)
 }
 
+fn fx_expected_reservation_id(rfq_id: &str, quote_id: &str) -> Result<String> {
+    #[derive(serde::Serialize)]
+    struct SettlementJobHashInput<'a> {
+        rfq_id: &'a str,
+        quote_id: &'a str,
+    }
+    let hash = protocol::hash::canonical_hash(&SettlementJobHashInput { rfq_id, quote_id })?;
+    let job_hash = format!("fxjob_{}", &hash[..24]);
+    Ok(format!("rsv_{}", &job_hash[..16]))
+}
+
 async fn spawn_http_server(
     app: axum::Router,
 ) -> Result<(std::net::SocketAddr, tokio::sync::oneshot::Sender<()>)> {
@@ -615,6 +626,7 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
     );
     assert!(json.pointer("/paths/~1hydra~1fx~1quote/post").is_some());
     assert!(json.pointer("/paths/~1hydra~1fx~1select/post").is_some());
+    assert!(json.pointer("/paths/~1hydra~1fx~1settle/post").is_some());
     assert!(json.pointer("/paths/~1hydra~1risk~1health/get").is_some());
     assert!(json.pointer("/paths/~1hydra~1observability/get").is_some());
     assert!(
@@ -627,6 +639,10 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
     );
     assert!(
         json.pointer("/components/schemas/HydraFxSelectResponseV1/properties/decision_sha256")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/HydraFxSettleResponseV1/properties/settlement_id")
             .is_some()
     );
     Ok(())
@@ -5602,6 +5618,504 @@ async fn hydra_fx_select_returns_conflict_when_no_quotes_exist() -> Result<()> {
         )
         .await?;
     assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_settle_releases_and_replays_without_double_spend() -> Result<()> {
+    let app = test_router();
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-settle-release-idem",
+        "requester_id": "autopilot:user-1",
+        "budget_scope_id": "budget:scope-1",
+        "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 120,
+        "max_fee_bps": 70,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 45,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_resp.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_resp).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+    let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 60;
+
+    let quote = serde_json::json!({
+        "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+        "idempotency_key": "fx-quote-release-idem",
+        "quote": {
+            "quote_id": "quote-release",
+            "rfq_id": rfq_id,
+            "provider_id": "provider-release",
+            "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+            "buy": {"asset": "BTC_LN", "amount": 2500000, "unit": "msats"},
+            "spread_bps": 80,
+            "fee_bps": 25,
+            "latency_ms": 900,
+            "reliability_bps": 9200,
+            "valid_until_unix": valid_until_unix,
+            "status": "active",
+            "constraints": {},
+            "quote_sha256": ""
+        }
+    });
+    let quote_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/quote")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&quote)?))?,
+        )
+        .await?;
+    assert_eq!(quote_resp.status(), axum::http::StatusCode::OK);
+
+    let select = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-release-idem",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let select_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select)?))?,
+        )
+        .await?;
+    assert_eq!(select_resp.status(), axum::http::StatusCode::OK);
+    let select_json = response_json(select_resp).await?;
+    let quote_id = select_json
+        .pointer("/selected/quote_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing selected quote_id"))?;
+    let reservation_id = fx_expected_reservation_id(rfq_id.as_str(), quote_id)?;
+
+    let settle = serde_json::json!({
+        "schema": "openagents.hydra.fx_settle_request.v1",
+        "idempotency_key": "fx-settle-release-idem",
+        "rfq_id": rfq_id,
+        "quote_id": quote_id,
+        "reservation_id": reservation_id,
+        "policy_context": {"release_allowed": true}
+    });
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first_json = response_json(first).await?;
+    assert_eq!(
+        first_json.pointer("/status").and_then(Value::as_str),
+        Some("released")
+    );
+    let settlement_id = first_json
+        .pointer("/settlement_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing settlement_id"))?
+        .to_string();
+    assert_eq!(
+        first_json
+            .pointer("/receipt/schema")
+            .and_then(Value::as_str),
+        Some("openagents.hydra.fx_settlement_receipt.v1")
+    );
+    assert!(
+        first_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.len() == 64)
+    );
+
+    let replay = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle)?))?,
+        )
+        .await?;
+    assert_eq!(replay.status(), axum::http::StatusCode::OK);
+    let replay_json = response_json(replay).await?;
+    assert_eq!(
+        replay_json
+            .pointer("/settlement_id")
+            .and_then(Value::as_str),
+        Some(settlement_id.as_str())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_settle_returns_withheld_when_policy_disallows_release() -> Result<()> {
+    let app = test_router();
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-settle-withheld-idem",
+        "requester_id": "autopilot:user-2",
+        "budget_scope_id": "budget:scope-2",
+        "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 120,
+        "max_fee_bps": 70,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 45,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_resp.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_resp).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+    let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 60;
+
+    let quote = serde_json::json!({
+        "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+        "idempotency_key": "fx-quote-withheld-idem",
+        "quote": {
+            "quote_id": "quote-withheld",
+            "rfq_id": rfq_id,
+            "provider_id": "provider-withheld",
+            "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+            "buy": {"asset": "BTC_LN", "amount": 2500000, "unit": "msats"},
+            "spread_bps": 75,
+            "fee_bps": 20,
+            "latency_ms": 950,
+            "reliability_bps": 9100,
+            "valid_until_unix": valid_until_unix,
+            "status": "active",
+            "constraints": {},
+            "quote_sha256": ""
+        }
+    });
+    let quote_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/quote")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&quote)?))?,
+        )
+        .await?;
+    assert_eq!(quote_resp.status(), axum::http::StatusCode::OK);
+
+    let select = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-withheld-idem",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let select_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select)?))?,
+        )
+        .await?;
+    assert_eq!(select_resp.status(), axum::http::StatusCode::OK);
+    let select_json = response_json(select_resp).await?;
+    let quote_id = select_json
+        .pointer("/selected/quote_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing selected quote_id"))?;
+    let reservation_id = fx_expected_reservation_id(rfq_id.as_str(), quote_id)?;
+    let settle = serde_json::json!({
+        "schema": "openagents.hydra.fx_settle_request.v1",
+        "idempotency_key": "fx-settle-withheld-idem",
+        "rfq_id": rfq_id,
+        "quote_id": quote_id,
+        "reservation_id": reservation_id,
+        "policy_context": {"release_allowed": false}
+    });
+    let settle_resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle)?))?,
+        )
+        .await?;
+    assert_eq!(settle_resp.status(), axum::http::StatusCode::OK);
+    let settle_json = response_json(settle_resp).await?;
+    assert_eq!(
+        settle_json.pointer("/status").and_then(Value::as_str),
+        Some("withheld")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_settle_rejects_reservation_conflict() -> Result<()> {
+    let app = test_router();
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-reservation-conflict-idem",
+        "requester_id": "autopilot:user-3",
+        "budget_scope_id": "budget:scope-3",
+        "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 120,
+        "max_fee_bps": 70,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 45,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_resp.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_resp).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+    let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 60;
+    let quote = serde_json::json!({
+        "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+        "idempotency_key": "fx-quote-reservation-conflict-idem",
+        "quote": {
+            "quote_id": "quote-reservation-conflict",
+            "rfq_id": rfq_id,
+            "provider_id": "provider-reservation-conflict",
+            "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+            "buy": {"asset": "BTC_LN", "amount": 2500000, "unit": "msats"},
+            "spread_bps": 75,
+            "fee_bps": 20,
+            "latency_ms": 950,
+            "reliability_bps": 9100,
+            "valid_until_unix": valid_until_unix,
+            "status": "active",
+            "constraints": {},
+            "quote_sha256": ""
+        }
+    });
+    let quote_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/quote")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&quote)?))?,
+        )
+        .await?;
+    assert_eq!(quote_resp.status(), axum::http::StatusCode::OK);
+    let select = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-reservation-conflict-idem",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let select_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select)?))?,
+        )
+        .await?;
+    assert_eq!(select_resp.status(), axum::http::StatusCode::OK);
+    let select_json = response_json(select_resp).await?;
+    let quote_id = select_json
+        .pointer("/selected/quote_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing selected quote_id"))?;
+
+    let settle = serde_json::json!({
+        "schema": "openagents.hydra.fx_settle_request.v1",
+        "idempotency_key": "fx-settle-reservation-conflict-idem",
+        "rfq_id": rfq_id,
+        "quote_id": quote_id,
+        "reservation_id": "rsv_wrong",
+        "policy_context": {}
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle)?))?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_settle_withholds_when_quote_expired() -> Result<()> {
+    let app = build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+        c.hydra_fx_policy.min_quote_validity_seconds = 0;
+    });
+    let rfq = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-expired-idem",
+        "requester_id": "autopilot:user-4",
+        "budget_scope_id": "budget:scope-4",
+        "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2000000,
+        "max_spread_bps": 120,
+        "max_fee_bps": 70,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 45,
+        "policy_context": {"policy":"reputation_first_v0"}
+    });
+    let rfq_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&rfq)?))?,
+        )
+        .await?;
+    assert_eq!(rfq_resp.status(), axum::http::StatusCode::OK);
+    let rfq_json = response_json(rfq_resp).await?;
+    let rfq_id = rfq_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+
+    let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 1;
+    let quote = serde_json::json!({
+        "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+        "idempotency_key": "fx-quote-expired-idem",
+        "quote": {
+            "quote_id": "quote-expired",
+            "rfq_id": rfq_id,
+            "provider_id": "provider-expired",
+            "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+            "buy": {"asset": "BTC_LN", "amount": 2500000, "unit": "msats"},
+            "spread_bps": 75,
+            "fee_bps": 20,
+            "latency_ms": 950,
+            "reliability_bps": 9100,
+            "valid_until_unix": valid_until_unix,
+            "status": "active",
+            "constraints": {},
+            "quote_sha256": ""
+        }
+    });
+    let quote_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/quote")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&quote)?))?,
+        )
+        .await?;
+    assert_eq!(quote_resp.status(), axum::http::StatusCode::OK);
+    let select = serde_json::json!({
+        "schema": "openagents.hydra.fx_select_request.v1",
+        "idempotency_key": "fx-select-expired-idem",
+        "rfq_id": rfq_id,
+        "policy": "reputation_first_v0"
+    });
+    let select_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/select")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&select)?))?,
+        )
+        .await?;
+    assert_eq!(select_resp.status(), axum::http::StatusCode::OK);
+    let select_json = response_json(select_resp).await?;
+    let quote_id = select_json
+        .pointer("/selected/quote_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing selected quote_id"))?;
+    let reservation_id = fx_expected_reservation_id(rfq_id.as_str(), quote_id)?;
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let settle = serde_json::json!({
+        "schema": "openagents.hydra.fx_settle_request.v1",
+        "idempotency_key": "fx-settle-expired-idem",
+        "rfq_id": rfq_id,
+        "quote_id": quote_id,
+        "reservation_id": reservation_id,
+        "policy_context": {}
+    });
+    let settle_resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/settle")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&settle)?))?,
+        )
+        .await?;
+    assert_eq!(settle_resp.status(), axum::http::StatusCode::OK);
+    let settle_json = response_json(settle_resp).await?;
+    assert_eq!(
+        settle_json.pointer("/status").and_then(Value::as_str),
+        Some("withheld")
+    );
     Ok(())
 }
 

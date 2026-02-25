@@ -56,8 +56,9 @@ use crate::{
         service::{FxService, FxServiceError},
         types::{
             FX_QUOTE_UPSERT_REQUEST_SCHEMA_V1, FX_RFQ_REQUEST_SCHEMA_V1,
-            FX_SELECT_REQUEST_SCHEMA_V1, FxQuoteUpsertRequestV1, FxQuoteUpsertResponseV1,
-            FxRfqRequestV1, FxRfqResponseV1, FxSelectRequestV1, FxSelectResponseV1,
+            FX_SELECT_REQUEST_SCHEMA_V1, FX_SETTLE_REQUEST_SCHEMA_V1, FxQuoteUpsertRequestV1,
+            FxQuoteUpsertResponseV1, FxRfqRequestV1, FxRfqResponseV1, FxSelectRequestV1,
+            FxSelectResponseV1, FxSettleRequestV1, FxSettleResponseV1,
         },
     },
     lightning_node,
@@ -1361,6 +1362,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/hydra/fx/rfq", post(hydra_fx_rfq_create))
         .route("/internal/v1/hydra/fx/quote", post(hydra_fx_quote_upsert))
         .route("/internal/v1/hydra/fx/select", post(hydra_fx_select))
+        .route("/internal/v1/hydra/fx/settle", post(hydra_fx_settle))
         .route("/internal/v1/hydra/fx/rfq/:rfq_id", get(hydra_fx_rfq_get))
         .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
         .route("/internal/v1/hydra/observability", get(hydra_observability))
@@ -2793,6 +2795,25 @@ async fn hydra_fx_select(
     let response = state
         .fx
         .select_quote(body)
+        .await
+        .map_err(api_error_from_fx)?;
+    Ok(Json(response))
+}
+
+async fn hydra_fx_settle(
+    State(state): State<AppState>,
+    Json(body): Json<FxSettleRequestV1>,
+) -> Result<Json<FxSettleResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    if body.schema.trim() != FX_SETTLE_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            FX_SETTLE_REQUEST_SCHEMA_V1
+        )));
+    }
+    let response = state
+        .fx
+        .settle_quote(body, state.treasury.as_ref())
         .await
         .map_err(api_error_from_fx)?;
     Ok(Json(response))
