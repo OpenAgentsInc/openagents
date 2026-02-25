@@ -443,7 +443,7 @@ mod tests {
             RuntimeSyncDisconnectReason::TokenRefreshDue
         );
         assert_eq!(
-            classify_disconnect_reason("khala stale_cursor; replay bootstrap required"),
+            classify_disconnect_reason("spacetime stale_cursor; replay bootstrap required"),
             RuntimeSyncDisconnectReason::StaleCursor
         );
         assert_eq!(
@@ -455,7 +455,7 @@ mod tests {
             RuntimeSyncDisconnectReason::Forbidden
         );
         assert_eq!(
-            classify_disconnect_reason("khala websocket closed"),
+            classify_disconnect_reason("spacetime websocket closed"),
             RuntimeSyncDisconnectReason::Network
         );
         assert_eq!(

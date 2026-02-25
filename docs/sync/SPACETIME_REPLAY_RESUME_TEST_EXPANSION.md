@@ -24,7 +24,7 @@ Integrated local CI lane:
 Runtime surface:
 
 - `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
-- `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
+- `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 Shared client surface:
 

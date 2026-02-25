@@ -48,7 +48,7 @@ Control token lease expectations:
 
 1. Tight compatibility/support windows and audited secret rotation.
 2. Rollout by cohort only with alerting gates active.
-3. Khala retirement changes blocked unless Spacetime SLO evidence is green.
+3. Spacetime retirement changes blocked unless Spacetime SLO evidence is green.
 
 ## Provisioning Validation Command
 

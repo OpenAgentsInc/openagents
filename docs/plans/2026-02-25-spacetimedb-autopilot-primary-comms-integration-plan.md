@@ -1,4 +1,4 @@
-# SpacetimeDB Autopilot Primary Comms Plan (Full Khala Replacement Track)
+# SpacetimeDB Autopilot Primary Comms Plan (Full Spacetime Replacement Track)
 
 Status: active execution plan
 Date: 2026-02-25
@@ -10,7 +10,7 @@ This plan is the Autopilot-focused execution slice of:
 
 ## 1) Scope
 
-Deliver Spacetime-first Autopilot comms with explicit path to remove Khala dependencies from retained app surfaces.
+Deliver Spacetime-first Autopilot comms with explicit path to remove Spacetime dependencies from retained app surfaces.
 
 In scope:
 
@@ -53,21 +53,21 @@ Out of scope:
 ### Stage 0: hidden validation lane
 
 1. Spacetime connected but read-only in desktop.
-2. Compare parity vs Khala outputs for equivalent streams.
+2. Compare parity vs Spacetime outputs for equivalent streams.
 
 ### Stage 1: feature-flag primary lane
 
 1. `OA_SPACETIME_PRIMARY_COMMS=1` routes desktop comms to Spacetime.
-2. Keep rollback toggle to Khala for bounded cohorts only.
+2. Keep rollback toggle to Spacetime for bounded cohorts only.
 
 ### Stage 2: default primary lane
 
 1. Spacetime default-on for retained surfaces.
-2. Khala only allowed in explicit emergency fallback mode.
+2. Spacetime only allowed in explicit emergency fallback mode.
 
 ### Stage 3: removal
 
-1. Delete Khala client dependencies from desktop/runtime control paths.
+1. Delete Spacetime client dependencies from desktop/runtime control paths.
 2. Remove fallback toggles.
 
 ## 6) Verification Gates
@@ -81,6 +81,6 @@ Out of scope:
 ## 7) Completion Criteria
 
 1. Desktop comms and sync run Spacetime-only in default and enforced policy modes.
-2. Khala transport dependencies are removed from retained app code paths.
+2. Spacetime transport dependencies are removed from retained app code paths.
 3. Incident runbooks and docs reference Spacetime as canonical sync lane.
 

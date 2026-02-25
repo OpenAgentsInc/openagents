@@ -11,7 +11,7 @@ Scope: cross-process and client/server contracts only
 | `openagents.control.v1` | Control-plane authority | `owner:openagents.com` | Auth/session/device, org membership, policy/comms intents, sync-token minting contracts | Runtime run state, WS replay internals |
 | `openagents.runtime.v1` | Runtime authority | `owner:runtime` | Run lifecycle, worker lifecycle, authority events, receipts/replay artifacts | Identity/session authority records |
 | `openagents.codex.v1` | Codex surface contracts | `owner:runtime` (with `owner:desktop` + `owner:ios` consumers) | Codex worker envelopes, sandbox bindings, Codex auth/worker projections consumed by web/desktop/iOS | Generic runtime-agnostic auth/session contracts |
-| `openagents.sync.v1` | Legacy Khala transport/replay | `owner:khala` | Legacy WS envelope, topic/cursor semantics, replay/bootstrap errors, subscription contracts | Authority mutation payloads |
+| `openagents.sync.v1` | Legacy Spacetime transport/replay | `owner:spacetime` | Legacy WS envelope, topic/cursor semantics, replay/bootstrap errors, subscription contracts | Authority mutation payloads |
 | `openagents.sync.v2` | Spacetime sync transport/replay | `owner:protocol-runtime` | Stream/cursor semantics, subscribe-applied + transaction update envelopes, compatibility error metadata | Authority mutation payloads |
 | `openagents.lightning.v1` | Lightning control/payments | `owner:infra` | Lightning policy/executor control-plane contract payloads | Codex/runtime generic orchestration |
 | `openagents.hydra.v1` | Hydra liquidity/credit/routing/fx contracts | `owner:runtime` (with `owner:infra` neobank consumer) | Credit intent/offer/envelope/settle, routing score, FX RFQ/selection/settle, health/exposure telemetry, Hydra error taxonomy | Generic runtime orchestration/worker lifecycles |
@@ -24,7 +24,7 @@ Scope: cross-process and client/server contracts only
 2. New contracts are forbidden in `openagents.protocol.v1`.
 3. `openagents.sync.v1` and `openagents.sync.v2` carry delivery/replay protocol only; authority writes remain control/runtime HTTP contracts.
 4. Domain auth/session contracts live in `openagents.control.v1`; Codex runtime auth state envelopes live in `openagents.codex.v1`.
-5. Runtime authority events/receipts are `openagents.runtime.v1`, even when streamed via Khala.
+5. Runtime authority events/receipts are `openagents.runtime.v1`, even when streamed via Spacetime.
 
 ## Versioning and Upgrade Strategy
 
@@ -55,10 +55,10 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/protocol/v1/receipts.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` | `owner:runtime` | transitional legacy; retire after runtime.v1 consumer cutover |
 | `proto/openagents/protocol/v1/comms.proto` | `openagents.protocol.v1` | `openagents.control.v1` | `owner:openagents.com` | transitional legacy; retire after control.v1 cutover |
 | `proto/openagents/protocol/v1/reasons.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` (runtime reason set), referenced by control/codex as needed until split complete | `owner:contracts-docs` | OA-RUST-009 / OA-RUST-010 / OA-RUST-011 |
-| `proto/openagents/sync/v1/topics.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
-| `proto/openagents/sync/v1/errors.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
-| `proto/openagents/sync/v1/sync.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
-| `proto/openagents/sync/v1/client_telemetry.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-093 |
+| `proto/openagents/sync/v1/topics.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:spacetime` | OA-RUST-008 |
+| `proto/openagents/sync/v1/errors.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:spacetime` | OA-RUST-008 |
+| `proto/openagents/sync/v1/sync.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:spacetime` | OA-RUST-008 |
+| `proto/openagents/sync/v1/client_telemetry.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:spacetime` | OA-RUST-093 |
 | `proto/openagents/sync/v2/streams.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
 | `proto/openagents/sync/v2/errors.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
 | `proto/openagents/sync/v2/sync.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |

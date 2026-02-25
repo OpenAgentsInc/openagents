@@ -1,0 +1,48 @@
+{
+    "generated_at": "2026-02-22T07:47:43.695558Z",
+    "count": 7,
+    "commands": [
+        {
+            "name": "demo:l402",
+            "description": "Run a deterministic L402 buying demo (no browser required).",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "inspire",
+            "description": "Display an inspiring quote",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "spacetime:import-chat",
+            "description": "Import Spacetime users/threads/runs/messages/receipts + optional blueprints into Laravel chat/autopilot tables.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "ops:create-api-token",
+            "description": "Create a Sanctum API token for an existing user.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "ops:export-parity-manifests",
+            "description": "Export baseline JSON manifests for API routes, web routes, page entries, and custom Artisan commands.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "ops:test-login-link",
+            "description": "Generate a temporary signed test-login URL for maintenance-mode verification.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        },
+        {
+            "name": "runtime:tools:invoke-api",
+            "description": "Call /api/runtime/tools/execute with a coding payload to validate runtime tool invocation through Laravel.",
+            "hidden": false,
+            "class": "Illuminate\\Foundation\\Console\\ClosureCommand"
+        }
+    ]
+}

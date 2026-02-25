@@ -33,7 +33,7 @@ Out of scope:
 
 - Proto-first contracts (`INV-01`, `ADR-0002`).
 - Authenticated HTTP mutation authority (`INV-02`).
-- Khala WS-only live sync transport (`INV-03`, `ADR-0003`).
+- Spacetime WS-only live sync transport (`INV-03`, `ADR-0003`).
 - Control/runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
 - Replay/idempotency guarantees (`INV-07`).
 - Service deploy isolation and migration discipline (`INV-08`, `INV-09`, `INV-10`).
@@ -260,7 +260,7 @@ When this plan says "Autopilot coding agent", Phase 0 is only considered complet
 - `OA-ECON-187` - Integrate budget enforcer with tool execution hooks. - Block over-limit execution in real time.
 - `OA-ECON-207` - Implement hierarchical budget enforcement for org/repo/issue. - Maintain hard spend limits across nested scopes.
 
-- `OA-ECON-029` - Implement Nexus live lanes + trust-zone enforcement. - Provide high-throughput WS delivery lanes (cursor protocol, replay-safe where required) for intra-domain coordination and streaming; preserve `INV-02` (HTTP-only authority mutations) and `INV-03` (Khala WS-only sync).
+- `OA-ECON-029` - Implement Nexus live lanes + trust-zone enforcement. - Provide high-throughput WS delivery lanes (cursor protocol, replay-safe where required) for intra-domain coordination and streaming; preserve `INV-02` (HTTP-only authority mutations) and `INV-03` (Spacetime WS-only sync).
 - `OA-ECON-025` - Define Bridge boundary + minimal Nostr interop event kinds. - Codify message classes + signing policy and implement a minimal Nexus<->Nostr gateway for provider ads + receipts so interop is Nostr-verifiable without pushing high-rate chatter onto Nostr.
 
 - `OA-ECON-120` - Implement marketplace core catalog service. - Unify listing, discovery, and metadata contracts.
@@ -595,7 +595,7 @@ Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (b
 
 - Gate L (Liquidity Bootstrap): Autopilot coding runs generate Verified Patch Bundles; work routes via OpenAgents Compute providers by default (reserve pool fallback); abuse baseline is enforced (submission rate limits, payload caps, sandbox defaults, quarantine on repeated failures); pay-after-verify settlement completes end-to-end; Bridge emits Nostr-verifiable interop events (minimum: provider ads + settlement/verification receipts) so external systems can participate without Nexus-specific code; users can connect devices (clients and providers) and **see live connected devices on openagents.com** (online/offline, roles, capabilities, earnings, emergency disable); if a device is enrolled as a provider, the user can set hard resource caps (CPU/RAM/GPU/network/time), see earnings/credits, and disable instantly; liquidity dashboard shows fill rate, median latency, cost, provider breadth, verification pass rate (overall + by provider), and rework rate (accepted then reverted/fails downstream).
 - Gate A: Every authority mutation emits deterministic, signed receipts.
-- Gate B: Live sync/delivery lanes (Khala) remain WS-only, replay-safe, and idempotent.
+- Gate B: Live sync/delivery lanes (Spacetime) remain WS-only, replay-safe, and idempotent.
 - Gate C: Budget and policy controls are enforced before settlement.
 - Gate D: Marketplace payouts are deterministic and conservation-safe.
 - Gate E: Threat-model controls have executable tests and drill evidence.

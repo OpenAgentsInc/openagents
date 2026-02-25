@@ -2343,7 +2343,7 @@ fn is_legacy_chats_stream_path(path: &str) -> bool {
 fn compatibility_surface_label(surface: CompatibilitySurface) -> &'static str {
     match surface {
         CompatibilitySurface::ControlApi => "control_api",
-        CompatibilitySurface::KhalaWebSocket => "khala_websocket",
+        CompatibilitySurface::SpacetimeWebSocket => "spacetime_websocket",
     }
 }
 
@@ -16922,7 +16922,7 @@ fn runtime_worker_snapshot_payload(
         "heartbeat_stale_after_ms": worker.heartbeat_stale_after_ms,
         "heartbeat_state": heartbeat_state,
         "updated_at": timestamp(worker.updated_at),
-        "khala_projection": {
+        "spacetime_projection": {
             "status": "in_sync",
             "lag_events": 0,
             "last_runtime_seq": worker.latest_seq,

@@ -1,0 +1,35 @@
+{
+  "schema": "openagents.webparity.production_stream_smoke.v1",
+  "generated_at": "20260222T182857Z",
+  "base_url": "https://openagents.com",
+  "phase": "pre-cutover",
+  "dry_run": true,
+  "totals": {
+    "check_count": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  "overall_status": "passed",
+  "checks": [
+    {
+      "check_id": "pre-cutover-chat-stream",
+      "status": "pass",
+      "endpoint": "/api/chat/stream",
+      "detail": "stream contract verified",
+      "http_status": "200",
+      "headers_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/stream-smoke-pre/pre-cutover-chat-stream.headers",
+      "body_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/stream-smoke-pre/pre-cutover-chat-stream.body",
+      "recorded_at": "2026-02-22T18:28:57Z"
+    },
+    {
+      "check_id": "pre-cutover-chats-stream",
+      "status": "pass",
+      "endpoint": "/api/chats/thread_prod_stream_smoke_20260222t182857z/stream",
+      "detail": "stream contract verified",
+      "http_status": "200",
+      "headers_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/stream-smoke-pre/pre-cutover-chats-stream.headers",
+      "body_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/stream-smoke-pre/pre-cutover-chats-stream.body",
+      "recorded_at": "2026-02-22T18:28:57Z"
+    }
+  ]
+}

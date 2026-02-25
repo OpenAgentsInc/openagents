@@ -14,7 +14,7 @@ Accepted
 
 ## Context
 
-Rust-only migration increases pressure to define contracts directly in Rust types. Without explicit governance, this creates schema drift between services/clients and weakens replay compatibility guarantees for Khala and runtime protocols.
+Rust-only migration increases pressure to define contracts directly in Rust types. Without explicit governance, this creates schema drift between services/clients and weakens replay compatibility guarantees for Spacetime and runtime protocols.
 
 OpenAgents requires one canonical contract authority for all boundary-crossing messages and APIs.
 
@@ -40,7 +40,7 @@ Prohibited patterns:
 
 - Control-plane boundary: proto contract authority for auth/session/control APIs.
 - Runtime authority boundary: proto contract authority for runtime/codex/sync cross-service messages.
-- Khala delivery boundary: proto envelope/error semantics remain replay-compatible.
+- Spacetime delivery boundary: proto envelope/error semantics remain replay-compatible.
 - Client/runtime contract boundary: generated wire types enforce shared schema.
 - Deployment/runtime ops boundary: proto verification gates become release prerequisites.
 
@@ -54,7 +54,7 @@ Source: `docs/plans/rust-migration-invariant-gates.md`
    - `INV-10` (legacy deletion only after mapped parity gates, including contract parity)
 2. Preservation/change:
    - Strengthens `INV-01` by making proto authority mandatory for all boundary lanes.
-   - Preserves `INV-07` by requiring Khala replay envelope evolution through proto governance.
+   - Preserves `INV-07` by requiring Spacetime replay envelope evolution through proto governance.
 3. Follow-up gate requirements:
    - Proto checks must run in local CI before merge/release.
    - Contract PRs must include Buf compatibility evidence and generated Rust updates.
@@ -123,7 +123,7 @@ OA_BUF_BREAKING_MODE=strict OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,sub
 2. Mixed proto + JSON authority based on team preference.
    - Rejected: inconsistent enforcement and incompatible evolution semantics.
 3. Proto only for external APIs, Rust-only internally.
-   - Rejected: runtime/Khala/client boundaries are all contract-critical and need one authority model.
+   - Rejected: runtime/Spacetime/client boundaries are all contract-critical and need one authority model.
 
 ## References
 

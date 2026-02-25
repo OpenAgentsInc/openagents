@@ -16,7 +16,7 @@ pub struct RuntimeCodexStreamEvent {
 }
 
 #[must_use]
-pub fn build_khala_frame(
+pub fn build_spacetime_frame(
     join_ref: Option<&str>,
     reference: Option<&str>,
     topic: &str,
@@ -33,7 +33,7 @@ pub fn build_khala_frame(
     serde_json::to_string(&frame).unwrap_or_else(|_| "[]".to_string())
 }
 
-pub fn parse_khala_frame(raw: &str) -> Option<RuntimeCodexFrame> {
+pub fn parse_spacetime_frame(raw: &str) -> Option<RuntimeCodexFrame> {
     let parsed: Value = serde_json::from_str(raw).ok()?;
     let frame = parsed.as_array()?;
     if frame.len() != 5 {
@@ -49,7 +49,7 @@ pub fn parse_khala_frame(raw: &str) -> Option<RuntimeCodexFrame> {
     })
 }
 
-pub fn extract_runtime_events_from_khala_update(
+pub fn extract_runtime_events_from_spacetime_update(
     payload: &Value,
     expected_topic: &str,
     worker_id: &str,
@@ -104,7 +104,7 @@ pub fn merge_retry_cursor(current: Option<u64>, failed_seq: u64) -> u64 {
         .unwrap_or(replay_cursor)
 }
 
-pub fn khala_error_code(payload: &Value) -> Option<String> {
+pub fn spacetime_error_code(payload: &Value) -> Option<String> {
     payload
         .as_object()
         .and_then(|object| object.get("code"))
@@ -122,10 +122,10 @@ pub use openagents_codex_control::{
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeCodexStreamEvent, build_khala_frame, extract_control_request,
+        RuntimeCodexStreamEvent, build_spacetime_frame, extract_control_request,
         extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
-        extract_runtime_events_from_khala_update, handshake_dedupe_key, khala_error_code,
-        merge_retry_cursor, parse_khala_frame, stream_event_seq, terminal_receipt_dedupe_key,
+        extract_runtime_events_from_spacetime_update, handshake_dedupe_key, spacetime_error_code,
+        merge_retry_cursor, parse_spacetime_frame, stream_event_seq, terminal_receipt_dedupe_key,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -141,15 +141,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_khala_frame_roundtrips_phoenix_frame_shape() {
-        let raw = build_khala_frame(
+    fn parse_spacetime_frame_roundtrips_phoenix_frame_shape() {
+        let raw = build_spacetime_frame(
             None,
             Some("42"),
             "sync:v1",
             "sync:update_batch",
             json!({"updates": []}),
         );
-        let frame = parse_khala_frame(&raw);
+        let frame = parse_spacetime_frame(&raw);
         assert!(frame.is_some());
         let frame = frame.unwrap_or_else(|| unreachable!());
         assert_eq!(frame.reference.as_deref(), Some("42"));
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_runtime_events_from_khala_update_filters_topic_and_worker() {
+    fn extract_runtime_events_from_spacetime_update_filters_topic_and_worker() {
         let payload = json!({
             "updates": [
                 {
@@ -188,7 +188,7 @@ mod tests {
             ]
         });
 
-        let events = extract_runtime_events_from_khala_update(
+        let events = extract_runtime_events_from_spacetime_update(
             &payload,
             "runtime.codex_worker_events",
             "desktopw:shared",
@@ -206,9 +206,9 @@ mod tests {
     }
 
     #[test]
-    fn khala_error_code_extracts_sync_error_code() {
+    fn spacetime_error_code_extracts_sync_error_code() {
         assert_eq!(
-            khala_error_code(&json!({"code": "stale_cursor"})).as_deref(),
+            spacetime_error_code(&json!({"code": "stale_cursor"})).as_deref(),
             Some("stale_cursor")
         );
     }

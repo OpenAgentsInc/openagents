@@ -1,0 +1,77 @@
+{
+    "name": "doctrine/dbal",
+    "type": "library",
+    "description": "Powerful PHP database abstraction layer (DBAL) with many features for database schema introspection and management.",
+    "keywords": [
+        "abstraction",
+        "database",
+        "dbal",
+        "db2",
+        "mariadb",
+        "mssql",
+        "mysql",
+        "pgsql",
+        "postgresql",
+        "oci8",
+        "oracle",
+        "pdo",
+        "queryobject",
+        "sasql",
+        "sql",
+        "sqlite",
+        "sqlserver",
+        "sqlsrv"
+    ],
+    "homepage": "https://www.doctrine-project.org/projects/dbal.html",
+    "license": "MIT",
+    "authors": [
+        {"name": "Guilherme Blanco", "email": "guilhermeblanco@gmail.com"},
+        {"name": "Roman Borschel", "email": "roman@code-factory.org"},
+        {"name": "Benjamin Eberlei", "email": "kontakt@beberlei.de"},
+        {"name": "Jonathan Wage", "email": "jonwage@gmail.com"}
+    ],
+    "require": {
+        "php": "^7.4 || ^8.0",
+        "composer-runtime-api": "^2",
+        "doctrine/deprecations": "^0.5.3|^1",
+        "doctrine/event-manager": "^1|^2",
+        "psr/cache": "^1|^2|^3",
+        "psr/log": "^1|^2|^3"
+    },
+    "require-dev": {
+        "doctrine/cache": "^1.11|^2.0",
+        "doctrine/coding-standard": "14.0.0",
+        "fig/log-test": "^1",
+        "jetbrains/phpstorm-stubs": "2023.1",
+        "phpstan/phpstan": "2.1.30",
+        "phpstan/phpstan-strict-rules": "^2",
+        "phpunit/phpunit": "9.6.29",
+        "slevomat/coding-standard": "8.24.0",
+        "squizlabs/php_codesniffer": "4.0.0",
+        "symfony/cache": "^5.4|^6.0|^7.0|^8.0",
+        "symfony/console": "^4.4|^5.4|^6.0|^7.0|^8.0"
+    },
+    "conflict": {
+        "doctrine/cache": "< 1.11"
+    },
+    "suggest": {
+        "symfony/console": "For helpful console commands such as SQL execution and import of files."
+    },
+    "bin": ["bin/doctrine-dbal"],
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "composer/package-versions-deprecated": true
+        }
+    },
+    "autoload": {
+        "psr-4": { "Doctrine\\DBAL\\": "src" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Doctrine\\DBAL\\Tests\\": "tests" }
+    },
+    "scripts": {
+        "docs": "composer --working-dir docs update && ./docs/vendor/bin/build-docs.sh @additional_args"
+    }
+}

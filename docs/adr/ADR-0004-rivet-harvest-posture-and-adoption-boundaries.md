@@ -23,7 +23,7 @@ OpenAgents requires a formal posture that defines what is harvested, what is rej
 
 OpenAgents adopts a **selective Rivet harvest posture**:
 
-1. Harvest subsystem patterns and implementation ideas where they strengthen Rust-era runtime/Khala behavior.
+1. Harvest subsystem patterns and implementation ideas where they strengthen Rust-era runtime/Spacetime behavior.
 2. Do **not** adopt Rivet’s platform authority model as OpenAgents’ core architecture.
 3. Keep OpenAgents authority boundaries, proto-first contracts, and service topology as the governing model.
 
@@ -43,7 +43,7 @@ Rejected platform-level adoptions:
 
 - Control-plane boundary: unchanged; remains OpenAgents-owned.
 - Runtime authority boundary: preserved; authority remains runtime/control planes, not actor memory.
-- Khala delivery boundary: pattern reuse allowed, authority role unchanged.
+- Spacetime delivery boundary: pattern reuse allowed, authority role unchanged.
 - Client/runtime contract boundary: remains proto-first, independent of harvested internals.
 - Deployment/runtime ops boundary: component reuse cannot introduce implicit service coupling.
 
@@ -55,7 +55,7 @@ Source: `docs/plans/rust-migration-invariant-gates.md`
    - `INV-01` (proto-first contract authority)
    - `INV-04` (control/runtime plane boundaries)
    - `INV-05` (no implicit in-memory coupling across services)
-   - `INV-06` (Khala remains delivery/replay only)
+   - `INV-06` (Spacetime remains delivery/replay only)
 2. Preservation/change:
    - Preserves architecture authority by explicitly limiting reuse scope.
    - Prevents authority-model drift toward actor-memory ownership.
@@ -71,7 +71,7 @@ Source: `docs/plans/rust-migration-invariant-gates.md`
    - Introduce harvest pattern behind explicit module seams.
    - Validate behavior with replay/history/chaos harnesses before promotion.
 3. Migration requirements:
-   - Preserve current runtime/Khala authority and topic ordering semantics during adoption.
+   - Preserve current runtime/Spacetime authority and topic ordering semantics during adoption.
 
 ## Rollback and Failure Impact
 

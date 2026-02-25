@@ -6,7 +6,7 @@ Status: Active canonical mapping
 This document defines the canonical retained-client sync transport contract for OpenAgents.
 
 Archived historical mapping:
-- `docs/protocol/archived/oa-sync-ws-khala-mapping-v1.md`
+- `docs/protocol/archived/oa-sync-ws-spacetime-mapping-v1.md`
 
 ## Transport Contract
 

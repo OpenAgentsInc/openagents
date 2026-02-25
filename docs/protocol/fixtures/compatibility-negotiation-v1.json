@@ -36,7 +36,7 @@
       "name": "protocol_mismatch",
       "request": {
         "client_build_id": "20260221T130000Z",
-        "protocol_version": "khala.ws.v1",
+        "protocol_version": "spacetime.ws.v1",
         "schema_version": 1
       },
       "result": {

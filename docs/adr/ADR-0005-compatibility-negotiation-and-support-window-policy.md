@@ -27,7 +27,7 @@ This creates operational risk during deploys, canaries, and rollback where retai
 
 ## Decision
 
-OpenAgents defines a single compatibility negotiation contract across control APIs and Khala WS.
+OpenAgents defines a single compatibility negotiation contract across control APIs and Spacetime WS.
 
 Normative rules:
 
@@ -48,19 +48,19 @@ Normative rules:
    - `unsupported_schema_version`
    - `upgrade_required`
    - `unsupported_client_build`
-5. Control APIs and Khala WS must expose machine-readable failure payloads with the active support window so clients can show deterministic upgrade UX.
+5. Control APIs and Spacetime WS must expose machine-readable failure payloads with the active support window so clients can show deterministic upgrade UX.
 
 Surface contract requirements:
 
 1. Control API failures use HTTP error payloads with code + support-window fields.
-2. Khala WS failures use join/error payloads with the same code set + support-window fields.
+2. Spacetime WS failures use join/error payloads with the same code set + support-window fields.
 3. Clients treat compatibility failures as non-retryable until upgraded or support window changes.
 
 ## Rust-Era Boundary Impact
 
 - Control-plane boundary: handshake metadata validation is now mandatory for client entrypoints.
 - Runtime authority boundary: unchanged (no authority mutation semantics changed).
-- Khala delivery boundary: WS subscribe/join compatibility checks are standardized.
+- Spacetime delivery boundary: WS subscribe/join compatibility checks are standardized.
 - Client/runtime contract boundary: upgrade-required semantics are deterministic and shared.
 - Deployment/runtime ops boundary: support-window updates become release-gated operations.
 
@@ -87,10 +87,10 @@ Source: `docs/plans/rust-migration-invariant-gates.md`
 2. Rollout sequence:
    - Publish policy + fixtures (this ADR + protocol docs).
    - Introduce shared negotiation helper/tests.
-   - Implement enforcement in control + Khala (OA-RUST-084).
+   - Implement enforcement in control + Spacetime (OA-RUST-084).
 3. Migration requirements:
    - Retained client release policy must carry `buildId` + compatibility window.
-   - Control/Khala docs must point to this policy as the single compatibility authority.
+   - Control/Spacetime docs must point to this policy as the single compatibility authority.
 
 ## Rollback and Failure Impact
 
@@ -115,7 +115,7 @@ cargo test -p openagents-client-core compatibility::
 
 ### Positive
 
-- One compatibility doctrine for control APIs and Khala WS.
+- One compatibility doctrine for control APIs and Spacetime WS.
 - Deterministic client upgrade behavior during mixed-version deploy windows.
 - Clear operational process for canary/rollback support-window changes.
 

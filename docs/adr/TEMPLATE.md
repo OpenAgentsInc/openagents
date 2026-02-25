@@ -26,7 +26,7 @@ Indicate which architecture boundaries are impacted:
 
 - Control-plane boundary
 - Runtime authority boundary
-- Khala delivery boundary
+- Spacetime delivery boundary
 - Client/runtime contract boundary
 - Deployment/runtime ops boundary
 

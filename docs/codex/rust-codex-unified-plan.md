@@ -34,5 +34,5 @@ Unify desktop and web Codex administration around one runtime authority path and
 ./scripts/local-ci.sh workspace-compile
 ./scripts/run-cross-surface-contract-harness.sh
 cargo test --manifest-path apps/runtime/Cargo.toml server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
-cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_khala_routes_return_not_found -- --nocapture
+cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_spacetime_routes_return_not_found -- --nocapture
 ```

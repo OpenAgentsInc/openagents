@@ -25,8 +25,8 @@ struct Cli {
 enum Commands {
     #[command(name = "demo:l402")]
     DemoL402(DemoL402Args),
-    #[command(name = "khala:import-chat")]
-    KhalaImportChat(KhalaImportChatArgs),
+    #[command(name = "spacetime:import-chat")]
+    SpacetimeImportChat(SpacetimeImportChatArgs),
     #[command(name = "ops:test-login-link")]
     OpsTestLoginLink(OpsTestLoginLinkArgs),
     #[command(name = "runtime:tools:invoke-api")]
@@ -48,7 +48,7 @@ struct DemoL402Args {
 }
 
 #[derive(Args)]
-struct KhalaImportChatArgs {
+struct SpacetimeImportChatArgs {
     source: PathBuf,
     #[arg(long)]
     replace: bool,
@@ -132,7 +132,7 @@ async fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::DemoL402(args) => run_demo_l402(args).await,
-        Commands::KhalaImportChat(args) => run_khala_import_chat(args),
+        Commands::SpacetimeImportChat(args) => run_spacetime_import_chat(args),
         Commands::OpsTestLoginLink(args) => run_ops_test_login_link(args),
         Commands::RuntimeToolsInvokeApi(args) => run_runtime_tools_invoke_api(args).await,
         Commands::OpsCreateApiToken(args) => run_ops_create_api_token(args).await,
@@ -385,7 +385,7 @@ async fn run_ops_create_api_token(args: OpsCreateApiTokenArgs) -> Result<()> {
 }
 
 #[derive(Debug, Default)]
-struct KhalaImportStats {
+struct SpacetimeImportStats {
     users_seen: usize,
     users_inserted: usize,
     threads_seen: usize,
@@ -397,8 +397,8 @@ struct KhalaImportStats {
     blueprints_seen: usize,
 }
 
-fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
-    let source = KhalaSource::from_path(&args.source)?;
+fn run_spacetime_import_chat(args: SpacetimeImportChatArgs) -> Result<()> {
+    let source = SpacetimeSource::from_path(&args.source)?;
 
     let users_rows = source.read_table("users")?;
     let threads_rows = source.read_table("threads")?;
@@ -411,14 +411,14 @@ fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
         source.read_table("blueprints")?
     };
 
-    let mut stats = KhalaImportStats {
+    let mut stats = SpacetimeImportStats {
         users_seen: users_rows.len(),
         threads_seen: threads_rows.len(),
         messages_seen: messages_rows.len(),
         runs_seen: runs_rows.len(),
         receipts_seen: receipts_rows.len(),
         blueprints_seen: blueprints_rows.len(),
-        ..KhalaImportStats::default()
+        ..SpacetimeImportStats::default()
     };
 
     let mut config =
@@ -452,7 +452,7 @@ fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
             .and_then(|value| normalized_email(&value).ok())
             .unwrap_or_else(|| {
                 format!(
-                    "khala+{}@import.invalid",
+                    "spacetime+{}@import.invalid",
                     sanitize_identifier(&legacy_user_id)
                 )
             });
@@ -536,7 +536,7 @@ fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
         };
 
         let message_id =
-            value_string(row, "messageId").unwrap_or_else(|| format!("khala_msg_{}", index + 1));
+            value_string(row, "messageId").unwrap_or_else(|| format!("spacetime_msg_{}", index + 1));
         let role = value_string(row, "role").unwrap_or_else(|| "user".to_string());
         let text = value_string(row, "text").unwrap_or_default();
 
@@ -548,7 +548,7 @@ fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
             .get(&owner_legacy)
             .cloned()
             .or_else(|| legacy_to_local_user.values().next().cloned())
-            .unwrap_or_else(|| "khala-import-user".to_string());
+            .unwrap_or_else(|| "spacetime-import-user".to_string());
 
         let created_at = timestamp_from_ms(value_i64(row, "createdAtMs"));
 
@@ -610,7 +610,7 @@ fn run_khala_import_chat(args: KhalaImportChatArgs) -> Result<()> {
             .get(&owner_legacy)
             .cloned()
             .or_else(|| legacy_to_local_user.values().next().cloned())
-            .unwrap_or_else(|| "khala-import-user".to_string());
+            .unwrap_or_else(|| "spacetime-import-user".to_string());
 
         let created_at = timestamp_from_ms(value_i64(row, "createdAtMs"));
         let updated_candidate = timestamp_from_ms(value_i64(row, "updatedAtMs"));
@@ -682,8 +682,8 @@ fn thread_message_summary(
     Ok((count, last_message_at))
 }
 
-fn print_import_summary(stats: &KhalaImportStats, dry_run: bool) {
-    println!("Khala chat import summary:");
+fn print_import_summary(stats: &SpacetimeImportStats, dry_run: bool) {
+    println!("Spacetime chat import summary:");
     println!("  users_seen: {}", stats.users_seen);
     println!("  users_inserted: {}", stats.users_inserted);
     println!("  threads_seen: {}", stats.threads_seen);
@@ -698,12 +698,12 @@ fn print_import_summary(stats: &KhalaImportStats, dry_run: bool) {
     }
 }
 
-enum KhalaSource {
+enum SpacetimeSource {
     Directory(PathBuf),
     Zip(PathBuf),
 }
 
-impl KhalaSource {
+impl SpacetimeSource {
     fn from_path(path: &Path) -> Result<Self> {
         if path.is_dir() {
             return Ok(Self::Directory(path.to_path_buf()));
@@ -968,7 +968,7 @@ fn default_name_from_email(email: &str) -> String {
         .next()
         .map(|value| value.replace('.', " "))
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Khala Import User".to_string())
+        .unwrap_or_else(|| "Spacetime Import User".to_string())
 }
 
 fn sanitize_identifier(raw: &str) -> String {

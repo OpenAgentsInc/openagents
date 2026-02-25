@@ -1466,7 +1466,8 @@ impl DomainStore {
         let scope = normalize_non_empty(&input.scope, "scope")?;
         let method = normalize_non_empty(&input.method, "method")?.to_ascii_uppercase();
         let url = normalize_non_empty(&input.url, "url")?;
-        let challenge_macaroon = normalize_non_empty(&input.challenge_macaroon, "challenge_macaroon")?;
+        let challenge_macaroon =
+            normalize_non_empty(&input.challenge_macaroon, "challenge_macaroon")?;
         let challenge_invoice = normalize_non_empty(&input.challenge_invoice, "challenge_invoice")?;
 
         self.mutate(|state| {
@@ -1858,8 +1859,10 @@ impl DomainStore {
         let mut wallet = state.user_spark_wallets.get(&user_id).cloned();
         drop(state);
         if let Some(row) = wallet.as_mut() {
-            row.mnemonic =
-                decrypt_wallet_mnemonic(row.mnemonic.as_str(), self.integration_secret_cipher.as_ref())?;
+            row.mnemonic = decrypt_wallet_mnemonic(
+                row.mnemonic.as_str(),
+                self.integration_secret_cipher.as_ref(),
+            )?;
         }
         Ok(wallet)
     }

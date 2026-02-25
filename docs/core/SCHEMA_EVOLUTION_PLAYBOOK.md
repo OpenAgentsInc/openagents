@@ -78,7 +78,7 @@ Rollback rules:
 
 ### Runtime example (`runtime.*`)
 
-Goal: add new delivery metadata field for Khala diagnostics.
+Goal: add new delivery metadata field for Spacetime diagnostics.
 
 1. Expand: add nullable DB column + additive proto field.
 2. Deploy runtime reading old/new shapes; writing old shape.

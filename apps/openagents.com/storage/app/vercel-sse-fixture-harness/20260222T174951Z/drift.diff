@@ -1,0 +1,9 @@
+--- /Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T174951Z/golden.normalized.json	2026-02-22 11:49:51
++++ /Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T174951Z/generated.normalized.json	2026-02-22 11:49:51
+@@ -1,5 +1,5 @@
+ {
+-  "generated_at": "2026-02-22T00:00:00Z",
++  "generated_at": "20260222T174951Z",
+   "scenarios": [
+     {
+       "description": "Legacy Vercel stream shape with Codex text + reasoning deltas.",

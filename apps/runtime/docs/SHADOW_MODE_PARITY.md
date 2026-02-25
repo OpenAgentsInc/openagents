@@ -4,9 +4,9 @@ Status: active
 
 This runbook defines the runtime authority shadow-mode parity harness used to gate authority cutover.
 
-Historical control+Khala parity harness (archived):
+Historical control+Spacetime parity harness (archived):
 
-- `apps/runtime/docs/archived/spacetime-cutover-2026-02-25/CONTROL_KHALA_SHADOW_PARITY.md`
+- `apps/runtime/docs/archived/spacetime-cutover-2026-02-25/CONTROL_SPACETIME_SHADOW_PARITY.md`
 
 Canonical retained sync parity lane:
 

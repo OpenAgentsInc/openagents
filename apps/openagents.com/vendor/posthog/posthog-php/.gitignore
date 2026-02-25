@@ -1,0 +1,12 @@
+composer.lock
+vendor
+composer.phar
+test/posthog.log
+/.vscode
+.phplint-cache
+.idea
+.phpunit.result.cache
+clover.xml
+xdebug.log
+.DS_Store
+.env

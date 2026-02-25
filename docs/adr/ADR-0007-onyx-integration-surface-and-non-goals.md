@@ -10,18 +10,18 @@
 
 ## Context
 
-Onyx is a Rust local-first app, but its integration with OpenAgents control/runtime surfaces was not explicitly constrained. Without a hard contract, Onyx could drift into Codex administration paths and uncontrolled Khala topic coupling.
+Onyx is a Rust local-first app, but its integration with OpenAgents control/runtime surfaces was not explicitly constrained. Without a hard contract, Onyx could drift into Codex administration paths and uncontrolled Spacetime topic coupling.
 
 ## Decision
 
 1. Onyx uses WorkOS-backed authentication through OpenAgents control APIs.
 2. OpenAgents control-plane remains authoritative for Onyx authorization/session/device state.
 3. Onyx sync tokens must be user-bound + device-bound and carry `oa_client_surface=onyx`.
-4. Onyx is limited to `run:{run_id}:events` Khala topics in v1.
+4. Onyx is limited to `run:{run_id}:events` Spacetime topics in v1.
 5. Onyx is explicitly denied from:
    - `runtime.codex_worker_events`
    - `worker:{worker_id}:lifecycle`
-   - any RPC-style or mutation semantics over Khala transport.
+   - any RPC-style or mutation semantics over Spacetime transport.
 6. Runtime enforces this boundary in sync authorization with deterministic deny code `surface_policy_denied`.
 
 ## Consequences

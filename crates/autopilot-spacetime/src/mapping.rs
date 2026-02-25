@@ -1,4 +1,4 @@
-//! Khala topic to Spacetime stream mapping and cursor continuity helpers.
+//! Spacetime topic to Spacetime stream mapping and cursor continuity helpers.
 
 /// Legacy topic cursor watermark.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,10 +226,7 @@ mod tests {
                 replay_budget_events: 200,
             }),
         );
-        assert!(matches!(
-            result,
-            CursorContinuity::Rebootstrap { .. }
-        ));
+        assert!(matches!(result, CursorContinuity::Rebootstrap { .. }));
     }
 
     #[test]
@@ -246,10 +243,7 @@ mod tests {
                 replay_budget_events: 100,
             }),
         );
-        assert!(matches!(
-            result,
-            CursorContinuity::Rebootstrap { .. }
-        ));
+        assert!(matches!(result, CursorContinuity::Rebootstrap { .. }));
     }
 
     #[test]

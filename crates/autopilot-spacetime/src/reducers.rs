@@ -221,7 +221,8 @@ impl ReducerStore {
             });
         }
 
-        self.stream_heads.insert(request.stream_id.clone(), next_seq);
+        self.stream_heads
+            .insert(request.stream_id.clone(), next_seq);
 
         let event = SyncEvent {
             stream_id: request.stream_id.clone(),
@@ -258,10 +259,8 @@ impl ReducerStore {
             durable_offset: request.durable_offset,
             updated_at_unix_ms: request.updated_at_unix_ms,
         };
-        self.checkpoints.insert(
-            (request.client_id, request.stream_id),
-            checkpoint.clone(),
-        );
+        self.checkpoints
+            .insert((request.client_id, request.stream_id), checkpoint.clone());
         Ok(checkpoint)
     }
 
@@ -392,7 +391,8 @@ impl ReducerStore {
             created_at_unix_ms: existing.created_at_unix_ms,
             updated_at_unix_ms: request.updated_at_unix_ms,
         };
-        self.bridge_outbox.insert(event.event_id.clone(), event.clone());
+        self.bridge_outbox
+            .insert(event.event_id.clone(), event.clone());
         Ok(event)
     }
 
@@ -672,7 +672,8 @@ mod tests {
         let ungated = store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, None);
         assert_eq!(ungated.len(), 2);
 
-        let gated_low = store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, Some(15));
+        let gated_low =
+            store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, Some(15));
         assert_eq!(gated_low.len(), 1);
         assert_eq!(gated_low[0].seq, 1);
 

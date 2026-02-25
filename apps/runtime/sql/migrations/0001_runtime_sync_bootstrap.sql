@@ -1,6 +1,6 @@
 CREATE SCHEMA IF NOT EXISTS runtime;
 
-CREATE TABLE IF NOT EXISTS runtime.khala_projection_checkpoints (
+CREATE TABLE IF NOT EXISTS runtime.spacetime_projection_checkpoints (
     projection_name TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     document_id TEXT NOT NULL,

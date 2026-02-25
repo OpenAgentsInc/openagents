@@ -9,7 +9,7 @@ Status: completed
 Final post-cutover audit for retained Spacetime sync lanes:
 
 1. correctness and reliability posture,
-2. residual Khala migration debt,
+2. residual Spacetime migration debt,
 3. docs/runbook/index consistency,
 4. final signoff decision.
 
@@ -39,7 +39,7 @@ Runbook/tooling/docs:
 
 ## Debt Closure Performed in OA-SPACETIME-038
 
-1. Archived obsolete runtime Khala-specific docs to:
+1. Archived obsolete runtime Spacetime-specific docs to:
    - `apps/runtime/docs/archived/spacetime-cutover-2026-02-25/`
 2. Updated active runtime docs to canonical Spacetime references:
    - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
@@ -66,7 +66,7 @@ Runbook/tooling/docs:
 Runtime sync checks:
 
 - `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
-- `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
+- `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 Shared client + desktop checks:
 
@@ -85,8 +85,8 @@ Result: all above passed.
 
 ## Residual Risk and Remaining Debt (Non-Blocking)
 
-1. Some code paths still carry legacy `khala_*` naming (primarily compatibility framing/config fields) while behavior is Spacetime-canonical.
-2. Superseded/historical ADR and plan docs intentionally retain Khala language for historical accuracy.
+1. Some code paths still carry legacy `spacetime_*` naming (primarily compatibility framing/config fields) while behavior is Spacetime-canonical.
+2. Superseded/historical ADR and plan docs intentionally retain Spacetime language for historical accuracy.
 3. Generated/static artifacts (for example large OpenAPI snapshots and historical staging artifacts) still contain legacy wording and should be treated as non-canonical historical output unless regenerated.
 
 None of the above reintroduces authority-mutation drift or replay/idempotency regressions.
@@ -98,6 +98,6 @@ None of the above reintroduces authority-mutation drift or replay/idempotency re
 Rationale:
 
 1. retained sync doctrine and runbooks are Spacetime-canonical,
-2. removed-runtime Khala endpoint guards are test-backed,
+2. removed-runtime Spacetime endpoint guards are test-backed,
 3. replay/resume/chaos harness lanes pass,
-4. residual Khala references are either archived historical material or naming-only migration debt without authority impact.
+4. residual Spacetime references are either archived historical material or naming-only migration debt without authority impact.

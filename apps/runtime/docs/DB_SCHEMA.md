@@ -19,7 +19,7 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
 - `runtime.global_event_id_seq`
   - global sequence reserved for runtime append flows and projection watermarks.
 - `runtime.sync_stream_events`
-  - durable topic/watermark-ordered replay journal for Khala subscriptions
+  - durable topic/watermark-ordered replay journal for Spacetime subscriptions
   - unique key: `(topic, watermark)`
 - `runtime.sync_run_summaries`
   - runtime-owned run summary read model keyed by `doc_key`
@@ -41,6 +41,6 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
 - Append and replay paths must index by `(run_id, seq)`.
 - Thread-facing reads should index `(thread_id, created_at/updated_at)`.
 - Projection jobs must maintain monotonic watermarks in dedicated tables.
-- Khala projector state is tracked in `runtime.khala_projection_checkpoints`
+- Spacetime projector state is tracked in `runtime.spacetime_projection_checkpoints`
   keyed by `(projection_name, entity_id)` for idempotent replay + drift checks.
-- Khala replay scans are keyed by `(topic, watermark)` and retention deletes by `inserted_at`.
+- Spacetime replay scans are keyed by `(topic, watermark)` and retention deletes by `inserted_at`.

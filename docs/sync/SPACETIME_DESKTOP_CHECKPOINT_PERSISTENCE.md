@@ -9,7 +9,7 @@ Desktop runtime sync now persists per-worker stream replay checkpoints to local 
 
 Implementation surface:
 - `apps/autopilot-desktop/src/sync_checkpoint_store.rs`
-- `apps/autopilot-desktop/src/main.rs` (`run_worker_stream_loop`, `process_khala_update_batch`)
+- `apps/autopilot-desktop/src/main.rs` (`run_worker_stream_loop`, `process_spacetime_update_batch`)
 
 ## Checkpoint Contract
 

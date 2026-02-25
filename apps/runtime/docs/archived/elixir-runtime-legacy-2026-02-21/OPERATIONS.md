@@ -90,7 +90,7 @@ Actions:
 ### F. Sync auth failures / token mint failures
 
 Actions:
-- Check alerts `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh` and `OpenAgentsKhalaTokenMintFailureRatioHigh`.
+- Check alerts `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh` and `OpenAgentsSpacetimeTokenMintFailureRatioHigh`.
 - Inspect auth reject reason classes (`unknown_kid`, `claim_mismatch`, `token_expired`, `missing_token`).
 - Validate control-plane token mint config parity with runtime verifier config.
 - Follow `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures`.
@@ -171,7 +171,7 @@ From `apps/runtime/`:
 Restart/reconnect chaos drill evidence:
 
 - Runbook: `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
-- Latest report: `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
+- Latest report: `apps/runtime/docs/reports/2026-02-21-runtime-spacetime-restart-reconnect-chaos-report.md`
 
 ## 9. Gate G0 local baseline verification
 

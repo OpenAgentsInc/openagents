@@ -1,10 +1,10 @@
-# Runtime/Khala Restart-Reconnect Chaos Drills
+# Runtime/Spacetime Restart-Reconnect Chaos Drills
 
 This runbook defines the mandatory restart/reconnect rehearsal lane for OA-RUST-070.
 
 ## Objective
 
-Continuously verify that runtime and Khala recover without replay gaps under restart/reconnect stress and token churn.
+Continuously verify that runtime and Spacetime recover without replay gaps under restart/reconnect stress and token churn.
 
 ## Scenario Matrix
 
@@ -13,7 +13,7 @@ Continuously verify that runtime and Khala recover without replay gaps under res
 - Contract: run resumes and stream cursor replay has no gaps.
 - Test anchor: `apps/runtime/test/openagents_runtime/load/runtime_shape_load_test.exs` (`@tag :chaos_drill`)
 
-2. `khala_reconnect_replay`
+2. `spacetime_reconnect_replay`
 - Simulates forced socket drop and reconnect with replay bootstrap.
 - Includes stale cursor detection and reconnect behavior.
 - Contract: replay returns only missing updates; stale cursor emits deterministic error contract.
@@ -44,7 +44,7 @@ apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh
 Optional fixed report output path:
 
 ```bash
-REPORT_FILE=apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md \
+REPORT_FILE=apps/runtime/docs/reports/2026-02-21-runtime-spacetime-restart-reconnect-chaos-report.md \
 apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh
 ```
 
@@ -59,6 +59,6 @@ Per run:
 
 ## Operational Usage
 
-1. Run before runtime/Khala release promotion.
+1. Run before runtime/Spacetime release promotion.
 2. Attach `SUMMARY.md` and any failing logs to deployment/issue comments.
 3. If any case fails, block promotion until remediation and rerun.

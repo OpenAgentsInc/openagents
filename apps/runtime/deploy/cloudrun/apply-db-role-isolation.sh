@@ -22,7 +22,7 @@ require_command psql
 DB_URL="${DB_URL:-${DATABASE_URL:-}}"
 RUNTIME_OWNER_ROLE="${RUNTIME_OWNER_ROLE:-oa_runtime_owner}"
 RUNTIME_RW_ROLE="${RUNTIME_RW_ROLE:-oa_runtime_rw}"
-KHALA_RO_ROLE="${KHALA_RO_ROLE:-oa_khala_ro}"
+SPACETIME_RO_ROLE="${SPACETIME_RO_ROLE:-oa_spacetime_ro}"
 CONTROL_RW_ROLE="${CONTROL_RW_ROLE:-oa_control_rw}"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -41,7 +41,7 @@ PSQL_CMD=(
   "${DB_URL}"
   -v "runtime_owner_role=${RUNTIME_OWNER_ROLE}"
   -v "runtime_rw_role=${RUNTIME_RW_ROLE}"
-  -v "khala_ro_role=${KHALA_RO_ROLE}"
+  -v "spacetime_ro_role=${SPACETIME_RO_ROLE}"
   -v "control_rw_role=${CONTROL_RW_ROLE}"
   -f "${SQL_FILE}"
 )
@@ -54,6 +54,6 @@ if [[ "${DRY_RUN}" == "1" ]]; then
 fi
 
 log "Applying DB role isolation policy"
-log "runtime_owner=${RUNTIME_OWNER_ROLE} runtime_rw=${RUNTIME_RW_ROLE} khala_ro=${KHALA_RO_ROLE} control_rw=${CONTROL_RW_ROLE}"
+log "runtime_owner=${RUNTIME_OWNER_ROLE} runtime_rw=${RUNTIME_RW_ROLE} spacetime_ro=${SPACETIME_RO_ROLE} control_rw=${CONTROL_RW_ROLE}"
 "${PSQL_CMD[@]}"
 log "DB role isolation policy applied"

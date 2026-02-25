@@ -120,7 +120,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | Term | Definition |
 |------|------------|
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
-| **Khala** | Legacy codename for the runtime-owned sync engine: Postgres-backed projection delivery over WebSockets. Non-authoritative by design; runtime/Postgres remain the source of truth. Active replacement target is SpacetimeDB sync transport. |
+| **Spacetime** | Legacy codename for the runtime-owned sync engine: Postgres-backed projection delivery over WebSockets. Non-authoritative by design; runtime/Postgres remain the source of truth. Active replacement target is SpacetimeDB sync transport. |
 | **Spacetime Sync** | Target canonical sync/replay transport backed by SpacetimeDB subscriptions/reducers. Non-authoritative by itself; authority mutations still follow authenticated command boundaries. |
 | **Nexus** | High-throughput intra-domain fabric for a single operator domain (swarm coordination + streaming). Superset of a Nostr relay: can expose a Nostr-compatible event surface for interop plus internal high-rate lanes. Does not carry authority mutations. |
 | **Bridge** | Policy + translation gateway between Nexus (intra-domain) and Nostr (interop). Controls what crosses the boundary; enforces signing/receipts; can mirror provider ads, receipts, and reputation labels. |
@@ -276,7 +276,7 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 |-----------|------------|
 | `step_utility` vs `step_utility_norm` | Canonical `step_utility` is **-1.0..+1.0** from `ToolResultSignature`. `ToolStepUtilitySignature` outputs `step_utility_norm` in range **0.0..1.0** (the `_norm` suffix distinguishes it). |
 | `policy_version` vs `policy_bundle_id` | Canonical is **policy_bundle_id**. `policy_version` may be used as display metadata derived from bundle. |
-| `OA Sync` vs `Khala` vs `Spacetime Sync` | `OA Sync` and `Khala` refer to the legacy runtime sync lane. `Spacetime Sync` is the replacement program and target canonical lane. |
+| `OA Sync` vs `Spacetime` vs `Spacetime Sync` | `OA Sync` and `Spacetime` refer to the legacy runtime sync lane. `Spacetime Sync` is the replacement program and target canonical lane. |
 | `RLM` (Recursive Language Models) vs `rlm` (reward-signal evaluation crate in external runtimes) | In OpenAgents docs, `RLM` means **Recursive Language Models** (long-context execution). If referencing a reward-signal evaluator crate named `rlm` (e.g., in Horizons), call it **reward-signal evaluation (`rlm` crate)** to avoid acronym collision. |
 | `rlog` vs `trajectory` vs `REPLAY.jsonl` | `rlog` and `trajectory` are conceptual terms for session logs. `ReplayBundle` is current implementation. `REPLAY.jsonl v1` is target interoperable format. |
 

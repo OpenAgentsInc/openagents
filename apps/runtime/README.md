@@ -1,6 +1,6 @@
 # Runtime (Rust-Only)
 
-`apps/runtime` is the Rust runtime service for authority writes, projector updates, and Khala sync delivery.
+`apps/runtime` is the Rust runtime service for authority writes, projector updates, and Spacetime sync delivery.
 
 ## Status
 

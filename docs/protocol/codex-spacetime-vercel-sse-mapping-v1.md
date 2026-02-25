@@ -7,7 +7,7 @@ Owner: `owner:openagents-web`
 This document defines the adapter-only mapping from Codex authority events delivered through Spacetime sync into Vercel-compatible SSE events.
 
 Archived historical mapping:
-- `docs/protocol/archived/codex-khala-vercel-sse-mapping-v1.md`
+- `docs/protocol/archived/codex-spacetime-vercel-sse-mapping-v1.md`
 
 Authority boundaries:
 

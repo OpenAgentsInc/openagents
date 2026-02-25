@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package openagents.sync.v1;
 
-// Versioned client telemetry envelope for Khala/runtime diagnostics.
+// Versioned client telemetry envelope for Spacetime/runtime diagnostics.
 message ClientTelemetryEvent {
   string schema_version = 1; // example: openagents.sync.client_telemetry.v1
   string event_id = 2;

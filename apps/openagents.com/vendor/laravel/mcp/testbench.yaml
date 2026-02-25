@@ -1,0 +1,5 @@
+laravel: '@testbench'
+
+providers:
+  - Laravel\Mcp\Server\McpServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider

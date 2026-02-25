@@ -29,9 +29,9 @@ This script verifies:
 ## Usage
 
 ```rust
-use openagents_proto::wire::openagents::sync::v1::KhalaFrame;
+use openagents_proto::wire::openagents::sync::v1::SpacetimeFrame;
 
-let frame = KhalaFrame {
+let frame = SpacetimeFrame {
     topic: "runtime.codex_worker_events".into(),
     seq: 1,
     kind: 2,

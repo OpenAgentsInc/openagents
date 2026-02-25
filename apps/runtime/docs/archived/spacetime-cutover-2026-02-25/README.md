@@ -1,14 +1,14 @@
-# Runtime Khala Docs Archive (2026-02-25)
+# Runtime Spacetime Docs Archive (2026-02-25)
 
 These documents were archived during Spacetime canonical sync cutover debt-closure.
 
 Archived from active runtime docs surface:
 
-- `CONTROL_KHALA_SHADOW_PARITY.md`
-- `KHALA_ORDERING_DELIVERY_CONTRACT.md`
-- `KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
-- `KHALA_SYNC.md`
-- `KHALA_WS_THREAT_MODEL.md`
+- `CONTROL_SPACETIME_SHADOW_PARITY.md`
+- `SPACETIME_ORDERING_DELIVERY_CONTRACT.md`
+- `SPACETIME_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
+- `SPACETIME_SYNC.md`
+- `SPACETIME_WS_THREAT_MODEL.md`
 - `LARAVEL_SSE_MAPPING.md`
 
 Canonical retained sync references are now under:

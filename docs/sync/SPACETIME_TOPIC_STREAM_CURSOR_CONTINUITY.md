@@ -5,7 +5,7 @@ Date: 2026-02-25
 
 ## Purpose
 
-Define deterministic migration from legacy Khala cursor semantics `(topic, seq)` to Spacetime
+Define deterministic migration from legacy Spacetime cursor semantics `(topic, seq)` to Spacetime
 cursor semantics `(stream_id, seq)` while preserving replay and stale-cursor behavior.
 
 ## Canonical Mapping

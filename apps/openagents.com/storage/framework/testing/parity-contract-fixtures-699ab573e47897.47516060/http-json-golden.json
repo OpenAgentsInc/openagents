@@ -1,0 +1,1589 @@
+{
+    "schema": "openagents.webparity.http_golden.v1",
+    "generated_at": "2026-02-22T07:51:15.998542Z",
+    "source": {
+        "openapi": "storage/framework/testing/openapi-parity-capture-699ab573e47924.80045972.json",
+        "capture_command": "ops:capture-parity-contract-fixtures"
+    },
+    "fixture_count": 52,
+    "fixtures": [
+        {
+            "id": "GET /api/agent-payments/balance",
+            "method": "GET",
+            "path": "/api/agent-payments/balance",
+            "summary": "Get current wallet balance for authenticated user.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/agent-payments/invoice",
+            "method": "POST",
+            "path": "/api/agent-payments/invoice",
+            "summary": "Create a Lightning invoice from the authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/agent-payments/pay",
+            "method": "POST",
+            "path": "/api/agent-payments/pay",
+            "summary": "Pay a BOLT11 invoice from the authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/agent-payments/send-spark",
+            "method": "POST",
+            "path": "/api/agent-payments/send-spark",
+            "summary": "Send sats to another Spark address from authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/agent-payments/wallet",
+            "method": "GET",
+            "path": "/api/agent-payments/wallet",
+            "summary": "Get the authenticated user's Spark wallet metadata.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/agent-payments/wallet",
+            "method": "POST",
+            "path": "/api/agent-payments/wallet",
+            "summary": "Create or import wallet for the authenticated user.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/agents/me/balance",
+            "method": "GET",
+            "path": "/api/agents/me/balance",
+            "summary": "Get current wallet balance for authenticated user.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/agents/me/wallet",
+            "method": "GET",
+            "path": "/api/agents/me/wallet",
+            "summary": "Get the authenticated user's Spark wallet metadata.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/agents/me/wallet",
+            "method": "POST",
+            "path": "/api/agents/me/wallet",
+            "summary": "Create or import wallet for the authenticated user.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/auth/register",
+            "method": "POST",
+            "path": "/api/auth/register",
+            "summary": "Bootstrap an API user + bearer token (local/testing only).",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/autopilots",
+            "method": "GET",
+            "path": "/api/autopilots",
+            "summary": "List autopilots owned by the authenticated user.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot list payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/autopilots",
+            "method": "POST",
+            "path": "/api/autopilots",
+            "summary": "Create an autopilot resource.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot resource payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/autopilots/{autopilot}",
+            "method": "GET",
+            "path": "/api/autopilots/{autopilot}",
+            "summary": "Read one autopilot by id or handle.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot resource payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "PATCH /api/autopilots/{autopilot}",
+            "method": "PATCH",
+            "path": "/api/autopilots/{autopilot}",
+            "summary": "Update one autopilot.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot resource payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/autopilots/{autopilot}/stream",
+            "method": "POST",
+            "path": "/api/autopilots/{autopilot}/stream",
+            "summary": "Stream a run via autopilot alias route.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Server-sent event stream (Vercel AI data stream protocol)",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/autopilots/{autopilot}/threads",
+            "method": "GET",
+            "path": "/api/autopilots/{autopilot}/threads",
+            "summary": "List threads for one autopilot.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot thread list payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/autopilots/{autopilot}/threads",
+            "method": "POST",
+            "path": "/api/autopilots/{autopilot}/threads",
+            "summary": "Create a new thread for an autopilot.",
+            "tags": [
+                "Autopilot"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Autopilot thread payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/chat/stream",
+            "method": "POST",
+            "path": "/api/chat/stream",
+            "summary": "Stream a chat run over server-sent events.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Server-sent event stream (Vercel AI data stream protocol)",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/chats",
+            "method": "GET",
+            "path": "/api/chats",
+            "summary": "List authenticated user's conversation threads.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful list response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/chats",
+            "method": "POST",
+            "path": "/api/chats",
+            "summary": "Create a new conversation thread.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "201",
+                    "description": "Resource created",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/chats/{conversationId}",
+            "method": "GET",
+            "path": "/api/chats/{conversationId}",
+            "summary": "Get one conversation with messages and runs.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/chats/{conversationId}/messages",
+            "method": "GET",
+            "path": "/api/chats/{conversationId}/messages",
+            "summary": "List messages for a conversation.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful list response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/chats/{conversationId}/runs",
+            "method": "GET",
+            "path": "/api/chats/{conversationId}/runs",
+            "summary": "List runs for a conversation.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful list response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/chats/{conversationId}/runs/{runId}/events",
+            "method": "GET",
+            "path": "/api/chats/{conversationId}/runs/{runId}/events",
+            "summary": "List events for a specific run.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/chats/{conversationId}/stream",
+            "method": "POST",
+            "path": "/api/chats/{conversationId}/stream",
+            "summary": "Stream a chat run over server-sent events.",
+            "tags": [
+                "Chat"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Server-sent event stream (Vercel AI data stream protocol)",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/deployments",
+            "method": "GET",
+            "path": "/api/l402/deployments",
+            "summary": "List L402 deployment and gateway-related operational events.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/paywalls",
+            "method": "GET",
+            "path": "/api/l402/paywalls",
+            "summary": "Get paywall aggregation by host/scope.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/l402/paywalls",
+            "method": "POST",
+            "path": "/api/l402/paywalls",
+            "summary": "Create a seller paywall route and reconcile Aperture configuration.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "PATCH /api/l402/paywalls/{paywallId}",
+            "method": "PATCH",
+            "path": "/api/l402/paywalls/{paywallId}",
+            "summary": "Update an existing seller paywall and reconcile Aperture configuration.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "DELETE /api/l402/paywalls/{paywallId}",
+            "method": "DELETE",
+            "path": "/api/l402/paywalls/{paywallId}",
+            "summary": "Delete (soft-delete) a seller paywall and reconcile Aperture configuration.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/settlements",
+            "method": "GET",
+            "path": "/api/l402/settlements",
+            "summary": "Get settlement-focused paid receipt summary.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/transactions",
+            "method": "GET",
+            "path": "/api/l402/transactions",
+            "summary": "List L402 transaction receipts.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/transactions/{eventId}",
+            "method": "GET",
+            "path": "/api/l402/transactions/{eventId}",
+            "summary": "Get one L402 transaction receipt by event id.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/l402/wallet",
+            "method": "GET",
+            "path": "/api/l402/wallet",
+            "summary": "Get wallet-level Lightning spend summary.",
+            "tags": [
+                "L402"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/me",
+            "method": "GET",
+            "path": "/api/me",
+            "summary": "Get authenticated user context.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Authenticated user profile and quick chat thread summary",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/payments/invoice",
+            "method": "POST",
+            "path": "/api/payments/invoice",
+            "summary": "Create a Lightning invoice from the authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/payments/pay",
+            "method": "POST",
+            "path": "/api/payments/pay",
+            "summary": "Pay a BOLT11 invoice from the authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/payments/send-spark",
+            "method": "POST",
+            "path": "/api/payments/send-spark",
+            "summary": "Send sats to another Spark address from authenticated user's wallet.",
+            "tags": [
+                "Agent Payments"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/settings/profile",
+            "method": "GET",
+            "path": "/api/settings/profile",
+            "summary": "Get the authenticated user's profile.",
+            "tags": [
+                "Profile"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Authenticated user profile",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "PATCH /api/settings/profile",
+            "method": "PATCH",
+            "path": "/api/settings/profile",
+            "summary": "Update profile fields.",
+            "tags": [
+                "Profile"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Authenticated user profile",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "DELETE /api/settings/profile",
+            "method": "DELETE",
+            "path": "/api/settings/profile",
+            "summary": "Delete the authenticated account.",
+            "tags": [
+                "Profile"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/shouts",
+            "method": "GET",
+            "path": "/api/shouts",
+            "summary": "List public shouts.",
+            "tags": [
+                "Shouts"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Shout feed response",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/shouts",
+            "method": "POST",
+            "path": "/api/shouts",
+            "summary": "Create a shout.",
+            "tags": [
+                "Shouts"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Shout response payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/shouts/zones",
+            "method": "GET",
+            "path": "/api/shouts/zones",
+            "summary": "Return top shout zones for discovery.",
+            "tags": [
+                "Shouts"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Top shout zones by last-24h activity",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/tokens",
+            "method": "GET",
+            "path": "/api/tokens",
+            "summary": "List personal access tokens.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "List personal access tokens for the authenticated user",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/tokens",
+            "method": "POST",
+            "path": "/api/tokens",
+            "summary": "Create a personal access token.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "201",
+                    "description": "Token created; plain token value is returned once",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "DELETE /api/tokens",
+            "method": "DELETE",
+            "path": "/api/tokens",
+            "summary": "Revoke all personal access tokens for the authenticated user.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "DELETE /api/tokens/current",
+            "method": "DELETE",
+            "path": "/api/tokens/current",
+            "summary": "Revoke the current bearer token.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "DELETE /api/tokens/{tokenId}",
+            "method": "DELETE",
+            "path": "/api/tokens/{tokenId}",
+            "summary": "Revoke a specific personal access token.",
+            "tags": [
+                "Auth"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Successful response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "GET /api/whispers",
+            "method": "GET",
+            "path": "/api/whispers",
+            "summary": "List whispers for the authenticated user.",
+            "tags": [
+                "Whispers"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Whisper inbox/thread response",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "POST /api/whispers",
+            "method": "POST",
+            "path": "/api/whispers",
+            "summary": "Send a new whisper.",
+            "tags": [
+                "Whispers"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Whisper response payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                },
+                {
+                    "status": "422",
+                    "description": "Validation error",
+                    "json_example": null
+                }
+            ]
+        },
+        {
+            "id": "PATCH /api/whispers/{id}/read",
+            "method": "PATCH",
+            "path": "/api/whispers/{id}/read",
+            "summary": "Mark a whisper as read.",
+            "tags": [
+                "Whispers"
+            ],
+            "request_json_example": null,
+            "responses": [
+                {
+                    "status": "200",
+                    "description": "Whisper response payload",
+                    "json_example": null
+                },
+                {
+                    "status": "401",
+                    "description": "Authentication required",
+                    "json_example": null
+                },
+                {
+                    "status": "403",
+                    "description": "Forbidden",
+                    "json_example": null
+                },
+                {
+                    "status": "404",
+                    "description": "Not found",
+                    "json_example": null
+                }
+            ]
+        }
+    ],
+    "auth_contract_samples": {
+        "auth_challenge_success": {
+            "request_id": "req-auth-001",
+            "challenge_id": "chal_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+            "provider": "AUTH_PROVIDER_WORKOS_EMAIL_CODE",
+            "status": "AUTH_CHALLENGE_STATUS_CODE_SENT",
+            "delivery_channel": "email",
+            "email_hint": "ch***@openagents.com",
+            "resend_allowed": false,
+            "pending_workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4"
+        },
+        "auth_verify_success": {
+            "request_id": "req-auth-002",
+            "new_user": false,
+            "token_type": "Bearer",
+            "session": {
+                "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+                "user_id": "1",
+                "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+                "status": "SESSION_STATUS_ACTIVE",
+                "access_token": "pat_local_abc",
+                "refresh_token": "rt_local_abc",
+                "refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+                "active_org_id": "user:1",
+                "memberships": [
+                    {
+                        "org_id": "user:1",
+                        "org_slug": "personal",
+                        "role": "ORG_ROLE_OWNER",
+                        "role_scopes": [
+                            "runtime.codex_worker_events"
+                        ],
+                        "default_org": true
+                    }
+                ],
+                "identity": {
+                    "workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+                    "email": "chris@openagents.com"
+                },
+                "reauth_required": false
+            }
+        },
+        "session_refresh_success": {
+            "request_id": "req-auth-003",
+            "replaced_refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+            "session": {
+                "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+                "user_id": "1",
+                "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+                "status": "SESSION_STATUS_ACTIVE",
+                "access_token": "pat_local_def",
+                "refresh_token": "rt_local_def",
+                "refresh_token_id": "rft_01HZZ3Q9E6F7V3W9W8J9N2Q3P5",
+                "active_org_id": "user:1",
+                "memberships": [
+                    {
+                        "org_id": "user:1",
+                        "org_slug": "personal",
+                        "role": "ORG_ROLE_OWNER",
+                        "role_scopes": [
+                            "runtime.codex_worker_events"
+                        ],
+                        "default_org": true
+                    }
+                ],
+                "identity": {
+                    "workos_user_id": "user_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+                    "email": "chris@openagents.com"
+                },
+                "reauth_required": false
+            }
+        },
+        "sync_token_success": {
+            "request_id": "req-auth-004",
+            "session_id": "sess_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+            "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.payload.sig",
+            "token_type": "Bearer",
+            "expires_in_seconds": 300,
+            "issuer": "https://openagents.com",
+            "audience": "openagents-sync",
+            "subject": "user:1",
+            "org_id": "user:1",
+            "claims_version": "oa_sync_claims_v1",
+            "key_id": "sync-auth-v1",
+            "token_id": "jti_01HZZ3Q9E6F7V3W9W8J9N2Q3P4",
+            "granted_scopes": [
+                "runtime.codex_worker_events",
+                "runtime.codex_worker_summaries"
+            ],
+            "granted_topics": [
+                {
+                    "topic": "org:user:1:workers",
+                    "required_scope": "runtime.codex_worker_summaries"
+                },
+                {
+                    "topic": "org:user:1:worker_events",
+                    "required_scope": "runtime.codex_worker_events"
+                }
+            ]
+        },
+        "sync_token_invalid_scope_error": {
+            "request_id": "req-auth-005",
+            "code": "CONTROL_ERROR_CODE_INVALID_SCOPE",
+            "message": "requested sync scopes are not allowed",
+            "reauth_required": false
+        },
+        "reauth_required_error": {
+            "request_id": "req-auth-006",
+            "code": "CONTROL_ERROR_CODE_REAUTH_REQUIRED",
+            "message": "session requires reauthentication",
+            "reauth_required": true
+        },
+        "session_revoked_error": {
+            "request_id": "req-auth-007",
+            "code": "CONTROL_ERROR_CODE_SESSION_REVOKED",
+            "message": "session was revoked",
+            "reauth_required": true
+        },
+        "operation_envelope_examples": [
+            {
+                "request_id": "req-auth-008",
+                "payload": "challenge"
+            },
+            {
+                "request_id": "req-auth-009",
+                "payload": "verify"
+            },
+            {
+                "request_id": "req-auth-010",
+                "payload": "sync_token"
+            },
+            {
+                "request_id": "req-auth-011",
+                "payload": "error",
+                "error_code": "CONTROL_ERROR_CODE_INVALID_SCOPE"
+            }
+        ]
+    }
+}

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<psalm name="Halite Psalm Configuration"
+       useDocblockTypes="true"
+       totallyTyped="true">
+    <projectFiles>
+        <directory name="./src" />
+    </projectFiles>
+    <issueHandlers>
+        <TooFewArguments errorLevel="suppress" /> <!-- \sodium_memzero() -->
+        <PropertyNotSetInConstructor errorLevel="suppress" />
+        <RedundantCondition errorLevel="suppress" />
+        <RedundantConditionGivenDocblockType errorLevel="suppress" />
+
+        <RedundantCast errorLevel="info" />
+        <NonInvariantDocblockPropertyType errorLevel="info" />
+    </issueHandlers>
+</psalm>

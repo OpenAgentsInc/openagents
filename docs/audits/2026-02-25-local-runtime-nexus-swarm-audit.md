@@ -45,10 +45,10 @@ Primary evidence surfaces:
 Heuristic code-scan signals (not semantic proof, but useful pressure indicators):
 
 - `local_command_invocations` in selected local client crates: `27`
-- desktop references to runtime/khala sync APIs: `10`
+- desktop references to runtime/spacetime sync APIs: `10`
 - runtime internal routes in `apps/runtime/src/server.rs`: `57`
 - Nexus/swarm references in Rust code: `62`
-- runtime-related API references in Rust code (`/api/runtime`, `/internal/v1`, sync/khala): `492`
+- runtime-related API references in Rust code (`/api/runtime`, `/internal/v1`, sync/spacetime): `492`
 
 ## Executive Summary
 
@@ -135,7 +135,7 @@ Swarm providers (execution fabric):
 Non-negotiable:
 
 1. Neither Nexus nor swarm providers should become canonical authority for control/runtime domain state.
-2. Authority writes stay in authenticated HTTP authority lanes (control/runtime), with Khala/Nexus as delivery/coordination.
+2. Authority writes stay in authenticated HTTP authority lanes (control/runtime), with Spacetime/Nexus as delivery/coordination.
 
 ## Potential Simplifications for the Two-Sided Marketplace Focus
 
@@ -189,10 +189,10 @@ For this product phase, local Codex command/control should be treated as a first
 
 ## Amendment: Full Sync Replacement Target (SpacetimeDB)
 
-If OpenAgents commits to full Khala replacement, this audit's placement model should be read with these updates:
+If OpenAgents commits to full Spacetime replacement, this audit's placement model should be read with these updates:
 
 1. SpacetimeDB becomes the single sync/replay transport for retained surfaces.
-2. Khala-specific token/websocket/topic dependencies become migration debt to delete, not steady-state architecture.
+2. Spacetime-specific token/websocket/topic dependencies become migration debt to delete, not steady-state architecture.
 3. Local-first Autopilot behavior stays unchanged: local Codex orchestration remains primary when available.
 4. Shared runtime/control continue to own auth, policy, treasury, Hydra, and Aegis authority decisions.
 5. NIP-90/Nostr remain supplemental interoperability and external market lanes, not the in-domain primary sync substrate.
@@ -202,7 +202,7 @@ Replacement-readiness requirements:
 1. Preserve deterministic replay and idempotent ordered apply semantics.
 2. Preserve explicit stale/resume recovery behavior.
 3. Preserve scoped auth claim enforcement and token rotation posture.
-4. Preserve incident/runbook readiness before removing Khala endpoints.
+4. Preserve incident/runbook readiness before removing Spacetime endpoints.
 
 ## Notable Gaps and Inconsistencies
 

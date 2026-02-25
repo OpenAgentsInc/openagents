@@ -50,7 +50,7 @@ Required receipts:
 Required assertions:
 
 - device is visible as connected/online in the Nexus registry view (API is sufficient in Phase 0 harness)
-- presence stream exists via Khala delivery on `fleet:user:<user_id>:workers` (WS/poll), emitting worker snapshots as devices enroll/heartbeat/stop
+- presence stream exists via Spacetime delivery on `fleet:user:<user_id>:workers` (WS/poll), emitting worker snapshots as devices enroll/heartbeat/stop
 - provider enable/disable is instant and blocks new work
 
 ### 2) Create run from issue

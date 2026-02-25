@@ -31,7 +31,7 @@ Aegis must make verification **legible to machines**: verifiability is computed,
 * **No token.** No emissions, no “reputation coin,” no incentive scheme that turns social metrics into money.
 * **No magic “AI verifies AI” assumption.** Aegis treats correlated checking as low-trust and requires explicit independence tiers.
 * **No unverifiable blanket warranties.** High-stakes guarantees require objective proofs or explicit human underwriting.
-* **No new authority transport.** Authority mutations remain authenticated HTTP only; WS/Khala remains non-authoritative delivery.
+* **No new authority transport.** Authority mutations remain authenticated HTTP only; WS/Spacetime remains non-authoritative delivery.
 * **No opaque moderation.** Verification and liability decisions must be explainable via receipts + evidence bundles (and reversible via defined dispute paths).
 
 ---
@@ -350,7 +350,7 @@ When money is moved (bond reservation, payout, refund, slash), Aegis receipts mu
 
 * warranties/claims/disputes map naturally onto `COMMERCE_MESSAGE_KIND_RECEIPT/REFUND/DISPUTE` and can be mirrored via Bridge later without moving authority.
 
-**Khala**
+**Spacetime**
 
 * delivers projections of verification status, claims state, and warranty state to web/mobile as non-authoritative streams.
 

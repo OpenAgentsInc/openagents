@@ -1,0 +1,68 @@
+[
+  {
+    "event": "user signed up",
+    "description": "Fired when a new user is created after successful email code verification",
+    "file": "app/Http/Controllers/Auth/EmailCodeAuthController.php",
+    "properties": ["signup_method"]
+  },
+  {
+    "event": "user logged in",
+    "description": "Fired when an existing user successfully logs in via email code verification",
+    "file": "app/Http/Controllers/Auth/EmailCodeAuthController.php",
+    "properties": ["login_method"]
+  },
+  {
+    "event": "login code sent",
+    "description": "Fired when a magic link email code is sent to a user",
+    "file": "app/Http/Controllers/Auth/EmailCodeAuthController.php",
+    "properties": ["method"]
+  },
+  {
+    "event": "user logged out",
+    "description": "Fired when a user logs out of their session",
+    "file": "routes/auth.php",
+    "properties": []
+  },
+  {
+    "event": "chat started",
+    "description": "Fired when a user starts a new chat conversation",
+    "file": "app/Http/Controllers/ChatPageController.php",
+    "properties": ["conversation_id"]
+  },
+  {
+    "event": "chat message sent",
+    "description": "Fired when a user sends a message in a chat conversation",
+    "file": "app/Http/Controllers/ChatApiController.php",
+    "properties": ["conversation_id", "message_length"]
+  },
+  {
+    "event": "chat run completed",
+    "description": "Fired when an AI chat run completes successfully",
+    "file": "app/AI/RunOrchestrator.php",
+    "properties": ["run_id", "thread_id", "model_provider", "model", "input_tokens", "output_tokens"]
+  },
+  {
+    "event": "chat run failed",
+    "description": "Fired when an AI chat run fails with an error",
+    "file": "app/AI/RunOrchestrator.php",
+    "properties": ["run_id", "thread_id", "error"]
+  },
+  {
+    "event": "l402 payment made",
+    "description": "Fired when a Lightning L402 payment is successfully made",
+    "file": "app/AI/RunOrchestrator.php",
+    "properties": ["run_id", "thread_id", "host", "amount_msats"]
+  },
+  {
+    "event": "profile updated",
+    "description": "Fired when a user updates their profile settings",
+    "file": "app/Http/Controllers/Settings/ProfileController.php",
+    "properties": ["field_updated"]
+  },
+  {
+    "event": "account deleted",
+    "description": "Fired when a user deletes their account",
+    "file": "app/Http/Controllers/Settings/ProfileController.php",
+    "properties": []
+  }
+]

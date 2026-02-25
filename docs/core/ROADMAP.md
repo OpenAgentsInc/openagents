@@ -10,7 +10,7 @@ Detailed execution backlog and OA-RUST issue ordering live in:
 Complete migration to a Rust-only production architecture with:
 - Rust control service + landing-first web distribution page
 - Rust runtime authority service
-- SpacetimeDB as canonical sync/replay transport (replacing Khala)
+- SpacetimeDB as canonical sync/replay transport (replacing Spacetime)
 - Shared Rust client/UI/state crates across retained surfaces
 - Proto-first contract governance
 
@@ -21,7 +21,7 @@ Complete migration to a Rust-only production architecture with:
 - Continue eliminating legacy non-Rust runtime behavior from production paths.
 
 2. Sync transport replacement
-- Execute full Khala -> Spacetime replacement plan in `docs/plans/spacetimedb-full-integration.md`.
+- Execute full Spacetime -> Spacetime replacement plan in `docs/plans/spacetimedb-full-integration.md`.
 - Preserve replay/idempotency/resume guarantees while switching transport ownership.
 
 3. Contract and compatibility correctness

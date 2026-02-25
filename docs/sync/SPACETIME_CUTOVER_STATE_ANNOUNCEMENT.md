@@ -6,7 +6,7 @@ Owner lanes: Runtime, Control, Ops
 
 ## Purpose
 
-Publish and archive operator-visible cutover state proving Spacetime is the default sync transport and Khala is emergency-only.
+Publish and archive operator-visible cutover state proving Spacetime is the default sync transport and Spacetime is emergency-only.
 
 ## Command
 

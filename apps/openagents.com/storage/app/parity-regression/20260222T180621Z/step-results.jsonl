@@ -1,0 +1,99 @@
+{
+  "step_id": "service-compile",
+  "category": "api",
+  "description": "Rust control service compile baseline",
+  "command": "cargo check --manifest-path apps/openagents.com/service/Cargo.toml",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:21Z",
+  "ended_at": "2026-02-22T18:06:27Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/service-compile.log"
+}
+{
+  "step_id": "web-shell-compile",
+  "category": "ui",
+  "description": "Rust/WGPUI web-shell wasm compile baseline",
+  "command": "cargo check --target wasm32-unknown-unknown --manifest-path apps/openagents.com/web-shell/Cargo.toml",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:27Z",
+  "ended_at": "2026-02-22T18:06:28Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/web-shell-compile.log"
+}
+{
+  "step_id": "vercel-sse-fixture-drift",
+  "category": "stream",
+  "description": "Vercel compatibility fixture corpus drift check",
+  "command": "./apps/openagents.com/scripts/run-vercel-sse-fixture-harness.sh",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:28Z",
+  "ended_at": "2026-02-22T18:06:28Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/vercel-sse-fixture-drift.log"
+}
+{
+  "step_id": "legacy-chat-alias-authority",
+  "category": "api",
+  "description": "Legacy /api/chats aliases map to codex thread authority",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chats_aliases_map_to_codex_threads",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:28Z",
+  "ended_at": "2026-02-22T18:06:29Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/legacy-chat-alias-authority.log"
+}
+{
+  "step_id": "legacy-chat-stream-alias",
+  "category": "stream",
+  "description": "Legacy /api/chat/stream alias bridges to codex worker control",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chat_stream_alias_bridges_to_codex_control_request",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:29Z",
+  "ended_at": "2026-02-22T18:06:29Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/legacy-chat-stream-alias.log"
+}
+{
+  "step_id": "legacy-chat-stream-path-alias",
+  "category": "stream",
+  "description": "Legacy /api/chats/{id}/stream alias uses codex thread path authority",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chats_stream_alias_uses_path_thread_id_and_accepts_structured_content",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:29Z",
+  "ended_at": "2026-02-22T18:06:30Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/legacy-chat-stream-path-alias.log"
+}
+{
+  "step_id": "legacy-chat-retirement-invalid-payload",
+  "category": "stream",
+  "description": "Legacy stream endpoint keeps explicit retirement validation semantics",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml legacy_chat_stream_alias_rejects_payload_without_user_text",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:30Z",
+  "ended_at": "2026-02-22T18:06:30Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/legacy-chat-retirement-invalid-payload.log"
+}
+{
+  "step_id": "codex-control-authority",
+  "category": "internal",
+  "description": "Codex app-server worker control remains canonical write authority",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml runtime_codex_control_request_accepts_turn_start_and_persists_message",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:30Z",
+  "ended_at": "2026-02-22T18:06:31Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/codex-control-authority.log"
+}
+{
+  "step_id": "spacetime-ws-smoke-contract",
+  "category": "stream",
+  "description": "Spacetime WS-only smoke contract metadata remains canonical",
+  "command": "cargo test --manifest-path apps/openagents.com/service/Cargo.toml smoke_stream_returns_spacetime_ws_contract_metadata",
+  "status": "pass",
+  "reason": null,
+  "started_at": "2026-02-22T18:06:31Z",
+  "ended_at": "2026-02-22T18:06:31Z",
+  "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/parity-regression/20260222T180621Z/spacetime-ws-smoke-contract.log"
+}

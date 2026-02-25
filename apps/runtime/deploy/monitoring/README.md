@@ -5,9 +5,9 @@ This directory contains baseline dashboards and alert rules for `runtime`.
 ## Artifacts
 
 - Grafana dashboard: `grafana/runtime-ops-dashboard.json`
-- Grafana dashboard: `grafana/khala-slo-dashboard.json`
+- Grafana dashboard: `grafana/spacetime-slo-dashboard.json`
 - Prometheus rules: `prometheus/runtime-alert-rules.yaml`
-- Prometheus rules: `prometheus/khala-slo-alert-rules.yaml`
+- Prometheus rules: `prometheus/spacetime-slo-alert-rules.yaml`
 
 ## Coverage
 
@@ -18,14 +18,14 @@ This directory contains baseline dashboards and alert rules for `runtime`.
 - Tool terminal failure spikes
 - Provider circuit breaker open state
 - Spend/policy denial anomalies
-- Khala projection writes throughput
-- Khala projection lag p95 (`lag_events`)
-- Khala projection write failure ratio
-- Khala projection drift incidents
-- Khala projection replay failure visibility
-- Khala token mint failure ratio (Laravel bridge)
-- Khala websocket auth failure ratio by reason code
-- Khala replay lag/stale-cursor SLO budget alerts
+- Spacetime projection writes throughput
+- Spacetime projection lag p95 (`lag_events`)
+- Spacetime projection write failure ratio
+- Spacetime projection drift incidents
+- Spacetime projection replay failure visibility
+- Spacetime token mint failure ratio (Laravel bridge)
+- Spacetime websocket auth failure ratio by reason code
+- Spacetime replay lag/stale-cursor SLO budget alerts
 - Client reconnect/auth-failure telemetry segmentation by surface/app version
 
 ## Runbook

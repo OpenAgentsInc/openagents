@@ -4,7 +4,7 @@ DO $$
 DECLARE
   runtime_owner text := :'runtime_owner_role';
   runtime_rw text := :'runtime_rw_role';
-  khala_ro text := :'khala_ro_role';
+  spacetime_ro text := :'spacetime_ro_role';
   control_rw text := :'control_rw_role';
   control_schema_exists boolean;
   sync_table record;
@@ -21,8 +21,8 @@ BEGIN
     EXECUTE format('CREATE ROLE %I NOLOGIN', runtime_rw);
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = khala_ro) THEN
-    EXECUTE format('CREATE ROLE %I NOLOGIN', khala_ro);
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = spacetime_ro) THEN
+    EXECUTE format('CREATE ROLE %I NOLOGIN', spacetime_ro);
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = control_rw) THEN
@@ -34,11 +34,11 @@ BEGIN
   EXECUTE 'REVOKE ALL ON SCHEMA runtime FROM PUBLIC';
   EXECUTE format('REVOKE ALL ON SCHEMA runtime FROM %I', control_rw);
   EXECUTE format('GRANT USAGE ON SCHEMA runtime TO %I', runtime_rw);
-  EXECUTE format('GRANT USAGE ON SCHEMA runtime TO %I', khala_ro);
+  EXECUTE format('GRANT USAGE ON SCHEMA runtime TO %I', spacetime_ro);
 
   EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA runtime FROM PUBLIC';
   EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA runtime FROM %I', control_rw);
-  EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA runtime FROM %I', khala_ro);
+  EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA runtime FROM %I', spacetime_ro);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA runtime TO %I', runtime_rw);
 
   FOR sync_table IN
@@ -47,14 +47,14 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'runtime'
       AND c.relkind = 'r'
-      AND (c.relname LIKE 'sync\_%' ESCAPE '\\' OR c.relname = 'khala_projection_checkpoints')
+      AND (c.relname LIKE 'sync\_%' ESCAPE '\\' OR c.relname = 'spacetime_projection_checkpoints')
   LOOP
-    EXECUTE format('GRANT SELECT ON TABLE %s TO %I', sync_table.table_ref, khala_ro);
+    EXECUTE format('GRANT SELECT ON TABLE %s TO %I', sync_table.table_ref, spacetime_ro);
   END LOOP;
 
   EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA runtime FROM PUBLIC';
   EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA runtime FROM %I', control_rw);
-  EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA runtime FROM %I', khala_ro);
+  EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA runtime FROM %I', spacetime_ro);
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA runtime TO %I', runtime_rw);
 
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA runtime REVOKE ALL ON TABLES FROM PUBLIC', runtime_owner);
@@ -76,9 +76,9 @@ BEGIN
     EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA control FROM %I', runtime_rw);
     EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA control FROM %I', runtime_rw);
 
-    EXECUTE format('REVOKE ALL ON SCHEMA control FROM %I', khala_ro);
-    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA control FROM %I', khala_ro);
-    EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA control FROM %I', khala_ro);
+    EXECUTE format('REVOKE ALL ON SCHEMA control FROM %I', spacetime_ro);
+    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA control FROM %I', spacetime_ro);
+    EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA control FROM %I', spacetime_ro);
   END IF;
 END
 $$;

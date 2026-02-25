@@ -262,4 +262,3 @@ fn sync_v2_fixture_matches_wire_contract_roundtrips() {
         error.stale_cursor_recovery.len()
     );
 }
-

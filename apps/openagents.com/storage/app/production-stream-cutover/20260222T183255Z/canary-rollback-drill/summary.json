@@ -1,0 +1,88 @@
+{
+  "schema": "openagents.webparity.canary_drill.v1",
+  "generated_at": "20260222T182858Z",
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "service": "openagents-control-service",
+  "stable_revision": "stable-revision",
+  "canary_revision": "canary-revision",
+  "dry_run": true,
+  "totals": {
+    "step_count": 7,
+    "passed": 7,
+    "failed": 0
+  },
+  "overall_status": "passed",
+  "steps": [
+    {
+      "step_id": "status-pre",
+      "description": "Capture pre-drill traffic status",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' status",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:58Z",
+      "ended_at": "2026-02-22T18:28:58Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/status-pre.log"
+    },
+    {
+      "step_id": "traffic-5",
+      "description": "Set canary traffic to 5%",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' set-traffic 'stable-revision' 'canary-revision' '5'",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:58Z",
+      "ended_at": "2026-02-22T18:28:58Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/traffic-5.log"
+    },
+    {
+      "step_id": "traffic-25",
+      "description": "Set canary traffic to 25%",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' set-traffic 'stable-revision' 'canary-revision' '25'",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:58Z",
+      "ended_at": "2026-02-22T18:28:59Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/traffic-25.log"
+    },
+    {
+      "step_id": "traffic-50",
+      "description": "Set canary traffic to 50%",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' set-traffic 'stable-revision' 'canary-revision' '50'",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:59Z",
+      "ended_at": "2026-02-22T18:28:59Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/traffic-50.log"
+    },
+    {
+      "step_id": "traffic-100",
+      "description": "Set canary traffic to 100%",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' set-traffic 'stable-revision' 'canary-revision' '100'",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:59Z",
+      "ended_at": "2026-02-22T18:28:59Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/traffic-100.log"
+    },
+    {
+      "step_id": "rollback",
+      "description": "Rollback traffic to stable revision",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' rollback 'stable-revision'",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:59Z",
+      "ended_at": "2026-02-22T18:28:59Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/rollback.log"
+    },
+    {
+      "step_id": "status-post",
+      "description": "Capture post-drill traffic status",
+      "command": "PROJECT='openagentsgemini' REGION='us-central1' SERVICE='openagents-control-service' DRY_RUN='1' '/Users/christopherdavid/code/openagents/apps/openagents.com/service/deploy/canary-rollout.sh' status",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:28:59Z",
+      "ended_at": "2026-02-22T18:28:59Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-cutover/20260222T183255Z/canary-rollback-drill/status-post.log"
+    }
+  ]
+}

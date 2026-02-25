@@ -50,34 +50,34 @@ fn build_test_router_with_config(
         authority_write_mode: mode,
         fanout_driver: "memory".to_string(),
         fanout_queue_capacity: 64,
-        khala_poll_default_limit: 100,
-        khala_poll_max_limit: 200,
-        khala_outbound_queue_limit: 200,
-        khala_fair_topic_slice_limit: 50,
-        khala_poll_min_interval_ms: 250,
-        khala_slow_consumer_lag_threshold: 300,
-        khala_slow_consumer_max_strikes: 3,
-        khala_consumer_registry_capacity: 4096,
-        khala_reconnect_base_backoff_ms: 400,
-        khala_reconnect_jitter_ms: 250,
-        khala_emergency_mode_enabled: true,
-        khala_enforce_origin: true,
-        khala_allowed_origins: HashSet::from([
+        spacetime_poll_default_limit: 100,
+        spacetime_poll_max_limit: 200,
+        spacetime_outbound_queue_limit: 200,
+        spacetime_fair_topic_slice_limit: 50,
+        spacetime_poll_min_interval_ms: 250,
+        spacetime_slow_consumer_lag_threshold: 300,
+        spacetime_slow_consumer_max_strikes: 3,
+        spacetime_consumer_registry_capacity: 4096,
+        spacetime_reconnect_base_backoff_ms: 400,
+        spacetime_reconnect_jitter_ms: 250,
+        spacetime_emergency_mode_enabled: true,
+        spacetime_enforce_origin: true,
+        spacetime_allowed_origins: HashSet::from([
             "https://openagents.com".to_string(),
             "https://www.openagents.com".to_string(),
         ]),
-        khala_run_events_publish_rate_per_second: 240,
-        khala_worker_lifecycle_publish_rate_per_second: 180,
-        khala_codex_worker_events_publish_rate_per_second: 240,
-        khala_fallback_publish_rate_per_second: 90,
-        khala_run_events_replay_budget_events: 20_000,
-        khala_worker_lifecycle_replay_budget_events: 10_000,
-        khala_codex_worker_events_replay_budget_events: 3_000,
-        khala_fallback_replay_budget_events: 500,
-        khala_run_events_max_payload_bytes: 256 * 1024,
-        khala_worker_lifecycle_max_payload_bytes: 64 * 1024,
-        khala_codex_worker_events_max_payload_bytes: 128 * 1024,
-        khala_fallback_max_payload_bytes: 64 * 1024,
+        spacetime_run_events_publish_rate_per_second: 240,
+        spacetime_worker_lifecycle_publish_rate_per_second: 180,
+        spacetime_codex_worker_events_publish_rate_per_second: 240,
+        spacetime_fallback_publish_rate_per_second: 90,
+        spacetime_run_events_replay_budget_events: 20_000,
+        spacetime_worker_lifecycle_replay_budget_events: 10_000,
+        spacetime_codex_worker_events_replay_budget_events: 3_000,
+        spacetime_fallback_replay_budget_events: 500,
+        spacetime_run_events_max_payload_bytes: 256 * 1024,
+        spacetime_worker_lifecycle_max_payload_bytes: 64 * 1024,
+        spacetime_codex_worker_events_max_payload_bytes: 128 * 1024,
+        spacetime_fallback_max_payload_bytes: 64 * 1024,
         sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
         sync_token_fallback_signing_keys: Vec::new(),
         sync_token_issuer: "https://openagents.com".to_string(),
@@ -2232,14 +2232,14 @@ async fn spacetime_sync_metrics_expose_stream_delivery_totals() -> Result<()> {
 }
 
 #[tokio::test]
-async fn retired_khala_routes_return_not_found() -> Result<()> {
+async fn retired_spacetime_routes_return_not_found() -> Result<()> {
     let app = test_router();
 
     let retired_poll = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/internal/v1/khala/topics/runtime.fallback/messages?after_seq=0&limit=1")
+                .uri("/internal/v1/spacetime/topics/runtime.fallback/messages?after_seq=0&limit=1")
                 .body(Body::empty())?,
         )
         .await?;
@@ -2248,7 +2248,7 @@ async fn retired_khala_routes_return_not_found() -> Result<()> {
     let retired_hooks = app
         .oneshot(
             Request::builder()
-                .uri("/internal/v1/khala/fanout/hooks")
+                .uri("/internal/v1/spacetime/fanout/hooks")
                 .body(Body::empty())?,
         )
         .await?;

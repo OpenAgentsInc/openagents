@@ -115,7 +115,7 @@ Rust control service scaffold for `apps/openagents.com`.
 
 ## Migration Notes
 
-- `POST /api/khala/token` is retired and no longer served by control.
+- `POST /api/spacetime/token` is retired and no longer served by control.
 - Clients must use `POST /api/sync/token` (or `/api/spacetime/token` aliases) for sync claims.
 
 ## Run locally

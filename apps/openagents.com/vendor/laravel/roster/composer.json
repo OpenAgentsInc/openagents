@@ -1,0 +1,70 @@
+{
+    "name": "laravel/roster",
+    "description": "Detect packages & approaches in use within a Laravel project",
+    "keywords": [
+        "dev",
+        "laravel"
+    ],
+    "homepage": "https://github.com/laravel/roster",
+    "license": "MIT",
+    "support": {
+        "issues": "https://github.com/laravel/roster/issues",
+        "source": "https://github.com/laravel/roster"
+    },
+    "require": {
+        "php": "^8.2",
+        "illuminate/console": "^11.0|^12.0|^13.0",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/routing": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "symfony/yaml": "^7.2|^8.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.14",
+        "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.1",
+        "phpstan/phpstan": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Laravel\\Roster\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Laravel\\Roster\\RosterServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "lint": [
+            "vendor/bin/pint",
+            "vendor/bin/phpstan"
+        ],
+        "test": [
+            "vendor/bin/pest"
+        ],
+        "check": [
+            "@composer lint",
+            "@composer test"
+        ]
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

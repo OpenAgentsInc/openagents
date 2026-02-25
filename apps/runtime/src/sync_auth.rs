@@ -54,7 +54,7 @@ pub struct SyncPrincipal {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AuthorizedKhalaTopic {
+pub enum AuthorizedSpacetimeTopic {
     WorkerLifecycle { worker_id: String },
     FleetWorkers { user_id: u64 },
     RunEvents { run_id: String },
@@ -207,12 +207,12 @@ impl SyncAuthorizer {
         &self,
         principal: &SyncPrincipal,
         topic: &str,
-    ) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
+    ) -> Result<AuthorizedSpacetimeTopic, SyncAuthError> {
         let normalized_topic = topic.trim();
         let authorized_topic = parse_topic(normalized_topic)?;
         ensure_stream_grant(principal, normalized_topic)?;
         match &authorized_topic {
-            AuthorizedKhalaTopic::CodexWorkerEvents => {
+            AuthorizedSpacetimeTopic::CodexWorkerEvents => {
                 ensure_scope(
                     principal,
                     normalized_topic,
@@ -222,7 +222,7 @@ impl SyncAuthorizer {
                     ],
                 )?;
             }
-            AuthorizedKhalaTopic::WorkerLifecycle { .. } => {
+            AuthorizedSpacetimeTopic::WorkerLifecycle { .. } => {
                 ensure_scope(
                     principal,
                     normalized_topic,
@@ -232,7 +232,7 @@ impl SyncAuthorizer {
                     ],
                 )?;
             }
-            AuthorizedKhalaTopic::FleetWorkers { user_id } => {
+            AuthorizedSpacetimeTopic::FleetWorkers { user_id } => {
                 ensure_scope(
                     principal,
                     normalized_topic,
@@ -247,7 +247,7 @@ impl SyncAuthorizer {
                     });
                 }
             }
-            AuthorizedKhalaTopic::RunEvents { .. } => {
+            AuthorizedSpacetimeTopic::RunEvents { .. } => {
                 ensure_scope(principal, normalized_topic, &["runtime.run_events"])?;
             }
         }
@@ -272,10 +272,7 @@ impl SyncAuthorizer {
     }
 }
 
-fn normalize_stream_grants(
-    topics: Vec<String>,
-    streams: Vec<String>,
-) -> Option<HashSet<String>> {
+fn normalize_stream_grants(topics: Vec<String>, streams: Vec<String>) -> Option<HashSet<String>> {
     let mut grants = HashSet::new();
     for value in topics.into_iter().chain(streams) {
         let normalized = value.trim().to_string();
@@ -326,7 +323,7 @@ fn normalize_client_surface(client_surface: Option<&str>) -> Option<String> {
     }
 }
 
-fn parse_topic(topic: &str) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
+fn parse_topic(topic: &str) -> Result<AuthorizedSpacetimeTopic, SyncAuthError> {
     if topic.is_empty() {
         return Err(SyncAuthError::ForbiddenTopic {
             topic: topic.to_string(),
@@ -334,13 +331,13 @@ fn parse_topic(topic: &str) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
     }
 
     if topic == "runtime.codex_worker_events" {
-        return Ok(AuthorizedKhalaTopic::CodexWorkerEvents);
+        return Ok(AuthorizedSpacetimeTopic::CodexWorkerEvents);
     }
 
     if let Some(rest) = topic.strip_prefix("worker:") {
         if let Some(worker_id) = rest.strip_suffix(":lifecycle") {
             if !worker_id.trim().is_empty() {
-                return Ok(AuthorizedKhalaTopic::WorkerLifecycle {
+                return Ok(AuthorizedSpacetimeTopic::WorkerLifecycle {
                     worker_id: worker_id.to_string(),
                 });
             }
@@ -351,7 +348,7 @@ fn parse_topic(topic: &str) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
         if let Some(user_id) = rest.strip_suffix(":workers") {
             let trimmed = user_id.trim();
             if let Ok(user_id) = trimmed.parse::<u64>() {
-                return Ok(AuthorizedKhalaTopic::FleetWorkers { user_id });
+                return Ok(AuthorizedSpacetimeTopic::FleetWorkers { user_id });
             }
         }
     }
@@ -359,7 +356,7 @@ fn parse_topic(topic: &str) -> Result<AuthorizedKhalaTopic, SyncAuthError> {
     if let Some(rest) = topic.strip_prefix("run:") {
         if let Some(run_id) = rest.strip_suffix(":events") {
             if !run_id.trim().is_empty() {
-                return Ok(AuthorizedKhalaTopic::RunEvents {
+                return Ok(AuthorizedSpacetimeTopic::RunEvents {
                     run_id: run_id.to_string(),
                 });
             }
@@ -400,7 +397,7 @@ mod tests {
     use jsonwebtoken::{EncodingKey, Header, encode};
 
     use super::{
-        AuthorizedKhalaTopic, SyncAuthConfig, SyncAuthError, SyncAuthorizer, SyncTokenClaims,
+        AuthorizedSpacetimeTopic, SyncAuthConfig, SyncAuthError, SyncAuthorizer, SyncTokenClaims,
     };
 
     fn make_token(claims: SyncTokenClaims, key: &str) -> String {
@@ -516,7 +513,7 @@ mod tests {
             .expect("worker topic should be allowed");
         assert_eq!(
             allowed,
-            AuthorizedKhalaTopic::WorkerLifecycle {
+            AuthorizedSpacetimeTopic::WorkerLifecycle {
                 worker_id: "desktopw:shared".to_string(),
             }
         );
@@ -526,7 +523,7 @@ mod tests {
             .expect("fleet topic should be allowed for bound user");
         assert_eq!(
             fleet_allowed,
-            AuthorizedKhalaTopic::FleetWorkers { user_id: 1 }
+            AuthorizedSpacetimeTopic::FleetWorkers { user_id: 1 }
         );
 
         let fleet_denied = authorizer

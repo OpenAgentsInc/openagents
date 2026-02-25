@@ -29,9 +29,9 @@ OA_CONTROL_STATUS_URL="https://<control-host>/api/status" \
 2. `runtime_sync_metrics`
    - Command: `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
    - Expectation: runtime publishes deterministic Spacetime delivery metrics.
-3. `runtime_retired_khala_routes`
-   - Command: `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
-   - Expectation: retired Khala internal routes remain removed with deterministic 404 behavior.
+3. `runtime_retired_spacetime_routes`
+   - Command: `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
+   - Expectation: retired Spacetime internal routes remain removed with deterministic 404 behavior.
 4. `shared_client_stale_cursor`
    - Command: `cargo test -p autopilot-spacetime subscribe_rejects_stale_cursor -- --nocapture`
    - Expectation: stale-cursor handling remains deterministic.

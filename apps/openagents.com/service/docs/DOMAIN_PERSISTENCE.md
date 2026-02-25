@@ -43,4 +43,4 @@ Config:
 
 - This module is persistence/repository groundwork for parity issues.
 - API handler parity for these domains is intentionally deferred to later OA-WEBPARITY issues.
-- Khala live delivery remains WS-only; this module introduces no SSE behavior.
+- Spacetime live delivery remains WS-only; this module introduces no SSE behavior.

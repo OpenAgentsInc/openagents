@@ -1,4 +1,4 @@
-# SpacetimeDB Full Replacement Plan (Khala Retirement)
+# SpacetimeDB Full Replacement Plan (Spacetime Retirement)
 
 Status: active implementation plan
 Date: 2026-02-25
@@ -6,12 +6,12 @@ Owner lanes: `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:docs`
 
 ## 1) Objective
 
-Replace Khala sync/replay delivery with SpacetimeDB as the canonical sync substrate for OpenAgents.
+Replace Spacetime sync/replay delivery with SpacetimeDB as the canonical sync substrate for OpenAgents.
 
 End state:
 
-1. All live sync/replay channels currently served by Khala are served by SpacetimeDB.
-2. Khala topic fanout/replay endpoints and protocol docs are retired.
+1. All live sync/replay channels currently served by Spacetime are served by SpacetimeDB.
+2. Spacetime topic fanout/replay endpoints and protocol docs are retired.
 3. Autopilot-to-Autopilot collaboration and runtime sync share one SpacetimeDB transport and state model.
 4. Hydra/Aegis authority domains remain intact and continue using authenticated command boundaries.
 
@@ -32,9 +32,9 @@ Checked authorities:
 
 Implication:
 
-1. Current ADR/invariant language still names Khala as the WS sync lane.
+1. Current ADR/invariant language still names Spacetime as the WS sync lane.
 2. Full replacement requires a superseding ADR and invariant updates before production cutover.
-3. Until supersession lands, Khala remains implemented reality and Spacetime work is replacement program execution.
+3. Until supersession lands, Spacetime remains implemented reality and Spacetime work is replacement program execution.
 
 ## 4) SpacetimeDB Mechanics We Must Design Around
 
@@ -57,7 +57,7 @@ These are direct implementation-relevant findings from `/Users/christopherdavid/
 ### 5.1 Sync ownership
 
 1. SpacetimeDB becomes the single live sync/replay transport for retained OpenAgents surfaces.
-2. Khala is demoted to deprecation lane, then removed.
+2. Spacetime is demoted to deprecation lane, then removed.
 3. Nostr remains interoperability and marketplace surface, not in-domain primary sync.
 
 ### 5.2 Authority boundaries
@@ -107,9 +107,9 @@ Reducer rules:
 4. Client apply path stays idempotent and monotonic.
 5. Confirmed-read mode is enabled for authority-sensitive streams that require durability-gated delivery.
 
-## 6) Mapping From Khala Semantics
+## 6) Mapping From Spacetime Semantics
 
-Khala semantics to preserve in Spacetime replacement:
+Spacetime semantics to preserve in Spacetime replacement:
 
 1. `(topic, seq)` monotonic apply discipline -> `(stream_id, seq)` monotonic apply discipline.
 2. Replay-first then live-tail semantics.
@@ -121,15 +121,15 @@ Khala semantics to preserve in Spacetime replacement:
 
 ### A) Governance and contracts
 
-1. Add superseding ADR: SpacetimeDB sync authority replacing Khala transport ADR scope.
-2. Update `docs/plans/rust-migration-invariant-gates.md` to replace Khala-specific transport gates with Spacetime sync gates.
+1. Add superseding ADR: SpacetimeDB sync authority replacing Spacetime transport ADR scope.
+2. Update `docs/plans/rust-migration-invariant-gates.md` to replace Spacetime-specific transport gates with Spacetime sync gates.
 3. Add/extend proto contracts for sync envelopes, checkpoints, errors, and compatibility negotiation.
 
 ### B) Runtime/control integration
 
 1. Control service issues short-lived Spacetime websocket claims bound to user/device/session scope.
 2. Runtime service publishes authoritative projection events into Spacetime-compatible reducer APIs.
-3. Runtime removes dependency on Khala-specific fanout after cutover.
+3. Runtime removes dependency on Spacetime-specific fanout after cutover.
 
 ### C) Desktop and shared crates
 
@@ -144,9 +144,9 @@ Khala semantics to preserve in Spacetime replacement:
 
 ### E) Deletion and retirement
 
-1. Remove Khala protocol mapping docs and runbooks after cutover acceptance.
-2. Remove runtime Khala endpoints and tests once Spacetime parity gates are green.
-3. Remove control-issued Khala token paths.
+1. Remove Spacetime protocol mapping docs and runbooks after cutover acceptance.
+2. Remove runtime Spacetime endpoints and tests once Spacetime parity gates are green.
+3. Remove control-issued Spacetime token paths.
 
 ## 8) Execution Phases
 
@@ -164,7 +164,7 @@ Gate:
 
 1. Land proto envelope/checkpoint/error schemas.
 2. Build `crates/autopilot-spacetime` client with deterministic codec and replay helpers.
-3. Add dual-stack test harness (Khala baseline vs Spacetime candidate outputs).
+3. Add dual-stack test harness (Spacetime baseline vs Spacetime candidate outputs).
 
 Gate:
 
@@ -193,22 +193,22 @@ Gate:
 ### Phase 4: Runtime/control cutover
 
 1. Move runtime projection feed and worker/event sync lanes to Spacetime.
-2. Disable Khala token minting and WS subscription paths in staged cohorts.
+2. Disable Spacetime token minting and WS subscription paths in staged cohorts.
 3. Validate compatibility negotiation and client upgrade UX.
 
 Gate:
 
 1. No unresolved replay correctness regressions in staging soak.
 
-### Phase 5: Khala retirement
+### Phase 5: Spacetime retirement
 
-1. Delete Khala runtime fanout/replay endpoints.
-2. Remove Khala protocol docs and fixtures from active authority set.
+1. Delete Spacetime runtime fanout/replay endpoints.
+2. Remove Spacetime protocol docs and fixtures from active authority set.
 3. Archive retired materials to backroom.
 
 Gate:
 
-1. Two release cycles with zero Khala dependency in retained surfaces.
+1. Two release cycles with zero Spacetime dependency in retained surfaces.
 
 ## 9) Verification Matrix
 
@@ -222,7 +222,7 @@ Gate:
 ## 10) Success Criteria
 
 1. `apps/autopilot-desktop` and retained clients rely on Spacetime for live sync/replay.
-2. Khala endpoints are removed from runtime/control production paths.
+2. Spacetime endpoints are removed from runtime/control production paths.
 3. Sync SLOs meet or exceed pre-cutover baseline.
 4. Hydra/Aegis correctness and receipt integrity are unchanged.
 

@@ -103,7 +103,7 @@ total_duration=0
 
 run_scenario "replay_resume_harness" "./scripts/spacetime/replay-resume-parity-harness.sh"
 run_scenario "runtime_sync_metrics" "cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture"
-run_scenario "runtime_retired_khala_routes" "cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture"
+run_scenario "runtime_retired_spacetime_routes" "cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture"
 run_scenario "shared_client_stale_cursor" "cargo test -p autopilot-spacetime subscribe_rejects_stale_cursor -- --nocapture"
 run_scenario "shared_client_reconnect_helpers" "cargo test -p autopilot-spacetime reconnect_resume_helpers_plan_rebootstrap_and_backoff -- --nocapture"
 run_scenario "shared_client_reconnect_storm" "cargo test -p autopilot-spacetime reconnect_storm_resubscribe_keeps_duplicate_delivery_deterministic -- --nocapture"

@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+  pull_request_target:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        php: [7.1, 7.2, 7.3, 7.4, 8.0, 8.1]
+        stability: [prefer-lowest, prefer-stable]
+
+    name: PHP ${{ matrix.php }} - ${{ matrix.stability }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+
+      - name: Install dev dependencies
+        run: composer update --dev --prefer-stable --prefer-dist --no-interaction --no-progress
+
+      - name: Run PHP CS Fixer
+        run: composer test:style
+
+      - name: Execute tests
+        run: composer test:unit

@@ -14,7 +14,7 @@ Checked authorities (required by `AGENTS.md`):
 - ADRs:
   - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
   - `docs/adr/ADR-0002-proto-first-contract-governance.md`
-  - `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
+  - `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
   - `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
   - `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
 
@@ -22,7 +22,7 @@ Normative constraints this plan must obey:
 
 - Proto-first for cross-boundary contracts (`INV-01`, `ADR-0002`). JSON is an *interop view*, not contract authority.
 - Authority mutations are authenticated HTTP only (`INV-02`).
-- Live delivery lanes are WS-only for Khala (`INV-03`, `ADR-0003`). SSE exists only as a bounded presentation adapter (`ADR-0008`).
+- Live delivery lanes are WS-only for Spacetime (`INV-03`, `ADR-0003`). SSE exists only as a bounded presentation adapter (`ADR-0008`).
 - Wallet executor is the payment signing authority. Control-plane must **not** store mnemonics or other seed material in plaintext (`ADR-0006`).
 - Rust-only endstate (`ADR-0001`). Any PHP/TypeScript implementation of core product behavior is migration debt to delete once Rust parity lands.
 - `.github/` workflow automation is forbidden (`INV-12`).

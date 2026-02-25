@@ -20,7 +20,7 @@ pub struct ClientCompatibilityHandshake {
 #[serde(rename_all = "snake_case")]
 pub enum CompatibilitySurface {
     ControlApi,
-    KhalaWebSocket,
+    SpacetimeWebSocket,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,7 +191,7 @@ mod tests {
         };
 
         let result =
-            negotiate_compatibility(CompatibilitySurface::KhalaWebSocket, &handshake, &window());
+            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
         assert!(result.is_ok());
     }
 
@@ -213,7 +213,7 @@ mod tests {
     fn negotiation_rejects_protocol_mismatch() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "20260221T130000Z".to_string(),
-            protocol_version: "khala.ws.v2".to_string(),
+            protocol_version: "spacetime.ws.v2".to_string(),
             schema_version: 1,
         };
 
@@ -247,7 +247,7 @@ mod tests {
         };
 
         let result =
-            negotiate_compatibility(CompatibilitySurface::KhalaWebSocket, &handshake, &window());
+            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
         let error = result.expect_err("old client should fail");
         assert_eq!(error.code, "upgrade_required");
         assert!(error.message.contains("minimum supported"));
@@ -262,7 +262,7 @@ mod tests {
         };
 
         let result =
-            negotiate_compatibility(CompatibilitySurface::KhalaWebSocket, &handshake, &window());
+            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
         let error = result.expect_err("too new client should fail");
         assert_eq!(error.code, "unsupported_client_build");
     }

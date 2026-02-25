@@ -90,9 +90,9 @@ if [[ "$SKIP_REMOTE" -eq 0 ]]; then
   curl -fsS "${RUNTIME_BASE_URL%/}/internal/v1/spacetime/sync/metrics" >"$RUNTIME_JSON"
 
   control_transport="$(jq -r '.data.syncCutover.defaultTransport // empty' "$CONTROL_JSON")"
-  control_legacy_emergency="$(jq -r '.data.syncCutover.legacyEmergencyModeEnabled // .data.syncCutover.khalaEmergencyModeEnabled // empty' "$CONTROL_JSON")"
+  control_legacy_emergency="$(jq -r '.data.syncCutover.legacyEmergencyModeEnabled // .data.syncCutover.spacetimeEmergencyModeEnabled // empty' "$CONTROL_JSON")"
   runtime_transport="$(jq -r '.transport // empty' "$RUNTIME_JSON")"
-  runtime_legacy_emergency="$(jq -r '.legacy_sync_emergency_mode_enabled // .khala_emergency_mode_enabled // empty' "$RUNTIME_JSON")"
+  runtime_legacy_emergency="$(jq -r '.legacy_sync_emergency_mode_enabled // .spacetime_emergency_mode_enabled // empty' "$RUNTIME_JSON")"
 
   decision="allow"
   if [[ "$control_transport" != "spacetime_ws" || "$runtime_transport" != "spacetime_ws" ]]; then
@@ -111,10 +111,10 @@ cat >"$RESULTS_JSON" <<EOF
   "timestamp_utc": "$timestamp",
   "control_transport": "$control_transport",
   "control_legacy_sync_emergency_mode_enabled": "$control_legacy_emergency",
-  "control_khala_emergency_mode_enabled": "$control_legacy_emergency",
+  "control_spacetime_emergency_mode_enabled": "$control_legacy_emergency",
   "runtime_transport": "$runtime_transport",
   "runtime_legacy_sync_emergency_mode_enabled": "$runtime_legacy_emergency",
-  "runtime_khala_emergency_mode_enabled": "$runtime_legacy_emergency",
+  "runtime_spacetime_emergency_mode_enabled": "$runtime_legacy_emergency",
   "decision": "$decision",
   "skip_remote": $SKIP_REMOTE
 }

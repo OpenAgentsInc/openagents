@@ -9,7 +9,7 @@ Desktop runtime sync now enforces deterministic client apply semantics keyed by 
 
 Implementation surface:
 - `apps/autopilot-desktop/src/sync_apply_engine.rs`
-- `apps/autopilot-desktop/src/main.rs` (`process_khala_update_batch`)
+- `apps/autopilot-desktop/src/main.rs` (`process_spacetime_update_batch`)
 
 ## Contract
 

@@ -1,0 +1,134 @@
+{
+  "generated_at": "20260222T174951Z",
+  "scenarios": [
+    {
+      "description": "Legacy Vercel stream shape with Codex text + reasoning deltas.",
+      "events": [
+        {
+          "source": "codex",
+          "threadId": "thr_text",
+          "type": "start"
+        },
+        {
+          "model": "gpt-5.2-codex",
+          "threadId": "thr_text",
+          "turnId": "turn_text",
+          "type": "start-step"
+        },
+        {
+          "id": "item_text_1",
+          "turnId": "turn_text",
+          "type": "text-start"
+        },
+        {
+          "channel": "assistant",
+          "delta": "Hello from Codex",
+          "id": "item_text_1",
+          "type": "text-delta"
+        },
+        {
+          "channel": "reasoning",
+          "delta": "Inspecting context",
+          "id": "item_text_1",
+          "type": "text-delta"
+        },
+        {
+          "status": "completed",
+          "turnId": "turn_text",
+          "type": "finish-step"
+        },
+        {
+          "status": "completed",
+          "type": "finish"
+        }
+      ],
+      "id": "success_text_reasoning",
+      "wire": "data: {\"source\":\"codex\",\"threadId\":\"thr_text\",\"type\":\"start\"}\\n\\ndata: {\"model\":\"gpt-5.2-codex\",\"threadId\":\"thr_text\",\"turnId\":\"turn_text\",\"type\":\"start-step\"}\\n\\ndata: {\"id\":\"item_text_1\",\"turnId\":\"turn_text\",\"type\":\"text-start\"}\\n\\ndata: {\"channel\":\"assistant\",\"delta\":\"Hello from Codex\",\"id\":\"item_text_1\",\"type\":\"text-delta\"}\\n\\ndata: {\"channel\":\"reasoning\",\"delta\":\"Inspecting context\",\"id\":\"item_text_1\",\"type\":\"text-delta\"}\\n\\ndata: {\"status\":\"completed\",\"turnId\":\"turn_text\",\"type\":\"finish-step\"}\\n\\ndata: {\"status\":\"completed\",\"type\":\"finish\"}\\n\\ndata: [DONE]\\n\\n"
+    },
+    {
+      "description": "Tool call input/output sequencing followed by assistant text.",
+      "events": [
+        {
+          "source": "codex",
+          "threadId": "thr_tool",
+          "type": "start"
+        },
+        {
+          "model": "gpt-5.2-codex",
+          "threadId": "thr_tool",
+          "turnId": "turn_tool",
+          "type": "start-step"
+        },
+        {
+          "input": {
+            "q": "openagents status"
+          },
+          "toolCallId": "tool_call_1",
+          "toolName": "web.search",
+          "type": "tool-input"
+        },
+        {
+          "delta": "{\"result\":\"ok\"}",
+          "toolCallId": "tool_call_1",
+          "type": "tool-output"
+        },
+        {
+          "status": "completed",
+          "toolCallId": "tool_call_1",
+          "type": "tool-output"
+        },
+        {
+          "id": "item_text_2",
+          "turnId": "turn_tool",
+          "type": "text-start"
+        },
+        {
+          "channel": "assistant",
+          "delta": "Tool completed successfully",
+          "id": "item_text_2",
+          "type": "text-delta"
+        },
+        {
+          "status": "completed",
+          "turnId": "turn_tool",
+          "type": "finish-step"
+        },
+        {
+          "status": "completed",
+          "type": "finish"
+        }
+      ],
+      "id": "success_tool_then_text",
+      "wire": "data: {\"source\":\"codex\",\"threadId\":\"thr_tool\",\"type\":\"start\"}\\n\\ndata: {\"model\":\"gpt-5.2-codex\",\"threadId\":\"thr_tool\",\"turnId\":\"turn_tool\",\"type\":\"start-step\"}\\n\\ndata: {\"input\":{\"q\":\"openagents status\"},\"toolCallId\":\"tool_call_1\",\"toolName\":\"web.search\",\"type\":\"tool-input\"}\\n\\ndata: {\"delta\":\"{\\\"result\\\":\\\"ok\\\"}\",\"toolCallId\":\"tool_call_1\",\"type\":\"tool-output\"}\\n\\ndata: {\"status\":\"completed\",\"toolCallId\":\"tool_call_1\",\"type\":\"tool-output\"}\\n\\ndata: {\"id\":\"item_text_2\",\"turnId\":\"turn_tool\",\"type\":\"text-start\"}\\n\\ndata: {\"channel\":\"assistant\",\"delta\":\"Tool completed successfully\",\"id\":\"item_text_2\",\"type\":\"text-delta\"}\\n\\ndata: {\"status\":\"completed\",\"turnId\":\"turn_tool\",\"type\":\"finish-step\"}\\n\\ndata: {\"status\":\"completed\",\"type\":\"finish\"}\\n\\ndata: [DONE]\\n\\n"
+    },
+    {
+      "description": "In-stream codex error maps to terminal error + finish + done.",
+      "events": [
+        {
+          "source": "codex",
+          "threadId": "thr_error",
+          "type": "start"
+        },
+        {
+          "model": "gpt-5.2-codex",
+          "threadId": "thr_error",
+          "turnId": "turn_error",
+          "type": "start-step"
+        },
+        {
+          "code": "codex_error",
+          "message": "runtime unavailable",
+          "retryable": false,
+          "type": "error"
+        },
+        {
+          "status": "error",
+          "type": "finish"
+        }
+      ],
+      "id": "in_stream_error",
+      "wire": "data: {\"source\":\"codex\",\"threadId\":\"thr_error\",\"type\":\"start\"}\\n\\ndata: {\"model\":\"gpt-5.2-codex\",\"threadId\":\"thr_error\",\"turnId\":\"turn_error\",\"type\":\"start-step\"}\\n\\ndata: {\"code\":\"codex_error\",\"message\":\"runtime unavailable\",\"retryable\":false,\"type\":\"error\"}\\n\\ndata: {\"status\":\"error\",\"type\":\"finish\"}\\n\\ndata: [DONE]\\n\\n"
+    }
+  ],
+  "schema": "openagents.webparity.vercel_sse_fixture_output.v1"
+}

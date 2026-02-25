@@ -55,7 +55,10 @@ pub fn query_plan(query: &SubscriptionQuerySet) -> QueryPlan {
 
 /// Returns missing index names required for a query plan.
 pub fn missing_indexes(plan: &QueryPlan) -> Vec<String> {
-    let available = CORE_INDEXES.iter().map(|index| index.name).collect::<Vec<_>>();
+    let available = CORE_INDEXES
+        .iter()
+        .map(|index| index.name)
+        .collect::<Vec<_>>();
     plan.required_index_names
         .iter()
         .filter(|required| !available.contains(required))
@@ -97,4 +100,3 @@ mod tests {
         assert!(missing.is_empty(), "missing indexes: {missing:?}");
     }
 }
-

@@ -237,7 +237,7 @@ impl RuntimeApiError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KhalaLifecycleDisconnectReason {
+pub enum SpacetimeLifecycleDisconnectReason {
     StreamClosed,
     GatewayRestart,
     StaleCursor,
@@ -260,13 +260,13 @@ pub const URLERR_TIMED_OUT: i32 = -1001;
 pub const URLERR_CANNOT_CONNECT_TO_HOST: i32 = -1004;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct KhalaReconnectPolicy {
+pub struct SpacetimeReconnectPolicy {
     pub base_delay_ms: u64,
     pub max_delay_ms: u64,
     pub jitter_ratio: f64,
 }
 
-impl Default for KhalaReconnectPolicy {
+impl Default for SpacetimeReconnectPolicy {
     fn default() -> Self {
         Self {
             base_delay_ms: 250,
@@ -276,7 +276,7 @@ impl Default for KhalaReconnectPolicy {
     }
 }
 
-impl KhalaReconnectPolicy {
+impl SpacetimeReconnectPolicy {
     pub fn delay_ms(&self, attempt: u32, jitter_unit: f64) -> u64 {
         if attempt == 0 {
             return 0;
@@ -297,22 +297,22 @@ impl KhalaReconnectPolicy {
 
 pub fn classify_reconnect_error(
     error: &ReconnectClassifiableError,
-) -> KhalaLifecycleDisconnectReason {
+) -> SpacetimeLifecycleDisconnectReason {
     match error {
         ReconnectClassifiableError::Runtime(runtime_error) => match runtime_error.code {
-            RuntimeApiErrorCode::Auth => KhalaLifecycleDisconnectReason::Unauthorized,
-            RuntimeApiErrorCode::Forbidden => KhalaLifecycleDisconnectReason::Forbidden,
-            RuntimeApiErrorCode::Conflict => KhalaLifecycleDisconnectReason::StaleCursor,
+            RuntimeApiErrorCode::Auth => SpacetimeLifecycleDisconnectReason::Unauthorized,
+            RuntimeApiErrorCode::Forbidden => SpacetimeLifecycleDisconnectReason::Forbidden,
+            RuntimeApiErrorCode::Conflict => SpacetimeLifecycleDisconnectReason::StaleCursor,
             RuntimeApiErrorCode::Network => {
                 let message = runtime_error.message.to_ascii_lowercase();
                 if message.contains("stream_closed") || message.contains("reply_cancelled") {
-                    KhalaLifecycleDisconnectReason::StreamClosed
+                    SpacetimeLifecycleDisconnectReason::StreamClosed
                 } else {
-                    KhalaLifecycleDisconnectReason::Network
+                    SpacetimeLifecycleDisconnectReason::Network
                 }
             }
             RuntimeApiErrorCode::Invalid | RuntimeApiErrorCode::Unknown => {
-                KhalaLifecycleDisconnectReason::Unknown
+                SpacetimeLifecycleDisconnectReason::Unknown
             }
         },
         ReconnectClassifiableError::NetworkCode(code)
@@ -321,10 +321,10 @@ pub fn classify_reconnect_error(
                 URLERR_NETWORK_CONNECTION_LOST | URLERR_TIMED_OUT | URLERR_CANNOT_CONNECT_TO_HOST
             ) =>
         {
-            KhalaLifecycleDisconnectReason::GatewayRestart
+            SpacetimeLifecycleDisconnectReason::GatewayRestart
         }
-        ReconnectClassifiableError::NetworkCode(_) => KhalaLifecycleDisconnectReason::Network,
-        ReconnectClassifiableError::Other => KhalaLifecycleDisconnectReason::Unknown,
+        ReconnectClassifiableError::NetworkCode(_) => SpacetimeLifecycleDisconnectReason::Network,
+        ReconnectClassifiableError::Other => SpacetimeLifecycleDisconnectReason::Unknown,
     }
 }
 
@@ -347,14 +347,14 @@ pub enum HandshakeState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct KhalaLifecycleSnapshot {
+pub struct SpacetimeLifecycleSnapshot {
     pub connect_attempts: u32,
     pub reconnect_attempts: u32,
     pub successful_sessions: u32,
     pub recovered_sessions: u32,
     pub last_backoff_ms: u64,
     pub last_recovery_latency_ms: u64,
-    pub last_disconnect_reason: Option<KhalaLifecycleDisconnectReason>,
+    pub last_disconnect_reason: Option<SpacetimeLifecycleDisconnectReason>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1037,8 +1037,8 @@ mod tests {
     }
 
     #[test]
-    fn khala_reconnect_policy_uses_bounded_backoff() {
-        let policy = KhalaReconnectPolicy::default();
+    fn spacetime_reconnect_policy_uses_bounded_backoff() {
+        let policy = SpacetimeReconnectPolicy::default();
 
         assert_eq!(policy.delay_ms(1, 0.0), 250);
         assert_eq!(policy.delay_ms(2, 0.0), 500);
@@ -1048,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn khala_reconnect_classifier_maps_failure_classes() {
+    fn spacetime_reconnect_classifier_maps_failure_classes() {
         let unauthorized = ReconnectClassifiableError::Runtime(RuntimeApiError::new(
             "unauthorized",
             RuntimeApiErrorCode::Auth,
@@ -1060,7 +1060,7 @@ mod tests {
             Some(409),
         ));
         let stream_closed = ReconnectClassifiableError::Runtime(RuntimeApiError::new(
-            "khala_stream_closed",
+            "spacetime_stream_closed",
             RuntimeApiErrorCode::Network,
             None,
         ));
@@ -1069,19 +1069,19 @@ mod tests {
 
         assert_eq!(
             classify_reconnect_error(&unauthorized),
-            KhalaLifecycleDisconnectReason::Unauthorized
+            SpacetimeLifecycleDisconnectReason::Unauthorized
         );
         assert_eq!(
             classify_reconnect_error(&stale_cursor),
-            KhalaLifecycleDisconnectReason::StaleCursor
+            SpacetimeLifecycleDisconnectReason::StaleCursor
         );
         assert_eq!(
             classify_reconnect_error(&stream_closed),
-            KhalaLifecycleDisconnectReason::StreamClosed
+            SpacetimeLifecycleDisconnectReason::StreamClosed
         );
         assert_eq!(
             classify_reconnect_error(&gateway_restart),
-            KhalaLifecycleDisconnectReason::GatewayRestart
+            SpacetimeLifecycleDisconnectReason::GatewayRestart
         );
     }
 

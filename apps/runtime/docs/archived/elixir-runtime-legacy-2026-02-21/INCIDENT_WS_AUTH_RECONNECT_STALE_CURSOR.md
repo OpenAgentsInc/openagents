@@ -1,6 +1,6 @@
 # WS/Auth/Stale-Cursor Incident Runbook
 
-Runbook scope: migration-critical websocket/auth/replay incidents for runtime + Khala.
+Runbook scope: migration-critical websocket/auth/replay incidents for runtime + Spacetime.
 
 ## Detection Map
 
@@ -9,7 +9,7 @@ Primary alerts:
 - `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh`
 - `OpenAgentsRuntimeSyncSocketTimeoutRateHigh`
 - `OpenAgentsRuntimeSyncStaleCursorSpike`
-- `OpenAgentsKhalaTokenMintFailureRatioHigh`
+- `OpenAgentsSpacetimeTokenMintFailureRatioHigh`
 
 Dashboards:
 
@@ -17,7 +17,7 @@ Dashboards:
   - `Sync Socket Auth Failure Ratio`
   - `Sync Socket Timeout Rate`
   - `Sync Stale Cursor Incidents (10m)`
-  - `Khala Token Mint Failure Ratio`
+  - `Spacetime Token Mint Failure Ratio`
 
 ## Global Triage Checklist
 
@@ -50,7 +50,7 @@ gcloud logging read \
 Triggers:
 
 - `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh`
-- `OpenAgentsKhalaTokenMintFailureRatioHigh`
+- `OpenAgentsSpacetimeTokenMintFailureRatioHigh`
 
 Likely causes:
 
@@ -87,7 +87,7 @@ Trigger:
 Likely causes:
 
 - websocket heartbeat timeout tuning mismatch
-- client reconnect storm after runtime/Khala restart
+- client reconnect storm after runtime/Spacetime restart
 - upstream network path instability
 
 Actions:

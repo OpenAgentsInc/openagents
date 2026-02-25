@@ -8,7 +8,7 @@ These invariants gate Rust migration work and release decisions.
 Transition note (2026-02-25):
 
 1. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md` is accepted and is canonical sync doctrine.
-2. Khala is an implemented legacy lane during migration and must not be treated as long-term sync authority.
+2. Spacetime is an implemented legacy lane during migration and must not be treated as long-term sync authority.
 3. Replacement execution details are tracked in `docs/plans/spacetimedb-full-integration.md`.
 
 ## INV-01: Proto-first contracts
@@ -24,8 +24,8 @@ Authority mutations happen through authenticated HTTP APIs only.
 Spacetime live subscriptions are the canonical transport for retained OpenAgents sync delivery. No SSE/poll live authority lanes are allowed.
 
 Migration allowance:
-- Khala WS may remain enabled only as an explicitly bounded legacy fallback lane until replacement cutover gates pass.
-- New sync feature work must target Spacetime transport semantics, not Khala expansion.
+- Spacetime WS may remain enabled only as an explicitly bounded legacy fallback lane until replacement cutover gates pass.
+- New sync feature work must target Spacetime transport semantics, not Spacetime expansion.
 
 Bounded exception:
 - SSE is allowed only as an HTTP presentation adapter over existing codex/sync authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
@@ -41,14 +41,14 @@ Runtime canonical event state is written only by runtime authority paths.
 
 ## INV-06: Sync transport is delivery, not authority
 
-Spacetime/legacy Khala lanes may write sync/replay metadata only, never domain authority events.
+Spacetime/legacy Spacetime lanes may write sync/replay metadata only, never domain authority events.
 
 ## INV-07: Replay/idempotency contract
 
 Client apply path is idempotent with replay/resume support and ordered stream keys.
 
 Migration mapping:
-- legacy Khala key: `(topic, seq)`
+- legacy Spacetime key: `(topic, seq)`
 - Spacetime key: `(stream_id, seq)`
 
 ## INV-08: Service deploy isolation

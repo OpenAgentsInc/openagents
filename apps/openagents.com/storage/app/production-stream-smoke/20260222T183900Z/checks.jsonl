@@ -1,0 +1,20 @@
+{
+  "check_id": "runtime-chat-stream",
+  "status": "pass",
+  "endpoint": "/api/chat/stream",
+  "detail": "stream contract verified",
+  "http_status": "200",
+  "headers_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-smoke/20260222T183900Z/runtime-chat-stream.headers",
+  "body_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-smoke/20260222T183900Z/runtime-chat-stream.body",
+  "recorded_at": "2026-02-22T18:30:22Z"
+}
+{
+  "check_id": "runtime-chats-stream",
+  "status": "pass",
+  "endpoint": "/api/chats/thread_prod_stream_smoke_20260222t183022z/stream",
+  "detail": "stream contract verified",
+  "http_status": "200",
+  "headers_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-smoke/20260222T183900Z/runtime-chats-stream.headers",
+  "body_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/production-stream-smoke/20260222T183900Z/runtime-chats-stream.body",
+  "recorded_at": "2026-02-22T18:30:22Z"
+}

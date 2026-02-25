@@ -113,9 +113,9 @@ Before reattempting promotion:
 3. Replay/resume/security/chaos gates re-run and attached.
 4. Operator signoff re-confirmed.
 
-## Khala Retirement Gate
+## Spacetime Retirement Gate
 
-Khala endpoint removal is allowed only when:
+Spacetime endpoint removal is allowed only when:
 
 1. Two release cycles complete with no required fallback usage.
 2. All acceptance gates remain green through full production cohorts.

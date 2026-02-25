@@ -28,12 +28,12 @@ Completed baseline capabilities:
 
 1. Runtime publishes retained sync events through Spacetime publisher path.
 2. Runtime exposes sync observability at `/internal/v1/spacetime/sync/metrics`.
-3. Retired runtime Khala internal endpoints return deterministic `404` and are no longer active authority lanes.
+3. Retired runtime Spacetime internal endpoints return deterministic `404` and are no longer active authority lanes.
 4. Control service issues scoped sync claims through canonical Spacetime token endpoint.
 
 Remaining closure work:
 
-1. Remove remaining Khala-named compatibility references in docs/tooling when touched.
+1. Remove remaining Spacetime-named compatibility references in docs/tooling when touched.
 2. Keep replay/resume/chaos harnesses green across runtime/shared-client/desktop.
 3. Complete final migration audit and residual debt closure.
 
@@ -64,7 +64,7 @@ Done when:
 Verification:
 
 - `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
-- `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
+- `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 ### SYNC-003: Cross-Surface Replay/Resume Reliability
 

@@ -28,7 +28,7 @@ pub mod domain {
         RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunStatus as WireRuntimeRunStatus,
         runtime_run_event,
     };
-    use crate::wire::openagents::sync::v1::{KhalaFrame as WireKhalaFrame, KhalaFrameKind};
+    use crate::wire::openagents::sync::v1::{SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind};
 
     /// Conversion failures from wire-level payloads.
     #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -65,17 +65,17 @@ pub mod domain {
 
     /// Domain-level representation for a legacy sync frame.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct KhalaFrame {
+    pub struct SpacetimeFrame {
         pub topic: String,
         pub seq: u64,
-        pub kind: KhalaFrameDomainKind,
+        pub kind: SpacetimeFrameDomainKind,
         pub payload_bytes: Vec<u8>,
         pub schema_version: u32,
     }
 
-    /// Stable domain enum mapped from proto `KhalaFrameKind`.
+    /// Stable domain enum mapped from proto `SpacetimeFrameKind`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum KhalaFrameDomainKind {
+    pub enum SpacetimeFrameDomainKind {
         Subscribed,
         UpdateBatch,
         Heartbeat,
@@ -150,11 +150,11 @@ pub mod domain {
         Other,
     }
 
-    impl TryFrom<WireKhalaFrame> for KhalaFrame {
+    impl TryFrom<WireSpacetimeFrame> for SpacetimeFrame {
         type Error = ConversionError;
 
-        fn try_from(value: WireKhalaFrame) -> Result<Self, Self::Error> {
-            require_non_empty(&value.topic, "KhalaFrame", "topic")?;
+        fn try_from(value: WireSpacetimeFrame) -> Result<Self, Self::Error> {
+            require_non_empty(&value.topic, "SpacetimeFrame", "topic")?;
 
             Ok(Self {
                 topic: value.topic,
@@ -166,8 +166,8 @@ pub mod domain {
         }
     }
 
-    impl From<KhalaFrame> for WireKhalaFrame {
-        fn from(value: KhalaFrame) -> Self {
+    impl From<SpacetimeFrame> for WireSpacetimeFrame {
+        fn from(value: SpacetimeFrame) -> Self {
             Self {
                 topic: value.topic,
                 seq: value.seq,
@@ -405,27 +405,27 @@ pub mod domain {
         }
     }
 
-    fn kind_from_i32(raw: i32) -> KhalaFrameDomainKind {
-        if raw == KhalaFrameKind::Subscribed as i32 {
-            KhalaFrameDomainKind::Subscribed
-        } else if raw == KhalaFrameKind::UpdateBatch as i32 {
-            KhalaFrameDomainKind::UpdateBatch
-        } else if raw == KhalaFrameKind::Heartbeat as i32 {
-            KhalaFrameDomainKind::Heartbeat
-        } else if raw == KhalaFrameKind::Error as i32 {
-            KhalaFrameDomainKind::Error
+    fn kind_from_i32(raw: i32) -> SpacetimeFrameDomainKind {
+        if raw == SpacetimeFrameKind::Subscribed as i32 {
+            SpacetimeFrameDomainKind::Subscribed
+        } else if raw == SpacetimeFrameKind::UpdateBatch as i32 {
+            SpacetimeFrameDomainKind::UpdateBatch
+        } else if raw == SpacetimeFrameKind::Heartbeat as i32 {
+            SpacetimeFrameDomainKind::Heartbeat
+        } else if raw == SpacetimeFrameKind::Error as i32 {
+            SpacetimeFrameDomainKind::Error
         } else {
-            KhalaFrameDomainKind::Unknown(raw)
+            SpacetimeFrameDomainKind::Unknown(raw)
         }
     }
 
-    fn kind_to_i32(kind: KhalaFrameDomainKind) -> i32 {
+    fn kind_to_i32(kind: SpacetimeFrameDomainKind) -> i32 {
         match kind {
-            KhalaFrameDomainKind::Subscribed => KhalaFrameKind::Subscribed as i32,
-            KhalaFrameDomainKind::UpdateBatch => KhalaFrameKind::UpdateBatch as i32,
-            KhalaFrameDomainKind::Heartbeat => KhalaFrameKind::Heartbeat as i32,
-            KhalaFrameDomainKind::Error => KhalaFrameKind::Error as i32,
-            KhalaFrameDomainKind::Unknown(raw) => raw,
+            SpacetimeFrameDomainKind::Subscribed => SpacetimeFrameKind::Subscribed as i32,
+            SpacetimeFrameDomainKind::UpdateBatch => SpacetimeFrameKind::UpdateBatch as i32,
+            SpacetimeFrameDomainKind::Heartbeat => SpacetimeFrameKind::Heartbeat as i32,
+            SpacetimeFrameDomainKind::Error => SpacetimeFrameKind::Error as i32,
+            SpacetimeFrameDomainKind::Unknown(raw) => raw,
         }
     }
 
@@ -554,7 +554,7 @@ pub mod domain {
 #[cfg(test)]
 mod tests {
     use crate::domain::{
-        ControlAuthSession, ControlSessionStatus, ConversionError, KhalaFrame, RuntimeRunEvent,
+        ControlAuthSession, ControlSessionStatus, ConversionError, SpacetimeFrame, RuntimeRunEvent,
         RuntimeRunEventPayloadKind,
     };
     use crate::wire::openagents::codex::v1::{
@@ -564,11 +564,11 @@ mod tests {
     use crate::wire::openagents::runtime::v1::{
         RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunFinishedPayload, runtime_run_event,
     };
-    use crate::wire::openagents::sync::v1::KhalaFrame as WireKhalaFrame;
+    use crate::wire::openagents::sync::v1::SpacetimeFrame as WireSpacetimeFrame;
 
     #[test]
-    fn khala_frame_wire_domain_round_trip() {
-        let wire = WireKhalaFrame {
+    fn spacetime_frame_wire_domain_round_trip() {
+        let wire = WireSpacetimeFrame {
             topic: "runtime.codex_worker_events".to_string(),
             seq: 42,
             kind: 2,
@@ -576,11 +576,11 @@ mod tests {
             schema_version: 1,
         };
 
-        let domain = KhalaFrame::try_from(wire.clone()).expect("wire to domain should succeed");
+        let domain = SpacetimeFrame::try_from(wire.clone()).expect("wire to domain should succeed");
         assert_eq!(domain.topic, "runtime.codex_worker_events");
         assert_eq!(domain.seq, 42);
 
-        let round_trip = WireKhalaFrame::from(domain);
+        let round_trip = WireSpacetimeFrame::from(domain);
         assert_eq!(round_trip, wire);
     }
 

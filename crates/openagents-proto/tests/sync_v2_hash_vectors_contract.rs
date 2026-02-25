@@ -30,7 +30,11 @@ fn canonical_json(value: &Value) -> String {
             serde_json::to_string(value).expect("scalar JSON should serialize")
         }
         Value::Array(items) => {
-            let body = items.iter().map(canonical_json).collect::<Vec<_>>().join(",");
+            let body = items
+                .iter()
+                .map(canonical_json)
+                .collect::<Vec<_>>()
+                .join(",");
             format!("[{body}]")
         }
         Value::Object(map) => {
@@ -79,4 +83,3 @@ fn sync_v2_hash_vectors_match_canonical_json_and_sha256() {
         );
     }
 }
-

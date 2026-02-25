@@ -23,8 +23,8 @@ MIGRATE_JOB="${MIGRATE_JOB:-runtime-migrate}"
 CONTROL_SERVICE="${CONTROL_SERVICE:-openagents-control-service}"
 
 RUN_RUNTIME_DRIFT_CHECK="${RUN_RUNTIME_DRIFT_CHECK:-1}"
-RUN_KHALA_CONTRACT_TESTS="${RUN_KHALA_CONTRACT_TESTS:-1}"
-RUN_SPACETIME_SYNC_CONTRACT_TESTS="${RUN_SPACETIME_SYNC_CONTRACT_TESTS:-${RUN_KHALA_CONTRACT_TESTS}}"
+RUN_SPACETIME_CONTRACT_TESTS="${RUN_SPACETIME_CONTRACT_TESTS:-1}"
+RUN_SPACETIME_SYNC_CONTRACT_TESTS="${RUN_SPACETIME_SYNC_CONTRACT_TESTS:-${RUN_SPACETIME_CONTRACT_TESTS}}"
 RUN_CROSS_SURFACE="${RUN_CROSS_SURFACE:-0}"
 RUN_LOG_PROBES="${RUN_LOG_PROBES:-1}"
 RUN_HTMX_PERF_CHECKS="${RUN_HTMX_PERF_CHECKS:-1}"
@@ -297,8 +297,8 @@ if [[ "${RUN_SPACETIME_SYNC_CONTRACT_TESTS}" == "1" ]]; then
   run_check \
     "spacetime-retired-route-guards" \
     "required" \
-    "retired khala internal routes remain removed" \
-    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::retired_khala_routes_return_not_found -- --nocapture
+    "retired spacetime internal routes remain removed" \
+    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::retired_spacetime_routes_return_not_found -- --nocapture
 else
   skip_check \
     "spacetime-sync-contract-tests" \
@@ -309,7 +309,7 @@ else
   skip_check \
     "spacetime-retired-route-guards" \
     "required" \
-    "retired khala internal routes remain removed" \
+    "retired spacetime internal routes remain removed" \
     "RUN_SPACETIME_SYNC_CONTRACT_TESTS=0"
 fi
 

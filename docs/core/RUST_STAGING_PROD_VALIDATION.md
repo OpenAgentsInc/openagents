@@ -83,7 +83,7 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
 
 ```bash
 cargo test --manifest-path apps/runtime/Cargo.toml server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
-cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_khala_routes_return_not_found -- --nocapture
+cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_spacetime_routes_return_not_found -- --nocapture
 ```
 
 4. Surface parity lane (optional)

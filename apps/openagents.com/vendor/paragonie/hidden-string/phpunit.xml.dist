@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/7.0/phpunit.xsd"
+    backupGlobals="false"
+    backupStaticAttributes="false"
+    bootstrap="./vendor/autoload.php"
+>
+    <testsuites>
+        <testsuite name="Paragonie/HiddenString Test Suite">
+            <directory suffix="Test.php">./test</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

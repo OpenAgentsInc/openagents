@@ -48,7 +48,7 @@ message CodexWorkerSummary {
   google.protobuf.Timestamp started_at = 9;
 
   google.protobuf.Struct metadata = 10;
-  CodexProjectionStatus khala_projection = 11;
+  CodexProjectionStatus spacetime_projection = 11;
 }
 
 message CodexWorkerCreateRequest {

@@ -32,10 +32,10 @@ Next available ADR: **ADR-0010**
    - Date: 2026-02-21
    - File: `docs/adr/ADR-0002-proto-first-contract-governance.md`
    - Source issue: `OA-RUST-075` (`#1890`)
-3. `ADR-0003` — Khala WS-only replay transport
+3. `ADR-0003` — Spacetime WS-only replay transport
    - Status: `Superseded`
    - Date: 2026-02-21
-   - File: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
+   - File: `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
    - Source issue: `OA-RUST-076` (`#1891`)
 4. `ADR-0004` — Rivet harvest posture and adoption boundaries
    - Status: `Accepted`

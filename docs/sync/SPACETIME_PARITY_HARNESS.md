@@ -5,8 +5,8 @@ Updated: 2026-02-25
 
 This is the active parity/replay harness reference for retained Spacetime sync lanes.
 
-Archived historical Khala shadow harness:
-- `docs/sync/archived/2026-02-25-khala-shadow-parity-harness.md`
+Archived historical Spacetime shadow harness:
+- `docs/sync/archived/2026-02-25-spacetime-shadow-parity-harness.md`
 
 ## Objective
 
@@ -21,7 +21,7 @@ Validate runtime publish/delivery metrics, retained route retirement guards, and
 ## Runtime Checks
 
 - `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
-- `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
+- `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 ## Shared Client Checks
 

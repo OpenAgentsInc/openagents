@@ -50,7 +50,7 @@ Research/optional context (not execution authority):
 
 1. Proto-first wire contracts (`INV-01`).
 2. Authority mutations over authenticated HTTP only (`INV-02`).
-3. Retained sync transport doctrine is Spacetime (`INV-03`); legacy Khala-named compatibility surfaces are migration debt, not canonical authority transport.
+3. Retained sync transport doctrine is Spacetime (`INV-03`); legacy Spacetime-named compatibility surfaces are migration debt, not canonical authority transport.
 4. Control-plane and runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
 5. Replay/idempotency is mandatory for ordered stream apply (`(stream_id, seq)` canonical; `(topic, seq)` may still appear in legacy compatibility paths) (`INV-07`).
 6. Service deploy isolation (`INV-08`) and migration discipline (`INV-09`).
@@ -216,7 +216,7 @@ Current internal API groups (implemented under `/internal/v1/*`):
    - `/healthz`, `/readyz`, `/internal/v1/openapi.json`
 2. Execution and replay:
    - `/runs*`, `/projectors/*`, `/internal/v1/spacetime/sync/metrics`
-   - retired runtime Khala internal endpoints are no longer active lanes
+   - retired runtime Spacetime internal endpoints are no longer active lanes
 3. Worker lifecycle:
    - `/workers*`
 4. Marketplace and dispatch:
@@ -258,7 +258,7 @@ Source of truth for runtime route inventory:
 Implemented responsibilities:
 
 1. Runtime auth flows (`RuntimeAuthSendCode`, `RuntimeAuthVerifyCode`, status/logout).
-2. Runtime Codex worker sync/control via control + retained sync transport (Spacetime canonical; legacy Khala-named framing remains compatibility debt in some client paths).
+2. Runtime Codex worker sync/control via control + retained sync transport (Spacetime canonical; legacy Spacetime-named framing remains compatibility debt in some client paths).
 3. Local identity lane via `UnifiedIdentity` (`load_or_init_identity`) persisted as local mnemonic.
 4. Provider controls:
    - liquidity provider online/offline/refresh/invoice
@@ -427,7 +427,7 @@ This sequencing is dependency-driven and aligns to the active plan set.
    - Expand API posture/economics/ops according to Hydra plan phases.
 5. Phase 4: Spacetime sync replacement
    - Keep Spacetime contracts/harnesses/runbooks as canonical retained sync doctrine.
-   - Continue removing remaining Khala-named compatibility debt in code/docs/tooling.
+   - Continue removing remaining Spacetime-named compatibility debt in code/docs/tooling.
 6. Phase 5: EP212 parity closure
    - Replace synthetic wallet/L402 behavior with custody-compliant executor-backed flows.
    - Complete self-serve paywall and settlement loop.
@@ -478,7 +478,7 @@ To keep this architecture fully truthful, these drifts are explicitly acknowledg
 1. Target-state "web landing-only" is not yet complete; control service still hosts broad web/API lanes.
 2. Aegis MVP is implemented, but advanced Aegis phases (checker market depth, broader underwriting/disputes, registry loops) are still open.
 3. EP212 parity work remains open on wallet custody realism, L402 tooling parity, and paywall self-serve earnings.
-4. Some clients/tooling still carry Khala-named compatibility framing and config that should be removed as follow-up migration debt.
+4. Some clients/tooling still carry Spacetime-named compatibility framing and config that should be removed as follow-up migration debt.
 
 ## Verification Baseline
 

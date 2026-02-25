@@ -82,31 +82,31 @@ pub struct Config {
     pub authority_write_mode: AuthorityWriteMode,
     pub fanout_driver: String,
     pub fanout_queue_capacity: usize,
-    pub khala_poll_default_limit: usize,
-    pub khala_poll_max_limit: usize,
-    pub khala_outbound_queue_limit: usize,
-    pub khala_fair_topic_slice_limit: usize,
-    pub khala_poll_min_interval_ms: u64,
-    pub khala_slow_consumer_lag_threshold: u64,
-    pub khala_slow_consumer_max_strikes: u32,
-    pub khala_consumer_registry_capacity: usize,
-    pub khala_reconnect_base_backoff_ms: u64,
-    pub khala_reconnect_jitter_ms: u64,
-    pub khala_emergency_mode_enabled: bool,
-    pub khala_enforce_origin: bool,
-    pub khala_allowed_origins: HashSet<String>,
-    pub khala_run_events_publish_rate_per_second: u32,
-    pub khala_worker_lifecycle_publish_rate_per_second: u32,
-    pub khala_codex_worker_events_publish_rate_per_second: u32,
-    pub khala_fallback_publish_rate_per_second: u32,
-    pub khala_run_events_replay_budget_events: u64,
-    pub khala_worker_lifecycle_replay_budget_events: u64,
-    pub khala_codex_worker_events_replay_budget_events: u64,
-    pub khala_fallback_replay_budget_events: u64,
-    pub khala_run_events_max_payload_bytes: usize,
-    pub khala_worker_lifecycle_max_payload_bytes: usize,
-    pub khala_codex_worker_events_max_payload_bytes: usize,
-    pub khala_fallback_max_payload_bytes: usize,
+    pub spacetime_poll_default_limit: usize,
+    pub spacetime_poll_max_limit: usize,
+    pub spacetime_outbound_queue_limit: usize,
+    pub spacetime_fair_topic_slice_limit: usize,
+    pub spacetime_poll_min_interval_ms: u64,
+    pub spacetime_slow_consumer_lag_threshold: u64,
+    pub spacetime_slow_consumer_max_strikes: u32,
+    pub spacetime_consumer_registry_capacity: usize,
+    pub spacetime_reconnect_base_backoff_ms: u64,
+    pub spacetime_reconnect_jitter_ms: u64,
+    pub spacetime_emergency_mode_enabled: bool,
+    pub spacetime_enforce_origin: bool,
+    pub spacetime_allowed_origins: HashSet<String>,
+    pub spacetime_run_events_publish_rate_per_second: u32,
+    pub spacetime_worker_lifecycle_publish_rate_per_second: u32,
+    pub spacetime_codex_worker_events_publish_rate_per_second: u32,
+    pub spacetime_fallback_publish_rate_per_second: u32,
+    pub spacetime_run_events_replay_budget_events: u64,
+    pub spacetime_worker_lifecycle_replay_budget_events: u64,
+    pub spacetime_codex_worker_events_replay_budget_events: u64,
+    pub spacetime_fallback_replay_budget_events: u64,
+    pub spacetime_run_events_max_payload_bytes: usize,
+    pub spacetime_worker_lifecycle_max_payload_bytes: usize,
+    pub spacetime_codex_worker_events_max_payload_bytes: usize,
+    pub spacetime_fallback_max_payload_bytes: usize,
     pub sync_token_signing_key: String,
     pub sync_token_fallback_signing_keys: Vec<String>,
     pub sync_token_issuer: String,
@@ -169,36 +169,36 @@ pub enum ConfigError {
     InvalidAuthorityWriteMode(String),
     #[error("invalid RUNTIME_FANOUT_QUEUE_CAPACITY: {0}")]
     InvalidFanoutQueueCapacity(String),
-    #[error("invalid RUNTIME_KHALA_POLL_DEFAULT_LIMIT: {0}")]
-    InvalidKhalaPollDefaultLimit(String),
-    #[error("invalid RUNTIME_KHALA_POLL_MAX_LIMIT: {0}")]
-    InvalidKhalaPollMaxLimit(String),
-    #[error("invalid RUNTIME_KHALA_OUTBOUND_QUEUE_LIMIT: {0}")]
-    InvalidKhalaOutboundQueueLimit(String),
-    #[error("invalid RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT: {0}")]
-    InvalidKhalaFairTopicSliceLimit(String),
-    #[error("invalid RUNTIME_KHALA_POLL_MIN_INTERVAL_MS: {0}")]
-    InvalidKhalaPollMinIntervalMs(String),
-    #[error("invalid RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD: {0}")]
-    InvalidKhalaSlowConsumerLagThreshold(String),
-    #[error("invalid RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES: {0}")]
-    InvalidKhalaSlowConsumerMaxStrikes(String),
-    #[error("invalid RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY: {0}")]
-    InvalidKhalaConsumerRegistryCapacity(String),
-    #[error("invalid RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS: {0}")]
-    InvalidKhalaReconnectBaseBackoffMs(String),
-    #[error("invalid RUNTIME_KHALA_RECONNECT_JITTER_MS: {0}")]
-    InvalidKhalaReconnectJitterMs(String),
-    #[error("invalid RUNTIME_KHALA_EMERGENCY_MODE_ENABLED: {0}")]
-    InvalidKhalaEmergencyModeEnabled(String),
-    #[error("invalid RUNTIME_KHALA_ENFORCE_ORIGIN: {0}")]
-    InvalidKhalaEnforceOrigin(String),
-    #[error("invalid khala publish rate limit setting: {0}")]
-    InvalidKhalaPublishRateLimit(String),
-    #[error("invalid khala replay budget setting: {0}")]
-    InvalidKhalaReplayBudget(String),
-    #[error("invalid khala max payload bytes setting: {0}")]
-    InvalidKhalaMaxPayloadBytes(String),
+    #[error("invalid RUNTIME_SPACETIME_POLL_DEFAULT_LIMIT: {0}")]
+    InvalidSpacetimePollDefaultLimit(String),
+    #[error("invalid RUNTIME_SPACETIME_POLL_MAX_LIMIT: {0}")]
+    InvalidSpacetimePollMaxLimit(String),
+    #[error("invalid RUNTIME_SPACETIME_OUTBOUND_QUEUE_LIMIT: {0}")]
+    InvalidSpacetimeOutboundQueueLimit(String),
+    #[error("invalid RUNTIME_SPACETIME_FAIR_TOPIC_SLICE_LIMIT: {0}")]
+    InvalidSpacetimeFairTopicSliceLimit(String),
+    #[error("invalid RUNTIME_SPACETIME_POLL_MIN_INTERVAL_MS: {0}")]
+    InvalidSpacetimePollMinIntervalMs(String),
+    #[error("invalid RUNTIME_SPACETIME_SLOW_CONSUMER_LAG_THRESHOLD: {0}")]
+    InvalidSpacetimeSlowConsumerLagThreshold(String),
+    #[error("invalid RUNTIME_SPACETIME_SLOW_CONSUMER_MAX_STRIKES: {0}")]
+    InvalidSpacetimeSlowConsumerMaxStrikes(String),
+    #[error("invalid RUNTIME_SPACETIME_CONSUMER_REGISTRY_CAPACITY: {0}")]
+    InvalidSpacetimeConsumerRegistryCapacity(String),
+    #[error("invalid RUNTIME_SPACETIME_RECONNECT_BASE_BACKOFF_MS: {0}")]
+    InvalidSpacetimeReconnectBaseBackoffMs(String),
+    #[error("invalid RUNTIME_SPACETIME_RECONNECT_JITTER_MS: {0}")]
+    InvalidSpacetimeReconnectJitterMs(String),
+    #[error("invalid RUNTIME_SPACETIME_EMERGENCY_MODE_ENABLED: {0}")]
+    InvalidSpacetimeEmergencyModeEnabled(String),
+    #[error("invalid RUNTIME_SPACETIME_ENFORCE_ORIGIN: {0}")]
+    InvalidSpacetimeEnforceOrigin(String),
+    #[error("invalid spacetime publish rate limit setting: {0}")]
+    InvalidSpacetimePublishRateLimit(String),
+    #[error("invalid spacetime replay budget setting: {0}")]
+    InvalidSpacetimeReplayBudget(String),
+    #[error("invalid spacetime max payload bytes setting: {0}")]
+    InvalidSpacetimeMaxPayloadBytes(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_REQUIRE_JTI: {0}")]
     InvalidSyncTokenRequireJti(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS: {0}")]
@@ -267,64 +267,64 @@ impl Config {
             .unwrap_or_else(|_| "1024".to_string())
             .parse::<usize>()
             .map_err(|error| ConfigError::InvalidFanoutQueueCapacity(error.to_string()))?;
-        let khala_poll_default_limit = env::var("RUNTIME_KHALA_POLL_DEFAULT_LIMIT")
+        let spacetime_poll_default_limit = env::var("RUNTIME_SPACETIME_POLL_DEFAULT_LIMIT")
             .unwrap_or_else(|_| "100".to_string())
             .parse::<usize>()
-            .map_err(|error| ConfigError::InvalidKhalaPollDefaultLimit(error.to_string()))?;
-        let khala_poll_max_limit = env::var("RUNTIME_KHALA_POLL_MAX_LIMIT")
+            .map_err(|error| ConfigError::InvalidSpacetimePollDefaultLimit(error.to_string()))?;
+        let spacetime_poll_max_limit = env::var("RUNTIME_SPACETIME_POLL_MAX_LIMIT")
             .unwrap_or_else(|_| "200".to_string())
             .parse::<usize>()
-            .map_err(|error| ConfigError::InvalidKhalaPollMaxLimit(error.to_string()))?;
-        let khala_outbound_queue_limit = env::var("RUNTIME_KHALA_OUTBOUND_QUEUE_LIMIT")
+            .map_err(|error| ConfigError::InvalidSpacetimePollMaxLimit(error.to_string()))?;
+        let spacetime_outbound_queue_limit = env::var("RUNTIME_SPACETIME_OUTBOUND_QUEUE_LIMIT")
             .unwrap_or_else(|_| "200".to_string())
             .parse::<usize>()
-            .map_err(|error| ConfigError::InvalidKhalaOutboundQueueLimit(error.to_string()))?;
-        let khala_fair_topic_slice_limit = env::var("RUNTIME_KHALA_FAIR_TOPIC_SLICE_LIMIT")
+            .map_err(|error| ConfigError::InvalidSpacetimeOutboundQueueLimit(error.to_string()))?;
+        let spacetime_fair_topic_slice_limit = env::var("RUNTIME_SPACETIME_FAIR_TOPIC_SLICE_LIMIT")
             .unwrap_or_else(|_| "50".to_string())
             .parse::<usize>()
-            .map_err(|error| ConfigError::InvalidKhalaFairTopicSliceLimit(error.to_string()))?;
-        let khala_poll_min_interval_ms = env::var("RUNTIME_KHALA_POLL_MIN_INTERVAL_MS")
+            .map_err(|error| ConfigError::InvalidSpacetimeFairTopicSliceLimit(error.to_string()))?;
+        let spacetime_poll_min_interval_ms = env::var("RUNTIME_SPACETIME_POLL_MIN_INTERVAL_MS")
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
-            .map_err(|error| ConfigError::InvalidKhalaPollMinIntervalMs(error.to_string()))?;
-        let khala_slow_consumer_lag_threshold =
-            env::var("RUNTIME_KHALA_SLOW_CONSUMER_LAG_THRESHOLD")
+            .map_err(|error| ConfigError::InvalidSpacetimePollMinIntervalMs(error.to_string()))?;
+        let spacetime_slow_consumer_lag_threshold =
+            env::var("RUNTIME_SPACETIME_SLOW_CONSUMER_LAG_THRESHOLD")
                 .unwrap_or_else(|_| "300".to_string())
                 .parse::<u64>()
                 .map_err(|error| {
-                    ConfigError::InvalidKhalaSlowConsumerLagThreshold(error.to_string())
+                    ConfigError::InvalidSpacetimeSlowConsumerLagThreshold(error.to_string())
                 })?;
-        let khala_slow_consumer_max_strikes = env::var("RUNTIME_KHALA_SLOW_CONSUMER_MAX_STRIKES")
+        let spacetime_slow_consumer_max_strikes = env::var("RUNTIME_SPACETIME_SLOW_CONSUMER_MAX_STRIKES")
             .unwrap_or_else(|_| "3".to_string())
             .parse::<u32>()
-            .map_err(|error| ConfigError::InvalidKhalaSlowConsumerMaxStrikes(error.to_string()))?;
-        let khala_consumer_registry_capacity = env::var("RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY")
+            .map_err(|error| ConfigError::InvalidSpacetimeSlowConsumerMaxStrikes(error.to_string()))?;
+        let spacetime_consumer_registry_capacity = env::var("RUNTIME_SPACETIME_CONSUMER_REGISTRY_CAPACITY")
             .unwrap_or_else(|_| "4096".to_string())
             .parse::<usize>()
             .map_err(|error| {
-                ConfigError::InvalidKhalaConsumerRegistryCapacity(error.to_string())
+                ConfigError::InvalidSpacetimeConsumerRegistryCapacity(error.to_string())
             })?;
-        let khala_reconnect_base_backoff_ms = env::var("RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS")
+        let spacetime_reconnect_base_backoff_ms = env::var("RUNTIME_SPACETIME_RECONNECT_BASE_BACKOFF_MS")
             .unwrap_or_else(|_| "400".to_string())
             .parse::<u64>()
-            .map_err(|error| ConfigError::InvalidKhalaReconnectBaseBackoffMs(error.to_string()))?;
-        let khala_reconnect_jitter_ms = env::var("RUNTIME_KHALA_RECONNECT_JITTER_MS")
+            .map_err(|error| ConfigError::InvalidSpacetimeReconnectBaseBackoffMs(error.to_string()))?;
+        let spacetime_reconnect_jitter_ms = env::var("RUNTIME_SPACETIME_RECONNECT_JITTER_MS")
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
-            .map_err(|error| ConfigError::InvalidKhalaReconnectJitterMs(error.to_string()))?;
-        let khala_emergency_mode_enabled =
-            parse_bool_env("RUNTIME_KHALA_EMERGENCY_MODE_ENABLED", false).map_err(|error| {
-                ConfigError::InvalidKhalaEmergencyModeEnabled(format!(
-                    "RUNTIME_KHALA_EMERGENCY_MODE_ENABLED: {error}"
+            .map_err(|error| ConfigError::InvalidSpacetimeReconnectJitterMs(error.to_string()))?;
+        let spacetime_emergency_mode_enabled =
+            parse_bool_env("RUNTIME_SPACETIME_EMERGENCY_MODE_ENABLED", false).map_err(|error| {
+                ConfigError::InvalidSpacetimeEmergencyModeEnabled(format!(
+                    "RUNTIME_SPACETIME_EMERGENCY_MODE_ENABLED: {error}"
                 ))
             })?;
-        let khala_enforce_origin =
-            parse_bool_env("RUNTIME_KHALA_ENFORCE_ORIGIN", true).map_err(|error| {
-                ConfigError::InvalidKhalaEnforceOrigin(format!(
-                    "RUNTIME_KHALA_ENFORCE_ORIGIN: {error}"
+        let spacetime_enforce_origin =
+            parse_bool_env("RUNTIME_SPACETIME_ENFORCE_ORIGIN", true).map_err(|error| {
+                ConfigError::InvalidSpacetimeEnforceOrigin(format!(
+                    "RUNTIME_SPACETIME_ENFORCE_ORIGIN: {error}"
                 ))
             })?;
-        let khala_allowed_origins = env::var("RUNTIME_KHALA_ALLOWED_ORIGINS")
+        let spacetime_allowed_origins = env::var("RUNTIME_SPACETIME_ALLOWED_ORIGINS")
             .unwrap_or_else(|_| "https://openagents.com,https://www.openagents.com".to_string())
             .split(',')
             .map(str::trim)
@@ -360,7 +360,7 @@ impl Config {
                 .parse::<u32>()
                 .map(|value| value.max(1))
                 .map_err(|error| {
-                    ConfigError::InvalidKhalaPublishRateLimit(format!("{key}: {error}"))
+                    ConfigError::InvalidSpacetimePublishRateLimit(format!("{key}: {error}"))
                 })
         };
         let parse_replay_budget = |key: &str, default: &str| -> Result<u64, ConfigError> {
@@ -368,7 +368,7 @@ impl Config {
                 .unwrap_or_else(|_| default.to_string())
                 .parse::<u64>()
                 .map(|value| value.max(1))
-                .map_err(|error| ConfigError::InvalidKhalaReplayBudget(format!("{key}: {error}")))
+                .map_err(|error| ConfigError::InvalidSpacetimeReplayBudget(format!("{key}: {error}")))
         };
         let parse_max_payload = |key: &str, default: &str| -> Result<usize, ConfigError> {
             env::var(key)
@@ -376,49 +376,49 @@ impl Config {
                 .parse::<usize>()
                 .map(|value| value.max(1))
                 .map_err(|error| {
-                    ConfigError::InvalidKhalaMaxPayloadBytes(format!("{key}: {error}"))
+                    ConfigError::InvalidSpacetimeMaxPayloadBytes(format!("{key}: {error}"))
                 })
         };
-        let khala_run_events_publish_rate_per_second =
-            parse_publish_rate("RUNTIME_KHALA_RUN_EVENTS_PUBLISH_RATE_PER_SECOND", "240")?;
-        let khala_worker_lifecycle_publish_rate_per_second = parse_publish_rate(
-            "RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND",
+        let spacetime_run_events_publish_rate_per_second =
+            parse_publish_rate("RUNTIME_SPACETIME_RUN_EVENTS_PUBLISH_RATE_PER_SECOND", "240")?;
+        let spacetime_worker_lifecycle_publish_rate_per_second = parse_publish_rate(
+            "RUNTIME_SPACETIME_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND",
             "180",
         )?;
-        let khala_codex_worker_events_publish_rate_per_second = parse_publish_rate(
-            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND",
+        let spacetime_codex_worker_events_publish_rate_per_second = parse_publish_rate(
+            "RUNTIME_SPACETIME_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND",
             "240",
         )?;
-        let khala_fallback_publish_rate_per_second =
-            parse_publish_rate("RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND", "90")?;
-        let khala_run_events_replay_budget_events =
-            parse_replay_budget("RUNTIME_KHALA_RUN_EVENTS_REPLAY_BUDGET_EVENTS", "20000")?;
-        let khala_worker_lifecycle_replay_budget_events = parse_replay_budget(
-            "RUNTIME_KHALA_WORKER_LIFECYCLE_REPLAY_BUDGET_EVENTS",
+        let spacetime_fallback_publish_rate_per_second =
+            parse_publish_rate("RUNTIME_SPACETIME_FALLBACK_PUBLISH_RATE_PER_SECOND", "90")?;
+        let spacetime_run_events_replay_budget_events =
+            parse_replay_budget("RUNTIME_SPACETIME_RUN_EVENTS_REPLAY_BUDGET_EVENTS", "20000")?;
+        let spacetime_worker_lifecycle_replay_budget_events = parse_replay_budget(
+            "RUNTIME_SPACETIME_WORKER_LIFECYCLE_REPLAY_BUDGET_EVENTS",
             "10000",
         )?;
-        let khala_codex_worker_events_replay_budget_events = parse_replay_budget(
-            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_REPLAY_BUDGET_EVENTS",
+        let spacetime_codex_worker_events_replay_budget_events = parse_replay_budget(
+            "RUNTIME_SPACETIME_CODEX_WORKER_EVENTS_REPLAY_BUDGET_EVENTS",
             "3000",
         )?;
-        let khala_fallback_replay_budget_events =
-            parse_replay_budget("RUNTIME_KHALA_FALLBACK_REPLAY_BUDGET_EVENTS", "500")?;
-        let khala_run_events_max_payload_bytes =
-            parse_max_payload("RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES", "262144")?;
-        let khala_worker_lifecycle_max_payload_bytes =
-            parse_max_payload("RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES", "65536")?;
-        let khala_codex_worker_events_max_payload_bytes = parse_max_payload(
-            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES",
+        let spacetime_fallback_replay_budget_events =
+            parse_replay_budget("RUNTIME_SPACETIME_FALLBACK_REPLAY_BUDGET_EVENTS", "500")?;
+        let spacetime_run_events_max_payload_bytes =
+            parse_max_payload("RUNTIME_SPACETIME_RUN_EVENTS_MAX_PAYLOAD_BYTES", "262144")?;
+        let spacetime_worker_lifecycle_max_payload_bytes =
+            parse_max_payload("RUNTIME_SPACETIME_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES", "65536")?;
+        let spacetime_codex_worker_events_max_payload_bytes = parse_max_payload(
+            "RUNTIME_SPACETIME_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES",
             "131072",
         )?;
-        let khala_fallback_max_payload_bytes =
-            parse_max_payload("RUNTIME_KHALA_FALLBACK_MAX_PAYLOAD_BYTES", "65536")?;
-        let khala_poll_max_limit = khala_poll_max_limit.max(1);
-        let khala_poll_default_limit = khala_poll_default_limit.max(1).min(khala_poll_max_limit);
-        let khala_outbound_queue_limit = khala_outbound_queue_limit.max(1);
-        let khala_fair_topic_slice_limit = khala_fair_topic_slice_limit.max(1);
-        let khala_slow_consumer_max_strikes = khala_slow_consumer_max_strikes.max(1);
-        let khala_consumer_registry_capacity = khala_consumer_registry_capacity.max(1);
+        let spacetime_fallback_max_payload_bytes =
+            parse_max_payload("RUNTIME_SPACETIME_FALLBACK_MAX_PAYLOAD_BYTES", "65536")?;
+        let spacetime_poll_max_limit = spacetime_poll_max_limit.max(1);
+        let spacetime_poll_default_limit = spacetime_poll_default_limit.max(1).min(spacetime_poll_max_limit);
+        let spacetime_outbound_queue_limit = spacetime_outbound_queue_limit.max(1);
+        let spacetime_fair_topic_slice_limit = spacetime_fair_topic_slice_limit.max(1);
+        let spacetime_slow_consumer_max_strikes = spacetime_slow_consumer_max_strikes.max(1);
+        let spacetime_consumer_registry_capacity = spacetime_consumer_registry_capacity.max(1);
         let sync_token_signing_key = env::var("RUNTIME_SYNC_TOKEN_SIGNING_KEY")
             .unwrap_or_else(|_| "dev-sync-key".to_string());
         let sync_token_fallback_signing_keys = env::var("RUNTIME_SYNC_TOKEN_FALLBACK_SIGNING_KEYS")
@@ -599,31 +599,31 @@ impl Config {
             authority_write_mode,
             fanout_driver,
             fanout_queue_capacity,
-            khala_poll_default_limit,
-            khala_poll_max_limit,
-            khala_outbound_queue_limit,
-            khala_fair_topic_slice_limit,
-            khala_poll_min_interval_ms,
-            khala_slow_consumer_lag_threshold,
-            khala_slow_consumer_max_strikes,
-            khala_consumer_registry_capacity,
-            khala_reconnect_base_backoff_ms,
-            khala_reconnect_jitter_ms,
-            khala_emergency_mode_enabled,
-            khala_enforce_origin,
-            khala_allowed_origins,
-            khala_run_events_publish_rate_per_second,
-            khala_worker_lifecycle_publish_rate_per_second,
-            khala_codex_worker_events_publish_rate_per_second,
-            khala_fallback_publish_rate_per_second,
-            khala_run_events_replay_budget_events,
-            khala_worker_lifecycle_replay_budget_events,
-            khala_codex_worker_events_replay_budget_events,
-            khala_fallback_replay_budget_events,
-            khala_run_events_max_payload_bytes,
-            khala_worker_lifecycle_max_payload_bytes,
-            khala_codex_worker_events_max_payload_bytes,
-            khala_fallback_max_payload_bytes,
+            spacetime_poll_default_limit,
+            spacetime_poll_max_limit,
+            spacetime_outbound_queue_limit,
+            spacetime_fair_topic_slice_limit,
+            spacetime_poll_min_interval_ms,
+            spacetime_slow_consumer_lag_threshold,
+            spacetime_slow_consumer_max_strikes,
+            spacetime_consumer_registry_capacity,
+            spacetime_reconnect_base_backoff_ms,
+            spacetime_reconnect_jitter_ms,
+            spacetime_emergency_mode_enabled,
+            spacetime_enforce_origin,
+            spacetime_allowed_origins,
+            spacetime_run_events_publish_rate_per_second,
+            spacetime_worker_lifecycle_publish_rate_per_second,
+            spacetime_codex_worker_events_publish_rate_per_second,
+            spacetime_fallback_publish_rate_per_second,
+            spacetime_run_events_replay_budget_events,
+            spacetime_worker_lifecycle_replay_budget_events,
+            spacetime_codex_worker_events_replay_budget_events,
+            spacetime_fallback_replay_budget_events,
+            spacetime_run_events_max_payload_bytes,
+            spacetime_worker_lifecycle_max_payload_bytes,
+            spacetime_codex_worker_events_max_payload_bytes,
+            spacetime_fallback_max_payload_bytes,
             sync_token_signing_key,
             sync_token_fallback_signing_keys,
             sync_token_issuer,

@@ -74,7 +74,7 @@ Create a `Codex Control Lane` dashboard from the structured logs above (or deriv
      - critical: p95 `> 5000` ms for 10m
 4. Stale cursor recovery pressure (runtime lane dependency)
    - Signal: `sum(increase(openagents_runtime_sync_replay_catchup_duration_ms_count{status="stale_cursor"}[10m]))`
-   - Existing SLO alert source: `apps/runtime/deploy/monitoring/prometheus/khala-slo-alert-rules.yaml`
+   - Existing SLO alert source: `apps/runtime/deploy/monitoring/prometheus/spacetime-slo-alert-rules.yaml`
    - Existing service alert source: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
 
 ## Guardrails (Active)

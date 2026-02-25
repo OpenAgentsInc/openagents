@@ -93,10 +93,10 @@ use runtime_auth::{
     runtime_auth_state_path,
 };
 use runtime_codex_proto::{
-    ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_khala_frame,
+    ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_spacetime_frame,
     build_success_receipt, extract_control_request, extract_desktop_handshake_ack_id,
-    extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
-    handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
+    extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_spacetime_update,
+    handshake_dedupe_key, spacetime_error_code, merge_retry_cursor, parse_spacetime_frame,
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
 };
 use sync_apply_engine::{ApplyDecision, RuntimeSyncApplyEngine};
@@ -133,10 +133,10 @@ const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_M
 const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
 const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
 const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
-const RUNTIME_SYNC_KHALA_TOPIC: &str = "runtime.codex_worker_events";
-const RUNTIME_SYNC_KHALA_CHANNEL: &str = "sync:v1";
-const RUNTIME_SYNC_KHALA_WS_VSN: &str = "2.0.0";
-const RUNTIME_SYNC_KHALA_HEARTBEAT_MS: u64 = 20_000;
+const RUNTIME_SYNC_SPACETIME_TOPIC: &str = "runtime.codex_worker_events";
+const RUNTIME_SYNC_SPACETIME_CHANNEL: &str = "sync:v1";
+const RUNTIME_SYNC_SPACETIME_WS_VSN: &str = "2.0.0";
+const RUNTIME_SYNC_SPACETIME_HEARTBEAT_MS: u64 = 20_000;
 const RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK: &str = "runtime/request";
 const RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX: &str = "invalid-request-seq";
 type RuntimeSyncWebSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
@@ -514,7 +514,7 @@ impl RuntimeCodexSync {
                 tracing::warn!(
                     worker_id = %worker_id,
                     error = %error,
-                    "runtime sync khala bootstrap missing latest_seq; relying on local checkpoint or cursor=0"
+                    "runtime sync spacetime bootstrap missing latest_seq; relying on local checkpoint or cursor=0"
                 );
                 None
             }
@@ -596,11 +596,11 @@ impl RuntimeCodexSync {
         tracing::info!(
             worker_id = %worker_id,
             cursor,
-            "runtime sync khala stream started"
+            "runtime sync spacetime stream started"
         );
 
         loop {
-            let session_result = self.run_worker_khala_session(&worker_id, &mut cursor).await;
+            let session_result = self.run_worker_spacetime_session(&worker_id, &mut cursor).await;
             let (disconnect_reason, disconnect_error) = match session_result {
                 Ok(()) => (RuntimeSyncDisconnectReason::StreamClosed, None),
                 Err(error) => (classify_disconnect_reason(error.as_str()), Some(error)),
@@ -617,7 +617,7 @@ impl RuntimeCodexSync {
                     cursor,
                     reason = disconnect_reason.as_str(),
                     reconnect_delay_ms = reconnect_plan.delay.as_millis() as u64,
-                    "runtime sync khala stream session ended; reconnecting"
+                    "runtime sync spacetime stream session ended; reconnecting"
                 ),
                 Some(error) => tracing::warn!(
                     worker_id = %worker_id,
@@ -625,7 +625,7 @@ impl RuntimeCodexSync {
                     reason = disconnect_reason.as_str(),
                     reconnect_delay_ms = reconnect_plan.delay.as_millis() as u64,
                     error = %error,
-                    "runtime sync khala stream failed; reconnecting"
+                    "runtime sync spacetime stream failed; reconnecting"
                 ),
             }
 
@@ -662,28 +662,28 @@ impl RuntimeCodexSync {
         }
     }
 
-    async fn run_worker_khala_session(
+    async fn run_worker_spacetime_session(
         &self,
         worker_id: &str,
         cursor: &mut u64,
     ) -> Result<(), String> {
         let token_lease = self
             .mint_runtime_sync_token(
-                vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
-                vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
+                vec![RUNTIME_SYNC_SPACETIME_TOPIC.to_string()],
+                vec![RUNTIME_SYNC_SPACETIME_TOPIC.to_string()],
             )
             .await?;
-        let websocket_url = self.build_khala_websocket_url(&token_lease.token).await?;
+        let websocket_url = self.build_spacetime_websocket_url(&token_lease.token).await?;
         let (mut socket, _response) = connect_async(websocket_url.as_str())
             .await
             .map_err(|error| error.to_string())?;
 
         let mut ref_counter: u64 = 0;
-        let join_ref = Self::next_khala_ref(&mut ref_counter);
-        let join_frame = build_khala_frame(
+        let join_ref = Self::next_spacetime_ref(&mut ref_counter);
+        let join_frame = build_spacetime_frame(
             None,
             Some(join_ref.as_str()),
-            RUNTIME_SYNC_KHALA_CHANNEL,
+            RUNTIME_SYNC_SPACETIME_CHANNEL,
             "phx_join",
             json!({}),
         );
@@ -693,19 +693,19 @@ impl RuntimeCodexSync {
             .map_err(|error| error.to_string())?;
 
         let _join_response = self
-            .await_khala_reply(&mut socket, worker_id, cursor, join_ref.as_str())
+            .await_spacetime_reply(&mut socket, worker_id, cursor, join_ref.as_str())
             .await?;
 
-        let subscribe_ref = Self::next_khala_ref(&mut ref_counter);
-        let subscribe_frame = build_khala_frame(
+        let subscribe_ref = Self::next_spacetime_ref(&mut ref_counter);
+        let subscribe_frame = build_spacetime_frame(
             Some(join_ref.as_str()),
             Some(subscribe_ref.as_str()),
-            RUNTIME_SYNC_KHALA_CHANNEL,
+            RUNTIME_SYNC_SPACETIME_CHANNEL,
             "sync:subscribe",
             json!({
-                "topics": [RUNTIME_SYNC_KHALA_TOPIC],
+                "topics": [RUNTIME_SYNC_SPACETIME_TOPIC],
                 "resume_after": {
-                    RUNTIME_SYNC_KHALA_TOPIC: *cursor,
+                    RUNTIME_SYNC_SPACETIME_TOPIC: *cursor,
                 },
                 "replay_batch_size": 200,
             }),
@@ -716,7 +716,7 @@ impl RuntimeCodexSync {
             .map_err(|error| error.to_string())?;
 
         let _subscribe_response = self
-            .await_khala_reply(&mut socket, worker_id, cursor, subscribe_ref.as_str())
+            .await_spacetime_reply(&mut socket, worker_id, cursor, subscribe_ref.as_str())
             .await?;
 
         {
@@ -725,7 +725,7 @@ impl RuntimeCodexSync {
         }
 
         let mut heartbeat =
-            tokio::time::interval(Duration::from_millis(RUNTIME_SYNC_KHALA_HEARTBEAT_MS));
+            tokio::time::interval(Duration::from_millis(RUNTIME_SYNC_SPACETIME_HEARTBEAT_MS));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut refresh_deadline = token_lease
             .refresh_after_in_seconds
@@ -734,11 +734,11 @@ impl RuntimeCodexSync {
         loop {
             tokio::select! {
                 _ = heartbeat.tick() => {
-                    let heartbeat_ref = Self::next_khala_ref(&mut ref_counter);
-                    let heartbeat_frame = build_khala_frame(
+                    let heartbeat_ref = Self::next_spacetime_ref(&mut ref_counter);
+                    let heartbeat_frame = build_spacetime_frame(
                         Some(join_ref.as_str()),
                         Some(heartbeat_ref.as_str()),
-                        RUNTIME_SYNC_KHALA_CHANNEL,
+                        RUNTIME_SYNC_SPACETIME_CHANNEL,
                         "sync:heartbeat",
                         json!({}),
                     );
@@ -756,10 +756,10 @@ impl RuntimeCodexSync {
                 }
                 next_message = socket.next() => {
                     let Some(message) = next_message else {
-                        return Err("khala websocket closed".to_string());
+                        return Err("spacetime websocket closed".to_string());
                     };
                     let message = message.map_err(|error| error.to_string())?;
-                    self.process_khala_socket_message(worker_id, cursor, message).await?;
+                    self.process_spacetime_socket_message(worker_id, cursor, message).await?;
                 }
             }
         }
@@ -801,7 +801,7 @@ impl RuntimeCodexSync {
         })
     }
 
-    async fn build_khala_websocket_url(&self, token: &str) -> Result<String, String> {
+    async fn build_spacetime_websocket_url(&self, token: &str) -> Result<String, String> {
         let base_url = self.base_url.read().await.clone();
         let mut url = reqwest::Url::parse(base_url.as_str()).map_err(|error| error.to_string())?;
         let ws_scheme = match url.scheme() {
@@ -820,12 +820,12 @@ impl RuntimeCodexSync {
             let mut query = url.query_pairs_mut();
             query.clear();
             query.append_pair("token", token);
-            query.append_pair("vsn", RUNTIME_SYNC_KHALA_WS_VSN);
+            query.append_pair("vsn", RUNTIME_SYNC_SPACETIME_WS_VSN);
         }
         Ok(url.to_string())
     }
 
-    async fn await_khala_reply(
+    async fn await_spacetime_reply(
         &self,
         socket: &mut RuntimeSyncWebSocket,
         worker_id: &str,
@@ -836,30 +836,30 @@ impl RuntimeCodexSync {
             let next_message = socket
                 .next()
                 .await
-                .ok_or_else(|| "khala websocket closed while awaiting reply".to_string())?;
+                .ok_or_else(|| "spacetime websocket closed while awaiting reply".to_string())?;
             let message = next_message.map_err(|error| error.to_string())?;
             let raw = Self::decode_websocket_text(message)?;
-            let Some(frame) = parse_khala_frame(raw.as_str()) else {
+            let Some(frame) = parse_spacetime_frame(raw.as_str()) else {
                 continue;
             };
 
-            if frame.topic != RUNTIME_SYNC_KHALA_CHANNEL {
+            if frame.topic != RUNTIME_SYNC_SPACETIME_CHANNEL {
                 continue;
             }
 
             if frame.event == "sync:update_batch" {
-                self.process_khala_update_batch(worker_id, cursor, &frame.payload)
+                self.process_spacetime_update_batch(worker_id, cursor, &frame.payload)
                     .await?;
                 continue;
             }
 
             if frame.event == "sync:error" {
-                if khala_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
+                if spacetime_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
                     *cursor = 0;
-                    return Err("khala stale_cursor; replay bootstrap required".to_string());
+                    return Err("spacetime stale_cursor; replay bootstrap required".to_string());
                 }
                 return Err(format!(
-                    "khala sync error while awaiting reply: {}",
+                    "spacetime sync error while awaiting reply: {}",
                     frame.payload
                 ));
             }
@@ -872,7 +872,7 @@ impl RuntimeCodexSync {
             let payload_object = frame
                 .payload
                 .as_object()
-                .ok_or_else(|| "khala phx_reply payload is not an object".to_string())?;
+                .ok_or_else(|| "spacetime phx_reply payload is not an object".to_string())?;
             let status = payload_object
                 .get("status")
                 .and_then(Value::as_str)
@@ -890,7 +890,7 @@ impl RuntimeCodexSync {
                 if code == "stale_cursor" {
                     *cursor = 0;
                 }
-                return Err(format!("khala phx_reply status={status} code={code}"));
+                return Err(format!("spacetime phx_reply status={status} code={code}"));
             }
 
             return Ok(payload_object
@@ -900,38 +900,38 @@ impl RuntimeCodexSync {
         }
     }
 
-    async fn process_khala_socket_message(
+    async fn process_spacetime_socket_message(
         &self,
         worker_id: &str,
         cursor: &mut u64,
         message: Message,
     ) -> Result<(), String> {
         let raw = Self::decode_websocket_text(message)?;
-        let Some(frame) = parse_khala_frame(raw.as_str()) else {
+        let Some(frame) = parse_spacetime_frame(raw.as_str()) else {
             return Ok(());
         };
-        if frame.topic != RUNTIME_SYNC_KHALA_CHANNEL {
+        if frame.topic != RUNTIME_SYNC_SPACETIME_CHANNEL {
             return Ok(());
         }
 
         match frame.event.as_str() {
             "sync:update_batch" => {
-                self.process_khala_update_batch(worker_id, cursor, &frame.payload)
+                self.process_spacetime_update_batch(worker_id, cursor, &frame.payload)
                     .await
             }
             "sync:error" => {
-                if khala_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
+                if spacetime_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
                     *cursor = 0;
-                    return Err("khala stale_cursor; resetting replay cursor".to_string());
+                    return Err("spacetime stale_cursor; resetting replay cursor".to_string());
                 }
-                Err(format!("khala sync error: {}", frame.payload))
+                Err(format!("spacetime sync error: {}", frame.payload))
             }
-            "phx_error" | "phx_close" => Err(format!("khala channel error: {}", frame.event)),
+            "phx_error" | "phx_close" => Err(format!("spacetime channel error: {}", frame.event)),
             _ => Ok(()),
         }
     }
 
-    async fn process_khala_update_batch(
+    async fn process_spacetime_update_batch(
         &self,
         worker_id: &str,
         cursor: &mut u64,
@@ -941,7 +941,7 @@ impl RuntimeCodexSync {
         let starting_cursor = *cursor;
         let mut observed_max_seq: Option<u64> = None;
         let events =
-            extract_runtime_events_from_khala_update(payload, RUNTIME_SYNC_KHALA_TOPIC, worker_id);
+            extract_runtime_events_from_spacetime_update(payload, RUNTIME_SYNC_SPACETIME_TOPIC, worker_id);
         if events.is_empty() {
             return Ok(());
         }
@@ -1015,7 +1015,7 @@ impl RuntimeCodexSync {
                     worker_id = %worker_id,
                     seq = seq_value,
                     error = %error,
-                    "runtime sync khala event processing failed"
+                    "runtime sync spacetime event processing failed"
                 );
                 retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
                 continue;
@@ -1034,7 +1034,7 @@ impl RuntimeCodexSync {
             tracing::info!(
                 worker_id = %worker_id,
                 cursor = replay_cursor,
-                "runtime sync khala rewinding cursor to retry handshake processing"
+                "runtime sync spacetime rewinding cursor to retry handshake processing"
             );
             let mut apply_engine = self.apply_engine.lock().await;
             apply_engine.rewind_stream_checkpoint(stream_id.as_str(), replay_cursor);
@@ -1085,13 +1085,13 @@ impl RuntimeCodexSync {
                 let reason = frame
                     .map(|close| close.reason.to_string())
                     .unwrap_or_else(|| "no close reason".to_string());
-                Err(format!("khala websocket closed: {reason}"))
+                Err(format!("spacetime websocket closed: {reason}"))
             }
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(String::new()),
         }
     }
 
-    fn next_khala_ref(counter: &mut u64) -> String {
+    fn next_spacetime_ref(counter: &mut u64) -> String {
         *counter = counter.saturating_add(1);
         counter.to_string()
     }

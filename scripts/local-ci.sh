@@ -14,8 +14,8 @@ ALLOW_ATTR_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 ARCHITECTURE_BUDGET_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/|apps/runtime/src/|apps/autopilot-desktop/src/|crates/autopilot/src/|crates/autopilot-core/src/|scripts/(architecture-budget-gate|allow-attribute-gate|local-ci)\.sh$|docs/ci/(architecture-budget-baseline|allow-attribute-baseline)\.env$|docs/core/LOCAL_CI\.md$)'
 INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
 SYNC_SECURITY_TRIGGER_PATTERN='^(apps/runtime/src/(sync_auth|server|server/tests)\.rs$|crates/autopilot-spacetime/src/auth\.rs$|apps/openagents\.com/service/src/(sync_handlers|tests)\.rs$|docs/sync/(SPACETIME_TOKEN_SCOPE_AND_ROTATION|SPACETIME_OBSERVABILITY_AND_ALERTS)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
-SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN='^(apps/autopilot-desktop/src/(main|sync_apply_engine|sync_checkpoint_store|sync_lifecycle)\.rs$|apps/runtime/src/(spacetime_publisher|shadow|shadow_control_khala)\.rs$|crates/autopilot-spacetime/src/(client|mapping|reducers)\.rs$|docs/sync/(SPACETIME_DESKTOP_APPLY_ENGINE|SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE|SPACETIME_DESKTOP_CONNECTION_LIFECYCLE|SPACETIME_SHADOW_PARITY_HARNESS)\.md$|scripts/spacetime/replay-resume-parity-harness\.sh$|scripts/local-ci\.sh$)'
-SPACETIME_CHAOS_TRIGGER_PATTERN='^(apps/runtime/src/(server/tests|shadow|shadow_control_khala|spacetime_publisher)\.rs$|crates/autopilot-spacetime/src/client\.rs$|apps/autopilot-desktop/src/sync_lifecycle\.rs$|docs/sync/(SPACETIME_CHAOS_DRILLS|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|scripts/spacetime/(run-chaos-drills|replay-resume-parity-harness)\.sh$|scripts/local-ci\.sh$)'
+SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN='^(apps/autopilot-desktop/src/(main|sync_apply_engine|sync_checkpoint_store|sync_lifecycle)\.rs$|apps/runtime/src/(spacetime_publisher|shadow|shadow_control_spacetime)\.rs$|crates/autopilot-spacetime/src/(client|mapping|reducers)\.rs$|docs/sync/(SPACETIME_DESKTOP_APPLY_ENGINE|SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE|SPACETIME_DESKTOP_CONNECTION_LIFECYCLE|SPACETIME_SHADOW_PARITY_HARNESS)\.md$|scripts/spacetime/replay-resume-parity-harness\.sh$|scripts/local-ci\.sh$)'
+SPACETIME_CHAOS_TRIGGER_PATTERN='^(apps/runtime/src/(server/tests|shadow|shadow_control_spacetime|spacetime_publisher)\.rs$|crates/autopilot-spacetime/src/client\.rs$|apps/autopilot-desktop/src/sync_lifecycle\.rs$|docs/sync/(SPACETIME_CHAOS_DRILLS|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|scripts/spacetime/(run-chaos-drills|replay-resume-parity-harness)\.sh$|scripts/local-ci\.sh$)'
 SPACETIME_STAGING_CANARY_TRIGGER_PATTERN='^(scripts/spacetime/run-staging-canary-rollout\.sh$|docs/sync/(SPACETIME_STAGING_CANARY_ROLLOUT|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
 SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN='^(scripts/spacetime/run-production-phased-rollout\.sh$|docs/sync/(SPACETIME_PRODUCTION_PHASED_ROLLOUT|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
 
@@ -360,8 +360,8 @@ run_sync_security_checks() {
   (
     cd "$ROOT_DIR"
     cargo test -p openagents-runtime-service sync_auth::tests
-    cargo test -p openagents-runtime-service khala_topic_messages_requires_valid_sync_token
-    cargo test -p openagents-runtime-service khala_topic_messages_enforce_scope_matrix
+    cargo test -p openagents-runtime-service spacetime_topic_messages_requires_valid_sync_token
+    cargo test -p openagents-runtime-service spacetime_topic_messages_enforce_scope_matrix
     cargo test -p autopilot-spacetime auth::tests
     cargo test -p openagents-control-service sync_token_failure_paths_emit_observability_counters
   )

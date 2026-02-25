@@ -16,7 +16,7 @@ Prometheus rule artifact:
 
 ## Alert Matrix
 
-### Khala projection SLO budgets
+### Spacetime projection SLO budgets
 
 - Lag budget: p95 projection lag <= 25 runtime events over a 10m window.
 - Error budget: projection write failures <= 1% over a 10m window.
@@ -86,36 +86,36 @@ Prometheus rule artifact:
   2. Validate authorization envelope rollout and limits.
   3. Confirm no runaway loops consuming delegated budget.
 
-### Khala projection lag
+### Spacetime projection lag
 
-- Alert: `OpenAgentsRuntimeKhalaProjectionLagP95High`
-- Threshold: p95 `khala.projection.lag_events > 25` for 10m
+- Alert: `OpenAgentsRuntimeSpacetimeProjectionLagP95High`
+- Threshold: p95 `spacetime.projection.lag_events > 25` for 10m
 - Action:
   1. Inspect projector throughput vs runtime event ingest rate.
   2. Check sink latency/errors and DB lock contention around projection checkpoints.
   3. If lag remains elevated, trigger scoped replay after incident stabilizes.
 
-### Khala projection write failures
+### Spacetime projection write failures
 
-- Alert: `OpenAgentsRuntimeKhalaProjectionWriteFailureRatioHigh`
+- Alert: `OpenAgentsRuntimeSpacetimeProjectionWriteFailureRatioHigh`
 - Threshold: write failure ratio > 1% for 10m
 - Action:
-  1. Inspect sink failure reason classes (`khala_error`, `sink_exception`, auth errors).
-  2. Validate Khala endpoint health and admin key availability.
-  3. Start replay plan (`mix runtime.khala.reproject`) once sink health recovers.
+  1. Inspect sink failure reason classes (`spacetime_error`, `sink_exception`, auth errors).
+  2. Validate Spacetime endpoint health and admin key availability.
+  3. Start replay plan (`mix runtime.spacetime.reproject`) once sink health recovers.
 
-### Khala projection drift incidents
+### Spacetime projection drift incidents
 
-- Alert: `OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh`
+- Alert: `OpenAgentsRuntimeSpacetimeProjectionDriftIncidentsHigh`
 - Threshold: drift incidents > 3 over 10m
 - Action:
   1. Check drift reason classes (`summary_hash_mismatch`, `projection_version_changed`, `checkpoint_ahead`).
-  2. Validate deployment/version alignment across runtime and Khala schema.
+  2. Validate deployment/version alignment across runtime and Spacetime schema.
   3. Run targeted reproject for affected run/worker IDs and verify checkpoint convergence.
 
-### Khala projection hash mismatch
+### Spacetime projection hash mismatch
 
-- Alert: `OpenAgentsRuntimeKhalaProjectionHashMismatchDetected`
+- Alert: `OpenAgentsRuntimeSpacetimeProjectionHashMismatchDetected`
 - Threshold: any `summary_hash_mismatch` or `hash_and_lag_drift` incident in 10m
 - Action:
   1. Treat as critical replay determinism signal; pause rollout expansion.
@@ -123,23 +123,23 @@ Prometheus rule artifact:
   3. Run targeted replay/reproject for affected entities and confirm hash convergence.
   4. If mismatch persists after replay, escalate as schema/projection compatibility incident.
 
-### Khala projection replay failures
+### Spacetime projection replay failures
 
-- Alert: `OpenAgentsRuntimeKhalaProjectionReplayFailures`
+- Alert: `OpenAgentsRuntimeSpacetimeProjectionReplayFailures`
 - Threshold: any replay error in 15m
 - Action:
   1. Inspect replay error reason and failing entity scope (`run` vs `codex_worker`).
   2. Confirm checkpoint table health and sequence continuity.
   3. Escalate before rollout expansion; replay failure blocks production promotion.
 
-### Khala token mint failures
+### Spacetime token mint failures
 
-- Alert: `OpenAgentsKhalaTokenMintFailureRatioHigh`
+- Alert: `OpenAgentsSpacetimeTokenMintFailureRatioHigh`
 - Threshold: token mint failure ratio > 1% for 15m
 - Action:
-  1. Check Laravel token mint endpoint health (`POST /api/khala/token`) and auth/session middleware failures.
+  1. Check Laravel token mint endpoint health (`POST /api/spacetime/token`) and auth/session middleware failures.
   2. Split failures by class (`authz_denied`, `signing_error`, `upstream_unavailable`) in Laravel logs.
-  3. Validate Khala auth key rotation state and runtime bridge config alignment.
+  3. Validate Spacetime auth key rotation state and runtime bridge config alignment.
   4. If failure ratio stays elevated, pause rollout of new subscription clients and use runtime fallback polling paths.
   5. Follow incident playbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures`
 
@@ -175,7 +175,7 @@ Prometheus rule artifact:
 
 ### End-to-end request correlation walkthrough
 
-Use this flow to trace one worker action across browser -> Laravel -> runtime -> Khala projection telemetry.
+Use this flow to trace one worker action across browser -> Laravel -> runtime -> Spacetime projection telemetry.
 
 1. Capture the request identifiers from the client call.
    - Required headers: `traceparent`, `tracestate`, `x-request-id`.
@@ -184,7 +184,7 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
 3. Confirm runtime response carries an `x-request-id` for runtime-side log correlation.
    - Internal API contract: `apps/runtime/docs/RUNTIME_CONTRACT.md`.
 4. Locate runtime telemetry for projector writes and verify metadata carries forwarded correlation IDs.
-   - Event family: `[:openagents_runtime, :khala, :projection, :write]`.
+   - Event family: `[:openagents_runtime, :spacetime, :projection, :write]`.
    - Correlation contract: `apps/runtime/docs/OBSERVABILITY.md`.
 5. Validate project health in Grafana/Prometheus while tracing the same time window.
    - Dashboard: `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`.
@@ -206,14 +206,14 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
 
 ## Restart/Reconnect Chaos Rehearsal Gate
 
-Run the restart/reconnect chaos drill before runtime/Khala promotion and after reconnect-related code changes:
+Run the restart/reconnect chaos drill before runtime/Spacetime promotion and after reconnect-related code changes:
 
 - `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`
 
 Runbook/report references:
 
 - `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
-- `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
+- `apps/runtime/docs/reports/2026-02-21-runtime-spacetime-restart-reconnect-chaos-report.md`
 
 ## Guardrails
 

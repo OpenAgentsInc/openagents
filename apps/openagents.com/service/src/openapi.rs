@@ -329,7 +329,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         method: "post",
         route_path: ROUTE_AUTOPILOTS_STREAM,
         operation_id: "autopilotStreamBootstrap",
-        summary: "Bootstrap autopilot turn execution and consume live updates via Khala WS.",
+        summary: "Bootstrap autopilot turn execution and consume live updates via Spacetime WS.",
         tag: "autopilot",
         secured: true,
         deprecated: false,
@@ -1145,7 +1145,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         method: "get",
         route_path: ROUTE_RUNTIME_CODEX_WORKER_STREAM,
         operation_id: "runtimeCodexWorkerStreamBootstrap",
-        summary: "Bootstrap Codex worker live delivery via Khala WebSocket.",
+        summary: "Bootstrap Codex worker live delivery via Spacetime WebSocket.",
         tag: "codex",
         secured: true,
         deprecated: false,
@@ -1373,7 +1373,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         method: "get",
         route_path: ROUTE_SMOKE_STREAM,
         operation_id: "smokeStream",
-        summary: "Return Khala WS smoke stream contract metadata (no SSE transport).",
+        summary: "Return Spacetime WS smoke stream contract metadata (no SSE transport).",
         tag: "utility",
         secured: false,
         deprecated: false,
@@ -2111,7 +2111,7 @@ fn response_example(key: &str) -> Option<Value> {
                     "updatedAt": "2026-02-22T00:00:00Z"
                 },
                 "delivery": {
-                    "transport": "khala_ws",
+                    "transport": "spacetime_ws",
                     "topic": "org:openagents:worker_events",
                     "scope": "runtime.codex_worker_events",
                     "syncTokenRoute": "/api/sync/token"
@@ -2988,7 +2988,7 @@ fn response_example(key: &str) -> Option<Value> {
                     "heartbeat_state": "fresh",
                     "heartbeat_age_ms": 843,
                     "heartbeat_stale_after_ms": 120000,
-                    "khala_projection": {
+                    "spacetime_projection": {
                         "status": "in_sync",
                         "lag_events": 0,
                         "last_runtime_seq": 12,
@@ -3018,11 +3018,11 @@ fn response_example(key: &str) -> Option<Value> {
         "runtime_codex_worker_stream_bootstrap" => Some(json!({
             "data": {
                 "worker_id": "codexw_12345",
-                "stream_protocol": "khala_ws",
+                "stream_protocol": "spacetime_ws",
                 "cursor": 0,
                 "tail_ms": 15000,
                 "delivery": {
-                    "transport": "khala_ws",
+                    "transport": "spacetime_ws",
                     "topic": "org:openagents:worker_events",
                     "scope": "runtime.codex_worker_events",
                     "syncTokenRoute": "/api/sync/token"
@@ -3354,13 +3354,13 @@ mod tests {
     }
 
     #[test]
-    fn omits_retired_khala_token_route() {
+    fn omits_retired_spacetime_token_route() {
         let document = openapi_document();
-        let has_khala_token = document
+        let has_spacetime_token = document
             .get("paths")
             .and_then(Value::as_object)
-            .map(|paths| paths.contains_key("/api/khala/token"))
+            .map(|paths| paths.contains_key("/api/spacetime/token"))
             .unwrap_or(false);
-        assert!(!has_khala_token);
+        assert!(!has_spacetime_token);
     }
 }

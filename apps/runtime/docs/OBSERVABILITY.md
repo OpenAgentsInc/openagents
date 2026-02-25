@@ -46,15 +46,15 @@ High-cardinality keys explicitly prohibited from metric labels:
   - DS policy/spend decision and budget counters
 - `[:openagents_runtime, :parity, :failure]`
   - parity failure-class envelope across policy/loop/network/manifest/workflow
-- `[:openagents_runtime, :khala, :projection, ...]`
+- `[:openagents_runtime, :spacetime, :projection, ...]`
   - `:write` (result + lag_events)
   - `:write_failure`
   - `:drift` (reason classes include `summary_hash_mismatch`, `hash_and_lag_drift`, `projection_version_changed`, `checkpoint_ahead`)
   - `:replay`
 - `[:openagents_runtime, :sync, :projection, :write]`
-  - Khala read-model projection sink write outcomes
+  - Spacetime read-model projection sink write outcomes
 - `[:openagents_runtime, :sync, :stream, :append]`
-  - Khala stream journal append outcomes
+  - Spacetime stream journal append outcomes
 - `[:openagents_runtime, :sync, :retention, ...]`
   - `:cycle` (deleted row counts + topic count per retention pass)
   - `:topic` (per-topic deleted counts, stale-risk, oldest/head watermark, topic class, snapshot capability)
@@ -112,12 +112,12 @@ Failure classes and primary emitters:
 ## Dashboards and alerts
 
 - Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
-- Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/khala-slo-dashboard.json`
+- Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/spacetime-slo-dashboard.json`
 - Alert rules: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
-- Alert rules: `apps/runtime/deploy/monitoring/prometheus/khala-slo-alert-rules.yaml`
+- Alert rules: `apps/runtime/deploy/monitoring/prometheus/spacetime-slo-alert-rules.yaml`
 - Operator runbook: `apps/runtime/docs/OPERATIONS_ALERTING.md`
 
-## Khala SLO Targets (OA-RUST-093)
+## Spacetime SLO Targets (OA-RUST-093)
 
 Primary SLIs/SLOs:
 

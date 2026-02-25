@@ -46,7 +46,7 @@ OpenAgents adopts the following normative rules for wallet executor operations:
 
 - Control-plane boundary: outbound payment calls require authenticated executor channel.
 - Runtime authority boundary: unchanged for write authority; runtime consumes payment results/receipts.
-- Khala delivery boundary: no change.
+- Spacetime delivery boundary: no change.
 - Client/runtime contract boundary: receipt payload semantics become explicit and deterministic.
 - Deployment/runtime ops boundary: key/token rotations are runbook-gated operations.
 

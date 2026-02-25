@@ -13,12 +13,12 @@
       "owner_surface": "autopilot-desktop",
       "runtime_source": "runtime"
     },
-    "khala_projection": {
+    "spacetime_projection": {
       "document_id": "runtime:codex_worker:desktopw:desktop:shared",
       "last_runtime_seq": 307,
       "lag_events": 0,
       "status": "running",
-      "projection_version": "khala.v1",
+      "projection_version": "spacetime.v1",
       "last_projected_at": "2026-02-21T07:44:11Z"
     }
   },

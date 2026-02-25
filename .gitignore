@@ -7,9 +7,9 @@ target
 .DS_Store
 .tmp/
 expo/.tmp
-khala_local_storage/
-khala/.env.local
-khala/_generated/
+spacetime_local_storage/
+spacetime/.env.local
+spacetime/_generated/
 .env.local
 local_backend
 node_modules

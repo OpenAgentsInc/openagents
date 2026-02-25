@@ -19,8 +19,8 @@ Group roles (no direct login):
   - Used by migration lane only.
 - `oa_runtime_rw`
   - Runtime service read/write role for `runtime.*` tables/sequences.
-- `oa_khala_ro`
-  - Khala replay/projection reader role.
+- `oa_spacetime_ro`
+  - Spacetime replay/projection reader role.
   - Read-only access to runtime sync/projection tables.
 - `oa_control_rw`
   - Control-plane schema role (`control.*`).
@@ -29,7 +29,7 @@ Required boundaries:
 
 1. `oa_control_rw` has no write privileges in `runtime.*`.
 2. `oa_runtime_rw` has no write privileges in `control.*`.
-3. `oa_khala_ro` has no write privileges in `runtime.*`.
+3. `oa_spacetime_ro` has no write privileges in `runtime.*`.
 4. `PUBLIC` has no privileges on runtime schema/tables/sequences.
 
 ## Apply Policy
@@ -51,7 +51,7 @@ Optional role overrides:
 DB_URL='postgres://...' \
 RUNTIME_OWNER_ROLE=oa_runtime_owner \
 RUNTIME_RW_ROLE=oa_runtime_rw \
-KHALA_RO_ROLE=oa_khala_ro \
+SPACETIME_RO_ROLE=oa_spacetime_ro \
 CONTROL_RW_ROLE=oa_control_rw \
 apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh
 ```
@@ -78,8 +78,8 @@ Checks include:
 - `runtime` schema owner is runtime owner role,
 - control role has zero runtime write grants,
 - runtime role has zero control write grants (when `control` schema exists),
-- Khala role has zero runtime write grants,
-- Khala role has required select access on sync tables.
+- Spacetime role has zero runtime write grants,
+- Spacetime role has required select access on sync tables.
 
 ## Login Role Binding
 
@@ -88,7 +88,7 @@ Bind service login roles to group roles (example):
 ```sql
 GRANT oa_runtime_rw TO runtime_service_login;
 GRANT oa_control_rw TO control_service_login;
-GRANT oa_khala_ro TO khala_service_login;
+GRANT oa_spacetime_ro TO spacetime_service_login;
 ```
 
 Keep login credentials out of migration scripts and manage them via secret rotation workflows.

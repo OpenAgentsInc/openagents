@@ -21,14 +21,14 @@ This follow-up is docs-first and code-first across both repos, with emphasis on 
 
 1. `docs/core/ARCHITECTURE.md`
 2. `docs/execution/REPLAY.md`
-3. `apps/runtime/docs/KHALA_ORDERING_DELIVERY_CONTRACT.md`
-4. `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
-5. `apps/runtime/docs/KHALA_SYNC.md`
+3. `apps/runtime/docs/SPACETIME_ORDERING_DELIVERY_CONTRACT.md`
+4. `apps/runtime/docs/SPACETIME_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
+5. `apps/runtime/docs/SPACETIME_SYNC.md`
 6. `apps/runtime/src/event_log.rs`
 7. `apps/runtime/src/authority.rs`
 8. `apps/runtime/src/fanout.rs`
 9. `apps/runtime/src/server.rs`
-10. `crates/openagents-client-core/src/khala_protocol.rs`
+10. `crates/openagents-client-core/src/spacetime_protocol.rs`
 11. `crates/openagents-app-state/src/reducer.rs`
 12. `crates/openagents-app-state/tests/reducer_replay.rs`
 13. `crates/openagents-app-state/tests/stream_watermarks.rs`
@@ -64,8 +64,8 @@ The thesis is directionally correct for the collaborative inner loop.
 
 1. SpacetimeDB already provides the core MMORPG-like primitives: one shared state world, ACID reducers, realtime subscriptions, and durable replay history.
 2. OpenAgents already enforces deterministic replay/idempotency on its authority side and would benefit from a shared collaboration world.
-3. The hard blocker is not database capability, it is product/contract reality: current Autopilot and OpenAgents flows are explicitly git branch/PR centric and bound to current authority invariants.
-4. Best path is phased: Spacetime as collaborative world authority for editor/session state first, while git remains an export/provenance boundary during migration.
+3. The core design constraint is preserving authority/replay invariants while moving collaboration state to a shared DB world; Git/GitHub coupling is migration debt, not a reason to keep git as the core primitive.
+4. Best path is phased: Spacetime as collaboration authority first, with Git/GitHub/worktree flows implemented as outer integration adapters that cannot block core logical sync progression.
 
 ## What SpacetimeDB is, deeper than the first audit
 
@@ -118,15 +118,15 @@ RLS exists but is explicitly marked experimental, and docs recommend views for m
 
 ### Authority and replay invariants are already strict
 
-1. `docs/core/ARCHITECTURE.md` keeps HTTP mutation authority, Khala WS transport, and `(topic, seq)` replay/idempotency as non-negotiable.
+1. `docs/core/ARCHITECTURE.md` keeps HTTP mutation authority, Spacetime WS transport, and `(topic, seq)` replay/idempotency as non-negotiable.
 2. `docs/execution/REPLAY.md` requires deterministic replay logs with hashable tool call/result structure.
 3. Runtime run-event authority path is already deterministic and idempotent:
    - `event_log.rs` enforces per-run monotonic seq, idempotency key replay, and expected seq conflicts.
-4. Khala fanout explicitly sorts by logical sequence and emits deterministic stale-cursor reasons:
+4. Spacetime fanout explicitly sorts by logical sequence and emits deterministic stale-cursor reasons:
    - `retention_floor_breach`, `replay_budget_exceeded`,
    - recovery metadata returned by API (`fanout.rs`, `server.rs`).
 5. Client and app state code are already watermark monotonic/idempotent:
-   - `khala_protocol.rs`,
+   - `spacetime_protocol.rs`,
    - app reducer watermarks + deterministic replay tests.
 
 ### Autopilot is still deeply git-centered today
@@ -139,7 +139,7 @@ Evidence from code:
 4. UI runtime has dedicated git status/diff/log system (`autopilot/src/app/git.rs`).
 5. Session UI includes explicit fork semantics (`autopilot/src/app_entry/state_actions.rs`).
 
-This is the current product contract. A total immediate "no commits/no branches" switch would be a breaking change, not a refactor.
+This is the current product contract and migration surface. It should be treated as adapter-layer coupling to unwind, not as the foundational state model.
 
 ## Thesis analysis: what is true now, what is not
 
@@ -161,16 +161,17 @@ Feasible and strongly aligned.
 
 ### 3) "No worktrees, no branches, no merges, no commits"
 
-Not fully feasible immediately in OpenAgents as currently designed.
+Correct as a core-primitive direction; feasible with layered integration.
 
-1. Current Autopilot workflow and customer expectations are PR/git based.
-2. External ecosystem integration (GitHub, CI, code review) still depends on commits.
-3. Removing git from the outer loop today would fight the product and architecture, not help it.
+1. Canonical collaboration state can be branchless and ACID in one shared DB world.
+2. Git/GitHub/CI can exist as constrained integration lanes that consume/export from that canonical state.
+3. Current git-centric UX is real, but it should be refactored into adapter behavior rather than dictating core data semantics.
 
 Practical interpretation:
 
-1. Yes: no branch/worktree overhead inside the live collaborative session world.
-2. Not yet: remove commits from outer provenance/publishing boundary.
+1. Yes: no branch/worktree overhead in the canonical collaboration loop.
+2. Yes: integrations can still emit commits/PRs where needed.
+3. Critical rule: integration failure must not block logical state movement; adapters retry/replay from canonical DB event history.
 
 ### 4) "ACID and replayable, line-by-line"
 
@@ -238,15 +239,17 @@ This is the concrete architecture that matches the thesis without violating curr
 1. Keep OpenAgents control/runtime authority lanes unchanged for current canonical domains.
 2. Add a new collaboration world lane backed by SpacetimeDB for shared session/file state.
 3. Bridge adapters translate between proto/HTTP authority boundaries and Spacetime reducer contracts where needed.
-4. Keep Khala as authority replay transport for existing runtime authority topics.
+4. Keep Spacetime as authority replay transport for existing runtime authority topics.
+5. Enforce primitive hierarchy: core collaboration sync is DB-native; external integrations are downstream adapters.
 
-### Git posture during migration
+### Integration posture during migration
 
 1. Inner loop:
    - agents collaborate in one shared DB world (branchless session state).
-2. Outer loop:
-   - export deterministic result to git commit/PR when crossing ecosystem boundary.
-3. This removes most merge/worktree overhead without breaking current product rails.
+2. Adapter loop:
+   - Git/GitHub/CI exporters subscribe to canonical world events and emit commits/PRs as required by external systems.
+3. Failure mode:
+   - adapter outages or quota errors do not block base state movement; exporters recover by replaying from canonical sequence/checkpoints.
 
 ## What we should do vs should not do
 
@@ -260,7 +263,7 @@ This is the concrete architecture that matches the thesis without violating curr
 ### Should not do right now
 
 1. Replace control/runtime canonical economic/auth authority with SpacetimeDB.
-2. Remove git as final provenance/publish boundary immediately.
+2. Entangle core collaboration state progression with Git/GitHub availability or integration constraints.
 3. Introduce dual competing authority paths for the same domain without ADR changes.
 
 ## Adoption sequence (pragmatic)
@@ -268,7 +271,7 @@ This is the concrete architecture that matches the thesis without violating curr
 1. Phase A: pilot collaboration world
    - one bounded domain, for example Autopilot live collaborative file editing/presence.
 2. Phase B: branchless inner loop
-   - default multi-agent editing session in shared world with deterministic export-to-git step.
+   - default multi-agent editing session in shared world, plus non-blocking export adapters (git/github/ci).
 3. Phase C: selective authority expansion
    - only after ADR and invariant changes, and only where replay and ownership semantics remain clear.
 
@@ -283,16 +286,16 @@ This is the concrete architecture that matches the thesis without violating curr
 4. Risk: procedure nondeterminism and side effects.
    - Mitigation: keep critical write logic in reducers; isolate external I/O.
 5. Risk: user workflow mismatch with existing git-centric tooling.
-   - Mitigation: keep git export boundary until product contract intentionally changes.
+   - Mitigation: keep compatibility adapters, but shift source of truth to DB-native collaboration state with replayable exporter recovery.
 
 ## Concrete recommendation
 
 OpenAgents should adopt SpacetimeDB as the shared multi-agent collaboration world for Autopilot editing/session state, with ACID operation application and deterministic replay by design.
 
-OpenAgents should not currently replace existing control/runtime canonical authority domains or remove git as the external provenance boundary.
+OpenAgents should not currently replace existing control/runtime canonical authority domains or make core data movement depend on Git/GitHub integration availability.
 
 The right near-term target is:
 
 1. branchless, realtime, shared DB world in the inner loop;
-2. deterministic export to current git/PR rails at the outer boundary;
+2. deterministic, replayable, non-blocking export adapters to git/PR and other constrained ecosystems;
 3. future deeper changes only through ADR and invariant gate updates.

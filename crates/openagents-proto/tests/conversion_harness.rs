@@ -1,6 +1,6 @@
 use openagents_proto::domain::{
     CodexNotification, CodexNotificationMethod, ControlAuthSession, ControlSessionStatus,
-    ConversionError, KhalaFrame, RuntimeRunEvent, RuntimeRunEventPayloadKind,
+    ConversionError, SpacetimeFrame, RuntimeRunEvent, RuntimeRunEventPayloadKind,
 };
 use openagents_proto::wire::openagents::codex::v1::{
     CodexDesktopHandshakeAckPayload, CodexIosHandshakePayload, CodexNotificationEnvelope,
@@ -14,7 +14,7 @@ use openagents_proto::wire::openagents::runtime::v1::{
     RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunFinishedPayload, RuntimeRunStatus,
     RuntimeTextDeltaPayload, runtime_run_event,
 };
-use openagents_proto::wire::openagents::sync::v1::{KhalaFrame as WireKhalaFrame, KhalaFrameKind};
+use openagents_proto::wire::openagents::sync::v1::{SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind};
 use serde_json::Value;
 
 fn fixture() -> Value {
@@ -52,13 +52,13 @@ fn payload_object(value: &Value) -> &Value {
     value.get("payload").unwrap_or(&Value::Null)
 }
 
-fn build_wire_khala_frame(value: &Value) -> WireKhalaFrame {
+fn build_wire_spacetime_frame(value: &Value) -> WireSpacetimeFrame {
     let kind = match string_field(value, "kind").as_str() {
-        "SUBSCRIBED" => KhalaFrameKind::Subscribed as i32,
-        "UPDATE_BATCH" => KhalaFrameKind::UpdateBatch as i32,
-        "HEARTBEAT" => KhalaFrameKind::Heartbeat as i32,
-        "ERROR" => KhalaFrameKind::Error as i32,
-        _ => KhalaFrameKind::Unspecified as i32,
+        "SUBSCRIBED" => SpacetimeFrameKind::Subscribed as i32,
+        "UPDATE_BATCH" => SpacetimeFrameKind::UpdateBatch as i32,
+        "HEARTBEAT" => SpacetimeFrameKind::Heartbeat as i32,
+        "ERROR" => SpacetimeFrameKind::Error as i32,
+        _ => SpacetimeFrameKind::Unspecified as i32,
     };
 
     let payload_bytes = value
@@ -73,7 +73,7 @@ fn build_wire_khala_frame(value: &Value) -> WireKhalaFrame {
         })
         .unwrap_or_default();
 
-    WireKhalaFrame {
+    WireSpacetimeFrame {
         topic: string_field(value, "topic"),
         seq: u64_field(value, "seq"),
         kind,
@@ -222,20 +222,20 @@ fn build_wire_runtime_run_event(value: &Value) -> WireRuntimeRunEvent {
 fn sync_conversion_fixture_success_and_failure() {
     let root = fixture();
 
-    let valid_wire = build_wire_khala_frame(scenario(&root, "sync.valid"));
+    let valid_wire = build_wire_spacetime_frame(scenario(&root, "sync.valid"));
     let domain =
-        KhalaFrame::try_from(valid_wire.clone()).expect("valid sync conversion should pass");
+        SpacetimeFrame::try_from(valid_wire.clone()).expect("valid sync conversion should pass");
     assert_eq!(domain.topic, "runtime.codex_worker_events");
 
-    let round_trip = WireKhalaFrame::from(domain);
+    let round_trip = WireSpacetimeFrame::from(domain);
     assert_eq!(round_trip, valid_wire);
 
-    let invalid_wire = build_wire_khala_frame(scenario(&root, "sync.invalid_missing_topic"));
-    let error = KhalaFrame::try_from(invalid_wire).expect_err("missing topic should fail");
+    let invalid_wire = build_wire_spacetime_frame(scenario(&root, "sync.invalid_missing_topic"));
+    let error = SpacetimeFrame::try_from(invalid_wire).expect_err("missing topic should fail");
     assert_eq!(
         error,
         ConversionError::MissingField {
-            message: "KhalaFrame",
+            message: "SpacetimeFrame",
             field: "topic"
         }
     );

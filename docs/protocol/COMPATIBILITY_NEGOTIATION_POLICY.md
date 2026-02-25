@@ -85,7 +85,7 @@ Failure response semantics:
 Protocol-version policy:
 
 - Canonical sync protocol version: `spacetime.sync.v1`
-- Unsupported examples: `khala.ws.v1`, `khala.ws.v2`, unknown custom protocol strings
+- Unsupported examples: `spacetime.ws.v1`, `spacetime.ws.v2`, unknown custom protocol strings
 
 Negotiation requirements:
 

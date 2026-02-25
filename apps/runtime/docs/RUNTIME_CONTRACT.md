@@ -414,7 +414,7 @@ Success (`200`):
       "heartbeat_age_ms": 843,
       "heartbeat_stale_after_ms": 120000,
       "workspace_ref": "workspace://demo",
-      "khala_projection": {
+      "spacetime_projection": {
         "status": "in_sync",
         "lag_events": 0,
         "last_runtime_seq": 17,

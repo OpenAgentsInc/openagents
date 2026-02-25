@@ -30,7 +30,7 @@ Allowed classes of integration:
 1. Standard auth/session flows (challenge/verify/refresh/revoke) through control APIs.
 2. Sync token minting through control APIs with explicit `onyx` surface attribution and scoped grants.
 
-### Runtime/Khala Topics
+### Runtime/Spacetime Topics
 
 Onyx is limited to run-event replay lanes in v1:
 
@@ -38,7 +38,7 @@ Onyx is limited to run-event replay lanes in v1:
 2. Not allowed:
    - `runtime.codex_worker_events`
    - `worker:{worker_id}:lifecycle`
-   - any other Khala topic outside run-event lanes.
+   - any other Spacetime topic outside run-event lanes.
 
 ## Enforcement
 
@@ -51,6 +51,6 @@ Runtime sync authorization enforces this contract:
 ## Offline and Sync Non-Goals
 
 1. Onyx is not a privileged control surface for Codex worker administration.
-2. Onyx does not gain mutation authority through Khala transport.
-3. Onyx local-first note editing behavior remains independent of Khala availability.
+2. Onyx does not gain mutation authority through Spacetime transport.
+3. Onyx local-first note editing behavior remains independent of Spacetime availability.
 4. Onyx is not a replacement for autopilot-desktop Codex administration flows.

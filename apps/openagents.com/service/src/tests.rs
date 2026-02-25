@@ -6386,13 +6386,13 @@ async fn personal_access_token_routes_support_current_and_bulk_revocation() -> R
 }
 
 #[tokio::test]
-async fn khala_token_route_is_retired() -> Result<()> {
+async fn spacetime_token_route_is_retired() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
-    let token = authenticate_token(app.clone(), "khala-route-retired@openagents.com").await?;
+    let token = authenticate_token(app.clone(), "spacetime-route-retired@openagents.com").await?;
 
     let request = Request::builder()
         .method("POST")
-        .uri("/api/khala/token")
+        .uri("/api/spacetime/token")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from("{}"))?;
@@ -7583,11 +7583,11 @@ async fn control_status_exposes_runtime_route_ownership_map() -> Result<()> {
         json!("spacetime_ws")
     );
     assert_eq!(
-        body["data"]["syncCutover"]["khalaEmergencyModeEnabled"],
+        body["data"]["syncCutover"]["spacetimeEmergencyModeEnabled"],
         serde_json::Value::Null
     );
     assert_eq!(
-        body["data"]["syncCutover"]["khalaTokenRoute"],
+        body["data"]["syncCutover"]["spacetimeTokenRoute"],
         serde_json::Value::Null
     );
     assert_eq!(

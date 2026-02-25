@@ -1,0 +1,24 @@
+{
+    "generated_at": "2026-02-22T07:47:43.695558Z",
+    "count": 18,
+    "entries": [
+        "resources/js/pages/admin/index.tsx",
+        "resources/js/pages/aui.tsx",
+        "resources/js/pages/auth/login.tsx",
+        "resources/js/pages/dashboard.tsx",
+        "resources/js/pages/feed.tsx",
+        "resources/js/pages/home.tsx",
+        "resources/js/pages/index.tsx",
+        "resources/js/pages/l402/deployments.tsx",
+        "resources/js/pages/l402/paywalls.tsx",
+        "resources/js/pages/l402/settlements.tsx",
+        "resources/js/pages/l402/transactions/index.tsx",
+        "resources/js/pages/l402/transactions/show.tsx",
+        "resources/js/pages/l402/wallet.tsx",
+        "resources/js/pages/settings/appearance.tsx",
+        "resources/js/pages/settings/autopilot.tsx",
+        "resources/js/pages/settings/integrations.tsx",
+        "resources/js/pages/settings/profile.tsx",
+        "resources/js/pages/welcome.tsx"
+    ]
+}

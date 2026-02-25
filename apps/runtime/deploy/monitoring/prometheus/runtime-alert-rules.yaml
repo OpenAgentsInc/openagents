@@ -86,60 +86,60 @@ spec:
             description: Elevated denied or exhausted policy decisions detected.
             runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#policy-denial-ratio
 
-        - alert: OpenAgentsRuntimeKhalaProjectionLagP95High
-          expr: quantile_over_time(0.95, openagents_runtime_khala_projection_lag_events{result="ok"}[10m]) > 25
+        - alert: OpenAgentsRuntimeSpacetimeProjectionLagP95High
+          expr: quantile_over_time(0.95, openagents_runtime_spacetime_projection_lag_events{result="ok"}[10m]) > 25
           for: 10m
           labels:
             severity: warning
             service: runtime
           annotations:
-            summary: Khala projection lag p95 exceeded 25 events
+            summary: Spacetime projection lag p95 exceeded 25 events
             description: Runtime projector is falling behind recent runtime sequence progression.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-lag
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-projection-lag
 
-        - alert: OpenAgentsRuntimeKhalaProjectionWriteFailureRatioHigh
-          expr: sum(rate(openagents_runtime_khala_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_khala_projection_write_count[5m])), 1) > 0.01
+        - alert: OpenAgentsRuntimeSpacetimeProjectionWriteFailureRatioHigh
+          expr: sum(rate(openagents_runtime_spacetime_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_spacetime_projection_write_count[5m])), 1) > 0.01
           for: 10m
           labels:
             severity: critical
             service: runtime
           annotations:
-            summary: Khala projection write failure ratio exceeded 1%
-            description: Runtime projection writes to Khala are failing above error budget.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-write-failures
+            summary: Spacetime projection write failure ratio exceeded 1%
+            description: Runtime projection writes to Spacetime are failing above error budget.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-projection-write-failures
 
-        - alert: OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh
-          expr: sum(increase(openagents_runtime_khala_projection_drift_count[10m])) > 3
+        - alert: OpenAgentsRuntimeSpacetimeProjectionDriftIncidentsHigh
+          expr: sum(increase(openagents_runtime_spacetime_projection_drift_count[10m])) > 3
           for: 5m
           labels:
             severity: warning
             service: runtime
           annotations:
-            summary: Khala projection drift incidents are elevated
+            summary: Spacetime projection drift incidents are elevated
             description: Projection checkpoint drift signals exceeded expected tolerance.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-drift
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-projection-drift
 
-        - alert: OpenAgentsRuntimeKhalaProjectionHashMismatchDetected
-          expr: sum(increase(openagents_runtime_khala_projection_drift_count{reason_class=~"summary_hash_mismatch|hash_and_lag_drift"}[10m])) > 0
+        - alert: OpenAgentsRuntimeSpacetimeProjectionHashMismatchDetected
+          expr: sum(increase(openagents_runtime_spacetime_projection_drift_count{reason_class=~"summary_hash_mismatch|hash_and_lag_drift"}[10m])) > 0
           for: 5m
           labels:
             severity: critical
             service: runtime
           annotations:
-            summary: Khala projection hash mismatch detected
+            summary: Spacetime projection hash mismatch detected
             description: Projection hash mismatch reasons indicate replay determinism or projection parity drift.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-hash-mismatch
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-projection-hash-mismatch
 
-        - alert: OpenAgentsRuntimeKhalaProjectionReplayFailures
-          expr: sum(increase(openagents_runtime_khala_projection_replay_count{result="error"}[15m])) > 0
+        - alert: OpenAgentsRuntimeSpacetimeProjectionReplayFailures
+          expr: sum(increase(openagents_runtime_spacetime_projection_replay_count{result="error"}[15m])) > 0
           for: 5m
           labels:
             severity: critical
             service: runtime
           annotations:
-            summary: Khala projection replay failure detected
-            description: Runtime replay/rebuild path for Khala projections is failing.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-replay
+            summary: Spacetime projection replay failure detected
+            description: Runtime replay/rebuild path for Spacetime projections is failing.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-projection-replay
 
         - alert: OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh
           expr: sum(rate(openagents_runtime_sync_socket_auth_count{status="error"}[5m])) / clamp_min(sum(rate(openagents_runtime_sync_socket_auth_count[5m])), 1) > 0.05
@@ -149,7 +149,7 @@ spec:
             service: runtime
           annotations:
             summary: Sync socket auth failures exceeded 5%
-            description: Khala websocket auth rejects are elevated.
+            description: Spacetime websocket auth rejects are elevated.
             runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures
 
         - alert: OpenAgentsRuntimeSyncSocketTimeoutRateHigh
@@ -174,13 +174,13 @@ spec:
             description: Clients are reconnecting below retention floor and require resnapshot.
             runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike
 
-        - alert: OpenAgentsKhalaTokenMintFailureRatioHigh
-          expr: ((sum(rate(openagents_laravel_khala_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_khala_token_mint_total[10m])) or vector(0)), 1)) > 0.01
+        - alert: OpenAgentsSpacetimeTokenMintFailureRatioHigh
+          expr: ((sum(rate(openagents_laravel_spacetime_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_spacetime_token_mint_total[10m])) or vector(0)), 1)) > 0.01
           for: 15m
           labels:
             severity: warning
             service: runtime
           annotations:
-            summary: Khala token mint failure ratio exceeded 1%
-            description: Laravel token bridge is failing to issue Khala auth tokens above budget.
-            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-token-mint-failures
+            summary: Spacetime token mint failure ratio exceeded 1%
+            description: Laravel token bridge is failing to issue Spacetime auth tokens above budget.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#spacetime-token-mint-failures

@@ -1,0 +1,52 @@
+{
+  "schema": "openagents.webparity.vercel_sse_fixture_harness.v1",
+  "generated_at": "20260222T181305Z",
+  "totals": {
+    "check_count": 4,
+    "passed": 4,
+    "failed": 0
+  },
+  "overall_status": "passed",
+  "checks": [
+    {
+      "check_id": "fixture-source-paths",
+      "description": "Fixture source references exist",
+      "command": "check_source_paths ",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:13:05Z",
+      "ended_at": "2026-02-22T18:13:05Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T181305Z/fixture-source-paths.log"
+    },
+    {
+      "check_id": "generate-transcripts",
+      "description": "Regenerate normalized SSE transcripts from Codex event scenarios",
+      "command": "generate_transcripts ",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:13:05Z",
+      "ended_at": "2026-02-22T18:13:05Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T181305Z/generate-transcripts.log"
+    },
+    {
+      "check_id": "compare-goldens",
+      "description": "Detect fixture drift against committed golden transcripts",
+      "command": "compare_transcripts_to_golden ",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:13:05Z",
+      "ended_at": "2026-02-22T18:13:05Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T181305Z/compare-goldens.log"
+    },
+    {
+      "check_id": "error-matrix",
+      "description": "Validate pre-stream/in-stream error fixture matrix",
+      "command": "validate_error_fixture_matrix ",
+      "status": "pass",
+      "reason": null,
+      "started_at": "2026-02-22T18:13:05Z",
+      "ended_at": "2026-02-22T18:13:05Z",
+      "log_path": "/Users/christopherdavid/code/openagents/apps/openagents.com/storage/app/vercel-sse-fixture-harness/20260222T181305Z/error-matrix.log"
+    }
+  ]
+}

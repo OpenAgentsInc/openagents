@@ -17,7 +17,7 @@ Accepted
 OpenAgents has reset ADR authority for the Rust-era migration. Multiple transitional lanes still exist in the repo, but architecture authority now requires one baseline ADR that locks:
 
 1. Rust-only implementation direction.
-2. Authority boundaries between control plane, runtime, and Khala.
+2. Authority boundaries between control plane, runtime, and Spacetime.
 3. Transport and coupling invariants that prevent architectural drift.
 4. Explicit non-goals that are disallowed even when expedient.
 
@@ -30,17 +30,17 @@ OpenAgents adopts the Rust-only architecture baseline defined in `docs/core/ARCH
 Normative constraints:
 
 1. Cross-process/client-server contracts are proto-first (`proto/`) and generated into Rust.
-2. Authority mutations are HTTP API only; Khala WebSocket transport is subscription/replay only.
-3. Khala remains delivery/replay infrastructure and never becomes an authority write path.
+2. Authority mutations are HTTP API only; Spacetime WebSocket transport is subscription/replay only.
+3. Spacetime remains delivery/replay infrastructure and never becomes an authority write path.
 4. Control and runtime authority planes remain separate, with no cross-plane SQL joins in production code.
-5. Production service boundaries (`openagents.com` control service, runtime service, Khala service) must communicate via explicit network/proto contracts and not via in-memory coupling.
+5. Production service boundaries (`openagents.com` control service, runtime service, Spacetime service) must communicate via explicit network/proto contracts and not via in-memory coupling.
 6. Rust-only endstate requirements in `docs/core/ARCHITECTURE.md` are the migration completion criteria.
 
 ## Rust-Era Boundary Impact
 
 - Control-plane boundary: preserved and explicit.
 - Runtime authority boundary: preserved and explicit.
-- Khala delivery boundary: constrained to WS replay/delivery only.
+- Spacetime delivery boundary: constrained to WS replay/delivery only.
 - Client/runtime contract boundary: proto-first enforced.
 - Deployment/runtime ops boundary: deploy/migrate sequencing and runbooks are mandatory evidence.
 

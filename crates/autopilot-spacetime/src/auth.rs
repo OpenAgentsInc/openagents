@@ -39,7 +39,9 @@ pub fn authorize_subscription(
     ensure_scope(claims, SCOPE_SYNC_SUBSCRIBE)?;
 
     match query {
-        SubscriptionQuerySet::StreamEvents { stream_id, .. } => ensure_stream_grant(claims, stream_id),
+        SubscriptionQuerySet::StreamEvents { stream_id, .. } => {
+            ensure_stream_grant(claims, stream_id)
+        }
         _ => Ok(()),
     }
 }
