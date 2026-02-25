@@ -137,6 +137,45 @@ Non-negotiable:
 1. Neither Nexus nor swarm providers should become canonical authority for control/runtime domain state.
 2. Authority writes stay in authenticated HTTP authority lanes (control/runtime), with Khala/Nexus as delivery/coordination.
 
+## Potential Simplifications for the Two-Sided Marketplace Focus
+
+To match the near-term product goal, the platform can be simplified to one clear loop:
+
+1. user runs Autopilot agent,
+2. user can sell compute supply into the network via NIP-90 provider mode,
+3. that same Autopilot can consume compute either locally or from the wider network.
+
+Simplified profile for the next versions:
+
+1. Treat NIP-90 as the single marketplace execution lane for externalized compute.
+2. Keep local-first Autopilot execution as default, with explicit opt-in to remote/swarm dispatch.
+3. Keep control/runtime surfaces minimal and focused on auth/session, sync/replay, and canonical receipts.
+4. Keep Nexus as relay/coordination fabric only, not a second authority plane.
+
+What can wait for later versions:
+
+1. Expanded multi-driver runtime routing complexity not needed for the two-sided marketplace MVP.
+2. Broad surface area under `/api/runtime/*` that does not directly support:
+   - local Autopilot execution,
+   - NIP-90 provider enrollment/advertisement,
+   - NIP-90 compute consumption and settlement.
+3. Non-essential operator/admin workflows that are orthogonal to buy/sell compute and core agent operation.
+
+Hydra and Aegis compatibility posture under this simplification:
+
+1. Keep `docs/plans/hydra-liquidity-engine.md` and `docs/plans/aegis.md` as forward-compatible program tracks.
+2. In the simplified near-term shape:
+   - Hydra remains the economic settlement/policy substrate for compute pricing, liquidity, and receipts.
+   - Aegis remains the verification/underwriting substrate for trust, risk, and claims on higher-assurance lanes.
+3. Defer broad Aegis/Hydra feature expansion until core two-sided marketplace flow is stable, but do not break their contract lanes, schema namespaces, or receipt model.
+
+Practical guardrail for implementation during this simplified phase:
+
+1. Any new feature should be prioritized only if it directly improves one of:
+   - provider-side compute selling via NIP-90,
+   - agent-side compute buying/consumption (local and network),
+   - economic/verifiability integrity required for that loop (Hydra/Aegis compatible).
+
 ## Notable Gaps and Inconsistencies
 
 1. Mixed ownership under `/api/runtime/*` in control service:
