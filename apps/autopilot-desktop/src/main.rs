@@ -74,6 +74,7 @@ mod inbox_domain;
 mod provider_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
+mod sync_lifecycle;
 mod wallet_domain;
 
 use codex_control::build_auto_response;
@@ -95,6 +96,10 @@ use runtime_codex_proto::{
     extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_khala_update,
     handshake_dedupe_key, khala_error_code, merge_retry_cursor, parse_khala_frame,
     request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
+};
+use sync_lifecycle::{
+    RuntimeSyncDisconnectReason, RuntimeSyncHealthSnapshot, RuntimeSyncLifecycleManager,
+    classify_disconnect_reason,
 };
 use wallet_domain::{create_wallet_invoice, fetch_wallet_status, pay_wallet_request};
 
@@ -126,7 +131,6 @@ const RUNTIME_SYNC_KHALA_TOPIC: &str = "runtime.codex_worker_events";
 const RUNTIME_SYNC_KHALA_CHANNEL: &str = "sync:v1";
 const RUNTIME_SYNC_KHALA_WS_VSN: &str = "2.0.0";
 const RUNTIME_SYNC_KHALA_HEARTBEAT_MS: u64 = 20_000;
-const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
 const RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK: &str = "runtime/request";
 const RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX: &str = "invalid-request-seq";
 type RuntimeSyncWebSocket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
@@ -185,8 +189,15 @@ struct RuntimeCodexSync {
     seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
     seen_control_requests: Arc<tokio::sync::Mutex<HashSet<String>>>,
     terminal_control_receipts: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    lifecycle: Arc<tokio::sync::Mutex<RuntimeSyncLifecycleManager>>,
     remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeSyncTokenLease {
+    token: String,
+    refresh_after_in_seconds: Option<u64>,
 }
 
 impl RuntimeCodexSync {
@@ -258,6 +269,9 @@ impl RuntimeCodexSync {
             seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             seen_control_requests: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             terminal_control_receipts: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            lifecycle: Arc::new(tokio::sync::Mutex::new(
+                RuntimeSyncLifecycleManager::default(),
+            )),
             remote_control_tx,
             action_tx,
         })
@@ -299,6 +313,11 @@ impl RuntimeCodexSync {
 
     async fn current_base_url(&self) -> String {
         self.base_url.read().await.clone()
+    }
+
+    async fn sync_health_snapshots(&self) -> Vec<RuntimeSyncHealthSnapshot> {
+        let lifecycle = self.lifecycle.lock().await;
+        lifecycle.snapshots()
     }
 
     async fn apply_auth_state(&self, state: &RuntimeSyncAuthState) {
@@ -483,6 +502,10 @@ impl RuntimeCodexSync {
                 0
             }
         };
+        {
+            let mut lifecycle = self.lifecycle.lock().await;
+            lifecycle.mark_connecting(&worker_id);
+        }
 
         tracing::info!(
             worker_id = %worker_id,
@@ -491,24 +514,50 @@ impl RuntimeCodexSync {
         );
 
         loop {
-            match self.run_worker_khala_session(&worker_id, &mut cursor).await {
-                Ok(()) => tracing::info!(
+            let session_result = self.run_worker_khala_session(&worker_id, &mut cursor).await;
+            let (disconnect_reason, disconnect_error) = match session_result {
+                Ok(()) => (RuntimeSyncDisconnectReason::StreamClosed, None),
+                Err(error) => (classify_disconnect_reason(error.as_str()), Some(error)),
+            };
+
+            let reconnect_plan = {
+                let mut lifecycle = self.lifecycle.lock().await;
+                lifecycle.mark_disconnect(&worker_id, disconnect_reason, disconnect_error.clone())
+            };
+
+            match disconnect_error {
+                None => tracing::info!(
                     worker_id = %worker_id,
                     cursor,
+                    reason = disconnect_reason.as_str(),
+                    reconnect_delay_ms = reconnect_plan.delay.as_millis() as u64,
                     "runtime sync khala stream session ended; reconnecting"
                 ),
-                Err(error) => tracing::warn!(
+                Some(error) => tracing::warn!(
                     worker_id = %worker_id,
                     cursor,
+                    reason = disconnect_reason.as_str(),
+                    reconnect_delay_ms = reconnect_plan.delay.as_millis() as u64,
                     error = %error,
                     "runtime sync khala stream failed; reconnecting"
                 ),
             }
 
-            tokio::time::sleep(Duration::from_millis(
-                RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS,
-            ))
-            .await;
+            if reconnect_plan.reset_cursor {
+                cursor = 0;
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    "runtime sync cursor reset due to stale replay window"
+                );
+            }
+
+            if reconnect_plan.refresh_token {
+                self.refresh_auth_from_disk().await;
+            }
+
+            tokio::time::sleep(reconnect_plan.delay).await;
+            let mut lifecycle = self.lifecycle.lock().await;
+            lifecycle.mark_connecting(&worker_id);
         }
     }
 
@@ -517,13 +566,13 @@ impl RuntimeCodexSync {
         worker_id: &str,
         cursor: &mut u64,
     ) -> Result<(), String> {
-        let sync_token = self
+        let token_lease = self
             .mint_runtime_sync_token(
                 vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
                 vec![RUNTIME_SYNC_KHALA_TOPIC.to_string()],
             )
             .await?;
-        let websocket_url = self.build_khala_websocket_url(&sync_token).await?;
+        let websocket_url = self.build_khala_websocket_url(&token_lease.token).await?;
         let (mut socket, _response) = connect_async(websocket_url.as_str())
             .await
             .map_err(|error| error.to_string())?;
@@ -569,9 +618,17 @@ impl RuntimeCodexSync {
             .await_khala_reply(&mut socket, worker_id, cursor, subscribe_ref.as_str())
             .await?;
 
+        {
+            let mut lifecycle = self.lifecycle.lock().await;
+            lifecycle.mark_live(worker_id, token_lease.refresh_after_in_seconds);
+        }
+
         let mut heartbeat =
             tokio::time::interval(Duration::from_millis(RUNTIME_SYNC_KHALA_HEARTBEAT_MS));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut refresh_deadline = token_lease
+            .refresh_after_in_seconds
+            .map(|seconds| Box::pin(tokio::time::sleep(Duration::from_secs(seconds.max(1)))));
 
         loop {
             tokio::select! {
@@ -589,6 +646,13 @@ impl RuntimeCodexSync {
                         .await
                         .map_err(|error| error.to_string())?;
                 }
+                _ = async {
+                    if let Some(deadline) = refresh_deadline.as_mut() {
+                        deadline.as_mut().await;
+                    }
+                }, if refresh_deadline.is_some() => {
+                    return Err("sync_token_refresh_due".to_string());
+                }
                 next_message = socket.next() => {
                     let Some(message) = next_message else {
                         return Err("khala websocket closed".to_string());
@@ -604,7 +668,7 @@ impl RuntimeCodexSync {
         &self,
         scopes: Vec<String>,
         streams: Vec<String>,
-    ) -> Result<String, String> {
+    ) -> Result<RuntimeSyncTokenLease, String> {
         let payload = json!({
             "scopes": scopes,
             "streams": streams,
@@ -622,23 +686,27 @@ impl RuntimeCodexSync {
                 self.post_json("/api/sync/token", payload).await?
             }
         };
-        if let Some(refresh_after_in) = response
+        let refresh_after_in_seconds = response
             .get("data")
             .and_then(|value| value.get("refresh_after_in"))
-            .and_then(Value::as_u64)
-        {
+            .and_then(Value::as_u64);
+        if let Some(refresh_after_in) = refresh_after_in_seconds {
             tracing::debug!(
                 refresh_after_in,
                 "runtime sync token lease received from control"
             );
         }
-        response
+        let token = response
             .get("data")
             .and_then(|value| value.get("token"))
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .map(ToString::to_string)
-            .ok_or_else(|| "runtime sync token response missing token".to_string())
+            .ok_or_else(|| "runtime sync token response missing token".to_string())?;
+        Ok(RuntimeSyncTokenLease {
+            token,
+            refresh_after_in_seconds,
+        })
     }
 
     async fn build_khala_websocket_url(&self, token: &str) -> Result<String, String> {
@@ -1587,10 +1655,12 @@ async fn runtime_auth_state_view(
     last_error: Option<String>,
 ) -> RuntimeAuthStateView {
     let stored = load_runtime_auth_state();
+    let mut sync_health: Option<RuntimeSyncHealthSnapshot> = None;
 
     let (base_url, token_present) = if let Some(sync) = runtime_sync.as_ref() {
         sync.refresh_auth_from_disk().await;
         let base_url = sync.current_base_url().await;
+        sync_health = sync.sync_health_snapshots().await.into_iter().next();
         let token_present = sync
             .token
             .read()
@@ -1626,6 +1696,31 @@ async fn runtime_auth_state_view(
         last_message,
         last_error,
         updated_at: Some(Utc::now().to_rfc3339()),
+        sync_worker_id: sync_health
+            .as_ref()
+            .map(|snapshot| snapshot.worker_id.clone()),
+        sync_connection_state: sync_health
+            .as_ref()
+            .map(|snapshot| snapshot.state.as_str().to_string()),
+        sync_connect_attempts: sync_health
+            .as_ref()
+            .map(|snapshot| snapshot.connect_attempts),
+        sync_reconnect_attempts: sync_health
+            .as_ref()
+            .map(|snapshot| snapshot.reconnect_attempts),
+        sync_next_retry_ms: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.next_retry_ms),
+        sync_last_disconnect_reason: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.last_disconnect_reason)
+            .map(|reason| reason.as_str().to_string()),
+        sync_last_error: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.last_error.clone()),
+        sync_token_refresh_after_in_seconds: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.token_refresh_after_in_seconds),
     }
 }
 

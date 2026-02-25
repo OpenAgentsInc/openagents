@@ -473,6 +473,52 @@ pub(super) fn paint_auth_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut P
     if let Some(updated_at) = root.runtime_auth.updated_at.as_deref() {
         push_wrapped_line(format!("Updated: {}", updated_at), theme::text::MUTED);
     }
+    if let Some(sync_state) = root.runtime_auth.sync_connection_state.as_deref() {
+        push_wrapped_line(
+            format!("Sync state: {}", sync_state),
+            if sync_state == "live" {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        );
+    }
+    if let Some(worker_id) = root.runtime_auth.sync_worker_id.as_deref() {
+        push_wrapped_line(format!("Sync worker: {}", worker_id), theme::text::MUTED);
+    }
+    if let Some(connect_attempts) = root.runtime_auth.sync_connect_attempts {
+        push_wrapped_line(
+            format!("Sync connect attempts: {}", connect_attempts),
+            theme::text::MUTED,
+        );
+    }
+    if let Some(reconnect_attempts) = root.runtime_auth.sync_reconnect_attempts {
+        push_wrapped_line(
+            format!("Sync reconnect attempts: {}", reconnect_attempts),
+            theme::text::MUTED,
+        );
+    }
+    if let Some(next_retry_ms) = root.runtime_auth.sync_next_retry_ms {
+        push_wrapped_line(
+            format!("Sync next retry: {} ms", next_retry_ms),
+            theme::text::MUTED,
+        );
+    }
+    if let Some(reason) = root.runtime_auth.sync_last_disconnect_reason.as_deref() {
+        push_wrapped_line(
+            format!("Sync last disconnect: {}", reason),
+            theme::text::MUTED,
+        );
+    }
+    if let Some(sync_error) = root.runtime_auth.sync_last_error.as_deref() {
+        push_wrapped_line(format!("Sync error: {}", sync_error), theme::accent::RED);
+    }
+    if let Some(refresh_after) = root.runtime_auth.sync_token_refresh_after_in_seconds {
+        push_wrapped_line(
+            format!("Sync token refresh lease: {} s", refresh_after),
+            theme::text::MUTED,
+        );
+    }
     if let Some(message) = root.runtime_auth.last_message.as_deref() {
         push_wrapped_line(message.to_string(), theme::text::PRIMARY);
     }
