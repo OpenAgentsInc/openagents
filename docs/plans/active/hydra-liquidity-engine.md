@@ -4,7 +4,57 @@
 
 Hydra is not a wallet UI and not “node ops tooling.” It is the **capital substrate** that the rest of the system (Autopilot, OpenAgents Compute, Skills, Exchange) can program against.
 
-**Status:** Canonical draft (supersedes prior liquidity pool draft notes).
+**Status:** Active implementation plan (MVP-3 authority path and harness landed).
+
+### Implementation Status Snapshot (as of 2026-02-25)
+
+Implemented now (in `main`):
+
+* Runtime internal authority lanes for Hydra liquidity/credit/routing are live under `/internal/v1/*`:
+  * liquidity: `quote_pay`, `pay`, `status`
+  * credit: `intent`, `offer`, `envelope`, `settle`, `health`, per-agent exposure
+  * routing/risk: routing score, risk health, observability
+* Hydra FX MVP-3 authority surface is implemented and covered by OpenAPI + tests:
+  * `POST /internal/v1/hydra/fx/rfq`
+  * `POST /internal/v1/hydra/fx/quote`
+  * `POST /internal/v1/hydra/fx/select`
+  * `POST /internal/v1/hydra/fx/settle`
+  * `GET /internal/v1/hydra/fx/rfq/:rfq_id`
+* FX settlement path is deterministic/idempotent and emits provenance receipts:
+  * reservation enforcement
+  * quote-expiry withheld behavior
+  * replay safety (no double-settle)
+  * idempotency drift conflict handling
+* Hydra observability now includes FX metrics and `/stats` renders those fields:
+  * RFQ/quote/settlement totals
+  * quote-to-settlement conversion
+  * spread avg/median bps
+  * withheld/failed totals
+  * treasury provider breadth
+* Executable harnesses are wired into local CI runtime lane:
+  * `./scripts/vignette-hydra-mvp2.sh`
+  * `./scripts/vignette-hydra-mvp3.sh`
+
+Still to do (remaining scope):
+
+* Productization/API boundary cleanup:
+  * finalize public Hydra API posture (internal-only vs promoted external `/v1` surfaces)
+  * keep docs/specs aligned with whichever boundary is chosen
+* LLP depth and pool economics beyond current authority baseline:
+  * external LP deposit/withdraw queues and share accounting
+  * partition-level accounting hardening (`LLP`/`CEP`/`RRP`) and signed pool snapshots
+* CEP expansion:
+  * broader underwriting policy depth and tuning loops
+  * production-grade adverse-condition automation beyond current breaker baseline
+* FX maturation:
+  * v1 atomic settlement path where supported
+  * broader provider strategy and treasury-agent policy tuning
+* Interop (MVP-4):
+  * mirror portable receipts and reputation summaries across Bridge/Nostr per policy
+  * keep high-rate coordination in Nexus lanes only
+* Operations hardening:
+  * staging/prod evidence capture for Gate-L style Hydra checks on every release cycle
+  * runbook expansion for incident + rollback procedures specific to Hydra FX/credit failure modes
 
 ---
 
