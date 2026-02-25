@@ -7087,6 +7087,72 @@ async fn runtime_codex_control_request_accepts_turn_start_and_persists_message()
 }
 
 #[tokio::test]
+async fn control_status_exposes_runtime_route_ownership_map() -> Result<()> {
+    let app = build_router(test_config(std::env::temp_dir()));
+    let token = authenticate_token(app.clone(), "runtime-ownership@openagents.com").await?;
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/control/status")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())?;
+    let response = app.oneshot(request).await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await?;
+    let ownership_rows = body["data"]["runtimeRouteOwnership"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    assert!(ownership_rows.iter().any(|row| {
+        row["method"] == json!("GET")
+            && row["path"] == json!("/api/runtime/workers")
+            && row["owner"] == json!("runtime_service")
+    }));
+    assert!(ownership_rows.iter().any(|row| {
+        row["method"] == json!("POST")
+            && row["path"] == json!("/api/runtime/codex/workers")
+            && row["owner"] == json!("control_service")
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn runtime_worker_routes_require_runtime_service_while_codex_routes_stay_control_owned()
+-> Result<()> {
+    let app = build_router(test_config(std::env::temp_dir()));
+    let token = authenticate_token(app.clone(), "runtime-boundary@openagents.com").await?;
+
+    let codex_create = Request::builder()
+        .method("POST")
+        .uri("/api/runtime/codex/workers")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"worker_id":"desktopw:boundary-check"}"#))?;
+    let codex_create_response = app.clone().oneshot(codex_create).await?;
+    assert_eq!(codex_create_response.status(), StatusCode::ACCEPTED);
+
+    let runtime_workers = Request::builder()
+        .method("GET")
+        .uri("/api/runtime/workers")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())?;
+    let runtime_workers_response = app.oneshot(runtime_workers).await?;
+    assert_eq!(
+        runtime_workers_response.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    let runtime_workers_body = read_json(runtime_workers_response).await?;
+    assert_eq!(
+        runtime_workers_body["error"]["code"],
+        json!("service_unavailable")
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn runtime_codex_control_request_replays_duplicate_request_ids() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
     let token = authenticate_token(app.clone(), "codex-replay@openagents.com").await?;

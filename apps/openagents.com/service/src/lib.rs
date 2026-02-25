@@ -53,6 +53,7 @@ pub mod openapi;
 mod render;
 pub mod route_split;
 mod runtime_admin;
+pub mod runtime_ownership;
 pub mod runtime_routing;
 mod stats;
 mod sync_handlers;
@@ -136,6 +137,7 @@ use crate::runtime_admin::{
     route_split_evaluate, route_split_override, route_split_status, runtime_routing_evaluate,
     runtime_routing_override, runtime_routing_status,
 };
+use crate::runtime_ownership::{RuntimeRouteOwner, runtime_route_owner, runtime_route_ownership};
 use crate::runtime_routing::{RuntimeDriver, RuntimeRoutingResolveInput, RuntimeRoutingService};
 use crate::stats::{
     compute_fleet_fragment, compute_main_fragment, compute_metrics_fragment, compute_page,
@@ -1280,6 +1282,16 @@ struct LocalTestLoginQuery {
     signature: Option<String>,
 }
 
+fn assert_runtime_route_owner(method: &str, path: &'static str, expected: RuntimeRouteOwner) {
+    debug_assert_eq!(
+        runtime_route_owner(method, path),
+        Some(expected),
+        "runtime ownership mismatch for {} {}",
+        method,
+        path
+    );
+}
+
 pub fn build_router(config: Config) -> Router {
     build_router_with_observability(config, Observability::default())
 }
@@ -1325,6 +1337,118 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let admin_state = state.clone();
     let runtime_internal_secret_fetch_path =
         normalize_route_path(&state.config.runtime_internal_secret_fetch_path);
+
+    // Runtime route ownership contract guards.
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_TOOLS_EXECUTE,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_SKILLS_TOOL_SPECS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_SKILLS_TOOL_SPECS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_SKILLS_SKILL_SPECS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_SKILLS_SKILL_SPEC_PUBLISH,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_SKILLS_RELEASE,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_THREADS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_THREAD_MESSAGES,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_THREAD_MESSAGES,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_CODEX_WORKERS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_CODEX_WORKERS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_CODEX_WORKER_BY_ID,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_CODEX_WORKER_STREAM,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_CODEX_WORKER_STOP,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_CODEX_WORKER_REQUESTS,
+        RuntimeRouteOwner::ControlService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_WORKERS,
+        RuntimeRouteOwner::RuntimeService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_WORKERS,
+        RuntimeRouteOwner::RuntimeService,
+    );
+    assert_runtime_route_owner(
+        "GET",
+        ROUTE_RUNTIME_WORKER_BY_ID,
+        RuntimeRouteOwner::RuntimeService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_WORKER_HEARTBEAT,
+        RuntimeRouteOwner::RuntimeService,
+    );
+    assert_runtime_route_owner(
+        "POST",
+        ROUTE_RUNTIME_WORKER_STATUS,
+        RuntimeRouteOwner::RuntimeService,
+    );
 
     let public_api_router = Router::new()
         .route(
@@ -1785,10 +1909,9 @@ async fn landing_page() -> Response {
         LANDING_HTML,
     )
         .into_response();
-    response.headers_mut().insert(
-        CACHE_CONTROL,
-        HeaderValue::from_static(CACHE_API_NO_STORE),
-    );
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(CACHE_API_NO_STORE));
     apply_html_security_headers(response.headers_mut());
     response
 }
@@ -14246,6 +14369,7 @@ async fn control_status(
             },
             "routeSplit": route_split_status,
             "runtimeRouting": runtime_routing_status,
+            "runtimeRouteOwnership": runtime_route_ownership(),
         }
     });
 
