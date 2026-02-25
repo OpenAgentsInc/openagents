@@ -133,6 +133,21 @@ impl Observability {
             "metric_counter_incremented"
         );
     }
+
+    pub fn counter_value(&self, metric_name: &str) -> u64 {
+        let counters = self
+            .counters
+            .lock()
+            .expect("observability counters mutex poisoned");
+        counters.get(metric_name).copied().unwrap_or_default()
+    }
+
+    pub fn counters_snapshot(&self) -> HashMap<String, u64> {
+        self.counters
+            .lock()
+            .expect("observability counters mutex poisoned")
+            .clone()
+    }
 }
 
 #[derive(Clone, Default)]

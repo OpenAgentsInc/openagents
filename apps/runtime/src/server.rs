@@ -102,6 +102,7 @@ use crate::{
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     route_ownership,
+    spacetime_publisher::{SpacetimePublisher, SpacetimePublisherMetrics},
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
     treasury::Treasury,
     types::{
@@ -127,7 +128,9 @@ pub struct AppState {
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
+    spacetime_publisher: Arc<SpacetimePublisher>,
     sync_auth: Arc<SyncAuthorizer>,
+    sync_auth_observability: Arc<SyncAuthObservability>,
     khala_delivery: Arc<KhalaDeliveryControl>,
     compute_abuse: Arc<ComputeAbuseControls>,
     compute_telemetry: Arc<ComputeTelemetry>,
@@ -148,6 +151,7 @@ impl AppState {
         orchestrator: Arc<RuntimeOrchestrator>,
         workers: Arc<InMemoryWorkerRegistry>,
         fanout: Arc<FanoutHub>,
+        spacetime_publisher: Arc<SpacetimePublisher>,
         sync_auth: Arc<SyncAuthorizer>,
         db: Option<Arc<RuntimeDb>>,
     ) -> Self {
@@ -237,7 +241,9 @@ impl AppState {
             orchestrator,
             workers,
             fanout,
+            spacetime_publisher,
             sync_auth,
+            sync_auth_observability: Arc::new(SyncAuthObservability::default()),
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
@@ -286,6 +292,63 @@ struct KhalaDeliveryControl {
     fairness_limited_polls: AtomicU64,
     slow_consumer_evictions: AtomicU64,
     served_messages: AtomicU64,
+}
+
+#[derive(Default)]
+struct SyncAuthObservability {
+    unauthorized_total: AtomicU64,
+    forbidden_total: AtomicU64,
+    invalid_token_total: AtomicU64,
+    token_expired_total: AtomicU64,
+    token_not_yet_valid_total: AtomicU64,
+    token_revoked_total: AtomicU64,
+}
+
+#[derive(Debug, Serialize)]
+struct SyncAuthObservabilitySnapshot {
+    unauthorized_total: u64,
+    forbidden_total: u64,
+    invalid_token_total: u64,
+    token_expired_total: u64,
+    token_not_yet_valid_total: u64,
+    token_revoked_total: u64,
+}
+
+impl SyncAuthObservability {
+    fn record(&self, error: &SyncAuthError) {
+        if error.is_unauthorized() {
+            self.unauthorized_total.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.forbidden_total.fetch_add(1, Ordering::Relaxed);
+        }
+        match error {
+            SyncAuthError::InvalidToken => {
+                self.invalid_token_total.fetch_add(1, Ordering::Relaxed);
+            }
+            SyncAuthError::TokenExpired => {
+                self.token_expired_total.fetch_add(1, Ordering::Relaxed);
+            }
+            SyncAuthError::TokenNotYetValid => {
+                self.token_not_yet_valid_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            SyncAuthError::TokenRevoked => {
+                self.token_revoked_total.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    fn snapshot(&self) -> SyncAuthObservabilitySnapshot {
+        SyncAuthObservabilitySnapshot {
+            unauthorized_total: self.unauthorized_total.load(Ordering::Relaxed),
+            forbidden_total: self.forbidden_total.load(Ordering::Relaxed),
+            invalid_token_total: self.invalid_token_total.load(Ordering::Relaxed),
+            token_expired_total: self.token_expired_total.load(Ordering::Relaxed),
+            token_not_yet_valid_total: self.token_not_yet_valid_total.load(Ordering::Relaxed),
+            token_revoked_total: self.token_revoked_total.load(Ordering::Relaxed),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -1085,6 +1148,33 @@ struct FanoutMetricsResponse {
     driver: String,
     delivery_metrics: KhalaDeliveryMetricsSnapshot,
     topic_windows: Vec<FanoutTopicWindow>,
+}
+
+#[derive(Debug, Serialize)]
+struct SpacetimeSyncObservabilityResponse {
+    transport: &'static str,
+    mirror: SpacetimeMirrorMetricsSnapshot,
+    delivery: SpacetimeDeliveryMetricsSnapshot,
+    auth_failures: SyncAuthObservabilitySnapshot,
+    generated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+struct SpacetimeMirrorMetricsSnapshot {
+    published_total: u64,
+    duplicate_suppressed_total: u64,
+    failed_total: u64,
+    duplicate_suppression_rate_pct: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct SpacetimeDeliveryMetricsSnapshot {
+    active_consumers: usize,
+    total_polls: u64,
+    served_messages: u64,
+    max_replay_lag: u64,
+    dropped_messages_total: u64,
+    stale_cursor_events_total: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2207,6 +2297,59 @@ async fn get_khala_fanout_metrics(
     }))
 }
 
+async fn get_spacetime_sync_observability(
+    State(state): State<AppState>,
+) -> Result<Json<SpacetimeSyncObservabilityResponse>, ApiError> {
+    let delivery_metrics = state.khala_delivery.snapshot().await;
+    let topic_windows = state
+        .fanout
+        .topic_windows(200)
+        .await
+        .map_err(ApiError::from_fanout)?;
+    let max_replay_lag = topic_windows
+        .iter()
+        .map(|window| window.head_sequence.saturating_sub(window.oldest_sequence.saturating_sub(1)))
+        .max()
+        .unwrap_or(0);
+    let dropped_messages_total = topic_windows
+        .iter()
+        .map(|window| window.dropped_messages)
+        .sum();
+    let stale_cursor_events_total = topic_windows
+        .iter()
+        .map(|window| {
+            window.stale_cursor_budget_exceeded_count + window.stale_cursor_retention_floor_count
+        })
+        .sum();
+
+    let mirror_metrics: SpacetimePublisherMetrics = state.spacetime_publisher.metrics().await;
+    let duplicate_suppression_rate_pct = if mirror_metrics.published == 0 {
+        0.0
+    } else {
+        (mirror_metrics.duplicates as f64 * 100.0) / mirror_metrics.published as f64
+    };
+
+    Ok(Json(SpacetimeSyncObservabilityResponse {
+        transport: "spacetime_ws",
+        mirror: SpacetimeMirrorMetricsSnapshot {
+            published_total: mirror_metrics.published,
+            duplicate_suppressed_total: mirror_metrics.duplicates,
+            failed_total: mirror_metrics.failed,
+            duplicate_suppression_rate_pct,
+        },
+        delivery: SpacetimeDeliveryMetricsSnapshot {
+            active_consumers: delivery_metrics.active_consumers,
+            total_polls: delivery_metrics.total_polls,
+            served_messages: delivery_metrics.served_messages,
+            max_replay_lag,
+            dropped_messages_total,
+            stale_cursor_events_total,
+        },
+        auth_failures: state.sync_auth_observability.snapshot(),
+        generated_at: Utc::now(),
+    }))
+}
+
 fn enforce_khala_origin_policy(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     if !state.config.khala_enforce_origin {
         return Ok(());
@@ -2245,16 +2388,27 @@ async fn authorize_khala_topic_access(
     let authorization_header = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    let token = SyncAuthorizer::extract_bearer_token(authorization_header)
-        .map_err(ApiError::from_sync_auth)?;
+    let token = SyncAuthorizer::extract_bearer_token(authorization_header).map_err(|error| {
+        tracing::warn!(topic, reason_code = error.code(), "sync auth denied while extracting token");
+        state.sync_auth_observability.record(&error);
+        ApiError::from_sync_auth(error)
+    })?;
     let principal = state
         .sync_auth
         .authenticate(token)
-        .map_err(ApiError::from_sync_auth)?;
+        .map_err(|error| {
+            tracing::warn!(topic, reason_code = error.code(), "sync auth denied while validating token");
+            state.sync_auth_observability.record(&error);
+            ApiError::from_sync_auth(error)
+        })?;
     let authorized_topic = state
         .sync_auth
         .authorize_topic(&principal, topic)
-        .map_err(ApiError::from_sync_auth)?;
+        .map_err(|error| {
+            tracing::warn!(topic, reason_code = error.code(), "sync auth denied by topic authorization policy");
+            state.sync_auth_observability.record(&error);
+            ApiError::from_sync_auth(error)
+        })?;
 
     match authorized_topic {
         AuthorizedKhalaTopic::WorkerLifecycle { worker_id } => {

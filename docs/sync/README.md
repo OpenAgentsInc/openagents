@@ -7,6 +7,7 @@ Current-state Khala sync documentation and runbooks (legacy lane during replacem
 - `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: scope grants, rotation, and runtime enforcement contract
 - `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime authority fanout to Spacetime stream mapping and parity checks
 - `SPACETIME_TOPIC_STREAM_CURSOR_CONTINUITY.md`: legacy topic cursor to stream cursor migration and stale/rebootstrap policy
+- `SPACETIME_OBSERVABILITY_AND_ALERTS.md`: runtime/control metrics, alert thresholds, and incident-runbook links
 - canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
 
 Spacetime replacement authority plans:

@@ -1,6 +1,6 @@
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 
 use super::*;
@@ -67,6 +67,10 @@ fn add_khala_and_projector_routes(router: Router<AppState>) -> Router<AppState> 
         .route(
             route_ownership::ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS,
             get(get_khala_fanout_metrics),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS,
+            get(get_spacetime_sync_observability),
         )
         .route(
             route_ownership::ROUTE_INTERNAL_V1_PROJECTOR_CHECKPOINT,

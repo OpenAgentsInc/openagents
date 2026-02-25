@@ -63,9 +63,10 @@ pub async fn build_runtime_state(config: Config) -> Result<AppState> {
         orchestrator.projectors(),
         120_000,
     ));
+    let spacetime_publisher = Arc::new(SpacetimePublisher::in_memory());
     let fanout = Arc::new(
         FanoutHub::memory_with_limits(config.fanout_queue_capacity, config.khala_fanout_limits())
-            .with_mirror(Arc::new(SpacetimePublisher::in_memory())),
+            .with_mirror(spacetime_publisher.clone()),
     );
     let sync_auth = Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
         signing_key: config.sync_token_signing_key.clone(),
@@ -82,6 +83,7 @@ pub async fn build_runtime_state(config: Config) -> Result<AppState> {
         orchestrator,
         workers,
         fanout,
+        spacetime_publisher,
         sync_auth,
         db,
     ))

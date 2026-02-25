@@ -6800,6 +6800,56 @@ async fn sync_token_mint_enforces_scope_and_org_policy() -> Result<()> {
 }
 
 #[tokio::test]
+async fn sync_token_failure_paths_emit_observability_counters() -> Result<()> {
+    let static_dir = tempdir()?;
+    let sink = Arc::new(RecordingAuditSink::default());
+    let observability = Observability::new(sink.clone());
+    let app = build_router_with_observability(
+        test_config(static_dir.path().to_path_buf()),
+        observability.clone(),
+    );
+
+    let token = authenticate_token(app.clone(), "sync-obs@openagents.com").await?;
+    let denied_by_policy_request = Request::builder()
+        .method("POST")
+        .uri("/api/sync/token")
+        .header("x-request-id", "req-sync-policy-denied")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            r#"{"scopes":["runtime.codex_worker_events"],"topics":["org:openagents:worker_events"]}"#,
+        ))?;
+    let denied_by_policy_response = app.clone().oneshot(denied_by_policy_request).await?;
+    assert_eq!(denied_by_policy_response.status(), StatusCode::FORBIDDEN);
+
+    let invalid_scope_request = Request::builder()
+        .method("POST")
+        .uri("/api/sync/token")
+        .header("x-request-id", "req-sync-invalid-scope")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"scopes":["runtime.unknown_scope"]}"#))?;
+    let invalid_scope_response = app.clone().oneshot(invalid_scope_request).await?;
+    assert_eq!(invalid_scope_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    assert_eq!(
+        observability.counter_value("sync.token.issue.policy_denied"),
+        1
+    );
+    assert_eq!(observability.counter_value("sync.token.issue.failed"), 1);
+
+    let events = sink.events();
+    assert!(events
+        .iter()
+        .any(|event| event.event_name == "sync.token.issue.policy_denied"));
+    assert!(events
+        .iter()
+        .any(|event| event.event_name == "sync.token.issue.failed"));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn sync_token_requires_active_non_revoked_session() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
 

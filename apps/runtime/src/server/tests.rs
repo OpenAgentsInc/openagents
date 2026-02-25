@@ -31,6 +31,7 @@ use crate::{
     fanout::FanoutHub,
     orchestration::RuntimeOrchestrator,
     projectors::InMemoryProjectionPipeline,
+    spacetime_publisher::SpacetimePublisher,
     sync_auth::{SyncAuthConfig, SyncAuthorizer, SyncTokenClaims},
     workers::InMemoryWorkerRegistry,
 };
@@ -128,6 +129,7 @@ fn build_test_router_with_config(
     mutate_config(&mut config);
     let fanout_limits = config.khala_fanout_limits();
     let fanout_capacity = config.fanout_queue_capacity;
+    let spacetime_publisher = Arc::new(SpacetimePublisher::in_memory());
     let state = AppState::new(
         config,
         Arc::new(RuntimeOrchestrator::new(
@@ -140,7 +142,9 @@ fn build_test_router_with_config(
         Arc::new(FanoutHub::memory_with_limits(
             fanout_capacity,
             fanout_limits,
-        )),
+        )
+        .with_mirror(spacetime_publisher.clone())),
+        spacetime_publisher,
         Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
             fallback_signing_keys: Vec::new(),
@@ -638,9 +642,15 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
     assert!(json.pointer("/paths/~1aegis~1classify/post").is_some());
     assert!(json.pointer("/paths/~1aegis~1verify/post").is_some());
     assert!(json.pointer("/paths/~1aegis~1risk~1budget/get").is_some());
-    assert!(json.pointer("/paths/~1aegis~1warranty~1issue/post").is_some());
+    assert!(
+        json.pointer("/paths/~1aegis~1warranty~1issue/post")
+            .is_some()
+    );
     assert!(json.pointer("/paths/~1aegis~1claims~1open/post").is_some());
-    assert!(json.pointer("/paths/~1aegis~1claims~1resolve/post").is_some());
+    assert!(
+        json.pointer("/paths/~1aegis~1claims~1resolve/post")
+            .is_some()
+    );
     assert!(
         json.pointer("/components/schemas/HydraObservabilityResponseV1/properties/routing")
             .is_some()
@@ -707,9 +717,15 @@ async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow()
         .await?;
     assert_eq!(classify_response.status(), axum::http::StatusCode::OK);
     let classify_json = response_json(classify_response).await?;
-    assert_eq!(classify_json["schema"], "openagents.aegis.classify_response.v1");
+    assert_eq!(
+        classify_json["schema"],
+        "openagents.aegis.classify_response.v1"
+    );
     assert_eq!(classify_json["idempotent_replay"], false);
-    assert_eq!(classify_json["receipt"]["receipt_schema"], "openagents.aegis.classification_receipt.v1");
+    assert_eq!(
+        classify_json["receipt"]["receipt_schema"],
+        "openagents.aegis.classification_receipt.v1"
+    );
 
     let classify_replay = app
         .clone()
@@ -782,7 +798,10 @@ async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow()
     let verify_json = response_json(verify_response).await?;
     assert_eq!(verify_json["schema"], "openagents.aegis.verify_response.v1");
     assert_eq!(verify_json["passed"], true);
-    assert_eq!(verify_json["receipt"]["receipt_schema"], "openagents.aegis.verification_receipt.v1");
+    assert_eq!(
+        verify_json["receipt"]["receipt_schema"],
+        "openagents.aegis.verification_receipt.v1"
+    );
     let verification_id = verify_json
         .get("verification_id")
         .and_then(Value::as_str)
@@ -800,9 +819,16 @@ async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow()
         .await?;
     assert_eq!(risk_response.status(), axum::http::StatusCode::OK);
     let risk_json = response_json(risk_response).await?;
-    assert_eq!(risk_json["schema"], "openagents.aegis.risk_budget_response.v1");
+    assert_eq!(
+        risk_json["schema"],
+        "openagents.aegis.risk_budget_response.v1"
+    );
     assert_eq!(risk_json["owner_key"], "user:11");
-    assert!(risk_json["remaining_unverified_units_24h"].as_u64().is_some());
+    assert!(
+        risk_json["remaining_unverified_units_24h"]
+            .as_u64()
+            .is_some()
+    );
 
     let warranty_payload = json!({
         "schema": "openagents.aegis.warranty_issue_request.v1",
@@ -827,7 +853,10 @@ async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow()
     assert_eq!(warranty_response.status(), axum::http::StatusCode::OK);
     let warranty_json = response_json(warranty_response).await?;
     assert_eq!(warranty_json["status"], "active");
-    assert_eq!(warranty_json["receipt"]["receipt_schema"], "openagents.aegis.warranty_issue_receipt.v1");
+    assert_eq!(
+        warranty_json["receipt"]["receipt_schema"],
+        "openagents.aegis.warranty_issue_receipt.v1"
+    );
     let warranty_id = warranty_json
         .get("warranty_id")
         .and_then(Value::as_str)
@@ -857,7 +886,10 @@ async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow()
     assert_eq!(claim_open_response.status(), axum::http::StatusCode::OK);
     let claim_open_json = response_json(claim_open_response).await?;
     assert_eq!(claim_open_json["status"], "open");
-    assert_eq!(claim_open_json["receipt"]["receipt_schema"], "openagents.aegis.claim_open_receipt.v1");
+    assert_eq!(
+        claim_open_json["receipt"]["receipt_schema"],
+        "openagents.aegis.claim_open_receipt.v1"
+    );
     let claim_id = claim_open_json
         .get("claim_id")
         .and_then(Value::as_str)
@@ -2317,7 +2349,7 @@ async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
         .pointer("/hooks")
         .and_then(serde_json::Value::as_array)
         .map_or(0, std::vec::Vec::len);
-    assert_eq!(hook_count, 3);
+    assert_eq!(hook_count, 4);
     assert_eq!(
         hooks_json
             .pointer("/delivery_metrics/total_polls")
@@ -2332,6 +2364,7 @@ async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
     assert!(topic_window_count >= 1);
 
     let metrics_response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/internal/v1/khala/fanout/metrics?topic_limit=5")
@@ -2346,6 +2379,45 @@ async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or_default(),
         1
+    );
+
+    let spacetime_metrics_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/spacetime/sync/metrics")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(spacetime_metrics_response.status(), axum::http::StatusCode::OK);
+    let spacetime_metrics_json = response_json(spacetime_metrics_response).await?;
+    assert_eq!(
+        spacetime_metrics_json
+            .pointer("/transport")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default(),
+        "spacetime_ws"
+    );
+    assert_eq!(
+        spacetime_metrics_json
+            .pointer("/mirror/published_total")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        1
+    );
+    assert_eq!(
+        spacetime_metrics_json
+            .pointer("/delivery/total_polls")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        1
+    );
+    assert_eq!(
+        spacetime_metrics_json
+            .pointer("/auth_failures/unauthorized_total")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        0
     );
 
     Ok(())
@@ -3393,6 +3465,87 @@ async fn khala_topic_messages_requires_valid_sync_token() -> Result<()> {
         "token_revoked"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn spacetime_sync_metrics_track_auth_failures() -> Result<()> {
+    let app = test_router();
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:metrics-auth-worker",
+                    "metadata": {}
+                }))?))?,
+        )
+        .await?;
+    let create_json = response_json(create_response).await?;
+    let run_id = create_json
+        .pointer("/run/id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let missing_auth = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                ))
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(missing_auth.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    let forbidden_token = issue_sync_token(
+        &["runtime.codex_worker_events"],
+        Some(1),
+        Some("user:1"),
+        "metrics-forbidden",
+        300,
+    );
+    let forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                ))
+                .header("authorization", format!("Bearer {forbidden_token}"))
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(forbidden.status(), axum::http::StatusCode::FORBIDDEN);
+
+    let metrics_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/spacetime/sync/metrics")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(metrics_response.status(), axum::http::StatusCode::OK);
+    let metrics_json = response_json(metrics_response).await?;
+    assert_eq!(
+        metrics_json
+            .pointer("/auth_failures/unauthorized_total")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        1
+    );
+    assert_eq!(
+        metrics_json
+            .pointer("/auth_failures/forbidden_total")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        1
+    );
     Ok(())
 }
 

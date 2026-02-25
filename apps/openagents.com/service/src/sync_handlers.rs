@@ -14,7 +14,10 @@ pub(super) async fn sync_token(
         .auth
         .session_or_pat_from_access_token(&access_token)
         .await
-        .map_err(map_auth_error)?;
+        .map_err(|error| {
+            emit_auth_failure_event(&state, &request_id, "sync.token.issue.auth_failed", &error);
+            map_auth_error(error)
+        })?;
 
     let is_pat_session = session.session.session_id.starts_with("pat:");
     let requested_streams = merge_stream_requests(payload.streams, payload.topics);
@@ -42,7 +45,17 @@ pub(super) async fn sync_token(
             requested_topics: Vec::new(),
             requested_ttl_seconds: payload.ttl_seconds,
         })
-        .map_err(map_sync_error)?;
+        .map_err(|error| {
+            state.observability.audit(
+                AuditEvent::new("sync.token.issue.failed", request_id.clone())
+                    .with_outcome("failure")
+                    .with_attribute("reason", error.to_string()),
+            );
+            state
+                .observability
+                .increment_counter("sync.token.issue.failed", &request_id);
+            map_sync_error(error)
+        })?;
 
     let decision = state
         .auth
@@ -59,9 +72,30 @@ pub(super) async fn sync_token(
             },
         )
         .await
-        .map_err(map_auth_error)?;
+        .map_err(|error| {
+            emit_auth_failure_event(
+                &state,
+                &request_id,
+                "sync.token.issue.policy_eval_failed",
+                &error,
+            );
+            map_auth_error(error)
+        })?;
 
     if !decision.allowed {
+        state.observability.audit(
+            AuditEvent::new("sync.token.issue.policy_denied", request_id.clone())
+                .with_outcome("failure")
+                .with_user_id(session.user.id.clone())
+                .with_session_id(session.session.session_id.clone())
+                .with_org_id(session.session.active_org_id.clone())
+                .with_device_id(session.session.device_id.clone())
+                .with_attribute("scope_count", issued.scopes.len().to_string())
+                .with_attribute("topic_count", issued.granted_topics.len().to_string()),
+        );
+        state
+            .observability
+            .increment_counter("sync.token.issue.policy_denied", &request_id);
         return Err(forbidden_error(
             "Requested sync scopes/topics are not allowed for current org policy.",
         ));

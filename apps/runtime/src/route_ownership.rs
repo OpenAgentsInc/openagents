@@ -12,6 +12,7 @@ pub const ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES: &str =
 pub const ROUTE_INTERNAL_V1_KHALA_TOPIC_WS: &str = "/internal/v1/khala/topics/:topic/ws";
 pub const ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS: &str = "/internal/v1/khala/fanout/hooks";
 pub const ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS: &str = "/internal/v1/khala/fanout/metrics";
+pub const ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS: &str = "/internal/v1/spacetime/sync/metrics";
 pub const ROUTE_INTERNAL_V1_PROJECTOR_CHECKPOINT: &str =
     "/internal/v1/projectors/checkpoints/:run_id";
 pub const ROUTE_INTERNAL_V1_PROJECTOR_DRIFT: &str = "/internal/v1/projectors/drift";
@@ -173,6 +174,11 @@ pub const INTERNAL_V1_ROUTE_OWNERSHIP: &[RuntimeInternalRouteOwnership] = &[
         "GET",
         ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS,
         "runtime khala fanout metrics authority",
+    ),
+    runtime_authority_route(
+        "GET",
+        ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS,
+        "runtime spacetime sync observability authority",
     ),
     runtime_authority_route(
         "GET",
