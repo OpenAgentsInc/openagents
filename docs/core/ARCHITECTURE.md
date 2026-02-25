@@ -187,6 +187,7 @@ Source of truth for control route inventory:
 
 1. `apps/openagents.com/service/src/openapi.rs`
 2. `apps/openagents.com/service/src/lib.rs`
+3. `apps/openagents.com/service/docs/RUNTIME_ROUTE_OWNERSHIP.md`
 
 Important reality:
 
@@ -235,6 +236,7 @@ Source of truth for runtime route inventory:
 
 1. `apps/runtime/src/server.rs`
 2. `apps/runtime/docs/openapi-internal-v1.yaml`
+3. `apps/runtime/src/route_ownership.rs`
 
 Not implemented yet:
 

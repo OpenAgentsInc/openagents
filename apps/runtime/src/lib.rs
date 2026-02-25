@@ -38,6 +38,7 @@ pub mod liquidity_pool;
 pub mod marketplace;
 pub mod orchestration;
 pub mod projectors;
+pub mod route_ownership;
 pub mod run_state_machine;
 pub mod server;
 pub mod shadow;

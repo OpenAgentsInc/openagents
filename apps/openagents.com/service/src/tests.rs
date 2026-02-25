@@ -7108,11 +7108,15 @@ async fn control_status_exposes_runtime_route_ownership_map() -> Result<()> {
         row["method"] == json!("GET")
             && row["path"] == json!("/api/runtime/workers")
             && row["owner"] == json!("runtime_service")
+            && row["delivery"] == json!("runtime_proxy")
+            && row["migration_status"] == json!("runtime_authority_proxy")
     }));
     assert!(ownership_rows.iter().any(|row| {
         row["method"] == json!("POST")
             && row["path"] == json!("/api/runtime/codex/workers")
             && row["owner"] == json!("control_service")
+            && row["delivery"] == json!("in_process")
+            && row["migration_status"] == json!("control_native")
     }));
 
     Ok(())

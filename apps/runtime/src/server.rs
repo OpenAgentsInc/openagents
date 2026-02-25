@@ -87,6 +87,7 @@ use crate::{
         select_provider_for_capability, select_provider_for_capability_excluding,
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
+    route_ownership,
     sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
     treasury::Treasury,
     types::{
@@ -1397,157 +1398,220 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
-        .route("/internal/v1/openapi.json", get(internal_openapi_spec))
         .route(
-            "/internal/v1/comms/delivery-events",
+            route_ownership::ROUTE_INTERNAL_V1_OPENAPI_JSON,
+            get(internal_openapi_spec),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_COMMS_DELIVERY_EVENTS,
             post(record_comms_delivery_event),
         )
-        .route("/internal/v1/runs", post(start_run))
-        .route("/internal/v1/runs/:run_id", get(get_run))
-        .route("/internal/v1/runs/:run_id/events", post(append_run_event))
-        .route("/internal/v1/runs/:run_id/receipt", get(get_run_receipt))
-        .route("/internal/v1/runs/:run_id/replay", get(get_run_replay))
+        .route(route_ownership::ROUTE_INTERNAL_V1_RUNS, post(start_run))
+        .route(route_ownership::ROUTE_INTERNAL_V1_RUN_BY_ID, get(get_run))
         .route(
-            "/internal/v1/khala/topics/:topic/messages",
+            route_ownership::ROUTE_INTERNAL_V1_RUN_EVENTS,
+            post(append_run_event),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_RUN_RECEIPT,
+            get(get_run_receipt),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_RUN_REPLAY,
+            get(get_run_replay),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES,
             get(get_khala_topic_messages),
         )
         .route(
-            "/internal/v1/khala/topics/:topic/ws",
+            route_ownership::ROUTE_INTERNAL_V1_KHALA_TOPIC_WS,
             get(get_khala_topic_ws),
         )
         .route(
-            "/internal/v1/khala/fanout/hooks",
+            route_ownership::ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS,
             get(get_khala_fanout_hooks),
         )
         .route(
-            "/internal/v1/khala/fanout/metrics",
+            route_ownership::ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS,
             get(get_khala_fanout_metrics),
         )
         .route(
-            "/internal/v1/projectors/checkpoints/:run_id",
+            route_ownership::ROUTE_INTERNAL_V1_PROJECTOR_CHECKPOINT,
             get(get_run_checkpoint),
         )
-        .route("/internal/v1/projectors/drift", get(get_projector_drift))
         .route(
-            "/internal/v1/projectors/run-summary/:run_id",
+            route_ownership::ROUTE_INTERNAL_V1_PROJECTOR_DRIFT,
+            get(get_projector_drift),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_PROJECTOR_RUN_SUMMARY,
             get(get_projector_run_summary),
         )
         .route(
-            "/internal/v1/workers",
+            route_ownership::ROUTE_INTERNAL_V1_WORKERS,
             get(list_workers).post(register_worker),
         )
-        .route("/internal/v1/workers/:worker_id", get(get_worker))
         .route(
-            "/internal/v1/workers/:worker_id/heartbeat",
+            route_ownership::ROUTE_INTERNAL_V1_WORKER_BY_ID,
+            get(get_worker),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_WORKER_HEARTBEAT,
             post(heartbeat_worker),
         )
         .route(
-            "/internal/v1/workers/:worker_id/status",
+            route_ownership::ROUTE_INTERNAL_V1_WORKER_STATUS,
             post(transition_worker),
         )
         .route(
-            "/internal/v1/workers/:worker_id/checkpoint",
+            route_ownership::ROUTE_INTERNAL_V1_WORKER_CHECKPOINT,
             get(get_worker_checkpoint),
         )
         .route(
-            "/internal/v1/marketplace/catalog/providers",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_CATALOG_PROVIDERS,
             get(get_provider_catalog),
         )
         .route(
-            "/internal/v1/marketplace/catalog/job-types",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_CATALOG_JOB_TYPES,
             get(get_job_types),
         )
         .route(
-            "/internal/v1/marketplace/telemetry/compute",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_TELEMETRY_COMPUTE,
             get(get_compute_telemetry),
         )
         .route(
-            "/internal/v1/marketplace/route/provider",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_ROUTE_PROVIDER,
             post(route_provider),
         )
         .route(
-            "/internal/v1/marketplace/compute/quote/sandbox-run",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_QUOTE_SANDBOX_RUN,
             post(quote_sandbox_run),
         )
         .route(
-            "/internal/v1/marketplace/router/compute/select",
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_ROUTER_SELECT_COMPUTE,
             post(router_select_compute),
         )
         .route(
-            "/internal/v1/hydra/routing/score",
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_ROUTING_SCORE,
             post(hydra_routing_score),
         )
-        .route("/internal/v1/hydra/fx/rfq", post(hydra_fx_rfq_create))
-        .route("/internal/v1/hydra/fx/quote", post(hydra_fx_quote_upsert))
-        .route("/internal/v1/hydra/fx/select", post(hydra_fx_select))
-        .route("/internal/v1/hydra/fx/settle", post(hydra_fx_settle))
-        .route("/internal/v1/hydra/fx/rfq/:rfq_id", get(hydra_fx_rfq_get))
-        .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
-        .route("/internal/v1/hydra/observability", get(hydra_observability))
         .route(
-            "/internal/v1/marketplace/dispatch/sandbox-run",
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_FX_RFQ,
+            post(hydra_fx_rfq_create),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_FX_QUOTE,
+            post(hydra_fx_quote_upsert),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_FX_SELECT,
+            post(hydra_fx_select),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_FX_SETTLE,
+            post(hydra_fx_settle),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_FX_RFQ_BY_ID,
+            get(hydra_fx_rfq_get),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_RISK_HEALTH,
+            get(hydra_risk_health),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_HYDRA_OBSERVABILITY,
+            get(hydra_observability),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_MARKETPLACE_DISPATCH_SANDBOX_RUN,
             post(dispatch_sandbox_run),
         )
         .route(
-            "/internal/v1/verifications/sandbox-run",
+            route_ownership::ROUTE_INTERNAL_V1_VERIFICATIONS_SANDBOX_RUN,
             post(verify_sandbox_run),
         )
         .route(
-            "/internal/v1/verifications/repo-index",
+            route_ownership::ROUTE_INTERNAL_V1_VERIFICATIONS_REPO_INDEX,
             post(verify_repo_index),
         )
         .route(
-            "/internal/v1/treasury/compute/summary",
+            route_ownership::ROUTE_INTERNAL_V1_TREASURY_COMPUTE_SUMMARY,
             get(get_compute_treasury_summary),
         )
         .route(
-            "/internal/v1/treasury/compute/reconcile",
+            route_ownership::ROUTE_INTERNAL_V1_TREASURY_COMPUTE_RECONCILE,
             post(reconcile_compute_treasury),
         )
         .route(
-            "/internal/v1/treasury/compute/settle/sandbox-run",
+            route_ownership::ROUTE_INTERNAL_V1_TREASURY_COMPUTE_SETTLE_SANDBOX_RUN,
             post(settle_sandbox_run),
         )
         .route(
-            "/internal/v1/liquidity/quote_pay",
+            route_ownership::ROUTE_INTERNAL_V1_LIQUIDITY_QUOTE_PAY,
             post(liquidity_quote_pay),
         )
-        .route("/internal/v1/credit/intent", post(credit_intent))
-        .route("/internal/v1/credit/offer", post(credit_offer))
-        .route("/internal/v1/credit/envelope", post(credit_envelope))
-        .route("/internal/v1/credit/settle", post(credit_settle))
-        .route("/internal/v1/credit/health", get(credit_health))
         .route(
-            "/internal/v1/credit/agents/:agent_id/exposure",
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_INTENT,
+            post(credit_intent),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_OFFER,
+            post(credit_offer),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_ENVELOPE,
+            post(credit_envelope),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_SETTLE,
+            post(credit_settle),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_HEALTH,
+            get(credit_health),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_CREDIT_AGENT_EXPOSURE,
             get(credit_agent_exposure),
         )
-        .route("/internal/v1/liquidity/status", get(liquidity_status))
-        .route("/internal/v1/liquidity/pay", post(liquidity_pay))
         .route(
-            "/internal/v1/pools/:pool_id/admin/create",
+            route_ownership::ROUTE_INTERNAL_V1_LIQUIDITY_STATUS,
+            get(liquidity_status),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_LIQUIDITY_PAY,
+            post(liquidity_pay),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_POOL_ADMIN_CREATE,
             post(liquidity_pool_create_pool),
         )
         .route(
-            "/internal/v1/pools/:pool_id/deposit_quote",
+            route_ownership::ROUTE_INTERNAL_V1_POOL_DEPOSIT_QUOTE,
             post(liquidity_pool_deposit_quote),
         )
         .route(
-            "/internal/v1/pools/:pool_id/deposits/:deposit_id/confirm",
+            route_ownership::ROUTE_INTERNAL_V1_POOL_DEPOSIT_CONFIRM,
             post(liquidity_pool_confirm_deposit),
         )
         .route(
-            "/internal/v1/pools/:pool_id/withdraw_request",
+            route_ownership::ROUTE_INTERNAL_V1_POOL_WITHDRAW_REQUEST,
             post(liquidity_pool_withdraw_request),
         )
         .route(
-            "/internal/v1/pools/:pool_id/status",
+            route_ownership::ROUTE_INTERNAL_V1_POOL_STATUS,
             get(liquidity_pool_status),
         )
         .route(
-            "/internal/v1/pools/:pool_id/snapshots/latest",
+            route_ownership::ROUTE_INTERNAL_V1_POOL_LATEST_SNAPSHOT,
             get(liquidity_pool_latest_snapshot),
         )
-        .route("/internal/v1/fraud/incidents", get(get_fraud_incidents))
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_FRAUD_INCIDENTS,
+            get(get_fraud_incidents),
+        )
         .with_state(state)
 }
 
