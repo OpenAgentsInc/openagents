@@ -154,7 +154,7 @@ Khala semantics to preserve in Spacetime replacement:
 
 1. Land ADR supersession for sync transport ownership.
 2. Update invariant gates for Spacetime sync semantics.
-3. Approve cutover acceptance criteria and rollback runbook.
+3. Approve cutover acceptance criteria and rollback runbook (`docs/sync/SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`).
 
 Gate:
 
