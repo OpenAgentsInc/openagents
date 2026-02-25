@@ -52,7 +52,7 @@ OpenAgents adopts the following normative rules for wallet executor operations:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/rust-migration-invariant-gates.md`
+Source: `docs/plans/active/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-01` proto-first cross-boundary contracts.
@@ -128,6 +128,5 @@ cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- smoke
 
 - `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`
 - `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`
-- `docs/core/ARCHITECTURE.md`
 - `docs/core/ARCHITECTURE.md`
 - Related issue: `OA-RUST-095` / `#1930`

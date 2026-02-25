@@ -10,7 +10,7 @@ This file is a map. Start here, then follow the linked canonical docs.
 - Priorities and sequencing: `docs/core/ROADMAP.md`
 - Vocabulary authority: `docs/core/GLOSSARY.md`
 - Canonical architecture: `docs/core/ARCHITECTURE.md`
-- Canonical build roadmap: `docs/core/ARCHITECTURE.md`
+- Canonical migration sequencing: `docs/core/ARCHITECTURE.md` (`Implementation Sequencing`)
 - Canonical deploy/process matrix: `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 - ADR index: `docs/adr/INDEX.md`
 
@@ -18,7 +18,6 @@ This file is a map. Start here, then follow the linked canonical docs.
 
 Canonical architecture and migration sequencing:
 
-- `docs/core/ARCHITECTURE.md`
 - `docs/core/ARCHITECTURE.md`
 - `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 
@@ -92,7 +91,7 @@ You must complete this gate before writing or modifying code.
 
 0. Read these baseline authorities first for every coding task:
    - `docs/adr/INDEX.md`
-   - `docs/plans/rust-migration-invariant-gates.md`
+   - `docs/plans/active/rust-migration-invariant-gates.md`
 1. Identify touched surfaces and read the governing ADR(s), invariant gates, and ownership-boundary docs.
 2. Record a preflight proof in your first implementation update:
    - List exactly which ADR(s)/invariant docs were checked.
@@ -102,7 +101,7 @@ You must complete this gate before writing or modifying code.
 5. If constraints still conflict with requested work, stop and ask the user how to proceed.
 
 iOS Codex/WGPUI-specific required reads before coding:
-- `docs/plans/rust-migration-invariant-gates.md` (minimum: `INV-03`, `INV-07`, `INV-11`)
+- `docs/plans/active/rust-migration-invariant-gates.md` (minimum: `INV-03`, `INV-07`, `INV-11`)
 - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 - `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
 - `apps/autopilot-ios/docs/wgpui-codex-ownership-boundaries.md`
@@ -126,7 +125,7 @@ Canonical references:
 - `docs/execution/ARTIFACTS.md`
 - `docs/execution/REPLAY.md`
 - `docs/protocol/PROTOCOL_SURFACE.md`
-- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/active/rust-migration-invariant-gates.md`
 
 ## Git Hygiene
 

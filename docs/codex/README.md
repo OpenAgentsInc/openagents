@@ -10,7 +10,6 @@ Rust-era Codex planning and integration boundaries.
 ## Related Docs
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/protocol/codex-worker-events-v1.md`
 - `docs/protocol/codex-worker-control-v1.md`

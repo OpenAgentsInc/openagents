@@ -53,7 +53,7 @@ Disallowed patterns:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/rust-migration-invariant-gates.md`
+Source: `docs/plans/active/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-02` (HTTP command authority only)
@@ -130,9 +130,8 @@ cd apps/runtime && mix test test/openagents_runtime_web/channels/sync_channel_te
 ## References
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
-- `docs/sync/SURFACES.md`
+- `docs/protocol/OA_SYNC_WS_MAPPING.md`
 - `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
 - `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
 - Related issue: `OA-RUST-076` / `#1891`

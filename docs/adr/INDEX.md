@@ -75,4 +75,4 @@ Use:
 
 1. `docs/adr/README.md` for workflow/review process.
 2. `docs/adr/TEMPLATE.md` for new ADR content.
-3. `docs/plans/rust-migration-invariant-gates.md` for invariant gate mapping required in ADR rationale.
+3. `docs/plans/active/rust-migration-invariant-gates.md` for invariant gate mapping required in ADR rationale.

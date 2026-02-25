@@ -46,7 +46,7 @@ Normative constraints:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/rust-migration-invariant-gates.md`
+Source: `docs/plans/active/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-01` through `INV-10` (baseline ADR for all migration gates).
@@ -127,6 +127,5 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ## References
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/core/ARCHITECTURE.md`
-- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/active/rust-migration-invariant-gates.md`
 - Related issue: `OA-RUST-074` / `#1889`

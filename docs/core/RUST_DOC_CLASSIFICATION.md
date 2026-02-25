@@ -4,7 +4,7 @@ Date: 2026-02-21
 
 ## In-Repo (Authoritative)
 
-1. Canonical architecture and rollout docs under `docs/` root.
+1. Canonical architecture and rollout docs under `docs/core/`.
 2. ADRs under `docs/adr/`.
 3. Contract docs under `docs/execution/`, `docs/protocol/`, `docs/dse/`, and `docs/sync/`.
 4. Active strategy docs under `docs/plans/` and synthesis docs.

@@ -5,7 +5,7 @@ Date: 2026-02-23
 Owner: OpenAgents
 
 This document holds the Agent Git Platform work that was intentionally carved out of
-`docs/plans/2026-02-23-open-agent-economy-execution-plan.md` so the primary plan can stay
+`docs/plans/active/2026-02-23-open-agent-economy-execution-plan.md` so the primary plan can stay
 liquidity-first (Autopilot + OpenAgents Compute).
 
 ## Purpose

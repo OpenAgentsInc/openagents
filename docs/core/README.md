@@ -32,9 +32,7 @@ This tree contains current Rust-era documentation and forward strategy only.
 ## Sync and Codex
 
 - `sync/README.md`
-- `sync/thoughts.md`
 - `sync/ROADMAP.md`
-- `sync/SURFACES.md`
 - `sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
 - `codex/README.md`
 
@@ -67,3 +65,4 @@ Historical docs were moved to:
 
 - `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/`
 - `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-22-doc-hygiene-pass/`
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-25-doc-cleanup-pass/`

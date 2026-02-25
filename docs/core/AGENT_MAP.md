@@ -13,7 +13,6 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 ## Architecture and Contract Authority
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/core/ARCHITECTURE.md`
 - `docs/adr/INDEX.md`
 - `docs/execution/README.md`
 - `docs/protocol/README.md`
@@ -22,8 +21,8 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 ## Planning and Sequencing
 
 - `docs/plans/README.md`
-- `docs/plans/rust-migration-invariant-gates.md`
-- `docs/plans/rust-migration-execution-control-plane.md`
+- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/active/rust-migration-execution-control-plane.md`
 - `docs/core/SYNTHESIS.md`
 
 ## Product and Runtime Surfaces

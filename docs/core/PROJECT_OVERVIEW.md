@@ -47,7 +47,6 @@ This map reflects canonical Rust-only architecture boundaries.
 ## Canonical Documentation
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/core/ARCHITECTURE.md`
 - `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 - `docs/core/README.md`
 - `docs/core/ROADMAP.md`

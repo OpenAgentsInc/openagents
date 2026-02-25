@@ -1,10 +1,8 @@
 # Sync Docs
 
 Khala sync documentation and runbooks:
-- `thoughts.md`: architecture and invariants
 - `ROADMAP.md`: migration and implementation sequencing
-- `SURFACES.md`: client/topic surface contract
 - `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover procedure
-- `PARITY_DASHBOARD.md`: parity and drift visibility model
+- canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
 
-Historical rollout snapshots live under `status/` and may reference removed legacy surfaces; treat them as historical records, not canonical current-surface guidance.
+Historical sync snapshots and superseded notes are archived in backroom and are not canonical current-surface guidance.

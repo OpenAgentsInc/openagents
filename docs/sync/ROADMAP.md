@@ -145,7 +145,7 @@ Verification:
 Status: In Progress
 
 Done when:
-- `docs/sync/status/*` is explicitly treated as historical snapshots.
+- historical sync snapshots are archived to backroom.
 - active guidance points operators to canonical surface docs/runbooks.
 
 Verification:
@@ -162,8 +162,6 @@ Do not advance to broader cohorts unless all are green:
 
 ## References
 
-- `docs/sync/SURFACES.md`
 - `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
-- `docs/core/ARCHITECTURE.md`
 - `docs/core/ARCHITECTURE.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`

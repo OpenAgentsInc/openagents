@@ -28,7 +28,7 @@ This architecture is constrained by:
 6. `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
 7. `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
 8. `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
-9. `docs/plans/rust-migration-invariant-gates.md`
+9. `docs/plans/active/rust-migration-invariant-gates.md`
 
 Hard rules that cannot be violated:
 
@@ -480,5 +480,5 @@ scripts/release/validate-rust-cutover.sh
 3. `docs/core/RUST_LEGACY_INFRA_DECOMMISSION.md`
 4. `docs/protocol/README.md`
 5. `docs/execution/README.md`
-6. `docs/plans/hydra-liquidity-engine.md`
-7. `docs/plans/aegis.md`
+6. `docs/plans/active/hydra-liquidity-engine.md`
+7. `docs/plans/active/aegis.md`

@@ -139,5 +139,5 @@ Phase-0 vignette emits real Nostr-verifiable events to:
 
 See:
 
-- `docs/plans/vignette-phase0-issue-to-pr.md`
+- `docs/plans/active/vignette-phase0-issue-to-pr.md`
 - `scripts/vignette-phase0-issue-to-pr.sh`

@@ -40,7 +40,6 @@ Complete migration to a Rust-only production architecture with:
 ## Canonical References
 
 - `docs/core/ARCHITECTURE.md`
-- `docs/core/ARCHITECTURE.md`
 - `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 - `docs/core/PROJECT_OVERVIEW.md`
 - `docs/core/README.md`

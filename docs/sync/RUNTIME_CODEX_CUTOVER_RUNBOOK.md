@@ -15,7 +15,7 @@ This runbook is the canonical rollout procedure for OA-RUST-048 / OA-RUST-106 sy
 2. `POST /api/sync/token` is healthy in control service.
 3. Target surface builds are deployed with WS-only subscriptions enabled.
 4. Rollback revision IDs are captured for control service and runtime service.
-5. Surface matrix in `docs/sync/SURFACES.md` matches deployed topic scopes.
+5. Surface matrix in `docs/sync/ROADMAP.md` matches deployed topic scopes.
 
 ## 2. Contract Rules (Must Hold)
 
@@ -88,7 +88,7 @@ Use the smallest blast-radius rollback first:
 
 ## 7. Required Artifacts Per Gate Execution
 
-1. Stage report in `docs/sync/status/` with pass/fail decision.
+1. Stage report in release artifacts/runbook evidence store with pass/fail decision.
 2. KPI/SLO snapshots with command evidence.
 3. Explicit go/no-go statement with owner and timestamp.
 4. If no-go: blocker issues and remediation plan.
