@@ -183,6 +183,7 @@ Current exposed API/web groups (implemented):
 7. Compatibility/admin control lanes:
    - legacy chat aliases (`/api/chat/stream`, `/api/chats/*`)
    - route split and runtime routing controls (`/api/v1/control/*`)
+   - compatibility lanes are formally sunset with `x-oa-compat-sunset-date: 2026-06-30` and migration doc headers.
 
 Source of truth for control route inventory:
 
@@ -381,7 +382,8 @@ EP212 target:
 2. Live replay/tail is Khala WS-only.
 3. Compatibility SSE lane is adapter-only over existing authority outputs.
 4. Client apply path must remain idempotent by `(topic, seq)`.
-5. Compatibility lanes (`legacy chat aliases`, `route split`, `runtime driver aliases`) still exist for migration and contract continuity, and are decommission targets once replacement parity is proven.
+5. Runtime-driver string compatibility aliases (`legacy`, `laravel`, `elixir`, `openagents.com`) are retired; canonical labels are `control_service` and `runtime_service`.
+6. Remaining compatibility lanes (`legacy chat aliases`, `/api/v1/control/*`, `/api/v1/auth/*`, `/api/v1/sync/token`) are formally sunset with target retirement date `2026-06-30`.
 
 ## Plan Alignment Matrix
 
@@ -419,7 +421,8 @@ This sequencing is dependency-driven and aligns to the active plan set.
    - Expand checker tiers, underwriting economics, and dispute/ground-truth systems per Aegis phases.
    - Keep authority semantics and replay/idempotency invariants intact.
 7. Phase 6: compatibility lane retirement
-   - Retire legacy chat aliases/route split/runtime driver aliases after parity evidence.
+   - Runtime-driver string aliases retired (implemented).
+   - Retire remaining legacy chat and v1 compatibility/admin lanes by sunset date (`2026-06-30`) after parity evidence.
 8. Phase 7: repository debt and invariant cleanup
    - Complete legacy web tree removal/archival (completed for tracked PHP/TS legacy lanes in OA-AUDIT `#2212`).
    - Resolve `INV-12` workflow-file conflict (completed in OA-AUDIT `#2213`).

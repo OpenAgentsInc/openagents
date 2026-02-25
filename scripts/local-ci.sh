@@ -12,7 +12,6 @@ RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps
 RUST_CLIPPY_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 ALLOW_ATTR_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 ARCHITECTURE_BUDGET_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/|apps/runtime/src/|apps/autopilot-desktop/src/|crates/autopilot/src/|crates/autopilot-core/src/|scripts/(architecture-budget-gate|allow-attribute-gate|local-ci)\.sh$|docs/ci/(architecture-budget-baseline|allow-attribute-baseline)\.env$|docs/core/LOCAL_CI\.md$)'
-RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN='^(apps/openagents\.com/(app/Http/Controllers/Api/RuntimeCodexWorkersController\.php|app/AI/Runtime/RuntimeCodexClient\.php|config/runtime\.php|routes/api\.php|tests/Feature/Api/RuntimeCodexWorkersApiTest\.php))'
 INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
 
 is_truthy() {
@@ -168,9 +167,6 @@ run_trigger_tests() {
   assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "apps/openagents.com/service/src/route_domains.rs" "true"
   assert_trigger "architecture-budgets" "$ARCHITECTURE_BUDGET_TRIGGER_PATTERN" "docs/core/README.md" "false"
 
-  assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php" "true"
-  assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/ChatStreamingTest.php" "false"
-
   echo "local-ci trigger tests passed"
 }
 
@@ -286,14 +282,6 @@ run_cross_surface_harness() {
   )
 }
 
-run_runtime_codex_workers_php_tests() {
-  echo "==> runtime codex workers php contract tests"
-  (
-    cd "$ROOT_DIR/apps/openagents.com"
-    ./vendor/bin/pest tests/Feature/Api/RuntimeCodexWorkersApiTest.php
-  )
-}
-
 run_workspace_compile() {
   echo "==> workspace rust compile baseline"
   (
@@ -400,10 +388,6 @@ run_changed() {
     fi
   fi
 
-  if has_match "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "$changed_files"; then
-    run_runtime_codex_workers_php_tests
-  fi
-
   if has_match "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "$changed_files"; then
     run_workspace_compile
     run_panic_surface_gate
@@ -488,9 +472,6 @@ case "$MODE" in
   cross-surface)
     run_cross_surface_harness
     ;;
-  runtime-codex-workers-php)
-    run_runtime_codex_workers_php_tests
-    ;;
   inbox-gmail)
     run_inbox_gmail_checks
     ;;
@@ -507,7 +488,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

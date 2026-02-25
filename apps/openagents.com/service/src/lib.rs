@@ -196,6 +196,8 @@ const HEADER_OA_COMPAT_MIN_BUILD: &str = "x-oa-compatibility-min-client-build-id
 const HEADER_OA_COMPAT_MIN_SCHEMA: &str = "x-oa-compatibility-min-schema-version";
 const HEADER_OA_COMPAT_PROTOCOL: &str = "x-oa-compatibility-protocol-version";
 const HEADER_OA_COMPAT_UPGRADE_REQUIRED: &str = "x-oa-compatibility-upgrade-required";
+const HEADER_OA_COMPAT_MIGRATION_DOC: &str = "x-oa-compat-migration-doc";
+const HEADER_OA_COMPAT_SUNSET_DATE: &str = "x-oa-compat-sunset-date";
 const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
 const HEADER_OA_SMOKE: &str = "x-oa-smoke";
 const HEADER_OA_SMOKE_SECRET: &str = "x-oa-smoke-secret";
@@ -224,6 +226,10 @@ const THROTTLE_THREAD_MESSAGE_LIMIT: usize = 60;
 const THROTTLE_THREAD_MESSAGE_WINDOW_SECONDS: i64 = 60;
 const THROTTLE_CODEX_CONTROL_REQUEST_LIMIT: usize = 60;
 const THROTTLE_CODEX_CONTROL_REQUEST_WINDOW_SECONDS: i64 = 60;
+const COMPATIBILITY_LANE_MIGRATION_DOC: &str =
+    "docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md";
+const COMPATIBILITY_LANE_SUNSET_DATE_HTTP: &str = "Tue, 30 Jun 2026 00:00:00 GMT";
+const COMPATIBILITY_LANE_SUNSET_DATE_ISO: &str = "2026-06-30";
 const RESEND_WEBHOOK_PROVIDER: &str = "resend";
 const RESEND_SVIX_ID_HEADER: &str = "svix-id";
 const RESEND_SVIX_TIMESTAMP_HEADER: &str = "svix-timestamp";
@@ -1495,6 +1501,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             compatibility_state,
             control_compatibility_gate,
         ))
+        .layer(middleware::from_fn(compatibility_lane_sunset_header_gate))
         .layer(middleware::from_fn(api_non_http_behavior_gate))
         .layer(
             ServiceBuilder::new()
@@ -2275,6 +2282,44 @@ async fn control_compatibility_gate(
             compatibility_failure_response(failure)
         }
     }
+}
+
+async fn compatibility_lane_sunset_header_gate(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let mut response = next.run(request).await;
+    if compatibility_lane_is_sunset_path(&path) {
+        response.headers_mut().insert(
+            "sunset",
+            HeaderValue::from_static(COMPATIBILITY_LANE_SUNSET_DATE_HTTP),
+        );
+        response.headers_mut().insert(
+            HEADER_OA_COMPAT_SUNSET_DATE,
+            HeaderValue::from_static(COMPATIBILITY_LANE_SUNSET_DATE_ISO),
+        );
+        response.headers_mut().insert(
+            HEADER_OA_COMPAT_MIGRATION_DOC,
+            HeaderValue::from_static(COMPATIBILITY_LANE_MIGRATION_DOC),
+        );
+    }
+
+    response
+}
+
+fn compatibility_lane_is_sunset_path(path: &str) -> bool {
+    if path.starts_with("/api/v1/control/") {
+        return true;
+    }
+    if path.starts_with("/api/v1/auth/") || path == ROUTE_V1_SYNC_TOKEN {
+        return true;
+    }
+    if path == "/api/chat/guest-session" || path == ROUTE_LEGACY_CHAT_STREAM {
+        return true;
+    }
+    if path == "/api/chats" || path.starts_with("/api/chats/") {
+        return true;
+    }
+
+    false
 }
 
 fn compatibility_surface_for_path(path: &str) -> Option<CompatibilitySurface> {

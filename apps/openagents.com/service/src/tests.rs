@@ -2425,6 +2425,75 @@ async fn compatibility_gate_allows_supported_client_version() -> Result<()> {
 }
 
 #[tokio::test]
+async fn compatibility_lane_sunset_headers_are_attached_for_control_routes() -> Result<()> {
+    let static_dir = tempdir()?;
+    let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+    let request = Request::builder()
+        .uri("/api/v1/control/status")
+        .body(Body::empty())?;
+    let response = app.oneshot(request).await?;
+
+    assert_eq!(
+        response
+            .headers()
+            .get(super::HEADER_OA_COMPAT_SUNSET_DATE)
+            .and_then(|value| value.to_str().ok()),
+        Some("2026-06-30")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(super::HEADER_OA_COMPAT_MIGRATION_DOC)
+            .and_then(|value| value.to_str().ok()),
+        Some("docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("sunset")
+            .and_then(|value| value.to_str().ok()),
+        Some("Tue, 30 Jun 2026 00:00:00 GMT")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn compatibility_lane_sunset_headers_are_attached_for_legacy_chat_aliases() -> Result<()> {
+    let static_dir = tempdir()?;
+    let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/chat/stream")
+        .header("content-type", "application/json")
+        .header("x-oa-client-build-id", "20260221T130000Z")
+        .header("x-oa-protocol-version", "openagents.control.v1")
+        .header("x-oa-schema-version", "1")
+        .body(Body::from(
+            r#"{"messages":[{"role":"user","content":"compat accepted"}]}"#,
+        ))?;
+    let response = app.oneshot(request).await?;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response
+            .headers()
+            .get(super::HEADER_OA_COMPAT_SUNSET_DATE)
+            .and_then(|value| value.to_str().ok()),
+        Some("2026-06-30")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(super::HEADER_OA_COMPAT_MIGRATION_DOC)
+            .and_then(|value| value.to_str().ok()),
+        Some("docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md")
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn compatibility_gate_rejects_legacy_chat_stream_missing_headers() -> Result<()> {
     let static_dir = tempdir()?;
     let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));

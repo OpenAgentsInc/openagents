@@ -18,6 +18,11 @@ Policy:
 4. Runtime internal authority lanes are canonical runtime-owned (`runtime_authority`).
 5. If runtime service is not configured, runtime-owned `/api/runtime/*` routes fail with `503 service_unavailable`.
 
+Compatibility lane sunset status (Phase 5 signoff):
+
+1. Legacy chat aliases and `/api/v1/control/*` compatibility/admin lanes emit sunset metadata (`x-oa-compat-sunset-date: 2026-06-30`) and migration doc headers.
+2. Runtime-driver compatibility labels are retired; only `control_service` and `runtime_service` are accepted.
+
 ## `/api/runtime/*` Ownership Matrix
 
 | Method | Path | Owner | Delivery | Migration Status |

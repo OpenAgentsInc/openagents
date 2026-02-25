@@ -1,5 +1,9 @@
 use serde_json::{Map, Value, json};
 
+const COMPATIBILITY_LANE_MIGRATION_DOC: &str =
+    "docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md";
+const COMPATIBILITY_LANE_SUNSET_DATE: &str = "2026-06-30";
+
 pub const ROUTE_OPENAPI_JSON: &str = "/openapi.json";
 pub const ROUTE_AUTH_EMAIL: &str = "/api/auth/email";
 pub const ROUTE_AUTH_REGISTER: &str = "/api/auth/register";
@@ -1275,7 +1279,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Read route-split control status.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: None,
         response_example: Some("route_split_status"),
@@ -1287,7 +1291,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Set route-split override target.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: Some("route_split_override"),
         response_example: Some("route_split_status"),
@@ -1299,7 +1303,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Evaluate route-split decision for a path.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: Some("route_split_evaluate"),
         response_example: Some("route_split_evaluate"),
@@ -1311,7 +1315,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Read runtime routing status and override records.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: None,
         response_example: Some("runtime_routing_status"),
@@ -1323,7 +1327,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Upsert runtime driver override record.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: Some("runtime_routing_override"),
         response_example: Some("runtime_routing_override"),
@@ -1335,7 +1339,7 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         summary: "Evaluate runtime driver decision for a user/thread.",
         tag: "control",
         secured: true,
-        deprecated: false,
+        deprecated: true,
         success_status: "200",
         request_example: Some("runtime_routing_evaluate"),
         response_example: Some("runtime_routing_evaluate"),
@@ -1497,6 +1501,11 @@ fn add_operation(paths: &mut Map<String, Value>, contract: &OpenApiContract) {
             "Compatibility alias retained during Laravel-to-Rust migration.".to_string(),
         );
     }
+    if compatibility_lane_has_sunset(contract.route_path) {
+        operation["x-oa-compat-sunset-date"] = Value::String(COMPATIBILITY_LANE_SUNSET_DATE.into());
+        operation["x-oa-compat-migration-doc"] =
+            Value::String(COMPATIBILITY_LANE_MIGRATION_DOC.into());
+    }
 
     if let Some(example_key) = contract.request_example {
         let mut request_body = json!({
@@ -1531,6 +1540,20 @@ fn add_operation(paths: &mut Map<String, Value>, contract: &OpenApiContract) {
     if let Some(item) = path_item.as_object_mut() {
         item.insert(method, operation);
     }
+}
+
+fn compatibility_lane_has_sunset(path: &str) -> bool {
+    if path.starts_with("/api/v1/control/") {
+        return true;
+    }
+    if path.starts_with("/api/v1/auth/") || path == ROUTE_V1_SYNC_TOKEN {
+        return true;
+    }
+    if path == ROUTE_LEGACY_CHAT_STREAM || path == ROUTE_LEGACY_CHATS_STREAM {
+        return true;
+    }
+
+    false
 }
 
 fn protected_security() -> Value {
@@ -3239,6 +3262,43 @@ mod tests {
             .and_then(|operation| operation.get("deprecated"))
             .and_then(Value::as_bool);
         assert_eq!(deprecated, Some(true));
+    }
+
+    #[test]
+    fn compatibility_lanes_include_sunset_metadata() {
+        let document = openapi_document();
+
+        let v1_control = document
+            .get("paths")
+            .and_then(|paths| paths.get(ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS))
+            .and_then(|path| path.get("get"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        assert_eq!(
+            v1_control
+                .get("x-oa-compat-sunset-date")
+                .and_then(Value::as_str),
+            Some(COMPATIBILITY_LANE_SUNSET_DATE)
+        );
+        assert_eq!(
+            v1_control
+                .get("x-oa-compat-migration-doc")
+                .and_then(Value::as_str),
+            Some(COMPATIBILITY_LANE_MIGRATION_DOC)
+        );
+
+        let legacy_stream = document
+            .get("paths")
+            .and_then(|paths| paths.get(ROUTE_LEGACY_CHAT_STREAM))
+            .and_then(|path| path.get("post"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        assert_eq!(
+            legacy_stream
+                .get("x-oa-compat-sunset-date")
+                .and_then(Value::as_str),
+            Some(COMPATIBILITY_LANE_SUNSET_DATE)
+        );
     }
 
     #[test]

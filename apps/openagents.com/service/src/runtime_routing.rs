@@ -22,10 +22,8 @@ impl RuntimeDriver {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "control_service" | "control" | "legacy" | "laravel" | "openagents.com" => {
-                Some(RuntimeDriver::ControlService)
-            }
-            "runtime_service" | "runtime" | "elixir" => Some(RuntimeDriver::RuntimeService),
+            "control_service" | "control" => Some(RuntimeDriver::ControlService),
+            "runtime_service" | "runtime" => Some(RuntimeDriver::RuntimeService),
             _ => None,
         }
     }
@@ -421,15 +419,7 @@ mod tests {
     use super::RuntimeDriver;
 
     #[test]
-    fn runtime_driver_parse_supports_compat_aliases() {
-        assert_eq!(
-            RuntimeDriver::parse("legacy"),
-            Some(RuntimeDriver::ControlService)
-        );
-        assert_eq!(
-            RuntimeDriver::parse("elixir"),
-            Some(RuntimeDriver::RuntimeService)
-        );
+    fn runtime_driver_parse_is_rust_label_authoritative() {
         assert_eq!(
             RuntimeDriver::parse("control_service"),
             Some(RuntimeDriver::ControlService)
@@ -438,6 +428,10 @@ mod tests {
             RuntimeDriver::parse("runtime_service"),
             Some(RuntimeDriver::RuntimeService)
         );
+        assert_eq!(RuntimeDriver::parse("legacy"), None);
+        assert_eq!(RuntimeDriver::parse("laravel"), None);
+        assert_eq!(RuntimeDriver::parse("openagents.com"), None);
+        assert_eq!(RuntimeDriver::parse("elixir"), None);
     }
 
     #[test]

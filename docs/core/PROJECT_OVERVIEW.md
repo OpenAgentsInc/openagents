@@ -6,6 +6,7 @@ This map reflects canonical Rust-only architecture boundaries.
 
 - `apps/openagents.com/service/`
   Rust control service: auth/session/device management, authorization, sync token issuance, and landing-page distribution.
+  Compatibility lanes under `/api/v1/*` and legacy chat aliases are sunset-marked (`2026-06-30`) and treated as migration debt, not new authority surface.
 
 - `apps/runtime/`
   Rust execution authority: run lifecycle, worker lifecycle, event log, projector/read models, Khala delivery semantics.
