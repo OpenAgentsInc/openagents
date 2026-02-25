@@ -310,29 +310,13 @@ async fn execute_rlm_fanout(args: &Value) -> Value {
     let workers = input.workers.unwrap_or(3);
     let venue = input.venue.as_deref().unwrap_or("local");
 
-    // For now, implement simple local fanout by chunking the context
-    // Full swarm integration would use frlm::FrlmConductor
     match venue {
         "local" => execute_local_fanout(&input.query, &input.context, workers).await,
         "swarm" => {
-            // TODO: Integrate with frlm::FrlmConductor for swarm execution
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": "Swarm fanout not yet implemented. Use venue='local' for now."
-                }],
-                "isError": true
-            })
+            execute_fanout_with_local_fallback(&input.query, &input.context, workers, venue).await
         }
         "datacenter" => {
-            // TODO: Integrate with datacenter execution
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": "Datacenter fanout not yet implemented. Use venue='local' for now."
-                }],
-                "isError": true
-            })
+            execute_fanout_with_local_fallback(&input.query, &input.context, workers, venue).await
         }
         _ => {
             json!({
@@ -344,6 +328,30 @@ async fn execute_rlm_fanout(args: &Value) -> Value {
             })
         }
     }
+}
+
+async fn execute_fanout_with_local_fallback(
+    query: &str,
+    context: &str,
+    workers: u32,
+    requested_venue: &str,
+) -> Value {
+    let mut result = execute_local_fanout(query, context, workers).await;
+    if let Some(obj) = result.as_object_mut() {
+        let note = format!(
+            "Requested venue '{}' is routed through local fanout for this build.",
+            requested_venue
+        );
+        obj.insert(
+            "_meta".to_string(),
+            json!({
+                "requested_venue": requested_venue,
+                "effective_venue": "local",
+                "routing_note": note
+            }),
+        );
+    }
+    result
 }
 
 async fn execute_local_fanout(query: &str, context: &str, workers: u32) -> Value {

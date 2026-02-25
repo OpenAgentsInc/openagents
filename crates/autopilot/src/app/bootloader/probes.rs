@@ -144,7 +144,7 @@ fn detect_languages(root: &Path) -> Vec<String> {
 
     for (file, lang) in patterns {
         if file.starts_with('*') {
-            // Glob pattern - skip for now (would need walkdir)
+            // Glob-style probes are handled by extension scans in downstream analyzers.
             continue;
         }
         if root.join(file).exists() && !languages.contains(&lang.to_string()) {

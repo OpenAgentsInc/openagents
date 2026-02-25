@@ -44,6 +44,15 @@ fn tick_reschedule_millis(millis: u64) -> TickResult {
     }
 }
 
+fn truncate_text(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        input.to_string()
+    } else {
+        let truncated: String = input.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}
+
 /// Autopilot execution phase.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AutopilotPhase {
@@ -291,30 +300,186 @@ impl AutopilotAgent {
     /// Get repository summary for DSPy planning.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_repo_summary(&self) -> String {
-        // Try to read from /repo mount or return placeholder
+        let mut sections = vec![format!("Repository: {}", self.repo_url)];
+
+        if let Ok(entries) = self.env.list("/repo") {
+            let dir_count = entries.iter().filter(|entry| entry.is_dir).count();
+            let file_count = entries.len().saturating_sub(dir_count);
+            sections.push(format!(
+                "Top-level layout: {} directories, {} files",
+                dir_count, file_count
+            ));
+
+            let key_files = [
+                "AGENTS.md",
+                "README.md",
+                "Cargo.toml",
+                "package.json",
+                "go.mod",
+                "pyproject.toml",
+            ];
+            let detected: Vec<&str> = key_files
+                .iter()
+                .copied()
+                .filter(|name| entries.iter().any(|entry| entry.name == *name))
+                .collect();
+            if !detected.is_empty() {
+                sections.push(format!("Detected key files: {}", detected.join(", ")));
+            }
+        }
+
         if let Ok(readme_bytes) = self.env.read("/repo/README.md") {
             let readme = String::from_utf8_lossy(&readme_bytes);
-            format!(
-                "Repository: {}\n\nREADME excerpt:\n{}",
-                self.repo_url,
-                &readme[..readme.len().min(1000)]
-            )
-        } else {
-            format!("Repository: {}", self.repo_url)
+            let excerpt = readme.lines().take(40).collect::<Vec<_>>().join("\n");
+            if !excerpt.is_empty() {
+                sections.push(format!("README excerpt:\n{}", excerpt));
+            }
         }
+
+        sections.join("\n\n")
     }
 
     /// Get list of relevant files for DSPy planning.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_relevant_files(&self) -> String {
-        // Try to list source files from /repo mount
-        if let Ok(_files_bytes) = self.env.read("/repo/.git/index") {
-            // Git index exists, repo is available
-            // For now, return placeholder - could list actual files
-            "Source files available in repository".to_string()
-        } else {
-            "Repository files not yet indexed".to_string()
+        let mut files = Vec::new();
+        self.collect_relevant_files("/repo", 0, 4, 250, &mut files);
+        files.sort();
+
+        if files.is_empty() {
+            return "No relevant source files discovered under /repo".to_string();
         }
+
+        let preview_limit = 80usize;
+        let preview = files
+            .iter()
+            .take(preview_limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut output = format!("Discovered {} relevant files:", files.len());
+        output.push('\n');
+        output.push_str(&preview.join("\n"));
+        if files.len() > preview_limit {
+            output.push_str(&format!("\n... ({} more)", files.len() - preview_limit));
+        }
+        output
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn collect_relevant_files(
+        &self,
+        dir: &str,
+        depth: usize,
+        max_depth: usize,
+        max_files: usize,
+        out: &mut Vec<String>,
+    ) {
+        if depth > max_depth || out.len() >= max_files {
+            return;
+        }
+        let entries = match self.env.list(dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+
+        for entry in entries {
+            if out.len() >= max_files {
+                break;
+            }
+
+            let child = if dir == "/repo" {
+                format!("/repo/{}", entry.name)
+            } else {
+                format!("{}/{}", dir, entry.name)
+            };
+
+            if entry.is_dir {
+                if self.should_descend_dir(&entry.name) {
+                    self.collect_relevant_files(&child, depth + 1, max_depth, max_files, out);
+                }
+                continue;
+            }
+
+            if self.looks_relevant_file(&entry.name) {
+                out.push(self.repo_relative_path(&child));
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn should_descend_dir(&self, name: &str) -> bool {
+        !matches!(
+            name,
+            ".git"
+                | "target"
+                | "node_modules"
+                | "dist"
+                | "build"
+                | ".next"
+                | ".turbo"
+                | ".cache"
+                | ".openagents"
+        )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn looks_relevant_file(&self, name: &str) -> bool {
+        let lower = name.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "cargo.toml"
+                | "cargo.lock"
+                | "package.json"
+                | "pnpm-lock.yaml"
+                | "yarn.lock"
+                | "go.mod"
+                | "go.sum"
+                | "pyproject.toml"
+                | "requirements.txt"
+                | "readme.md"
+                | "agents.md"
+                | "makefile"
+                | "dockerfile"
+        ) {
+            return true;
+        }
+
+        match std::path::Path::new(&lower)
+            .extension()
+            .and_then(|ext| ext.to_str())
+        {
+            Some(ext) => matches!(
+                ext,
+                "rs" | "ts"
+                    | "tsx"
+                    | "js"
+                    | "jsx"
+                    | "go"
+                    | "py"
+                    | "php"
+                    | "swift"
+                    | "kt"
+                    | "java"
+                    | "c"
+                    | "cc"
+                    | "cpp"
+                    | "h"
+                    | "hpp"
+                    | "toml"
+                    | "yaml"
+                    | "yml"
+                    | "json"
+                    | "sql"
+                    | "sh"
+                    | "md"
+            ),
+            None => false,
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn repo_relative_path(&self, absolute: &str) -> String {
+        absolute.trim_start_matches("/repo/").to_string()
     }
 
     /// DSPy-powered execution (native-only).
@@ -411,8 +576,47 @@ impl AutopilotAgent {
     /// Get current file state for execution context.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_current_file_state(&self) -> Option<String> {
-        // Return None for now - would be populated during file editing
-        None
+        let mut files = Vec::new();
+        self.collect_relevant_files("/repo", 0, 3, 40, &mut files);
+        files.sort();
+        if files.is_empty() {
+            return None;
+        }
+
+        let mut summary = String::new();
+        summary.push_str("Workspace file snapshot:\n");
+        for relative in files.iter().take(30) {
+            let absolute = format!("/repo/{}", relative);
+            match self.env.stat(&absolute) {
+                Ok(stat) => {
+                    summary.push_str(&format!("- {} ({} bytes)\n", relative, stat.size));
+                }
+                Err(_) => {
+                    summary.push_str(&format!("- {}\n", relative));
+                }
+            }
+        }
+
+        let mut key_snippets = Vec::new();
+        for key in ["/repo/README.md", "/repo/AGENTS.md", "/repo/Cargo.toml"] {
+            if let Ok(bytes) = self.env.read(key) {
+                let text = String::from_utf8_lossy(&bytes);
+                let snippet = text.lines().take(20).collect::<Vec<_>>().join("\n");
+                if !snippet.is_empty() {
+                    key_snippets.push(format!(
+                        "{}:\n{}",
+                        self.repo_relative_path(key),
+                        snippet.chars().take(1200).collect::<String>()
+                    ));
+                }
+            }
+        }
+        if !key_snippets.is_empty() {
+            summary.push_str("\nKey file excerpts:\n");
+            summary.push_str(&key_snippets.join("\n\n"));
+        }
+
+        Some(summary)
     }
 
     /// Submit an execution action as a compute job.
@@ -671,18 +875,105 @@ impl AutopilotAgent {
             .unwrap_or_else(|| "No plan available".to_string())
     }
 
-    /// Get build output (placeholder - would come from execution phase).
+    /// Get build output inferred from recent compute jobs.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_build_output(&self) -> String {
-        // In a real implementation, this would capture build output during execution
-        "Build status not yet captured".to_string()
+        let jobs = self.recent_compute_job_summaries(20);
+        if jobs.is_empty() {
+            return "No compute jobs available for build summary".to_string();
+        }
+
+        let mut matches = Vec::new();
+        for (job_id, status, result) in jobs {
+            let result_lower = result.to_ascii_lowercase();
+            if result_lower.contains("build")
+                || result_lower.contains("compile")
+                || result_lower.contains("cargo check")
+            {
+                matches.push(format!(
+                    "job={} status={} output={}",
+                    job_id,
+                    status,
+                    truncate_text(&result.replace('\n', " "), 400)
+                ));
+            }
+        }
+
+        if matches.is_empty() {
+            "No build-related output found in recent compute job results".to_string()
+        } else {
+            format!("Recent build-related job output:\n{}", matches.join("\n"))
+        }
     }
 
-    /// Get test output (placeholder - would come from execution phase).
+    /// Get test output from recent compute jobs.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_test_output(&self) -> String {
-        // In a real implementation, this would capture test output during execution
-        "Test status not yet captured".to_string()
+        let jobs = self.recent_compute_job_summaries(20);
+        if jobs.is_empty() {
+            return "No compute jobs available for test summary".to_string();
+        }
+
+        let mut matches = Vec::new();
+        for (job_id, status, result) in jobs {
+            let result_lower = result.to_ascii_lowercase();
+            if result_lower.contains("test")
+                || result_lower.contains("passed")
+                || result_lower.contains("failed")
+            {
+                matches.push(format!(
+                    "job={} status={} output={}",
+                    job_id,
+                    status,
+                    truncate_text(&result.replace('\n', " "), 400)
+                ));
+            }
+        }
+
+        if matches.is_empty() {
+            "No test-related output found in recent compute job results".to_string()
+        } else {
+            format!("Recent test-related job output:\n{}", matches.join("\n"))
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recent_compute_job_summaries(&self, max_jobs: usize) -> Vec<(String, String, String)> {
+        let mut summaries = Vec::new();
+        let entries = match self.env.list("/compute/jobs") {
+            Ok(entries) => entries,
+            Err(_) => return summaries,
+        };
+
+        for entry in entries.into_iter().take(max_jobs) {
+            if entry.is_dir {
+                let job_id = entry.name;
+                let status_path = format!("/compute/jobs/{}/status", job_id);
+                let result_path = format!("/compute/jobs/{}/result", job_id);
+
+                let status = self
+                    .env
+                    .read(&status_path)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                    .and_then(|json| {
+                        json.get("status")
+                            .and_then(|value| value.as_str())
+                            .map(ToString::to_string)
+                    })
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let result = self
+                    .env
+                    .read(&result_path)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+                    .unwrap_or_default();
+
+                summaries.push((job_id, status, result));
+            }
+        }
+
+        summaries
     }
 
     /// Poll for job result.

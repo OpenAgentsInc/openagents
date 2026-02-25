@@ -4,7 +4,7 @@
 //! enabling recursive LLM sub-calls, fragment management, and execution tracing.
 
 use anyhow::{Result, anyhow};
-use frlm::{Fragment, FrlmConductor, FrlmPolicy, SubQuery, TraceEvent};
+use frlm::{Fragment, FrlmConductor, FrlmPolicy, TraceEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -16,6 +16,8 @@ pub struct FrlmToolHandler {
     conductor: Arc<Mutex<FrlmConductor>>,
     /// Stored trace events for retrieval.
     trace_events: Arc<Mutex<Vec<TraceEvent>>>,
+    /// Loaded fragments for deterministic selection and inspection.
+    fragments: Arc<Mutex<Vec<FragmentInput>>>,
 }
 
 impl FrlmToolHandler {
@@ -30,6 +32,7 @@ impl FrlmToolHandler {
         Self {
             conductor: Arc::new(Mutex::new(conductor)),
             trace_events: Arc::new(Mutex::new(Vec::new())),
+            fragments: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -65,19 +68,9 @@ impl FrlmToolHandler {
             prompt.to_string()
         };
 
-        // Create sub-query
         let query_id = format!("sq-{}", uuid::Uuid::new_v4());
-        let mut sub_query = SubQuery::new(&query_id, &full_prompt);
+        let max_tokens = budget.map(|value| value as u32);
 
-        if let Some(b) = budget {
-            sub_query = sub_query.with_max_tokens(b as u32);
-        }
-        if let Some(m) = model {
-            let _ = sub_query.with_model(m);
-        }
-
-        // For now, we return a placeholder - in production this would
-        // submit to the swarm or execute locally
         let conductor = self.conductor.lock().await;
 
         // Check if we can afford this query
@@ -108,7 +101,9 @@ impl FrlmToolHandler {
             "query_id": query_id,
             "status": "submitted",
             "prompt": full_prompt,
-            "estimated_budget": estimated_cost
+            "estimated_budget": estimated_cost,
+            "max_tokens": max_tokens,
+            "model": model
         }))
     }
 
@@ -119,6 +114,7 @@ impl FrlmToolHandler {
             .ok_or_else(|| anyhow!("Missing required 'fragments' parameter"))?;
 
         let fragments: Vec<FragmentInput> = serde_json::from_value(fragments_json.clone())?;
+        *self.fragments.lock().await = fragments.clone();
 
         let mut conductor = self.conductor.lock().await;
 
@@ -158,13 +154,74 @@ impl FrlmToolHandler {
             .and_then(|v| v.as_u64())
             .unwrap_or(10) as usize;
 
-        // For now, return a basic selection result
-        // In production, this would use semantic search or the conductor's fragment selection
+        let loaded = self.fragments.lock().await.clone();
+        if loaded.is_empty() {
+            return Ok(json!({
+                "query": query,
+                "max_fragments": max_fragments,
+                "selected": [],
+                "status": "no_fragments_loaded"
+            }));
+        }
+
+        let terms = tokenize_query(query);
+        let mut scored = loaded
+            .iter()
+            .map(|fragment| {
+                let score = score_fragment(&terms, &fragment.content);
+                (fragment, score)
+            })
+            .collect::<Vec<_>>();
+        scored.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.id.cmp(&b.0.id)));
+
+        let mut selected = scored
+            .iter()
+            .filter(|(_, score)| *score > 0)
+            .take(max_fragments)
+            .map(|(fragment, score)| {
+                json!({
+                    "id": fragment.id,
+                    "score": score,
+                    "preview": excerpt(&fragment.content, 180)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        if selected.is_empty() {
+            selected = scored
+                .iter()
+                .take(max_fragments)
+                .map(|(fragment, score)| {
+                    json!({
+                        "id": fragment.id,
+                        "score": score,
+                        "preview": excerpt(&fragment.content, 180)
+                    })
+                })
+                .collect();
+        }
+
+        let selected_ids = selected
+            .iter()
+            .filter_map(|value| value.get("id").and_then(Value::as_str))
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        self.trace_events
+            .lock()
+            .await
+            .push(TraceEvent::EnvSelectFragments {
+                run_id: "tool-call".to_string(),
+                query: query.to_string(),
+                fragment_ids: selected_ids,
+                timestamp_ms: 0,
+            });
+
         Ok(json!({
             "query": query,
             "max_fragments": max_fragments,
-            "selected": [],
-            "status": "no_fragments_loaded"
+            "selected": selected,
+            "status": "ok"
         }))
     }
 
@@ -353,7 +410,7 @@ impl Default for FrlmToolHandler {
 
 // Helper types for deserialization
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct FragmentInput {
     id: String,
     content: String,
@@ -489,6 +546,34 @@ fn trace_event_to_json(event: &TraceEvent) -> Value {
             "type": "info",
             "event": format!("{:?}", event)
         }),
+    }
+}
+
+fn tokenize_query(query: &str) -> Vec<String> {
+    query
+        .split(|ch: char| !ch.is_alphanumeric())
+        .map(|term| term.trim().to_ascii_lowercase())
+        .filter(|term| term.len() >= 2)
+        .collect()
+}
+
+fn score_fragment(terms: &[String], content: &str) -> usize {
+    if terms.is_empty() {
+        return 0;
+    }
+    let haystack = content.to_ascii_lowercase();
+    terms
+        .iter()
+        .map(|term| haystack.matches(term).count())
+        .sum::<usize>()
+}
+
+fn excerpt(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        input.to_string()
+    } else {
+        let clipped: String = input.chars().take(max_chars).collect();
+        format!("{}...", clipped)
     }
 }
 

@@ -230,16 +230,18 @@ impl TreasuryRouter {
             return (fallback, RoutingDecisionContext::default());
         };
 
-        let (agent_balance_sats, min_reserve_sats, direct_allowed) = match request.route_policy.as_ref() {
-            RoutePolicy::PreferAgentBalance {
-                agent_balance_sats,
-                min_reserve_sats,
-                direct_allowed,
-            } => (*agent_balance_sats, *min_reserve_sats, *direct_allowed),
-            _ => (0, 0, true),
-        };
+        let (agent_balance_sats, min_reserve_sats, direct_allowed) =
+            match request.route_policy.as_ref() {
+                RoutePolicy::PreferAgentBalance {
+                    agent_balance_sats,
+                    min_reserve_sats,
+                    direct_allowed,
+                } => (*agent_balance_sats, *min_reserve_sats, *direct_allowed),
+                _ => (0, 0, true),
+            };
         let required_sats = msats_to_sats_ceil(max_amount_forwarded_msats);
-        let has_direct_headroom = agent_balance_sats.saturating_sub(min_reserve_sats) >= required_sats;
+        let has_direct_headroom =
+            agent_balance_sats.saturating_sub(min_reserve_sats) >= required_sats;
         let direct_reliability_bps = if direct_allowed && has_direct_headroom {
             9_600
         } else if direct_allowed {
@@ -694,11 +696,7 @@ mod tests {
 
     use anyhow::Result;
     use axum::{
-        Json, Router,
-        extract::State,
-        http::StatusCode,
-        response::IntoResponse,
-        routing::post,
+        Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post,
     };
     use chrono::Utc;
     use serde_json::{Value, json};
@@ -747,8 +745,14 @@ mod tests {
             calls: calls.clone(),
         };
         let app = Router::new()
-            .route("/internal/v1/hydra/routing/score", post(hydra_routing_score))
-            .route("/internal/v1/liquidity/quote_pay", post(liquidity_quote_pay))
+            .route(
+                "/internal/v1/hydra/routing/score",
+                post(hydra_routing_score),
+            )
+            .route(
+                "/internal/v1/liquidity/quote_pay",
+                post(liquidity_quote_pay),
+            )
             .route("/internal/v1/liquidity/pay", post(liquidity_pay))
             .route("/internal/v1/credit/offer", post(credit_offer))
             .route("/internal/v1/credit/envelope", post(credit_envelope))
@@ -852,7 +856,7 @@ mod tests {
                     "nostr_event": {},
                     "decided_at_unix": decided_at_unix
                 }))
-                    .into_response()
+                .into_response()
             }
         }
     }

@@ -6093,13 +6093,6 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
-        // Sell Compute pane hidden from hotbar for now.
-        // items.push(
-        //     HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
-        //         .active(self.pane_store.is_active("sell_compute")),
-        // );
-        // self.hotbar_bindings
-        //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_AUTH, "AU", "Auth")
                 .active(self.pane_store.is_active("auth")),
@@ -6113,21 +6106,6 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_INBOX, HotbarAction::ToggleInboxList);
-
-        // DVM History + NIP-90 panes disabled for now (keep code around).
-        // items.push(
-        //     HotbarSlot::new(HOTBAR_SLOT_HISTORY, "HI", "History")
-        //         .active(self.pane_store.is_active("dvm_history")),
-        // );
-        // self.hotbar_bindings
-        //     .insert(HOTBAR_SLOT_HISTORY, HotbarAction::ToggleDvmHistory);
-        //
-        // items.push(
-        //     HotbarSlot::new(HOTBAR_SLOT_NIP90, "N9", "NIP-90")
-        //         .active(self.pane_store.is_active("nip90")),
-        // );
-        // self.hotbar_bindings
-        //     .insert(HOTBAR_SLOT_NIP90, HotbarAction::ToggleNip90);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {

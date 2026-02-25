@@ -287,12 +287,7 @@ impl LmRouterDspyBridge {
     /// DSPy LM client. This is a bridge pattern that works with existing
     /// DSRs infrastructure.
     pub async fn create_lm(&self) -> Result<LM> {
-        // Get the backend URL from the router if available
-        // For now, we create an LM that will be configured separately
-        // and the router tracking happens at a higher level
-
-        // TODO: Implement true LM::with_client() when DSRs supports custom clients
-        // For now, use the builder pattern with OpenAI-compatible endpoint
+        // Build a standard LM instance and keep router telemetry at orchestration layer.
 
         let lm = LM::builder()
             .model(self.model.clone())

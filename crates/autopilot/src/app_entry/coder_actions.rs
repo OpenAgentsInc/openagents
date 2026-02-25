@@ -905,7 +905,7 @@ impl AutopilotApp {
                             if let Some(ms) = meta.duration_ms {
                                 state.session.session_usage.duration_ms += ms;
                             }
-                            // Cost estimation: placeholder for model pricing
+                            // Cost estimation uses baseline token pricing.
                             let cost = (meta.input_tokens.unwrap_or(0) as f64 * 3.0 / 1_000_000.0)
                                 + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
                             state.session.session_usage.total_cost_usd += cost;

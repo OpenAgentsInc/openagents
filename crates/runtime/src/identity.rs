@@ -83,12 +83,12 @@ pub trait SigningService: Send + Sync {
     -> Result<Vec<u8>>;
 }
 
-/// In-memory stub signer using deterministic hashes.
+/// In-memory signer using deterministic hashes.
 #[derive(Default)]
 pub struct InMemorySigner;
 
 impl InMemorySigner {
-    /// Create a new stub signer.
+    /// Create a new deterministic in-memory signer.
     pub fn new() -> Self {
         Self
     }

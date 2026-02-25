@@ -520,7 +520,7 @@ impl LightningNode for LndRestLightningNode {
         _label: Option<String>,
     ) -> Result<LightningPayResultV1, LightningNodeError> {
         Err(LightningNodeError::Unsupported(
-            "LND backend pay_bolt11 is not implemented in Phase 0 (snapshot telemetry only)"
+            "LND backend pay_bolt11 is disabled in this runtime lane; enable the payment lane before invoking pay_bolt11."
                 .to_string(),
         ))
     }
@@ -531,7 +531,7 @@ impl LightningNode for LndRestLightningNode {
         _amount_sats: u64,
     ) -> Result<LightningOpenChannelResultV1, LightningNodeError> {
         Err(LightningNodeError::Unsupported(
-            "LND backend open_channel is not implemented in Phase 0 (snapshot telemetry only)"
+            "LND backend open_channel is disabled in this runtime lane; enable channel-management lane before invoking open_channel."
                 .to_string(),
         ))
     }
@@ -541,7 +541,7 @@ impl LightningNode for LndRestLightningNode {
         _channel_id: &str,
     ) -> Result<LightningCloseChannelResultV1, LightningNodeError> {
         Err(LightningNodeError::Unsupported(
-            "LND backend close_channel is not implemented in Phase 0 (snapshot telemetry only)"
+            "LND backend close_channel is disabled in this runtime lane; enable channel-management lane before invoking close_channel."
                 .to_string(),
         ))
     }
@@ -551,7 +551,7 @@ impl LightningNode for LndRestLightningNode {
         _budget_sats: u64,
     ) -> Result<LightningRebalanceResultV1, LightningNodeError> {
         Err(LightningNodeError::Unsupported(
-            "LND backend rebalance is not implemented in Phase 0 (snapshot telemetry only)"
+            "LND backend rebalance is not available because LND does not expose native rebalancing via this adapter."
                 .to_string(),
         ))
     }

@@ -76,9 +76,16 @@ pub async fn run(args: DoctorArgs) -> anyhow::Result<()> {
 
     // Relay checks
     println!("\nRelays:");
-    for (url, _ok) in &diag.relays {
-        // TODO: actually test connectivity
-        println!("  📡 {}", url);
+    if diag.relays.is_empty() {
+        println!("  ❌ No relays configured");
+    } else {
+        for (url, ok) in &diag.relays {
+            if *ok {
+                println!("  ✅ {}", url);
+            } else {
+                println!("  ❌ {} (unreachable)", url);
+            }
+        }
     }
 
     // Configuration

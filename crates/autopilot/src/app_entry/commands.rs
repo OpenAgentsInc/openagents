@@ -61,7 +61,7 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             CommandAction::None
         }
         Command::Backend => {
-            // Toggle between backends (Codex only for now).
+            // Backend selection currently maps to Codex.
             tracing::info!("Backend switched to: Codex");
             state.agent_selection.agent = AgentKindConfig::Codex;
             CommandAction::None

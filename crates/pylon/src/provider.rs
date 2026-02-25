@@ -10,6 +10,8 @@ use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{RwLock, broadcast};
+use tokio::time::{Duration, timeout};
+use tokio_tungstenite::connect_async;
 
 /// Errors from the Pylon provider
 #[derive(Debug, Error)]
@@ -117,6 +119,24 @@ pub struct PylonProvider {
 }
 
 impl PylonProvider {
+    async fn check_relay_connectivity(url: &str) -> bool {
+        let parsed = match url::Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(_) => return false,
+        };
+        if !matches!(parsed.scheme(), "ws" | "wss") || parsed.host_str().is_none() {
+            return false;
+        }
+
+        match timeout(Duration::from_secs(4), connect_async(url)).await {
+            Ok(Ok((mut socket, _))) => {
+                let _ = socket.close(None).await;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Create a new provider with the given config
     pub async fn new(config: PylonConfig) -> Result<Self, ProviderError> {
         // Try to start FM Bridge for Apple Foundation Models (macOS only)
@@ -447,16 +467,22 @@ impl PylonProvider {
             );
         }
 
-        // Check relays (just config for now, not actual connectivity)
-        let relays: Vec<(String, bool)> = self
-            .config
-            .relays
-            .iter()
-            .map(|url| (url.clone(), true)) // TODO: actually test connectivity
-            .collect();
+        let mut relays = Vec::new();
+        for url in &self.config.relays {
+            let ok = Self::check_relay_connectivity(url).await;
+            if !ok {
+                warnings.push(format!("Relay unreachable: {}", url));
+            }
+            relays.push((url.clone(), ok));
+        }
 
         if relays.is_empty() {
             warnings.push("No relays configured.".to_string());
+        } else if relays.iter().all(|(_, ok)| !*ok) {
+            warnings.push(
+                "No configured relays are reachable. Provider cannot receive or publish jobs."
+                    .to_string(),
+            );
         }
 
         DiagnosticResult {

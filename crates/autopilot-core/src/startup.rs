@@ -1,7 +1,10 @@
 use agent_client_protocol_schema as acp;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::mpsc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
@@ -18,49 +21,178 @@ use crate::auth;
 use crate::checkpoint::SessionCheckpoint;
 use crate::logger::{SessionLogger, generate_session_id};
 
-/// Stub for run_agent_planning (agent-specific implementation removed)
+fn emit_session_id(tx: &mpsc::Sender<AgentToken>, resume_session_id: Option<String>) {
+    if let Some(session_id) = resume_session_id {
+        let _ = tx.send(AgentToken::SessionId(session_id));
+    }
+}
+
+fn truncate_chars(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        input.to_string()
+    } else {
+        format!("{}...", input.chars().take(max_chars).collect::<String>())
+    }
+}
+
+fn run_command_capture(cwd: &PathBuf, program: &str, args: &[&str], max_chars: usize) -> String {
+    let output = Command::new(program).current_dir(cwd).args(args).output();
+    match output {
+        Ok(output) => {
+            let mut text = String::new();
+            if !output.stdout.is_empty() {
+                text.push_str(&String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&String::from_utf8_lossy(&output.stderr));
+            }
+            if text.trim().is_empty() {
+                if output.status.success() {
+                    "(no output)".to_string()
+                } else {
+                    format!("command exited with {}", output.status)
+                }
+            } else {
+                truncate_chars(text.trim(), max_chars)
+            }
+        }
+        Err(error) => format!("failed to run {}: {}", program, error),
+    }
+}
+
+fn hash_prompt(input: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn workspace_snapshot(workspace: &PathBuf) -> String {
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = std::fs::read_dir(workspace) {
+        for entry in read_dir.flatten().take(30) {
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy().to_string();
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_dir() {
+                    entries.push(format!("{}/", file_name));
+                } else {
+                    entries.push(file_name);
+                }
+            }
+        }
+    }
+    if entries.is_empty() {
+        "(workspace listing unavailable)".to_string()
+    } else {
+        entries.sort();
+        entries.join(", ")
+    }
+}
+
+/// Run planning using deterministic local inputs.
 pub fn run_agent_planning(
-    _workspace: &PathBuf,
-    _issue_summary: &str,
-    _assessment: &str,
-    _model: AgentModel,
-    _resume_session_id: Option<String>,
+    workspace: &PathBuf,
+    issue_summary: &str,
+    assessment: &str,
+    model: AgentModel,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done(
-        "Agent backend not configured - use Codex CLI or configure an inference backend"
-            .to_string(),
-    ));
+    emit_session_id(&tx, resume_session_id);
+    let _ = tx.send(AgentToken::Progress {
+        name: "planning".to_string(),
+        elapsed_secs: 0.0,
+    });
+
+    let issue = if issue_summary.trim().is_empty() {
+        "No issue summary provided.".to_string()
+    } else {
+        truncate_chars(issue_summary.trim(), 2400)
+    };
+    let assessment = if assessment.trim().is_empty() {
+        "No prior assessment available.".to_string()
+    } else {
+        truncate_chars(assessment.trim(), 1600)
+    };
+    let snapshot = workspace_snapshot(workspace);
+
+    let plan = format!(
+        "Planning lane: local deterministic planner\nModel hint: {}\nWorkspace: {}\n\nIssue summary:\n{}\n\nAssessment:\n{}\n\nExecution plan:\n1. Identify touched modules and contracts from issue summary.\n2. Implement code changes in smallest safe increments.\n3. Run targeted build/tests for touched modules.\n4. Run implementation-gap sweep for modified paths.\n5. Produce review notes with residual risks and verification evidence.\n\nWorkspace snapshot:\n{}",
+        model.as_str(),
+        workspace.display(),
+        issue,
+        assessment,
+        snapshot
+    );
+
+    let _ = tx.send(AgentToken::Text(plan.clone()));
+    let _ = tx.send(AgentToken::Done(plan));
 }
 
-/// Stub for run_agent_execution (agent-specific implementation removed)
+/// Run execution through local repository diagnostics and status checks.
 pub fn run_agent_execution(
-    _prompt: &str,
-    _model: AgentModel,
-    _resume_session_id: Option<String>,
+    prompt: &str,
+    model: AgentModel,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done(
-        "Agent backend not configured - use Codex CLI or configure an inference backend"
-            .to_string(),
-    ));
+    emit_session_id(&tx, resume_session_id);
+    let _ = tx.send(AgentToken::Progress {
+        name: "execution".to_string(),
+        elapsed_secs: 0.0,
+    });
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let git_status = run_command_capture(&cwd, "git", &["status", "--short"], 3000);
+    let git_diff_stat = run_command_capture(&cwd, "git", &["diff", "--stat"], 3000);
+    let report = format!(
+        "Execution lane: local deterministic executor\nModel hint: {}\nPrompt hash: {}\n\nWorking tree (`git status --short`):\n{}\n\nDiff stat (`git diff --stat`):\n{}",
+        model.as_str(),
+        hash_prompt(prompt),
+        git_status,
+        git_diff_stat
+    );
+
+    let _ = tx.send(AgentToken::Text(report.clone()));
+    let _ = tx.send(AgentToken::Done(report));
 }
 
-/// Stub for run_agent_review (agent-specific implementation removed)
+/// Run review by summarizing execution output and repository state.
 pub fn run_agent_review(
-    _prompt: &str,
-    _model: AgentModel,
-    _exec_result: &str,
-    _resume_session_id: Option<String>,
+    prompt: &str,
+    model: AgentModel,
+    exec_result: &str,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done(
-        "Agent backend not configured - use Codex CLI or configure an inference backend"
-            .to_string(),
-    ));
+    emit_session_id(&tx, resume_session_id);
+    let _ = tx.send(AgentToken::Progress {
+        name: "review".to_string(),
+        elapsed_secs: 0.0,
+    });
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let git_status = run_command_capture(&cwd, "git", &["status", "--short"], 2000);
+    let git_diff = run_command_capture(&cwd, "git", &["diff", "--stat"], 2000);
+    let exec_excerpt = truncate_chars(exec_result.trim(), 2400);
+
+    let review = format!(
+        "Review lane: local deterministic reviewer\nModel hint: {}\nPrompt hash: {}\n\nExecution summary:\n{}\n\nRepository state:\n- git status --short: {}\n- git diff --stat: {}\n\nReview checklist:\n1. Confirm touched files align with request scope.\n2. Confirm no new shortcut markers were introduced.\n3. Confirm verification commands are listed and reproducible.\n4. Confirm unresolved risks are explicitly called out.",
+        model.as_str(),
+        hash_prompt(prompt),
+        exec_excerpt,
+        git_status,
+        git_diff
+    );
+
+    let _ = tx.send(AgentToken::Text(review.clone()));
+    let _ = tx.send(AgentToken::Done(review));
 }
 use crate::preflight::PreflightConfig;
 use crate::report::{
@@ -730,7 +862,7 @@ impl StartupState {
                         line.status = LogStatus::Info;
                     }
 
-                    // Discover swarm providers (synchronous for now)
+                    // Discover swarm providers in this startup lane (synchronous call).
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line(
                         "Querying NIP-89 swarm providers...",

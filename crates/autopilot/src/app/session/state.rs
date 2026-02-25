@@ -238,7 +238,30 @@ impl SessionState {
                 *modal_state = ModalState::None;
             }
             SessionAction::Delete => {
-                chat.push_system_message("Session delete not implemented yet.".to_string());
+                let session_id = session_id.trim().to_string();
+                if session_id.is_empty() {
+                    chat.push_system_message("Session id is required to delete.".to_string());
+                    return;
+                }
+
+                let deleting_active = self.session_info.session_id == session_id;
+                if deleting_active && chat.is_thinking {
+                    chat.push_system_message(
+                        "Cannot delete the active session while processing.".to_string(),
+                    );
+                    return;
+                }
+
+                self.remove_session_entry(&session_id, chat.is_thinking);
+                if deleting_active {
+                    self.clear_conversation(chat, tools);
+                    chat.push_system_message(format!(
+                        "Deleted active session {} and cleared conversation.",
+                        session_id
+                    ));
+                } else {
+                    chat.push_system_message(format!("Deleted session {}.", session_id));
+                }
             }
         }
     }

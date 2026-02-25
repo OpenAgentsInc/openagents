@@ -503,5 +503,4 @@ mod tests {
         let result = authorizer.authenticate(&token);
         assert_eq!(result, Err(SyncAuthError::TokenTooOld));
     }
-
 }

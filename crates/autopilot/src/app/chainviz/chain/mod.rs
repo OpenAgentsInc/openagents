@@ -155,7 +155,7 @@ impl ChainState {
                 }
             }
             ChainEvent::TokenReceived { call_id, token: _ } => {
-                // Could update a streaming display, for now just keep progress message
+                // Keep node-level progress message updated while tokens stream.
                 if let Some(&idx) = self.call_id_to_node.get(&call_id) {
                     let node = &mut self.nodes[idx];
                     if node.state == NodeState::Running {

@@ -63,17 +63,27 @@ pub async fn run(args: InitArgs) -> anyhow::Result<()> {
     println!("Nostr Public Key (npub): {}", npub);
     println!("Nostr Public Key (hex):  {}", identity.public_key_hex());
 
-    // Save identity (plaintext for now - TODO: add encryption)
-    // WARNING: In production, this should be encrypted!
+    // Persist mnemonic with restrictive file permissions on supported platforms.
     println!("\n⚠️  Saving mnemonic to {:?}", identity_file);
     println!("   This file contains your private key. Keep it secure!");
-    std::fs::write(&identity_file, identity.mnemonic())?;
-
-    // Restrict file permissions on Unix
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&identity_file, std::fs::Permissions::from_mode(0o600))?;
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(&identity_file)?;
+        file.write_all(identity.mnemonic().as_bytes())?;
+        file.flush()?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&identity_file, identity.mnemonic())?;
     }
 
     // Save default config

@@ -5,7 +5,8 @@
 
 use crate::backends::{AgentRegistry, BackendRegistry, CompletionRequest};
 use crate::domain::{
-    CodeReviewRequest, DomainEvent, Job, PatchGenRequest, SandboxRunRequest, UnifiedIdentity,
+    CodeReviewRequest, DomainEvent, Job, PatchGenRequest, RepoIndexRequest, SandboxRunRequest,
+    UnifiedIdentity,
 };
 use crate::services::RelayServiceApi;
 use chrono::Utc;
@@ -1155,10 +1156,15 @@ impl DvmService {
                 serde_json::to_string(&result).map_err(|e| DvmError::AgentFailed(e.to_string()))
             }
             KIND_JOB_REPO_INDEX => {
-                // RepoIndex not implemented yet
-                Err(DvmError::AgentFailed(
-                    "RepoIndex not yet implemented".to_string(),
-                ))
+                let req = RepoIndexRequest::from_job_request(&job_request)
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                let result = agent
+                    .read()
+                    .await
+                    .repo_index(req, None)
+                    .await
+                    .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
+                serde_json::to_string(&result).map_err(|e| DvmError::AgentFailed(e.to_string()))
             }
             _ => Err(DvmError::UnsupportedKind(job.kind)),
         };

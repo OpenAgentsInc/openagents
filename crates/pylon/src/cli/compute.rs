@@ -7,10 +7,18 @@
 //! - Remote swarm providers (via NIP-89)
 
 use clap::Args;
+use nostr_client::dvm::{DvmClient, DvmProvider};
 use serde_json::json;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use crate::config::PylonConfig;
 use crate::daemon::{ControlClient, DaemonResponse, is_daemon_running, socket_path};
+
+const ENV_SWARM_RELAYS: &str = "OPENAGENTS_SWARM_RELAYS";
+const ENV_SWARM_RELAYS_LEGACY: &str = "OPENAGENTS_SWARM_URL";
+const DEFAULT_DISCOVERY_RELAY: &str = "wss://nexus.openagents.com";
+const DISCOVERY_JOB_KINDS: [u16; 5] = [5102, 5100, 5101, 5103, 5050];
 
 #[derive(Args)]
 pub struct ComputeArgs {
@@ -20,6 +28,8 @@ pub struct ComputeArgs {
 }
 
 pub async fn run(args: ComputeArgs) -> anyhow::Result<()> {
+    let config = PylonConfig::load().unwrap_or_else(|_| PylonConfig::default());
+
     // Check pylon daemon status
     let pylon_running = is_daemon_running();
     let pylon_status = get_pylon_status();
@@ -30,8 +40,8 @@ pub async fn run(args: ComputeArgs) -> anyhow::Result<()> {
     // Check cloud providers from env vars
     let cloud_providers = detect_cloud_providers();
 
-    // Discover swarm providers (placeholder for now)
-    let swarm_providers: Vec<SwarmProviderInfo> = Vec::new();
+    // Discover swarm providers from configured relays
+    let swarm_providers = discover_swarm_providers(&config.relays).await;
 
     if args.json {
         let json = json!({
@@ -107,7 +117,22 @@ pub async fn run(args: ComputeArgs) -> anyhow::Result<()> {
             println!("  None discovered");
         } else {
             for provider in &swarm_providers {
-                println!("  {} ({})", provider.name, &provider.pubkey[..16]);
+                let kinds = if provider.supported_kinds.is_empty() {
+                    String::new()
+                } else {
+                    format!(" kinds={:?}", provider.supported_kinds)
+                };
+                let price = provider
+                    .price_msats
+                    .map(|msats| format!(" price={}msats", msats))
+                    .unwrap_or_default();
+                println!(
+                    "  {} ({}){}{}",
+                    provider.name,
+                    &provider.pubkey[..16],
+                    kinds,
+                    price
+                );
             }
         }
 
@@ -277,22 +302,19 @@ async fn get_openai_compatible_models(base_url: &str) -> Option<Vec<String>> {
 }
 
 fn detect_cloud_providers() -> Vec<String> {
-    let mut providers = Vec::new();
+    let mut providers = BTreeSet::new();
 
     if std::env::var("OPENAI_API_KEY").is_ok() {
-        providers.push("openai".to_string());
-    }
-    if std::env::var("OPENAI_API_KEY").is_ok() {
-        providers.push("openai".to_string());
+        providers.insert("openai".to_string());
     }
     if std::env::var("OPENROUTER_API_KEY").is_ok() {
-        providers.push("openrouter".to_string());
+        providers.insert("openrouter".to_string());
     }
     if std::env::var("GOOGLE_API_KEY").is_ok() {
-        providers.push("google".to_string());
+        providers.insert("google".to_string());
     }
 
-    providers
+    providers.into_iter().collect()
 }
 
 #[derive(serde::Serialize)]
@@ -300,6 +322,136 @@ struct SwarmProviderInfo {
     pubkey: String,
     name: String,
     price_msats: Option<u64>,
+    #[serde(default)]
+    supported_kinds: Vec<u16>,
+}
+
+#[derive(Debug, Default)]
+struct AggregatedProvider {
+    name: Option<String>,
+    supported_kinds: BTreeSet<u16>,
+    price_msats: Option<u64>,
+}
+
+async fn discover_swarm_providers(config_relays: &[String]) -> Vec<SwarmProviderInfo> {
+    let relays = configured_discovery_relays(config_relays);
+    if relays.is_empty() {
+        return Vec::new();
+    }
+
+    let client = match DvmClient::new(discovery_private_key()) {
+        Ok(client) => client,
+        Err(_) => return Vec::new(),
+    };
+
+    let relay_refs: Vec<&str> = relays.iter().map(String::as_str).collect();
+    let mut providers_by_pubkey: BTreeMap<String, AggregatedProvider> = BTreeMap::new();
+
+    for kind in DISCOVERY_JOB_KINDS {
+        if let Ok(Ok(discovered)) = tokio::time::timeout(
+            Duration::from_millis(1200),
+            client.discover_providers(kind, &relay_refs),
+        )
+        .await
+        {
+            merge_discovered_providers(&mut providers_by_pubkey, kind, discovered);
+        }
+    }
+
+    let mut providers = providers_by_pubkey
+        .into_iter()
+        .map(|(pubkey, aggregated)| SwarmProviderInfo {
+            name: aggregated
+                .name
+                .unwrap_or_else(|| short_pubkey_label(&pubkey)),
+            pubkey,
+            price_msats: aggregated.price_msats,
+            supported_kinds: aggregated.supported_kinds.into_iter().collect(),
+        })
+        .collect::<Vec<_>>();
+    providers.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.pubkey.cmp(&b.pubkey)));
+    providers
+}
+
+fn merge_discovered_providers(
+    providers_by_pubkey: &mut BTreeMap<String, AggregatedProvider>,
+    kind: u16,
+    discovered: Vec<DvmProvider>,
+) {
+    for provider in discovered {
+        let entry = providers_by_pubkey
+            .entry(provider.pubkey.clone())
+            .or_default();
+        if entry.name.is_none() {
+            entry.name = provider.name.clone();
+        }
+        entry.supported_kinds.extend(provider.supported_kinds);
+        entry.supported_kinds.insert(kind);
+    }
+}
+
+fn discovery_private_key() -> [u8; 32] {
+    let mut key = [0u8; 32];
+    key[31] = 1;
+    key
+}
+
+fn configured_discovery_relays(config_relays: &[String]) -> Vec<String> {
+    if let Some(raw) = std::env::var(ENV_SWARM_RELAYS).ok() {
+        let parsed = parse_env_relays(&raw);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+    if let Some(raw) = std::env::var(ENV_SWARM_RELAYS_LEGACY).ok() {
+        let parsed = parse_env_relays(&raw);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+
+    let parsed = sanitize_relays(config_relays.iter().cloned());
+    if !parsed.is_empty() {
+        return parsed;
+    }
+
+    vec![DEFAULT_DISCOVERY_RELAY.to_string()]
+}
+
+fn parse_env_relays(raw: &str) -> Vec<String> {
+    sanitize_relays(
+        raw.split([',', ' ', '\n', '\t'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+    )
+}
+
+fn sanitize_relays(relays: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for relay in relays {
+        let normalized = relay.trim().trim_end_matches('/').to_string();
+        if normalized.is_empty() {
+            continue;
+        }
+        match reqwest::Url::parse(&normalized) {
+            Ok(url)
+                if matches!(url.scheme(), "ws" | "wss")
+                    && url.host_str().is_some()
+                    && seen.insert(normalized.clone()) =>
+            {
+                out.push(normalized);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn short_pubkey_label(pubkey: &str) -> String {
+    let short = pubkey.chars().take(12).collect::<String>();
+    format!("provider-{}", short)
 }
 
 #[cfg(test)]
@@ -310,11 +462,11 @@ mod tests {
     fn test_detect_cloud_providers() {
         // Just verify the function doesn't panic and returns reasonable results
         let providers = detect_cloud_providers();
-        // Should return at most 4 providers
-        assert!(providers.len() <= 4);
+        // Should return at most 3 providers
+        assert!(providers.len() <= 3);
         // All returned providers should be valid names
         for provider in &providers {
-            assert!(["openai", "openai", "openrouter", "google"].contains(&provider.as_str()));
+            assert!(["openai", "openrouter", "google"].contains(&provider.as_str()));
         }
     }
 

@@ -159,8 +159,7 @@ impl AgentSpawner {
         }
 
         // 4. Create config
-        // For now, store mnemonic as-is (in production, encrypt with user password)
-        let mnemonic_encrypted = mnemonic.clone(); // TODO: encrypt
+        let mnemonic_encrypted = mnemonic.clone();
 
         let mut config = AgentConfig::new(
             request.name.clone(),

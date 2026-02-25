@@ -69,9 +69,38 @@ pub(crate) fn strip_markdown_markers(text: &str) -> String {
         }
     }
     result = new_chars.into_iter().collect();
-    // Strip single * or _ only when they appear at word boundaries (simple heuristic)
-    // This is tricky - for now just strip pairs
+    // Strip paired emphasis markers.
+    result = strip_paired_marker(&result, '*');
+    result = strip_paired_marker(&result, '_');
     result
+}
+
+fn strip_paired_marker(input: &str, marker: char) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut output = String::new();
+    let mut i = 0usize;
+
+    while i < chars.len() {
+        if chars[i] == marker {
+            let mut end = i + 1;
+            while end < chars.len() && chars[end] != marker {
+                end += 1;
+            }
+            if end < chars.len() && end > i + 1 {
+                let inner: String = chars[i + 1..end].iter().collect();
+                if !inner.trim().is_empty() {
+                    output.push_str(&inner);
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+
+        output.push(chars[i]);
+        i += 1;
+    }
+
+    output
 }
 
 pub(crate) fn default_font_size() -> f32 {

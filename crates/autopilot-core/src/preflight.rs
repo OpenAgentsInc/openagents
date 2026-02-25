@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
@@ -644,6 +644,7 @@ fn detect_inference() -> InferenceInfo {
 
     let mut cloud_providers = Vec::new();
     let mut env_vars = HashMap::new();
+    let mut swarm_relays = BTreeSet::new();
 
     // Check cloud API keys (Codex)
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
@@ -653,8 +654,46 @@ fn detect_inference() -> InferenceInfo {
     if openai_key {
         cloud_providers.push("openai".to_string());
     }
-    // Check for swarm providers (placeholder - would need actual implementation)
-    let has_swarm_providers = std::env::var("OPENAGENTS_SWARM_URL").is_ok();
+
+    for key in ["OPENAGENTS_SWARM_RELAYS", "OPENAGENTS_SWARM_URL"] {
+        let configured = std::env::var(key)
+            .ok()
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty());
+        env_vars.insert(key.to_string(), configured.is_some());
+        if let Some(raw) = configured {
+            for relay in raw.split([',', ' ', '\n', '\t']) {
+                let relay = relay.trim().trim_end_matches('/');
+                if relay.is_empty() {
+                    continue;
+                }
+                if let Ok(parsed) = reqwest::Url::parse(relay) {
+                    if matches!(parsed.scheme(), "ws" | "wss") && parsed.host_str().is_some() {
+                        swarm_relays.insert(relay.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "native")]
+    {
+        if let Ok(config) = pylon::PylonConfig::load() {
+            for relay in config.relays {
+                let relay = relay.trim().trim_end_matches('/').to_string();
+                if relay.is_empty() {
+                    continue;
+                }
+                if let Ok(parsed) = reqwest::Url::parse(&relay) {
+                    if matches!(parsed.scheme(), "ws" | "wss") && parsed.host_str().is_some() {
+                        swarm_relays.insert(relay);
+                    }
+                }
+            }
+        }
+    }
+
+    let has_swarm_providers = !swarm_relays.is_empty();
 
     InferenceInfo {
         cloud_providers,

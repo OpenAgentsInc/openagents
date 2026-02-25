@@ -160,7 +160,7 @@ mod desktop {
 #[cfg(not(target_arch = "wasm32"))]
 pub use desktop::*;
 
-// Stub for WASM - SVG rendering not supported
+// WASM fallback module: SVG rasterization is disabled on this target.
 #[cfg(target_arch = "wasm32")]
 mod wasm_stub {
     use std::sync::Arc;

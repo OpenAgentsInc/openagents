@@ -1033,7 +1033,7 @@ impl VimHandler {
                 let visible = editor.visible_lines();
                 E::Pos::new(visible.end.saturating_sub(1), 0)
             }
-            _ => cursor, // Other motions not yet implemented
+            _ => cursor, // Unsupported motion variant keeps cursor unchanged.
         };
 
         editor.set_cursor(new_pos);

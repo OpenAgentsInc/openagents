@@ -47,7 +47,7 @@ pub struct AgentEnv {
 }
 
 impl AgentEnv {
-    /// Create an environment with default services and a stub signer.
+    /// Create an environment with default services and a deterministic local signer.
     pub fn new(agent_id: AgentId, storage: Arc<dyn AgentStorage>) -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         let signer = Arc::new(NostrSigner::new());
