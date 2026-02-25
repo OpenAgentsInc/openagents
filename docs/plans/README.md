@@ -10,6 +10,7 @@ This directory stores execution plans.
 - `docs/plans/hydra-liquidity-engine.md`
 - `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/spacetimedb-full-integration.md`
 - `docs/plans/vignette-hydra-mvp2.md`
 - `docs/plans/vignette-hydra-mvp3.md`
 - `docs/plans/vignette-phase0-issue-to-pr.md`
