@@ -93,7 +93,7 @@ Onyx is also coupled to:
 2. architecture/docs references (`AGENTS.md`, `docs/core/*`, `docs/sync/*`),
 3. protocol + ADR contracts:
    - `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
-   - `docs/protocol/onyx-integration-contract-v1.md`
+   - `docs/protocol/archived/onyx-integration-contract-v1.md`
 4. runtime sync policy/tests (`apps/runtime/src/sync_auth.rs`, `apps/runtime/src/server/tests.rs`).
 
 ## Critical Coupling That Must Be Addressed
@@ -145,7 +145,7 @@ High-reference files that must be updated in same migration:
 If iOS and Onyx are removed, these become stale and require supersede/archive decisions:
 
 1. `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
-2. `docs/protocol/onyx-integration-contract-v1.md`
+2. `docs/protocol/archived/onyx-integration-contract-v1.md`
 3. iOS-specific docs under `apps/autopilot-ios/docs/`
 4. iOS/Onyx references in protocol fixtures and compatibility docs.
 

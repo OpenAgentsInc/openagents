@@ -34,6 +34,6 @@ Onyx is a Rust local-first app, but its integration with OpenAgents control/runt
 
 Historical artifact list at time of acceptance (no longer active after decommission):
 
-1. `docs/protocol/onyx-integration-contract-v1.md`
+1. `docs/protocol/archived/onyx-integration-contract-v1.md`
 2. `apps/runtime/src/sync_auth.rs`
 3. `apps/runtime/src/server.rs` (integration test coverage for denied Onyx topic access)

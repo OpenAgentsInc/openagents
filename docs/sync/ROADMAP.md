@@ -2,7 +2,7 @@
 
 Date: 2026-02-21  
 Status: Active program  
-Owner lanes: Runtime, Desktop, Onyx, Infra, Protocol  
+Owner lanes: Runtime, Desktop, Infra, Protocol  
 Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 Khala is the runtime-owned sync/replay delivery system for Rust-era surfaces.
@@ -11,7 +11,6 @@ Khala is the runtime-owned sync/replay delivery system for Rust-era surfaces.
 
 Deliver and operate a production-grade WS-only sync lane with deterministic replay/resume semantics for:
 - `apps/autopilot-desktop`
-- `apps/onyx` (explicit limited integration scope)
 
 ## Non-Negotiable Constraints
 
@@ -38,7 +37,6 @@ Remaining migration work:
 | Surface | Primary Topic Scope | Integration Status |
 |---|---|---|
 | `apps/autopilot-desktop` | codex worker events + optional summaries | Active primary operator lane |
-| `apps/onyx` | optional run summaries only | Scoped/limited integration lane |
 
 ## Workstreams
 
@@ -98,11 +96,11 @@ Done when:
 Verification:
 - `./scripts/local-ci.sh all-rust`
 
-### SYNC-006: Onyx scoped integration declaration
+### SYNC-006: Onyx decommission closure
 Status: Completed
 
 Done when:
-- docs clearly limit Onyx to selected read/admin scope (no full codex-worker event lane in v1).
+- Onyx is archived/removed from repo and sync docs no longer treat it as an active consumer lane.
 
 Verification:
 - `./scripts/local-ci.sh docs`

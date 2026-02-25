@@ -3,7 +3,6 @@
 Owner: Khala lane (`apps/runtime`)  
 Scope: WS-only rollout gate for runtime/Codex sync across:
 - `apps/autopilot-desktop`
-- `apps/onyx` (limited scope)
 
 This runbook is the canonical rollout procedure for OA-RUST-048 / OA-RUST-106 sync-surface alignment.
 

@@ -23,7 +23,7 @@ This directory is the Rust-era protocol system-of-record.
 
 ## Archived (Historical)
 
-- `docs/protocol/onyx-integration-contract-v1.md`
+- `docs/protocol/archived/onyx-integration-contract-v1.md`
 
 ## Proto Authority
 
