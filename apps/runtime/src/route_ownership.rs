@@ -42,6 +42,12 @@ pub const ROUTE_INTERNAL_V1_HYDRA_FX_SETTLE: &str = "/internal/v1/hydra/fx/settl
 pub const ROUTE_INTERNAL_V1_HYDRA_FX_RFQ_BY_ID: &str = "/internal/v1/hydra/fx/rfq/:rfq_id";
 pub const ROUTE_INTERNAL_V1_HYDRA_RISK_HEALTH: &str = "/internal/v1/hydra/risk/health";
 pub const ROUTE_INTERNAL_V1_HYDRA_OBSERVABILITY: &str = "/internal/v1/hydra/observability";
+pub const ROUTE_INTERNAL_V1_AEGIS_CLASSIFY: &str = "/internal/v1/aegis/classify";
+pub const ROUTE_INTERNAL_V1_AEGIS_VERIFY: &str = "/internal/v1/aegis/verify";
+pub const ROUTE_INTERNAL_V1_AEGIS_RISK_BUDGET: &str = "/internal/v1/aegis/risk/budget";
+pub const ROUTE_INTERNAL_V1_AEGIS_WARRANTY_ISSUE: &str = "/internal/v1/aegis/warranty/issue";
+pub const ROUTE_INTERNAL_V1_AEGIS_CLAIMS_OPEN: &str = "/internal/v1/aegis/claims/open";
+pub const ROUTE_INTERNAL_V1_AEGIS_CLAIMS_RESOLVE: &str = "/internal/v1/aegis/claims/resolve";
 pub const ROUTE_INTERNAL_V1_MARKETPLACE_DISPATCH_SANDBOX_RUN: &str =
     "/internal/v1/marketplace/dispatch/sandbox-run";
 pub const ROUTE_INTERNAL_V1_VERIFICATIONS_SANDBOX_RUN: &str =
@@ -285,6 +291,36 @@ pub const INTERNAL_V1_ROUTE_OWNERSHIP: &[RuntimeInternalRouteOwnership] = &[
     ),
     runtime_authority_route(
         "POST",
+        ROUTE_INTERNAL_V1_AEGIS_CLASSIFY,
+        "runtime aegis classification authority",
+    ),
+    runtime_authority_route(
+        "POST",
+        ROUTE_INTERNAL_V1_AEGIS_VERIFY,
+        "runtime aegis verification authority",
+    ),
+    runtime_authority_route(
+        "GET",
+        ROUTE_INTERNAL_V1_AEGIS_RISK_BUDGET,
+        "runtime aegis risk budget authority",
+    ),
+    runtime_authority_route(
+        "POST",
+        ROUTE_INTERNAL_V1_AEGIS_WARRANTY_ISSUE,
+        "runtime aegis warranty issue authority",
+    ),
+    runtime_authority_route(
+        "POST",
+        ROUTE_INTERNAL_V1_AEGIS_CLAIMS_OPEN,
+        "runtime aegis claim open authority",
+    ),
+    runtime_authority_route(
+        "POST",
+        ROUTE_INTERNAL_V1_AEGIS_CLAIMS_RESOLVE,
+        "runtime aegis claim resolve authority",
+    ),
+    runtime_authority_route(
+        "POST",
         ROUTE_INTERNAL_V1_MARKETPLACE_DISPATCH_SANDBOX_RUN,
         "runtime marketplace dispatch authority",
     ),
@@ -469,6 +505,12 @@ mod tests {
             ("GET", ROUTE_INTERNAL_V1_HYDRA_FX_RFQ_BY_ID),
             ("GET", ROUTE_INTERNAL_V1_HYDRA_RISK_HEALTH),
             ("GET", ROUTE_INTERNAL_V1_HYDRA_OBSERVABILITY),
+            ("POST", ROUTE_INTERNAL_V1_AEGIS_CLASSIFY),
+            ("POST", ROUTE_INTERNAL_V1_AEGIS_VERIFY),
+            ("GET", ROUTE_INTERNAL_V1_AEGIS_RISK_BUDGET),
+            ("POST", ROUTE_INTERNAL_V1_AEGIS_WARRANTY_ISSUE),
+            ("POST", ROUTE_INTERNAL_V1_AEGIS_CLAIMS_OPEN),
+            ("POST", ROUTE_INTERNAL_V1_AEGIS_CLAIMS_RESOLVE),
             ("POST", ROUTE_INTERNAL_V1_MARKETPLACE_DISPATCH_SANDBOX_RUN),
             ("POST", ROUTE_INTERNAL_V1_VERIFICATIONS_SANDBOX_RUN),
             ("POST", ROUTE_INTERNAL_V1_VERIFICATIONS_REPO_INDEX),

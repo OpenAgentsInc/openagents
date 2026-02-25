@@ -59,6 +59,7 @@ Current files:
 - `proto/openagents/sync/v1/client_telemetry.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
+- `proto/openagents/aegis/v1/aegis.proto`
 - `proto/openagents/hydra/v1/credit.proto`
 - `proto/openagents/hydra/v1/routing.proto`
 - `proto/openagents/hydra/v1/fx.proto`

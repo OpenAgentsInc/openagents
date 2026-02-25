@@ -20,6 +20,20 @@ use axum::{
 use chrono::Utc;
 use futures::StreamExt;
 use openagents_l402::Bolt11;
+use openagents_proto::aegis::{
+    AEGIS_CLAIM_OPEN_REQUEST_SCHEMA_V1, AEGIS_CLAIM_OPEN_RESPONSE_SCHEMA_V1,
+    AEGIS_CLAIM_RESOLVE_REQUEST_SCHEMA_V1, AEGIS_CLAIM_RESOLVE_RESPONSE_SCHEMA_V1,
+    AEGIS_CLASSIFY_REQUEST_SCHEMA_V1, AEGIS_CLASSIFY_RESPONSE_SCHEMA_V1,
+    AEGIS_RISK_BUDGET_RESPONSE_SCHEMA_V1, AEGIS_VERIFY_REQUEST_SCHEMA_V1,
+    AEGIS_VERIFY_RESPONSE_SCHEMA_V1, AEGIS_WARRANTY_ISSUE_REQUEST_SCHEMA_V1,
+    AEGIS_WARRANTY_ISSUE_RESPONSE_SCHEMA_V1, AegisClaimOpenRequestV1,
+    AegisClaimOpenResponseV1, AegisClaimResolveRequestV1, AegisClaimResolveResponseV1,
+    AegisClaimStatusV1, AegisClassifyRequestV1, AegisClassifyResponseV1,
+    AegisConversionError, AegisReceiptLinkageV1, AegisRiskBudgetResponseV1,
+    AegisVerificationClassV1, AegisVerificationTierV1, AegisVerifyRequestV1,
+    AegisVerifyResponseV1, AegisWarrantyIssueRequestV1, AegisWarrantyIssueResponseV1,
+    AegisWarrantyStatusV1,
+};
 use openagents_proto::hydra_routing::{
     ROUTING_SCORE_RESPONSE_SCHEMA_V1, RoutingCandidateQuoteV1 as HydraRoutingCandidateQuoteV1,
     RoutingDecisionFactorsV1 as HydraRoutingDecisionFactorsV1,
@@ -27,6 +41,7 @@ use openagents_proto::hydra_routing::{
     RoutingScoreRequestV1 as HydraRoutingScoreRequestV1,
     RoutingScoreResponseV1 as HydraRoutingScoreResponseV1,
 };
+use openagents_proto::wire::openagents::aegis::v1 as wire_aegis;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use tokio::sync::Mutex;
@@ -117,6 +132,7 @@ pub struct AppState {
     compute_abuse: Arc<ComputeAbuseControls>,
     compute_telemetry: Arc<ComputeTelemetry>,
     hydra_observability: Arc<HydraObservabilityTelemetry>,
+    aegis: Arc<AegisRuntimeState>,
     treasury: Arc<Treasury>,
     fraud: Arc<FraudIncidentLog>,
     comms_delivery_events: Arc<Mutex<HashMap<String, CommsDeliveryAccepted>>>,
@@ -226,6 +242,7 @@ impl AppState {
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
             hydra_observability: Arc::new(HydraObservabilityTelemetry::default()),
+            aegis: Arc::new(AegisRuntimeState::default()),
             treasury: Arc::new(Treasury::default()),
             fraud: Arc::new(FraudIncidentLog::default()),
             comms_delivery_events: Arc::new(Mutex::new(HashMap::new())),
@@ -407,6 +424,55 @@ impl ComputeTelemetry {
         f(entry);
         entry.updated_at = Some(now);
     }
+}
+
+#[derive(Debug, Clone)]
+struct AegisIdempotentReplay<T> {
+    request_sha256: String,
+    response: T,
+}
+
+#[derive(Default)]
+struct AegisRuntimeState {
+    inner: Mutex<AegisRuntimeStateInner>,
+}
+
+#[derive(Default)]
+struct AegisRuntimeStateInner {
+    classify_replays: HashMap<String, AegisIdempotentReplay<AegisClassifyResponseV1>>,
+    verify_replays: HashMap<String, AegisIdempotentReplay<AegisVerifyResponseV1>>,
+    warranty_issue_replays: HashMap<String, AegisIdempotentReplay<AegisWarrantyIssueResponseV1>>,
+    claim_open_replays: HashMap<String, AegisIdempotentReplay<AegisClaimOpenResponseV1>>,
+    claim_resolve_replays: HashMap<String, AegisIdempotentReplay<AegisClaimResolveResponseV1>>,
+    verifications: HashMap<String, AegisVerificationRecord>,
+    warranties: HashMap<String, AegisWarrantyRecord>,
+    claims: HashMap<String, AegisClaimRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct AegisVerificationRecord {
+    run_id: String,
+    owner_key: String,
+    passed: bool,
+    verified_at_unix: u64,
+}
+
+#[derive(Debug, Clone)]
+struct AegisWarrantyRecord {
+    warranty_id: String,
+    status: AegisWarrantyStatusV1,
+    remaining_coverage_msats: u64,
+    expires_at_unix: u64,
+}
+
+#[derive(Debug, Clone)]
+struct AegisClaimRecord {
+    claim_id: String,
+    warranty_id: String,
+    status: AegisClaimStatusV1,
+    requested_msats: u64,
+    payout_msats: u64,
+    resolved_at_unix: Option<u64>,
 }
 
 #[derive(Default)]
@@ -1058,6 +1124,12 @@ struct FraudIncidentsQuery {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AegisRiskBudgetQuery {
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct FraudIncidentsResponse {
     schema: String,
@@ -1143,6 +1215,16 @@ const HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1: &str =
 const HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1: &str = "openagents.hydra.risk_health_response.v1";
 const HYDRA_ROUTE_PROVIDER_DIRECT: &str = "route-direct";
 const HYDRA_ROUTE_PROVIDER_CEP: &str = "route-cep";
+const AEGIS_CLASSIFICATION_RECEIPT_SCHEMA_V1: &str =
+    "openagents.aegis.classification_receipt.v1";
+const AEGIS_VERIFICATION_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.verification_receipt.v1";
+const AEGIS_WARRANTY_ISSUE_RECEIPT_SCHEMA_V1: &str =
+    "openagents.aegis.warranty_issue_receipt.v1";
+const AEGIS_CLAIM_OPEN_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.claim_open_receipt.v1";
+const AEGIS_CLAIM_RESOLUTION_RECEIPT_SCHEMA_V1: &str =
+    "openagents.aegis.claim_resolution_receipt.v1";
+const AEGIS_DEFAULT_UNVERIFIED_BUDGET_24H: u64 = 25;
+const AEGIS_DEGRADED_UNVERIFIED_BUDGET_24H: u64 = 8;
 
 #[derive(Debug, Deserialize)]
 struct RouterSelectComputeBody {
@@ -3995,6 +4077,1127 @@ async fn verify_repo_index(
         tree_sha256: outcome.tree_sha256,
         violations: outcome.violations,
     }))
+}
+
+fn aegis_request_contract_error(error: AegisConversionError) -> ApiError {
+    ApiError::InvalidRequest(format!("aegis_proto_contract: {error}"))
+}
+
+fn aegis_response_contract_error(error: AegisConversionError) -> ApiError {
+    ApiError::Internal(format!("aegis_proto_contract_response: {error}"))
+}
+
+fn normalize_aegis_classify_request(
+    body: AegisClassifyRequestV1,
+) -> Result<AegisClassifyRequestV1, ApiError> {
+    let wire: wire_aegis::AegisClassifyRequestV1 =
+        body.try_into().map_err(aegis_request_contract_error)?;
+    wire.try_into().map_err(aegis_request_contract_error)
+}
+
+fn normalize_aegis_verify_request(body: AegisVerifyRequestV1) -> Result<AegisVerifyRequestV1, ApiError> {
+    let wire: wire_aegis::AegisVerifyRequestV1 =
+        body.try_into().map_err(aegis_request_contract_error)?;
+    wire.try_into().map_err(aegis_request_contract_error)
+}
+
+fn normalize_aegis_warranty_issue_request(
+    body: AegisWarrantyIssueRequestV1,
+) -> Result<AegisWarrantyIssueRequestV1, ApiError> {
+    let wire: wire_aegis::AegisWarrantyIssueRequestV1 =
+        body.try_into().map_err(aegis_request_contract_error)?;
+    wire.try_into().map_err(aegis_request_contract_error)
+}
+
+fn normalize_aegis_claim_open_request(
+    body: AegisClaimOpenRequestV1,
+) -> Result<AegisClaimOpenRequestV1, ApiError> {
+    let wire: wire_aegis::AegisClaimOpenRequestV1 =
+        body.try_into().map_err(aegis_request_contract_error)?;
+    wire.try_into().map_err(aegis_request_contract_error)
+}
+
+fn normalize_aegis_claim_resolve_request(body: AegisClaimResolveRequestV1) -> AegisClaimResolveRequestV1 {
+    let wire: wire_aegis::AegisClaimResolveRequestV1 = body.into();
+    wire.into()
+}
+
+fn normalize_aegis_classify_response(
+    response: AegisClassifyResponseV1,
+) -> Result<AegisClassifyResponseV1, ApiError> {
+    let wire: wire_aegis::AegisClassifyResponseV1 =
+        response.try_into().map_err(aegis_response_contract_error)?;
+    wire.try_into().map_err(aegis_response_contract_error)
+}
+
+fn normalize_aegis_verify_response(
+    response: AegisVerifyResponseV1,
+) -> Result<AegisVerifyResponseV1, ApiError> {
+    let wire: wire_aegis::AegisVerifyResponseV1 =
+        response.try_into().map_err(aegis_response_contract_error)?;
+    wire.try_into().map_err(aegis_response_contract_error)
+}
+
+fn normalize_aegis_warranty_issue_response(
+    response: AegisWarrantyIssueResponseV1,
+) -> Result<AegisWarrantyIssueResponseV1, ApiError> {
+    let wire: wire_aegis::AegisWarrantyIssueResponseV1 =
+        response.try_into().map_err(aegis_response_contract_error)?;
+    wire.try_into().map_err(aegis_response_contract_error)
+}
+
+fn normalize_aegis_claim_open_response(
+    response: AegisClaimOpenResponseV1,
+) -> Result<AegisClaimOpenResponseV1, ApiError> {
+    let wire: wire_aegis::AegisClaimOpenResponseV1 =
+        response.try_into().map_err(aegis_response_contract_error)?;
+    wire.try_into().map_err(aegis_response_contract_error)
+}
+
+fn normalize_aegis_claim_resolve_response(
+    response: AegisClaimResolveResponseV1,
+) -> Result<AegisClaimResolveResponseV1, ApiError> {
+    let wire: wire_aegis::AegisClaimResolveResponseV1 =
+        response.try_into().map_err(aegis_response_contract_error)?;
+    wire.try_into().map_err(aegis_response_contract_error)
+}
+
+fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn aegis_owner_key_from_optional(
+    owner_user_id: Option<u64>,
+    owner_guest_scope: Option<String>,
+) -> Result<String, ApiError> {
+    let guest_scope = normalize_optional_trimmed(owner_guest_scope);
+    match (owner_user_id, guest_scope) {
+        (None, None) => Ok("owner:unknown".to_string()),
+        (user_id, guest_scope) => {
+            let owner = owner_from_parts(user_id, guest_scope)?;
+            Ok(owner_rate_key(&owner))
+        }
+    }
+}
+
+fn aegis_class_for_signals(
+    work_type: &str,
+    objective_hash: Option<&str>,
+    requires_human_underwrite: bool,
+) -> AegisVerificationClassV1 {
+    if requires_human_underwrite {
+        return AegisVerificationClassV1::LowVerifiability;
+    }
+    let objective_signal = objective_hash.is_some()
+        || matches!(
+            work_type,
+            "sandbox_run" | "repo_index" | "verified_patch_bundle" | "nip90"
+        );
+    if objective_signal {
+        AegisVerificationClassV1::Objective
+    } else {
+        AegisVerificationClassV1::Subjective
+    }
+}
+
+fn aegis_default_tier_for_class(classification: AegisVerificationClassV1) -> AegisVerificationTierV1 {
+    match classification {
+        AegisVerificationClassV1::Objective => AegisVerificationTierV1::TierO,
+        AegisVerificationClassV1::Subjective => AegisVerificationTierV1::Tier2,
+        AegisVerificationClassV1::LowVerifiability => AegisVerificationTierV1::Tier4,
+    }
+}
+
+fn aegis_tier_rank(tier: AegisVerificationTierV1) -> u8 {
+    match tier {
+        AegisVerificationTierV1::TierO => 0,
+        AegisVerificationTierV1::Tier1 => 1,
+        AegisVerificationTierV1::Tier2 => 2,
+        AegisVerificationTierV1::Tier3 => 3,
+        AegisVerificationTierV1::Tier4 => 4,
+    }
+}
+
+fn aegis_tier_at_least(
+    tier: AegisVerificationTierV1,
+    minimum: AegisVerificationTierV1,
+) -> AegisVerificationTierV1 {
+    if aegis_tier_rank(tier) < aegis_tier_rank(minimum) {
+        minimum
+    } else {
+        tier
+    }
+}
+
+fn aegis_canonical_hash<T: Serialize>(value: &T, label: &str) -> Result<String, ApiError> {
+    protocol::hash::canonical_hash(value)
+        .map_err(|error| ApiError::Internal(format!("{label}: {error}")))
+}
+
+fn aegis_receipt_linkage<T: Serialize>(
+    receipt_schema: &str,
+    receipt_prefix: &str,
+    payload: &T,
+) -> Result<AegisReceiptLinkageV1, ApiError> {
+    let receipt_sha = aegis_canonical_hash(payload, "aegis receipt hash failed")?;
+    Ok(AegisReceiptLinkageV1 {
+        receipt_schema: receipt_schema.to_string(),
+        receipt_id: format!("{receipt_prefix}_{}", &receipt_sha[..16]),
+        canonical_json_sha256: receipt_sha,
+    })
+}
+
+async fn aegis_classify(
+    State(state): State<AppState>,
+    Json(body): Json<AegisClassifyRequestV1>,
+) -> Result<Json<AegisClassifyResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let body = normalize_aegis_classify_request(body)?;
+    if body.schema.trim() != AEGIS_CLASSIFY_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            AEGIS_CLASSIFY_REQUEST_SCHEMA_V1
+        )));
+    }
+    let idempotency_key = body.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+    let run_id = body.run_id.trim().to_string();
+    if run_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "run_id must not be empty".to_string(),
+        ));
+    }
+    let work_type = body.work_type.trim().to_ascii_lowercase();
+    if work_type.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "work_type must not be empty".to_string(),
+        ));
+    }
+    let objective_hash = body
+        .objective_hash
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let request_sha = aegis_canonical_hash(&body, "aegis classify idempotency hash failed")?;
+    {
+        let guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.classify_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis classify".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+    }
+
+    let mut verification_class =
+        aegis_class_for_signals(work_type.as_str(), objective_hash.as_deref(), body.requires_human_underwrite);
+    let mut required_tier = aegis_default_tier_for_class(verification_class);
+    let mut confidence = match verification_class {
+        AegisVerificationClassV1::Objective => 0.92,
+        AegisVerificationClassV1::Subjective => 0.68,
+        AegisVerificationClassV1::LowVerifiability => 0.45,
+    };
+    let mut policy_notes = vec![
+        format!("work_type:{work_type}"),
+        format!(
+            "historical_failure_rate_bps:{}",
+            body.historical_failure_rate_bps
+        ),
+    ];
+
+    if body.historical_failure_rate_bps >= 3_000 {
+        verification_class = AegisVerificationClassV1::LowVerifiability;
+        required_tier = AegisVerificationTierV1::Tier4;
+        confidence = 0.35;
+        policy_notes.push("historical_failure_high".to_string());
+    } else if body.historical_failure_rate_bps >= 1_200
+        && matches!(verification_class, AegisVerificationClassV1::Objective)
+    {
+        verification_class = AegisVerificationClassV1::Subjective;
+        required_tier = AegisVerificationTierV1::Tier2;
+        confidence = 0.62;
+        policy_notes.push("historical_failure_elevated".to_string());
+    }
+
+    let hydra_risk = compute_hydra_risk_health(&state).await?;
+    if hydra_risk.routing.degraded {
+        required_tier = aegis_tier_at_least(required_tier, AegisVerificationTierV1::Tier3);
+        confidence = (confidence * 0.80_f64).clamp(0.05_f64, 0.99_f64);
+        policy_notes.push("hydra_risk_degraded".to_string());
+        policy_notes.extend(hydra_risk.routing.reasons.clone());
+    }
+    if body.requires_human_underwrite {
+        policy_notes.push("requires_human_underwrite".to_string());
+    }
+    policy_notes.sort();
+    policy_notes.dedup();
+
+    #[derive(Serialize)]
+    struct ClassificationIdentity<'a> {
+        run_id: &'a str,
+        work_type: &'a str,
+        objective_hash: &'a Option<String>,
+        verification_class: &'a str,
+        required_tier: &'a str,
+        historical_failure_rate_bps: u32,
+        requires_human_underwrite: bool,
+    }
+
+    let classification_sha = aegis_canonical_hash(
+        &ClassificationIdentity {
+            run_id: run_id.as_str(),
+            work_type: work_type.as_str(),
+            objective_hash: &objective_hash,
+            verification_class: verification_class.as_str(),
+            required_tier: required_tier.as_str(),
+            historical_failure_rate_bps: body.historical_failure_rate_bps,
+            requires_human_underwrite: body.requires_human_underwrite,
+        },
+        "aegis classification id hash failed",
+    )?;
+    let classification_id = format!("aegiscls_{}", &classification_sha[..16]);
+    let classified_at_unix = Utc::now().timestamp().max(0) as u64;
+
+    #[derive(Serialize)]
+    struct ClassificationReceiptPayload<'a> {
+        schema: &'a str,
+        classification_id: &'a str,
+        run_id: &'a str,
+        work_type: &'a str,
+        verification_class: &'a str,
+        required_tier: &'a str,
+        confidence: f64,
+        policy_notes: &'a [String],
+        hydra_risk_degraded: bool,
+        classified_at_unix: u64,
+    }
+
+    let receipt = aegis_receipt_linkage(
+        AEGIS_CLASSIFICATION_RECEIPT_SCHEMA_V1,
+        "aegisclsrcpt",
+        &ClassificationReceiptPayload {
+            schema: AEGIS_CLASSIFICATION_RECEIPT_SCHEMA_V1,
+            classification_id: classification_id.as_str(),
+            run_id: run_id.as_str(),
+            work_type: work_type.as_str(),
+            verification_class: verification_class.as_str(),
+            required_tier: required_tier.as_str(),
+            confidence,
+            policy_notes: &policy_notes,
+            hydra_risk_degraded: hydra_risk.routing.degraded,
+            classified_at_unix,
+        },
+    )?;
+
+    let response = normalize_aegis_classify_response(AegisClassifyResponseV1 {
+        schema: AEGIS_CLASSIFY_RESPONSE_SCHEMA_V1.to_string(),
+        classification_id,
+        run_id,
+        work_type,
+        verification_class,
+        required_tier,
+        confidence,
+        policy_notes,
+        receipt,
+        hydra_risk_degraded: hydra_risk.routing.degraded,
+        classified_at_unix,
+        idempotent_replay: false,
+    })?;
+
+    let mut guard = state.aegis.inner.lock().await;
+    if let Some(existing) = guard.classify_replays.get(idempotency_key.as_str()) {
+        if existing.request_sha256 != request_sha {
+            return Err(ApiError::Conflict(
+                "idempotency_key replay drift for aegis classify".to_string(),
+            ));
+        }
+        let mut replay = existing.response.clone();
+        replay.idempotent_replay = true;
+        return Ok(Json(replay));
+    }
+    guard.classify_replays.insert(
+        idempotency_key,
+        AegisIdempotentReplay {
+            request_sha256: request_sha,
+            response: response.clone(),
+        },
+    );
+    Ok(Json(response))
+}
+
+async fn aegis_verify(
+    State(state): State<AppState>,
+    Json(body): Json<AegisVerifyRequestV1>,
+) -> Result<Json<AegisVerifyResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let body = normalize_aegis_verify_request(body)?;
+    if body.schema.trim() != AEGIS_VERIFY_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            AEGIS_VERIFY_REQUEST_SCHEMA_V1
+        )));
+    }
+    let idempotency_key = body.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+    let run_id = body.run_id.trim().to_string();
+    if run_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "run_id must not be empty".to_string(),
+        ));
+    }
+    let work_type = body.work_type.trim().to_ascii_lowercase();
+    if work_type.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "work_type must not be empty".to_string(),
+        ));
+    }
+    let verifier_id = body.verifier_id.trim().to_string();
+    if verifier_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "verifier_id must not be empty".to_string(),
+        ));
+    }
+    let owner_key = aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
+    let objective_hash = body
+        .objective_hash
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
+    let request_sha = aegis_canonical_hash(&body, "aegis verify idempotency hash failed")?;
+    {
+        let guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.verify_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis verify".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+    }
+
+    let verification_class = aegis_class_for_signals(work_type.as_str(), objective_hash.as_deref(), false);
+    let hydra_risk = compute_hydra_risk_health(&state).await?;
+    let mut violations: Vec<String> = body
+        .observed_violations
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    let mut passed;
+    if work_type == "sandbox_run" {
+        let sandbox_request: protocol::SandboxRunRequest = serde_json::from_value(body.sandbox_request.clone())
+            .map_err(|error| ApiError::InvalidRequest(format!("sandbox_request invalid: {error}")))?;
+        let sandbox_response: protocol::SandboxRunResponse =
+            serde_json::from_value(body.sandbox_response.clone())
+                .map_err(|error| ApiError::InvalidRequest(format!("sandbox_response invalid: {error}")))?;
+        let outcome = crate::verification::verify_sandbox_run(&sandbox_request, &sandbox_response);
+        passed = outcome.passed;
+        violations.extend(outcome.violations);
+    } else if work_type == "repo_index" {
+        let repo_request: protocol::RepoIndexRequest = serde_json::from_value(body.repo_index_request.clone())
+            .map_err(|error| ApiError::InvalidRequest(format!("repo_index_request invalid: {error}")))?;
+        let repo_response: protocol::RepoIndexResponse =
+            serde_json::from_value(body.repo_index_response.clone())
+                .map_err(|error| ApiError::InvalidRequest(format!("repo_index_response invalid: {error}")))?;
+        let outcome = crate::verification::verify_repo_index(&repo_request, &repo_response);
+        passed = outcome.passed;
+        violations.extend(outcome.violations);
+    } else {
+        passed = violations.is_empty();
+    }
+
+    if hydra_risk.routing.degraded && aegis_tier_rank(body.tier) < aegis_tier_rank(AegisVerificationTierV1::Tier2) {
+        passed = false;
+        violations.push("hydra_risk_degraded_requires_tier_2_or_higher".to_string());
+    }
+    if !passed && violations.is_empty() {
+        violations.push("verification_failed".to_string());
+    }
+    violations.sort();
+    violations.dedup();
+
+    #[derive(Serialize)]
+    struct VerificationIdentity<'a> {
+        run_id: &'a str,
+        work_type: &'a str,
+        owner_key: &'a str,
+        tier: &'a str,
+        verification_class: &'a str,
+        objective_hash: &'a Option<String>,
+        verifier_id: &'a str,
+        passed: bool,
+        violations: &'a [String],
+    }
+
+    let verification_sha = aegis_canonical_hash(
+        &VerificationIdentity {
+            run_id: run_id.as_str(),
+            work_type: work_type.as_str(),
+            owner_key: owner_key.as_str(),
+            tier: body.tier.as_str(),
+            verification_class: verification_class.as_str(),
+            objective_hash: &objective_hash,
+            verifier_id: verifier_id.as_str(),
+            passed,
+            violations: &violations,
+        },
+        "aegis verification id hash failed",
+    )?;
+    let verification_id = format!("aegisvrf_{}", &verification_sha[..16]);
+    let verified_at_unix = Utc::now().timestamp().max(0) as u64;
+
+    #[derive(Serialize)]
+    struct VerificationReceiptPayload<'a> {
+        schema: &'a str,
+        verification_id: &'a str,
+        run_id: &'a str,
+        work_type: &'a str,
+        owner_key: &'a str,
+        tier: &'a str,
+        verification_class: &'a str,
+        objective_hash: &'a Option<String>,
+        passed: bool,
+        violations: &'a [String],
+        hydra_risk_degraded: bool,
+        verified_at_unix: u64,
+    }
+
+    let receipt = aegis_receipt_linkage(
+        AEGIS_VERIFICATION_RECEIPT_SCHEMA_V1,
+        "aegisvrfrcpt",
+        &VerificationReceiptPayload {
+            schema: AEGIS_VERIFICATION_RECEIPT_SCHEMA_V1,
+            verification_id: verification_id.as_str(),
+            run_id: run_id.as_str(),
+            work_type: work_type.as_str(),
+            owner_key: owner_key.as_str(),
+            tier: body.tier.as_str(),
+            verification_class: verification_class.as_str(),
+            objective_hash: &objective_hash,
+            passed,
+            violations: &violations,
+            hydra_risk_degraded: hydra_risk.routing.degraded,
+            verified_at_unix,
+        },
+    )?;
+
+    let response = normalize_aegis_verify_response(AegisVerifyResponseV1 {
+        schema: AEGIS_VERIFY_RESPONSE_SCHEMA_V1.to_string(),
+        verification_id: verification_id.clone(),
+        run_id: run_id.clone(),
+        work_type: work_type.clone(),
+        verification_class,
+        tier: body.tier,
+        passed,
+        objective_hash,
+        violations,
+        receipt,
+        hydra_risk_degraded: hydra_risk.routing.degraded,
+        verified_at_unix,
+        idempotent_replay: false,
+    })?;
+
+    let mut guard = state.aegis.inner.lock().await;
+    if let Some(existing) = guard.verify_replays.get(idempotency_key.as_str()) {
+        if existing.request_sha256 != request_sha {
+            return Err(ApiError::Conflict(
+                "idempotency_key replay drift for aegis verify".to_string(),
+            ));
+        }
+        let mut replay = existing.response.clone();
+        replay.idempotent_replay = true;
+        return Ok(Json(replay));
+    }
+    guard.verifications.insert(
+        verification_id.clone(),
+        AegisVerificationRecord {
+            run_id,
+            owner_key,
+            passed,
+            verified_at_unix,
+        },
+    );
+    guard.verify_replays.insert(
+        idempotency_key,
+        AegisIdempotentReplay {
+            request_sha256: request_sha,
+            response: response.clone(),
+        },
+    );
+    Ok(Json(response))
+}
+
+async fn aegis_risk_budget(
+    State(state): State<AppState>,
+    Query(query): Query<AegisRiskBudgetQuery>,
+) -> Result<Json<AegisRiskBudgetResponseV1>, ApiError> {
+    let owner = owner_from_parts(query.owner_user_id, query.owner_guest_scope)?;
+    let owner_key = owner_rate_key(&owner);
+    let hydra_risk = compute_hydra_risk_health(&state).await?;
+    let treasury_summary = state.treasury.summarize_compute_owner(owner_key.as_str(), 32).await;
+    let now_unix = Utc::now().timestamp().max(0) as u64;
+    let cutoff_unix = now_unix.saturating_sub(24 * 60 * 60);
+    let unverified_units_24h = {
+        let guard = state.aegis.inner.lock().await;
+        guard
+            .verifications
+            .values()
+            .filter(|record| record.owner_key == owner_key && record.verified_at_unix >= cutoff_unix)
+            .filter(|record| !record.passed)
+            .count() as u64
+    };
+
+    let budget_unverified_units_24h = if hydra_risk.routing.degraded {
+        AEGIS_DEGRADED_UNVERIFIED_BUDGET_24H
+    } else {
+        AEGIS_DEFAULT_UNVERIFIED_BUDGET_24H
+    };
+    let remaining_unverified_units_24h =
+        budget_unverified_units_24h.saturating_sub(unverified_units_24h);
+    let mut policy_notes = hydra_risk.routing.reasons.clone();
+    policy_notes.push(format!("owner_key:{owner_key}"));
+    policy_notes.push(format!(
+        "treasury_released_msats:{}",
+        treasury_summary.released_msats_total
+    ));
+    policy_notes.sort();
+    policy_notes.dedup();
+
+    let response = AegisRiskBudgetResponseV1 {
+        schema: AEGIS_RISK_BUDGET_RESPONSE_SCHEMA_V1.to_string(),
+        owner_key,
+        budget_unverified_units_24h,
+        unverified_units_24h,
+        remaining_unverified_units_24h,
+        hydra_risk_degraded: hydra_risk.routing.degraded,
+        treasury_reserved_msats: treasury_summary.account.reserved_msats,
+        treasury_spent_msats: treasury_summary.account.spent_msats,
+        policy_notes,
+        generated_at_unix: now_unix,
+    };
+    let wire: wire_aegis::AegisRiskBudgetResponseV1 = response.clone().into();
+    Ok(Json(wire.into()))
+}
+
+async fn aegis_warranty_issue(
+    State(state): State<AppState>,
+    Json(body): Json<AegisWarrantyIssueRequestV1>,
+) -> Result<Json<AegisWarrantyIssueResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let body = normalize_aegis_warranty_issue_request(body)?;
+    if body.schema.trim() != AEGIS_WARRANTY_ISSUE_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            AEGIS_WARRANTY_ISSUE_REQUEST_SCHEMA_V1
+        )));
+    }
+    let idempotency_key = body.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+    let verification_id = body.verification_id.trim().to_string();
+    if verification_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "verification_id must not be empty".to_string(),
+        ));
+    }
+    let run_id = body.run_id.trim().to_string();
+    if run_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "run_id must not be empty".to_string(),
+        ));
+    }
+    if body.coverage_cap_msats == 0 {
+        return Err(ApiError::InvalidRequest(
+            "coverage_cap_msats must be greater than zero".to_string(),
+        ));
+    }
+    if body.duration_seconds == 0 {
+        return Err(ApiError::InvalidRequest(
+            "duration_seconds must be greater than zero".to_string(),
+        ));
+    }
+    let owner_key = aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
+    let request_sha = aegis_canonical_hash(&body, "aegis warranty idempotency hash failed")?;
+    {
+        let guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.warranty_issue_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis warranty issue".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+    }
+
+    let now_unix = Utc::now().timestamp().max(0) as u64;
+    let expires_at_unix = now_unix.saturating_add(body.duration_seconds);
+    let response = {
+        let mut guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.warranty_issue_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis warranty issue".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+        let verification = guard
+            .verifications
+            .get(verification_id.as_str())
+            .cloned()
+            .ok_or(ApiError::NotFound)?;
+        if !verification.passed {
+            return Err(ApiError::Conflict(
+                "verification failed; warranty cannot be issued".to_string(),
+            ));
+        }
+        if verification.run_id != run_id {
+            return Err(ApiError::Conflict(
+                "run_id does not match verification record".to_string(),
+            ));
+        }
+
+        #[derive(Serialize)]
+        struct WarrantyIdentity<'a> {
+            run_id: &'a str,
+            verification_id: &'a str,
+            owner_key: &'a str,
+            coverage_cap_msats: u64,
+            duration_seconds: u64,
+        }
+        let warranty_sha = aegis_canonical_hash(
+            &WarrantyIdentity {
+                run_id: run_id.as_str(),
+                verification_id: verification_id.as_str(),
+                owner_key: owner_key.as_str(),
+                coverage_cap_msats: body.coverage_cap_msats,
+                duration_seconds: body.duration_seconds,
+            },
+            "aegis warranty id hash failed",
+        )?;
+        let warranty_id = format!("aegiswty_{}", &warranty_sha[..16]);
+
+        #[derive(Serialize)]
+        struct WarrantyReceiptPayload<'a> {
+            schema: &'a str,
+            warranty_id: &'a str,
+            run_id: &'a str,
+            verification_id: &'a str,
+            owner_key: &'a str,
+            coverage_cap_msats: u64,
+            expires_at_unix: u64,
+        }
+        let receipt = aegis_receipt_linkage(
+            AEGIS_WARRANTY_ISSUE_RECEIPT_SCHEMA_V1,
+            "aegiswtyrcpt",
+            &WarrantyReceiptPayload {
+                schema: AEGIS_WARRANTY_ISSUE_RECEIPT_SCHEMA_V1,
+                warranty_id: warranty_id.as_str(),
+                run_id: run_id.as_str(),
+                verification_id: verification_id.as_str(),
+                owner_key: owner_key.as_str(),
+                coverage_cap_msats: body.coverage_cap_msats,
+                expires_at_unix,
+            },
+        )?;
+
+        let response = normalize_aegis_warranty_issue_response(AegisWarrantyIssueResponseV1 {
+            schema: AEGIS_WARRANTY_ISSUE_RESPONSE_SCHEMA_V1.to_string(),
+            warranty_id: warranty_id.clone(),
+            run_id: run_id.clone(),
+            verification_id: verification_id.clone(),
+            status: AegisWarrantyStatusV1::Active,
+            coverage_cap_msats: body.coverage_cap_msats,
+            remaining_coverage_msats: body.coverage_cap_msats,
+            expires_at_unix,
+            receipt,
+            idempotent_replay: false,
+        })?;
+
+        guard.warranties.insert(
+            warranty_id.clone(),
+            AegisWarrantyRecord {
+                warranty_id,
+                status: AegisWarrantyStatusV1::Active,
+                remaining_coverage_msats: body.coverage_cap_msats,
+                expires_at_unix,
+            },
+        );
+        guard.warranty_issue_replays.insert(
+            idempotency_key.clone(),
+            AegisIdempotentReplay {
+                request_sha256: request_sha.clone(),
+                response: response.clone(),
+            },
+        );
+        response
+    };
+
+    Ok(Json(response))
+}
+
+async fn aegis_claim_open(
+    State(state): State<AppState>,
+    Json(body): Json<AegisClaimOpenRequestV1>,
+) -> Result<Json<AegisClaimOpenResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let body = normalize_aegis_claim_open_request(body)?;
+    if body.schema.trim() != AEGIS_CLAIM_OPEN_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            AEGIS_CLAIM_OPEN_REQUEST_SCHEMA_V1
+        )));
+    }
+    let idempotency_key = body.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+    let warranty_id = body.warranty_id.trim().to_string();
+    if warranty_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "warranty_id must not be empty".to_string(),
+        ));
+    }
+    if body.claimant_id.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "claimant_id must not be empty".to_string(),
+        ));
+    }
+    if body.reason.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "reason must not be empty".to_string(),
+        ));
+    }
+    if body.requested_msats == 0 {
+        return Err(ApiError::InvalidRequest(
+            "requested_msats must be greater than zero".to_string(),
+        ));
+    }
+    let request_sha = aegis_canonical_hash(&body, "aegis claim open idempotency hash failed")?;
+    {
+        let guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.claim_open_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis claim open".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+    }
+
+    let now_unix = Utc::now().timestamp().max(0) as u64;
+    let response = {
+        let mut guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.claim_open_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis claim open".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+        let warranty = guard
+            .warranties
+            .get(warranty_id.as_str())
+            .cloned()
+            .ok_or(ApiError::NotFound)?;
+        if warranty.status != AegisWarrantyStatusV1::Active {
+            return Err(ApiError::Conflict(format!(
+                "warranty is not active: {}",
+                warranty.status.as_str()
+            )));
+        }
+        if now_unix > warranty.expires_at_unix {
+            return Err(ApiError::Conflict("warranty is expired".to_string()));
+        }
+        if warranty.remaining_coverage_msats == 0 {
+            return Err(ApiError::Conflict(
+                "warranty has no remaining coverage".to_string(),
+            ));
+        }
+        let max_payable_msats = body
+            .requested_msats
+            .min(warranty.remaining_coverage_msats);
+        let claim_id = format!("aegisclm_{}", &request_sha[..16]);
+
+        #[derive(Serialize)]
+        struct ClaimOpenReceiptPayload<'a> {
+            schema: &'a str,
+            claim_id: &'a str,
+            warranty_id: &'a str,
+            claimant_id: &'a str,
+            requested_msats: u64,
+            max_payable_msats: u64,
+            opened_at_unix: u64,
+        }
+        let receipt = aegis_receipt_linkage(
+            AEGIS_CLAIM_OPEN_RECEIPT_SCHEMA_V1,
+            "aegisclmrcpt",
+            &ClaimOpenReceiptPayload {
+                schema: AEGIS_CLAIM_OPEN_RECEIPT_SCHEMA_V1,
+                claim_id: claim_id.as_str(),
+                warranty_id: warranty_id.as_str(),
+                claimant_id: body.claimant_id.trim(),
+                requested_msats: body.requested_msats,
+                max_payable_msats,
+                opened_at_unix: now_unix,
+            },
+        )?;
+
+        let response = normalize_aegis_claim_open_response(AegisClaimOpenResponseV1 {
+            schema: AEGIS_CLAIM_OPEN_RESPONSE_SCHEMA_V1.to_string(),
+            claim_id: claim_id.clone(),
+            warranty_id: warranty_id.clone(),
+            status: AegisClaimStatusV1::Open,
+            requested_msats: body.requested_msats,
+            max_payable_msats,
+            opened_at_unix: now_unix,
+            receipt,
+            idempotent_replay: false,
+        })?;
+        guard.claims.insert(
+            claim_id.clone(),
+            AegisClaimRecord {
+                claim_id,
+                warranty_id: warranty_id.clone(),
+                status: AegisClaimStatusV1::Open,
+                requested_msats: body.requested_msats,
+                payout_msats: 0,
+                resolved_at_unix: None,
+            },
+        );
+        guard.claim_open_replays.insert(
+            idempotency_key.clone(),
+            AegisIdempotentReplay {
+                request_sha256: request_sha.clone(),
+                response: response.clone(),
+            },
+        );
+        response
+    };
+
+    Ok(Json(response))
+}
+
+async fn aegis_claim_resolve(
+    State(state): State<AppState>,
+    Json(body): Json<AegisClaimResolveRequestV1>,
+) -> Result<Json<AegisClaimResolveResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    let body = normalize_aegis_claim_resolve_request(body);
+    if body.schema.trim() != AEGIS_CLAIM_RESOLVE_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            AEGIS_CLAIM_RESOLVE_REQUEST_SCHEMA_V1
+        )));
+    }
+    let idempotency_key = body.idempotency_key.trim().to_string();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+    let claim_id = body.claim_id.trim().to_string();
+    if claim_id.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "claim_id must not be empty".to_string(),
+        ));
+    }
+    if body.resolver_id.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "resolver_id must not be empty".to_string(),
+        ));
+    }
+    let request_sha = aegis_canonical_hash(&body, "aegis claim resolve idempotency hash failed")?;
+    {
+        let guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.claim_resolve_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis claim resolve".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+    }
+
+    let now_unix = Utc::now().timestamp().max(0) as u64;
+    let response = {
+        let mut guard = state.aegis.inner.lock().await;
+        if let Some(existing) = guard.claim_resolve_replays.get(idempotency_key.as_str()) {
+            if existing.request_sha256 != request_sha {
+                return Err(ApiError::Conflict(
+                    "idempotency_key replay drift for aegis claim resolve".to_string(),
+                ));
+            }
+            let mut replay = existing.response.clone();
+            replay.idempotent_replay = true;
+            return Ok(Json(replay));
+        }
+        let mut claim = guard
+            .claims
+            .get(claim_id.as_str())
+            .cloned()
+            .ok_or(ApiError::NotFound)?;
+        if claim.status != AegisClaimStatusV1::Open {
+            return Err(ApiError::Conflict(format!(
+                "claim is not open: {}",
+                claim.status.as_str()
+            )));
+        }
+        let mut warranty = guard
+            .warranties
+            .get(claim.warranty_id.as_str())
+            .cloned()
+            .ok_or(ApiError::NotFound)?;
+        if now_unix > warranty.expires_at_unix {
+            warranty.status = AegisWarrantyStatusV1::Expired;
+        }
+
+        let mut payout_msats = 0_u64;
+        let mut claim_status = AegisClaimStatusV1::ResolvedDenied;
+        let mut resolution_reason = body.resolution_reason.trim().to_string();
+        if body.approve
+            && warranty.status == AegisWarrantyStatusV1::Active
+            && warranty.remaining_coverage_msats > 0
+        {
+            let max_allowed = claim
+                .requested_msats
+                .min(warranty.remaining_coverage_msats);
+            let requested_payout = if body.payout_msats == 0 {
+                max_allowed
+            } else {
+                body.payout_msats.min(max_allowed)
+            };
+            if requested_payout > 0 {
+                payout_msats = requested_payout;
+                claim_status = AegisClaimStatusV1::ResolvedPaid;
+                warranty.remaining_coverage_msats = warranty
+                    .remaining_coverage_msats
+                    .saturating_sub(payout_msats);
+                warranty.status = if warranty.remaining_coverage_msats == 0 {
+                    AegisWarrantyStatusV1::Exhausted
+                } else {
+                    AegisWarrantyStatusV1::Active
+                };
+                if resolution_reason.is_empty() {
+                    resolution_reason = "claim_paid".to_string();
+                }
+            } else if resolution_reason.is_empty() {
+                resolution_reason = "payout_zero_after_caps".to_string();
+            }
+        } else if resolution_reason.is_empty() {
+            resolution_reason = if !body.approve {
+                "claim_denied".to_string()
+            } else if warranty.status == AegisWarrantyStatusV1::Expired {
+                "warranty_expired".to_string()
+            } else if warranty.remaining_coverage_msats == 0 {
+                "no_remaining_coverage".to_string()
+            } else {
+                "claim_denied".to_string()
+            };
+        }
+
+        claim.status = claim_status;
+        claim.payout_msats = payout_msats;
+        claim.resolved_at_unix = Some(now_unix);
+
+        #[derive(Serialize)]
+        struct ClaimResolveReceiptPayload<'a> {
+            schema: &'a str,
+            claim_id: &'a str,
+            warranty_id: &'a str,
+            claim_status: &'a str,
+            payout_msats: u64,
+            remaining_warranty_msats: u64,
+            resolution_reason: &'a str,
+            resolved_at_unix: u64,
+        }
+        let receipt = aegis_receipt_linkage(
+            AEGIS_CLAIM_RESOLUTION_RECEIPT_SCHEMA_V1,
+            "aegisresrcpt",
+            &ClaimResolveReceiptPayload {
+                schema: AEGIS_CLAIM_RESOLUTION_RECEIPT_SCHEMA_V1,
+                claim_id: claim.claim_id.as_str(),
+                warranty_id: warranty.warranty_id.as_str(),
+                claim_status: claim_status.as_str(),
+                payout_msats,
+                remaining_warranty_msats: warranty.remaining_coverage_msats,
+                resolution_reason: resolution_reason.as_str(),
+                resolved_at_unix: now_unix,
+            },
+        )?;
+
+        let response = normalize_aegis_claim_resolve_response(AegisClaimResolveResponseV1 {
+            schema: AEGIS_CLAIM_RESOLVE_RESPONSE_SCHEMA_V1.to_string(),
+            claim_id: claim.claim_id.clone(),
+            warranty_id: warranty.warranty_id.clone(),
+            status: claim_status,
+            payout_msats,
+            remaining_warranty_msats: warranty.remaining_coverage_msats,
+            resolution_reason,
+            resolved_at_unix: now_unix,
+            receipt,
+            idempotent_replay: false,
+        })?;
+
+        guard.claims.insert(claim.claim_id.clone(), claim);
+        guard.warranties.insert(warranty.warranty_id.clone(), warranty);
+        guard.claim_resolve_replays.insert(
+            idempotency_key.clone(),
+            AegisIdempotentReplay {
+                request_sha256: request_sha.clone(),
+                response: response.clone(),
+            },
+        );
+        response
+    };
+
+    Ok(Json(response))
 }
 
 async fn settle_sandbox_run(

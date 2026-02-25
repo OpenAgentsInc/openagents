@@ -1,6 +1,6 @@
 use axum::{
-    Router,
     routing::{get, post},
+    Router,
 };
 
 use super::*;
@@ -13,6 +13,7 @@ pub(super) fn build_internal_router() -> Router<AppState> {
     let router = add_worker_routes(router);
     let router = add_marketplace_routes(router);
     let router = add_hydra_liquidity_credit_routes(router);
+    let router = add_aegis_routes(router);
     let router = add_verification_and_treasury_routes(router);
     add_pool_and_fraud_routes(router)
 }
@@ -206,6 +207,34 @@ fn add_hydra_liquidity_credit_routes(router: Router<AppState>) -> Router<AppStat
         .route(
             route_ownership::ROUTE_INTERNAL_V1_LIQUIDITY_PAY,
             post(liquidity_pay),
+        )
+}
+
+fn add_aegis_routes(router: Router<AppState>) -> Router<AppState> {
+    router
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_CLASSIFY,
+            post(aegis_classify),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_VERIFY,
+            post(aegis_verify),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_RISK_BUDGET,
+            get(aegis_risk_budget),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_WARRANTY_ISSUE,
+            post(aegis_warranty_issue),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_CLAIMS_OPEN,
+            post(aegis_claim_open),
+        )
+        .route(
+            route_ownership::ROUTE_INTERNAL_V1_AEGIS_CLAIMS_RESOLVE,
+            post(aegis_claim_resolve),
         )
 }
 

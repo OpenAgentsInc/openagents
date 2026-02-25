@@ -957,6 +957,165 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
+  /aegis/classify:
+    post:
+      summary: Classify work unit verifiability and required verification tier
+      operationId: aegisClassify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AegisClassifyRequestV1'
+      responses:
+        '200':
+          description: Aegis classification accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisClassifyResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /aegis/verify:
+    post:
+      summary: Verify work outcome and emit deterministic verification receipt
+      operationId: aegisVerify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AegisVerifyRequestV1'
+      responses:
+        '200':
+          description: Aegis verification accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisVerifyResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /aegis/risk/budget:
+    get:
+      summary: Read Aegis risk budget posture for an owner
+      operationId: aegisRiskBudget
+      parameters:
+        - name: owner_user_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: owner_guest_scope
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Aegis risk budget snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisRiskBudgetResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+  /aegis/warranty/issue:
+    post:
+      summary: Issue a minimal Aegis warranty linked to a passed verification
+      operationId: aegisWarrantyIssue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AegisWarrantyIssueRequestV1'
+      responses:
+        '200':
+          description: Aegis warranty issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisWarrantyIssueResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /aegis/claims/open:
+    post:
+      summary: Open a claim against an Aegis warranty
+      operationId: aegisClaimOpen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AegisClaimOpenRequestV1'
+      responses:
+        '200':
+          description: Aegis claim opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisClaimOpenResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /aegis/claims/resolve:
+    post:
+      summary: Resolve an open Aegis claim with payout or denial decision
+      operationId: aegisClaimResolve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AegisClaimResolveRequestV1'
+      responses:
+        '200':
+          description: Aegis claim resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AegisClaimResolveResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     RuntimeSignature:
@@ -2611,6 +2770,450 @@ components:
           $ref: '#/components/schemas/HydraWithdrawalThrottleObservabilityV1'
         fx:
           $ref: '#/components/schemas/HydraFxObservabilityV1'
+    AegisReceiptLinkageV1:
+      type: object
+      required:
+        - receipt_schema
+        - receipt_id
+        - canonical_json_sha256
+      properties:
+        receipt_schema:
+          type: string
+        receipt_id:
+          type: string
+        canonical_json_sha256:
+          type: string
+    AegisClassifyRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - run_id
+        - work_type
+        - historical_failure_rate_bps
+        - requires_human_underwrite
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.classify_request.v1
+        idempotency_key:
+          type: string
+        run_id:
+          type: string
+        work_type:
+          type: string
+        objective_hash:
+          type: string
+          nullable: true
+        owner_user_id:
+          type: integer
+          nullable: true
+        owner_guest_scope:
+          type: string
+          nullable: true
+        historical_failure_rate_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        requires_human_underwrite:
+          type: boolean
+        context:
+          type: object
+          additionalProperties: true
+    AegisClassifyResponseV1:
+      type: object
+      required:
+        - schema
+        - classification_id
+        - run_id
+        - work_type
+        - verification_class
+        - required_tier
+        - confidence
+        - policy_notes
+        - receipt
+        - hydra_risk_degraded
+        - classified_at_unix
+        - idempotent_replay
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.classify_response.v1
+        classification_id:
+          type: string
+        run_id:
+          type: string
+        work_type:
+          type: string
+        verification_class:
+          type: string
+          enum: [objective, subjective, low_verifiability]
+        required_tier:
+          type: string
+          enum: [tier_o, tier_1, tier_2, tier_3, tier_4]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        policy_notes:
+          type: array
+          items:
+            type: string
+        receipt:
+          $ref: '#/components/schemas/AegisReceiptLinkageV1'
+        hydra_risk_degraded:
+          type: boolean
+        classified_at_unix:
+          type: integer
+          minimum: 0
+        idempotent_replay:
+          type: boolean
+    AegisVerifyRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - run_id
+        - work_type
+        - tier
+        - verifier_id
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.verify_request.v1
+        idempotency_key:
+          type: string
+        run_id:
+          type: string
+        work_type:
+          type: string
+        tier:
+          type: string
+          enum: [tier_o, tier_1, tier_2, tier_3, tier_4]
+        objective_hash:
+          type: string
+          nullable: true
+        owner_user_id:
+          type: integer
+          nullable: true
+        owner_guest_scope:
+          type: string
+          nullable: true
+        sandbox_request:
+          type: object
+          additionalProperties: true
+        sandbox_response:
+          type: object
+          additionalProperties: true
+        repo_index_request:
+          type: object
+          additionalProperties: true
+        repo_index_response:
+          type: object
+          additionalProperties: true
+        observed_violations:
+          type: array
+          items:
+            type: string
+        verifier_id:
+          type: string
+    AegisVerifyResponseV1:
+      type: object
+      required:
+        - schema
+        - verification_id
+        - run_id
+        - work_type
+        - verification_class
+        - tier
+        - passed
+        - violations
+        - receipt
+        - hydra_risk_degraded
+        - verified_at_unix
+        - idempotent_replay
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.verify_response.v1
+        verification_id:
+          type: string
+        run_id:
+          type: string
+        work_type:
+          type: string
+        verification_class:
+          type: string
+          enum: [objective, subjective, low_verifiability]
+        tier:
+          type: string
+          enum: [tier_o, tier_1, tier_2, tier_3, tier_4]
+        passed:
+          type: boolean
+        objective_hash:
+          type: string
+          nullable: true
+        violations:
+          type: array
+          items:
+            type: string
+        receipt:
+          $ref: '#/components/schemas/AegisReceiptLinkageV1'
+        hydra_risk_degraded:
+          type: boolean
+        verified_at_unix:
+          type: integer
+          minimum: 0
+        idempotent_replay:
+          type: boolean
+    AegisRiskBudgetResponseV1:
+      type: object
+      required:
+        - schema
+        - owner_key
+        - budget_unverified_units_24h
+        - unverified_units_24h
+        - remaining_unverified_units_24h
+        - hydra_risk_degraded
+        - treasury_reserved_msats
+        - treasury_spent_msats
+        - policy_notes
+        - generated_at_unix
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.risk_budget_response.v1
+        owner_key:
+          type: string
+        budget_unverified_units_24h:
+          type: integer
+          minimum: 0
+        unverified_units_24h:
+          type: integer
+          minimum: 0
+        remaining_unverified_units_24h:
+          type: integer
+          minimum: 0
+        hydra_risk_degraded:
+          type: boolean
+        treasury_reserved_msats:
+          type: integer
+          minimum: 0
+        treasury_spent_msats:
+          type: integer
+          minimum: 0
+        policy_notes:
+          type: array
+          items:
+            type: string
+        generated_at_unix:
+          type: integer
+          minimum: 0
+    AegisWarrantyIssueRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - run_id
+        - verification_id
+        - coverage_cap_msats
+        - duration_seconds
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.warranty_issue_request.v1
+        idempotency_key:
+          type: string
+        run_id:
+          type: string
+        verification_id:
+          type: string
+        owner_user_id:
+          type: integer
+          nullable: true
+        owner_guest_scope:
+          type: string
+          nullable: true
+        coverage_cap_msats:
+          type: integer
+          minimum: 1
+        duration_seconds:
+          type: integer
+          minimum: 1
+        terms:
+          type: object
+          additionalProperties: true
+    AegisWarrantyIssueResponseV1:
+      type: object
+      required:
+        - schema
+        - warranty_id
+        - run_id
+        - verification_id
+        - status
+        - coverage_cap_msats
+        - remaining_coverage_msats
+        - expires_at_unix
+        - receipt
+        - idempotent_replay
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.warranty_issue_response.v1
+        warranty_id:
+          type: string
+        run_id:
+          type: string
+        verification_id:
+          type: string
+        status:
+          type: string
+          enum: [active, exhausted, expired]
+        coverage_cap_msats:
+          type: integer
+          minimum: 0
+        remaining_coverage_msats:
+          type: integer
+          minimum: 0
+        expires_at_unix:
+          type: integer
+          minimum: 0
+        receipt:
+          $ref: '#/components/schemas/AegisReceiptLinkageV1'
+        idempotent_replay:
+          type: boolean
+    AegisClaimOpenRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - warranty_id
+        - claimant_id
+        - reason
+        - requested_msats
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.claim_open_request.v1
+        idempotency_key:
+          type: string
+        warranty_id:
+          type: string
+        claimant_id:
+          type: string
+        reason:
+          type: string
+        requested_msats:
+          type: integer
+          minimum: 1
+        evidence_sha256:
+          type: string
+          nullable: true
+        evidence:
+          type: object
+          additionalProperties: true
+    AegisClaimOpenResponseV1:
+      type: object
+      required:
+        - schema
+        - claim_id
+        - warranty_id
+        - status
+        - requested_msats
+        - max_payable_msats
+        - opened_at_unix
+        - receipt
+        - idempotent_replay
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.claim_open_response.v1
+        claim_id:
+          type: string
+        warranty_id:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved_paid, resolved_denied]
+        requested_msats:
+          type: integer
+          minimum: 0
+        max_payable_msats:
+          type: integer
+          minimum: 0
+        opened_at_unix:
+          type: integer
+          minimum: 0
+        receipt:
+          $ref: '#/components/schemas/AegisReceiptLinkageV1'
+        idempotent_replay:
+          type: boolean
+    AegisClaimResolveRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - claim_id
+        - approve
+        - payout_msats
+        - resolver_id
+        - resolution_reason
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.claim_resolve_request.v1
+        idempotency_key:
+          type: string
+        claim_id:
+          type: string
+        approve:
+          type: boolean
+        payout_msats:
+          type: integer
+          minimum: 0
+        resolver_id:
+          type: string
+        resolution_reason:
+          type: string
+    AegisClaimResolveResponseV1:
+      type: object
+      required:
+        - schema
+        - claim_id
+        - warranty_id
+        - status
+        - payout_msats
+        - remaining_warranty_msats
+        - resolution_reason
+        - resolved_at_unix
+        - receipt
+        - idempotent_replay
+      properties:
+        schema:
+          type: string
+          const: openagents.aegis.claim_resolve_response.v1
+        claim_id:
+          type: string
+        warranty_id:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved_paid, resolved_denied]
+        payout_msats:
+          type: integer
+          minimum: 0
+        remaining_warranty_msats:
+          type: integer
+          minimum: 0
+        resolution_reason:
+          type: string
+        resolved_at_unix:
+          type: integer
+          minimum: 0
+        receipt:
+          $ref: '#/components/schemas/AegisReceiptLinkageV1'
+        idempotent_replay:
+          type: boolean
     ErrorEnvelope:
       type: object
       required: [error]

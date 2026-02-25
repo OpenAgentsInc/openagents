@@ -70,14 +70,14 @@ Research/optional context (not execution authority):
 4. Runtime internal authority APIs are active under `/internal/v1/*` (runs, workers, marketplace, treasury, verifications, liquidity/credit/Hydra, pools, fraud).
 5. Control service owns auth/session/sync token issuance and also serves substantial web/API product and compatibility surfaces.
 6. Hydra internal authority and FX MVP-3 lanes are implemented and covered by harnesses.
-7. Aegis is mostly a planned architecture lane; no dedicated `/internal/v1/aegis/*` namespace is implemented yet.
+7. Aegis runtime MVP namespace is implemented under `/internal/v1/aegis/*` with deterministic receipt linkage for classify/verify/risk-budget/warranty/claim flows.
 
 ### Target direction (active plans)
 
 1. Liquidity-first open-agent economy with Autopilot as a guaranteed compute buyer (`2026-02-23-open-agent-economy-execution-plan.md`).
 2. Two-sided marketplace loop: user can consume compute and provide compute (NIP-90 provider mode) from Autopilot surfaces.
 3. Hardened Hydra economics with continued API/productization and operations maturity.
-4. Aegis verification/underwriting/liability subsystem phased in behind runtime + treasury + receipts.
+4. Aegis is implemented as a runtime MVP and continues to expand toward full verification/underwriting/liability phases.
 5. EP212 parity closure for wallet + L402 + commerce flows as production-real, not placeholder/stub behavior.
 
 ## End-to-End Topology (Current + Planned)
@@ -100,7 +100,7 @@ Sync token issuance + control APIs]
 Execution authority + marketplace + treasury]
     khala[Khala WS replay/live delivery]
     hydra[Hydra liquidity/credit/routing/FX]
-    aegis[Aegis verification/underwriting (planned lane)]
+    aegis[Aegis verification/underwriting runtime MVP]
   end
 
   subgraph settlement[Settlement and Ops]
@@ -230,7 +230,14 @@ Current internal API groups (implemented under `/internal/v1/*`):
    - `/hydra/observability`
    - `/liquidity/quote_pay`, `/liquidity/pay`, `/liquidity/status`
    - `/credit/intent`, `/credit/offer`, `/credit/envelope`, `/credit/settle`, `/credit/health`, `/credit/agents/:agent_id/exposure`
-7. Pool and fraud ops:
+7. Aegis verification and underwriting MVP:
+   - `/aegis/classify`
+   - `/aegis/verify`
+   - `/aegis/risk/budget`
+   - `/aegis/warranty/issue`
+   - `/aegis/claims/open`
+   - `/aegis/claims/resolve`
+8. Pool and fraud ops:
    - `/pools/*`
    - `/fraud/incidents`
 
@@ -239,10 +246,6 @@ Source of truth for runtime route inventory:
 1. `apps/runtime/src/server.rs`
 2. `apps/runtime/docs/openapi-internal-v1.yaml`
 3. `apps/runtime/src/route_ownership.rs`
-
-Not implemented yet:
-
-1. Dedicated `/internal/v1/aegis/*` namespace.
 
 ### `apps/autopilot-desktop` (primary execution/operator client)
 
@@ -297,23 +300,26 @@ Planned continuation (`docs/plans/hydra-liquidity-engine.md`):
 3. Expand FX provider strategy and operations hardening.
 4. Bridge/Nostr interop for portable receipt/reputation summaries.
 
-### Aegis (planned, with partial prerequisites already present)
+### Aegis (implemented runtime MVP, planned expansion active)
 
-Aegis remains a spec-level architecture lane, paired with Hydra.
+Implemented now:
 
-Implemented prerequisites today:
+1. Runtime Aegis namespace under `/internal/v1/aegis/*`.
+2. Proto-backed request/response contracts (`proto/openagents/aegis/v1/aegis.proto` + `openagents-proto` bindings).
+3. Deterministic/idempotent receipting for:
+   - classification
+   - verification
+   - warranty issuance
+   - claim open/resolve
+4. Risk-budget responses combining Hydra routing health and treasury owner context.
+5. Minimal warranty/claim lifecycle state transitions stored in runtime authority state.
 
-1. Runtime verification endpoints (`/internal/v1/verifications/*`).
-2. Treasury compute settle/reconcile lanes.
-3. Receipt/replay infrastructure and policy hooks needed by future Aegis flows.
+Planned continuation (`docs/plans/aegis.md`):
 
-Planned Aegis build track (`docs/plans/aegis.md`):
-
-1. Verification plane classification and receipting.
-2. Independent checker tiers and autonomy throttle.
-3. Underwriting/bond/claim/dispute lanes.
-4. Ground-truth registry and synthetic practice system.
-5. Interop surfaces via Bridge policy lanes.
+1. Independent checker market/tier expansion and autonomy throttles.
+2. Broader underwriting economics (bonding, coverage products, dispute lifecycle).
+3. Ground-truth registry and synthetic practice/reputation loops.
+4. Bridge/Nostr-facing receipt and policy export surfaces.
 
 ## Compute Marketplace, Fabrics, and Trust Zones
 
@@ -384,7 +390,7 @@ EP212 target:
 | `docs/plans/rust-migration-execution-control-plane.md` | Keeps control-plane auth/session/sync authority centralized in Rust service | Implemented baseline, still active hardening |
 | `docs/plans/2026-02-23-open-agent-economy-execution-plan.md` | Defines liquidity-first sequencing, trust zones, and compute-market posture | Partially implemented, active execution track |
 | `docs/plans/hydra-liquidity-engine.md` | Defines Hydra capital substrate and phased maturity | MVP-3 lanes + harnesses implemented; more phases planned |
-| `docs/plans/aegis.md` | Defines verification/underwriting substrate | Planned; prerequisites present but no dedicated namespace yet |
+| `docs/plans/aegis.md` | Defines verification/underwriting substrate | Runtime MVP namespace implemented; advanced phases still planned |
 | `docs/plans/ep212-autopilot-bitcoin-100pct.md` | Defines wallet/L402/paywall parity closure criteria | Active gap-closure plan; not fully complete |
 | `docs/plans/vignette-phase0-issue-to-pr.md` | Gate L issue->verified PR execution authority harness | Active acceptance harness lane |
 | `docs/plans/vignette-hydra-mvp2.md` | Hydra routing/risk observability regression gate | Implemented and active |
@@ -409,8 +415,8 @@ This sequencing is dependency-driven and aligns to the active plan set.
 5. Phase 4: EP212 parity closure
    - Replace synthetic wallet/L402 behavior with custody-compliant executor-backed flows.
    - Complete self-serve paywall and settlement loop.
-6. Phase 5: Aegis phased implementation
-   - Introduce verification/underwriting namespace lanes and receipts per Aegis phases.
+6. Phase 5: Aegis post-MVP expansion
+   - Expand checker tiers, underwriting economics, and dispute/ground-truth systems per Aegis phases.
    - Keep authority semantics and replay/idempotency invariants intact.
 7. Phase 6: compatibility lane retirement
    - Retire legacy chat aliases/route split/runtime driver aliases after parity evidence.
@@ -453,7 +459,7 @@ Legacy web code removal status:
 To keep this architecture fully truthful, these drifts are explicitly acknowledged:
 
 1. Target-state "web landing-only" is not yet complete; control service still hosts broad web/API lanes.
-2. Aegis is architected and planned but not yet implemented as a dedicated runtime namespace.
+2. Aegis MVP is implemented, but advanced Aegis phases (checker market depth, broader underwriting/disputes, registry loops) are still open.
 3. EP212 parity work remains open on wallet custody realism, L402 tooling parity, and paywall self-serve earnings.
 
 ## Verification Baseline

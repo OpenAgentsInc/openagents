@@ -629,6 +629,12 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
     assert!(json.pointer("/paths/~1hydra~1fx~1settle/post").is_some());
     assert!(json.pointer("/paths/~1hydra~1risk~1health/get").is_some());
     assert!(json.pointer("/paths/~1hydra~1observability/get").is_some());
+    assert!(json.pointer("/paths/~1aegis~1classify/post").is_some());
+    assert!(json.pointer("/paths/~1aegis~1verify/post").is_some());
+    assert!(json.pointer("/paths/~1aegis~1risk~1budget/get").is_some());
+    assert!(json.pointer("/paths/~1aegis~1warranty~1issue/post").is_some());
+    assert!(json.pointer("/paths/~1aegis~1claims~1open/post").is_some());
+    assert!(json.pointer("/paths/~1aegis~1claims~1resolve/post").is_some());
     assert!(
         json.pointer("/components/schemas/HydraObservabilityResponseV1/properties/routing")
             .is_some()
@@ -649,6 +655,285 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
         json.pointer("/components/schemas/HydraFxSettleResponseV1/properties/settlement_id")
             .is_some()
     );
+    assert!(
+        json.pointer("/components/schemas/AegisClassifyRequestV1/properties/schema")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/AegisVerifyResponseV1/properties/verification_id")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/AegisRiskBudgetResponseV1/properties/owner_key")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/AegisClaimResolveResponseV1/properties/status")
+            .is_some()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn aegis_namespace_supports_classify_verify_risk_and_warranty_claim_flow() -> Result<()> {
+    let app = test_router();
+
+    let classify_payload = json!({
+        "schema": "openagents.aegis.classify_request.v1",
+        "idempotency_key": "aegis-classify-flow-1",
+        "run_id": "run-aegis-flow-1",
+        "work_type": "sandbox_run",
+        "objective_hash": "obj_abc123",
+        "owner_user_id": 11,
+        "historical_failure_rate_bps": 120,
+        "requires_human_underwrite": false,
+        "context": {"surface": "tests"}
+    });
+    let classify_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/classify")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&classify_payload)?))?,
+        )
+        .await?;
+    assert_eq!(classify_response.status(), axum::http::StatusCode::OK);
+    let classify_json = response_json(classify_response).await?;
+    assert_eq!(classify_json["schema"], "openagents.aegis.classify_response.v1");
+    assert_eq!(classify_json["idempotent_replay"], false);
+    assert_eq!(classify_json["receipt"]["receipt_schema"], "openagents.aegis.classification_receipt.v1");
+
+    let classify_replay = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/classify")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&classify_payload)?))?,
+        )
+        .await?;
+    assert_eq!(classify_replay.status(), axum::http::StatusCode::OK);
+    let classify_replay_json = response_json(classify_replay).await?;
+    assert_eq!(classify_replay_json["idempotent_replay"], true);
+
+    let sandbox_request = protocol::SandboxRunRequest {
+        sandbox: protocol::jobs::sandbox::SandboxConfig {
+            image_digest: "sha256:test".to_string(),
+            ..Default::default()
+        },
+        commands: vec![protocol::jobs::sandbox::SandboxCommand::new("echo hi")],
+        ..Default::default()
+    };
+    let sandbox_response = protocol::SandboxRunResponse {
+        env_info: protocol::jobs::sandbox::EnvInfo {
+            image_digest: "sha256:test".to_string(),
+            hostname: None,
+            system_info: None,
+        },
+        runs: vec![protocol::jobs::sandbox::CommandResult {
+            cmd: "echo hi".to_string(),
+            exit_code: 0,
+            duration_ms: 1,
+            stdout_sha256: "stdout".to_string(),
+            stderr_sha256: "stderr".to_string(),
+            stdout_preview: None,
+            stderr_preview: None,
+        }],
+        artifacts: Vec::new(),
+        status: protocol::jobs::sandbox::SandboxStatus::Success,
+        error: None,
+        provenance: protocol::provenance::Provenance::new("test"),
+    };
+    let verify_payload = json!({
+        "schema": "openagents.aegis.verify_request.v1",
+        "idempotency_key": "aegis-verify-flow-1",
+        "run_id": "run-aegis-flow-1",
+        "work_type": "sandbox_run",
+        "tier": "tier_2",
+        "objective_hash": "obj_abc123",
+        "owner_user_id": 11,
+        "sandbox_request": serde_json::to_value(&sandbox_request)?,
+        "sandbox_response": serde_json::to_value(&sandbox_response)?,
+        "repo_index_request": {},
+        "repo_index_response": {},
+        "observed_violations": [],
+        "verifier_id": "aegis.runtime.tests"
+    });
+    let verify_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/verify")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&verify_payload)?))?,
+        )
+        .await?;
+    assert_eq!(verify_response.status(), axum::http::StatusCode::OK);
+    let verify_json = response_json(verify_response).await?;
+    assert_eq!(verify_json["schema"], "openagents.aegis.verify_response.v1");
+    assert_eq!(verify_json["passed"], true);
+    assert_eq!(verify_json["receipt"]["receipt_schema"], "openagents.aegis.verification_receipt.v1");
+    let verification_id = verify_json
+        .get("verification_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing verification_id"))?
+        .to_string();
+
+    let risk_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/internal/v1/aegis/risk/budget?owner_user_id=11")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(risk_response.status(), axum::http::StatusCode::OK);
+    let risk_json = response_json(risk_response).await?;
+    assert_eq!(risk_json["schema"], "openagents.aegis.risk_budget_response.v1");
+    assert_eq!(risk_json["owner_key"], "user:11");
+    assert!(risk_json["remaining_unverified_units_24h"].as_u64().is_some());
+
+    let warranty_payload = json!({
+        "schema": "openagents.aegis.warranty_issue_request.v1",
+        "idempotency_key": "aegis-warranty-flow-1",
+        "run_id": "run-aegis-flow-1",
+        "verification_id": verification_id,
+        "owner_user_id": 11,
+        "coverage_cap_msats": 5_000,
+        "duration_seconds": 3_600,
+        "terms": {"product": "mvp"}
+    });
+    let warranty_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/warranty/issue")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&warranty_payload)?))?,
+        )
+        .await?;
+    assert_eq!(warranty_response.status(), axum::http::StatusCode::OK);
+    let warranty_json = response_json(warranty_response).await?;
+    assert_eq!(warranty_json["status"], "active");
+    assert_eq!(warranty_json["receipt"]["receipt_schema"], "openagents.aegis.warranty_issue_receipt.v1");
+    let warranty_id = warranty_json
+        .get("warranty_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing warranty_id"))?
+        .to_string();
+
+    let claim_open_payload = json!({
+        "schema": "openagents.aegis.claim_open_request.v1",
+        "idempotency_key": "aegis-claim-open-flow-1",
+        "warranty_id": warranty_id,
+        "claimant_id": "user:11",
+        "reason": "integration-test",
+        "requested_msats": 3_000,
+        "evidence_sha256": "abc123",
+        "evidence": {"ticket": "OA-2220"}
+    });
+    let claim_open_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/claims/open")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&claim_open_payload)?))?,
+        )
+        .await?;
+    assert_eq!(claim_open_response.status(), axum::http::StatusCode::OK);
+    let claim_open_json = response_json(claim_open_response).await?;
+    assert_eq!(claim_open_json["status"], "open");
+    assert_eq!(claim_open_json["receipt"]["receipt_schema"], "openagents.aegis.claim_open_receipt.v1");
+    let claim_id = claim_open_json
+        .get("claim_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing claim_id"))?
+        .to_string();
+
+    let claim_resolve_payload = json!({
+        "schema": "openagents.aegis.claim_resolve_request.v1",
+        "idempotency_key": "aegis-claim-resolve-flow-1",
+        "claim_id": claim_id,
+        "approve": true,
+        "payout_msats": 2_000,
+        "resolver_id": "aegis.runtime.tests",
+        "resolution_reason": "approved"
+    });
+    let claim_resolve_response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/claims/resolve")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&claim_resolve_payload)?))?,
+        )
+        .await?;
+    assert_eq!(claim_resolve_response.status(), axum::http::StatusCode::OK);
+    let claim_resolve_json = response_json(claim_resolve_response).await?;
+    assert_eq!(claim_resolve_json["status"], "resolved_paid");
+    assert_eq!(claim_resolve_json["payout_msats"], 2_000);
+    assert_eq!(
+        claim_resolve_json["receipt"]["receipt_schema"],
+        "openagents.aegis.claim_resolution_receipt.v1"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn aegis_classify_rejects_idempotency_key_replay_drift() -> Result<()> {
+    let app = test_router();
+    let payload = json!({
+        "schema": "openagents.aegis.classify_request.v1",
+        "idempotency_key": "aegis-classify-drift-1",
+        "run_id": "run-aegis-drift-1",
+        "work_type": "sandbox_run",
+        "historical_failure_rate_bps": 200,
+        "requires_human_underwrite": false,
+        "context": {}
+    });
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/classify")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+
+    let drifted = json!({
+        "schema": "openagents.aegis.classify_request.v1",
+        "idempotency_key": "aegis-classify-drift-1",
+        "run_id": "run-aegis-drift-2",
+        "work_type": "repo_index",
+        "historical_failure_rate_bps": 1200,
+        "requires_human_underwrite": true,
+        "context": {"drift": true}
+    });
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/aegis/classify")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&drifted)?))?,
+        )
+        .await?;
+    assert_eq!(second.status(), axum::http::StatusCode::CONFLICT);
+    let second_json = response_json(second).await?;
+    assert_eq!(second_json["error"], "conflict");
     Ok(())
 }
 

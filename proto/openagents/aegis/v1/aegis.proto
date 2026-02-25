@@ -1,0 +1,192 @@
+syntax = "proto3";
+
+package openagents.aegis.v1;
+
+import "google/protobuf/struct.proto";
+
+// Aegis MVP contracts for verification classification, verification receipts,
+// risk-budget reporting, and minimal warranty/claim authority lanes.
+//
+// These messages back runtime `/internal/v1/aegis/*` authority APIs.
+// JSON is interoperability-only; proto is wire authority (ADR-0002 / INV-01).
+
+enum AegisVerificationClass {
+  AEGIS_VERIFICATION_CLASS_UNSPECIFIED = 0;
+  AEGIS_VERIFICATION_CLASS_OBJECTIVE = 1;
+  AEGIS_VERIFICATION_CLASS_SUBJECTIVE = 2;
+  AEGIS_VERIFICATION_CLASS_LOW_VERIFIABILITY = 3;
+}
+
+enum AegisVerificationTier {
+  AEGIS_VERIFICATION_TIER_UNSPECIFIED = 0;
+  AEGIS_VERIFICATION_TIER_O = 1;
+  AEGIS_VERIFICATION_TIER_1 = 2;
+  AEGIS_VERIFICATION_TIER_2 = 3;
+  AEGIS_VERIFICATION_TIER_3 = 4;
+  AEGIS_VERIFICATION_TIER_4 = 5;
+}
+
+enum AegisWarrantyStatus {
+  AEGIS_WARRANTY_STATUS_UNSPECIFIED = 0;
+  AEGIS_WARRANTY_STATUS_ACTIVE = 1;
+  AEGIS_WARRANTY_STATUS_EXHAUSTED = 2;
+  AEGIS_WARRANTY_STATUS_EXPIRED = 3;
+}
+
+enum AegisClaimStatus {
+  AEGIS_CLAIM_STATUS_UNSPECIFIED = 0;
+  AEGIS_CLAIM_STATUS_OPEN = 1;
+  AEGIS_CLAIM_STATUS_RESOLVED_PAID = 2;
+  AEGIS_CLAIM_STATUS_RESOLVED_DENIED = 3;
+}
+
+message AegisReceiptLinkageV1 {
+  string receipt_schema = 1;
+  string receipt_id = 2;
+  string canonical_json_sha256 = 3;
+}
+
+message AegisClassifyRequestV1 {
+  string schema = 1;
+  string idempotency_key = 2;
+  string run_id = 3;
+  string work_type = 4;
+  optional string objective_hash = 5;
+  optional uint64 owner_user_id = 6;
+  optional string owner_guest_scope = 7;
+  uint32 historical_failure_rate_bps = 8;
+  bool requires_human_underwrite = 9;
+  google.protobuf.Struct context = 10;
+}
+
+message AegisClassifyResponseV1 {
+  string schema = 1;
+  string classification_id = 2;
+  string run_id = 3;
+  string work_type = 4;
+  AegisVerificationClass verification_class = 5;
+  AegisVerificationTier required_tier = 6;
+  double confidence = 7;
+  repeated string policy_notes = 8;
+  AegisReceiptLinkageV1 receipt = 9;
+  bool hydra_risk_degraded = 10;
+  uint64 classified_at_unix = 11;
+  bool idempotent_replay = 12;
+}
+
+message AegisVerifyRequestV1 {
+  string schema = 1;
+  string idempotency_key = 2;
+  string run_id = 3;
+  string work_type = 4;
+  AegisVerificationTier tier = 5;
+  optional string objective_hash = 6;
+  optional uint64 owner_user_id = 7;
+  optional string owner_guest_scope = 8;
+  google.protobuf.Struct sandbox_request = 9;
+  google.protobuf.Struct sandbox_response = 10;
+  google.protobuf.Struct repo_index_request = 11;
+  google.protobuf.Struct repo_index_response = 12;
+  repeated string observed_violations = 13;
+  string verifier_id = 14;
+}
+
+message AegisVerifyResponseV1 {
+  string schema = 1;
+  string verification_id = 2;
+  string run_id = 3;
+  string work_type = 4;
+  AegisVerificationClass verification_class = 5;
+  AegisVerificationTier tier = 6;
+  bool passed = 7;
+  optional string objective_hash = 8;
+  repeated string violations = 9;
+  AegisReceiptLinkageV1 receipt = 10;
+  bool hydra_risk_degraded = 11;
+  uint64 verified_at_unix = 12;
+  bool idempotent_replay = 13;
+}
+
+message AegisRiskBudgetResponseV1 {
+  string schema = 1;
+  string owner_key = 2;
+  uint64 budget_unverified_units_24h = 3;
+  uint64 unverified_units_24h = 4;
+  uint64 remaining_unverified_units_24h = 5;
+  bool hydra_risk_degraded = 6;
+  uint64 treasury_reserved_msats = 7;
+  uint64 treasury_spent_msats = 8;
+  repeated string policy_notes = 9;
+  uint64 generated_at_unix = 10;
+}
+
+message AegisWarrantyIssueRequestV1 {
+  string schema = 1;
+  string idempotency_key = 2;
+  string run_id = 3;
+  string verification_id = 4;
+  optional uint64 owner_user_id = 5;
+  optional string owner_guest_scope = 6;
+  uint64 coverage_cap_msats = 7;
+  uint64 duration_seconds = 8;
+  google.protobuf.Struct terms = 9;
+}
+
+message AegisWarrantyIssueResponseV1 {
+  string schema = 1;
+  string warranty_id = 2;
+  string run_id = 3;
+  string verification_id = 4;
+  AegisWarrantyStatus status = 5;
+  uint64 coverage_cap_msats = 6;
+  uint64 remaining_coverage_msats = 7;
+  uint64 expires_at_unix = 8;
+  AegisReceiptLinkageV1 receipt = 9;
+  bool idempotent_replay = 10;
+}
+
+message AegisClaimOpenRequestV1 {
+  string schema = 1;
+  string idempotency_key = 2;
+  string warranty_id = 3;
+  string claimant_id = 4;
+  string reason = 5;
+  uint64 requested_msats = 6;
+  optional string evidence_sha256 = 7;
+  google.protobuf.Struct evidence = 8;
+}
+
+message AegisClaimOpenResponseV1 {
+  string schema = 1;
+  string claim_id = 2;
+  string warranty_id = 3;
+  AegisClaimStatus status = 4;
+  uint64 requested_msats = 5;
+  uint64 max_payable_msats = 6;
+  uint64 opened_at_unix = 7;
+  AegisReceiptLinkageV1 receipt = 8;
+  bool idempotent_replay = 9;
+}
+
+message AegisClaimResolveRequestV1 {
+  string schema = 1;
+  string idempotency_key = 2;
+  string claim_id = 3;
+  bool approve = 4;
+  uint64 payout_msats = 5;
+  string resolver_id = 6;
+  string resolution_reason = 7;
+}
+
+message AegisClaimResolveResponseV1 {
+  string schema = 1;
+  string claim_id = 2;
+  string warranty_id = 3;
+  AegisClaimStatus status = 4;
+  uint64 payout_msats = 5;
+  uint64 remaining_warranty_msats = 6;
+  string resolution_reason = 7;
+  uint64 resolved_at_unix = 8;
+  AegisReceiptLinkageV1 receipt = 9;
+  bool idempotent_replay = 10;
+}
