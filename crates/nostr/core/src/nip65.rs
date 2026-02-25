@@ -203,6 +203,7 @@ pub fn get_relay_entries(event: &Event) -> Result<Vec<RelayEntry>, Nip65Error> {
 }
 
 /// Create a relay tag
+#[allow(dead_code)]
 pub fn create_relay_tag(url: String, marker: Option<RelayMarker>) -> Vec<String> {
     let mut tag = vec![RELAY_TAG.to_string(), url];
 
@@ -216,6 +217,7 @@ pub fn create_relay_tag(url: String, marker: Option<RelayMarker>) -> Vec<String>
 }
 
 /// Add a relay tag to an event's tags
+#[allow(dead_code)]
 pub fn add_relay_tag(tags: &mut Vec<Vec<String>>, url: String, marker: Option<RelayMarker>) {
     tags.push(create_relay_tag(url, marker));
 }

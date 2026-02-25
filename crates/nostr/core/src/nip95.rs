@@ -237,36 +237,43 @@ pub fn get_block_size(event: &Event) -> Option<u64> {
 }
 
 /// Create MIME type tag
+#[allow(dead_code)]
 pub fn create_mime_type_tag(mime_type: String) -> Vec<String> {
     vec!["m".to_string(), mime_type]
 }
 
 /// Create hash tag
+#[allow(dead_code)]
 pub fn create_hash_tag(hash: String) -> Vec<String> {
     vec!["x".to_string(), hash]
 }
 
 /// Create size tag
+#[allow(dead_code)]
 pub fn create_size_tag(size: u64) -> Vec<String> {
     vec!["size".to_string(), size.to_string()]
 }
 
 /// Create summary tag
+#[allow(dead_code)]
 pub fn create_summary_tag(summary: String) -> Vec<String> {
     vec!["summary".to_string(), summary]
 }
 
 /// Create alt tag
+#[allow(dead_code)]
 pub fn create_alt_tag(alt: String) -> Vec<String> {
     vec!["alt".to_string(), alt]
 }
 
 /// Create content event reference tag
+#[allow(dead_code)]
 pub fn create_content_event_tag(event_id: String) -> Vec<String> {
     vec!["e".to_string(), event_id]
 }
 
 /// Create block size tag
+#[allow(dead_code)]
 pub fn create_block_size_tag(block_size: u64) -> Vec<String> {
     vec!["block_size".to_string(), block_size.to_string()]
 }

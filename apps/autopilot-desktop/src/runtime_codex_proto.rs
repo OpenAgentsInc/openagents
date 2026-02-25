@@ -6,11 +6,10 @@ pub use openagents_client_core::khala_protocol::{
 };
 
 pub use openagents_codex_control::{
-    ControlMethod, ControlRequestEnvelope, ControlRequestParseError, IosUserMessage,
-    RequestReplayState, TargetResolutionInput, WorkerReceipt, error_receipt as build_error_receipt,
-    extract_control_request, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-    extract_ios_user_message, handshake_dedupe_key, ios_message_dedupe_key, request_dedupe_key,
-    resolve_request_target, success_receipt as build_success_receipt, terminal_receipt_dedupe_key,
+    ControlMethod, error_receipt as build_error_receipt, extract_control_request,
+    extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
+    handshake_dedupe_key, request_dedupe_key, success_receipt as build_success_receipt,
+    terminal_receipt_dedupe_key,
 };
 
 #[cfg(test)]
