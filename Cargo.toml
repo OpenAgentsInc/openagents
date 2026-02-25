@@ -26,7 +26,6 @@ members = [
     "crates/gateway",
     "crates/gpt-oss",
     "crates/issues",
-    "crates/communityfeed",
     "crates/lm-router",
     "crates/local-inference",
     "crates/neobank",

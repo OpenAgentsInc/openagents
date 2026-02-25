@@ -41,11 +41,9 @@ runtime = { path = "../../crates/runtime", default-features = false }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
-communityfeed = { path = "../../crates/communityfeed" }
 clap = { workspace = true }
 rustls = "0.23"
 arboard = "3.4"
-rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5"
 
 [package.metadata.bundle]

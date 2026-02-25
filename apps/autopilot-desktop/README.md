@@ -47,12 +47,6 @@ Endpoint resolution (local-first):
   - `OPENAGENTS_AUTH_BASE_URL` (legacy alias)
   - saved auth-state base URL
   - local default
-- CommunityFeed proxy defaults to `http://127.0.0.1:8787/api/communityfeed/api`.
-- CommunityFeed overrides:
-  - `OPENAGENTS_COMMUNITYFEED_API_BASE`
-  - `OA_COMMUNITYFEED_API_BASE` (legacy alias)
-  - `OA_API` (appends `/communityfeed/api`)
-  - `COMMUNITYFEED_API_BASE` for direct CommunityFeed live API.
 
 ### CLI Fallback (Automation / Headless)
 

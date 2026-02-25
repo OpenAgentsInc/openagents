@@ -5,10 +5,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, CommunityFeedCommentSummary, CommunityFeedPostSummary, CommunityFeedProfileSummary,
-    DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane, InboxSnapshot,
-    InboxThreadSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary, UserAction,
-    WorkspaceId,
+    AppEvent, DesktopRouteState, DesktopSurfaceRoute, InboxAuditEntry, InboxRoutePane,
+    InboxSnapshot, InboxThreadSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot,
+    ThreadSummary, UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -33,9 +32,9 @@ use wgpui::input::{InputEvent, Key, Modifiers};
 use wgpui::scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
-    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer,
-    MarkdownView, MouseButton, PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown,
-    copy_to_clipboard, grid_bounds, length, px, text::FontStyle, theme,
+    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
+    PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px,
+    text::FontStyle, theme,
 };
 
 pub mod shortcuts;
@@ -100,10 +99,6 @@ impl AppViewModel {
             AppEvent::DvmHistory { .. } => {}
             AppEvent::RuntimeAuthState { .. } => {}
             AppEvent::Nip90Log { .. } => {}
-            AppEvent::CommunityFeedFeedUpdated { .. } => {}
-            AppEvent::CommunityFeedCommentsLoaded { .. } => {}
-            AppEvent::CommunityFeedLog { .. } => {}
-            AppEvent::CommunityFeedProfileLoaded { .. } => {}
             AppEvent::ThreadsUpdated { .. } => {}
             AppEvent::ThreadLoaded { .. } => {}
             AppEvent::InboxUpdated { .. } => {}
@@ -183,13 +178,6 @@ fn new_markdown_stream() -> StreamingMarkdown {
     stream
 }
 
-fn communityfeed_markdown_config(font_size: f32) -> MarkdownConfig {
-    let mut markdown_config = MarkdownConfig::default();
-    markdown_config.base_font_size = font_size;
-    markdown_config.header_sizes = [1.0; 6];
-    markdown_config
-}
-
 fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
     MarkdownView::new(document)
         .show_copy_button(false)
@@ -246,8 +234,6 @@ enum PaneKind {
     SellCompute,
     DvmHistory,
     Nip90,
-    CommunityFeed,
-    CommunityFeedPost,
 }
 
 #[derive(Clone, Debug)]
@@ -265,7 +251,6 @@ enum HotbarAction {
     ToggleSellCompute,
     ToggleDvmHistory,
     ToggleNip90,
-    ToggleCommunityFeed,
     NewChat,
 }
 
@@ -588,18 +573,6 @@ pub struct MinimalRoot {
     nip90_submit_bounds: Bounds,
     pending_nip90_submit: Rc<RefCell<bool>>,
     nip90_log: Vec<String>,
-    communityfeed_feed: Vec<CommunityFeedPostSummary>,
-    communityfeed_log: Vec<String>,
-    communityfeed_profile: Option<CommunityFeedProfileSummary>,
-    communityfeed_refresh_button: Button,
-    communityfeed_refresh_bounds: Bounds,
-    #[allow(dead_code)]
-    communityfeed_feed_scroll: ScrollView,
-    communityfeed_feed_scroll_bounds: Bounds,
-    communityfeed_post_panes: HashMap<String, CommunityFeedPostPane>,
-    pending_communityfeed_refresh: Rc<RefCell<bool>>,
-    pending_communityfeed_replies: Rc<RefCell<Vec<String>>>,
-    communityfeed_reply_feedback: HashMap<String, Instant>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -2949,19 +2922,7 @@ impl MinimalRoot {
                 *pending_nip90_submit_click.borrow_mut() = true;
             });
 
-        let pending_communityfeed_refresh = Rc::new(RefCell::new(false));
-        let pending_communityfeed_refresh_click = pending_communityfeed_refresh.clone();
-        let communityfeed_refresh_button = Button::new("Refresh")
-            .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS)
-            .padding(8.0, 4.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_communityfeed_refresh_click.borrow_mut() = true;
-            });
-        let pending_communityfeed_replies = Rc::new(RefCell::new(Vec::new()));
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
-        let communityfeed_feed_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
             .padding(HOTBAR_PADDING)
@@ -3116,17 +3077,6 @@ impl MinimalRoot {
             nip90_submit_bounds: Bounds::ZERO,
             pending_nip90_submit,
             nip90_log: Vec::new(),
-            communityfeed_feed: Vec::new(),
-            communityfeed_log: Vec::new(),
-            communityfeed_profile: None,
-            communityfeed_refresh_button,
-            communityfeed_refresh_bounds: Bounds::ZERO,
-            communityfeed_feed_scroll,
-            communityfeed_feed_scroll_bounds: Bounds::ZERO,
-            communityfeed_post_panes: HashMap::new(),
-            pending_communityfeed_refresh,
-            pending_communityfeed_replies,
-            communityfeed_reply_feedback: HashMap::new(),
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -3289,29 +3239,6 @@ impl MinimalRoot {
                     let drain = self.nip90_log.len() - 200;
                     self.nip90_log.drain(0..drain);
                 }
-            }
-            AppEvent::CommunityFeedFeedUpdated { posts } => {
-                self.communityfeed_feed = posts;
-                self.communityfeed_feed_scroll
-                    .scroll_to(Point::new(0.0, 0.0));
-                self.refresh_communityfeed_post_panes();
-            }
-            AppEvent::CommunityFeedCommentsLoaded { post_id, comments } => {
-                for pane in self.communityfeed_post_panes.values_mut() {
-                    if pane.post_id == post_id {
-                        pane.set_comments(comments.clone());
-                    }
-                }
-            }
-            AppEvent::CommunityFeedLog { message } => {
-                self.communityfeed_log.push(message);
-                if self.communityfeed_log.len() > 100 {
-                    let drain = self.communityfeed_log.len() - 100;
-                    self.communityfeed_log.drain(0..drain);
-                }
-            }
-            AppEvent::CommunityFeedProfileLoaded { profile } => {
-                self.communityfeed_profile = Some(profile);
             }
             AppEvent::ThreadsUpdated {
                 threads,
@@ -4073,141 +4000,6 @@ impl MinimalRoot {
         });
     }
 
-    fn toggle_communityfeed_pane(&mut self, screen: Size) {
-        let last_position = self.pane_store.last_pane_position;
-        self.pane_store
-            .toggle_pane("communityfeed", screen, |snapshot| {
-                let rect = snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.rect)
-                    .unwrap_or_else(|| {
-                        calculate_new_pane_position(
-                            last_position,
-                            screen,
-                            COMMUNITYFEED_PANE_WIDTH,
-                            COMMUNITYFEED_PANE_HEIGHT,
-                        )
-                    });
-                Pane {
-                    id: "communityfeed".to_string(),
-                    kind: PaneKind::CommunityFeed,
-                    title: "CommunityFeed".to_string(),
-                    rect,
-                    dismissable: true,
-                }
-            });
-        if self.pane_store.is_active("communityfeed") {
-            if let Some(handler) = self.send_handler.as_mut() {
-                handler(UserAction::CommunityFeedRefresh);
-            }
-        }
-    }
-
-    fn open_communityfeed_post_pane(&mut self, post: CommunityFeedPostSummary) {
-        let pane_id = format!("communityfeed-post-{}", post.id);
-        let title = communityfeed_post_title(&post);
-        if self.pane_store.pane(&pane_id).is_some() {
-            if let Some(existing) = self.communityfeed_post_panes.get_mut(&pane_id) {
-                existing.update_from(&post);
-                self.pane_store.set_title(&pane_id, existing.title.clone());
-                if existing.comments.is_empty() {
-                    if let Some(handler) = self.send_handler.as_mut() {
-                        handler(UserAction::CommunityFeedLoadComments {
-                            post_id: post.id.clone(),
-                        });
-                    }
-                }
-            }
-            self.pane_store.bring_to_front(&pane_id);
-            return;
-        }
-
-        let rect = calculate_new_pane_position(
-            self.pane_store.last_pane_position,
-            self.screen_size(),
-            COMMUNITYFEED_POST_PANE_WIDTH,
-            COMMUNITYFEED_POST_PANE_HEIGHT,
-        );
-        let pane = Pane {
-            id: pane_id.clone(),
-            kind: PaneKind::CommunityFeedPost,
-            title: title.clone(),
-            rect: normalize_pane_rect(rect),
-            dismissable: true,
-        };
-        self.pane_store.add_pane(pane);
-        let pane_state =
-            CommunityFeedPostPane::new(&post, title, self.pending_communityfeed_replies.clone());
-        self.communityfeed_post_panes.insert(pane_id, pane_state);
-        if let Some(handler) = self.send_handler.as_mut() {
-            handler(UserAction::CommunityFeedLoadComments {
-                post_id: post.id.clone(),
-            });
-        }
-    }
-
-    fn refresh_communityfeed_post_panes(&mut self) {
-        if self.communityfeed_post_panes.is_empty() {
-            return;
-        }
-        let mut by_id: HashMap<String, CommunityFeedPostSummary> = HashMap::new();
-        for post in &self.communityfeed_feed {
-            by_id.insert(post.id.clone(), post.clone());
-        }
-        for (pane_id, pane) in self.communityfeed_post_panes.iter_mut() {
-            if let Some(post) = by_id.get(&pane.post_id) {
-                pane.update_from(post);
-                self.pane_store.set_title(pane_id, pane.title.clone());
-            }
-        }
-    }
-
-    fn communityfeed_card_index_at(&self, point: Point) -> Option<usize> {
-        if self.communityfeed_feed.is_empty() {
-            return None;
-        }
-        let bounds = self.communityfeed_feed_scroll_bounds;
-        if !bounds.contains(point) {
-            return None;
-        }
-        let card_gap = 12.0;
-        let min_card = 220.0;
-        let max_card = 320.0;
-        let (card_size, mut content_height) = communityfeed_card_layout(
-            bounds.size.width,
-            self.communityfeed_feed.len(),
-            min_card,
-            max_card,
-            card_gap,
-        );
-        if card_size <= 0.0 {
-            return None;
-        }
-        if self.communityfeed_feed.is_empty() {
-            content_height = 20.0;
-        }
-        let content_height = content_height.max(bounds.size.height);
-        let scroll_offset = self.communityfeed_feed_scroll.scroll_offset();
-        let content_bounds = Bounds::new(
-            bounds.origin.x - scroll_offset.x,
-            bounds.origin.y - scroll_offset.y,
-            bounds.size.width,
-            content_height,
-        );
-        let cards = grid_bounds(
-            content_bounds,
-            Size::new(card_size, card_size),
-            self.communityfeed_feed.len(),
-            card_gap,
-        );
-        for (index, card) in cards.iter().enumerate() {
-            if card.contains(point) {
-                return Some(index);
-            }
-        }
-        None
-    }
-
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -4223,7 +4015,6 @@ impl MinimalRoot {
                 self.thread_to_pane.remove(&thread_id);
             }
         }
-        self.communityfeed_post_panes.remove(id);
         self.chat_slot_assignments.remove(id);
         self.chat_slot_labels.remove(id);
     }
@@ -4327,10 +4118,6 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleNip90 => {
                 self.toggle_nip90_pane(screen);
-                true
-            }
-            HotbarAction::ToggleCommunityFeed => {
-                self.toggle_communityfeed_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -4679,16 +4466,8 @@ impl MinimalRoot {
                     ) && frame.title_bounds().contains(self.cursor_position)
                         && !frame.close_bounds().contains(self.cursor_position)
                     {
-                        let mut allow_drag = true;
+                        let allow_drag = true;
                         if let Some(pane) = self.pane_store.pane(&pane_id) {
-                            if pane.kind == PaneKind::CommunityFeedPost {
-                                if let Some(post_pane) = self.communityfeed_post_panes.get(&pane_id)
-                                {
-                                    if post_pane.reply_bounds.contains(self.cursor_position) {
-                                        allow_drag = false;
-                                    }
-                                }
-                            }
                             if allow_drag {
                                 self.pane_drag = Some(PaneDragState {
                                     pane_id: pane_id.clone(),
@@ -5363,71 +5142,6 @@ impl MinimalRoot {
                                 || prompt_handled
                                 || submit_handled;
                         }
-                        PaneKind::CommunityFeed => {
-                            let refresh_handled = matches!(
-                                self.communityfeed_refresh_button.event(
-                                    event,
-                                    self.communityfeed_refresh_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let scroll_handled = self
-                                .communityfeed_feed_scroll_bounds
-                                .contains(self.cursor_position)
-                                && matches!(
-                                    self.communityfeed_feed_scroll.event(
-                                        event,
-                                        self.communityfeed_feed_scroll_bounds,
-                                        &mut self.event_context
-                                    ),
-                                    EventResult::Handled
-                                );
-                            let mut opened = false;
-                            if !scroll_handled {
-                                if let InputEvent::MouseDown {
-                                    button: MouseButton::Left,
-                                    ..
-                                } = event
-                                {
-                                    if let Some(index) =
-                                        self.communityfeed_card_index_at(self.cursor_position)
-                                    {
-                                        if let Some(post) =
-                                            self.communityfeed_feed.get(index).cloned()
-                                        {
-                                            self.open_communityfeed_post_pane(post);
-                                            opened = true;
-                                        }
-                                    }
-                                }
-                            }
-                            handled |= refresh_handled || scroll_handled || opened;
-                        }
-                        PaneKind::CommunityFeedPost => {
-                            if let Some(post_pane) = self.communityfeed_post_panes.get_mut(&pane_id)
-                            {
-                                let reply_handled = matches!(
-                                    post_pane.reply_button.event(
-                                        event,
-                                        post_pane.reply_bounds,
-                                        &mut self.event_context
-                                    ),
-                                    EventResult::Handled
-                                );
-                                let scroll_handled =
-                                    post_pane.scroll_bounds.contains(self.cursor_position)
-                                        && matches!(
-                                            post_pane.scroll.event(
-                                                event,
-                                                post_pane.scroll_bounds,
-                                                &mut self.event_context
-                                            ),
-                                            EventResult::Handled
-                                        );
-                                handled |= reply_handled || scroll_handled;
-                            }
-                        }
                     }
                 }
             }
@@ -5752,32 +5466,6 @@ impl MinimalRoot {
                     });
                 }
                 self.nip90_prompt_input.set_value("");
-            }
-        }
-
-        let should_communityfeed_refresh = {
-            let mut pending = self.pending_communityfeed_refresh.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
-        if should_communityfeed_refresh {
-            if let Some(handler) = self.send_handler.as_mut() {
-                handler(UserAction::CommunityFeedRefresh);
-            }
-        }
-
-        let pending_replies = {
-            let mut pending = self.pending_communityfeed_replies.borrow_mut();
-            std::mem::take(&mut *pending)
-        };
-        if !pending_replies.is_empty() {
-            if let Some(handler) = self.send_handler.as_mut() {
-                for post_id in pending_replies {
-                    self.communityfeed_reply_feedback
-                        .insert(post_id.clone(), Instant::now());
-                    handler(UserAction::CommunityFeedReply { post_id });
-                }
             }
         }
 
@@ -6124,12 +5812,6 @@ impl MinimalRoot {
             .any(|chat| chat.stop_button.is_hovered() && !chat.stop_button.is_disabled())
         {
             Cursor::Pointer
-        } else if self
-            .communityfeed_post_panes
-            .values()
-            .any(|pane| pane.reply_button.is_hovered() && !pane.reply_button.is_disabled())
-        {
-            Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
         } else if self.pylon_toggle_button.is_hovered() {
@@ -6274,8 +5956,6 @@ impl Component for MinimalRoot {
         self.inbox.list_row_bounds.clear();
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
-        self.communityfeed_refresh_bounds = Bounds::ZERO;
-        self.communityfeed_feed_scroll_bounds = Bounds::ZERO;
         self.file_editor.path_bounds = Bounds::ZERO;
         self.file_editor.open_bounds = Bounds::ZERO;
         self.file_editor.reload_bounds = Bounds::ZERO;
@@ -6322,7 +6002,7 @@ impl Component for MinimalRoot {
             self.pane_bounds.insert(pane.id.clone(), pane_bounds);
 
             cx.scene.push_clip(pane_bounds);
-            let (title_bounds, close_bounds, content_bounds) = {
+            let (_title_bounds, _close_bounds, content_bounds) = {
                 let frame = self
                     .pane_frames
                     .entry(pane.id.clone())
@@ -6339,12 +6019,6 @@ impl Component for MinimalRoot {
                 )
             };
 
-            if let PaneKind::CommunityFeed = pane.kind {
-                paint_communityfeed_header(self, &pane.title, title_bounds, close_bounds, cx);
-            }
-            if let PaneKind::CommunityFeedPost = pane.kind {
-                paint_communityfeed_post_header(self, &pane.id, title_bounds, close_bounds, cx);
-            }
             match pane.kind {
                 PaneKind::Chat => {
                     if let Some(chat) = self.chat_panes.get_mut(&pane.id) {
@@ -6366,10 +6040,6 @@ impl Component for MinimalRoot {
                 PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
                 PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
-                PaneKind::CommunityFeed => paint_communityfeed_pane(self, content_bounds, cx),
-                PaneKind::CommunityFeedPost => {
-                    paint_communityfeed_post_pane(self, &pane.id, content_bounds, cx)
-                }
             }
             cx.scene.pop_clip();
         }
@@ -6430,13 +6100,6 @@ impl Component for MinimalRoot {
         // );
         // self.hotbar_bindings
         //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_COMMUNITYFEED, "MB", "CommunityFeed")
-                .active(self.pane_store.is_active("communityfeed")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_COMMUNITYFEED, HotbarAction::ToggleCommunityFeed);
-
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_AUTH, "AU", "Auth")
                 .active(self.pane_store.is_active("auth")),
@@ -7756,18 +7419,6 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
-            UserAction::CommunityFeedRefresh => "CommunityFeedRefresh".to_string(),
-            UserAction::CommunityFeedLoadComments { post_id } => {
-                format!("CommunityFeedLoadComments ({post_id})")
-            }
-            UserAction::CommunityFeedReply { post_id } => format!("CommunityFeedReply ({post_id})"),
-            UserAction::CommunityFeedSay { .. } => "CommunityFeedSay".to_string(),
-            UserAction::CommunityFeedComment { post_id, .. } => {
-                format!("CommunityFeedComment ({post_id})")
-            }
-            UserAction::CommunityFeedUpvote { post_id } => {
-                format!("CommunityFeedUpvote ({post_id})")
-            }
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
             UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
@@ -7835,19 +7486,6 @@ fn format_event(event: &AppEvent) -> String {
             format!("RuntimeAuthState ({token}, {email})")
         }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
-        AppEvent::CommunityFeedFeedUpdated { posts } => {
-            format!("CommunityFeedFeedUpdated ({} posts)", posts.len())
-        }
-        AppEvent::CommunityFeedCommentsLoaded { post_id, comments } => {
-            format!(
-                "CommunityFeedCommentsLoaded ({post_id}, {} comments)",
-                comments.len()
-            )
-        }
-        AppEvent::CommunityFeedLog { message } => format!("CommunityFeedLog ({message})"),
-        AppEvent::CommunityFeedProfileLoaded { profile } => {
-            format!("CommunityFeedProfileLoaded ({})", profile.agent_name)
-        }
         AppEvent::ThreadsUpdated {
             threads, append, ..
         } => {

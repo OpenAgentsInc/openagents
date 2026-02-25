@@ -223,24 +223,6 @@ pub enum UserAction {
         relays: Vec<String>,
         provider: Option<String>,
     },
-    CommunityFeedRefresh,
-    CommunityFeedLoadComments {
-        post_id: String,
-    },
-    CommunityFeedReply {
-        post_id: String,
-    },
-    CommunityFeedSay {
-        text: String,
-        submolt: Option<String>,
-    },
-    CommunityFeedComment {
-        post_id: String,
-        text: String,
-    },
-    CommunityFeedUpvote {
-        post_id: String,
-    },
     ThreadsRefresh,
     ThreadsLoadMore {
         cursor: Option<String>,
@@ -376,41 +358,6 @@ pub struct RuntimeAuthStateView {
     pub updated_at: Option<String>,
 }
 
-/// Summary of a CommunityFeed post for the UI feed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommunityFeedPostSummary {
-    pub id: String,
-    pub title: Option<String>,
-    pub content_preview: Option<String>,
-    #[serde(default)]
-    pub content: Option<String>,
-    pub author_name: Option<String>,
-    pub score: Option<i64>,
-    pub comment_count: Option<u64>,
-    pub created_at: Option<String>,
-    pub submolt: Option<String>,
-}
-
-/// Summary of a CommunityFeed comment for UI rendering.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommunityFeedCommentSummary {
-    pub id: String,
-    pub post_id: Option<String>,
-    pub parent_id: Option<String>,
-    pub content: Option<String>,
-    pub author_name: Option<String>,
-    pub score: Option<i64>,
-    pub created_at: Option<String>,
-}
-
-/// Summary of the current CommunityFeed agent profile (stats for engagement UI).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct CommunityFeedProfileSummary {
-    pub agent_name: String,
-    pub posts_count: u64,
-    pub comments_count: u64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThreadSummary {
     pub id: String,
@@ -529,19 +476,6 @@ pub enum AppEvent {
     },
     Nip90Log {
         message: String,
-    },
-    CommunityFeedFeedUpdated {
-        posts: Vec<CommunityFeedPostSummary>,
-    },
-    CommunityFeedCommentsLoaded {
-        post_id: String,
-        comments: Vec<CommunityFeedCommentSummary>,
-    },
-    CommunityFeedLog {
-        message: String,
-    },
-    CommunityFeedProfileLoaded {
-        profile: CommunityFeedProfileSummary,
     },
     ThreadsUpdated {
         threads: Vec<ThreadSummary>,
