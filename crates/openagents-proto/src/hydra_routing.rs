@@ -2,9 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
-use crate::wire::google::protobuf::{
-    ListValue, Struct, Value as ProtoValue, value::Kind,
-};
+use crate::wire::google::protobuf::{ListValue, Struct, Value as ProtoValue, value::Kind};
 use crate::wire::openagents::hydra::v1 as wire;
 
 pub const ROUTING_SCORE_REQUEST_SCHEMA_V1: &str = "openagents.hydra.routing_score_request.v1";

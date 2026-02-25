@@ -7345,7 +7345,8 @@ async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
         return Err("Amount must be > 0 sats.".to_string());
     }
 
-    let config = PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
+    let config =
+        PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
     let data_dir = config
         .data_path()
         .map_err(|err| format!("Failed to resolve Pylon data dir: {err}"))?;

@@ -441,10 +441,7 @@ pub fn build_liquidity_receipt_pointer_event(
         .as_ref()
         .filter(|v| !v.trim().is_empty())
     {
-        app.add_tag(vec![
-            "oa_withdrawal_id".to_string(),
-            withdrawal_id.clone(),
-        ]);
+        app.add_tag(vec!["oa_withdrawal_id".to_string(), withdrawal_id.clone()]);
     }
     if let Some(quote_id) = payload.quote_id.as_ref().filter(|v| !v.trim().is_empty()) {
         app.add_tag(vec!["oa_quote_id".to_string(), quote_id.clone()]);

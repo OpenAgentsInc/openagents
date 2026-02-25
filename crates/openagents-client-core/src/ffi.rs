@@ -1078,10 +1078,12 @@ mod tests {
 
     #[test]
     fn ffi_pointer_helpers_are_null_safe() {
-        assert!(with_mut_ptr::<u8, _>(ptr::null_mut(), |value| {
-            *value = value.saturating_add(1);
-        })
-        .is_none());
+        assert!(
+            with_mut_ptr::<u8, _>(ptr::null_mut(), |value| {
+                *value = value.saturating_add(1);
+            })
+            .is_none()
+        );
         assert!(with_ref_ptr::<u8, _>(ptr::null(), |value| *value).is_none());
     }
 }

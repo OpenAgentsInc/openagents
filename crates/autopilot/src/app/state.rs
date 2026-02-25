@@ -62,7 +62,10 @@ pub(crate) struct AppState {
     pub(crate) input: TextInput,
     pub(crate) mouse_pos: (f32, f32),
     pub(crate) modifiers: ModifiersState,
-    #[expect(dead_code, reason = "tick timer retained for future frame pacing hooks")]
+    #[expect(
+        dead_code,
+        reason = "tick timer retained for future frame pacing hooks"
+    )]
     pub(crate) last_tick: Instant,
     pub(crate) modal_state: ModalState,
     /// Input focus state - determines which component receives keyboard input

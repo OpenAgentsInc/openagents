@@ -132,20 +132,18 @@ pub fn from_env() -> Arc<dyn LightningNode> {
     match backend.as_str() {
         "noop" => Arc::new(NoopLightningNode),
         "lnd" => {
-            let Some(base_url) = env_non_empty_any(&[
-                "RUNTIME_LLP_LND_REST_BASE_URL",
-                "LND_REST_BASE_URL",
-            ]) else {
+            let Some(base_url) =
+                env_non_empty_any(&["RUNTIME_LLP_LND_REST_BASE_URL", "LND_REST_BASE_URL"])
+            else {
                 return Arc::new(UnavailableLightningNode::new(
                     "lnd",
                     "RUNTIME_LLP_LND_REST_BASE_URL (or LND_REST_BASE_URL) is required when backend=lnd",
                 ));
             };
 
-            let Some(macaroon_hex) = env_non_empty_any(&[
-                "RUNTIME_LLP_LND_REST_MACAROON_HEX",
-                "LND_REST_MACAROON_HEX",
-            ]) else {
+            let Some(macaroon_hex) =
+                env_non_empty_any(&["RUNTIME_LLP_LND_REST_MACAROON_HEX", "LND_REST_MACAROON_HEX"])
+            else {
                 return Arc::new(UnavailableLightningNode::new(
                     "lnd",
                     "RUNTIME_LLP_LND_REST_MACAROON_HEX (or LND_REST_MACAROON_HEX) is required when backend=lnd",
@@ -160,8 +158,8 @@ pub fn from_env() -> Arc<dyn LightningNode> {
                 &["RUNTIME_LLP_LND_REST_TLS_VERIFY", "LND_REST_TLS_VERIFY"],
                 true,
             );
-            let timeout_ms = env_u64_any(&["RUNTIME_LLP_LND_REST_TIMEOUT_MS"], 10_000)
-                .clamp(250, 120_000);
+            let timeout_ms =
+                env_u64_any(&["RUNTIME_LLP_LND_REST_TIMEOUT_MS"], 10_000).clamp(250, 120_000);
 
             match LndRestLightningNode::new(
                 base_url,
@@ -358,8 +356,8 @@ impl LndRestLightningNode {
             ));
         }
 
-        let mut builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(timeout_ms));
+        let mut builder =
+            reqwest::Client::builder().timeout(std::time::Duration::from_millis(timeout_ms));
         if let Some(cert_b64) = tls_cert_base64.as_ref().map(|value| value.trim()) {
             if !cert_b64.is_empty() {
                 let decoded = STANDARD.decode(cert_b64).map_err(|error| {

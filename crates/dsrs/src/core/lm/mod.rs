@@ -514,8 +514,7 @@ impl LM {
                         request_messages.system,
                         &mut accumulated_usage,
                     )
-                    .await
-                    ?;
+                    .await?;
                 let message = result.message.clone();
                 tool_loop_result = Some(result);
                 message
@@ -551,7 +550,7 @@ impl LM {
                 .unwrap_or_default(),
             tool_executions: tool_loop_result
                 .map(|result| result.tool_executions)
-            .unwrap_or_default(),
+                .unwrap_or_default(),
         })
     }
 

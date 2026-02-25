@@ -78,7 +78,10 @@ impl AgentModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogLine {
     pub text: String,
-    #[expect(dead_code, reason = "timestamp retained for serialized startup log compatibility")]
+    #[expect(
+        dead_code,
+        reason = "timestamp retained for serialized startup log compatibility"
+    )]
     pub timestamp: f32,
     pub status: LogStatus,
     /// Which UI section this line belongs to for collapsible grouping.

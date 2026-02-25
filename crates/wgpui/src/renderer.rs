@@ -26,7 +26,10 @@ struct SvgTextureKey {
 
 /// GPU resources for a rasterized SVG.
 struct SvgGpuResources {
-    #[expect(dead_code, reason = "texture handle retained to preserve bind-group backing lifetime")]
+    #[expect(
+        dead_code,
+        reason = "texture handle retained to preserve bind-group backing lifetime"
+    )]
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
 }

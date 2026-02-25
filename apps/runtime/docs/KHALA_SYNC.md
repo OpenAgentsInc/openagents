@@ -181,6 +181,6 @@ Ordering and delivery contract authority:
 
 For rollout sequencing:
 
-- `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
-- `docs/sync/SURFACES.md`
+- `docs/sync/ROADMAP.md`
+- `docs/sync/ROADMAP.md`

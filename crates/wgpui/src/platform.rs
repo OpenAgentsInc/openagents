@@ -31,10 +31,13 @@ pub fn default_surface_config(
 }
 
 #[cfg(feature = "web")]
-#[cfg_attr(not(test), expect(
-    dead_code,
-    reason = "webgpu policy helper retained for runtime capability gating and web test coverage"
-))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "webgpu policy helper retained for runtime capability gating and web test coverage"
+    )
+)]
 pub(crate) fn is_webgpu_reliable_user_agent(user_agent: &str) -> bool {
     // Linux desktop WebGPU remains unstable in Chromium for our supported matrix.
     !(user_agent.contains("Linux") && !user_agent.contains("Android"))
