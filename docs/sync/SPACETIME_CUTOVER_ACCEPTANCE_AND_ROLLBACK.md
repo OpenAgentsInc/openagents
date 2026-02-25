@@ -51,6 +51,14 @@ Required artifacts:
 4. Chaos drill summary (restart, temporary partition, token-expiry storm).
 5. On-call signoff and rollback rehearsal confirmation.
 
+Chaos drill command:
+
+```bash
+./scripts/spacetime/run-chaos-drills.sh
+```
+
+Attach `output/chaos/spacetime/<timestamp>/SUMMARY.md` and `results.jsonl` to promotion evidence.
+
 ## Rollback Triggers
 
 Immediate rollback is required if any are true:
@@ -87,4 +95,3 @@ Khala endpoint removal is allowed only when:
 2. All acceptance gates remain green through full production cohorts.
 3. Incident runbooks and docs are updated with Spacetime-only canonical guidance.
 4. Explicit approval is recorded by runtime/control/desktop owners.
-
