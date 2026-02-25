@@ -1085,8 +1085,10 @@ impl DomainStore {
         };
 
         let driver = match runtime_type.as_str() {
-            "elixir" | "runtime" => Some("elixir".to_string()),
-            "legacy" | "laravel" | "openagents.com" => Some("legacy".to_string()),
+            "runtime_service" | "runtime" | "elixir" => Some("runtime_service".to_string()),
+            "control_service" | "control" | "legacy" | "laravel" | "openagents.com" => {
+                Some("control_service".to_string())
+            }
             _ => None,
         };
         Ok(driver)
@@ -3232,13 +3234,21 @@ fn normalize_runtime_scope_type(value: &str) -> Result<String, DomainStoreError>
 
 fn normalize_runtime_driver(value: &str) -> Result<String, DomainStoreError> {
     let normalized = normalize_non_empty(value, "driver")?.to_ascii_lowercase();
-    if !matches!(normalized.as_str(), "legacy" | "elixir") {
-        return Err(DomainStoreError::Validation {
-            field: "driver",
-            message: "value must be one of: legacy, elixir".to_string(),
-        });
-    }
-    Ok(normalized)
+    let canonical = match normalized.as_str() {
+        "runtime_service" | "runtime" | "elixir" => "runtime_service",
+        "control_service" | "control" | "legacy" | "laravel" | "openagents.com" => {
+            "control_service"
+        }
+        _ => {
+            return Err(DomainStoreError::Validation {
+                field: "driver",
+                message:
+                    "value must be one of: control_service, runtime_service (legacy/elixir accepted)"
+                        .to_string(),
+            });
+        }
+    };
+    Ok(canonical.to_string())
 }
 
 fn runtime_override_key(scope_type: &str, scope_id: &str) -> String {

@@ -101,6 +101,10 @@ Current admin/control-plane web contract:
 - `POST /admin/route-split/override`
 - `POST /admin/runtime-routing/evaluate`
 - `POST /admin/runtime-routing/override`
+- Runtime routing override driver values:
+  - `control_service`
+  - `runtime_service`
+  - compatibility aliases accepted for migration input: `legacy`, `elixir`
 - `POST /admin/lightning-ops/query`
 - `POST /admin/lightning-ops/mutation`
 - All admin actions:

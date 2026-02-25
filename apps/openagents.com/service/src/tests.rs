@@ -4993,7 +4993,7 @@ fn autopilot_runtime_binding_payload_prefers_primary_binding() {
     assert_eq!(binding["id"], json!("arb_primary"));
     assert_eq!(binding["runtimeType"], json!("runtime"));
     assert_eq!(binding["runtimeRef"], json!("desktopw:autopilot"));
-    assert_eq!(binding["driverHint"], json!("elixir"));
+    assert_eq!(binding["driverHint"], json!("runtime_service"));
     assert_eq!(
         super::autopilot_runtime_binding_worker_ref(&aggregate),
         Some("desktopw:autopilot".to_string())
@@ -9866,7 +9866,7 @@ async fn resend_webhook_forwarding_retries_and_projects_delivery() -> Result<()>
 
     let mut config = test_config(static_dir.path().to_path_buf());
     config.resend_webhook_secret = Some(secret.clone());
-    config.runtime_elixir_base_url = Some(format!("http://{runtime_addr}"));
+    config.runtime_base_url = Some(format!("http://{runtime_addr}"));
     config.runtime_signing_key = Some("runtime-signing-key".to_string());
     config.runtime_signing_key_id = "runtime-v1".to_string();
     config.runtime_comms_delivery_ingest_path = "/internal/v1/comms/delivery-events".to_string();
@@ -9969,7 +9969,7 @@ async fn resend_webhook_records_forward_retrying_state_before_success() -> Resul
 
     let mut config = test_config(static_dir.path().to_path_buf());
     config.resend_webhook_secret = Some(secret.clone());
-    config.runtime_elixir_base_url = Some(format!("http://{runtime_addr}"));
+    config.runtime_base_url = Some(format!("http://{runtime_addr}"));
     config.runtime_signing_key = Some("runtime-signing-key".to_string());
     config.runtime_signing_key_id = "runtime-v1".to_string();
     config.runtime_comms_delivery_ingest_path = "/internal/v1/comms/delivery-events".to_string();
@@ -11190,7 +11190,7 @@ async fn whispers_pagination_and_validation_edges_match_contract() -> Result<()>
 }
 
 #[tokio::test]
-async fn runtime_routing_force_legacy_wins_over_user_override() -> Result<()> {
+async fn runtime_routing_force_control_service_wins_over_user_override() -> Result<()> {
     let static_dir = tempdir()?;
     std::fs::write(
         static_dir.path().join("index.html"),
@@ -11198,8 +11198,8 @@ async fn runtime_routing_force_legacy_wins_over_user_override() -> Result<()> {
     )?;
     let mut config = test_config(static_dir.path().to_path_buf());
     config.admin_emails = vec!["runtime-router@openagents.com".to_string()];
-    config.runtime_driver = "elixir".to_string();
-    config.runtime_force_legacy = true;
+    config.runtime_driver = "runtime_service".to_string();
+    config.runtime_force_control_service = true;
     config.runtime_overrides_enabled = true;
     let app = build_router(config);
     let token = authenticate_token(app.clone(), "runtime-router@openagents.com").await?;
@@ -11214,7 +11214,7 @@ async fn runtime_routing_force_legacy_wins_over_user_override() -> Result<()> {
             r#"{{
                     "scope_type":"user",
                     "scope_id":"{user_id}",
-                    "driver":"elixir",
+                    "driver":"runtime_service",
                     "is_active":true,
                     "reason":"canary"
                 }}"#
@@ -11231,8 +11231,8 @@ async fn runtime_routing_force_legacy_wins_over_user_override() -> Result<()> {
     let evaluate_response = app.oneshot(evaluate_request).await?;
     assert_eq!(evaluate_response.status(), StatusCode::OK);
     let body = read_json(evaluate_response).await?;
-    assert_eq!(body["data"]["driver"], json!("legacy"));
-    assert_eq!(body["data"]["reason"], json!("force_legacy"));
+    assert_eq!(body["data"]["driver"], json!("control_service"));
+    assert_eq!(body["data"]["reason"], json!("force_control_service"));
 
     Ok(())
 }
@@ -11246,8 +11246,8 @@ async fn runtime_routing_applies_autopilot_override_from_thread_binding() -> Res
     )?;
     let mut config = test_config(static_dir.path().to_path_buf());
     config.admin_emails = vec!["runtime-router@openagents.com".to_string()];
-    config.runtime_driver = "legacy".to_string();
-    config.runtime_force_legacy = false;
+    config.runtime_driver = "control_service".to_string();
+    config.runtime_force_control_service = false;
     config.runtime_overrides_enabled = true;
     let app = build_router(config);
     let token = authenticate_token(app.clone(), "runtime-router@openagents.com").await?;
@@ -11296,7 +11296,7 @@ async fn runtime_routing_applies_autopilot_override_from_thread_binding() -> Res
             r#"{{
                     "scope_type":"autopilot",
                     "scope_id":"{autopilot_id}",
-                    "driver":"elixir",
+                    "driver":"runtime_service",
                     "is_active":true
                 }}"#
         )))?;
@@ -11312,7 +11312,7 @@ async fn runtime_routing_applies_autopilot_override_from_thread_binding() -> Res
     let evaluate_response = app.oneshot(evaluate_request).await?;
     assert_eq!(evaluate_response.status(), StatusCode::OK);
     let body = read_json(evaluate_response).await?;
-    assert_eq!(body["data"]["driver"], json!("elixir"));
+    assert_eq!(body["data"]["driver"], json!("runtime_service"));
     assert_eq!(body["data"]["reason"], json!("autopilot_override"));
     assert_eq!(body["data"]["autopilot_id"], json!(autopilot_id));
 
@@ -11327,7 +11327,7 @@ async fn runtime_routing_canary_and_shadow_semantics_match_config() -> Result<()
         "<!doctype html><html><body>rust shell</body></html>",
     )?;
     let mut canary_config = test_config(static_dir.path().to_path_buf());
-    canary_config.runtime_driver = "legacy".to_string();
+    canary_config.runtime_driver = "control_service".to_string();
     canary_config.runtime_overrides_enabled = false;
     canary_config.runtime_canary_seed = "test-seed".to_string();
     canary_config.runtime_canary_user_percent = 100;
@@ -11346,12 +11346,12 @@ async fn runtime_routing_canary_and_shadow_semantics_match_config() -> Result<()
     let canary_response = canary_app.oneshot(canary_eval).await?;
     assert_eq!(canary_response.status(), StatusCode::OK);
     let canary_body = read_json(canary_response).await?;
-    assert_eq!(canary_body["data"]["driver"], json!("elixir"));
+    assert_eq!(canary_body["data"]["driver"], json!("runtime_service"));
     assert_eq!(canary_body["data"]["reason"], json!("user_canary"));
     assert_eq!(canary_body["data"]["shadow"]["mirrored"], json!(false));
 
     let mut default_config = test_config(static_dir.path().to_path_buf());
-    default_config.runtime_driver = "legacy".to_string();
+    default_config.runtime_driver = "control_service".to_string();
     default_config.runtime_overrides_enabled = false;
     default_config.runtime_canary_user_percent = 0;
     default_config.runtime_shadow_enabled = true;
@@ -11369,12 +11369,12 @@ async fn runtime_routing_canary_and_shadow_semantics_match_config() -> Result<()
     let default_response = default_app.oneshot(default_eval).await?;
     assert_eq!(default_response.status(), StatusCode::OK);
     let default_body = read_json(default_response).await?;
-    assert_eq!(default_body["data"]["driver"], json!("legacy"));
+    assert_eq!(default_body["data"]["driver"], json!("control_service"));
     assert_eq!(default_body["data"]["reason"], json!("default_driver"));
     assert_eq!(default_body["data"]["shadow"]["mirrored"], json!(true));
     assert_eq!(
         default_body["data"]["shadow"]["shadow_driver"],
-        json!("elixir")
+        json!("runtime_service")
     );
 
     Ok(())

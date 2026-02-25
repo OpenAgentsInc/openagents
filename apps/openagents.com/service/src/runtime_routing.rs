@@ -8,22 +8,24 @@ use crate::domain_store::{DomainStore, RuntimeDriverOverrideRecord};
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeDriver {
-    Legacy,
-    Elixir,
+    ControlService,
+    RuntimeService,
 }
 
 impl RuntimeDriver {
     pub fn as_str(self) -> &'static str {
         match self {
-            RuntimeDriver::Legacy => "legacy",
-            RuntimeDriver::Elixir => "elixir",
+            RuntimeDriver::ControlService => "control_service",
+            RuntimeDriver::RuntimeService => "runtime_service",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "legacy" => Some(RuntimeDriver::Legacy),
-            "elixir" => Some(RuntimeDriver::Elixir),
+            "control_service" | "control" | "legacy" | "laravel" | "openagents.com" => {
+                Some(RuntimeDriver::ControlService)
+            }
+            "runtime_service" | "runtime" | "elixir" => Some(RuntimeDriver::RuntimeService),
             _ => None,
         }
     }
@@ -40,7 +42,7 @@ pub struct RuntimeShadowStatus {
 pub struct RuntimeRoutingStatus {
     pub default_driver: RuntimeDriver,
     pub forced_driver: Option<RuntimeDriver>,
-    pub force_legacy: bool,
+    pub force_control_service: bool,
     pub overrides_enabled: bool,
     pub canary_user_percent: u8,
     pub canary_autopilot_percent: u8,
@@ -64,7 +66,7 @@ pub struct RuntimeRoutingDecision {
     pub default_driver: RuntimeDriver,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forced_driver: Option<RuntimeDriver>,
-    pub force_legacy: bool,
+    pub force_control_service: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_override: Option<RuntimeDriver>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,7 +96,7 @@ pub struct RuntimeRoutingService {
 struct RuntimeRoutingConfig {
     default_driver: RuntimeDriver,
     forced_driver: Option<RuntimeDriver>,
-    force_legacy: bool,
+    force_control_service: bool,
     overrides_enabled: bool,
     canary_user_percent: u8,
     canary_autopilot_percent: u8,
@@ -120,7 +122,7 @@ impl RuntimeRoutingService {
         RuntimeRoutingStatus {
             default_driver: self.config.default_driver,
             forced_driver: self.config.forced_driver,
-            force_legacy: self.config.force_legacy,
+            force_control_service: self.config.force_control_service,
             overrides_enabled: self.config.overrides_enabled,
             canary_user_percent: self.config.canary_user_percent,
             canary_autopilot_percent: self.config.canary_autopilot_percent,
@@ -150,10 +152,10 @@ impl RuntimeRoutingService {
             None => thread_store.autopilot_id_for_thread(&thread_id).await,
         };
 
-        if self.config.force_legacy {
+        if self.config.force_control_service {
             return self.decision(
-                RuntimeDriver::Legacy,
-                "force_legacy",
+                RuntimeDriver::ControlService,
+                "force_control_service",
                 autopilot_id,
                 None,
                 None,
@@ -253,7 +255,7 @@ impl RuntimeRoutingService {
             )
         {
             return self.decision(
-                RuntimeDriver::Elixir,
+                RuntimeDriver::RuntimeService,
                 "user_canary",
                 autopilot_id,
                 None,
@@ -275,7 +277,7 @@ impl RuntimeRoutingService {
             )
         {
             return self.decision(
-                RuntimeDriver::Elixir,
+                RuntimeDriver::RuntimeService,
                 "autopilot_canary",
                 autopilot_id,
                 None,
@@ -318,7 +320,7 @@ impl RuntimeRoutingService {
             reason: reason.to_string(),
             default_driver: self.config.default_driver,
             forced_driver: self.config.forced_driver,
-            force_legacy: self.config.force_legacy,
+            force_control_service: self.config.force_control_service,
             user_override,
             autopilot_override,
             autopilot_binding_driver,
@@ -329,7 +331,7 @@ impl RuntimeRoutingService {
                 mirrored,
                 sample_rate: self.config.shadow_sample_rate,
                 shadow_driver: if mirrored {
-                    Some(RuntimeDriver::Elixir)
+                    Some(RuntimeDriver::RuntimeService)
                 } else {
                     None
                 },
@@ -343,7 +345,7 @@ impl RuntimeRoutingService {
         thread_id: &str,
         primary_driver: RuntimeDriver,
     ) -> bool {
-        if !self.config.shadow_enabled || primary_driver != RuntimeDriver::Legacy {
+        if !self.config.shadow_enabled || primary_driver != RuntimeDriver::ControlService {
             return false;
         }
 
@@ -366,7 +368,8 @@ impl RuntimeRoutingService {
 
 impl RuntimeRoutingConfig {
     fn from_config(config: &Config) -> Self {
-        let default_driver = parse_driver(&config.runtime_driver).unwrap_or(RuntimeDriver::Legacy);
+        let default_driver =
+            parse_driver(&config.runtime_driver).unwrap_or(RuntimeDriver::ControlService);
         let forced_driver = config
             .runtime_force_driver
             .as_deref()
@@ -376,7 +379,7 @@ impl RuntimeRoutingConfig {
         Self {
             default_driver,
             forced_driver,
-            force_legacy: config.runtime_force_legacy,
+            force_control_service: config.runtime_force_control_service,
             overrides_enabled: config.runtime_overrides_enabled,
             canary_user_percent: config.runtime_canary_user_percent.min(100),
             canary_autopilot_percent: config.runtime_canary_autopilot_percent.min(100),
@@ -411,4 +414,35 @@ fn in_canary(seed: &str, scope: &str, scope_id: &str, percent: u8) -> bool {
     let mut first = [0u8; 4];
     first.copy_from_slice(&digest[..4]);
     (u32::from_be_bytes(first) % 100) < u32::from(percent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeDriver;
+
+    #[test]
+    fn runtime_driver_parse_supports_compat_aliases() {
+        assert_eq!(
+            RuntimeDriver::parse("legacy"),
+            Some(RuntimeDriver::ControlService)
+        );
+        assert_eq!(
+            RuntimeDriver::parse("elixir"),
+            Some(RuntimeDriver::RuntimeService)
+        );
+        assert_eq!(
+            RuntimeDriver::parse("control_service"),
+            Some(RuntimeDriver::ControlService)
+        );
+        assert_eq!(
+            RuntimeDriver::parse("runtime_service"),
+            Some(RuntimeDriver::RuntimeService)
+        );
+    }
+
+    #[test]
+    fn runtime_driver_as_str_uses_rust_era_labels() {
+        assert_eq!(RuntimeDriver::ControlService.as_str(), "control_service");
+        assert_eq!(RuntimeDriver::RuntimeService.as_str(), "runtime_service");
+    }
 }

@@ -1838,7 +1838,7 @@ fn admin_panel(
                         label for="override_scope_id" { "Scope id" }
                         input id="override_scope_id" type="text" name="scope_id" required;
                         label for="override_driver" { "Driver" }
-                        input id="override_driver" type="text" name="driver" placeholder="legacy|elixir" required;
+                        input id="override_driver" type="text" name="driver" placeholder="control_service|runtime_service (legacy|elixir aliases)" required;
                         label for="override_reason" { "Reason (optional)" }
                         input id="override_reason" type="text" name="reason";
                         label for="override_active" {

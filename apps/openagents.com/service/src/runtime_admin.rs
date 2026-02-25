@@ -319,7 +319,12 @@ pub(super) async fn runtime_routing_override(
     }
 
     let driver = RuntimeDriver::parse(&payload.driver)
-        .ok_or_else(|| validation_error("driver", "Driver must be one of: legacy, elixir."))?
+        .ok_or_else(|| {
+            validation_error(
+                "driver",
+                "Driver must be one of: control_service, runtime_service (legacy/elixir accepted).",
+            )
+        })?
         .as_str()
         .to_string();
 

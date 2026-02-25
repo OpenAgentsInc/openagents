@@ -4529,7 +4529,7 @@ async fn web_admin_runtime_routing_override(
                 "ok": false,
                 "error": {
                     "code": "invalid_driver",
-                    "message": "Driver must be one of: legacy, elixir.",
+                    "message": "Driver must be one of: control_service, runtime_service (legacy/elixir accepted).",
                 }
             }),
         );
@@ -7957,7 +7957,7 @@ async fn runtime_forward_delivery_payload(
 ) -> RuntimeDeliveryForwardResult {
     let Some(base_url) = state
         .config
-        .runtime_elixir_base_url
+        .runtime_base_url
         .as_deref()
         .and_then(|value| non_empty(value.to_string()))
     else {
@@ -13333,7 +13333,7 @@ fn runtime_internal_client(
     state: &AppState,
 ) -> Result<RuntimeInternalClient, (StatusCode, Json<ApiErrorResponse>)> {
     RuntimeInternalClient::from_base_url(
-        state.config.runtime_elixir_base_url.as_deref(),
+        state.config.runtime_base_url.as_deref(),
         COMPUTE_DASHBOARD_TIMEOUT_MS,
     )
     .map_err(|error| {
@@ -16564,8 +16564,10 @@ fn autopilot_runtime_binding_payload(aggregate: &AutopilotAggregate) -> serde_js
 
 fn runtime_driver_hint(runtime_type: &str) -> Option<&'static str> {
     match runtime_type.trim().to_ascii_lowercase().as_str() {
-        "elixir" | "runtime" => Some("elixir"),
-        "legacy" | "laravel" | "openagents.com" => Some("legacy"),
+        "runtime_service" | "runtime" | "elixir" => Some("runtime_service"),
+        "control_service" | "control" | "legacy" | "laravel" | "openagents.com" => {
+            Some("control_service")
+        }
         _ => None,
     }
 }

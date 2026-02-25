@@ -379,7 +379,7 @@ pub(super) fn stats_pools_fragment_response(pools: &[LiquidityPoolView]) -> Resp
 
 fn runtime_internal_client(state: &AppState) -> Result<RuntimeInternalClient, RuntimeClientError> {
     RuntimeInternalClient::from_base_url(
-        state.config.runtime_elixir_base_url.as_deref(),
+        state.config.runtime_base_url.as_deref(),
         COMPUTE_DASHBOARD_TIMEOUT_MS,
     )
 }

@@ -186,6 +186,10 @@ Retained control API surface (desktop/runtime/lightning dependent lanes):
    - `GET /api/v1/control/runtime-routing/status`
    - `POST /api/v1/control/runtime-routing/evaluate`
    - `POST /api/v1/control/runtime-routing/override`
+   - Runtime routing driver labels:
+     - `control_service` (control-service owned runtime lane)
+     - `runtime_service` (runtime internal service lane)
+     - Compatibility aliases (`legacy`, `elixir`) are accepted for migration input only.
 
 Desktop download artifact policy:
 

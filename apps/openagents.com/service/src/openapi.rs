@@ -1814,7 +1814,7 @@ fn request_example(key: &str) -> Option<Value> {
         "runtime_routing_override" => Some(json!({
             "scope_type": "user",
             "scope_id": "usr_123",
-            "driver": "elixir",
+            "driver": "runtime_service",
             "is_active": true,
             "reason": "canary cohort"
         })),
@@ -2070,7 +2070,7 @@ fn response_example(key: &str) -> Option<Value> {
                     "runtimeType": "runtime",
                     "runtimeRef": "desktopw:autopilot",
                     "isPrimary": true,
-                    "driverHint": "elixir",
+                    "driverHint": "runtime_service",
                     "lastSeenAt": "2026-02-22T00:00:00Z",
                     "meta": {"region": "us-central1"},
                     "createdAt": "2026-02-22T00:00:00Z",
@@ -3066,9 +3066,9 @@ fn response_example(key: &str) -> Option<Value> {
                     "override_target": null
                 },
                 "runtimeRouting": {
-                    "default_driver": "legacy",
+                    "default_driver": "control_service",
                     "forced_driver": null,
-                    "force_legacy": false
+                    "force_control_service": false
                 }
             }
         })),
@@ -3112,9 +3112,9 @@ fn response_example(key: &str) -> Option<Value> {
         })),
         "runtime_routing_status" => Some(json!({
             "data": {
-                "default_driver": "legacy",
+                "default_driver": "control_service",
                 "forced_driver": null,
-                "force_legacy": false,
+                "force_control_service": false,
                 "overrides_enabled": true,
                 "canary_user_percent": 0,
                 "canary_autopilot_percent": 0,
@@ -3127,7 +3127,7 @@ fn response_example(key: &str) -> Option<Value> {
                     {
                         "scope_type": "user",
                         "scope_id": "usr_123",
-                        "driver": "elixir",
+                        "driver": "runtime_service",
                         "is_active": true
                     }
                 ]
@@ -3138,21 +3138,21 @@ fn response_example(key: &str) -> Option<Value> {
                 "override": {
                     "scope_type": "user",
                     "scope_id": "usr_123",
-                    "driver": "elixir",
+                    "driver": "runtime_service",
                     "is_active": true
                 },
                 "status": {
-                    "default_driver": "legacy",
+                    "default_driver": "control_service",
                     "forced_driver": null,
-                    "force_legacy": false
+                    "force_control_service": false
                 }
             }
         })),
         "runtime_routing_evaluate" => Some(json!({
             "data": {
-                "driver": "elixir",
+                "driver": "runtime_service",
                 "reason": "user_override",
-                "default_driver": "legacy",
+                "default_driver": "control_service",
                 "shadow": {
                     "enabled": false,
                     "mirrored": false,

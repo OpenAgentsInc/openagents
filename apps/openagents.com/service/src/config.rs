@@ -7,7 +7,8 @@ use thiserror::Error;
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8787";
 const DEFAULT_LOG_FILTER: &str = "info";
 const DEFAULT_STATIC_DIR: &str = "apps/openagents.com/service/static";
-const DEFAULT_DESKTOP_DOWNLOAD_URL: &str = "https://github.com/OpenAgentsInc/openagents/releases/latest";
+const DEFAULT_DESKTOP_DOWNLOAD_URL: &str =
+    "https://github.com/OpenAgentsInc/openagents/releases/latest";
 const DEFAULT_AUTH_PROVIDER_MODE: &str = "workos";
 const DEFAULT_WORKOS_API_BASE_URL: &str = "https://api.workos.com";
 const DEFAULT_MOCK_MAGIC_CODE: &str = "123456";
@@ -61,8 +62,8 @@ const DEFAULT_RESEND_WEBHOOK_TOLERANCE_SECONDS: u64 = 300;
 const DEFAULT_GOOGLE_OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send";
 const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_GOOGLE_GMAIL_API_BASE_URL: &str = "https://gmail.googleapis.com";
-const DEFAULT_RUNTIME_DRIVER: &str = "legacy";
-const DEFAULT_RUNTIME_FORCE_LEGACY: bool = false;
+const DEFAULT_RUNTIME_DRIVER: &str = "control_service";
+const DEFAULT_RUNTIME_FORCE_CONTROL_SERVICE: bool = false;
 const DEFAULT_RUNTIME_CANARY_USER_PERCENT: u8 = 0;
 const DEFAULT_RUNTIME_CANARY_AUTOPILOT_PERCENT: u8 = 0;
 const DEFAULT_RUNTIME_CANARY_SEED: &str = "runtime-canary-v1";
@@ -139,7 +140,7 @@ pub struct Config {
     pub runtime_internal_signature_ttl_seconds: u64,
     pub runtime_internal_secret_fetch_path: String,
     pub runtime_internal_secret_cache_ttl_ms: u64,
-    pub runtime_elixir_base_url: Option<String>,
+    pub runtime_base_url: Option<String>,
     pub liquidity_stats_pool_ids: Vec<String>,
     pub runtime_signing_key: Option<String>,
     pub runtime_signing_key_id: String,
@@ -158,7 +159,7 @@ pub struct Config {
     pub google_gmail_api_base_url: String,
     pub runtime_driver: String,
     pub runtime_force_driver: Option<String>,
-    pub runtime_force_legacy: bool,
+    pub runtime_force_control_service: bool,
     pub runtime_canary_user_percent: u8,
     pub runtime_canary_autopilot_percent: u8,
     pub runtime_canary_seed: String,
@@ -522,8 +523,9 @@ impl Config {
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS);
 
-        let runtime_elixir_base_url = env::var("OA_RUNTIME_ELIXIR_BASE_URL")
+        let runtime_base_url = env::var("OA_RUNTIME_BASE_URL")
             .ok()
+            .or_else(|| env::var("OA_RUNTIME_ELIXIR_BASE_URL").ok())
             .map(|value| value.trim().trim_end_matches('/').to_string())
             .filter(|value| !value.is_empty());
 
@@ -545,29 +547,30 @@ impl Config {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_RUNTIME_SIGNING_KEY_ID.to_string());
 
-        let runtime_comms_delivery_ingest_path =
-            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_INGEST_PATH")
-                .ok()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH.to_string());
+        let runtime_comms_delivery_ingest_path = env::var("OA_RUNTIME_COMMS_DELIVERY_INGEST_PATH")
+            .ok()
+            .or_else(|| env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_INGEST_PATH").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_RUNTIME_COMMS_DELIVERY_INGEST_PATH.to_string());
 
-        let runtime_comms_delivery_timeout_ms =
-            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_TIMEOUT_MS")
-                .ok()
-                .and_then(|value| value.parse::<u64>().ok())
-                .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS)
-                .max(500);
+        let runtime_comms_delivery_timeout_ms = env::var("OA_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS")
+            .ok()
+            .or_else(|| env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_TIMEOUT_MS").ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_TIMEOUT_MS)
+            .max(500);
 
-        let runtime_comms_delivery_max_retries =
-            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_MAX_RETRIES")
-                .ok()
-                .and_then(|value| value.parse::<u32>().ok())
-                .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES);
+        let runtime_comms_delivery_max_retries = env::var("OA_RUNTIME_COMMS_DELIVERY_MAX_RETRIES")
+            .ok()
+            .or_else(|| env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_MAX_RETRIES").ok())
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_MAX_RETRIES);
 
         let runtime_comms_delivery_retry_backoff_ms =
-            env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_RETRY_BACKOFF_MS")
+            env::var("OA_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS")
                 .ok()
+                .or_else(|| env::var("OA_RUNTIME_ELIXIR_COMMS_DELIVERY_RETRY_BACKOFF_MS").ok())
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(DEFAULT_RUNTIME_COMMS_DELIVERY_RETRY_BACKOFF_MS);
 
@@ -620,22 +623,25 @@ impl Config {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_GOOGLE_GMAIL_API_BASE_URL.to_string());
 
-        let runtime_driver = env::var("OA_RUNTIME_DRIVER")
+        let runtime_driver = env::var("OA_RUNTIME_ROUTING_DRIVER")
             .ok()
+            .or_else(|| env::var("OA_RUNTIME_DRIVER").ok())
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_RUNTIME_DRIVER.to_string())
             .trim()
             .to_lowercase();
 
-        let runtime_force_driver = env::var("OA_RUNTIME_FORCE_DRIVER")
+        let runtime_force_driver = env::var("OA_RUNTIME_ROUTING_FORCE_DRIVER")
             .ok()
+            .or_else(|| env::var("OA_RUNTIME_FORCE_DRIVER").ok())
             .map(|value| value.trim().to_lowercase())
             .filter(|value| !value.is_empty());
 
-        let runtime_force_legacy = env::var("OA_RUNTIME_FORCE_LEGACY")
+        let runtime_force_control_service = env::var("OA_RUNTIME_FORCE_CONTROL_SERVICE")
             .ok()
+            .or_else(|| env::var("OA_RUNTIME_FORCE_LEGACY").ok())
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
-            .unwrap_or(DEFAULT_RUNTIME_FORCE_LEGACY);
+            .unwrap_or(DEFAULT_RUNTIME_FORCE_CONTROL_SERVICE);
 
         let runtime_canary_user_percent = env::var("OA_RUNTIME_CANARY_USER_PERCENT")
             .ok()
@@ -804,7 +810,7 @@ impl Config {
             runtime_internal_signature_ttl_seconds,
             runtime_internal_secret_fetch_path,
             runtime_internal_secret_cache_ttl_ms,
-            runtime_elixir_base_url,
+            runtime_base_url,
             liquidity_stats_pool_ids,
             runtime_signing_key,
             runtime_signing_key_id,
@@ -823,7 +829,7 @@ impl Config {
             google_gmail_api_base_url,
             runtime_driver,
             runtime_force_driver,
-            runtime_force_legacy,
+            runtime_force_control_service,
             runtime_canary_user_percent,
             runtime_canary_autopilot_percent,
             runtime_canary_seed,
@@ -931,7 +937,7 @@ impl Config {
             runtime_internal_secret_fetch_path: DEFAULT_RUNTIME_INTERNAL_SECRET_FETCH_PATH
                 .to_string(),
             runtime_internal_secret_cache_ttl_ms: DEFAULT_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS,
-            runtime_elixir_base_url: None,
+            runtime_base_url: None,
             liquidity_stats_pool_ids: vec!["llp-main".to_string()],
             runtime_signing_key: None,
             runtime_signing_key_id: DEFAULT_RUNTIME_SIGNING_KEY_ID.to_string(),
@@ -950,9 +956,9 @@ impl Config {
             google_oauth_scopes: "https://www.googleapis.com/auth/gmail.readonly".to_string(),
             google_oauth_token_url: DEFAULT_GOOGLE_OAUTH_TOKEN_URL.to_string(),
             google_gmail_api_base_url: DEFAULT_GOOGLE_GMAIL_API_BASE_URL.to_string(),
-            runtime_driver: "legacy".to_string(),
+            runtime_driver: "control_service".to_string(),
             runtime_force_driver: None,
-            runtime_force_legacy: false,
+            runtime_force_control_service: false,
             runtime_canary_user_percent: 0,
             runtime_canary_autopilot_percent: 0,
             runtime_canary_seed: DEFAULT_RUNTIME_CANARY_SEED.to_string(),
