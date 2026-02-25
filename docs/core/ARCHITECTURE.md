@@ -412,7 +412,7 @@ This sequencing is dependency-driven and aligns to the active plan set.
    - Retire legacy chat aliases/route split/runtime driver aliases after parity evidence.
 8. Phase 7: repository debt and invariant cleanup
    - Complete legacy web tree removal/archival (completed for tracked PHP/TS legacy lanes in OA-AUDIT `#2212`).
-   - Resolve `INV-12` workflow-file conflict.
+   - Resolve `INV-12` workflow-file conflict (completed in OA-AUDIT `#2213`).
 
 ## Repository Shape (Accurate Current State)
 
@@ -436,12 +436,13 @@ Shared code roots:
 
 Tracked migration-debt lanes still present under `apps/openagents.com/`:
 
-1. Nested `.github/workflows/` files (conflicts with `INV-12` until removed/relocated).
+1. None. Retained tracked surface is `apps/openagents.com/service/` only.
 
 Legacy web code removal status:
 
 1. Tracked PHP/TS legacy lanes were archived and removed in OA-AUDIT `#2212`.
 2. Archive manifest: `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`.
+3. Residual nested workflow files were removed in OA-AUDIT `#2213` to satisfy `INV-12`.
 
 ## Known Drift to Resolve
 
@@ -450,7 +451,6 @@ To keep this architecture fully truthful, these drifts are explicitly acknowledg
 1. Target-state "web landing-only" is not yet complete; control service still hosts broad web/API lanes.
 2. Aegis is architected and planned but not yet implemented as a dedicated runtime namespace.
 3. EP212 parity work remains open on wallet custody realism, L402 tooling parity, and paywall self-serve earnings.
-4. Invariant `INV-12` and current tracked workflow files are in conflict and require cleanup.
 
 ## Verification Baseline
 

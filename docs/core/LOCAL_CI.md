@@ -5,6 +5,16 @@ scripts in this repository.
 
 GitHub workflow automation is intentionally not used for CI in this repo.
 
+## INV-12 Verification
+
+Before releasing policy/invariant changes, verify no tracked workflow files exist:
+
+```bash
+git ls-files | rg '/\\.github/workflows/'
+```
+
+Expected result: no output.
+
 ## Install Hooks
 
 From repository root:
