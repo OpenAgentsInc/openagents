@@ -8,7 +8,6 @@ members = [
     "apps/lightning-wallet-executor",
     "crates/adjutant",
     "crates/agent",
-    "crates/ai-server",
     "crates/arrow",
     "crates/autopilot_app",
     "crates/autopilot-inbox-domain",
@@ -17,7 +16,6 @@ members = [
     "crates/autopilot-core",
     "crates/autopilot-spacetime",
     "crates/codex-client",
-    "crates/codex-mcp",
     "crates/compute",
     "crates/citrea",
     "crates/dsrs",
@@ -33,7 +31,6 @@ members = [
     "crates/nostr/core",
     "crates/nostr/client",
     "crates/openagents-cli",
-    "crates/openagents-app-state",
     "crates/openagents-codex-control",
     "crates/openagents-client-core",
     "crates/openagents-l402",
@@ -46,12 +43,10 @@ members = [
     "crates/rlm",
     "crates/spark",
     "crates/vim",
-    "crates/voice",
     "crates/wgpui",
     "crates/protocol",
     "crates/openagents-proto",
     "crates/openagents-runtime-client",
-    "crates/testing",
     "crates/ws-test",
 ]
 
@@ -187,7 +182,6 @@ nostr = { path = "crates/nostr/core" }
 dsrs = { path = "crates/dsrs" }
 dsrs-macros = { path = "crates/dsrs-macros" }
 openagents-utils = { path = "crates/openagents-utils" }
-ai-server = { path = "crates/ai-server" }
 autopilot-inbox-domain = { path = "crates/autopilot-inbox-domain" }
 
 # External crates

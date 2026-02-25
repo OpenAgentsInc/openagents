@@ -15,8 +15,8 @@ Proposed grouping (adjust as needed):
 - `crates/platform/`: agent, protocol, runtime, relay, compute, gateway, lm-router,
   local-inference, nostr (core + client), issues, openagents-utils
 - `crates/ui/`: wgpui, editor, vim
-- `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, spark, voice
-- `crates/tools/`: arrow, testing, ws-test
+- `crates/integrations/`: gpt-oss, codex-client, spark
+- `crates/tools/`: arrow, ws-test
 
 Proposed steps:
 1. Create the group folders under `crates/` and move the crate directories.
@@ -36,10 +36,6 @@ outcomes for self-improvement and optimization.
 The agent crate defines the core data model for sovereign agents: configs, lifecycle states, spawn
 requests, and registry persistence. It owns identity and wallet metadata but does not execute
 agents itself.
-
-## ai-server
-The ai-server crate manages the local AI Gateway sidecar (Bun/JS), including dependency install,
-process lifecycle, port checks, and health/analytics helpers used by desktop flows.
 
 ## arrow
 The arrow crate provides happy-path testing utilities for Autopilot, including scenario-driven
@@ -65,10 +61,6 @@ thread panels, and desktop scaffolding used by the native desktop host.
 ## codex-client
 The codex-client crate is a Rust client for the Codex app-server JSON-RPC API, with streaming
 support and typed request/response helpers.
-
-## codex-mcp
-The codex-mcp crate provides minimal MCP (Model Context Protocol) JSON-RPC helpers for Codex-style
-stdio servers, focused on the `tools/list` and `tools/call` flow.
 
 ## compute
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It bids on jobs,
@@ -148,15 +140,8 @@ and provider mode for selling NIP-90 compute, with relay and wallet integration.
 The rlm crate is the Recursive Language Model execution engine, with tools for long-context
 analysis and optional DSPy integration.
 
-## testing
-The testing crate provides ADR compliance checks and meta-coverage tests for the OpenAgents
-workspace.
-
 ## vim
 The vim crate is an editor-agnostic Vim emulation layer with mode, motion, and operator handling.
-
-## voice
-The voice crate provides Whisper-based speech-to-text transcription utilities.
 
 ## wgpui
 The wgpui crate is the GPU-accelerated UI library used across desktop and web, providing layout,
