@@ -9,7 +9,7 @@ This file is a map. Start here, then follow the linked canonical docs.
 - Repository map / ownership: `docs/PROJECT_OVERVIEW.md`
 - Priorities and sequencing: `docs/ROADMAP.md`
 - Vocabulary authority: `docs/GLOSSARY.md`
-- Canonical architecture: `docs/ARCHITECTURE-RUST.md`
+- Canonical architecture: `docs/ARCHITECTURE.md`
 - Canonical build roadmap: `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - Canonical deploy/process matrix: `docs/DEPLOYMENT_RUST_SERVICES.md`
 - ADR index: `docs/adr/INDEX.md`
@@ -18,7 +18,7 @@ This file is a map. Start here, then follow the linked canonical docs.
 
 Canonical architecture and migration sequencing:
 
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/ARCHITECTURE.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - `docs/DEPLOYMENT_RUST_SERVICES.md`
 

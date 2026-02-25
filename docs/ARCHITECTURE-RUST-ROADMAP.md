@@ -15,7 +15,7 @@ This roadmap defines the Rust-only migration and hardening sequence.
 
 ## Phase 1: Authority and Topology Lock
 
-1. Keep `docs/ARCHITECTURE-RUST.md` as canonical architecture authority.
+1. Keep `docs/ARCHITECTURE.md` as canonical architecture authority.
 2. Keep WorkOS as identity/auth provider with control service as auth/session authority.
 3. Enforce no cross-plane SQL joins in production code.
 4. Enforce no authority mutations over Khala WebSocket lanes.

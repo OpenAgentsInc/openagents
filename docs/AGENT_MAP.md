@@ -12,7 +12,7 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 
 ## Architecture and Contract Authority
 
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/ARCHITECTURE.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - `docs/adr/INDEX.md`
 - `docs/execution/README.md`
@@ -54,4 +54,4 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 - Web control/shell behavior: `apps/openagents.com/service/`, `apps/openagents.com/web-shell/`
 - Desktop behavior: `apps/autopilot-desktop/`
 - iOS behavior: `apps/autopilot-ios/`
-- Architecture/boundaries: `docs/ARCHITECTURE-RUST.md` + new ADR in `docs/adr/`
+- Architecture/boundaries: `docs/ARCHITECTURE.md` + new ADR in `docs/adr/`

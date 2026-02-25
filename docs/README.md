@@ -14,7 +14,7 @@ This tree contains current Rust-era documentation and forward strategy only.
 
 ## Canonical Architecture and Program Docs
 
-- `ARCHITECTURE-RUST.md`
+- `ARCHITECTURE.md`
 - `ARCHITECTURE-RUST-ROADMAP.md`
 - `DEPLOYMENT_RUST_SERVICES.md`
 - `RUST_STAGING_PROD_VALIDATION.md`
