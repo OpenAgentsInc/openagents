@@ -24,7 +24,6 @@ Rust control service scaffold for `apps/openagents.com`.
   - `DELETE /api/tokens/current`
   - `DELETE /api/tokens/:token_id`
   - `DELETE /api/tokens`
-  - `POST /api/khala/token`
   - `GET /api/settings/profile`
   - `PATCH /api/settings/profile`
   - `DELETE /api/settings/profile`
@@ -75,16 +74,6 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_AUTH_CHALLENGE_TTL_SECONDS` (default: `600`)
 - `OA_AUTH_ACCESS_TTL_SECONDS` (default: `3600`)
 - `OA_AUTH_REFRESH_TTL_SECONDS` (default: `2592000`)
-- `OA_KHALA_TOKEN_ENABLED` (`true|false`, default: `true`)
-- `OA_KHALA_TOKEN_SIGNING_KEY` / `KHALA_TOKEN_SIGNING_KEY` (required for khala token mint)
-- `OA_KHALA_TOKEN_ISSUER` (default: `https://openagents.com`)
-- `OA_KHALA_TOKEN_AUDIENCE` (default: `openagents-khala`)
-- `OA_KHALA_TOKEN_SUBJECT_PREFIX` (default: `user`)
-- `OA_KHALA_TOKEN_KEY_ID` (default: `khala-auth-v1`)
-- `OA_KHALA_TOKEN_CLAIMS_VERSION` (default: `oa_khala_claims_v1`)
-- `OA_KHALA_TOKEN_TTL_SECONDS` (default: `300`)
-- `OA_KHALA_TOKEN_MIN_TTL_SECONDS` (default: `60`)
-- `OA_KHALA_TOKEN_MAX_TTL_SECONDS` (default: `900`)
 - `OA_SYNC_TOKEN_ENABLED` (`true|false`, default: `true`)
 - `OA_SYNC_TOKEN_SIGNING_KEY` / `SYNC_TOKEN_SIGNING_KEY` (required for sync token mint)
 - `OA_SYNC_TOKEN_ISSUER` (default: `https://openagents.com`)
@@ -123,6 +112,11 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_COMPAT_CONTROL_MAX_CLIENT_BUILD_ID` (optional upper support window)
 - `OA_COMPAT_CONTROL_MIN_SCHEMA_VERSION` (default: `1`)
 - `OA_COMPAT_CONTROL_MAX_SCHEMA_VERSION` (default: `1`)
+
+## Migration Notes
+
+- `POST /api/khala/token` is retired and no longer served by control.
+- Clients must use `POST /api/sync/token` (or `/api/spacetime/token` aliases) for sync claims.
 
 ## Run locally
 

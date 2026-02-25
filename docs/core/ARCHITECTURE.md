@@ -155,7 +155,7 @@ Owns:
 
 1. WorkOS-authenticated identity/session binding and revocation.
 2. Org/device/session authorization state.
-3. Sync token issuance (current Khala token + planned Spacetime websocket claim issuance).
+3. Sync token issuance for Spacetime websocket claims.
 4. Control API entry point and route orchestration.
 5. Desktop download redirect authority via `OA_DESKTOP_DOWNLOAD_URL`.
 
@@ -176,8 +176,7 @@ Current exposed API/web groups (implemented):
    - `/api/tokens*`
    - `/api/orgs/*`, `/api/policy/authorize`
 4. Runtime sync + worker control lanes:
-   - `/api/sync/token`, `/api/v1/sync/token`, `/api/khala/token` (current)
-   - Spacetime token/claim endpoints (planned under active replacement plan)
+   - `/api/sync/token`, `/api/v1/sync/token`, `/api/spacetime/token`, `/api/v1/spacetime/token`
    - `/api/runtime/codex/workers*`
    - `/api/runtime/threads*`
    - `/api/runtime/workers*`

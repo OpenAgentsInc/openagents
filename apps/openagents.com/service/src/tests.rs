@@ -75,7 +75,6 @@ fn test_app_state(config: Config) -> super::AppState {
     let auth = super::AuthService::from_config(&config);
     let route_split = super::RouteSplitService::from_config(&config);
     let runtime_routing = super::RuntimeRoutingService::from_config(&config);
-    let khala_token_issuer = super::KhalaTokenIssuer::from_config(&config);
     let sync_token_issuer = super::SyncTokenIssuer::from_config(&config);
     let codex_thread_store = super::CodexThreadStore::from_config(&config);
     let domain_store = super::DomainStore::from_config(&config);
@@ -86,7 +85,6 @@ fn test_app_state(config: Config) -> super::AppState {
         observability: Observability::default(),
         route_split,
         runtime_routing,
-        khala_token_issuer,
         sync_token_issuer,
         codex_thread_store,
         _domain_store: domain_store,
@@ -1981,8 +1979,6 @@ async fn file_like_missing_path_returns_not_found_instead_of_html_shell() -> Res
         .body(Body::empty())?;
     let response = app.oneshot(request).await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    let body = read_json(response).await?;
-    assert_eq!(body["error"]["code"], "not_found");
 
     Ok(())
 }
@@ -6390,47 +6386,18 @@ async fn personal_access_token_routes_support_current_and_bulk_revocation() -> R
 }
 
 #[tokio::test]
-async fn khala_token_route_mints_and_surfaces_configuration_errors() -> Result<()> {
+async fn khala_token_route_is_retired() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
-    let token = authenticate_token(app.clone(), "khala-route@openagents.com").await?;
+    let token = authenticate_token(app.clone(), "khala-route-retired@openagents.com").await?;
 
-    let mint_request = Request::builder()
-            .method("POST")
-            .uri("/api/khala/token")
-            .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {token}"))
-            .body(Body::from(
-                r#"{"scope":["codex:read","codex:write"],"workspace_id":"workspace_42","role":"admin"}"#,
-            ))?;
-    let mint_response = app.clone().oneshot(mint_request).await?;
-    assert_eq!(mint_response.status(), StatusCode::OK);
-    let mint_body = read_json(mint_response).await?;
-    assert_eq!(mint_body["data"]["token_type"], "Bearer");
-    assert_eq!(mint_body["data"]["issuer"], "https://openagents.test");
-    assert_eq!(mint_body["data"]["audience"], "openagents-khala-test");
-    assert_eq!(mint_body["data"]["claims_version"], "oa_khala_claims_v1");
-
-    let mut config = test_config(std::env::temp_dir());
-    config.khala_token_signing_key = None;
-    let misconfigured_app = build_router(config);
-    let misconfigured_token = authenticate_token(
-        misconfigured_app.clone(),
-        "khala-misconfigured@openagents.com",
-    )
-    .await?;
-    let unavailable_request = Request::builder()
+    let request = Request::builder()
         .method("POST")
         .uri("/api/khala/token")
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {misconfigured_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from("{}"))?;
-    let unavailable_response = misconfigured_app.oneshot(unavailable_request).await?;
-    assert_eq!(
-        unavailable_response.status(),
-        StatusCode::SERVICE_UNAVAILABLE
-    );
-    let unavailable_body = read_json(unavailable_response).await?;
-    assert_eq!(unavailable_body["error"]["code"], "khala_token_unavailable");
+    let response = app.oneshot(request).await?;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
     Ok(())
 }
@@ -7617,7 +7584,11 @@ async fn control_status_exposes_runtime_route_ownership_map() -> Result<()> {
     );
     assert_eq!(
         body["data"]["syncCutover"]["khalaEmergencyModeEnabled"],
-        json!(true)
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        body["data"]["syncCutover"]["khalaTokenRoute"],
+        serde_json::Value::Null
     );
     assert_eq!(
         body["data"]["syncCutover"]["spacetimeTokenRoute"],

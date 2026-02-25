@@ -47,7 +47,6 @@ mod auth_routes;
 pub mod codex_threads;
 pub mod config;
 pub mod domain_store;
-pub mod khala_token;
 pub mod observability;
 pub mod openapi;
 mod render;
@@ -91,7 +90,6 @@ use crate::domain_store::{
     UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput, UserIntegrationRecord,
     UserSparkWalletRecord, WhisperRecord, ZoneCount,
 };
-use crate::khala_token::{KhalaTokenError, KhalaTokenIssueRequest, KhalaTokenIssuer};
 use crate::observability::{AuditEvent, Observability};
 use crate::openapi::{
     ROUTE_AGENT_PAYMENTS_BALANCE, ROUTE_AGENT_PAYMENTS_INVOICE, ROUTE_AGENT_PAYMENTS_PAY,
@@ -101,13 +99,13 @@ use crate::openapi::{
     ROUTE_AUTH_VERIFY, ROUTE_AUTOPILOTS, ROUTE_AUTOPILOTS_BY_ID, ROUTE_AUTOPILOTS_STREAM,
     ROUTE_AUTOPILOTS_THREADS, ROUTE_INBOX_REFRESH, ROUTE_INBOX_REPLY_SEND,
     ROUTE_INBOX_THREAD_APPROVE, ROUTE_INBOX_THREAD_DETAIL, ROUTE_INBOX_THREAD_REJECT,
-    ROUTE_INBOX_THREADS, ROUTE_KHALA_TOKEN, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID,
-    ROUTE_L402_PAYWALLS, ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID,
-    ROUTE_L402_TRANSACTIONS, ROUTE_L402_WALLET, ROUTE_LEGACY_CHAT_STREAM,
-    ROUTE_LEGACY_CHATS_STREAM, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION,
-    ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY, ROUTE_ME, ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE,
-    ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE, ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK,
-    ROUTE_POLICY_AUTHORIZE, ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
+    ROUTE_INBOX_THREADS, ROUTE_L402_DEPLOYMENTS, ROUTE_L402_PAYWALL_BY_ID, ROUTE_L402_PAYWALLS,
+    ROUTE_L402_SETTLEMENTS, ROUTE_L402_TRANSACTION_BY_ID, ROUTE_L402_TRANSACTIONS,
+    ROUTE_L402_WALLET, ROUTE_LEGACY_CHAT_STREAM, ROUTE_LEGACY_CHATS_STREAM,
+    ROUTE_LIGHTNING_OPS_CONTROL_PLANE_MUTATION, ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY, ROUTE_ME,
+    ROUTE_OPENAPI_JSON, ROUTE_ORGS_ACTIVE, ROUTE_ORGS_MEMBERSHIPS, ROUTE_PAYMENTS_INVOICE,
+    ROUTE_PAYMENTS_PAY, ROUTE_PAYMENTS_SEND_SPARK, ROUTE_POLICY_AUTHORIZE,
+    ROUTE_RUNTIME_CODEX_WORKER_BY_ID, ROUTE_RUNTIME_CODEX_WORKER_EVENTS,
     ROUTE_RUNTIME_CODEX_WORKER_REQUESTS, ROUTE_RUNTIME_CODEX_WORKER_STOP,
     ROUTE_RUNTIME_CODEX_WORKER_STREAM, ROUTE_RUNTIME_CODEX_WORKERS,
     ROUTE_RUNTIME_INTERNAL_SECRET_FETCH, ROUTE_RUNTIME_SKILLS_RELEASE,
@@ -275,7 +273,6 @@ struct AppState {
     observability: Observability,
     route_split: RouteSplitService,
     runtime_routing: RuntimeRoutingService,
-    khala_token_issuer: KhalaTokenIssuer,
     sync_token_issuer: SyncTokenIssuer,
     codex_thread_store: CodexThreadStore,
     _domain_store: DomainStore,
@@ -1023,16 +1020,6 @@ struct CreateTokenRequestPayload {
 }
 
 #[derive(Debug, Deserialize)]
-struct KhalaTokenRequestPayload {
-    #[serde(default)]
-    scope: Vec<String>,
-    #[serde(default)]
-    workspace_id: Option<String>,
-    #[serde(default)]
-    role: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct UpdateProfileRequestPayload {
     name: String,
 }
@@ -1322,7 +1309,6 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let auth = AuthService::from_config(&config);
     let route_split = RouteSplitService::from_config(&config);
     let runtime_routing = RuntimeRoutingService::from_config(&config);
-    let khala_token_issuer = KhalaTokenIssuer::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let codex_thread_store = CodexThreadStore::from_config(&config);
     let domain_store = DomainStore::from_config(&config);
@@ -1333,7 +1319,6 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         observability,
         route_split,
         runtime_routing,
-        khala_token_issuer,
         sync_token_issuer,
         codex_thread_store,
         _domain_store: domain_store,
@@ -6910,82 +6895,6 @@ async fn delete_all_personal_access_tokens(
         StatusCode::OK,
         Json(serde_json::json!({ "data": { "deletedCount": deleted_count } })),
     ))
-}
-
-async fn khala_token(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<KhalaTokenRequestPayload>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
-    let access_token = access_token_from_headers(&headers)
-        .ok_or_else(|| unauthorized_error("Unauthenticated."))?;
-
-    let session = state
-        .auth
-        .session_or_pat_from_access_token(&access_token)
-        .await
-        .map_err(map_auth_error)?;
-
-    let mut scope = Vec::new();
-    for entry in payload.scope {
-        let value = entry.trim();
-        if value.chars().count() > 120 {
-            return Err(validation_error(
-                "scope",
-                "Scope entries may not be greater than 120 characters.",
-            ));
-        }
-
-        if !value.is_empty() {
-            scope.push(value.to_string());
-        }
-    }
-
-    let workspace_id = payload
-        .workspace_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
-    if workspace_id
-        .as_ref()
-        .map(|value| value.chars().count() > 120)
-        .unwrap_or(false)
-    {
-        return Err(validation_error(
-            "workspace_id",
-            "Workspace id may not be greater than 120 characters.",
-        ));
-    }
-
-    let role = payload
-        .role
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
-    if role
-        .as_deref()
-        .map(|value| !matches!(value, "member" | "admin" | "owner"))
-        .unwrap_or(false)
-    {
-        return Err(validation_error(
-            "role",
-            "Role must be one of member, admin, owner.",
-        ));
-    }
-
-    let issued = state
-        .khala_token_issuer
-        .issue(KhalaTokenIssueRequest {
-            user_id: session.user.id.clone(),
-            scope,
-            workspace_id,
-            role,
-        })
-        .map_err(map_khala_error)?;
-
-    Ok(ok_data(issued))
 }
 
 async fn org_memberships(
@@ -14658,8 +14567,6 @@ async fn control_status(
             "runtimeRouteOwnership": runtime_route_ownership(),
             "syncCutover": {
                 "defaultTransport": "spacetime_ws",
-                "khalaEmergencyModeEnabled": state.config.khala_token_enabled,
-                "khalaTokenRoute": ROUTE_KHALA_TOKEN,
                 "spacetimeTokenRoute": ROUTE_SPACETIME_TOKEN,
             }
         }
@@ -14782,21 +14689,6 @@ fn map_sync_error(error: SyncTokenError) -> (StatusCode, Json<ApiErrorResponse>)
         SyncTokenError::Unavailable { message } => error_response_with_status(
             StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorCode::SyncTokenUnavailable,
-            message,
-        ),
-    }
-}
-
-fn map_khala_error(error: KhalaTokenError) -> (StatusCode, Json<ApiErrorResponse>) {
-    match error {
-        KhalaTokenError::InvalidRequest { message } => error_response_with_status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            ApiErrorCode::InvalidRequest,
-            message,
-        ),
-        KhalaTokenError::Unavailable { message } => error_response_with_status(
-            StatusCode::SERVICE_UNAVAILABLE,
-            ApiErrorCode::KhalaTokenUnavailable,
             message,
         ),
     }

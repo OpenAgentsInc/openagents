@@ -23,7 +23,6 @@ pub const ROUTE_AUTOPILOTS_STREAM: &str = "/api/autopilots/:autopilot/stream";
 pub const ROUTE_TOKENS: &str = "/api/tokens";
 pub const ROUTE_TOKENS_CURRENT: &str = "/api/tokens/current";
 pub const ROUTE_TOKENS_BY_ID: &str = "/api/tokens/:token_id";
-pub const ROUTE_KHALA_TOKEN: &str = "/api/khala/token";
 pub const ROUTE_ORGS_MEMBERSHIPS: &str = "/api/orgs/memberships";
 pub const ROUTE_ORGS_ACTIVE: &str = "/api/orgs/active";
 pub const ROUTE_POLICY_AUTHORIZE: &str = "/api/policy/authorize";
@@ -397,18 +396,6 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         success_status: "200",
         request_example: None,
         response_example: Some("tokens_delete_all"),
-    },
-    OpenApiContract {
-        method: "post",
-        route_path: ROUTE_KHALA_TOKEN,
-        operation_id: "khalaToken",
-        summary: "Issue a short-lived Khala identity token.",
-        tag: "auth",
-        secured: true,
-        deprecated: false,
-        success_status: "200",
-        request_example: Some("khala_token"),
-        response_example: Some("khala_token"),
     },
     OpenApiContract {
         method: "get",
@@ -1648,11 +1635,6 @@ fn request_example(key: &str) -> Option<Value> {
             "abilities": ["chat:read", "chat:write"],
             "expires_at": "2026-03-01T00:00:00Z"
         })),
-        "khala_token" => Some(json!({
-            "scope": ["codex:read", "codex:write"],
-            "workspace_id": "workspace_42",
-            "role": "admin"
-        })),
         "settings_profile_update" => Some(json!({
             "name": "Updated Name"
         })),
@@ -2186,23 +2168,6 @@ fn response_example(key: &str) -> Option<Value> {
         "tokens_delete_all" => Some(json!({
             "data": {
                 "deletedCount": 2
-            }
-        })),
-        "khala_token" => Some(json!({
-            "data": {
-                "token": "eyJ...",
-                "token_type": "Bearer",
-                "expires_in": 300,
-                "issued_at": "2026-02-22T00:00:00Z",
-                "expires_at": "2026-02-22T00:05:00Z",
-                "issuer": "https://openagents.test",
-                "audience": "openagents-khala-test",
-                "subject": "user:user_123",
-                "claims_version": "oa_khala_claims_v1",
-                "scope": ["codex:read", "codex:write"],
-                "workspace_id": "workspace_42",
-                "role": "admin",
-                "kid": "khala-auth-test-v1"
             }
         })),
         "settings_profile" => Some(json!({
@@ -3386,5 +3351,16 @@ mod tests {
             .and_then(|post| post.get("deprecated"))
             .and_then(Value::as_bool);
         assert_eq!(legacy_path_stream, Some(true));
+    }
+
+    #[test]
+    fn omits_retired_khala_token_route() {
+        let document = openapi_document();
+        let has_khala_token = document
+            .get("paths")
+            .and_then(Value::as_object)
+            .map(|paths| paths.contains_key("/api/khala/token"))
+            .unwrap_or(false);
+        assert!(!has_khala_token);
     }
 }

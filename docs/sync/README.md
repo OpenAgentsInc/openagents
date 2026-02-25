@@ -21,6 +21,10 @@ Current-state Khala sync documentation and runbooks (legacy lane during replacem
 - `SPACETIME_REPLAY_RESUME_TEST_EXPANSION.md`: cross-surface replay/resume/reconnect test matrix and unified verification script
 - canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
 
+Endpoint retirement note (2026-02-25):
+- Control endpoint `POST /api/khala/token` is retired.
+- Sync claim issuance is `POST /api/sync/token` with Spacetime aliases `POST /api/spacetime/token` and `POST /api/v1/spacetime/token`.
+
 Spacetime replacement authority plans:
 - `docs/plans/spacetimedb-full-integration.md`
 - `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`

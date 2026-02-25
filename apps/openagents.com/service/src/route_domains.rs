@@ -162,7 +162,6 @@ fn add_settings_inbox_token_routes(router: Router<AppState>) -> Router<AppState>
 
 fn add_org_sync_social_routes(router: Router<AppState>) -> Router<AppState> {
     router
-        .route(ROUTE_KHALA_TOKEN, post(khala_token))
         .route(ROUTE_SPACETIME_TOKEN, post(sync_token))
         .route(ROUTE_ORGS_MEMBERSHIPS, get(org_memberships))
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))

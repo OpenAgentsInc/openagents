@@ -63,7 +63,7 @@ What is already local-capable:
 
 Where coupling is strongest today:
 
-1. Desktop auth/session and runtime sync depend on control API (`/api/auth/*`, `/api/khala/token`, `/api/runtime/*`, `/sync/socket/websocket`).
+1. Desktop auth/session and runtime sync depend on control API (`/api/auth/*`, `/api/sync/token`, `/api/spacetime/token`, `/api/runtime/*`, `/sync/socket/websocket`).
 2. Control service still hosts several "runtime" lanes in-process/in-memory (`/api/runtime/codex/workers*`, `/api/runtime/threads*`, `/api/runtime/tools/execute`, `/api/runtime/skills*`) while other runtime worker lanes proxy to runtime internal APIs.
 3. NIP-90/Nexus defaults are broadly embedded across Pylon/DSRS/compute paths.
 
@@ -78,7 +78,7 @@ Recommended target split:
 
 | Surface | Current behavior | Runtime/control dependency | Recommended primary placement |
 |---|---|---|---|
-| `apps/autopilot-desktop` | Native app runs local UI logic, local file/tool actions, local Codex integration | Uses control/runtime APIs for auth, worker sync, khala token/websocket, and runtime worker ops | Local-first execution with optional sync mirror |
+| `apps/autopilot-desktop` | Native app runs local UI logic, local file/tool actions, local Codex integration | Uses control/runtime APIs for auth, worker sync (sync/spacetime token + websocket), and runtime worker ops | Local-first execution with optional sync mirror |
 | `crates/codex-client` + `crates/autopilot/src/app/codex_runtime.rs` | Spawns local `codex-app-server` process and speaks JSON-RPC over stdio | None required for local spawn path | Local machine |
 | `crates/autopilot-core` | Local verification and orchestration (git/cargo/sqlite/pylon checks) | Optional external provider/network use depending on mode | Local machine |
 | `apps/openagents.com/service` | Control-plane auth/session/sync token issuance; download distribution; many runtime-facing API routes | Calls runtime internal APIs for worker lanes; also hosts several in-memory runtime-like lanes | Shared control authority only (and thin runtime proxy where needed) |
@@ -112,7 +112,7 @@ Push to shared runtime asynchronously:
 
 Keep centralized authority for cross-device/cross-tenant correctness:
 
-1. Identity/session/device revocation (`/api/auth/*`) and token minting (`/api/sync/token`, `/api/khala/token`).
+1. Identity/session/device revocation (`/api/auth/*`) and token minting (`/api/sync/token`, `/api/spacetime/token`).
 2. Canonical runtime event store and replay ordering (`(topic, seq)` invariants).
 3. Treasury/credit/liquidity policy and settlement receipts.
 4. Risk and verification adjudication that affects shared trust/budget state.
@@ -275,7 +275,7 @@ Local execution evidence:
 Shared runtime/control dependency evidence:
 
 1. `apps/autopilot-desktop/src/runtime_auth.rs` (`/api/auth/email`, `/api/auth/verify`)
-2. `apps/autopilot-desktop/src/main.rs` (`/api/runtime/*`, `/api/khala/token`, `/sync/socket/websocket`)
+2. `apps/autopilot-desktop/src/main.rs` (`/api/runtime/*`, `/api/sync/token`, `/api/spacetime/token`, `/sync/socket/websocket`)
 3. `apps/openagents.com/service/src/lib.rs` (route registration + runtime worker/thread/tool handlers)
 4. `crates/openagents-runtime-client/src/lib.rs` (`/internal/v1/workers*`, marketplace/credit/hydra paths)
 5. `apps/runtime/src/server.rs` (`/internal/v1/*` authority route surface)
