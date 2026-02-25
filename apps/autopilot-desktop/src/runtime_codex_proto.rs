@@ -1,9 +1,116 @@
-pub use openagents_client_core::khala_protocol::{
-    RuntimeStreamEvent as RuntimeCodexStreamEvent, build_phoenix_frame as build_khala_frame,
-    extract_runtime_stream_events as extract_runtime_events_from_khala_update, merge_retry_cursor,
-    parse_phoenix_frame as parse_khala_frame, runtime_stream_event_seq as stream_event_seq,
-    sync_error_code as khala_error_code,
-};
+use serde_json::Value;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeCodexFrame {
+    pub join_ref: Option<String>,
+    pub reference: Option<String>,
+    pub topic: String,
+    pub event: String,
+    pub payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeCodexStreamEvent {
+    pub id: Option<u64>,
+    pub payload: Value,
+}
+
+#[must_use]
+pub fn build_khala_frame(
+    join_ref: Option<&str>,
+    reference: Option<&str>,
+    topic: &str,
+    event: &str,
+    payload: Value,
+) -> String {
+    let frame = Value::Array(vec![
+        join_ref.map_or(Value::Null, |value| Value::String(value.to_string())),
+        reference.map_or(Value::Null, |value| Value::String(value.to_string())),
+        Value::String(topic.to_string()),
+        Value::String(event.to_string()),
+        payload,
+    ]);
+    serde_json::to_string(&frame).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub fn parse_khala_frame(raw: &str) -> Option<RuntimeCodexFrame> {
+    let parsed: Value = serde_json::from_str(raw).ok()?;
+    let frame = parsed.as_array()?;
+    if frame.len() != 5 {
+        return None;
+    }
+
+    Some(RuntimeCodexFrame {
+        join_ref: frame[0].as_str().map(ToString::to_string),
+        reference: frame[1].as_str().map(ToString::to_string),
+        topic: frame[2].as_str()?.to_string(),
+        event: frame[3].as_str()?.to_string(),
+        payload: frame[4].clone(),
+    })
+}
+
+pub fn extract_runtime_events_from_khala_update(
+    payload: &Value,
+    expected_topic: &str,
+    worker_id: &str,
+) -> Vec<RuntimeCodexStreamEvent> {
+    let updates = payload
+        .as_object()
+        .and_then(|object| object.get("updates"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    updates
+        .into_iter()
+        .filter_map(|update| {
+            let update_object = update.as_object()?;
+            let topic = update_object.get("topic")?.as_str()?;
+            if topic != expected_topic {
+                return None;
+            }
+
+            let stream_payload = update_object.get("payload")?.as_object()?;
+            let event_worker_id = stream_payload
+                .get("workerId")
+                .and_then(Value::as_str)
+                .or_else(|| stream_payload.get("worker_id").and_then(Value::as_str))?;
+            if event_worker_id != worker_id {
+                return None;
+            }
+
+            let payload = Value::Object(stream_payload.clone());
+            let seq = stream_payload
+                .get("seq")
+                .and_then(Value::as_u64)
+                .or_else(|| update_object.get("watermark").and_then(Value::as_u64));
+
+            Some(RuntimeCodexStreamEvent { id: seq, payload })
+        })
+        .collect()
+}
+
+pub fn stream_event_seq(event: &RuntimeCodexStreamEvent) -> Option<u64> {
+    event
+        .id
+        .or_else(|| event.payload.get("seq").and_then(Value::as_u64))
+}
+
+#[must_use]
+pub fn merge_retry_cursor(current: Option<u64>, failed_seq: u64) -> u64 {
+    let replay_cursor = failed_seq.saturating_sub(1);
+    current
+        .map(|cursor| cursor.min(replay_cursor))
+        .unwrap_or(replay_cursor)
+}
+
+pub fn khala_error_code(payload: &Value) -> Option<String> {
+    payload
+        .as_object()
+        .and_then(|object| object.get("code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
 
 pub use openagents_codex_control::{
     ControlMethod, error_receipt as build_error_receipt, extract_control_request,
@@ -359,9 +466,8 @@ mod tests {
 
         assert!(notifications.len() >= 10);
 
-        let mut saw_ios_handshake = false;
         let mut saw_desktop_ack = false;
-        let mut saw_ios_user_message = false;
+        let mut saw_desktop_user_message = false;
 
         for notification in notifications {
             let seq = notification["seq"]
@@ -381,19 +487,19 @@ mod tests {
             assert_eq!(parsed.event_type, WORKER_EVENT_TYPE);
             assert!(parsed.payload.is_object());
 
-            if extract_ios_handshake_id(&stream_payload).is_some() {
-                saw_ios_handshake = true;
-            }
             if extract_desktop_handshake_ack_id(&stream_payload).is_some() {
                 saw_desktop_ack = true;
             }
-            if extract_ios_user_message(&stream_payload).is_some() {
-                saw_ios_user_message = true;
+            if payload
+                .get("method")
+                .and_then(Value::as_str)
+                .is_some_and(|method| method == "desktop/user_message")
+            {
+                saw_desktop_user_message = true;
             }
         }
 
-        assert!(saw_ios_handshake);
         assert!(saw_desktop_ack);
-        assert!(saw_ios_user_message);
+        assert!(saw_desktop_user_message);
     }
 }

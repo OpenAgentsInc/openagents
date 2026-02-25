@@ -1,7 +1,7 @@
 {
   "manifest_version": "openagents.compatibility.v1",
   "window": {
-    "protocol_version": "khala.ws.v1",
+    "protocol_version": "spacetime.sync.v1",
     "min_client_build_id": "20260221T120000Z",
     "max_client_build_id": "20260221T180000Z",
     "min_schema_version": 1,
@@ -12,7 +12,7 @@
       "name": "supported_client",
       "request": {
         "client_build_id": "20260221T130000Z",
-        "protocol_version": "khala.ws.v1",
+        "protocol_version": "spacetime.sync.v1",
         "schema_version": 1
       },
       "result": {
@@ -23,7 +23,7 @@
       "name": "build_below_minimum",
       "request": {
         "client_build_id": "20260221T110000Z",
-        "protocol_version": "khala.ws.v1",
+        "protocol_version": "spacetime.sync.v1",
         "schema_version": 1
       },
       "result": {
@@ -36,7 +36,7 @@
       "name": "protocol_mismatch",
       "request": {
         "client_build_id": "20260221T130000Z",
-        "protocol_version": "khala.ws.v2",
+        "protocol_version": "khala.ws.v1",
         "schema_version": 1
       },
       "result": {
@@ -49,7 +49,7 @@
       "name": "schema_out_of_range",
       "request": {
         "client_build_id": "20260221T130000Z",
-        "protocol_version": "khala.ws.v1",
+        "protocol_version": "spacetime.sync.v1",
         "schema_version": 9
       },
       "result": {
@@ -62,7 +62,7 @@
       "name": "build_above_maximum",
       "request": {
         "client_build_id": "20260221T190000Z",
-        "protocol_version": "khala.ws.v1",
+        "protocol_version": "spacetime.sync.v1",
         "schema_version": 1
       },
       "result": {

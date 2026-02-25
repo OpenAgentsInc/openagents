@@ -1,13 +1,13 @@
 # Compatibility Negotiation Policy (v1)
 
-Date: 2026-02-21
+Date: 2026-02-25
 Status: Active
 Owner: `owner:contracts-docs`
 
 This document defines the canonical compatibility negotiation contract across:
 
 1. control-service APIs,
-2. sync websocket join/subscribe flows (Spacetime canonical; Khala legacy during migration),
+2. sync websocket join/subscribe flows (Spacetime canonical),
 3. retained-client support windows,
 4. compatibility stream aliases (`/api/chat/stream`, `/api/chats/{conversationId}/stream`).
 
@@ -85,13 +85,12 @@ Failure response semantics:
 Protocol-version policy:
 
 - Canonical sync protocol version: `spacetime.sync.v1`
-- Legacy migration alias: `khala.ws.v1`
-- Unsupported examples: `khala.ws.v2`, unknown custom protocol strings
+- Unsupported examples: `khala.ws.v1`, `khala.ws.v2`, unknown custom protocol strings
 
 Negotiation requirements:
 
 1. Servers must advertise one canonical protocol per environment window.
-2. During migration windows, servers may accept canonical/legacy alias pairs only when explicitly configured.
+2. Legacy protocol aliases are not accepted in retained production client windows.
 3. Failure responses for protocol mismatch must always use `unsupported_protocol_version` with full support-window metadata.
 
 ## Environment Support-Window Policy

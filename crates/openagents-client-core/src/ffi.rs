@@ -5,7 +5,6 @@
 //! and string bridge helpers) so exported extern functions can stay null-safe
 //! and deterministic.
 
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
@@ -21,10 +20,8 @@ use crate::ios_codex_state::{
     RuntimeCodexControlRequestState, RuntimeCodexControlRequestTracker,
     RuntimeCodexWorkerActionRequest,
 };
-use crate::ios_khala_session::{IosKhalaSession, SessionStep};
 use crate::ios_mission_control::IosMissionControlStore;
 use crate::ios_worker_selection::{RuntimeCodexWorkerCandidate, select_preferred_worker_id};
-use crate::khala_protocol::parse_phoenix_frame;
 
 pub const OA_CLIENT_CORE_FFI_CONTRACT_VERSION: u32 = 1;
 
@@ -47,6 +44,7 @@ fn with_mut_ptr<T, R>(ptr: *mut T, f: impl FnOnce(&mut T) -> R) -> Option<R> {
     Some(f(unsafe { &mut *ptr }))
 }
 
+#[cfg(test)]
 fn with_ref_ptr<T, R>(ptr: *const T, f: impl FnOnce(&T) -> R) -> Option<R> {
     if ptr.is_null() {
         return None;
@@ -87,19 +85,6 @@ pub fn normalize_message_text_string(input: &str) -> Option<String> {
     normalize_thread_message_text(input).ok()
 }
 
-pub fn parse_khala_frame_json(raw_frame: &str) -> Option<String> {
-    let frame = parse_phoenix_frame(raw_frame)?;
-    let encoded = json!({
-        "join_ref": frame.join_ref,
-        "reference": frame.reference,
-        "topic": frame.topic,
-        "event": frame.event,
-        "payload": frame.payload,
-    });
-
-    serde_json::to_string(&encoded).ok()
-}
-
 pub fn extract_desktop_ack_id_json(payload_json: &str) -> Option<String> {
     let payload = serde_json::from_str::<Value>(payload_json).ok()?;
     extract_desktop_handshake_ack_id(&payload)
@@ -112,10 +97,6 @@ pub fn extract_control_request_from_payload_json(payload_json: &str) -> Option<S
 pub fn select_preferred_worker_json(payload_json: &str) -> Option<String> {
     let workers = serde_json::from_str::<Vec<RuntimeCodexWorkerCandidate>>(payload_json).ok()?;
     select_preferred_worker_id(&workers)
-}
-
-pub fn khala_session_step_json(step: &SessionStep) -> Option<String> {
-    encode_json(step)
 }
 
 #[derive(Debug, Deserialize)]
@@ -629,122 +610,6 @@ pub unsafe extern "C" fn oa_client_core_select_preferred_worker(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_parse_khala_frame(raw_frame: *const c_char) -> *mut c_char {
-    let Some(raw_frame) = with_c_string_input(raw_frame) else {
-        return std::ptr::null_mut();
-    };
-
-    parse_khala_frame_json(&raw_frame)
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut())
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_create(
-    worker_id: *const c_char,
-    worker_events_topic: *const c_char,
-    resume_after: u64,
-) -> *mut IosKhalaSession {
-    let Some(worker_id) = with_c_string_input(worker_id) else {
-        return std::ptr::null_mut();
-    };
-    let Some(worker_events_topic) = with_c_string_input(worker_events_topic) else {
-        return std::ptr::null_mut();
-    };
-
-    Box::into_raw(Box::new(IosKhalaSession::new(
-        worker_id,
-        worker_events_topic,
-        resume_after,
-    )))
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_create_multi(
-    topics_json: *const c_char,
-    resume_after_json: *const c_char,
-) -> *mut IosKhalaSession {
-    let Some(topics_json) = with_c_string_input(topics_json) else {
-        return std::ptr::null_mut();
-    };
-    let Some(resume_after_json) = with_c_string_input(resume_after_json) else {
-        return std::ptr::null_mut();
-    };
-
-    let Ok(topics) = serde_json::from_str::<Vec<String>>(&topics_json) else {
-        return std::ptr::null_mut();
-    };
-    let Ok(resume_after_by_topic) =
-        serde_json::from_str::<HashMap<String, u64>>(&resume_after_json)
-    else {
-        return std::ptr::null_mut();
-    };
-
-    Box::into_raw(Box::new(IosKhalaSession::new_multi(
-        topics,
-        resume_after_by_topic,
-    )))
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_start(
-    session: *mut IosKhalaSession,
-) -> *mut c_char {
-    let Some(step) = with_mut_ptr(session, IosKhalaSession::start) else {
-        return std::ptr::null_mut();
-    };
-    khala_session_step_json(&step)
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut())
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_on_frame(
-    session: *mut IosKhalaSession,
-    raw_frame: *const c_char,
-) -> *mut c_char {
-    let Some(raw_frame) = with_c_string_input(raw_frame) else {
-        return std::ptr::null_mut();
-    };
-    let Some(step) = with_mut_ptr(session, |session| session.handle_frame_raw(&raw_frame)) else {
-        return std::ptr::null_mut();
-    };
-    khala_session_step_json(&step)
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut())
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_heartbeat(
-    session: *mut IosKhalaSession,
-) -> *mut c_char {
-    let Some(result) = with_mut_ptr(session, |session| match session.heartbeat_frame() {
-        Some(frame) => encode_json(&json!({
-            "frame": frame,
-            "watermark": session.latest_watermark()
-        }))
-        .map(into_raw_c_string)
-        .unwrap_or(std::ptr::null_mut()),
-        None => std::ptr::null_mut(),
-    }) else {
-        return std::ptr::null_mut();
-    };
-    result
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_latest_watermark(
-    session: *const IosKhalaSession,
-) -> u64 {
-    with_ref_ptr(session, IosKhalaSession::latest_watermark).unwrap_or(0)
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn oa_client_core_khala_session_free(session: *mut IosKhalaSession) {
-    free_box_ptr(session);
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn oa_client_core_control_coordinator_create()
 -> *mut RuntimeCodexControlCoordinator {
     Box::into_raw(Box::new(RuntimeCodexControlCoordinator::default()))
@@ -857,7 +722,7 @@ mod tests {
         extract_control_request_from_payload_json, extract_control_success_context_json,
         extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
         normalize_verification_code_string, oa_client_core_ffi_contract_version,
-        oa_client_core_free_string, oa_client_core_normalize_email, parse_khala_frame_json,
+        oa_client_core_free_string, oa_client_core_normalize_email,
         select_preferred_worker_json, with_c_string_input, with_mut_ptr, with_ref_ptr,
     };
 
@@ -895,14 +760,6 @@ mod tests {
         let parsed = parsed.unwrap_or_else(|| unreachable!());
         assert!(parsed.contains("\"request_id\":\"req_42\""));
         assert!(parsed.contains("\"method\":\"thread/list\""));
-    }
-
-    #[test]
-    fn ffi_helpers_parse_khala_frame_json() {
-        let raw = r#"["1","2","sync:v1","sync:heartbeat",{"watermarks":[{"topic":"runtime.codex_worker_events","watermark":33}]}]"#;
-        let parsed = parse_khala_frame_json(raw).expect("frame should parse");
-        assert!(parsed.contains("\"sync:v1\""));
-        assert!(parsed.contains("\"sync:heartbeat\""));
     }
 
     #[test]
