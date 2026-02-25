@@ -5231,6 +5231,111 @@ async fn hydra_routing_score_rejects_non_object_constraints() -> Result<()> {
 }
 
 #[tokio::test]
+async fn hydra_risk_health_endpoint_returns_breaker_snapshot() -> Result<()> {
+    let app = test_router();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/internal/v1/hydra/risk/health")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(
+        json.pointer("/schema").and_then(Value::as_str),
+        Some("openagents.hydra.risk_health_response.v1")
+    );
+    assert!(json.pointer("/credit_breakers").is_some());
+    assert!(json.pointer("/routing/degraded").is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_routing_score_filters_cep_candidate_when_breaker_halts_envelopes() -> Result<()> {
+    let app = build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+        c.credit_policy.circuit_breaker_min_sample = 0;
+        c.credit_policy.loss_rate_halt_threshold = -1.0;
+    });
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:hydra-router-breaker",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+    let create_json = response_json(create_response).await?;
+    let run_id = create_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let body = serde_json::json!({
+        "schema": "openagents.hydra.routing_score_request.v1",
+        "idempotency_key": "hydra-routing:breaker-filter",
+        "run_id": run_id,
+        "marketplace_id": "openagents",
+        "capability": "oa.sandbox_run.v1",
+        "policy": "lowest_total_cost_v1",
+        "decided_at_unix": 1_700_000_333,
+        "candidates": [
+            {
+                "marketplace_id": "openagents",
+                "provider_id": "provider-direct-safe",
+                "total_price_msats": 3000,
+                "latency_ms": 100,
+                "reliability_bps": 9000,
+                "constraints": {"routeKind":"direct_liquidity"}
+            },
+            {
+                "marketplace_id": "openagents",
+                "provider_id": "route-cep",
+                "total_price_msats": 1000,
+                "latency_ms": 80,
+                "reliability_bps": 9900,
+                "constraints": {"routeKind":"cep_envelope"}
+            }
+        ]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(
+        json.pointer("/selected/provider_id")
+            .and_then(Value::as_str),
+        Some("provider-direct-safe")
+    );
+    let notes = json
+        .pointer("/factors/policy_notes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    assert!(notes
+        .iter()
+        .any(|value| value.as_str() == Some("cep_candidate_filtered_by_breaker")));
+    Ok(())
+}
+
+#[tokio::test]
 async fn dispatch_failure_applies_strike_and_reroutes_owned_provider() -> Result<()> {
     let app = test_router();
     let (failing_base_url, failing_shutdown) = spawn_cancelled_compute_provider_stub().await?;

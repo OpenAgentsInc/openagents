@@ -681,6 +681,9 @@ const ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS: u64 = 20;
 const ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS: u64 = 250;
 const HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1: &str =
     "openagents.hydra.routing_decision_receipt.v1";
+const HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1: &str = "openagents.hydra.risk_health_response.v1";
+const HYDRA_ROUTE_PROVIDER_DIRECT: &str = "route-direct";
+const HYDRA_ROUTE_PROVIDER_CEP: &str = "route-cep";
 
 #[derive(Debug, Deserialize)]
 struct RouterSelectComputeBody {
@@ -714,6 +717,37 @@ struct RouterSelectComputeResponse {
     candidates: Vec<NormalizedCandidateQuoteV1>,
     #[serde(skip_serializing_if = "Option::is_none")]
     nostr_event: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraRiskCreditBreakersV1 {
+    halt_new_envelopes: bool,
+    halt_large_settlements: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraRiskLiquidityStateV1 {
+    wallet_executor_configured: bool,
+    wallet_executor_reachable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraRiskRoutingStateV1 {
+    degraded: bool,
+    direct_disabled: bool,
+    #[serde(default)]
+    reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraRiskHealthResponseV1 {
+    schema: String,
+    generated_at: chrono::DateTime<Utc>,
+    credit_breakers: HydraRiskCreditBreakersV1,
+    liquidity: HydraRiskLiquidityStateV1,
+    routing: HydraRiskRoutingStateV1,
 }
 
 #[derive(Debug, Deserialize)]
@@ -977,6 +1011,7 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/hydra/routing/score",
             post(hydra_routing_score),
         )
+        .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
         .route(
             "/internal/v1/marketplace/dispatch/sandbox-run",
             post(dispatch_sandbox_run),
@@ -2354,6 +2389,62 @@ async fn router_select_compute(
     }))
 }
 
+async fn compute_hydra_risk_health(
+    state: &AppState,
+) -> Result<HydraRiskHealthResponseV1, ApiError> {
+    let credit = state.credit.health().await.map_err(api_error_from_credit)?;
+    let liquidity = state.liquidity.status().await;
+
+    let mut reasons = Vec::new();
+    let direct_disabled = !liquidity.wallet_executor_configured || !liquidity.wallet_executor_reachable;
+    if direct_disabled {
+        reasons.push("direct_liquidity_unavailable".to_string());
+    }
+    if credit.breakers.halt_new_envelopes {
+        reasons.push("cep_halt_new_envelopes".to_string());
+    }
+    if credit.breakers.halt_large_settlements {
+        reasons.push("cep_halt_large_settlements".to_string());
+    }
+    if credit.loss_rate > 0.35 {
+        reasons.push("credit_loss_rate_elevated".to_string());
+    }
+    if credit.ln_failure_rate > 0.35 {
+        reasons.push("liquidity_ln_failure_rate_elevated".to_string());
+    }
+
+    let degraded = direct_disabled
+        || credit.breakers.halt_new_envelopes
+        || credit.breakers.halt_large_settlements
+        || credit.loss_rate > 0.35
+        || credit.ln_failure_rate > 0.35;
+
+    Ok(HydraRiskHealthResponseV1 {
+        schema: HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1.to_string(),
+        generated_at: Utc::now(),
+        credit_breakers: HydraRiskCreditBreakersV1 {
+            halt_new_envelopes: credit.breakers.halt_new_envelopes,
+            halt_large_settlements: credit.breakers.halt_large_settlements,
+        },
+        liquidity: HydraRiskLiquidityStateV1 {
+            wallet_executor_configured: liquidity.wallet_executor_configured,
+            wallet_executor_reachable: liquidity.wallet_executor_reachable,
+            error_code: liquidity.error_code,
+        },
+        routing: HydraRiskRoutingStateV1 {
+            degraded,
+            direct_disabled,
+            reasons,
+        },
+    })
+}
+
+async fn hydra_risk_health(
+    State(state): State<AppState>,
+) -> Result<Json<HydraRiskHealthResponseV1>, ApiError> {
+    Ok(Json(compute_hydra_risk_health(&state).await?))
+}
+
 async fn hydra_routing_score(
     State(state): State<AppState>,
     Json(body): Json<HydraRoutingScoreRequestV1>,
@@ -2410,6 +2501,8 @@ async fn hydra_routing_score(
     } else {
         Utc::now().timestamp().max(0) as u64
     };
+    let risk_health = compute_hydra_risk_health(&state).await?;
+    let mut risk_notes = risk_health.routing.reasons.clone();
 
     let marketplace_id = {
         let trimmed = body.marketplace_id.trim();
@@ -2437,6 +2530,16 @@ async fn hydra_routing_score(
                 "candidate.total_price_msats must be greater than zero".to_string(),
             ));
         }
+        let provider_id = candidate.provider_id.trim();
+        if provider_id == HYDRA_ROUTE_PROVIDER_DIRECT && risk_health.routing.direct_disabled {
+            risk_notes.push("direct_candidate_filtered_by_risk".to_string());
+            continue;
+        }
+        if provider_id == HYDRA_ROUTE_PROVIDER_CEP && risk_health.credit_breakers.halt_new_envelopes
+        {
+            risk_notes.push("cep_candidate_filtered_by_breaker".to_string());
+            continue;
+        }
         let constraints = match candidate.constraints.clone() {
             serde_json::Value::Null => serde_json::json!({}),
             serde_json::Value::Object(_) => candidate.constraints.clone(),
@@ -2449,7 +2552,7 @@ async fn hydra_routing_score(
 
         candidates.push(NormalizedCandidateQuoteV1 {
             marketplace_id: candidate.marketplace_id.trim().to_string(),
-            provider_id: candidate.provider_id.trim().to_string(),
+            provider_id: provider_id.to_string(),
             provider_worker_id: candidate
                 .provider_worker_id
                 .as_deref()
@@ -2473,6 +2576,11 @@ async fn hydra_routing_score(
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
         });
+    }
+    if candidates.is_empty() {
+        return Err(ApiError::Conflict(
+            "hydra risk breakers denied all routing candidates".to_string(),
+        ));
     }
 
     candidates.sort_by(|left, right| match policy.as_str() {
@@ -2575,20 +2683,32 @@ async fn hydra_routing_score(
         normalized.clamp(0.0, 1.0)
     };
     let breadth_score = ((candidates.len() as f64) / 8.0).clamp(0.15, 1.0);
-    let confidence =
+    let mut confidence =
         ((reliability_score * 0.60) + (price_position * 0.20) + (latency_score * 0.20))
             .clamp(0.0, 1.0);
-    let liquidity_score = ((reliability_score * 0.60) + (breadth_score * 0.40)).clamp(0.0, 1.0);
+    let mut liquidity_score =
+        ((reliability_score * 0.60) + (breadth_score * 0.40)).clamp(0.0, 1.0);
+    if risk_health.routing.degraded {
+        confidence = (confidence * 0.75).clamp(0.0, 1.0);
+        liquidity_score = (liquidity_score * 0.80).clamp(0.0, 1.0);
+        risk_notes.push("routing_confidence_degraded".to_string());
+    }
+    risk_notes.sort();
+    risk_notes.dedup();
 
     let factors = HydraRoutingDecisionFactorsV1 {
         expected_fee_msats: selected.total_price_msats.saturating_div(50).max(1),
         confidence,
         liquidity_score,
-        policy_notes: vec![
-            format!("policy:{policy}"),
-            format!("candidate_count:{}", candidates.len()),
-            format!("selected_reliability_bps:{}", selected.reliability_bps),
-        ],
+        policy_notes: {
+            let mut notes = vec![
+                format!("policy:{policy}"),
+                format!("candidate_count:{}", candidates.len()),
+                format!("selected_reliability_bps:{}", selected.reliability_bps),
+            ];
+            notes.extend(risk_notes);
+            notes
+        },
     };
 
     #[derive(Serialize)]
