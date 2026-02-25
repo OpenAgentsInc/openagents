@@ -35,7 +35,18 @@ fn truncate_chars(input: &str, max_chars: usize) -> String {
     }
 }
 
-fn run_command_capture(cwd: &PathBuf, program: &str, args: &[&str], max_chars: usize) -> String {
+#[derive(Clone, Debug)]
+struct CommandCapture {
+    success: bool,
+    output: String,
+}
+
+fn run_command_capture(
+    cwd: &PathBuf,
+    program: &str,
+    args: &[&str],
+    max_chars: usize,
+) -> CommandCapture {
     let output = Command::new(program).current_dir(cwd).args(args).output();
     match output {
         Ok(output) => {
@@ -51,15 +62,48 @@ fn run_command_capture(cwd: &PathBuf, program: &str, args: &[&str], max_chars: u
             }
             if text.trim().is_empty() {
                 if output.status.success() {
-                    "(no output)".to_string()
+                    CommandCapture {
+                        success: true,
+                        output: "(no output)".to_string(),
+                    }
                 } else {
-                    format!("command exited with {}", output.status)
+                    CommandCapture {
+                        success: false,
+                        output: format!("command exited with {}", output.status),
+                    }
                 }
             } else {
-                truncate_chars(text.trim(), max_chars)
+                CommandCapture {
+                    success: output.status.success(),
+                    output: truncate_chars(text.trim(), max_chars),
+                }
             }
         }
-        Err(error) => format!("failed to run {}: {}", program, error),
+        Err(error) => CommandCapture {
+            success: false,
+            output: format!("failed to run {}: {}", program, error),
+        },
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GitIntegrationDiagnostics {
+    available: bool,
+    status_short: String,
+    diff_stat: String,
+}
+
+fn collect_git_integration_diagnostics(
+    cwd: &PathBuf,
+    max_chars: usize,
+) -> GitIntegrationDiagnostics {
+    let status_short = run_command_capture(cwd, "git", &["status", "--short"], max_chars);
+    let diff_stat = run_command_capture(cwd, "git", &["diff", "--stat"], max_chars);
+    let available = status_short.success && diff_stat.success;
+    GitIntegrationDiagnostics {
+        available,
+        status_short: status_short.output,
+        diff_stat: diff_stat.output,
     }
 }
 
@@ -148,14 +192,19 @@ pub fn run_agent_execution(
     });
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let git_status = run_command_capture(&cwd, "git", &["status", "--short"], 3000);
-    let git_diff_stat = run_command_capture(&cwd, "git", &["diff", "--stat"], 3000);
+    let git = collect_git_integration_diagnostics(&cwd, 3000);
     let report = format!(
-        "Execution lane: local deterministic executor\nModel hint: {}\nPrompt hash: {}\n\nWorking tree (`git status --short`):\n{}\n\nDiff stat (`git diff --stat`):\n{}",
+        "Execution lane: local deterministic executor\nModel hint: {}\n\ncore_session_state:\n- prompt_hash: {}\n- working_directory: {}\n- execution_mode: local_deterministic\n\nintegration.git:\n- capability: {}\n- status_short:\n{}\n- diff_stat:\n{}",
         model.as_str(),
         hash_prompt(prompt),
-        git_status,
-        git_diff_stat
+        cwd.display(),
+        if git.available {
+            "available"
+        } else {
+            "unavailable (non-blocking adapter)"
+        },
+        git.status_short,
+        git.diff_stat
     );
 
     let _ = tx.send(AgentToken::Text(report.clone()));
@@ -178,17 +227,21 @@ pub fn run_agent_review(
     });
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let git_status = run_command_capture(&cwd, "git", &["status", "--short"], 2000);
-    let git_diff = run_command_capture(&cwd, "git", &["diff", "--stat"], 2000);
+    let git = collect_git_integration_diagnostics(&cwd, 2000);
     let exec_excerpt = truncate_chars(exec_result.trim(), 2400);
 
     let review = format!(
-        "Review lane: local deterministic reviewer\nModel hint: {}\nPrompt hash: {}\n\nExecution summary:\n{}\n\nRepository state:\n- git status --short: {}\n- git diff --stat: {}\n\nReview checklist:\n1. Confirm touched files align with request scope.\n2. Confirm no new shortcut markers were introduced.\n3. Confirm verification commands are listed and reproducible.\n4. Confirm unresolved risks are explicitly called out.",
+        "Review lane: local deterministic reviewer\nModel hint: {}\n\ncore_session_state:\n- prompt_hash: {}\n- execution_summary:\n{}\n\nintegration.git:\n- capability: {}\n- status_short:\n{}\n- diff_stat:\n{}\n\nReview checklist:\n1. Confirm implemented behavior aligns with request scope.\n2. Confirm no new shortcut markers were introduced.\n3. Confirm verification commands are listed and reproducible.\n4. Confirm unresolved risks are explicitly called out.\n5. If integration.git capability is available, reconcile git signals with expected changes.",
         model.as_str(),
         hash_prompt(prompt),
         exec_excerpt,
-        git_status,
-        git_diff
+        if git.available {
+            "available"
+        } else {
+            "unavailable (non-blocking adapter)"
+        },
+        git.status_short,
+        git.diff_stat
     );
 
     let _ = tx.send(AgentToken::Text(review.clone()));
