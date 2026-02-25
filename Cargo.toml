@@ -15,6 +15,7 @@ members = [
     "crates/autopilot_ui",
     "crates/autopilot",
     "crates/autopilot-core",
+    "crates/autopilot-spacetime",
     "crates/codex-client",
     "crates/codex-mcp",
     "crates/compute",

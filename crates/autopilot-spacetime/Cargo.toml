@@ -1,0 +1,11 @@
+[package]
+name = "autopilot-spacetime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents Spacetime sync schema and reducer primitives"
+
+[dependencies]
+
