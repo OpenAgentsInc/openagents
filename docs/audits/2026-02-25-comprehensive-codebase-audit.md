@@ -344,3 +344,41 @@ If the goal is maximum cleanup with minimum architecture risk, do this order:
 OpenAgents has strong foundations in Rust runtime/control, local desktop capability, NIP-90 integration, and Hydra execution. The main blocker is not missing capability; it is architectural coherence and cleanup discipline across retained vs legacy surfaces.
 
 The highest-leverage move is to reconcile declared architecture with repository reality immediately, then decompose the three monolith hotspots while preserving the local-first + NIP-90 two-sided marketplace path.
+
+## GitHub Implementation Issue Sequence (Created 2026-02-25)
+
+1. **[#2212 OA-AUDIT Phase 0: Delete all legacy PHP/TS/non-retained code surfaces](https://github.com/OpenAgentsInc/openagents/issues/2212)**
+Delete all non-retained legacy code from this repository, explicitly including PHP and TS/TSX legacy web lanes, archive only what must be preserved to backroom, and update canonical docs so retained topology is fully truthful.
+
+2. **[#2213 OA-AUDIT Phase 0: Remove in-repo workflow automation and enforce INV-12](https://github.com/OpenAgentsInc/openagents/issues/2213)**
+Remove tracked `.github/workflows` automation from repository scope, migrate required checks to canonical local scripts/runbooks, and close the architecture-vs-invariant conflict flagged in the audit.
+
+3. **[#2214 OA-AUDIT Phase 1: Hard control/runtime route ownership and boundary map](https://github.com/OpenAgentsInc/openagents/issues/2214)**
+Publish and enforce one authoritative endpoint ownership matrix for control vs runtime lanes, remove mixed ownership ambiguity, and freeze additional compatibility expansion during boundary hardening.
+
+4. **[#2215 OA-AUDIT Phase 1: Decompose openagents.com/service lib.rs monolith](https://github.com/OpenAgentsInc/openagents/issues/2215)**
+Refactor control service routing and handlers into modular domain components while preserving retained API behavior and tests, reducing monolith blast radius and ownership confusion.
+
+5. **[#2216 OA-AUDIT Phase 1: Decompose runtime server monolith by domain](https://github.com/OpenAgentsInc/openagents/issues/2216)**
+Split runtime server composition by execution/economy domains (runs, workers, marketplace, treasury, verifications, Hydra/liquidity/credit, ops) with no replay/idempotency regressions.
+
+6. **[#2217 OA-AUDIT Phase 1: Decompose autopilot-desktop main.rs monolith](https://github.com/OpenAgentsInc/openagents/issues/2217)**
+Modularize desktop app architecture into explicit identity, provider, wallet, codex-sync, and pane orchestration boundaries while keeping startup and product behavior stable.
+
+7. **[#2218 OA-AUDIT Phase 2: Implement explicit local-first execution contract and endpoint portability](https://github.com/OpenAgentsInc/openagents/issues/2218)**
+Make local execution authority explicit (local Codex first, then shared runtime/swarm fallback), and remove hardcoded production endpoint assumptions through config-driven transport resolution.
+
+8. **[#2219 OA-AUDIT Phase 2: Complete EP212 wallet/L402/paywall production parity](https://github.com/OpenAgentsInc/openagents/issues/2219)**
+Replace remaining synthetic wallet/L402 behaviors with real executor-backed custody-compliant flows, complete Rust-native L402 tooling, and deliver self-serve paywall earnings with deterministic receipts.
+
+9. **[#2220 OA-AUDIT Phase 3: Implement Aegis runtime MVP namespace and contracts](https://github.com/OpenAgentsInc/openagents/issues/2220)**
+Move Aegis from plan-only posture to implemented runtime lanes with proto-governed contracts, deterministic receipts, and minimal verification/underwriting primitives integrated into existing authority boundaries.
+
+10. **[#2221 OA-AUDIT Phase 4: Align lint policy and reduce allow-attribute debt](https://github.com/OpenAgentsInc/openagents/issues/2221)**
+Reconcile lint policy with real enforcement, remove unjustified `#[allow(...)]` suppressions in critical crates, and establish durable debt accounting for any remaining justified exceptions.
+
+11. **[#2222 OA-AUDIT Phase 4: Add architecture debt budgets and no-net-growth gates](https://github.com/OpenAgentsInc/openagents/issues/2222)**
+Introduce measurable complexity budgets (route counts, production file size, suppression growth) and enforce no-net-growth gates through local CI scripts and documented exception workflow.
+
+12. **[#2223 OA-AUDIT Phase 5: Retire compatibility lanes and finalize cleanup signoff](https://github.com/OpenAgentsInc/openagents/issues/2223)**
+Remove legacy compatibility lanes (route split/alias debt) after parity evidence, clean `local-ci` trigger residue, and produce final architecture consistency signoff across docs and code.
