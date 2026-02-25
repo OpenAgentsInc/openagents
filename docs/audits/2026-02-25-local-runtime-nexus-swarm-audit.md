@@ -149,8 +149,9 @@ Simplified profile for the next versions:
 
 1. Treat NIP-90 as the single marketplace execution lane for externalized compute.
 2. Keep local-first Autopilot execution as default, with explicit opt-in to remote/swarm dispatch.
-3. Keep control/runtime surfaces minimal and focused on auth/session, sync/replay, and canonical receipts.
-4. Keep Nexus as relay/coordination fabric only, not a second authority plane.
+3. Make local Codex control explicit: when `codex-app-server` is present locally, Autopilot should fully command it (turn execution, tool invocation, repo operations) as the primary path.
+4. Keep control/runtime surfaces minimal and focused on auth/session, sync/replay, and canonical receipts.
+5. Keep Nexus as relay/coordination fabric only, not a second authority plane.
 
 What can wait for later versions:
 
@@ -173,8 +174,18 @@ Practical guardrail for implementation during this simplified phase:
 
 1. Any new feature should be prioritized only if it directly improves one of:
    - provider-side compute selling via NIP-90,
+   - local Autopilot-to-Codex command/control quality when Codex is available on-device,
    - agent-side compute buying/consumption (local and network),
    - economic/verifiability integrity required for that loop (Hydra/Aegis compatible).
+
+## Local Codex Control Requirement
+
+For this product phase, local Codex command/control should be treated as a first-class requirement:
+
+1. If `codex-app-server` is installed and healthy on the user machine, Autopilot should prefer local Codex by default and fully orchestrate it.
+2. "Fully orchestrate" means Autopilot owns the local session loop: prompt/turn dispatch, tool-use requests, workspace actions, and response streaming/collection.
+3. Shared runtime is optional for this lane and should be used for sync, remote compute augmentation, and shared policy/receipt needs, not as a prerequisite for local Codex operation.
+4. If local Codex is unavailable or unhealthy, Autopilot should degrade gracefully to configured remote/network compute paths without changing shared authority boundaries.
 
 ## Notable Gaps and Inconsistencies
 
