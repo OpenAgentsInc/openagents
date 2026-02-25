@@ -234,4 +234,4 @@ Gate:
 4. `docs/plans/rust-migration-invariant-gates.md`
 5. `docs/sync/README.md`
 6. `docs/sync/ROADMAP.md`
-7. `docs/protocol/OA_SYNC_WS_MAPPING.md`
+7. `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`

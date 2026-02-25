@@ -1,33 +1,34 @@
 # Sync Docs
 
-Current-state Khala sync documentation and runbooks (legacy lane during replacement program):
-- `ROADMAP.md`: migration and implementation sequencing
-- `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover procedure
-- `SPACETIME_STAGING_CANARY_ROLLOUT.md`: cohorted staging canary flow, gate bundle, and promotion artifacts
-- `SPACETIME_PRODUCTION_PHASED_ROLLOUT.md`: production cohort progression, SLO/error-budget gates, and rollback drill
-- `SPACETIME_CUTOVER_STATE_ANNOUNCEMENT.md`: operator cutover-state publication and archived evidence artifacts
-- `SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`: go/no-go gates, rollback triggers, and promotion evidence checklist
-- `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: scope grants, rotation, and runtime enforcement contract
-- `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime authority fanout to Spacetime stream mapping and parity checks
-- `SPACETIME_SHADOW_PARITY_HARNESS.md`: dual-lane shadow parity harness, gate thresholds, mismatch reports, and resolution workflow
-- `SPACETIME_CHAOS_DRILLS.md`: staged chaos scenarios, expected recovery behavior, and artifact capture workflow
-- `SPACETIME_TOPIC_STREAM_CURSOR_CONTINUITY.md`: legacy topic cursor to stream cursor migration and stale/rebootstrap policy
-- `SPACETIME_OBSERVABILITY_AND_ALERTS.md`: runtime/control metrics, alert thresholds, and incident-runbook links
-- `SPACETIME_CLIENT_CRATE.md`: typed client API for negotiation, subscribe/resume, reducer calls, and reconnect helpers
-- `SPACETIME_DESKTOP_CONNECTION_LIFECYCLE.md`: desktop reconnect/token-refresh lifecycle policy and UI health contract
-- `SPACETIME_DESKTOP_APPLY_ENGINE.md`: deterministic `(stream_id, seq)` apply contract, duplicate suppression, and replay rewind behavior
-- `SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE.md`: local checkpoint format, restart resume policy, stale clamp, and persistence/recovery guarantees
-- `SPACETIME_DESKTOP_SYNC_HEALTH_UX.md`: Runtime Login sync-health indicators for replay progress, lag, token lease, and actionable recovery hints
-- `SPACETIME_REPLAY_RESUME_TEST_EXPANSION.md`: cross-surface replay/resume/reconnect test matrix and unified verification script
-- canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
+Current canonical Spacetime sync documentation and runbooks:
 
-Endpoint retirement note (2026-02-25):
-- Control endpoint `POST /api/khala/token` is retired.
-- Sync claim issuance is `POST /api/sync/token` with Spacetime aliases `POST /api/spacetime/token` and `POST /api/v1/spacetime/token`.
+- `ROADMAP.md`: active sync sequencing and closure checklist
+- `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover/rollback procedure
+- `SPACETIME_ENVIRONMENT_MATRIX.md`: environment and ownership matrix
+- `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: control-issued claim scope and refresh policy
+- `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime mirror and stream mapping rules
+- `SPACETIME_PARITY_HARNESS.md`: active replay/resume parity harness
+- `SPACETIME_REPLAY_RESUME_TEST_EXPANSION.md`: cross-surface replay/resume test matrix
+- `SPACETIME_CHAOS_DRILLS.md`: staged chaos drills and promotion gate policy
+- `SPACETIME_OBSERVABILITY_AND_ALERTS.md`: metric and alert thresholds
+- `SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`: acceptance/rollback gates
+- `SPACETIME_STAGING_CANARY_ROLLOUT.md`: staging rollout sequencing
+- `SPACETIME_PRODUCTION_PHASED_ROLLOUT.md`: production rollout sequencing
+- `SPACETIME_CUTOVER_STATE_ANNOUNCEMENT.md`: operator-facing cutover evidence publication
 
-Spacetime replacement authority plans:
-- `docs/plans/spacetimedb-full-integration.md`
-- `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
-- `SPACETIME_ENVIRONMENT_MATRIX.md`
+Canonical contracts and invariants:
 
-Historical sync snapshots and superseded notes are archived in backroom and are not canonical current-surface guidance.
+- `docs/core/ARCHITECTURE.md`
+- `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
+- `docs/plans/rust-migration-invariant-gates.md`
+
+Token issuance notes:
+
+- Primary endpoint: `POST /api/spacetime/token`
+- Compatibility aliases: `POST /api/sync/token`, `POST /api/v1/spacetime/token`, `POST /api/v1/sync/token`
+
+Archived/superseded sync docs:
+
+- `docs/sync/archived/2026-02-25-khala-shadow-parity-harness.md`
+
+Historical Elixir-era runtime sync docs remain under `apps/runtime/docs/archived/` and are not canonical retained-surface guidance.

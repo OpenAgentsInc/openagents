@@ -6,11 +6,11 @@ This directory is the Rust-era protocol system-of-record.
 
 - `docs/protocol/PROTOCOL_SURFACE.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
-- `docs/protocol/OA_SYNC_WS_MAPPING.md`
+- `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - `docs/protocol/control-auth-session-v1.md`
 - `docs/protocol/codex-worker-events-v1.md`
 - `docs/protocol/codex-worker-control-v1.md`
-- `docs/protocol/codex-khala-vercel-sse-mapping-v1.md`
+- `docs/protocol/codex-spacetime-vercel-sse-mapping-v1.md`
 - `docs/protocol/client-telemetry-v1.md`
 - `docs/protocol/sync-v2-payload-hashing.md`
 - `docs/protocol/nexus-nostr-bridge-v1.md`
@@ -27,6 +27,8 @@ This directory is the Rust-era protocol system-of-record.
 ## Archived (Historical)
 
 - `docs/protocol/archived/onyx-integration-contract-v1.md`
+- `docs/protocol/archived/oa-sync-ws-khala-mapping-v1.md`
+- `docs/protocol/archived/codex-khala-vercel-sse-mapping-v1.md`
 
 ## Proto Authority
 

@@ -102,10 +102,10 @@ scenario_count=0
 total_duration=0
 
 run_scenario "replay_resume_harness" "./scripts/spacetime/replay-resume-parity-harness.sh"
-run_scenario "runtime_stale_cursor_floor" "cargo test -p openagents-runtime-service khala_topic_messages_returns_stale_cursor_when_replay_floor_is_missed -- --nocapture"
-run_scenario "runtime_stale_cursor_budget" "cargo test -p openagents-runtime-service khala_topic_messages_returns_stale_cursor_when_replay_budget_is_exceeded -- --nocapture"
-run_scenario "runtime_token_scope_matrix" "cargo test -p openagents-runtime-service khala_topic_messages_enforce_scope_matrix -- --nocapture"
-run_scenario "runtime_slow_consumer_eviction" "cargo test -p openagents-runtime-service khala_topic_messages_evict_slow_consumers_deterministically -- --nocapture"
+run_scenario "runtime_sync_metrics" "cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture"
+run_scenario "runtime_retired_khala_routes" "cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture"
+run_scenario "shared_client_stale_cursor" "cargo test -p autopilot-spacetime subscribe_rejects_stale_cursor -- --nocapture"
+run_scenario "shared_client_reconnect_helpers" "cargo test -p autopilot-spacetime reconnect_resume_helpers_plan_rebootstrap_and_backoff -- --nocapture"
 run_scenario "shared_client_reconnect_storm" "cargo test -p autopilot-spacetime reconnect_storm_resubscribe_keeps_duplicate_delivery_deterministic -- --nocapture"
 run_scenario "desktop_reconnect_backoff" "cargo test -p autopilot-desktop reconnect_backoff_grows_and_caps_across_disconnects -- --nocapture"
 

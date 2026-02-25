@@ -135,7 +135,7 @@ cd apps/runtime && mix test test/openagents_runtime_web/channels/sync_channel_te
 
 - `docs/core/ARCHITECTURE.md`
 - `docs/sync/ROADMAP.md`
-- `docs/protocol/OA_SYNC_WS_MAPPING.md`
+- `docs/protocol/archived/oa-sync-ws-khala-mapping-v1.md`
 - `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
 - `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
 - Related issue: `OA-RUST-076` / `#1891`

@@ -63,10 +63,7 @@ All rows below are runtime-owned internal authority lanes.
 | POST | `/internal/v1/runs/:run_id/events` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
 | GET | `/internal/v1/runs/:run_id/receipt` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
 | GET | `/internal/v1/runs/:run_id/replay` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
-| GET | `/internal/v1/khala/topics/:topic/messages` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
-| GET | `/internal/v1/khala/topics/:topic/ws` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
-| GET | `/internal/v1/khala/fanout/hooks` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
-| GET | `/internal/v1/khala/fanout/metrics` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
+| GET | `/internal/v1/spacetime/sync/metrics` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
 | GET | `/internal/v1/projectors/checkpoints/:run_id` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
 | GET | `/internal/v1/projectors/drift` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |
 | GET | `/internal/v1/projectors/run-summary/:run_id` | `runtime_service` | `runtime_authority` | `runtime_authority_canonical` |

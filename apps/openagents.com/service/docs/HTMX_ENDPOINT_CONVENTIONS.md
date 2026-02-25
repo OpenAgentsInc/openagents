@@ -146,7 +146,7 @@ For each HTMX surface (login/chat/feed/settings/billing/admin):
   no client-only validation bypasses server responses.
 
 WS event -> HTML bridge (no SSE authority):
-- Runtime worker events are ingested through `POST /api/runtime/codex-workers/:worker_id/events` (Khala WS flow).
+- Runtime worker events are ingested through `POST /api/runtime/codex/workers/:worker_id/events` (Spacetime sync delivery flow).
 - Chat fragments read stored worker events and map them to rendered lines:
   - `turn.start` -> `Turn started...`
   - `turn.finish` -> `Turn finished...` (includes output text when available)

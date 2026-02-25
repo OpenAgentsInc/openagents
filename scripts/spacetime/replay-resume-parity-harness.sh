@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-echo "==> runtime shadow parity checks"
-cargo test -p openagents-runtime-service shadow_control_khala -- --nocapture
-cargo test -p openagents-runtime-service shadow::tests -- --nocapture
+echo "==> runtime sync parity checks"
+cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture
 
 echo "==> shared client replay/resume checks"
 cargo test -p autopilot-spacetime client::tests -- --nocapture

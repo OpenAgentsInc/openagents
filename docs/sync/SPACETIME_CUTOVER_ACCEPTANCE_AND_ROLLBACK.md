@@ -6,13 +6,13 @@ Owner lanes: Runtime, Control, Desktop, Protocol, Infra
 
 ## Purpose
 
-Define hard go/no-go criteria, rollback triggers, and operator procedures for replacing Khala with Spacetime sync transport.
+Define hard go/no-go criteria, rollback triggers, and operator procedures for retained Spacetime sync transport rollouts.
 
 This runbook is mandatory evidence for:
 
 1. Staging canary promotion.
 2. Production phased rollout.
-3. Khala endpoint retirement.
+3. residual legacy-lane cleanup milestones.
 
 ## Preconditions
 
@@ -37,15 +37,15 @@ All gates must be green for the full evaluation window before promotion:
 4. SLO posture
    - p95 sync delivery latency <= pre-cutover baseline + agreed migration buffer.
    - reconnect storm recovery remains bounded within runbook target.
-5. Fallback discipline
-   - No uncontrolled fallback loops.
-   - Legacy fallback usage remains below configured threshold for cohort stage.
+5. Rollback discipline
+   - No uncontrolled retry/rollback oscillation.
+   - cohort rollback decisions remain explicit and operator-approved.
 
 ## Promotion Evidence Checklist
 
 Required artifacts:
 
-1. Parity report from dual-lane harness.
+1. Replay/resume parity harness report.
 2. Replay/resume test report.
 3. Auth/scope security test report.
 4. Staging canary summary with cohort progression evidence.
@@ -98,8 +98,8 @@ Immediate rollback is required if any are true:
 ## Rollback Procedure
 
 1. Freeze promotion and open incident.
-2. Flip sync policy to legacy fallback for affected cohort.
-3. Disable Spacetime-primary routing for impacted clients.
+2. Roll back affected cohort(s) to last known-good release/configuration.
+3. Disable newly introduced sync config changes for impacted clients.
 4. Preserve event logs and diagnostics for postmortem.
 5. Re-run baseline health checks on fallback lane.
 6. Publish incident update with root-cause ETA and corrective action plan.

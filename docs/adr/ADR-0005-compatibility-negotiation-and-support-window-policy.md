@@ -141,6 +141,6 @@ cargo test -p openagents-client-core compatibility::
 
 - `docs/core/ARCHITECTURE.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
-- `docs/protocol/OA_SYNC_WS_MAPPING.md`
+- `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
 - Related issue: `OA-RUST-083` / `#1918`

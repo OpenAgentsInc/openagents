@@ -1,66 +1,76 @@
-# Khala Runtime/Codex WS-Only Rollout Runbook
+# Spacetime Runtime/Codex Rollout Runbook
 
-Owner: Khala lane (`apps/runtime`)  
-Scope: WS-only rollout gate for runtime/Codex sync across:
-- `apps/autopilot-desktop`
-
-This runbook is the canonical rollout procedure for OA-RUST-048 / OA-RUST-106 sync-surface alignment.
+Owner: sync lane (`apps/runtime`, `apps/openagents.com/service`, `apps/autopilot-desktop`)
+Scope: retained-client sync rollout, gate enforcement, and rollback posture
 
 ## 1. Preconditions
 
-1. WS auth/topic ACL/replay tests pass in `openagents-runtime-service`.
-2. `POST /api/sync/token` is healthy in control service.
-3. Target surface builds are deployed with WS-only subscriptions enabled.
-4. Rollback revision IDs are captured for control service and runtime service.
-5. Surface matrix in `docs/sync/ROADMAP.md` matches deployed topic scopes.
+1. Runtime sync observability tests pass.
+2. Retired Khala runtime route guard test passes.
+3. Control sync claim issuance is healthy (`POST /api/spacetime/token`).
+4. Target surface builds are deployed with retained sync compatibility settings.
+5. Rollback revision IDs are captured for control and runtime services.
 
 ## 2. Contract Rules (Must Hold)
 
-1. Commands/mutations are HTTP-only.
-2. Khala WebSocket is subscription/replay-only.
-3. Clients persist per-topic watermarks and apply idempotently by `(topic, seq)`.
-4. `stale_cursor` forces HTTP snapshot/bootstrap before live tail resume.
+1. Commands/mutations remain HTTP authority operations.
+2. Sync transport remains delivery/projection only.
+3. Clients persist per-stream checkpoints and apply idempotently by `(stream_id, seq)`.
+4. Stale cursor requires deterministic bootstrap/replay recovery.
 
 ## 3. Rollout Stages
 
-1. Stage 0: Preflight gate
-   - Validate contract/routing tests and sync-table health.
-2. Stage 1: Internal canary
-   - Internal cohort only for at least 60 minutes.
-3. Stage 2: External canary (5%)
-   - Hold one business day when SLOs are green.
-4. Stage 3: Broad rollout (25% -> 50%)
-   - Two-step expansion with hold between steps.
-5. Stage 4: Full rollout (100%)
-   - Keep rollback window active for 24 hours.
+1. Stage 0: preflight gate
+   - run verification commands and capture baseline metrics.
+2. Stage 1: internal canary
+   - internal cohort only for at least 60 minutes.
+3. Stage 2: external canary (5%)
+   - hold one business day when SLOs are green.
+4. Stage 3: broad rollout (25% -> 50%)
+   - two-step expansion with hold between steps.
+5. Stage 4: full rollout (100%)
+   - maintain rollback window for 24 hours.
 
 ## 4. KPI and SLO Gates
 
 Do not advance stages unless all gates are green:
 
 1. Error budget gate
-   - WS auth/topic errors and `stale_cursor` rate below thresholds.
+   - sync auth/topic errors and stale-cursor rates below thresholds.
 2. Replay gate
-   - Replay bootstrap latency within budget per surface.
+   - replay bootstrap latency within budget.
 3. Reconnect gate
-   - Reconnect storm indicators remain bounded.
-4. Slow-consumer gate
-   - `slow_consumer_evicted` remains below threshold.
+   - reconnect storm indicators remain bounded.
+4. Delivery gate
+   - no sustained growth in failed publish/dropped delivery metrics.
 5. UX gate
-   - No duplicated/jumbled messages; near-real-time updates on active surfaces.
+   - no duplicated/jumbled messages; near-real-time updates on retained surface.
 
 ## 5. Verification Commands
 
-Runtime WS correctness:
+Runtime sync correctness:
 
 ```bash
-cargo test -p openagents-runtime-service server::tests::khala_topic_messages -- --nocapture
+cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture
 ```
 
-Fanout metrics snapshot:
+Cross-surface replay/resume parity:
 
 ```bash
-curl -sS "$RUNTIME_BASE_URL/internal/v1/khala/fanout/metrics?topic_limit=20" \
+./scripts/spacetime/replay-resume-parity-harness.sh
+```
+
+Chaos drill gate:
+
+```bash
+./scripts/spacetime/run-chaos-drills.sh
+```
+
+Runtime sync metrics snapshot:
+
+```bash
+curl -sS "$RUNTIME_BASE_URL/internal/v1/spacetime/sync/metrics" \
   -H "Authorization: Bearer $RUNTIME_ADMIN_TOKEN" | jq
 ```
 
@@ -72,20 +82,16 @@ Docs consistency gate:
 
 ## 6. Rollback Procedure
 
-Use the smallest blast-radius rollback first:
+Use smallest blast-radius rollback first:
 
-1. Traffic rollback
-   - Route back to last known-good service revisions.
-2. Runtime guard rollback
-   - Tighten `RUNTIME_KHALA_*` limits prior to full rollback where possible.
-3. Surface rollback
-   - Roll back only impacted client build if server lane is healthy.
-4. Validation
-   - Confirm error recovery and stable replay lag after rollback.
+1. traffic rollback to last known-good revisions.
+2. tighten sync throttle/guard configs before full rollback when possible.
+3. rollback impacted client cohort only if server lane remains healthy.
+4. validate recovery and replay stability after rollback.
 
 ## 7. Required Artifacts Per Gate Execution
 
-1. Stage report in release artifacts/runbook evidence store with pass/fail decision.
+1. stage report with pass/fail and go/no-go decision.
 2. KPI/SLO snapshots with command evidence.
-3. Explicit go/no-go statement with owner and timestamp.
-4. If no-go: blocker issues and remediation plan.
+3. owner + timestamp signoff statement.
+4. blocker issues and remediation plan for no-go outcomes.

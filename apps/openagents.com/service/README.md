@@ -243,8 +243,8 @@ Runbook:
 - Canonical policy and failure-code matrix:
   - `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
   - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
-- Khala WS mapping reference:
-  - `docs/protocol/OA_SYNC_WS_MAPPING.md`
+- Spacetime sync mapping reference:
+  - `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - Control API compatibility headers:
   - `x-oa-client-build-id`
   - `x-oa-protocol-version`

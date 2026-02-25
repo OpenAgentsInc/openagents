@@ -1,142 +1,109 @@
-# Khala Sync Roadmap (Legacy Lane During Spacetime Replacement)
+# Spacetime Sync Roadmap (Canonical Lane)
 
-Date: 2026-02-21  
-Status: Active legacy/deprecation program  
-Owner lanes: Runtime, Desktop, Infra, Protocol  
-Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
-
-Khala is the current runtime-owned sync/replay delivery system and is being replaced by SpacetimeDB per active plans.
+Date: 2026-02-25
+Status: Active
+Owner lanes: Runtime, Desktop, Control, Protocol, Infra
+Authority ADRs: `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 ## Program Goal
 
-Maintain deterministic replay/resume semantics while retiring the Khala lane and moving retained surfaces to SpacetimeDB:
+Operate one retained sync/replay lane with deterministic replay, idempotent apply, and production-safe rollout posture.
+
+Primary retained client surface:
+
 - `apps/autopilot-desktop`
 
 ## Non-Negotiable Constraints
 
 1. Runtime/Postgres remains authority for execution state.
-2. Khala is projection/replay delivery only (no authority writes).
-3. Live transport is WebSocket-only (no SSE/poll fallback lanes).
+2. Sync transport is delivery/projection only (no authority writes).
+3. Retained live sync doctrine is Spacetime transport semantics.
 4. Proto contracts remain schema authority.
-5. Commands are HTTP-only; subscriptions are WS-only.
+5. Commands are HTTP authority operations; sync delivery remains non-authority.
+6. Client apply remains idempotent and ordered by `(stream_id, seq)`.
 
-## Current Baseline (2026-02-21)
+## Current Baseline (2026-02-25)
 
 Completed baseline capabilities:
-1. Runtime fanout/replay endpoints and topic ACL checks exist in Rust runtime.
-2. Sync token minting exists at `POST /api/sync/token`.
-3. Rust-era docs now define canonical surface matrix and runbook gates.
 
-Remaining migration work:
-1. Remove residual legacy references from historical status artifacts when touched.
-2. Keep cross-surface contract harness coverage aligned to active consumer set.
-3. Close final rollout issues tied to OA-RUST WS-only gates.
+1. Runtime publishes retained sync events through Spacetime publisher path.
+2. Runtime exposes sync observability at `/internal/v1/spacetime/sync/metrics`.
+3. Retired runtime Khala internal endpoints return deterministic `404` and are no longer active authority lanes.
+4. Control service issues scoped sync claims through canonical Spacetime token endpoint.
 
-## Surface Matrix (Authoritative)
+Remaining closure work:
 
-| Surface | Primary Topic Scope | Integration Status |
-|---|---|---|
-| `apps/autopilot-desktop` | codex worker events + optional summaries | Active primary operator lane |
+1. Remove remaining Khala-named compatibility references in docs/tooling when touched.
+2. Keep replay/resume/chaos harnesses green across runtime/shared-client/desktop.
+3. Complete final migration audit and residual debt closure.
 
 ## Workstreams
 
-## Workstream A: Protocol and Contract Stability
+### SYNC-001: Contract and Negotiation Stability
 
-### SYNC-001: Keep proto envelope and error taxonomy stable
-Status: In Progress
-
-Done when:
-- `proto/openagents/sync/v1/*` remains backward compatible for active clients.
-- `stale_cursor`, auth denial, and payload limit errors remain deterministic.
-
-Verification:
-- `./scripts/local-ci.sh proto`
-
-### SYNC-002: Keep command-vs-subscription contract explicit
-Status: Completed
+Status: Active
 
 Done when:
-- Sync docs consistently state HTTP-only commands and WS-only subscriptions.
-- No sync doc prescribes RPC-style command transport over WS.
+
+- `spacetime.sync.v1` compatibility window remains deterministic.
+- protocol/schema/build-window failures remain machine-readable and consistent.
 
 Verification:
-- `./scripts/local-ci.sh docs`
 
-## Workstream B: Runtime Delivery Correctness
+- `cargo test -p openagents-client-core compatibility::tests -- --nocapture`
 
-### SYNC-003: Replay/resume correctness gates
-Status: In Progress
+### SYNC-002: Runtime Delivery Correctness
+
+Status: Active
 
 Done when:
-- replay, stale-cursor, and duplicate-frame behavior are covered by runtime tests.
-- docs and runbooks match implemented behavior.
+
+- publish metrics and retired-route guards remain green.
+- runtime delivery signals remain within rollout SLO gates.
 
 Verification:
-- `cargo test -p openagents-runtime-service server::tests::khala_topic_messages -- --nocapture`
-- `cargo test -p openagents-runtime-service projectors::tests -- --nocapture`
 
-### SYNC-004: Fanout/backpressure operational gates
-Status: In Progress
+- `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
+- `cargo test -p openagents-runtime-service retired_khala_routes_return_not_found -- --nocapture`
+
+### SYNC-003: Cross-Surface Replay/Resume Reliability
+
+Status: Active
 
 Done when:
-- slow-consumer and fairness metrics are visible in rollout checks.
-- runbook rollback procedures reference current runtime controls.
+
+- shared-client and desktop replay/resume lanes remain deterministic under reconnect/backoff churn.
 
 Verification:
-- `curl -sS "$RUNTIME_BASE_URL/internal/v1/khala/fanout/metrics?topic_limit=20" -H "Authorization: Bearer $RUNTIME_ADMIN_TOKEN" | jq`
 
-## Workstream C: Surface Rollout and Cutover
+- `./scripts/spacetime/replay-resume-parity-harness.sh`
 
-### SYNC-005: Desktop lane signoff
-Status: In Progress
+### SYNC-004: Chaos and Promotion Discipline
+
+Status: Active
 
 Done when:
-- desktop lane is duplicate-free, monotonic by `(topic, seq)`, and WS-only in rollout cohort.
+
+- deterministic chaos drill suite is green for canary/prod promotions.
+- artifacts are attached for go/no-go decisions.
 
 Verification:
-- `./scripts/local-ci.sh all-rust`
 
-### SYNC-006: Onyx decommission closure
-Status: Completed
-
-Done when:
-- Onyx is archived/removed from repo and sync docs no longer treat it as an active consumer lane.
-
-Verification:
-- `./scripts/local-ci.sh docs`
-
-## Workstream D: Operations and Runbooks
-
-### SYNC-007: WS-only rollout runbook alignment
-Status: Completed
-
-Done when:
-- `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md` reflects Rust-era consumer set and rollback gates.
-
-Verification:
-- `./scripts/local-ci.sh docs`
-
-### SYNC-008: Historical status handling policy
-Status: In Progress
-
-Done when:
-- historical sync snapshots are archived to backroom.
-- active guidance points operators to canonical surface docs/runbooks.
-
-Verification:
-- `./scripts/local-ci.sh docs`
+- `./scripts/spacetime/run-chaos-drills.sh`
 
 ## Rollout Gates
 
-Do not advance to broader cohorts unless all are green:
-1. WS auth/topic error rates remain within SLO.
-2. Replay bootstrap latency remains in budget.
-3. Reconnect storms remain bounded.
-4. Slow-consumer evictions do not trend upward.
-5. Surface UX remains duplicate-free and near-real-time.
+Do not advance cohort promotion unless all are green:
+
+1. sync auth/topic error rates remain within SLO.
+2. replay bootstrap latency remains in budget.
+3. reconnect storms remain bounded.
+4. duplicate delivery stays deterministic and idempotent.
+5. desktop sync UX remains stable with no out-of-order regressions.
 
 ## References
 
 - `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
+- `docs/sync/SPACETIME_PARITY_HARNESS.md`
+- `docs/sync/SPACETIME_CHAOS_DRILLS.md`
 - `docs/core/ARCHITECTURE.md`
-- `apps/runtime/docs/RUNTIME_CONTRACT.md`

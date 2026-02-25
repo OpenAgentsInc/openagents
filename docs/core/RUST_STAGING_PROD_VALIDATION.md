@@ -79,10 +79,11 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
   - throttle mode + affected/rejected/stressed request totals
   - FX rows (`rfq/quote/settlement`, quote->settle conversion, spread avg/median, withheld/failed, treasury provider breadth)
 
-3. Khala contract lane
+3. Spacetime sync contract lane
 
 ```bash
-cargo test --manifest-path apps/runtime/Cargo.toml server::tests::khala_topic_messages -- --nocapture
+cargo test --manifest-path apps/runtime/Cargo.toml server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_khala_routes_return_not_found -- --nocapture
 ```
 
 4. Surface parity lane (optional)
