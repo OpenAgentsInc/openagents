@@ -48,8 +48,17 @@ Required artifacts:
 1. Parity report from dual-lane harness.
 2. Replay/resume test report.
 3. Auth/scope security test report.
-4. Chaos drill summary (restart, temporary partition, token-expiry storm).
-5. On-call signoff and rollback rehearsal confirmation.
+4. Staging canary summary with cohort progression evidence.
+5. Chaos drill summary (restart, temporary partition, token-expiry storm).
+6. On-call signoff and rollback rehearsal confirmation.
+
+Staging canary command:
+
+```bash
+./scripts/spacetime/run-staging-canary-rollout.sh
+```
+
+Attach `output/canary/spacetime/staging-<timestamp>/SUMMARY.md` with `gate-results.jsonl` and `cohort-results.jsonl`.
 
 Chaos drill command:
 

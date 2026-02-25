@@ -52,6 +52,7 @@ Supported lanes:
 - `sync-security`
 - `spacetime-replay-resume`
 - `spacetime-chaos`
+- `spacetime-staging-canary`
 - `test-triggers`
 
 Examples:
@@ -69,6 +70,7 @@ Examples:
 ./scripts/local-ci.sh sync-security
 ./scripts/local-ci.sh spacetime-replay-resume
 ./scripts/local-ci.sh spacetime-chaos
+./scripts/local-ci.sh spacetime-staging-canary
 ./scripts/local-ci.sh all-rust
 ./scripts/local-ci.sh all
 ```
@@ -94,6 +96,7 @@ Changed-mode trigger note:
 - `sync-security` lane auto-runs for sync auth/token/stream authorization surfaces and executes negative-path tests for unauthorized subscribe/mutate, scope boundaries, malformed/expired token handling, and tenant stream-grant isolation.
 - `spacetime-replay-resume` lane auto-runs for replay/resume core surfaces (runtime shadow parity, shared client subscribe/resume, desktop checkpoint/apply/lifecycle) and executes `scripts/spacetime/replay-resume-parity-harness.sh`.
 - `spacetime-chaos` lane auto-runs for Spacetime chaos drill surfaces and executes `scripts/spacetime/run-chaos-drills.sh`, emitting per-scenario artifacts under `output/chaos/spacetime/`.
+- `spacetime-staging-canary` lane auto-runs for staging canary harness surfaces and executes `scripts/spacetime/run-staging-canary-rollout.sh`, emitting gate/cohort artifacts under `output/canary/spacetime/`.
 
 ## Push Policy
 
@@ -117,6 +120,7 @@ OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh sync-security
 ./scripts/local-ci.sh spacetime-replay-resume
 ./scripts/local-ci.sh spacetime-chaos
+./scripts/local-ci.sh spacetime-staging-canary
 ./scripts/local-ci.sh all
 ```
 

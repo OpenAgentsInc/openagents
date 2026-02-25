@@ -3,6 +3,7 @@
 Current-state Khala sync documentation and runbooks (legacy lane during replacement program):
 - `ROADMAP.md`: migration and implementation sequencing
 - `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover procedure
+- `SPACETIME_STAGING_CANARY_ROLLOUT.md`: cohorted staging canary flow, gate bundle, and promotion artifacts
 - `SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`: go/no-go gates, rollback triggers, and promotion evidence checklist
 - `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: scope grants, rotation, and runtime enforcement contract
 - `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime authority fanout to Spacetime stream mapping and parity checks
