@@ -38,11 +38,7 @@ pub enum ChainEvent {
     /// A signature node has failed.
     NodeFailed { call_id: Uuid, error: String },
     /// A token was received during streaming.
-    TokenReceived {
-        call_id: Uuid,
-        #[allow(dead_code)]
-        token: String,
-    },
+    TokenReceived { call_id: Uuid, token: String },
     /// Progress update for tool-based operations.
     Progress { message: String },
 }

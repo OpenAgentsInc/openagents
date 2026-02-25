@@ -9,7 +9,6 @@ use super::super::HookLogEntry;
 use super::super::chat::MessageMetadata;
 
 /// Events from the async query task.
-#[allow(dead_code)]
 pub(crate) enum ResponseEvent {
     Chunk(String),
     ThoughtChunk(String),
@@ -78,13 +77,9 @@ pub(crate) enum ResponseEvent {
     },
 }
 
-#[allow(dead_code)]
 pub(crate) enum QueryControl {
     Interrupt,
-    RewindFiles {
-        user_message_id: String,
-    },
-    #[allow(dead_code)]
+    RewindFiles { user_message_id: String },
     Abort,
     FetchMcpStatus,
 }

@@ -395,14 +395,35 @@ fn draw_issue_suggestions(
             estimated_effort,
             other_blocked_count,
         } => {
+            let suggestion = UnblockCardSuggestion {
+                issue_number: *issue_number,
+                title,
+                blocked_reason,
+                unblock_rationale,
+                unblock_strategy,
+                estimated_effort,
+                other_blocked_count: *other_blocked_count,
+            };
             draw_unblock_card(
-                state, scene, *issue_number, title, blocked_reason,
-                unblock_rationale, unblock_strategy, estimated_effort, *other_blocked_count,
-                logical_width, logical_height, palette,
+                state,
+                scene,
+                suggestion,
+                (logical_width, logical_height),
+                palette,
             );
         }
         _ => {}
     }
+}
+
+struct UnblockCardSuggestion<'a> {
+    issue_number: u32,
+    title: &'a str,
+    blocked_reason: &'a str,
+    unblock_rationale: &'a str,
+    unblock_strategy: &'a str,
+    estimated_effort: &'a str,
+    other_blocked_count: usize,
 }
 
 /// Draw the issue suggestions card.
@@ -542,21 +563,24 @@ fn draw_suggestions_card(
 }
 
 /// Draw the unblock suggestion card.
-#[allow(clippy::too_many_arguments)]
 fn draw_unblock_card(
     state: &mut AppState,
     scene: &mut Scene,
-    issue_number: u32,
-    title: &str,
-    blocked_reason: &str,
-    unblock_rationale: &str,
-    unblock_strategy: &str,
-    estimated_effort: &str,
-    other_blocked_count: usize,
-    logical_width: f32,
-    logical_height: f32,
+    suggestion: UnblockCardSuggestion<'_>,
+    logical_size: (f32, f32),
     palette: &UiPalette,
 ) {
+    let UnblockCardSuggestion {
+        issue_number,
+        title,
+        blocked_reason,
+        unblock_rationale,
+        unblock_strategy,
+        estimated_effort,
+        other_blocked_count,
+    } = suggestion;
+    let (logical_width, logical_height) = logical_size;
+
     let card_width = 400.0_f32.min(logical_width - 40.0);
     let line_height = 16.0;
     let card_height = 210.0; // Fixed height for unblock card (includes prompt)

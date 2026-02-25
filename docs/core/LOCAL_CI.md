@@ -44,6 +44,7 @@ Supported lanes:
 - `runtime-history`
 - `workspace-compile`
 - `panic-surface`
+- `allow-attrs`
 - `clippy-rust`
 - `cross-surface`
 - `inbox-gmail`
@@ -56,6 +57,7 @@ Examples:
 ./scripts/local-ci.sh runtime-history
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
+./scripts/local-ci.sh allow-attrs
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh cross-surface
 ./scripts/local-ci.sh inbox-gmail
@@ -76,6 +78,7 @@ Changed-mode trigger note:
 - `runtime-history` lane auto-runs for Rust runtime history-compat paths (`apps/runtime/src/**`, `apps/runtime/fixtures/history_compat/**`, `apps/runtime/Cargo.toml`, `Cargo.lock`) and enforces deterministic replay compatibility fixtures.
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
 - `panic-surface` lane auto-runs for Rust workspace paths and enforces no-net-growth panic-surface policy against `docs/ci/panic-surface-baseline.env`.
+- `allow-attrs` lane auto-runs for Rust workspace paths and enforces no-net-growth of unjustified `#[allow(...)]` usage in critical crates against `docs/ci/allow-attribute-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
 - `cross-surface` lane auto-triggers for retained desktop/runtime harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 - `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com/service`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
@@ -94,6 +97,7 @@ Run additional gates manually before pushing when needed:
 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
+./scripts/local-ci.sh allow-attrs
 OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh inbox-gmail
@@ -195,13 +199,24 @@ Refresh baseline only when intentional reductions are merged:
 
 ## Allow-Attribute Policy
 
-Allow attributes are exception-only. Use these rules:
+`./scripts/local-ci.sh allow-attrs` runs:
 
-- Prefer refactoring over `#[allow(...)]` in production paths.
-- If unavoidable, scope narrowly to the smallest item and include a reason.
-- Prefer `#[expect(..., reason = \"...\")]` for known temporary debt with explicit intent.
-- Do not add crate-wide/module-wide broad allows for convenience.
-- Any PR adding/refactoring `#[allow(...)]` in core crates must include rationale and follow-up removal intent.
+```bash
+./scripts/allow-attribute-gate.sh check
+```
+
+Policy for critical crates (`apps/runtime`, `apps/openagents.com/service`, `apps/autopilot-desktop`, `crates/autopilot-core`, `crates/autopilot`):
+
+- No-net-growth on **unjustified** `#[allow(...)]` suppressions is enforced against `docs/ci/allow-attribute-baseline.env`.
+- Prefer refactoring over adding new suppressions.
+- If an allow is unavoidable, annotate the immediately preceding line with `lint-allow-justified:` and a concrete reason.
+- Keep the scope minimal to the specific item; avoid broad crate/module allows.
+
+Refresh the baseline only after intentional debt reduction:
+
+```bash
+./scripts/allow-attribute-gate.sh snapshot
+```
 
 ## Temporary Bypass (Use Sparingly)
 

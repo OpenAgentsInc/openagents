@@ -5,7 +5,6 @@ pub use openagents_client_core::khala_protocol::{
     sync_error_code as khala_error_code,
 };
 
-#[allow(unused_imports)]
 pub use openagents_codex_control::{
     ControlMethod, ControlRequestEnvelope, ControlRequestParseError, IosUserMessage,
     RequestReplayState, TargetResolutionInput, WorkerReceipt, error_receipt as build_error_receipt,

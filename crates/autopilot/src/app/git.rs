@@ -50,7 +50,6 @@ pub(crate) struct GitDiffItem {
     pub(crate) diff: String,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GitLogEntry {
     pub(crate) sha: String,
@@ -59,7 +58,6 @@ pub(crate) struct GitLogEntry {
     pub(crate) timestamp: i64,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GitLogSnapshot {
     pub(crate) entries: Vec<GitLogEntry>,
@@ -259,12 +257,10 @@ impl GitState {
         self.status_by_workspace.get(workspace_id)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn log_snapshot_for_workspace(&self, workspace_id: &str) -> Option<&GitLogSnapshot> {
         self.log_by_workspace.get(workspace_id)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn remote_for_workspace(&self, workspace_id: &str) -> Option<&Option<String>> {
         self.remote_by_workspace.get(workspace_id)
     }
@@ -280,7 +276,6 @@ impl GitState {
         self.diff_in_flight.contains(workspace_id)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn is_log_loading(&self, workspace_id: &str) -> bool {
         self.log_in_flight.contains(workspace_id)
     }

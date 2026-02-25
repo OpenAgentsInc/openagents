@@ -60,7 +60,6 @@ pub(crate) struct ModelPickerEntry {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) description: String,
-    #[allow(dead_code)]
     pub(crate) is_default: bool,
 }
 

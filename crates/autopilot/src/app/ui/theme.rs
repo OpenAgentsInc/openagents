@@ -17,7 +17,6 @@ pub(crate) struct UiPalette {
     pub(crate) panel_border: Hsla,
     pub(crate) panel_highlight: Hsla,
     pub(crate) overlay: Hsla,
-    #[allow(dead_code)]
     pub(crate) input_bg: Hsla,
     pub(crate) input_border: Hsla,
     pub(crate) input_border_focused: Hsla,
@@ -27,17 +26,13 @@ pub(crate) struct UiPalette {
     pub(crate) text_dim: Hsla,
     pub(crate) text_faint: Hsla,
     pub(crate) prompt: Hsla,
-    #[allow(dead_code)]
     pub(crate) status_left: Hsla,
-    #[allow(dead_code)]
     pub(crate) status_right: Hsla,
     pub(crate) user_text: Hsla,
     pub(crate) assistant_text: Hsla,
     pub(crate) thinking_text: Hsla,
     pub(crate) selection_bg: Hsla,
-    #[allow(dead_code)]
     pub(crate) tool_panel_bg: Hsla,
-    #[allow(dead_code)]
     pub(crate) tool_panel_border: Hsla,
     pub(crate) tool_progress_bg: Hsla,
     pub(crate) tool_progress_fg: Hsla,

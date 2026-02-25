@@ -3834,7 +3834,6 @@ async fn fetch_app_server_mcp_status(
     Ok(statuses)
 }
 
-#[allow(dead_code)]
 async fn fetch_app_server_skills(
     client: &app_server::AppServerClient,
     cwd: &PathBuf,

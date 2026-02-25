@@ -131,8 +131,10 @@ panic = "deny"
 # Note: indexing_slicing lint is too strict and flags many safe uses.
 # Instead, rely on careful code review and bounds checking.
 
-# --- Prohibit all allow attributes (no exceptions) ---
-allow_attributes = "deny"
+# --- Keep allow attributes visible; enforce growth control via local-ci allow-attrs gate ---
+# This workspace lint is warning-level because not all crates opt into workspace lints yet.
+# Critical crates are enforced through scripts/allow-attribute-gate.sh.
+allow_attributes = "warn"
 
 # --- Allow large error types (good UX often needs rich context) ---
 result_large_err = "allow"

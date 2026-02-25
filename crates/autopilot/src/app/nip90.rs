@@ -104,7 +104,6 @@ pub(crate) enum Nip90Command {
 pub(crate) struct Nip90Runtime {
     cmd_tx: mpsc::Sender<Nip90Command>,
     pub(crate) event_rx: mpsc::Receiver<Nip90Event>,
-    #[allow(dead_code)]
     pub(crate) pubkey_hex: String,
 }
 

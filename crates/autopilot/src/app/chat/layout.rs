@@ -9,7 +9,6 @@ pub(crate) struct BootSectionLayout {
     pub(crate) details: Vec<String>,
     pub(crate) status: SectionStatus,
     pub(crate) expanded: bool,
-    #[allow(dead_code)]
     pub(crate) section_id: usize,
 }
 

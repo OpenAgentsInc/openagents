@@ -35,6 +35,7 @@ AGENTS.local.md
 *.env.*
 !**/.env*.example
 !docs/ci/panic-surface-baseline.env
+!docs/ci/allow-attribute-baseline.env
 # Ignore ts-rs generated types (Phase 2); CI/codegen will manage these
 packages/tricoder/src/types/generated/
 

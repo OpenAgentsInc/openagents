@@ -5080,7 +5080,6 @@ fn resolve_runtime_sync_base_url(
     }
 }
 
-#[allow(dead_code)]
 fn is_super_trigger(message: &str) -> bool {
     let trimmed = message.trim().to_lowercase();
     let normalized = trimmed
@@ -5102,8 +5101,6 @@ fn is_super_trigger(message: &str) -> bool {
     )
 }
 
-#[allow(dead_code)]
-#[allow(dead_code)]
 fn guidance_response_score(text: &str) -> f32 {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -5149,7 +5146,6 @@ fn sanitize_guidance_directive(text: &str) -> String {
     sanitize_guidance_line(text, 600)
 }
 
-#[allow(dead_code)]
 fn fallback_guidance_response(goal_intent: &str) -> String {
     if goal_intent.trim().is_empty() {
         "Summarize the request and propose the next concrete step.".to_string()
@@ -5525,7 +5521,6 @@ fn extract_first_step_description(raw: &str) -> Option<String> {
     None
 }
 
-#[allow(dead_code)]
 fn strip_question_marks(text: &str) -> String {
     text.replace('?', "").trim().to_string()
 }
@@ -5552,7 +5547,6 @@ fn is_question_like(text: &str) -> bool {
     cues.iter().any(|cue| lower.contains(cue))
 }
 
-#[allow(dead_code)]
 async fn run_task_understanding(
     message: &str,
     repo_context: &str,
@@ -5593,7 +5587,6 @@ async fn run_task_understanding(
     Ok(fallback_guidance_response(goal_intent))
 }
 
-#[allow(dead_code)]
 async fn run_planning_summary(
     message: &str,
     repo_context: &str,
@@ -5620,7 +5613,6 @@ async fn run_planning_summary(
     Ok(fallback_guidance_response(goal_intent))
 }
 
-#[allow(dead_code)]
 async fn handle_guidance_route(
     proxy: &EventLoopProxy<AppEvent>,
     thread_id: &str,
@@ -5955,7 +5947,6 @@ async fn run_guidance_followup(
     })
 }
 
-#[allow(dead_code)]
 async fn run_guidance_router(
     proxy: &EventLoopProxy<AppEvent>,
     thread_id: &str,

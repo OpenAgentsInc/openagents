@@ -30,7 +30,6 @@ pub struct ActivePlan {
 
 impl ActivePlan {
     /// Create a new plan from a list of task descriptions.
-    #[allow(dead_code)]
     pub fn from_tasks(tasks: Vec<PlanTask>) -> Self {
         Self {
             explanation: None,
@@ -39,7 +38,6 @@ impl ActivePlan {
     }
 
     /// Create a new plan with an explanation and task descriptions.
-    #[allow(dead_code)]
     pub fn with_explanation(explanation: String, task_descriptions: Vec<String>) -> Self {
         Self {
             explanation: Some(explanation),

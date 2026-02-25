@@ -2,7 +2,6 @@ pub(crate) const INPUT_HEIGHT: f32 = 40.0;
 pub(crate) const INPUT_PADDING: f32 = 12.0;
 pub(crate) const OUTPUT_PADDING: f32 = 12.0;
 pub(crate) const STATUS_BAR_HEIGHT: f32 = 20.0;
-#[allow(dead_code)]
 pub(crate) const STATUS_BAR_FONT_SIZE: f32 = 13.0;
 pub(crate) const COMPOSER_BAR_HEIGHT: f32 = 28.0;
 pub(crate) const COMPOSER_BAR_GAP: f32 = 8.0;
@@ -334,7 +333,6 @@ pub(crate) fn git_diff_panel_layout(
     }
 }
 
-#[allow(dead_code)]
 fn format_tokens(n: u64) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
@@ -345,7 +343,6 @@ fn format_tokens(n: u64) -> String {
     }
 }
 
-#[allow(dead_code)]
 fn format_duration_ms(ms: u64) -> String {
     if ms < 1_000 {
         format!("{}ms", ms)
