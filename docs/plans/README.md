@@ -11,6 +11,7 @@ This directory stores execution plans.
 - `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - `docs/plans/spacetimedb-full-integration.md`
+- `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
 - `docs/plans/vignette-hydra-mvp2.md`
 - `docs/plans/vignette-hydra-mvp3.md`
 - `docs/plans/vignette-phase0-issue-to-pr.md`

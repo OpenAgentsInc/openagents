@@ -187,6 +187,23 @@ For this product phase, local Codex command/control should be treated as a first
 3. Shared runtime is optional for this lane and should be used for sync, remote compute augmentation, and shared policy/receipt needs, not as a prerequisite for local Codex operation.
 4. If local Codex is unavailable or unhealthy, Autopilot should degrade gracefully to configured remote/network compute paths without changing shared authority boundaries.
 
+## Amendment: Full Sync Replacement Target (SpacetimeDB)
+
+If OpenAgents commits to full Khala replacement, this audit's placement model should be read with these updates:
+
+1. SpacetimeDB becomes the single sync/replay transport for retained surfaces.
+2. Khala-specific token/websocket/topic dependencies become migration debt to delete, not steady-state architecture.
+3. Local-first Autopilot behavior stays unchanged: local Codex orchestration remains primary when available.
+4. Shared runtime/control continue to own auth, policy, treasury, Hydra, and Aegis authority decisions.
+5. NIP-90/Nostr remain supplemental interoperability and external market lanes, not the in-domain primary sync substrate.
+
+Replacement-readiness requirements:
+
+1. Preserve deterministic replay and idempotent ordered apply semantics.
+2. Preserve explicit stale/resume recovery behavior.
+3. Preserve scoped auth claim enforcement and token rotation posture.
+4. Preserve incident/runbook readiness before removing Khala endpoints.
+
 ## Notable Gaps and Inconsistencies
 
 1. Mixed ownership under `/api/runtime/*` in control service:

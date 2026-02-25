@@ -1,9 +1,14 @@
 # Khala WS Mapping (`openagents.sync.v1`)
 
 Date: 2026-02-21
-Status: Active (v1)
+Status: Active legacy mapping (v1)
 
 This document maps `proto/openagents/sync/v1/*.proto` messages to the Rust Khala WebSocket wire contract.
+
+Note:
+
+- This is the current implemented mapping.
+- Active replacement program moves canonical sync transport to SpacetimeDB (`docs/plans/spacetimedb-full-integration.md`).
 
 ## Transport
 

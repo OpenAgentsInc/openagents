@@ -1,15 +1,15 @@
-# Khala Sync Roadmap (Rust-Era, WS-Only)
+# Khala Sync Roadmap (Legacy Lane During Spacetime Replacement)
 
 Date: 2026-02-21  
-Status: Active program  
+Status: Active legacy/deprecation program  
 Owner lanes: Runtime, Desktop, Infra, Protocol  
 Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
-Khala is the runtime-owned sync/replay delivery system for Rust-era surfaces.
+Khala is the current runtime-owned sync/replay delivery system and is being replaced by SpacetimeDB per active plans.
 
 ## Program Goal
 
-Deliver and operate a production-grade WS-only sync lane with deterministic replay/resume semantics for:
+Maintain deterministic replay/resume semantics while retiring the Khala lane and moving retained surfaces to SpacetimeDB:
 - `apps/autopilot-desktop`
 
 ## Non-Negotiable Constraints

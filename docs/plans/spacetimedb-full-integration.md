@@ -1,307 +1,238 @@
-# SpacetimeDB Full Integration Plan (Autopilot Comms First)
+# SpacetimeDB Full Replacement Plan (Khala Retirement)
 
-Status: active plan  
-Date: 2026-02-25  
-Owner: architecture/runtime + autopilot
+Status: active implementation plan
+Date: 2026-02-25
+Owner lanes: `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:docs`
 
-## 1) Why This Plan Exists
+## 1) Objective
 
-OpenAgents needs a single shared collaboration world where Autopilots can discover each other, exchange messages, coordinate work, and synchronize state with low latency.
+Replace Khala sync/replay delivery with SpacetimeDB as the canonical sync substrate for OpenAgents.
 
-This plan makes SpacetimeDB the primary inter-Autopilot communication and coordination plane, while keeping Nostr as a supplemental lane for interop, reach, and fallback.
+End state:
 
-## 2) Scope and Outcome
+1. All live sync/replay channels currently served by Khala are served by SpacetimeDB.
+2. Khala topic fanout/replay endpoints and protocol docs are retired.
+3. Autopilot-to-Autopilot collaboration and runtime sync share one SpacetimeDB transport and state model.
+4. Hydra/Aegis authority domains remain intact and continue using authenticated command boundaries.
 
-At completion:
+## 2) Non-goals
 
-1. Autopilot-to-Autopilot comms are Spacetime-first by default.
-2. Nostr remains supported, but as a secondary adapter lane.
-3. Control/runtime authority invariants remain intact for auth, money, policy, and replay-critical authority domains.
-4. Hydra and Aegis tracks remain compatible and unchanged in authority ownership.
+1. Replacing runtime/control authority for money/policy/trust decisions with unaudited ad hoc lanes.
+2. Removing Nostr interoperability and NIP-90 marketplace participation.
+3. Keeping long-term dual-primary sync planes.
 
-## 3) Authorities and Constraints
+## 3) Preflight Constraints and Required Governance Changes
 
-Reviewed constraints for this plan:
+Checked authorities:
 
 1. `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 2. `docs/adr/ADR-0002-proto-first-contract-governance.md`
 3. `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
 4. `docs/plans/rust-migration-invariant-gates.md`
-5. `docs/audits/2026-02-25-spacetimedb-openagents-autopilot-audit.md`
 
-Non-negotiable constraints:
+Implication:
 
-1. No dual authority for the same domain.
-2. Authority mutations that impact shared trust/money/policy remain in authenticated HTTP authority lanes.
-3. Replayability and deterministic behavior are release gates.
-4. Spacetime adoption must not weaken existing replay/idempotency guarantees.
+1. Current ADR/invariant language still names Khala as the WS sync lane.
+2. Full replacement requires a superseding ADR and invariant updates before production cutover.
+3. Until supersession lands, Khala remains implemented reality and Spacetime work is replacement program execution.
 
-## 4) Target Architecture
+## 4) SpacetimeDB Mechanics We Must Design Around
 
-### 4.1 Primary model
+These are direct implementation-relevant findings from `/Users/christopherdavid/code/SpacetimeDB`:
 
-1. SpacetimeDB becomes the primary collaboration world for:
-   - Autopilot presence and membership,
-   - session and channel comms,
-   - peer capability announcements,
-   - request/response coordination for distributed execution.
-2. Runtime/control remain authority for:
-   - identity/session issuance,
-   - treasury/liquidity/credit/warranty/claim state (Hydra/Aegis),
-   - canonical receipts and policy enforcement.
-3. Nostr remains supplemental for:
-   - public discovery/interoperability,
-   - marketplace reach where policy requires relay dissemination,
-   - degraded-mode transport when Spacetime lane is unavailable.
+1. Session topology is client-to-shared-database, not peer-to-peer.
+2. Clients connect over outbound websocket to `GET /v1/database/:name_or_identity/subscribe`.
+3. Auth tokens are accepted via `Authorization: Bearer` or query token (`?token=...`).
+4. SDK path commonly mints a short-lived websocket token first (`/v1/identity/websocket-token`).
+5. Server negotiates websocket subprotocol versions (`v2.bsatn.spacetimedb` / `v1.bsatn.spacetimedb`).
+6. On connect, server sends initial connection identity/context.
+7. Subscription lifecycle is `Subscribe` -> `SubscribeApplied` (atomic snapshot) -> `TransactionUpdate` deltas.
+8. Delivery semantics are explicitly ordered/atomic at subscription init and transaction boundaries.
+9. Fanout is aggregated per transaction per client, not arbitrary per-row pushes.
+10. Confirmed reads can gate message release on durable offset.
+11. Event tables are first-class for transient realtime signaling and are emitted on commit.
 
-### 4.2 Domain ownership table
+## 5) Replacement Architecture
 
-| Domain | Primary owner | Secondary adapter |
-|---|---|---|
-| Autopilot peer presence | SpacetimeDB | Nostr broadcast mirror |
-| Autopilot session comms | SpacetimeDB | Nostr fallback envelopes |
-| Agent capability ads | SpacetimeDB | Nostr relay mirror |
-| Provider discovery hints | SpacetimeDB | Nostr supplemental discovery |
-| Auth/session authority | Control service | None |
-| Money and settlement authority | Runtime + wallet-executor (Hydra) | Nostr proofs mirror only |
-| Verification/warranty authority | Runtime (Aegis) | Nostr proofs mirror only |
+### 5.1 Sync ownership
 
-## 5) Spacetime World Design
+1. SpacetimeDB becomes the single live sync/replay transport for retained OpenAgents surfaces.
+2. Khala is demoted to deprecation lane, then removed.
+3. Nostr remains interoperability and marketplace surface, not in-domain primary sync.
 
-### 5.1 Core tables (minimum full integration set)
+### 5.2 Authority boundaries
 
-1. `autopilot_node`
-   - node id, pubkey, device id, status, heartbeat, version, region.
-2. `autopilot_session`
-   - session id, node id, workspace id, started/ended timestamps.
-3. `peer_link`
-   - source node, target node, link state, last negotiated capabilities.
-4. `comms_channel`
-   - channel id, workspace scope, participants, policy flags.
-5. `message_event` (append-only)
-   - event seq, channel id, sender, payload, idempotency key, hash chain fields.
-6. `capability_ad`
-   - node id, available tools/models/compute, price hints, constraints.
-7. `compute_request`
-   - requester id, job envelope, policy class, cost hints, expected SLA.
-8. `compute_assignment`
-   - request id, selected provider, status, acceptance/rejection reason.
-9. `transport_checkpoint`
-   - per node/per channel cursor for durable resume and catch-up.
-10. `bridge_outbox`
-   - Nostr mirror/fallback events queued for adapter publication.
+1. Auth/session and policy decisions remain under control/runtime authenticated command APIs.
+2. Spacetime reducers mutate sync/collaboration state under scoped session claims.
+3. Hydra/Aegis authoritative economics/verification flows remain under existing command authority, with mirrored projections to sync where needed.
 
-### 5.2 Reducers (transactional APIs)
+### 5.3 State model
 
-1. `join_world`
-2. `heartbeat`
-3. `open_channel`
-4. `publish_message`
-5. `ack_message`
-6. `advertise_capabilities`
-7. `request_compute`
-8. `accept_compute`
-9. `reject_compute`
-10. `close_channel`
-11. `enqueue_nostr_bridge_event`
-12. `mark_bridge_event_published`
+Minimum canonical tables:
 
-Reducer requirements:
+1. `sync_stream` (logical stream metadata)
+2. `sync_event` (append-only sequenced events, idempotency key, payload hash)
+3. `sync_checkpoint` (per client/per stream resume watermark)
+4. `session_presence` (active peers and liveness)
+5. `provider_capability` (NIP-90/provider capability signaling)
+6. `compute_assignment` (request/assignment visibility for collaboration clients)
+7. `bridge_outbox` (policy-gated Nostr mirror queue)
+8. Event tables for transient presence/conflict/typing or progress signals
 
-1. Idempotency key enforced on message and assignment writes.
-2. Monotonic per-channel sequence assignment.
-3. Deterministic hashing for replay proofs.
-4. Conflict responses are explicit (no silent overwrite).
+### 5.4 Reducers/procedures
 
-### 5.3 Subscriptions
+Required reducer set:
 
-1. Node-scoped subscription for private inbound channel traffic.
-2. Workspace-scoped subscription for presence and membership changes.
-3. Provider-scoped subscription for eligible compute requests.
-4. Bridge adapter subscription for outbox publication events.
+1. `append_sync_event`
+2. `ack_checkpoint`
+3. `upsert_presence`
+4. `publish_provider_capability`
+5. `open_compute_assignment`
+6. `update_compute_assignment`
+7. `enqueue_bridge_event`
+8. `mark_bridge_event_sent`
 
-## 6) Identity, Auth, and Trust
+Reducer rules:
 
-1. User controls NIP-06 identity locally in desktop.
-2. Control service mints short-lived Spacetime auth tokens bound to:
-   - org/user/device/session,
-   - NIP pubkey,
-   - capability scope.
-3. Spacetime reducers validate token claims and caller identity before mutation.
-4. Nostr bridge events are signed by node identity and include references to Spacetime event ids.
+1. Idempotent by explicit key.
+2. Deterministic serialization and hashing.
+3. Monotonic sequence assignment per stream.
+4. Explicit conflict errors (no silent overwrite).
 
-## 7) Transport Rules (Spacetime First, Nostr Supplemental)
+### 5.5 Delivery and replay contract
 
-Default transport order:
+1. Client subscribes with query set + resume watermark context.
+2. Server emits `SubscribeApplied` snapshot.
+3. Server emits ordered `TransactionUpdate` batches.
+4. Client apply path stays idempotent and monotonic.
+5. Confirmed-read mode is enabled for authority-sensitive streams that require durability-gated delivery.
 
-1. Spacetime direct world path.
-2. Spacetime retry with checkpoint replay.
-3. Optional Nostr fallback/mirror (policy-gated).
+## 6) Mapping From Khala Semantics
 
-Nostr is never primary for private intra-session coordination once Spacetime is healthy.
+Khala semantics to preserve in Spacetime replacement:
 
-## 8) Integration With Existing Surfaces
+1. `(topic, seq)` monotonic apply discipline -> `(stream_id, seq)` monotonic apply discipline.
+2. Replay-first then live-tail semantics.
+3. Duplicate-safe at-least-once delivery handling.
+4. Explicit stale cursor handling and client rebootstrap path.
+5. Deterministic payload hash vectors for replay verification.
 
-### 8.1 Desktop (`apps/autopilot-desktop`)
+## 7) OpenAgents Workstreams
 
-1. Add Spacetime connection lifecycle manager.
-2. Add connection status and health indicators in the provider/comms pane.
-3. Route peer messaging and coordination commands through Spacetime client first.
-4. Keep Nostr identity and NIP-90 settings visible for supplemental/fallback policy.
+### A) Governance and contracts
 
-### 8.2 Shared crates
+1. Add superseding ADR: SpacetimeDB sync authority replacing Khala transport ADR scope.
+2. Update `docs/plans/rust-migration-invariant-gates.md` to replace Khala-specific transport gates with Spacetime sync gates.
+3. Add/extend proto contracts for sync envelopes, checkpoints, errors, and compatibility negotiation.
 
-1. Add `crates/autopilot-spacetime` (new):
-   - typed client,
-   - reducer call wrappers,
-   - subscription stream handling,
-   - checkpoint persistence helpers.
-2. Add a transport abstraction in Autopilot core:
-   - `CommsTransport::SpacetimePrimary`,
-   - `CommsTransport::NostrSupplemental`.
-3. Keep transport selection policy-driven and auditable.
+### B) Runtime/control integration
 
-### 8.3 Runtime/control
+1. Control service issues short-lived Spacetime websocket claims bound to user/device/session scope.
+2. Runtime service publishes authoritative projection events into Spacetime-compatible reducer APIs.
+3. Runtime removes dependency on Khala-specific fanout after cutover.
 
-1. Add token issuance endpoint(s) for Spacetime claims.
-2. Add policy endpoints for transport and fallback rules.
-3. Keep Hydra/Aegis authority paths unchanged; only comms/discovery/state sync moves to Spacetime-first.
+### C) Desktop and shared crates
 
-## 9) NIP-90 and Marketplace Fit
+1. Add `crates/autopilot-spacetime` typed client.
+2. Desktop adopts Spacetime connection manager, subscription manager, checkpoint persistence.
+3. Desktop retains local Codex-first command execution and uses Spacetime for shared sync/discovery.
 
-1. Provider enrollment and capability publication become Spacetime-first events.
-2. NIP-90 remains an external network interop lane, not the default internal comms lane.
-3. Assignment and acceptance are coordinated in Spacetime with optional Nostr mirrors for network-wide discoverability.
-4. Settlement and receipts remain under existing runtime/Hydra/Aegis authority domains.
+### D) NIP-90/Nostr interoperability
 
-## 10) Phased Execution Plan
+1. Keep provider operations and marketplace signaling mirrored to Nostr where policy requires.
+2. Ensure mirror failure cannot block core Spacetime state progression.
 
-### Phase 0: Contracts and ADR alignment
+### E) Deletion and retirement
 
-1. Add ADR for Spacetime domain ownership and Nostr supplemental role.
-2. Add proto/schema contracts for Spacetime comms envelopes and checkpoints.
-3. Define backward-compatible transport flags.
+1. Remove Khala protocol mapping docs and runbooks after cutover acceptance.
+2. Remove runtime Khala endpoints and tests once Spacetime parity gates are green.
+3. Remove control-issued Khala token paths.
+
+## 8) Execution Phases
+
+### Phase 0: Governance unblocking
+
+1. Land ADR supersession for sync transport ownership.
+2. Update invariant gates for Spacetime sync semantics.
+3. Approve cutover acceptance criteria and rollback runbook.
 
 Gate:
 
-1. ADR merged.
-2. Contract docs approved.
+1. ADR/invariant docs merged.
 
-### Phase 1: Spacetime foundation
+### Phase 1: Contract and client foundation
 
-1. Stand up OpenAgents Spacetime module with core tables/reducers/subscriptions.
-2. Implement typed Rust client crate with deterministic serializer/hashing rules.
-3. Add local/dev harness for reducer replay tests.
-
-Gate:
-
-1. Replay tests deterministic across restarts.
-2. Subscription resume from checkpoints works.
-
-### Phase 2: Identity and auth integration
-
-1. Wire control-minted short-lived Spacetime tokens.
-2. Bind NIP-06 pubkey + device claims to session context.
-3. Add auth failure observability and rotation logic.
+1. Land proto envelope/checkpoint/error schemas.
+2. Build `crates/autopilot-spacetime` client with deterministic codec and replay helpers.
+3. Add dual-stack test harness (Khala baseline vs Spacetime candidate outputs).
 
 Gate:
 
-1. Unauthorized reducer calls denied by tests.
-2. Token expiry/refresh paths verified.
+1. Replay/idempotency parity tests green.
 
-### Phase 3: Autopilot comms cut-in
+### Phase 2: Spacetime world and reducers
 
-1. Integrate desktop and core comms with Spacetime-first transport.
-2. Migrate presence, direct channel messaging, and capability ads to Spacetime reducers.
-3. Keep Nostr mirror/fallback behind feature policy.
-
-Gate:
-
-1. Two local Autopilots can discover/connect/exchange messages via Spacetime only.
-2. Existing Nostr paths still work when forced by policy.
-
-### Phase 4: NIP-90 provider coordination migration
-
-1. Move provider capability and assignment handshake to Spacetime-first.
-2. Keep NIP-90 envelopes as supplemental publication for external market reach.
-3. Add explicit replay-linked mapping between Spacetime assignment ids and Nostr events.
+1. Implement schema/reducers/subscription query sets.
+2. Add confirmed-read mode on streams requiring durable visibility guarantees.
+3. Add metrics for sequence lag, replay gap, fanout latency.
 
 Gate:
 
-1. Provider onboarding and assignment pass in Spacetime-primary mode.
-2. External discoverability remains available via Nostr mirror lane.
+1. Stale/resume/duplicate chaos tests pass.
 
-### Phase 5: Production hardening
+### Phase 3: Desktop cut-in
 
-1. Add SLOs for message latency, subscription staleness, replay recovery, and fallback rates.
-2. Add chaos tests: node restart, token expiry storms, temporary bridge outages.
-3. Add runbooks for Spacetime degradation and controlled Nostr fallback.
-
-Gate:
-
-1. SLOs met in staging.
-2. Rollback and degrade-mode drills pass.
-
-### Phase 6: Default policy flip
-
-1. Set Spacetime-primary as default in desktop and runtime policy.
-2. Keep Nostr supplemental mode available by explicit config.
-3. Publish migration notes and operator runbooks.
+1. Switch desktop sync transport to Spacetime by default (feature flag first).
+2. Keep local Codex orchestration first-class.
+3. Keep Nostr interoperability lanes supplemental.
 
 Gate:
 
-1. No P0 regressions for two release cycles.
-2. Fallback usage drops to expected baseline.
+1. Multi-device sync acceptance tests pass with Spacetime-only mode.
 
-## 11) Testing and Verification Matrix
+### Phase 4: Runtime/control cutover
 
-1. Unit tests:
-   - reducer idempotency,
-   - sequence monotonicity,
-   - checkpoint correctness.
-2. Integration tests:
-   - multi-node messaging,
-   - provider assignment lifecycle,
-   - token rotation behavior.
-3. Determinism tests:
-   - replay from snapshot + log yields identical state hash.
-4. Failure tests:
-   - transient network splits,
-   - Nostr bridge failures,
-   - stale checkpoint recovery.
-5. Policy tests:
-   - forced Nostr supplemental mode,
-   - forced Spacetime-only mode,
-   - mixed mode with strict precedence.
+1. Move runtime projection feed and worker/event sync lanes to Spacetime.
+2. Disable Khala token minting and WS subscription paths in staged cohorts.
+3. Validate compatibility negotiation and client upgrade UX.
 
-## 12) Risks and Mitigations
+Gate:
 
-1. Risk: accidental dual authority between Spacetime and runtime/control.
-   - Mitigation: explicit ownership matrix and ADR-locked boundaries.
-2. Risk: fallback path becoming silently primary.
-   - Mitigation: precedence enforcement + metrics alerting on fallback ratio.
-3. Risk: replay divergence in comms history.
-   - Mitigation: append-only logs, hash chaining, replay CI gate.
-4. Risk: auth drift across NIP-06, device session, and Spacetime token.
-   - Mitigation: signed claim binding and strict expiry/refresh validation.
+1. No unresolved replay correctness regressions in staging soak.
 
-## 13) Success Criteria
+### Phase 5: Khala retirement
 
-1. At least 95% of inter-Autopilot comm events in production use Spacetime path.
-2. Nostr remains available and policy-controlled, but is no longer default for internal comms.
-3. No regression in Hydra/Aegis settlement or authority domains.
-4. Replay determinism and idempotency gates remain green in CI.
+1. Delete Khala runtime fanout/replay endpoints.
+2. Remove Khala protocol docs and fixtures from active authority set.
+3. Archive retired materials to backroom.
 
-## 14) Explicit Non-Goals
+Gate:
 
-1. Replacing runtime/control economic authority with Spacetime.
-2. Removing Nostr support entirely.
-3. Shipping private-key custody changes in this plan.
+1. Two release cycles with zero Khala dependency in retained surfaces.
 
-## 15) Deliverables
+## 9) Verification Matrix
 
-1. New Spacetime comms module and typed client crate.
-2. Desktop Spacetime connection/comms UI and transport policy controls.
-3. Runtime/control token and policy endpoints for Spacetime.
-4. Nostr bridge adapter for supplemental publication/fallback.
-5. Test harnesses, SLO dashboards, and operational runbooks.
+1. Deterministic replay parity across restart/snapshot boundaries.
+2. Idempotent duplicate-frame apply tests.
+3. Resume/stale-cursor recovery tests.
+4. Durability-gated delivery tests for confirmed-read streams.
+5. Cross-surface compatibility negotiation tests.
+6. Nostr mirror failure isolation tests.
+
+## 10) Success Criteria
+
+1. `apps/autopilot-desktop` and retained clients rely on Spacetime for live sync/replay.
+2. Khala endpoints are removed from runtime/control production paths.
+3. Sync SLOs meet or exceed pre-cutover baseline.
+4. Hydra/Aegis correctness and receipt integrity are unchanged.
+
+## 11) Docs That Must Stay Aligned During This Program
+
+1. `docs/core/ARCHITECTURE.md`
+2. `docs/core/ROADMAP.md`
+3. `docs/core/PROJECT_OVERVIEW.md`
+4. `docs/plans/rust-migration-invariant-gates.md`
+5. `docs/sync/README.md`
+6. `docs/sync/ROADMAP.md`
+7. `docs/protocol/OA_SYNC_WS_MAPPING.md`
+

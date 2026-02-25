@@ -35,6 +35,8 @@ This tree contains current Rust-era documentation and forward strategy only.
 - `sync/ROADMAP.md`
 - `sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
 - `codex/README.md`
+- `plans/spacetimedb-full-integration.md`
+- `plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
 
 ## Audits
 

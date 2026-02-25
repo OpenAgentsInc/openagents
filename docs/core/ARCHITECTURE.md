@@ -38,6 +38,8 @@ Active plan set reflected in this architecture:
 6. `docs/plans/vignette-phase0-issue-to-pr.md`
 7. `docs/plans/vignette-hydra-mvp2.md`
 8. `docs/plans/vignette-hydra-mvp3.md`
+9. `docs/plans/spacetimedb-full-integration.md`
+10. `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
 
 Research/optional context (not execution authority):
 
@@ -48,9 +50,9 @@ Research/optional context (not execution authority):
 
 1. Proto-first wire contracts (`INV-01`).
 2. Authority mutations over authenticated HTTP only (`INV-02`).
-3. Khala live transport is WS-only (`INV-03`); SSE is adapter-only per ADR-0008.
+3. Current production sync transport is Khala WS-only (`INV-03`); target-state sync transport is SpacetimeDB with equivalent replay/ordering guarantees before cutover.
 4. Control-plane and runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
-5. Replay/idempotency by `(topic, seq)` (`INV-07`).
+5. Replay/idempotency is mandatory for ordered stream apply (current `(topic, seq)`, target `(stream_id, seq)`) (`INV-07`).
 6. Service deploy isolation (`INV-08`) and migration discipline (`INV-09`).
 7. Legacy removal ordering after parity evidence (`INV-10`).
 8. No `.github/workflows` automation in-repo (`INV-12`).
@@ -79,6 +81,7 @@ Research/optional context (not execution authority):
 3. Hardened Hydra economics with continued API/productization and operations maturity.
 4. Aegis is implemented as a runtime MVP and continues to expand toward full verification/underwriting/liability phases.
 5. EP212 parity closure for wallet + L402 + commerce flows as production-real, not placeholder/stub behavior.
+6. SpacetimeDB replaces Khala as the canonical sync/replay transport after contract, replay, and ops parity gates land (`docs/plans/spacetimedb-full-integration.md`).
 
 ## End-to-End Topology (Current + Planned)
 
@@ -98,7 +101,10 @@ Sync token issuance + control APIs]
   subgraph runtimeplane[Runtime and Economy Plane]
     runtime[apps/runtime
 Execution authority + marketplace + treasury]
-    khala[Khala WS replay/live delivery]
+    spacetime[SpacetimeDB sync/replay
+Target primary lane]
+    khala[Khala WS replay/live delivery
+Current lane, planned retirement]
     hydra[Hydra liquidity/credit/routing/FX]
     aegis[Aegis verification/underwriting runtime MVP]
   end
@@ -122,8 +128,11 @@ L402/paywall ops + reconcile]
   desktop --> control
 
   control --> runtime
+  control --> spacetime
+  runtime --> spacetime
   control --> khala
   runtime --> khala
+  khala --> spacetime
 
   runtime --> hydra
   runtime --> aegis
@@ -146,7 +155,7 @@ Owns:
 
 1. WorkOS-authenticated identity/session binding and revocation.
 2. Org/device/session authorization state.
-3. Sync token + Khala token issuance.
+3. Sync token issuance (current Khala token + planned Spacetime websocket claim issuance).
 4. Control API entry point and route orchestration.
 5. Desktop download redirect authority via `OA_DESKTOP_DOWNLOAD_URL`.
 
@@ -167,7 +176,8 @@ Current exposed API/web groups (implemented):
    - `/api/tokens*`
    - `/api/orgs/*`, `/api/policy/authorize`
 4. Runtime sync + worker control lanes:
-   - `/api/sync/token`, `/api/v1/sync/token`, `/api/khala/token`
+   - `/api/sync/token`, `/api/v1/sync/token`, `/api/khala/token` (current)
+   - Spacetime token/claim endpoints (planned under active replacement plan)
    - `/api/runtime/codex/workers*`
    - `/api/runtime/threads*`
    - `/api/runtime/workers*`
@@ -204,14 +214,15 @@ Owns:
 1. Runtime execution authority state (runs/events/projectors/workers).
 2. Internal marketplace, verification, and treasury compute flows.
 3. Hydra liquidity/credit/routing/FX authority lanes.
-4. Khala delivery endpoints and replay/read models.
+4. Sync/replay projection delivery (currently Khala endpoints; target Spacetime reducers/subscriptions).
 
 Current internal API groups (implemented under `/internal/v1/*`):
 
 1. Health + OpenAPI:
    - `/healthz`, `/readyz`, `/internal/v1/openapi.json`
 2. Execution and replay:
-   - `/runs*`, `/khala/topics/*`, `/projectors/*`
+   - `/runs*`, `/khala/topics/*`, `/projectors/*` (current)
+   - Spacetime projection feed/reducer integration (planned)
 3. Worker lifecycle:
    - `/workers*`
 4. Marketplace and dispatch:
@@ -253,7 +264,7 @@ Source of truth for runtime route inventory:
 Implemented responsibilities:
 
 1. Runtime auth flows (`RuntimeAuthSendCode`, `RuntimeAuthVerifyCode`, status/logout).
-2. Runtime Codex worker sync/control via control + Khala lanes.
+2. Runtime Codex worker sync/control via control + sync transport (current Khala, target Spacetime).
 3. Local identity lane via `UnifiedIdentity` (`load_or_init_identity`) persisted as local mnemonic.
 4. Provider controls:
    - liquidity provider online/offline/refresh/invoice
@@ -379,9 +390,9 @@ EP212 target:
 ## Command, Sync, and Compatibility Model
 
 1. Mutations are HTTP-only authority commands.
-2. Live replay/tail is Khala WS-only.
+2. Live replay/tail is currently Khala WS-only; active target is SpacetimeDB replacing Khala with equivalent or stronger replay guarantees.
 3. Compatibility SSE lane is adapter-only over existing authority outputs.
-4. Client apply path must remain idempotent by `(topic, seq)`.
+4. Client apply path must remain idempotent with ordered watermarks (current `(topic, seq)`, target `(stream_id, seq)`).
 5. Runtime-driver string compatibility aliases (`legacy`, `laravel`, `elixir`, `openagents.com`) are retired; canonical labels are `control_service` and `runtime_service`.
 6. Remaining compatibility lanes (`legacy chat aliases`, `/api/v1/control/*`, `/api/v1/auth/*`, `/api/v1/sync/token`) are formally sunset with target retirement date `2026-06-30`.
 7. Session fork is a canonical timeline/snapshot primitive and is not defined in git terms.
@@ -398,6 +409,8 @@ EP212 target:
 | `docs/plans/hydra-liquidity-engine.md` | Defines Hydra capital substrate and phased maturity | MVP-3 lanes + harnesses implemented; more phases planned |
 | `docs/plans/aegis.md` | Defines verification/underwriting substrate | Runtime MVP namespace implemented; advanced phases still planned |
 | `docs/plans/ep212-autopilot-bitcoin-100pct.md` | Defines wallet/L402/paywall parity closure criteria | Active gap-closure plan; not fully complete |
+| `docs/plans/spacetimedb-full-integration.md` | Defines full Khala replacement with Spacetime sync/replay transport | Active replacement program; pre-cutover |
+| `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md` | Defines Autopilot-first execution path for Spacetime cutover | Active execution slice; pre-cutover |
 | `docs/plans/vignette-phase0-issue-to-pr.md` | Gate L issue->verified PR execution authority harness | Active acceptance harness lane |
 | `docs/plans/vignette-hydra-mvp2.md` | Hydra routing/risk observability regression gate | Implemented and active |
 | `docs/plans/vignette-hydra-mvp3.md` | Hydra FX determinism/idempotency regression gate | Implemented and active |
@@ -418,16 +431,19 @@ This sequencing is dependency-driven and aligns to the active plan set.
 4. Phase 3: Hydra maturity path
    - Keep MVP-2 and MVP-3 harnesses green.
    - Expand API posture/economics/ops according to Hydra plan phases.
-5. Phase 4: EP212 parity closure
+5. Phase 4: Spacetime sync replacement
+   - Land Spacetime contracts, reducers, and desktop/runtime sync cutover gates.
+   - Retire Khala transport dependencies after parity and incident-runbook readiness.
+6. Phase 5: EP212 parity closure
    - Replace synthetic wallet/L402 behavior with custody-compliant executor-backed flows.
    - Complete self-serve paywall and settlement loop.
-6. Phase 5: Aegis post-MVP expansion
+7. Phase 6: Aegis post-MVP expansion
    - Expand checker tiers, underwriting economics, and dispute/ground-truth systems per Aegis phases.
    - Keep authority semantics and replay/idempotency invariants intact.
-7. Phase 6: compatibility lane retirement
+8. Phase 7: compatibility lane retirement
    - Runtime-driver string aliases retired (implemented).
    - Retire remaining legacy chat and v1 compatibility/admin lanes by sunset date (`2026-06-30`) after parity evidence.
-8. Phase 7: repository debt and invariant cleanup
+9. Phase 8: repository debt and invariant cleanup
    - Complete legacy web tree removal/archival (completed for tracked PHP/TS legacy lanes in OA-AUDIT `#2212`).
    - Resolve `INV-12` workflow-file conflict (completed in OA-AUDIT `#2213`).
 
@@ -468,6 +484,7 @@ To keep this architecture fully truthful, these drifts are explicitly acknowledg
 1. Target-state "web landing-only" is not yet complete; control service still hosts broad web/API lanes.
 2. Aegis MVP is implemented, but advanced Aegis phases (checker market depth, broader underwriting/disputes, registry loops) are still open.
 3. EP212 parity work remains open on wallet custody realism, L402 tooling parity, and paywall self-serve earnings.
+4. Khala remains active runtime sync implementation until Spacetime replacement cutover gates pass.
 
 ## Verification Baseline
 
@@ -494,3 +511,5 @@ Use these as baseline architecture verification lanes:
 7. `docs/plans/aegis.md`
 8. `docs/plans/ep212-autopilot-bitcoin-100pct.md`
 9. `docs/plans/2026-02-23-open-agent-economy-execution-plan.md`
+10. `docs/plans/spacetimedb-full-integration.md`
+11. `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`

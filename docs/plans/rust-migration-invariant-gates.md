@@ -5,6 +5,12 @@ Last updated: 2026-02-22
 
 These invariants gate Rust migration work and release decisions.
 
+Transition note (2026-02-25):
+
+1. Current invariants reflect the implemented Khala sync lane.
+2. Active replacement plans target SpacetimeDB as canonical sync transport (`docs/plans/spacetimedb-full-integration.md`).
+3. `INV-03`/`INV-06` will be superseded by equivalent Spacetime transport invariants when the replacement ADR lands.
+
 ## INV-01: Proto-first contracts
 
 Cross-process contracts are defined in `proto/` and generated into Rust.
