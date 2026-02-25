@@ -24,6 +24,7 @@ pub struct SyncEvent {
     pub payload_hash: String,
     pub payload_bytes: Vec<u8>,
     pub committed_at_unix_ms: u64,
+    pub durable_offset: u64,
     pub confirmed_read: bool,
 }
 
@@ -92,6 +93,7 @@ pub struct AppendSyncEventRequest {
     pub payload_hash: String,
     pub payload_bytes: Vec<u8>,
     pub committed_at_unix_ms: u64,
+    pub durable_offset: u64,
     pub confirmed_read: bool,
     pub expected_next_seq: Option<u64>,
 }
@@ -228,6 +230,7 @@ impl ReducerStore {
             payload_hash: request.payload_hash,
             payload_bytes: request.payload_bytes,
             committed_at_unix_ms: request.committed_at_unix_ms,
+            durable_offset: request.durable_offset,
             confirmed_read: request.confirmed_read,
         };
 
@@ -400,6 +403,26 @@ impl ReducerStore {
             .cloned()
             .unwrap_or_default()
     }
+
+    /// Returns deliverable events for a stream after a watermark, optionally gated by durable offset.
+    pub fn deliverable_stream_events(
+        &self,
+        stream_id: &str,
+        after_seq: u64,
+        confirmed_read_durable_floor: Option<u64>,
+    ) -> Vec<SyncEvent> {
+        let all = self.stream_events(stream_id);
+        let mut filtered = all
+            .into_iter()
+            .filter(|event| event.seq > after_seq)
+            .collect::<Vec<_>>();
+
+        if let Some(durable_floor) = confirmed_read_durable_floor {
+            filtered.retain(|event| event.durable_offset <= durable_floor);
+        }
+
+        filtered
+    }
 }
 
 fn require_non_empty(value: &str, field: &'static str) -> Result<(), ReducerError> {
@@ -427,6 +450,7 @@ mod tests {
             payload_hash: "sha256:a".to_string(),
             payload_bytes: vec![1],
             committed_at_unix_ms: 10,
+            durable_offset: 10,
             confirmed_read: false,
             expected_next_seq: Some(1),
         });
@@ -450,6 +474,7 @@ mod tests {
             payload_hash: "sha256:b".to_string(),
             payload_bytes: vec![2],
             committed_at_unix_ms: 20,
+            durable_offset: 20,
             confirmed_read: true,
             expected_next_seq: Some(2),
         });
@@ -477,6 +502,7 @@ mod tests {
             payload_hash: "sha256:x".to_string(),
             payload_bytes: vec![1, 2],
             committed_at_unix_ms: 30,
+            durable_offset: 30,
             confirmed_read: false,
             expected_next_seq: Some(1),
         });
@@ -488,6 +514,7 @@ mod tests {
             payload_hash: "sha256:x".to_string(),
             payload_bytes: vec![1, 2],
             committed_at_unix_ms: 31,
+            durable_offset: 31,
             confirmed_read: false,
             expected_next_seq: Some(2),
         });
@@ -507,6 +534,7 @@ mod tests {
             payload_hash: "sha256:x".to_string(),
             payload_bytes: vec![1],
             committed_at_unix_ms: 40,
+            durable_offset: 40,
             confirmed_read: false,
             expected_next_seq: Some(1),
         });
@@ -518,6 +546,7 @@ mod tests {
             payload_hash: "sha256:y".to_string(),
             payload_bytes: vec![2],
             committed_at_unix_ms: 41,
+            durable_offset: 41,
             confirmed_read: false,
             expected_next_seq: Some(7),
         });
@@ -612,5 +641,43 @@ mod tests {
             }
         };
         assert_eq!(sent.status, BridgeOutboxStatus::Sent);
+    }
+
+    #[test]
+    fn confirmed_read_delivery_gates_by_durable_offset() {
+        let mut store = ReducerStore::default();
+        let first = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.codex.worker.worker_2".to_string(),
+            idempotency_key: "id-1".to_string(),
+            payload_hash: "sha256:1".to_string(),
+            payload_bytes: vec![1],
+            committed_at_unix_ms: 100,
+            durable_offset: 10,
+            confirmed_read: true,
+            expected_next_seq: Some(1),
+        });
+        assert!(first.is_ok());
+        let second = store.append_sync_event(AppendSyncEventRequest {
+            stream_id: "runtime.codex.worker.worker_2".to_string(),
+            idempotency_key: "id-2".to_string(),
+            payload_hash: "sha256:2".to_string(),
+            payload_bytes: vec![2],
+            committed_at_unix_ms: 101,
+            durable_offset: 20,
+            confirmed_read: true,
+            expected_next_seq: Some(2),
+        });
+        assert!(second.is_ok());
+
+        let ungated = store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, None);
+        assert_eq!(ungated.len(), 2);
+
+        let gated_low = store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, Some(15));
+        assert_eq!(gated_low.len(), 1);
+        assert_eq!(gated_low[0].seq, 1);
+
+        let gated_high =
+            store.deliverable_stream_events("runtime.codex.worker.worker_2", 0, Some(25));
+        assert_eq!(gated_high.len(), 2);
     }
 }
