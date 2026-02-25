@@ -188,6 +188,7 @@ Source of truth for control route inventory:
 1. `apps/openagents.com/service/src/openapi.rs`
 2. `apps/openagents.com/service/src/lib.rs`
 3. `apps/openagents.com/service/docs/RUNTIME_ROUTE_OWNERSHIP.md`
+4. `apps/openagents.com/service/src/route_domains.rs`
 
 Important reality:
 

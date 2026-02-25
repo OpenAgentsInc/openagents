@@ -132,6 +132,20 @@ From repository root:
 cargo run --manifest-path apps/openagents.com/service/Cargo.toml
 ```
 
+## Route module layout
+
+- `src/lib.rs`: service bootstrap, state construction, invariant guards, top-level middleware composition.
+- `src/route_domains.rs`: domain route composition for:
+  - auth/identity
+  - autopilot
+  - settings + inbox + token management
+  - org/sync/social
+  - payments + L402
+  - runtime-control
+  - admin/control compatibility
+- `src/runtime_ownership.rs`: canonical `/api/runtime/*` owner + delivery + migration-status contract.
+- `src/runtime_admin.rs`: route-split/runtime-routing admin handlers.
+
 Operator CLI replacements (OA-WEBPARITY-055):
 
 ```bash
