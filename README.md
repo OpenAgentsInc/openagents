@@ -1,12 +1,20 @@
 # OpenAgents
 
-OpenAgents builds **Autopilot**: a cross-platform coding agent that turns repo issues into verified PRs, within a budget, with receipts + replay artifacts.
+OpenAgents builds **Autopilot**: a personal agent that can code and do many other tasks. It is extensible through upgrades in an open marketplace, so capabilities can expand over time as new modules and services are adopted.
 
 Under the hood, the system is built around a shared runtime/control model so agent sessions can be observed, replayed, and administered across surfaces instead of being tied to one client.
 
-Surfaces (explicit non-parity):
-- Desktop (execution): `apps/autopilot-desktop/`
-- Web (distribution landing only): `apps/openagents.com/service/`
+## Apps
+
+[apps/autopilot-desktop/](apps/autopilot-desktop/) is the native Rust/WGPUI desktop app where users run and operate their personal agent, including local workflows and runtime-authenticated execution sessions.
+
+[apps/openagents.com/](apps/openagents.com/) contains the Rust control service and web distribution surface, including auth/session APIs, sync token issuance, and the landing/download experience.
+
+[apps/runtime/](apps/runtime/) is the Rust runtime authority service that handles execution lifecycle, worker orchestration, event/replay semantics, and sync delivery paths.
+
+[apps/lightning-ops/](apps/lightning-ops/) is the Rust operational service/CLI for Lightning/L402 policy and reconciliation workflows, including staging/smoke runbooks.
+
+[apps/lightning-wallet-executor/](apps/lightning-wallet-executor/) is the Rust HTTP payment execution service for wallet actions such as BOLT11 pay, invoice creation, and on-chain send flows.
 
 Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning credits and strengthening supply liquidity.
 
