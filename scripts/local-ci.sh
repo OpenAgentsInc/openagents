@@ -3,13 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-changed}"
-ENABLE_LEGACY_LANES="${OA_LOCAL_CI_ENABLE_LEGACY:-0}"
 
 PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)'
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/history_compat/|apps/runtime/Cargo\.toml$|Cargo\.lock$)'
-LEGACY_COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
-LEGACY_LEGACYPARITY_TRIGGER_PATTERN='^(docs/plans/legacyparity-intake/|apps/runtime/test/fixtures/legacyparity/|scripts/legacyparity-drift-report\.sh$)'
 CROSS_SURFACE_TRIGGER_PATTERN='^(apps/autopilot-desktop/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
 RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/autopilot-desktop/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|scripts/local-ci\.sh$)'
 RUST_CLIPPY_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
@@ -28,10 +25,6 @@ is_truthy() {
       return 1
       ;;
   esac
-}
-
-legacy_lanes_enabled() {
-  is_truthy "$ENABLE_LEGACY_LANES"
 }
 
 require_cmd() {
@@ -159,14 +152,6 @@ run_trigger_tests() {
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/src/history_compat.rs" "true"
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/docs/DEPLOY_GCP.md" "false"
 
-  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
-  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
-  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "docs/protocol/comms/README.md" "true"
-  assert_trigger "legacy-comms" "$LEGACY_COMMS_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "false"
-
-  assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/legacyparity-drift-report.sh" "true"
-  assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
-
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
@@ -204,22 +189,6 @@ run_runtime_history_checks() {
   (
     cd "$ROOT_DIR"
     cargo test -p openagents-runtime-service history_compat::tests
-  )
-}
-
-run_legacy_comms_matrix() {
-  echo "==> legacy comms security/replay matrix"
-  (
-    cd "$ROOT_DIR"
-    ./scripts/comms-security-replay-matrix.sh all
-  )
-}
-
-run_legacy_legacyparity_drift() {
-  echo "==> legacy legacyparity drift strict gate"
-  (
-    cd "$ROOT_DIR"
-    LEGACYPARITY_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/legacyparity-drift-report.sh
   )
 }
 
@@ -376,18 +345,11 @@ run_all_rust() {
 
 run_all() {
   run_all_rust
-  if legacy_lanes_enabled; then
-    run_legacy_comms_matrix
-    run_legacy_legacyparity_drift
-  else
-    echo "==> skipping legacy compatibility lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run legacy-comms/legacy-legacyparity)"
-  fi
 }
 
 run_changed() {
   local changed_files
   changed_files="$(collect_changed_files)"
-  local legacy_lanes_detected=0
 
   if [[ -z "$changed_files" ]]; then
     echo "No changed files detected; nothing to run."
@@ -404,22 +366,6 @@ run_changed() {
 
   if has_match "$RUNTIME_TRIGGER_PATTERN" "$changed_files"; then
     run_runtime_checks
-  fi
-
-  if has_match "$LEGACY_COMMS_TRIGGER_PATTERN" "$changed_files"; then
-    if legacy_lanes_enabled; then
-      run_legacy_comms_matrix
-    else
-      legacy_lanes_detected=1
-    fi
-  fi
-
-  if has_match "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "$changed_files"; then
-    if legacy_lanes_enabled; then
-      run_legacy_legacyparity_drift
-    else
-      legacy_lanes_detected=1
-    fi
   fi
 
   if has_match "$CROSS_SURFACE_TRIGGER_PATTERN" "$changed_files"; then
@@ -450,10 +396,6 @@ run_changed() {
   if has_match "$INBOX_GMAIL_TRIGGER_PATTERN" "$changed_files"; then
     run_inbox_gmail_checks
   fi
-
-  if [[ "$legacy_lanes_detected" -eq 1 ]]; then
-    echo "==> legacy-triggered paths detected; compatibility lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
-  fi
 }
 
 case "$MODE" in
@@ -468,12 +410,6 @@ case "$MODE" in
     ;;
   runtime-history)
     run_runtime_history_checks
-    ;;
-  legacy-comms)
-    run_legacy_comms_matrix
-    ;;
-  legacy-legacyparity)
-    run_legacy_legacyparity_drift
     ;;
   web-parity)
     run_web_parity_regression
@@ -529,19 +465,11 @@ case "$MODE" in
   all-rust)
     run_all_rust
     ;;
-  comms)
-    echo "lane 'comms' has been renamed to 'legacy-comms'" >&2
-    run_legacy_comms_matrix
-    ;;
-  legacyparity)
-    echo "lane 'legacyparity' has been renamed to 'legacy-legacyparity'" >&2
-    run_legacy_legacyparity_drift
-    ;;
   changed)
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -32,8 +32,6 @@ Supported lanes:
 - `proto`
 - `runtime`
 - `runtime-history`
-- `legacy-comms`
-- `legacy-legacyparity`
 - `workspace-compile`
 - `panic-surface`
 - `clippy-rust`
@@ -46,7 +44,6 @@ Examples:
 ```bash
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh runtime-history
-./scripts/local-ci.sh legacy-comms
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
 ./scripts/local-ci.sh clippy-rust
@@ -70,8 +67,6 @@ Changed-mode trigger note:
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
 - `panic-surface` lane auto-runs for Rust workspace paths and enforces no-net-growth panic-surface policy against `docs/ci/panic-surface-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
-- `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
-- `legacy-legacyparity` lane auto-runs for legacy legacyparity paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `cross-surface` lane auto-triggers for retained desktop/runtime harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 - `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com/service`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
 
@@ -92,7 +87,6 @@ Run additional gates manually before pushing when needed:
 OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh inbox-gmail
-OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh all
 ```
 
@@ -169,26 +163,6 @@ To validate changed-file lane routing logic:
 ./scripts/local-ci.sh test-triggers
 ```
 
-## Test Density Snapshot
-
-Track test-marker density for current low-density large crates:
-
-```bash
-./scripts/test-density-report.sh
-```
-
-Current target surfaces:
-
-- `crates/openagents-cli`
-- `crates/autopilot_ui`
-- `crates/runtime`
-- `apps/openagents.com/service`
-- `crates/autopilot`
-
-Contribution rule for these surfaces:
-
-- Refactor/feature PRs touching these paths must include focused net-new tests in risky modules (state transitions, protocol adapters, reducers, parsing, or orchestration logic).
-
 ## Panic-Surface No-Net-Growth Gate
 
 `./scripts/local-ci.sh panic-surface` runs:
@@ -226,17 +200,6 @@ OA_SKIP_LOCAL_CI=1 git commit -m "..."
 ```
 
 If bypassing, run equivalent lane commands manually before merge.
-
-## Legacy Compatibility Lanes (Opt-In)
-
-When you need non-Rust compatibility gates during migration, opt in explicitly:
-
-```bash
-OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
-OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh all
-./scripts/local-ci.sh legacy-comms
-./scripts/local-ci.sh legacy-legacyparity
-```
 
 Cross-surface harness opt-in in `changed` mode:
 
