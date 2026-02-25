@@ -25,3 +25,4 @@ protobuf-src = "2.1"
 [dev-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
