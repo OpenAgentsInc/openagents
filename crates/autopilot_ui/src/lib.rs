@@ -3307,6 +3307,8 @@ impl MinimalRoot {
                     require_payment: status.require_payment,
                     default_model: status.default_model,
                     backend_preference: status.backend_preference,
+                    agent_backends: status.agent_backends,
+                    supported_bazaar_kinds: status.supported_bazaar_kinds,
                     network: status.network,
                     enable_payments: status.enable_payments,
                     last_error: status.last_error,
@@ -5358,7 +5360,11 @@ impl MinimalRoot {
             value
         };
         if should_identity_load {
-            let input_value = self.identity_private_key_input.get_value().trim().to_string();
+            let input_value = self
+                .identity_private_key_input
+                .get_value()
+                .trim()
+                .to_string();
             match import_nostr_private_key(&input_value) {
                 Ok((npub, nsec)) => {
                     self.nostr_npub = Some(npub);
@@ -7524,6 +7530,8 @@ struct SellComputeStatusView {
     require_payment: bool,
     default_model: String,
     backend_preference: Vec<String>,
+    agent_backends: Vec<String>,
+    supported_bazaar_kinds: Vec<u16>,
     network: String,
     enable_payments: bool,
     last_error: Option<String>,

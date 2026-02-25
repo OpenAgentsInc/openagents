@@ -4328,7 +4328,7 @@ fn spawn_event_bridge(
                         UserAction::PylonInit => {
                             let proxy = proxy_actions.clone();
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         init_pylon_identity(&mut pylon_runtime, &config).await
                                     }
@@ -4340,7 +4340,7 @@ fn spawn_event_bridge(
                         UserAction::PylonStart => {
                             let proxy = proxy_actions.clone();
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         start_pylon_in_process(&mut pylon_runtime, &config).await
                                     }
@@ -4352,7 +4352,7 @@ fn spawn_event_bridge(
                         UserAction::PylonStop => {
                             let proxy = proxy_actions.clone();
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         stop_pylon_in_process(&mut pylon_runtime, &config).await
                                     }
@@ -4363,7 +4363,7 @@ fn spawn_event_bridge(
                         }
                         UserAction::PylonRefresh => {
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         refresh_pylon_status(&mut pylon_runtime, &config).await
                                     }
@@ -4580,7 +4580,7 @@ fn spawn_event_bridge(
                         UserAction::DvmProviderStart => {
                             let proxy = proxy_actions.clone();
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         let _ = start_pylon_in_process(&mut pylon_runtime, &config)
                                             .await;
@@ -4594,7 +4594,7 @@ fn spawn_event_bridge(
                         UserAction::DvmProviderStop => {
                             let proxy = proxy_actions.clone();
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         let _ = stop_pylon_in_process(&mut pylon_runtime, &config)
                                             .await;
@@ -4607,7 +4607,7 @@ fn spawn_event_bridge(
                         }
                         UserAction::DvmProviderRefresh => {
                             let status = handle.block_on(async {
-                                match load_pylon_config_ollama() {
+                                match load_pylon_config() {
                                     Ok(config) => {
                                         fetch_dvm_provider_status(&mut pylon_runtime, &config).await
                                     }
@@ -5916,9 +5916,8 @@ fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
     }
 }
 
-fn load_pylon_config_ollama() -> Result<PylonConfig> {
+fn load_pylon_config() -> Result<PylonConfig> {
     let mut config = PylonConfig::load()?;
-    config.backend_preference = vec!["ollama".to_string()];
     if config.default_model.trim().is_empty() {
         config.default_model = "llama3.2".to_string();
     }
@@ -6018,12 +6017,9 @@ async fn start_pylon_in_process(state: &mut InProcessPylon, config: &PylonConfig
     }
 
     let provider_status = provider.status().await;
-    if !provider_status
-        .backends
-        .iter()
-        .any(|backend| backend == "ollama")
-    {
-        state.last_error = Some("Ollama backend not detected on localhost:11434.".to_string());
+    if provider_status.backends.is_empty() && provider_status.agent_backends.is_empty() {
+        state.last_error =
+            Some("No provider backends detected (inference or Codex agent).".to_string());
         state.provider = None;
         state.started_at = None;
         return refresh_pylon_status(state, config).await;
@@ -6103,11 +6099,23 @@ async fn fetch_dvm_provider_status(
     state: &mut InProcessPylon,
     config: &PylonConfig,
 ) -> DvmProviderStatus {
-    let running = if let Some(provider) = state.provider.as_ref() {
-        provider.status().await.running
+    let provider_status = if let Some(provider) = state.provider.as_ref() {
+        Some(provider.status().await)
     } else {
-        false
+        None
     };
+    let running = provider_status
+        .as_ref()
+        .map(|status| status.running)
+        .unwrap_or(false);
+    let agent_backends = provider_status
+        .as_ref()
+        .map(|status| status.agent_backends.clone())
+        .unwrap_or_default();
+    let supported_bazaar_kinds = provider_status
+        .as_ref()
+        .map(|status| status.supported_bazaar_kinds.clone())
+        .unwrap_or_default();
 
     DvmProviderStatus {
         running,
@@ -6117,6 +6125,8 @@ async fn fetch_dvm_provider_status(
         require_payment: config.require_payment,
         default_model: config.default_model.clone(),
         backend_preference: config.backend_preference.clone(),
+        agent_backends,
+        supported_bazaar_kinds,
         network: config.network.clone(),
         enable_payments: config.enable_payments,
         last_error: state.last_error.clone(),

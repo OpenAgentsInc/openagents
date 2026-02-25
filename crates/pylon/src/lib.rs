@@ -16,6 +16,7 @@
 
 pub mod bridge_manager;
 pub mod cli;
+mod codex_agent_backend;
 pub mod config;
 pub mod daemon;
 pub mod db;

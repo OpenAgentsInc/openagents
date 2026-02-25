@@ -28,7 +28,7 @@ openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
 
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros", "process"] }
 async-trait = "0.1"
 tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
@@ -78,6 +78,7 @@ uuid = { version = "1.11", features = ["v4"] }
 url = "2.5"
 dotenvy = "0.15"
 tempfile = "3.10"
+sha2.workspace = true
 
 # HTTP client for compute detection
 reqwest = { version = "0.12", features = ["json", "blocking"] }

@@ -1,7 +1,9 @@
 //! Pylon provider - wraps compute primitives
 
 use crate::bridge_manager::BridgeManager;
+use crate::codex_agent_backend::CodexAgentBackend;
 use crate::config::PylonConfig;
+use codex_client::is_codex_available;
 use compute::backends::{AgentRegistry, BackendRegistry};
 use compute::domain::DomainEvent;
 use compute::services::{DvmConfig, DvmService, RelayService};
@@ -172,7 +174,21 @@ impl PylonProvider {
         }
 
         // Agent registry for Bazaar jobs
-        let agent_registry = AgentRegistry::new();
+        let mut agent_registry = AgentRegistry::new();
+        if config.codex.enabled {
+            if is_codex_available() {
+                agent_registry.register(
+                    "codex",
+                    Arc::new(RwLock::new(CodexAgentBackend::new(config.codex.clone()))),
+                );
+                let _ = agent_registry.set_default("codex");
+                tracing::info!("Registered Codex agent backend for NIP-90 jobs");
+            } else {
+                tracing::warn!(
+                    "Codex agent backend is enabled in config but Codex app-server is not available"
+                );
+            }
+        }
 
         // Create relay service
         let relay_service = if config.relays.is_empty() {
@@ -350,12 +366,18 @@ impl PylonProvider {
             return Err(ProviderError::AlreadyRunning);
         }
 
-        // Check backends are available
-        let registry = self.backend_registry.read().await;
-        if !registry.has_backends() {
+        // Check at least one execution backend exists (inference or agent).
+        let has_inference = {
+            let registry = self.backend_registry.read().await;
+            registry.has_backends()
+        };
+        let has_agent = {
+            let registry = self.agent_registry.read().await;
+            registry.has_backends()
+        };
+        if !has_inference && !has_agent {
             return Err(ProviderError::NoBackends);
         }
-        drop(registry);
 
         // Ensure services are initialized
         if self.dvm_service.is_none() {

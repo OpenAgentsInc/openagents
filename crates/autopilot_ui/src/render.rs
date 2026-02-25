@@ -1492,6 +1492,37 @@ pub(super) fn paint_sell_compute_pane(
         steps.push(SellStep::Spacer(value_spacing));
     }
 
+    if !root.sell_compute_status.agent_backends.is_empty() {
+        let list = root.sell_compute_status.agent_backends.join(", ");
+        let mut text = Text::new(list.as_str()).font_size(text_size);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(SellStep::Line(
+            "Agent backends".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(4.0));
+        steps.push(SellStep::Line(list, theme::text::PRIMARY, height));
+        steps.push(SellStep::Spacer(value_spacing));
+    }
+
+    if !root.sell_compute_status.supported_bazaar_kinds.is_empty() {
+        let kinds = root
+            .sell_compute_status
+            .supported_bazaar_kinds
+            .iter()
+            .map(|kind| kind.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        steps.push(SellStep::Line(
+            format!("Supported kinds: {}", kinds),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(value_spacing));
+    }
+
     if let Some(err) = root.sell_compute_status.last_error.as_deref() {
         steps.push(SellStep::Line(
             err.to_string(),
@@ -2773,11 +2804,7 @@ pub(super) fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: 
 
         let indent = row.depth as f32 * FILE_TREE_INDENT;
         let icon = if row.is_dir {
-            if row.expanded {
-                "v"
-            } else {
-                ">"
-            }
+            if row.expanded { "v" } else { ">" }
         } else {
             "-"
         };

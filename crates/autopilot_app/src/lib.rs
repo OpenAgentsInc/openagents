@@ -316,6 +316,8 @@ pub struct DvmProviderStatus {
     pub require_payment: bool,
     pub default_model: String,
     pub backend_preference: Vec<String>,
+    pub agent_backends: Vec<String>,
+    pub supported_bazaar_kinds: Vec<u16>,
     pub network: String,
     pub enable_payments: bool,
     pub last_error: Option<String>,
