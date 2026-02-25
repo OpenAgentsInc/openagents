@@ -26,8 +26,8 @@ This tree contains current Rust-era documentation and forward strategy only.
 
 - `execution/` (artifacts + replay)
 - `protocol/` (wire/auth/sync/client contracts)
-- `dse/` (compiler/tool/callback/privacy contracts)
 - `../proto/README.md` (proto authority and generation policy)
+- `../crates/dsrs/` (Rust implementation source for DS effects/runtime machinery)
 
 ## Sync and Codex
 

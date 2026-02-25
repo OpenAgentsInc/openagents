@@ -16,7 +16,6 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 - `docs/adr/INDEX.md`
 - `docs/execution/README.md`
 - `docs/protocol/README.md`
-- `docs/dse/README.md`
 
 ## Planning and Sequencing
 

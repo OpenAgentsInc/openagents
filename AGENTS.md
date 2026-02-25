@@ -32,8 +32,8 @@ Documentation entry points:
 
 - Execution artifacts + replay: `docs/execution/README.md`
 - Protocol contracts: `docs/protocol/README.md`
-- DSE/compiler contracts: `docs/dse/README.md`
 - Proto authority: `proto/README.md`
+- DSRS implementation source: `crates/dsrs/`
 
 ## Plans and Strategy
 

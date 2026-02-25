@@ -10,5 +10,4 @@ Canonical specs for session execution artifacts and replay logs.
 ## Related
 
 - `docs/protocol/PROTOCOL_SURFACE.md`
-- `docs/dse/TOOLS.md`
-- `docs/dse/PRIVACY.md`
+- `docs/core/ARCHITECTURE.md`

@@ -62,4 +62,4 @@ Required payment fields:
 
 - `docs/execution/ARTIFACTS.md`
 - `docs/execution/REPLAY.md`
-- `docs/dse/TOOLS.md`
+- `docs/protocol/README.md`

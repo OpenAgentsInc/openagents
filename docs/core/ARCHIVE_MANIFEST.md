@@ -13,6 +13,9 @@ Date: 2026-02-21
 3. Docs hygiene pass
 - `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-22-doc-hygiene-pass/`
 
+4. DSE docs retirement pass
+- `/Users/christopherdavid/code/backroom/openagents-doc-archive/2026-02-25-dse-doc-retirement/`
+
 ## Stale-Doc Cleanup Scope (2026-02-21)
 
 Moved from repo docs tree to backroom:

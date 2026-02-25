@@ -32,4 +32,4 @@ Each line is a JSON object tagged with an `"event"` discriminator (string).
 1. Local replay may include richer payload fields.
 2. Published replay must redact sensitive fields while preserving hashes.
 
-See `docs/dse/PRIVACY.md` and `docs/protocol/PROTOCOL_SURFACE.md`.
+See `docs/protocol/PROTOCOL_SURFACE.md`.
