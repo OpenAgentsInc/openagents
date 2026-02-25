@@ -2,11 +2,15 @@
 
 ## Status
 
-Accepted
+Superseded
 
 ## Date
 
 2026-02-21
+
+Superseded by:
+
+`docs/adr/ADR-0009-spacetime-sync-canonical-transport.md` (2026-02-25)
 
 ## Owner Lane
 

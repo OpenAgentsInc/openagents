@@ -21,7 +21,7 @@ Primary authorities for this document:
 
 1. `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 2. `docs/adr/ADR-0002-proto-first-contract-governance.md`
-3. `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
+3. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
 4. `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`
 5. `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
 6. `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`

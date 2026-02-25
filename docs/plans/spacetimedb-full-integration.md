@@ -27,7 +27,7 @@ Checked authorities:
 
 1. `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 2. `docs/adr/ADR-0002-proto-first-contract-governance.md`
-3. `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
+3. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
 4. `docs/plans/rust-migration-invariant-gates.md`
 
 Implication:
@@ -235,4 +235,3 @@ Gate:
 5. `docs/sync/README.md`
 6. `docs/sync/ROADMAP.md`
 7. `docs/protocol/OA_SYNC_WS_MAPPING.md`
-
