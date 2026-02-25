@@ -17,6 +17,7 @@ SYNC_SECURITY_TRIGGER_PATTERN='^(apps/runtime/src/(sync_auth|server|server/tests
 SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN='^(apps/autopilot-desktop/src/(main|sync_apply_engine|sync_checkpoint_store|sync_lifecycle)\.rs$|apps/runtime/src/(spacetime_publisher|shadow|shadow_control_khala)\.rs$|crates/autopilot-spacetime/src/(client|mapping|reducers)\.rs$|docs/sync/(SPACETIME_DESKTOP_APPLY_ENGINE|SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE|SPACETIME_DESKTOP_CONNECTION_LIFECYCLE|SPACETIME_SHADOW_PARITY_HARNESS)\.md$|scripts/spacetime/replay-resume-parity-harness\.sh$|scripts/local-ci\.sh$)'
 SPACETIME_CHAOS_TRIGGER_PATTERN='^(apps/runtime/src/(server/tests|shadow|shadow_control_khala|spacetime_publisher)\.rs$|crates/autopilot-spacetime/src/client\.rs$|apps/autopilot-desktop/src/sync_lifecycle\.rs$|docs/sync/(SPACETIME_CHAOS_DRILLS|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|scripts/spacetime/(run-chaos-drills|replay-resume-parity-harness)\.sh$|scripts/local-ci\.sh$)'
 SPACETIME_STAGING_CANARY_TRIGGER_PATTERN='^(scripts/spacetime/run-staging-canary-rollout\.sh$|docs/sync/(SPACETIME_STAGING_CANARY_ROLLOUT|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
+SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN='^(scripts/spacetime/run-production-phased-rollout\.sh$|docs/sync/(SPACETIME_PRODUCTION_PHASED_ROLLOUT|SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
 
 is_truthy() {
   local value="${1:-}"
@@ -182,6 +183,9 @@ run_trigger_tests() {
   assert_trigger "spacetime-staging-canary" "$SPACETIME_STAGING_CANARY_TRIGGER_PATTERN" "scripts/spacetime/run-staging-canary-rollout.sh" "true"
   assert_trigger "spacetime-staging-canary" "$SPACETIME_STAGING_CANARY_TRIGGER_PATTERN" "docs/sync/SPACETIME_STAGING_CANARY_ROLLOUT.md" "true"
   assert_trigger "spacetime-staging-canary" "$SPACETIME_STAGING_CANARY_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "false"
+  assert_trigger "spacetime-production-rollout" "$SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN" "scripts/spacetime/run-production-phased-rollout.sh" "true"
+  assert_trigger "spacetime-production-rollout" "$SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN" "docs/sync/SPACETIME_PRODUCTION_PHASED_ROLLOUT.md" "true"
+  assert_trigger "spacetime-production-rollout" "$SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "false"
 
   echo "local-ci trigger tests passed"
 }
@@ -387,6 +391,14 @@ run_spacetime_staging_canary() {
   )
 }
 
+run_spacetime_production_rollout() {
+  echo "==> spacetime production phased rollout"
+  (
+    cd "$ROOT_DIR"
+    ./scripts/spacetime/run-production-phased-rollout.sh
+  )
+}
+
 has_match() {
   local pattern="$1"
   local files="$2"
@@ -482,6 +494,10 @@ run_changed() {
   if has_match "$SPACETIME_STAGING_CANARY_TRIGGER_PATTERN" "$changed_files"; then
     run_spacetime_staging_canary
   fi
+
+  if has_match "$SPACETIME_PRODUCTION_ROLLOUT_TRIGGER_PATTERN" "$changed_files"; then
+    run_spacetime_production_rollout
+  fi
 }
 
 case "$MODE" in
@@ -557,6 +573,9 @@ case "$MODE" in
   spacetime-staging-canary)
     run_spacetime_staging_canary
     ;;
+  spacetime-production-rollout)
+    run_spacetime_production_rollout
+    ;;
   test-triggers)
     run_trigger_tests
     ;;
@@ -570,7 +589,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|inbox-gmail|sync-security|spacetime-replay-resume|spacetime-chaos|spacetime-staging-canary|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|inbox-gmail|sync-security|spacetime-replay-resume|spacetime-chaos|spacetime-staging-canary|spacetime-production-rollout|test-triggers]" >&2
     exit 2
     ;;
 esac

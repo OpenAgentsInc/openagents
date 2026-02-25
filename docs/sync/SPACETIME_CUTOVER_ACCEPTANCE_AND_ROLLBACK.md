@@ -60,6 +60,14 @@ Staging canary command:
 
 Attach `output/canary/spacetime/staging-<timestamp>/SUMMARY.md` with `gate-results.jsonl` and `cohort-results.jsonl`.
 
+Production phased rollout command:
+
+```bash
+./scripts/spacetime/run-production-phased-rollout.sh
+```
+
+Attach `output/canary/spacetime/production-<timestamp>/SUMMARY.md` with `gate-results.jsonl`, `cohort-results.jsonl`, and `slo-results.jsonl`.
+
 Chaos drill command:
 
 ```bash

@@ -53,6 +53,7 @@ Supported lanes:
 - `spacetime-replay-resume`
 - `spacetime-chaos`
 - `spacetime-staging-canary`
+- `spacetime-production-rollout`
 - `test-triggers`
 
 Examples:
@@ -71,6 +72,7 @@ Examples:
 ./scripts/local-ci.sh spacetime-replay-resume
 ./scripts/local-ci.sh spacetime-chaos
 ./scripts/local-ci.sh spacetime-staging-canary
+./scripts/local-ci.sh spacetime-production-rollout
 ./scripts/local-ci.sh all-rust
 ./scripts/local-ci.sh all
 ```
@@ -97,6 +99,7 @@ Changed-mode trigger note:
 - `spacetime-replay-resume` lane auto-runs for replay/resume core surfaces (runtime shadow parity, shared client subscribe/resume, desktop checkpoint/apply/lifecycle) and executes `scripts/spacetime/replay-resume-parity-harness.sh`.
 - `spacetime-chaos` lane auto-runs for Spacetime chaos drill surfaces and executes `scripts/spacetime/run-chaos-drills.sh`, emitting per-scenario artifacts under `output/chaos/spacetime/`.
 - `spacetime-staging-canary` lane auto-runs for staging canary harness surfaces and executes `scripts/spacetime/run-staging-canary-rollout.sh`, emitting gate/cohort artifacts under `output/canary/spacetime/`.
+- `spacetime-production-rollout` lane auto-runs for production rollout harness surfaces and executes `scripts/spacetime/run-production-phased-rollout.sh`, emitting gate/cohort/SLO artifacts under `output/canary/spacetime/`.
 
 ## Push Policy
 
@@ -121,6 +124,7 @@ OA_LOCAL_CI_ENABLE_CLIPPY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh spacetime-replay-resume
 ./scripts/local-ci.sh spacetime-chaos
 ./scripts/local-ci.sh spacetime-staging-canary
+./scripts/local-ci.sh spacetime-production-rollout
 ./scripts/local-ci.sh all
 ```
 
