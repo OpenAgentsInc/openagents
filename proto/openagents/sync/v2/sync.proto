@@ -3,6 +3,7 @@ syntax = "proto3";
 package openagents.sync.v2;
 
 import "openagents/sync/v2/errors.proto";
+import "openagents/sync/v2/checkpoints.proto";
 import "openagents/sync/v2/streams.proto";
 
 message Subscribe {
@@ -12,12 +13,14 @@ message Subscribe {
   string client_build_id = 4;
   string protocol_version = 5;
   uint32 schema_version = 6;
+  ResumeToken resume_token = 7;
 }
 
 message SubscribeApplied {
   string subscription_id = 1;
   repeated StreamCursor current_watermarks = 2;
   bool replay_complete = 3;
+  repeated StreamCheckpoint accepted_checkpoints = 4;
 }
 
 message TransactionUpdate {
@@ -50,6 +53,7 @@ message Error {
   uint32 min_schema_version = 8;
   uint32 max_schema_version = 9;
   string protocol_version = 10;
+  repeated StaleCursorRecovery stale_cursor_recovery = 11;
 }
 
 enum SyncFrameKind {
@@ -67,4 +71,3 @@ message SyncFrame {
   bytes payload_bytes = 4;
   uint32 schema_version = 5;
 }
-

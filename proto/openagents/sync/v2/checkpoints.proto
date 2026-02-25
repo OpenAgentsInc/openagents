@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package openagents.sync.v2;
+
+message StreamCheckpoint {
+  string stream_id = 1;
+  uint64 last_applied_seq = 2;
+  uint64 durable_offset = 3;
+}
+
+message ResumeToken {
+  string token_id = 1;
+  repeated StreamCheckpoint checkpoints = 2;
+  uint64 issued_at_unix_ms = 3;
+  uint64 expires_at_unix_ms = 4;
+}
+
+message StaleCursorRecovery {
+  string stream_id = 1;
+  uint64 requested_watermark = 2;
+  uint64 retention_floor = 3;
+  uint64 replay_budget_floor = 4;
+  bool full_resync_required = 5;
+  string reason_code = 6;
+}
+

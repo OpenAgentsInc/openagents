@@ -62,6 +62,7 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/sync/v2/streams.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
 | `proto/openagents/sync/v2/errors.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
 | `proto/openagents/sync/v2/sync.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
+| `proto/openagents/sync/v2/checkpoints.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-006 |
 | `proto/openagents/lightning/v1/control_plane.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 / OA-RUST-101 / OA-RUST-102 |
 | `proto/openagents/lightning/v1/wallet_executor.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 |
 | `proto/openagents/aegis/v1/aegis.proto` | `openagents.aegis.v1` | `openagents.aegis.v1` | `owner:runtime` | OA-AUDIT Phase 3 / #2220 |
