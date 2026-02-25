@@ -7,9 +7,9 @@ These invariants gate Rust migration work and release decisions.
 
 Transition note (2026-02-25):
 
-1. Current invariants reflect the implemented Khala sync lane.
-2. Active replacement plans target SpacetimeDB as canonical sync transport (`docs/plans/spacetimedb-full-integration.md`).
-3. `INV-03`/`INV-06` will be superseded by equivalent Spacetime transport invariants when the replacement ADR lands.
+1. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md` is accepted and is canonical sync doctrine.
+2. Khala is an implemented legacy lane during migration and must not be treated as long-term sync authority.
+3. Replacement execution details are tracked in `docs/plans/spacetimedb-full-integration.md`.
 
 ## INV-01: Proto-first contracts
 
@@ -19,13 +19,17 @@ Cross-process contracts are defined in `proto/` and generated into Rust.
 
 Authority mutations happen through authenticated HTTP APIs only.
 
-## INV-03: Khala WS-only live transport
+## INV-03: Spacetime WS canonical live transport
 
-Khala live subscriptions use WebSocket only. No SSE/poll live authority lanes are allowed.
+Spacetime live subscriptions are the canonical transport for retained OpenAgents sync delivery. No SSE/poll live authority lanes are allowed.
+
+Migration allowance:
+- Khala WS may remain enabled only as an explicitly bounded legacy fallback lane until replacement cutover gates pass.
+- New sync feature work must target Spacetime transport semantics, not Khala expansion.
 
 Bounded exception:
-- SSE is allowed only as an HTTP presentation adapter over existing codex/Khala authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
-- SSE is prohibited as an alternate authority source or as a Khala live-sync transport.
+- SSE is allowed only as an HTTP presentation adapter over existing codex/sync authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
+- SSE is prohibited as an alternate authority source or as a live-sync authority transport.
 
 ## INV-04: Control-plane authority isolation
 
@@ -35,17 +39,21 @@ Control-plane canonical state is isolated from runtime authority state.
 
 Runtime canonical event state is written only by runtime authority paths.
 
-## INV-06: Khala is delivery, not authority
+## INV-06: Sync transport is delivery, not authority
 
-Khala writes only sync/replay metadata, never domain authority events.
+Spacetime/legacy Khala lanes may write sync/replay metadata only, never domain authority events.
 
 ## INV-07: Replay/idempotency contract
 
-Client apply path is idempotent by `(topic, seq)` with replay/resume support.
+Client apply path is idempotent with replay/resume support and ordered stream keys.
+
+Migration mapping:
+- legacy Khala key: `(topic, seq)`
+- Spacetime key: `(stream_id, seq)`
 
 ## INV-08: Service deploy isolation
 
-Control, runtime, and Khala are independently deployable in production.
+Control, runtime, and sync transport services are independently deployable in production.
 
 ## INV-09: Migration discipline
 
