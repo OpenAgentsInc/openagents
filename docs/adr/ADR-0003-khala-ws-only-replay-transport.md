@@ -53,7 +53,7 @@ Disallowed patterns:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/active/rust-migration-invariant-gates.md`
+Source: `docs/plans/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-02` (HTTP command authority only)
@@ -77,7 +77,7 @@ Source: `docs/plans/active/rust-migration-invariant-gates.md`
    - Shift surfaces to WS subscriptions with per-topic watermarks.
    - Remove legacy live transports as closure issues complete.
 3. Migration requirements:
-   - Ensure stale-cursor handling and replay bootstrap are implemented consistently across web/desktop/iOS clients.
+   - Ensure stale-cursor handling and replay bootstrap are implemented consistently across retained clients.
 
 ## Rollback and Failure Impact
 

@@ -6,7 +6,7 @@ Scope: `staging.openagents.com` for `openagents-control-service-staging`
 
 ## Purpose
 
-Define the canonical staging deployment flow for the Rust control service + Rust web shell before production rollout.
+Define the canonical staging deployment flow for the Rust control service in landing-only web mode before production rollout.
 
 ## Preconditions
 
@@ -19,19 +19,21 @@ Define the canonical staging deployment flow for the Rust control service + Rust
 
 ## Required staging env and secrets
 
-Minimum required configuration for staging (Rust control service + web-shell dist):
+Minimum required configuration for staging:
 
 1. Static host:
-   - `OA_CONTROL_STATIC_DIR=/app/web-shell/dist`
-2. Route split:
+   - `OA_CONTROL_STATIC_DIR=/app/service/static`
+2. Desktop download redirect:
+   - `OA_DESKTOP_DOWNLOAD_URL=https://github.com/openagents/openagents/releases/latest` (or release bucket URL)
+3. Route split:
    - `OA_ROUTE_SPLIT_MODE=rust` (typical for staging)
-3. Auth provider mode:
+4. Auth provider mode:
    - Staging can run with `OA_AUTH_PROVIDER_MODE=mock` for smoke/testing.
    - Production-like staging uses `OA_AUTH_PROVIDER_MODE=workos` and requires `WORKOS_CLIENT_ID` + `WORKOS_API_KEY`.
-4. Sync token (optional in staging):
+5. Sync token (optional in staging):
    - `OA_SYNC_TOKEN_ENABLED=true|false`
    - When enabled: `OA_SYNC_TOKEN_SIGNING_KEY`, `OA_SYNC_TOKEN_ISSUER`, `OA_SYNC_TOKEN_AUDIENCE`
-5. Compatibility gates (optional in staging):
+6. Compatibility gates (optional in staging):
    - `OA_COMPAT_CONTROL_ENFORCED`
    - `OA_COMPAT_CONTROL_PROTOCOL_VERSION`
    - `OA_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID`
@@ -44,9 +46,6 @@ From repo root:
 
 ```bash
 cargo test --manifest-path apps/openagents.com/service/Cargo.toml
-cargo check -p openagents-web-shell --target wasm32-unknown-unknown
-apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
-apps/openagents.com/web-shell/scripts/perf-budget-gate.sh
 ```
 
 2. Build and push the control-service image (repo root context required):

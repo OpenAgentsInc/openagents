@@ -49,4 +49,4 @@ Runtime sync authorization enforces this contract:
 1. Onyx is not a privileged control surface for Codex worker administration.
 2. Onyx does not gain mutation authority through Khala transport.
 3. Onyx local-first note editing behavior remains independent of Khala availability.
-4. Onyx is not a replacement for autopilot-desktop or autopilot-ios Codex administration flows.
+4. Onyx is not a replacement for autopilot-desktop Codex administration flows.

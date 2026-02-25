@@ -45,10 +45,8 @@ Documentation entry points:
 ## Product and Service Surfaces
 
 - Web control service: `apps/openagents.com/service/`
-- Web WASM shell: `apps/openagents.com/web-shell/`
 - Runtime service: `apps/runtime/`
 - Desktop app: `apps/autopilot-desktop/`
-- iOS app: `apps/autopilot-ios/`
 - Onyx app: `apps/onyx/`
 - Shared Rust crates: `crates/`
 
@@ -91,7 +89,7 @@ You must complete this gate before writing or modifying code.
 
 0. Read these baseline authorities first for every coding task:
    - `docs/adr/INDEX.md`
-   - `docs/plans/active/rust-migration-invariant-gates.md`
+   - `docs/plans/rust-migration-invariant-gates.md`
 1. Identify touched surfaces and read the governing ADR(s), invariant gates, and ownership-boundary docs.
 2. Record a preflight proof in your first implementation update:
    - List exactly which ADR(s)/invariant docs were checked.
@@ -99,19 +97,6 @@ You must complete this gate before writing or modifying code.
 3. Do not edit files until that preflight proof is written.
 4. If proposed code violates those constraints, stop and redesign before editing files.
 5. If constraints still conflict with requested work, stop and ask the user how to proceed.
-
-iOS Codex/WGPUI-specific required reads before coding:
-- `docs/plans/active/rust-migration-invariant-gates.md` (minimum: `INV-03`, `INV-07`, `INV-11`)
-- `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
-- `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`
-- `apps/autopilot-ios/docs/wgpui-codex-ownership-boundaries.md`
-- `apps/autopilot-ios/docs/codex-wgpui-parity-gates.md`
-- `apps/autopilot-ios/docs/rust-client-core-integration.md`
-
-Hard rule for iOS Codex lanes:
-- Product UI/state/business logic is Rust/WGPUI-authoritative.
-- Swift/SwiftUI is host/bootstrap/OS bridge code only.
-- Do not add new Swift-owned Codex product logic.
 
 ## Engineering Invariants
 
@@ -125,7 +110,7 @@ Canonical references:
 - `docs/execution/ARTIFACTS.md`
 - `docs/execution/REPLAY.md`
 - `docs/protocol/PROTOCOL_SURFACE.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-invariant-gates.md`
 
 ## Git Hygiene
 

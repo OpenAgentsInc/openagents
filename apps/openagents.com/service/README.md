@@ -6,13 +6,10 @@ Rust control service scaffold for `apps/openagents.com`.
 
 - Server bootstrap + config loading.
 - Baseline routes:
+  - `GET /` landing page (desktop download only)
+  - `GET /download-desktop` redirect to configured desktop download URL
   - `GET /healthz`
   - `GET /readyz`
-  - `GET /login` (guest landing, redirects `/` when already authenticated)
-  - `POST /login/email` (web-form challenge bootstrap)
-  - `POST /login/verify` (web-form challenge verification + auth cookies)
-  - `POST /logout` (web auth cookie logout redirect)
-  - `GET /internal/test-login` (local/testing-only signed test-login URL)
   - `POST /api/auth/email`
   - `POST /api/auth/register`
   - `POST /api/auth/verify`
@@ -47,10 +44,6 @@ Rust control service scaffold for `apps/openagents.com`.
   - `GET /api/runtime/threads/:thread_id/messages` (Codex thread message projection read)
   - `POST /api/runtime/threads/:thread_id/messages` (Codex thread command lane)
   - `GET /openapi.json` Rust-generated OpenAPI document
-  - `GET /sw.js` service worker script host
-  - `GET /manifest.json` static manifest
-  - `GET /assets/*` versioned static asset host
-  - `GET /*` feature-flagged web-shell vs legacy route split entry
 - Request middleware foundations:
   - request ID propagation (`x-request-id`)
   - HTTP trace layer
@@ -64,7 +57,8 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_CONTROL_BIND_ADDR` (default: `127.0.0.1:8787`)
 - `OA_CONTROL_LOG_FILTER` (default: `info`)
 - `OA_CONTROL_LOG_FORMAT` (`json|pretty`, default: `json`)
-- `OA_CONTROL_STATIC_DIR` (default: `../web-shell/dist`)
+- `OA_CONTROL_STATIC_DIR` (default: `apps/openagents.com/service/static`)
+- `OA_DESKTOP_DOWNLOAD_URL` (default: `https://github.com/openagents/openagents/releases/latest`)
 - `OA_AUTH_PROVIDER_MODE` (`workos|mock`, default: `workos`; `mock` is local/testing only)
 - `WORKOS_CLIENT_ID` (required in `workos` mode)
 - `WORKOS_API_KEY` (required in `workos` mode)
@@ -164,7 +158,7 @@ curl -c /tmp/oa.cookie -H 'content-type: application/json' \
   -d '{"email":"you@example.com"}' \
   http://127.0.0.1:8787/api/auth/email | jq
 
-VERIFY_RESPONSE="$(curl -sS -b /tmp/oa.cookie -H 'content-type: application/json' -H 'x-client: autopilot-ios' \
+VERIFY_RESPONSE="$(curl -sS -b /tmp/oa.cookie -H 'content-type: application/json' -H 'x-client: autopilot-desktop' \
   -d '{"code":"123456"}' \
   http://127.0.0.1:8787/api/auth/verify)"
 echo "${VERIFY_RESPONSE}" | jq
@@ -174,9 +168,6 @@ curl -sS -H "authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'content-type: application/json' \
   -d '{"scopes":["runtime.codex_worker_events"]}' \
   http://127.0.0.1:8787/api/sync/token | jq
-
-curl -i http://127.0.0.1:8787/manifest.json
-curl -i http://127.0.0.1:8787/assets/app-<contenthash>.js
 ```
 
 ## Test
@@ -207,20 +198,11 @@ Runbook:
 
 - `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
 
-## Static cache policy
+## Landing mode notes
 
-- Build the web-shell static dist with: `apps/openagents.com/web-shell/build-dist.sh`
-- `GET /manifest.json` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
-- `GET /sw.js` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
-- `GET /assets/<hashed-file>` is served with `Cache-Control: public, max-age=31536000, immutable`.
-- `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.
-- SW pinning/rollback release order and recovery runbook:
-  - `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
-- WASM boot budgets/capability fallback policy:
-  - `apps/openagents.com/web-shell/docs/WASM_BOOT_PERFORMANCE_POLICY.md`
-- Required verification gates:
-  - `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`
-  - `apps/openagents.com/web-shell/scripts/perf-budget-gate.sh`
+- Web behavior is intentionally limited to the landing page and desktop-download redirect.
+- Desktop download destination is controlled by `OA_DESKTOP_DOWNLOAD_URL`.
+- `OA_CONTROL_STATIC_DIR` remains available for readiness checks and optional static overlays.
 
 ## API envelope and error matrix
 

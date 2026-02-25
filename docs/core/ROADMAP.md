@@ -8,10 +8,10 @@ Detailed execution backlog and OA-RUST issue ordering live in:
 ## Program Objective
 
 Complete migration to a Rust-only production architecture with:
-- Rust control service + Rust/WGPUI web shell
+- Rust control service + landing-only web distribution page
 - Rust runtime authority service
 - WS-only Khala replay/delivery for live subscriptions
-- Shared Rust client/UI/state crates across web/desktop/iOS
+- Shared Rust client/UI/state crates across retained surfaces
 - Proto-first contract governance
 
 ## Current Priority Phases
@@ -24,9 +24,9 @@ Complete migration to a Rust-only production architecture with:
 - Maintain proto-first wire contracts under `proto/`.
 - Keep Khala delivery semantics deterministic (resume, replay, stale cursor, idempotent apply).
 
-3. Cross-surface parity
-- Align web-shell, desktop, and iOS behavior through shared Rust crates.
-- Keep contract harness and replay fixtures green across surfaces.
+3. Retained-surface parity
+- Align desktop and runtime control contracts through shared Rust crates.
+- Keep cross-surface contract harness green for retained consumer surfaces.
 
 4. Operations and reliability
 - Enforce deploy+migration coupling for runtime.

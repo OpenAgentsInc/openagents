@@ -68,8 +68,8 @@ run_step "terminal-gate-verifier" "Active openagents.com lanes are Rust-only; le
 run_step "service-compile" "Rust control service compiles" \
   cargo check --manifest-path apps/openagents.com/service/Cargo.toml
 
-run_step "web-shell-compile" "Rust/WGPUI web-shell compiles for wasm target" \
-  cargo check --target wasm32-unknown-unknown --manifest-path apps/openagents.com/web-shell/Cargo.toml
+run_step "landing-routes-baseline" "Landing-mode health/readiness routes stay green" \
+  cargo test --manifest-path apps/openagents.com/service/Cargo.toml healthz_route_returns_ok
 
 jq -s \
   --arg generated_at "${TIMESTAMP}" \

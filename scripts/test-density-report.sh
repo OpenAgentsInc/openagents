@@ -7,7 +7,7 @@ TARGETS=(
   "crates/openagents-cli"
   "crates/autopilot_ui"
   "crates/runtime"
-  "apps/openagents.com/web-shell"
+  "apps/openagents.com/service"
   "crates/autopilot"
 )
 

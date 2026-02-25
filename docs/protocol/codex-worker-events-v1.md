@@ -14,7 +14,7 @@ Fixture corpus:
 ## Scope
 
 The v1 contract covers:
-1. Worker summary/snapshot shapes consumed by web/desktop/iOS.
+1. Worker summary/snapshot shapes consumed by retained client surfaces.
 2. Stream envelope semantics for replay/resume (`seq`, replay metadata, `stale_cursor`).
 3. Turn/item/message/reasoning/tool and handshake notification payloads.
 4. Auth hydration state envelopes needed for desktop-first Codex runtime flows.

@@ -21,15 +21,9 @@ if [[ -z "${IMAGE}" ]]; then
   exit 1
 fi
 
-echo "[deploy] rust web-shell dist build"
-"${APP_DIR}/web-shell/build-dist.sh"
-
 if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
-  echo "[deploy] verify rust control-service + rust web-shell"
+  echo "[deploy] verify rust control-service"
   cargo test --manifest-path "${SERVICE_DIR}/Cargo.toml"
-  cargo check -p openagents-web-shell --target wasm32-unknown-unknown
-  "${APP_DIR}/web-shell/scripts/sw-policy-verify.sh"
-  "${APP_DIR}/web-shell/scripts/perf-budget-gate.sh"
 fi
 
 echo "[deploy] deploy no-traffic revision image=${IMAGE}"

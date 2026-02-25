@@ -77,8 +77,8 @@ run_step() {
 run_step "service-compile" "api" "Rust control service compile baseline" \
   "cargo check --manifest-path apps/openagents.com/service/Cargo.toml"
 
-run_step "web-shell-compile" "ui" "Rust/WGPUI web-shell wasm compile baseline" \
-  "cargo check --target wasm32-unknown-unknown --manifest-path apps/openagents.com/web-shell/Cargo.toml"
+run_step "landing-routes-baseline" "ui" "Landing-only web routes are stable" \
+  "cargo test --manifest-path apps/openagents.com/service/Cargo.toml healthz_route_returns_ok && cargo test --manifest-path apps/openagents.com/service/Cargo.toml readiness_route_is_ready_when_static_dir_exists"
 
 run_step "vercel-sse-fixture-drift" "stream" "Vercel compatibility fixture corpus drift check" \
   "./apps/openagents.com/scripts/run-vercel-sse-fixture-harness.sh"

@@ -1,6 +1,6 @@
 # Cross-Surface Contract Harness
 
-This harness validates Codex control-lane contracts across iOS, runtime API, and desktop parser boundaries.
+This harness validates Codex control-lane contracts across retained desktop and runtime API boundaries.
 
 ## Scenario Catalog
 
@@ -41,12 +41,6 @@ The source of truth for scenario IDs/descriptions is:
 
 ## Adapter Commands Used by Harness
 
-- Web shell contract tests:
-
-  ```bash
-  cargo test -p openagents-web-shell codex_thread::tests
-  ```
-
 - Desktop runtime codex proto tests:
 
   ```bash
@@ -59,21 +53,10 @@ The source of truth for scenario IDs/descriptions is:
   (cd apps/openagents.com && ./vendor/bin/pest tests/Feature/Api/RuntimeCodexWorkersApiTest.php)
   ```
 
-- iOS contract tests:
-
-  ```bash
-  xcodebuild test \
-    -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj \
-    -scheme Autopilot \
-    -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-    -only-testing:AutopilotTests
-  ```
-
 ## Restart/Resume Continuity Checks
 
 The `codex-control-restart-resume-terminal-receipts` scenario is considered satisfied when:
 
-1. iOS coordinator replay tests pass.
-2. Runtime API idempotent replay passthrough tests pass.
-3. Desktop terminal receipt dedupe key stability test passes.
-4. Harness summary reports no failed surface runs.
+1. Runtime API idempotent replay passthrough tests pass.
+2. Desktop terminal receipt dedupe key stability test passes.
+3. Harness summary reports no failed surface runs.

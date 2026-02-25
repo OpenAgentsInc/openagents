@@ -1317,9 +1317,6 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let compatibility_state = state.clone();
     let maintenance_state = state.clone();
     let auth_email_throttle_state = state.clone();
-    let login_email_throttle_state = state.clone();
-    let login_verify_throttle_state = state.clone();
-    let local_test_login_throttle_state = state.clone();
     let thread_message_throttle_state = state.clone();
     let codex_control_request_throttle_state = state.clone();
     let authenticated_routes_state = state.clone();
@@ -1328,31 +1325,6 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
     let admin_state = state.clone();
     let runtime_internal_secret_fetch_path =
         normalize_route_path(&state.config.runtime_internal_secret_fetch_path);
-
-    let web_auth_router = Router::new()
-        .route("/login", get(login_page))
-        .route(
-            "/login/email",
-            post(login_email).route_layer(middleware::from_fn_with_state(
-                login_email_throttle_state,
-                throttle_login_email_gate,
-            )),
-        )
-        .route(
-            "/login/verify",
-            post(login_verify).route_layer(middleware::from_fn_with_state(
-                login_verify_throttle_state,
-                throttle_login_verify_gate,
-            )),
-        )
-        .route("/logout", post(web_logout))
-        .route(
-            "/internal/test-login",
-            get(local_test_login).route_layer(middleware::from_fn_with_state(
-                local_test_login_throttle_state,
-                throttle_auth_email_gate,
-            )),
-        );
 
     let public_api_router = Router::new()
         .route(
@@ -1633,100 +1605,13 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         ));
 
     Router::new()
-        .route("/", get(web_shell_entry))
-        .route("/compute", get(compute_page))
-        .route("/compute/fragments/main", get(compute_main_fragment))
-        .route("/compute/fragments/metrics", get(compute_metrics_fragment))
-        .route("/compute/fragments/fleet", get(compute_fleet_fragment))
-        .route(
-            "/compute/providers/:worker_id/disable",
-            post(web_compute_provider_disable),
-        )
-        .route("/stats", get(stats_page))
-        .route("/stats/fragments/main", get(stats_main_fragment))
-        .route("/stats/fragments/metrics", get(stats_metrics_fragment))
-        .route("/stats/fragments/pools", get(stats_pools_fragment))
-        .route("/feed", get(feed_page))
-        .route("/feed/fragments/main", get(feed_main_fragment))
-        .route("/feed/fragments/items", get(feed_items_fragment))
-        .route("/feed/shout", post(web_feed_shout))
-        .route(
-            "/settings/profile/update",
-            post(web_settings_profile_update),
-        )
-        .route(
-            "/settings/profile/delete",
-            post(web_settings_profile_delete),
-        )
-        .route(
-            "/settings/integrations/resend/upsert",
-            post(web_settings_resend_upsert),
-        )
-        .route(
-            "/settings/integrations/resend/test-request",
-            post(web_settings_resend_test),
-        )
-        .route(
-            "/settings/integrations/resend/disconnect",
-            post(web_settings_resend_disconnect),
-        )
-        .route(
-            "/settings/integrations/google/connect",
-            get(web_settings_google_connect),
-        )
-        .route(
-            "/settings/integrations/google/disconnect",
-            post(web_settings_google_disconnect),
-        )
-        .route("/l402/paywalls/web/create", post(web_l402_paywall_create))
-        .route(
-            "/l402/paywalls/web/:paywall_id/toggle",
-            post(web_l402_paywall_toggle),
-        )
-        .route(
-            "/l402/paywalls/web/:paywall_id/delete",
-            post(web_l402_paywall_delete),
-        )
-        .route(
-            "/admin/route-split/evaluate",
-            post(web_admin_route_split_evaluate),
-        )
-        .route(
-            "/admin/route-split/override",
-            post(web_admin_route_split_override),
-        )
-        .route(
-            "/admin/runtime-routing/evaluate",
-            post(web_admin_runtime_routing_evaluate),
-        )
-        .route(
-            "/admin/runtime-routing/override",
-            post(web_admin_runtime_routing_override),
-        )
-        .route(
-            "/admin/lightning-ops/query",
-            post(web_admin_lightning_ops_query),
-        )
-        .route(
-            "/admin/lightning-ops/mutation",
-            post(web_admin_lightning_ops_mutation),
-        )
-        .route("/chat/new", post(web_chat_new_thread))
-        .route(
-            "/chat/fragments/thread/:thread_id",
-            get(web_chat_thread_fragment),
-        )
-        .route("/chat/:thread_id/send", post(web_chat_send_message))
+        .route("/", get(landing_page))
+        .route("/download-desktop", get(download_desktop_redirect))
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
-        .merge(web_auth_router)
         .merge(public_api_router)
         .merge(protected_api_router)
         .route(ROUTE_OPENAPI_JSON, get(openapi_spec))
-        .route("/sw.js", get(static_service_worker))
-        .route("/manifest.json", get(static_manifest))
-        .route("/assets/*path", get(static_asset))
-        .route("/*path", get(web_shell_entry))
         .with_state(state)
         .layer(middleware::from_fn_with_state(
             maintenance_state,
@@ -1836,6 +1721,80 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         uptime_seconds,
         auth_provider: state.auth.provider_name(),
     })
+}
+
+async fn landing_page() -> Response {
+    const LANDING_HTML: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenAgents Desktop</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(165deg, #f3f7ff 0%, #dce8ff 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #111827;
+    }
+    main {
+      width: min(680px, calc(100% - 3rem));
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 20px 60px rgba(17, 24, 39, 0.12);
+      padding: 2.5rem;
+    }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: 2rem;
+      line-height: 1.15;
+    }
+    p {
+      margin: 0 0 1.5rem;
+      color: #374151;
+      line-height: 1.5;
+    }
+    a {
+      display: inline-block;
+      text-decoration: none;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 0.8rem 1.2rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>OpenAgents runs in the desktop app.</h1>
+    <p>This web surface is intentionally limited to desktop distribution.</p>
+    <a href="/download-desktop">Download desktop app</a>
+  </main>
+</body>
+</html>
+"#;
+
+    let mut response = (
+        StatusCode::OK,
+        [(CONTENT_TYPE, "text/html; charset=utf-8")],
+        LANDING_HTML,
+    )
+        .into_response();
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static(CACHE_API_NO_STORE),
+    );
+    apply_html_security_headers(response.headers_mut());
+    response
+}
+
+async fn download_desktop_redirect(State(state): State<AppState>) -> Response {
+    Redirect::temporary(&state.config.desktop_download_url).into_response()
 }
 
 async fn readiness(State(state): State<AppState>) -> impl IntoResponse {

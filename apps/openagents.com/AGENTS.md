@@ -2,7 +2,6 @@
 
 Active implementation and serving paths:
 - `apps/openagents.com/service/` (Rust control/API service)
-- `apps/openagents.com/web-shell/` (Rust/WGPUI WASM shell)
 - `apps/openagents.com/Dockerfile` (Rust-only image build)
 
 Legacy Laravel/Inertia/TypeScript application files under `apps/openagents.com/app/`, `bootstrap/`, `config/`, `database/`, `resources/`, `routes/`, and `tests/` are archival reference only and must not be treated as active runtime authority.

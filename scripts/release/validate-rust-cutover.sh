@@ -305,13 +305,13 @@ if [[ "${RUN_CROSS_SURFACE}" == "1" ]]; then
   run_check \
     "cross-surface-contract-harness" \
     "optional" \
-    "web/desktop/ios cross-surface contract harness" \
+    "desktop/runtime-api cross-surface contract harness" \
     "${ROOT_DIR}/scripts/run-cross-surface-contract-harness.sh"
 else
   skip_check \
     "cross-surface-contract-harness" \
     "optional" \
-    "web/desktop/ios cross-surface contract harness" \
+    "desktop/runtime-api cross-surface contract harness" \
     "RUN_CROSS_SURFACE=0"
 fi
 

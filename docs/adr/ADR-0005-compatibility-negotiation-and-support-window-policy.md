@@ -23,7 +23,7 @@ Without a single compatibility policy, different surfaces can apply inconsistent
 3. client build support windows,
 4. deterministic upgrade-required failures.
 
-This creates operational risk during deploys, canaries, and rollback where web/desktop/iOS clients run mixed versions.
+This creates operational risk during deploys, canaries, and rollback where retained clients run mixed versions.
 
 ## Decision
 
@@ -66,7 +66,7 @@ Surface contract requirements:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/active/rust-migration-invariant-gates.md`
+Source: `docs/plans/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-01` (Rust-only product/runtime contract authority)
@@ -89,7 +89,7 @@ Source: `docs/plans/active/rust-migration-invariant-gates.md`
    - Introduce shared negotiation helper/tests.
    - Implement enforcement in control + Khala (OA-RUST-084).
 3. Migration requirements:
-   - Web manifest/service-worker update policy must carry `buildId` + compatibility window.
+   - Retained client release policy must carry `buildId` + compatibility window.
    - Control/Khala docs must point to this policy as the single compatibility authority.
 
 ## Rollback and Failure Impact
@@ -109,8 +109,6 @@ Required policy-level checks:
 
 ```bash
 cargo test -p openagents-client-core compatibility::
-node --test apps/openagents.com/web-shell/host/update-policy.test.mjs
-apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
 ```
 
 ## Consequences
@@ -123,7 +121,7 @@ apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
 
 ### Negative
 
-- Additional release discipline: support-window updates must be coordinated across static assets and server configs.
+- Additional release discipline: support-window updates must be coordinated across client builds and server configs.
 - Temporary increase in doc/contracts surface until full enforcement is complete.
 
 ### Neutral

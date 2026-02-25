@@ -21,17 +21,15 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 ## Planning and Sequencing
 
 - `docs/plans/README.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
-- `docs/plans/active/rust-migration-execution-control-plane.md`
+- `docs/plans/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/core/SYNTHESIS.md`
 
 ## Product and Runtime Surfaces
 
 - `apps/openagents.com/service/`
-- `apps/openagents.com/web-shell/`
 - `apps/runtime/`
 - `apps/autopilot-desktop/`
-- `apps/autopilot-ios/`
 - `apps/onyx/`
 - `apps/lightning-ops/`
 - `apps/lightning-wallet-executor/`
@@ -50,7 +48,6 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 
 - Contract/wire changes: `proto/` + `docs/protocol/`
 - Runtime behavior: `apps/runtime/` + `docs/execution/`
-- Web control/shell behavior: `apps/openagents.com/service/`, `apps/openagents.com/web-shell/`
+- Web control/landing behavior: `apps/openagents.com/service/`
 - Desktop behavior: `apps/autopilot-desktop/`
-- iOS behavior: `apps/autopilot-ios/`
 - Architecture/boundaries: `docs/core/ARCHITECTURE.md` + new ADR in `docs/adr/`

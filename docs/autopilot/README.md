@@ -1,7 +1,7 @@
 # Autopilot Docs
 
 - Autopilot is the flagship product: a cross-platform coding agent that turns repo issues into verified PRs, within a budget, with receipts + replay artifacts.
-- Desktop is the execution surface; web and iOS are control/history/monitor surfaces (capabilities differ by surface).
+- Desktop is the execution surface; web is a landing/download surface and control APIs are consumed by retained clients.
 - Desktop may optionally run OpenAgents Compute provider mode (Pylon) to contribute compute and earn credits (default off).
 
 Product/MVP references:

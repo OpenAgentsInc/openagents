@@ -1,4 +1,3 @@
-
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -868,6 +867,47 @@ async fn healthz_route_returns_ok() -> Result<()> {
     assert_eq!(body["status"], "ok");
     assert_eq!(body["service"], "openagents-control-service");
     assert_eq!(body["auth_provider"], "mock");
+    Ok(())
+}
+
+#[tokio::test]
+async fn root_route_serves_landing_page_with_desktop_download_link() -> Result<()> {
+    let app = build_router(test_config(std::env::temp_dir()));
+    let request = Request::builder().uri("/").body(Body::empty())?;
+    let response = app.oneshot(request).await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/html; charset=utf-8")
+    );
+    let body = read_text(response).await?;
+    assert!(body.contains("Download desktop app"));
+    assert!(body.contains("href=\"/download-desktop\""));
+    Ok(())
+}
+
+#[tokio::test]
+async fn download_desktop_route_redirects_to_configured_release_url() -> Result<()> {
+    let config = test_config(std::env::temp_dir());
+    let expected = config.desktop_download_url.clone();
+    let app = build_router(config);
+    let request = Request::builder()
+        .uri("/download-desktop")
+        .body(Body::empty())?;
+    let response = app.oneshot(request).await?;
+
+    assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(
+        response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some(expected.as_str())
+    );
     Ok(())
 }
 

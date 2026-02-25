@@ -7,7 +7,6 @@
       "id": "codex-control-turn-start-interrupt",
       "description": "End-to-end control lane covers turn/start with model+effort overrides followed by turn/interrupt on the same thread/turn context.",
       "surface_contracts": [
-        "ios-control-coordinator",
         "runtime-codex-workers-api",
         "desktop-control-proto"
       ],
@@ -22,7 +21,6 @@
       "id": "codex-control-restart-resume-terminal-receipts",
       "description": "Reconnect and desktop restart/replay paths do not lose terminal receipts and do not emit duplicate terminal outcomes for the same (worker_id, request_id).",
       "surface_contracts": [
-        "ios-replay-reconciliation",
         "runtime-idempotency-forwarding",
         "desktop-terminal-receipt-dedupe"
       ],

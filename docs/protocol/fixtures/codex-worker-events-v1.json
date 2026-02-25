@@ -327,8 +327,8 @@
     {
       "worker_id": "desktopw:desktop:shared",
       "seq": 308,
-      "method": "CODEX_NOTIFICATION_METHOD_IOS_HANDSHAKE",
-      "method_text": "ios/handshake",
+      "method": "CODEX_NOTIFICATION_METHOD_DESKTOP_HANDSHAKE_ACK",
+      "method_text": "desktop/handshake_ack",
       "occurred_at": "2026-02-21T07:44:08Z",
       "replay": {
         "topic": "runtime.codex_worker_events",
@@ -338,10 +338,10 @@
         "replayed": false
       },
       "payload": {
-        "source": "autopilot-ios",
-        "method": "ios/handshake",
+        "source": "autopilot-desktop",
+        "method": "desktop/handshake_ack",
         "handshake_id": "hs_01HZZHS",
-        "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+        "desktop_session_id": "session_01HZZSESSION",
         "occurred_at": "2026-02-21T07:44:08Z"
       }
     },
@@ -370,7 +370,7 @@
       "worker_id": "desktopw:desktop:shared",
       "seq": 310,
       "method": "CODEX_NOTIFICATION_METHOD_USER_MESSAGE",
-      "method_text": "ios/user_message",
+      "method_text": "desktop/user_message",
       "occurred_at": "2026-02-21T07:44:10Z",
       "replay": {
         "topic": "runtime.codex_worker_events",
@@ -380,9 +380,9 @@
         "replayed": false
       },
       "payload": {
-        "source": "autopilot-ios",
-        "method": "ios/user_message",
-        "message_id": "iosmsg_01HZZMSG",
+        "source": "autopilot-desktop",
+        "method": "desktop/user_message",
+        "message_id": "desktopmsg_01HZZMSG",
         "params": {
           "thread_id": "thr_01HZZTHREAD",
           "turn_id": "turn_01HZZTURN",

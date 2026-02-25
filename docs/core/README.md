@@ -43,16 +43,14 @@ This tree contains current Rust-era documentation and forward strategy only.
 ## Plans
 
 - `plans/README.md`
-- `plans/active/rust-migration-invariant-gates.md`
-- `plans/active/rust-migration-execution-control-plane.md`
+- `plans/rust-migration-invariant-gates.md`
+- `plans/rust-migration-execution-control-plane.md`
 
 ## Product Surfaces
 
 - `../apps/openagents.com/service/`
-- `../apps/openagents.com/web-shell/`
 - `../apps/runtime/`
 - `../apps/autopilot-desktop/`
-- `../apps/autopilot-ios/`
 - `../apps/onyx/`
 - `../crates/`
 

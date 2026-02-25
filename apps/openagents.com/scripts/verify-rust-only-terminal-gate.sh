@@ -18,7 +18,6 @@ cd "${ROOT_DIR}"
 active_impl_files="$({
   rg --files \
     apps/openagents.com/service \
-    apps/openagents.com/web-shell \
     apps/openagents.com/scripts \
     --glob '!apps/openagents.com/scripts/archived-laravel/**'
 } | rg '\.(php|ts|tsx)$' || true)"

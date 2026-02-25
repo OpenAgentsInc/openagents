@@ -2,7 +2,7 @@
 
 Date: 2026-02-21  
 Status: Active program  
-Owner lanes: Runtime, Web, Desktop, iOS, Onyx, Infra, Protocol  
+Owner lanes: Runtime, Desktop, Onyx, Infra, Protocol  
 Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 Khala is the runtime-owned sync/replay delivery system for Rust-era surfaces.
@@ -10,9 +10,7 @@ Khala is the runtime-owned sync/replay delivery system for Rust-era surfaces.
 ## Program Goal
 
 Deliver and operate a production-grade WS-only sync lane with deterministic replay/resume semantics for:
-- `apps/openagents.com/web-shell`
 - `apps/autopilot-desktop`
-- `apps/autopilot-ios`
 - `apps/onyx` (explicit limited integration scope)
 
 ## Non-Negotiable Constraints
@@ -39,9 +37,7 @@ Remaining migration work:
 
 | Surface | Primary Topic Scope | Integration Status |
 |---|---|---|
-| `apps/openagents.com/web-shell` | codex summaries + run summaries | Active (feature-flag and rollout staged) |
 | `apps/autopilot-desktop` | codex worker events + optional summaries | Active primary operator lane |
-| `apps/autopilot-ios` | codex worker events + optional summaries | Active follow/monitor lane |
 | `apps/onyx` | optional run summaries only | Scoped/limited integration lane |
 
 ## Workstreams
@@ -93,35 +89,16 @@ Verification:
 
 ## Workstream C: Surface Rollout and Cutover
 
-### SYNC-005: Web shell lane signoff
+### SYNC-005: Desktop lane signoff
 Status: In Progress
 
 Done when:
-- web-shell lane is duplicate-free, monotonic by `(topic, seq)`, and WS-only in rollout cohort.
+- desktop lane is duplicate-free, monotonic by `(topic, seq)`, and WS-only in rollout cohort.
 
 Verification:
 - `./scripts/local-ci.sh all-rust`
 
-### SYNC-006: Desktop lane signoff
-Status: In Progress
-
-Done when:
-- desktop receives codex worker events via WS-only lane and applies deterministic replay on reconnect.
-
-Verification:
-- `cargo run -p autopilot-desktop`
-- runtime fanout endpoint checks from Workstream B
-
-### SYNC-007: iOS lane signoff
-Status: In Progress
-
-Done when:
-- iOS handshake, token minting, WS connect, and replay/resume behavior are stable.
-
-Verification:
-- `xcodebuild -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj -scheme Autopilot -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:AutopilotTests`
-
-### SYNC-008: Onyx scoped integration declaration
+### SYNC-006: Onyx scoped integration declaration
 Status: Completed
 
 Done when:
@@ -132,7 +109,7 @@ Verification:
 
 ## Workstream D: Operations and Runbooks
 
-### SYNC-009: WS-only rollout runbook alignment
+### SYNC-007: WS-only rollout runbook alignment
 Status: Completed
 
 Done when:
@@ -141,7 +118,7 @@ Done when:
 Verification:
 - `./scripts/local-ci.sh docs`
 
-### SYNC-010: Historical status handling policy
+### SYNC-008: Historical status handling policy
 Status: In Progress
 
 Done when:

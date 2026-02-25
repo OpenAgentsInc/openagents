@@ -5,19 +5,13 @@ This map reflects canonical Rust-only architecture boundaries.
 ## Active Apps and Services
 
 - `apps/openagents.com/service/`
-  Rust control service: auth/session/device management, authorization, sync token issuance, static asset serving.
-
-- `apps/openagents.com/web-shell/`
-  Rust/WGPUI web shell (WASM) running in-browser.
+  Rust control service: auth/session/device management, authorization, sync token issuance, and landing-page distribution.
 
 - `apps/runtime/`
   Rust execution authority: run lifecycle, worker lifecycle, event log, projector/read models, Khala delivery semantics.
 
 - `apps/autopilot-desktop/`
   Rust desktop surface for Codex/inbox administration and local operator workflows.
-
-- `apps/autopilot-ios/`
-  iOS host surface integrating shared Rust client/runtime behavior.
 
 - `apps/onyx/`
   Rust local-first notes surface.

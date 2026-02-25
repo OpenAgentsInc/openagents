@@ -46,7 +46,7 @@ Prohibited patterns:
 
 ## Invariant Gate Mapping
 
-Source: `docs/plans/active/rust-migration-invariant-gates.md`
+Source: `docs/plans/rust-migration-invariant-gates.md`
 
 1. Invariants affected:
    - `INV-01` (primary)
@@ -104,7 +104,7 @@ OA_BUF_BREAKING_MODE=strict OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,sub
 ### Positive
 
 - Eliminates contract authority ambiguity.
-- Preserves replay/auth compatibility across web/desktop/iOS/runtime boundaries.
+- Preserves replay/auth compatibility across retained client/runtime boundaries.
 - Supports deterministic, mechanical enforcement in CI/gates.
 
 ### Negative
@@ -130,5 +130,5 @@ OA_BUF_BREAKING_MODE=strict OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,sub
 - `proto/README.md`
 - `proto/PACKAGE_MAP.md`
 - `docs/core/ARCHITECTURE.md`
-- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-invariant-gates.md`
 - Related issue: `OA-RUST-075` / `#1890`

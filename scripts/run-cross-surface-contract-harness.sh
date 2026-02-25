@@ -9,9 +9,6 @@ LOG_DIR="${OUTPUT_DIR}/logs"
 RESULTS_FILE="${OUTPUT_DIR}/surface-runs.jsonl"
 SUMMARY_JSON="${OUTPUT_DIR}/summary.json"
 SUMMARY_MD="${OUTPUT_DIR}/SUMMARY.md"
-IOS_PROJECT="${IOS_PROJECT:-${ROOT_DIR}/apps/autopilot-ios/Autopilot/Autopilot.xcodeproj}"
-IOS_SCHEME="${IOS_SCHEME:-Autopilot}"
-IOS_DESTINATION="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
 RUNTIME_API_DIR="${RUNTIME_API_DIR:-${ROOT_DIR}/apps/openagents.com}"
 RUNTIME_API_TEST="${RUNTIME_API_TEST:-tests/Feature/Api/RuntimeCodexWorkersApiTest.php}"
 
@@ -25,7 +22,6 @@ require_command() {
 
 require_command jq
 require_command cargo
-require_command xcodebuild
 require_command php
 
 if [[ ! -f "${CATALOG_PATH}" ]]; then
@@ -83,21 +79,11 @@ run_surface() {
   echo "[cross-surface] ${surface}: ${status} (${duration}s)"
 }
 
-run_surface "web" \
-  cargo test -p openagents-web-shell codex_thread::tests
-
 run_surface "desktop" \
   cargo test -p autopilot-desktop runtime_codex_proto::tests
 
 run_surface "runtime-api" \
   bash -lc "cd \"$RUNTIME_API_DIR\" && ./vendor/bin/pest \"$RUNTIME_API_TEST\""
-
-run_surface "ios" \
-  xcodebuild test \
-    -project "${IOS_PROJECT}" \
-    -scheme "${IOS_SCHEME}" \
-    -destination "${IOS_DESTINATION}" \
-    -only-testing:AutopilotTests
 
 jq -s \
   --slurpfile catalog "${CATALOG_PATH}" \

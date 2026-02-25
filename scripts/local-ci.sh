@@ -10,11 +10,8 @@ RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/history_compat/|apps/runtime/Cargo\.toml$|Cargo\.lock$)'
 LEGACY_COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 LEGACY_LEGACYPARITY_TRIGGER_PATTERN='^(docs/plans/legacyparity-intake/|apps/runtime/test/fixtures/legacyparity/|scripts/legacyparity-drift-report\.sh$)'
-WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
-CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
-IOS_RUST_CORE_TRIGGER_PATTERN='^(apps/autopilot-ios/|crates/openagents-client-core/|apps/autopilot-ios/scripts/build-rust-client-core\.sh$|apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility\.sh$)'
-IOS_CODEX_WGPUI_TRIGGER_PATTERN='^(apps/autopilot-ios/Autopilot/Autopilot/|apps/autopilot-ios/scripts/|apps/autopilot-ios/docs/|crates/openagents-client-core/|scripts/local-ci\.sh$)'
-RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
+CROSS_SURFACE_TRIGGER_PATTERN='^(apps/autopilot-desktop/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
+RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/autopilot-desktop/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
 RUST_CLIPPY_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN='^(apps/openagents\.com/(app/Http/Controllers/Api/RuntimeCodexWorkersController\.php|app/AI/Runtime/RuntimeCodexClient\.php|config/runtime\.php|routes/api\.php|tests/Feature/Api/RuntimeCodexWorkersApiTest\.php))'
 INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
@@ -170,20 +167,9 @@ run_trigger_tests() {
   assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/legacyparity-drift-report.sh" "true"
   assert_trigger "legacy-legacyparity" "$LEGACY_LEGACYPARITY_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
-  assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/web-shell/src/lib.rs" "true"
-  assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
-
-  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-ios/Autopilot/AutopilotTests/AutopilotTests.swift" "true"
+  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
-
-  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "apps/autopilot-ios/scripts/build-rust-client-core.sh" "true"
-  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "crates/openagents-client-core/src/ffi.rs" "true"
-  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "false"
-
-  assert_trigger "ios-codex-wgpui" "$IOS_CODEX_WGPUI_TRIGGER_PATTERN" "apps/autopilot-ios/Autopilot/Autopilot/CodexHandshakeViewModel.swift" "true"
-  assert_trigger "ios-codex-wgpui" "$IOS_CODEX_WGPUI_TRIGGER_PATTERN" "apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md" "true"
-  assert_trigger "ios-codex-wgpui" "$IOS_CODEX_WGPUI_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "false"
 
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
@@ -234,16 +220,6 @@ run_legacy_legacyparity_drift() {
   (
     cd "$ROOT_DIR"
     LEGACYPARITY_DRIFT_FAIL_ON_ACTIONABLE=1 ./scripts/legacyparity-drift-report.sh
-  )
-}
-
-run_web_shell_checks() {
-  echo "==> web-shell host boundary checks"
-  (
-    cd "$ROOT_DIR"
-    ./apps/openagents.com/web-shell/check-host-shim.sh
-    ./apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
-    ./apps/openagents.com/web-shell/scripts/perf-budget-gate.sh
   )
 }
 
@@ -335,32 +311,6 @@ run_cross_surface_harness() {
   )
 }
 
-run_ios_rust_core_checks() {
-  echo "==> iOS rust client-core deterministic packaging checks"
-  (
-    cd "$ROOT_DIR"
-    ./apps/autopilot-ios/scripts/build-rust-client-core.sh --clean
-    cargo test -p openagents-client-core
-  )
-}
-
-run_ios_rust_core_repro_checks() {
-  echo "==> iOS rust client-core reproducibility checks"
-  (
-    cd "$ROOT_DIR"
-    ./apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility.sh
-  )
-}
-
-run_ios_codex_wgpui_checks() {
-  echo "==> iOS codex WGPUI parity guardrails"
-  (
-    cd "$ROOT_DIR"
-    ./apps/autopilot-ios/scripts/verify-codex-wgpui-guardrails.sh
-    ./apps/autopilot-ios/scripts/run-codex-parity-harness.sh
-  )
-}
-
 run_runtime_codex_workers_php_tests() {
   echo "==> runtime codex workers php contract tests"
   (
@@ -390,10 +340,6 @@ run_rust_clippy_checks() {
   (
     cd "$ROOT_DIR"
     cargo clippy -p openagents-runtime-service --all-targets
-    cargo clippy -p openagents-web-shell --all-targets
-    # client-core test modules currently rely on expect/panic assertions; keep
-    # production surface linted until test-lane panic policy is split.
-    cargo clippy -p openagents-client-core --lib
     cargo clippy -p wgpui --all-targets
     cargo clippy -p autopilot-desktop --all-targets
   )
@@ -425,8 +371,6 @@ run_all_rust() {
   run_runtime_checks
   run_proto_checks
   run_runtime_history_checks
-  run_web_shell_checks
-  run_ios_rust_core_checks
   run_inbox_gmail_checks
 }
 
@@ -478,25 +422,12 @@ run_changed() {
     fi
   fi
 
-  if has_match "$WEB_SHELL_TRIGGER_PATTERN" "$changed_files"; then
-    run_web_shell_checks
-  fi
-
   if has_match "$CROSS_SURFACE_TRIGGER_PATTERN" "$changed_files"; then
     if is_truthy "${OA_LOCAL_CI_ENABLE_CROSS_SURFACE:-0}"; then
       run_cross_surface_harness
     else
       echo "==> cross-surface-triggered paths detected; harness skipped (set OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1 to enable)"
     fi
-  fi
-
-  if has_match "$IOS_RUST_CORE_TRIGGER_PATTERN" "$changed_files"; then
-    run_ios_rust_core_checks
-    run_ios_rust_core_repro_checks
-  fi
-
-  if has_match "$IOS_CODEX_WGPUI_TRIGGER_PATTERN" "$changed_files"; then
-    run_ios_codex_wgpui_checks
   fi
 
   if has_match "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "$changed_files"; then
@@ -544,9 +475,6 @@ case "$MODE" in
   legacy-legacyparity)
     run_legacy_legacyparity_drift
     ;;
-  web-shell)
-    run_web_shell_checks
-    ;;
   web-parity)
     run_web_parity_regression
     ;;
@@ -586,13 +514,6 @@ case "$MODE" in
   cross-surface)
     run_cross_surface_harness
     ;;
-  ios-rust-core)
-    run_ios_rust_core_checks
-    run_ios_rust_core_repro_checks
-    ;;
-  ios-codex-wgpui)
-    run_ios_codex_wgpui_checks
-    ;;
   runtime-codex-workers-php)
     run_runtime_codex_workers_php_tests
     ;;
@@ -620,7 +541,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-shell|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|clippy-rust|cross-surface|ios-rust-core|ios-codex-wgpui|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-legacyparity|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|clippy-rust|cross-surface|runtime-codex-workers-php|inbox-gmail|test-triggers]" >&2
     exit 2
     ;;
 esac

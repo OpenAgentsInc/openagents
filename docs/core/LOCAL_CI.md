@@ -34,12 +34,10 @@ Supported lanes:
 - `runtime-history`
 - `legacy-comms`
 - `legacy-legacyparity`
-- `web-shell`
 - `workspace-compile`
 - `panic-surface`
 - `clippy-rust`
 - `cross-surface`
-- `ios-rust-core`
 - `inbox-gmail`
 - `test-triggers`
 
@@ -49,12 +47,10 @@ Examples:
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh runtime-history
 ./scripts/local-ci.sh legacy-comms
-./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh workspace-compile
 ./scripts/local-ci.sh panic-surface
 ./scripts/local-ci.sh clippy-rust
 ./scripts/local-ci.sh cross-surface
-./scripts/local-ci.sh ios-rust-core
 ./scripts/local-ci.sh inbox-gmail
 ./scripts/local-ci.sh all-rust
 ./scripts/local-ci.sh all
@@ -71,14 +67,12 @@ Changed-mode trigger note:
 
 - `runtime` lane auto-runs for `apps/runtime/**`, `proto/**`, and `buf*.yaml` changes.
 - `runtime-history` lane auto-runs for Rust runtime history-compat paths (`apps/runtime/src/**`, `apps/runtime/fixtures/history_compat/**`, `apps/runtime/Cargo.toml`, `Cargo.lock`) and enforces deterministic replay compatibility fixtures.
-- `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 - `workspace-compile` lane auto-runs for Rust workspace paths and enforces `cargo check --workspace --all-targets`.
 - `panic-surface` lane auto-runs for Rust workspace paths and enforces no-net-growth panic-surface policy against `docs/ci/panic-surface-baseline.env`.
 - `clippy-rust` lane auto-runs for Rust workspace paths in `changed` mode when `OA_LOCAL_CI_ENABLE_CLIPPY=1` and runs phased clippy checks for critical crates.
 - `legacy-comms` lane auto-runs for legacy Laravel/openagents.com comms paths and comms docs/script changes only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 - `legacy-legacyparity` lane auto-runs for legacy legacyparity paths only when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
-- `cross-surface` lane auto-triggers for shared web-shell/desktop/iOS contract harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
-- `ios-rust-core` lane auto-runs for `apps/autopilot-ios/**` and `crates/openagents-client-core/**` changes and enforces deterministic Rust artifact packaging + reproducibility checks.
+- `cross-surface` lane auto-triggers for retained desktop/runtime harness paths and is opt-in in `changed` mode via `OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1`.
 - `inbox-gmail` lane auto-runs for Gmail inbox contract surfaces (`apps/openagents.com/service`, `apps/autopilot-desktop`, `apps/runtime/src/server*`) and executes deterministic non-live tests for inbox list/detail/actions + runtime comms ingest.
 
 ## Push Policy
@@ -188,7 +182,7 @@ Current target surfaces:
 - `crates/openagents-cli`
 - `crates/autopilot_ui`
 - `crates/runtime`
-- `apps/openagents.com/web-shell`
+- `apps/openagents.com/service`
 - `crates/autopilot`
 
 Contribution rule for these surfaces:

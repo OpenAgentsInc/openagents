@@ -9,7 +9,7 @@ Implementation sequencing: this document (`Implementation Sequencing` section)
 
 This is the single architecture authority for OpenAgents. It defines the implemented and target-steady-state system across:
 
-1. Client surfaces (web, desktop, iOS, Onyx).
+1. Client surfaces (web landing, desktop, Onyx).
 2. Control/runtime/Khala service boundaries.
 3. Economy layers (Hydra liquidity + Aegis verification/underwriting).
 4. Contracts, replay, and operations invariants.
@@ -28,7 +28,7 @@ This architecture is constrained by:
 6. `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
 7. `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
 8. `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
-9. `docs/plans/active/rust-migration-invariant-gates.md`
+9. `docs/plans/rust-migration-invariant-gates.md`
 
 Hard rules that cannot be violated:
 
@@ -39,7 +39,7 @@ Hard rules that cannot be violated:
 5. Control-plane and runtime authority isolation (no production cross-plane SQL joins).
 6. Deterministic replay/idempotency by `(topic, seq)` with stale-cursor recovery.
 7. Wallet executor remains payment-signing custody boundary with canonical receipts.
-8. iOS product UI/state/business logic is Rust/WGPUI-owned (Swift host only).
+8. Desktop remains the primary execution surface; web is landing-only distribution.
 
 ## Architecture Principles
 
@@ -53,15 +53,14 @@ Hard rules that cannot be violated:
 
 ```mermaid
 flowchart TB
-  subgraph surfaces[Client Surfaces - Rust and WGPUI]
-    web[openagents.com web shell\nRust/WASM + WGPUI]
+  subgraph surfaces[Client Surfaces]
+    web[openagents.com landing page\nDesktop download distribution]
     desktop[autopilot-desktop\nRust native + WGPUI panes]
-    ios[autopilot-ios\nRust core + WGPUI\nSwift host bridge only]
     onyx[onyx\nRust local-first app]
   end
 
   subgraph controlplane[Control Plane]
-    control[openagents.com/service\nAuth, sessions, org/device authz,\nsync token issuance, static host]
+    control[openagents.com/service\nAuth, sessions, org/device authz,\nsync token issuance, landing host]
   end
 
   subgraph runtimeplane[Runtime and Economy Plane]
@@ -93,7 +92,6 @@ flowchart TB
 
   web --> control
   desktop --> control
-  ios --> control
   onyx --> control
 
   control --> runtime
@@ -134,7 +132,8 @@ Owns:
 1. WorkOS-authenticated identity/session binding for OpenAgents users/devices.
 2. Authorization, org membership, session revocation, and device controls.
 3. Sync token issuance and scope derivation.
-4. Public control APIs and static hosting for web-shell assets.
+4. Public control APIs and hosting of a landing/download page for desktop distribution.
+5. Desktop download URL authority via `OA_DESKTOP_DOWNLOAD_URL`.
 
 Does not own:
 
@@ -343,12 +342,11 @@ Onyx constraints (v1):
 
 ## UI Runtime and Surface Model
 
-1. Shared Rust/WGPUI UI and state crates power web, desktop, and iOS.
-2. Web shell is Rust/WASM hosted by control service static host.
+1. Shared Rust UI and state crates power retained clients.
+2. Web is reduced to a landing/download page hosted by control service.
 3. Desktop is the primary Codex operator/admin surface.
-4. iOS is Rust/WGPUI product UI with Swift-only host/bootstrap/OS bridges.
-5. Onyx remains a constrained local-first client with explicit surface policy.
-6. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
+4. Onyx remains a constrained local-first client with explicit surface policy.
+5. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
 
 ## Observability and Operations
 
@@ -371,13 +369,11 @@ Deployment invariants:
 App roots:
 
 1. `apps/openagents.com/service/`
-2. `apps/openagents.com/web-shell/`
-3. `apps/runtime/`
-4. `apps/autopilot-desktop/`
-5. `apps/autopilot-ios/`
-6. `apps/onyx/`
-7. `apps/lightning-ops/`
-8. `apps/lightning-wallet-executor/`
+2. `apps/runtime/`
+3. `apps/autopilot-desktop/`
+4. `apps/onyx/`
+5. `apps/lightning-ops/`
+6. `apps/lightning-wallet-executor/`
 
 Shared authority/code:
 
@@ -429,19 +425,17 @@ This is the consolidated migration and hardening sequence for the Rust migration
 3. Enforce idempotent client apply rules (`seq <= last_applied` discard).
 4. Maintain reconnect/replay chaos drill runbooks and execution cadence.
 
-### Phase 4: Web shell completion
+### Phase 4: Web landing stabilization
 
-1. Keep `apps/openagents.com/service/` as control API + static host authority.
-2. Keep `apps/openagents.com/web-shell/` as Rust/WASM WGPUI shell.
+1. Keep `apps/openagents.com/service/` as control API + landing-page host.
+2. Keep web behavior limited to download-only landing routes.
 3. Remove residual legacy runtime coupling from production web paths.
-4. Keep service-worker/build compatibility gates for client version skew control.
 
-### Phase 5: Desktop + iOS parity
+### Phase 5: Desktop + retained client parity
 
 1. Keep desktop as primary Codex operator surface.
-2. Align iOS command/replay behavior with desktop via shared Rust client core.
-3. Keep cross-surface contract harness current and executable.
-4. Ensure identical auth/session/replay semantics across surfaces.
+2. Keep cross-surface contract harness current and executable for retained clients.
+3. Ensure auth/session/replay semantics remain deterministic across retained surfaces.
 
 ### Phase 6: Operations and observability
 

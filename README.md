@@ -6,15 +6,14 @@ Under the hood, the system is built around a shared runtime/control model so age
 
 Surfaces (explicit non-parity):
 - Desktop (execution): `apps/autopilot-desktop/`
-- Web (control/history): `apps/openagents.com/web-shell/`
-- iOS (control/monitor): `apps/autopilot-ios/`
+- Web (distribution landing only): `apps/openagents.com/service/`
+- Onyx (limited scope): `apps/onyx/`
 
 Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning credits and strengthening supply liquidity.
 
 Core services:
 - Runtime authority: `apps/runtime/`
 - Control service + site host: `apps/openagents.com/service/`
-- Web shell bundle: `apps/openagents.com/web-shell/`
 
 ## Run Locally
 

@@ -6,7 +6,7 @@ Issue: OA-RUST-093 (`#1928`)
 
 ## Purpose
 
-Define a versioned, privacy-safe client telemetry contract for reconnect/auth/replay diagnostics across web, desktop, iOS, and Onyx surfaces.
+Define a versioned, privacy-safe client telemetry contract for reconnect/auth/replay diagnostics across retained client surfaces.
 
 ## Envelope
 

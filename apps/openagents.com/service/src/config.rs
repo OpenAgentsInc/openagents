@@ -6,7 +6,8 @@ use thiserror::Error;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8787";
 const DEFAULT_LOG_FILTER: &str = "info";
-const DEFAULT_STATIC_DIR: &str = "../web-shell/dist";
+const DEFAULT_STATIC_DIR: &str = "apps/openagents.com/service/static";
+const DEFAULT_DESKTOP_DOWNLOAD_URL: &str = "https://github.com/openagents/openagents/releases/latest";
 const DEFAULT_AUTH_PROVIDER_MODE: &str = "workos";
 const DEFAULT_WORKOS_API_BASE_URL: &str = "https://api.workos.com";
 const DEFAULT_MOCK_MAGIC_CODE: &str = "123456";
@@ -84,6 +85,7 @@ pub struct Config {
     pub bind_addr: SocketAddr,
     pub log_filter: String,
     pub static_dir: PathBuf,
+    pub desktop_download_url: String,
     pub auth_provider_mode: String,
     pub workos_client_id: Option<String>,
     pub workos_api_key: Option<String>,
@@ -212,6 +214,11 @@ impl Config {
             .filter(|value| !value.trim().is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_STATIC_DIR));
+
+        let desktop_download_url = env::var("OA_DESKTOP_DOWNLOAD_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_DESKTOP_DOWNLOAD_URL.to_string());
 
         let auth_provider_mode = env::var("OA_AUTH_PROVIDER_MODE")
             .ok()
@@ -743,6 +750,7 @@ impl Config {
             bind_addr,
             log_filter,
             static_dir,
+            desktop_download_url,
             auth_provider_mode,
             workos_client_id,
             workos_api_key,
@@ -848,6 +856,7 @@ impl Config {
             bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
             log_filter: "debug".to_string(),
             static_dir,
+            desktop_download_url: DEFAULT_DESKTOP_DOWNLOAD_URL.to_string(),
             auth_provider_mode: "mock".to_string(),
             workos_client_id: None,
             workos_api_key: None,

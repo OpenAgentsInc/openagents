@@ -59,23 +59,14 @@ run_step() {
   echo "[static-asset-sw-harness] ${check_id}: ${status}"
 }
 
-run_step "cache-hashed-assets" "Hashed assets are immutable-cached" \
-  cargo test --manifest-path apps/openagents.com/service/Cargo.toml static_hashed_asset_uses_immutable_cache_header
+run_step "landing-healthz" "Landing-mode service keeps health endpoint stable" \
+  cargo test --manifest-path apps/openagents.com/service/Cargo.toml healthz_route_returns_ok
 
-run_step "compression-br-gzip" "Precompressed static assets negotiate br/gzip correctly" \
-  cargo test --manifest-path apps/openagents.com/service/Cargo.toml static_asset_prefers_brotli_then_gzip_when_variants_exist
-
-run_step "etag-static-conditional" "Static assets emit ETag and honor If-None-Match" \
-  cargo test --manifest-path apps/openagents.com/service/Cargo.toml static_asset_supports_etag_conditional_get
-
-run_step "cache-manifest-sw" "Manifest and service worker remain no-store/no-cache" \
-  cargo test --manifest-path apps/openagents.com/service/Cargo.toml no_store_cache_header
+run_step "landing-readiness" "Landing-mode readiness gate remains deterministic" \
+  cargo test --manifest-path apps/openagents.com/service/Cargo.toml readiness_route_is_ready_when_static_dir_exists
 
 run_step "etag-openapi-conditional" "OpenAPI route emits ETag and honors If-None-Match" \
   cargo test --manifest-path apps/openagents.com/service/Cargo.toml openapi_route_supports_etag_conditional_get
-
-run_step "sw-policy-verify" "Service worker pinned asset policy and rollback metadata are valid" \
-  ./apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
 
 jq -s \
   --arg generated_at "${TIMESTAMP}" \

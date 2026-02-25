@@ -8,7 +8,7 @@ This document defines the canonical compatibility negotiation contract across:
 
 1. control-service APIs,
 2. Khala websocket join/subscribe flows,
-3. web-shell asset rollout support windows,
+3. retained-client support windows,
 4. compatibility stream aliases (`/api/chat/stream`, `/api/chats/{conversationId}/stream`).
 
 Authoritative decision record: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`.
@@ -92,14 +92,14 @@ Window updates are operational changes and must follow release runbook ordering.
 
 ## Release Ordering
 
-1. Publish new web-shell assets (`manifest.json`, `sw.js`, pinned bundle).
+1. Publish control-service revision with updated compatibility windows.
 2. Keep compatibility window broad enough for currently active clients.
 3. Observe rollout and reconnect telemetry.
 4. Tighten window only after client convergence.
 
 Rollback:
 
-1. Deploy prior compatible bundle.
+1. Deploy prior compatible control-service revision.
 2. Widen compatibility window.
 3. Verify deterministic negotiation outcomes.
 
@@ -112,7 +112,6 @@ Shared Rust negotiation helper:
 Policy tests:
 
 - `cargo test -p openagents-client-core compatibility::`
-- `node --test apps/openagents.com/web-shell/host/update-policy.test.mjs`
 
 Fixture examples:
 

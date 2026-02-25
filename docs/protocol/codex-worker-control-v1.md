@@ -1,6 +1,6 @@
 # Codex Worker Control Contract v1
 
-Status: Frozen v1 (mobile->desktop control lane)  
+Status: Frozen v1 (remote->desktop control lane)  
 Date: 2026-02-21
 
 This document defines the request/receipt contract for controlling a desktop Codex session via runtime workers.
@@ -39,14 +39,14 @@ Receipts are consumed from:
 3. `params` (optional object, method-specific payload)
 4. `request_version` (optional string, default `v1`)
 5. `sent_at` (optional RFC3339 timestamp)
-6. `source` (optional string, recommended `autopilot-ios`)
+6. `source` (optional string, recommended `autopilot-desktop`)
 
 Example:
 
 ```json
 {
   "request": {
-    "request_id": "iosreq_8f3d0b",
+    "request_id": "req_8f3d0b",
     "method": "turn/start",
     "params": {
       "thread_id": "thread_123",
@@ -56,7 +56,7 @@ Example:
     },
     "request_version": "v1",
     "sent_at": "2026-02-21T23:50:00Z",
-    "source": "autopilot-ios"
+    "source": "autopilot-desktop"
   }
 }
 ```
@@ -106,7 +106,7 @@ Backward-compatible `:shared` worker fallback:
 1. If exactly one active desktop session mapping exists, route there.
 2. If zero active mappings exist, return `worker_unavailable`.
 3. If multiple active mappings exist and request does not specify `session_id`, return `conflict` (ambiguous target).
-4. Existing `ios/user_message` lane remains supported and routes via the current active mapping.
+4. Existing legacy method aliases remain supported and route via the current active mapping.
 
 ## Receipt Envelopes
 
@@ -129,7 +129,7 @@ Example:
 {
   "event_type": "worker.response",
   "payload": {
-    "request_id": "iosreq_8f3d0b",
+    "request_id": "req_8f3d0b",
     "method": "turn/start",
     "ok": true,
     "response": {
@@ -159,7 +159,7 @@ Example:
 {
   "event_type": "worker.error",
   "payload": {
-    "request_id": "iosreq_8f3d0b",
+    "request_id": "req_8f3d0b",
     "method": "turn/start",
     "code": "invalid_request",
     "message": "thread_id is required",
