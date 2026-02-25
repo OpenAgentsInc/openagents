@@ -208,6 +208,8 @@ pub enum FanoutError {
         replay_budget_events: u64,
         qos_tier: String,
     },
+    #[error("external mirror {backend} failed: {reason}")]
+    MirrorFailed { backend: String, reason: String },
 }
 
 #[async_trait]
@@ -225,9 +227,16 @@ pub trait FanoutDriver: Send + Sync {
     fn external_hooks(&self) -> Vec<ExternalFanoutHook>;
 }
 
+#[async_trait]
+pub trait FanoutPublishMirror: Send + Sync {
+    async fn mirror_publish(&self, message: &FanoutMessage) -> Result<(), String>;
+    fn descriptor(&self) -> ExternalFanoutHook;
+}
+
 #[derive(Clone)]
 pub struct FanoutHub {
     driver: Arc<dyn FanoutDriver>,
+    mirrors: Vec<Arc<dyn FanoutPublishMirror>>,
 }
 
 impl FanoutHub {
@@ -240,11 +249,20 @@ impl FanoutHub {
     pub fn memory_with_limits(capacity: usize, limits: FanoutLimitConfig) -> Self {
         Self {
             driver: Arc::new(MemoryFanoutDriver::new(capacity, limits)),
+            mirrors: Vec::new(),
         }
     }
 
+    #[must_use]
+    pub fn with_mirror(mut self, mirror: Arc<dyn FanoutPublishMirror>) -> Self {
+        self.mirrors.push(mirror);
+        self
+    }
+
     pub async fn publish(&self, topic: &str, message: FanoutMessage) -> Result<(), FanoutError> {
-        self.driver.publish(topic, message).await
+        let mirror_payload = message.clone();
+        self.driver.publish(topic, message).await?;
+        self.publish_to_mirrors(&mirror_payload).await
     }
 
     pub async fn poll(
@@ -274,7 +292,33 @@ impl FanoutHub {
 
     #[must_use]
     pub fn external_hooks(&self) -> Vec<ExternalFanoutHook> {
-        self.driver.external_hooks()
+        let mut hooks = self.driver.external_hooks();
+        hooks.extend(self.mirrors.iter().map(|mirror| mirror.descriptor()));
+        hooks
+    }
+
+    async fn publish_to_mirrors(&self, message: &FanoutMessage) -> Result<(), FanoutError> {
+        for mirror in &self.mirrors {
+            let descriptor = mirror.descriptor();
+            let mut attempt = 0_u8;
+            loop {
+                attempt = attempt.saturating_add(1);
+                match mirror.mirror_publish(message).await {
+                    Ok(()) => break,
+                    Err(reason) if attempt < 3 => {
+                        tokio::time::sleep(Duration::from_millis(10 * u64::from(attempt))).await;
+                        continue;
+                    }
+                    Err(reason) => {
+                        return Err(FanoutError::MirrorFailed {
+                            backend: descriptor.backend,
+                            reason,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -558,11 +602,18 @@ fn queue_seq_bounds(queue: &TopicQueue) -> Option<(u64, u64)> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use anyhow::{Result, anyhow};
     use serde_json::json;
+    use tokio::sync::Mutex;
 
     use super::{
-        FanoutError, FanoutHub, FanoutLimitConfig, FanoutMessage, FanoutTierLimits, QosTier,
+        ExternalFanoutHook, FanoutError, FanoutHub, FanoutLimitConfig, FanoutMessage,
+        FanoutPublishMirror, FanoutTierLimits, QosTier,
     };
 
     fn tier_limits(
@@ -575,6 +626,49 @@ mod tests {
             replay_budget_events,
             max_publish_per_second,
             max_payload_bytes,
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestMirror {
+        backend: String,
+        failures_before_success: usize,
+        calls: Arc<AtomicUsize>,
+        seen_sequences: Arc<Mutex<Vec<u64>>>,
+    }
+
+    impl TestMirror {
+        fn new(backend: &str, failures_before_success: usize) -> Self {
+            Self {
+                backend: backend.to_string(),
+                failures_before_success,
+                calls: Arc::new(AtomicUsize::new(0)),
+                seen_sequences: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.calls.load(Ordering::Relaxed)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl FanoutPublishMirror for TestMirror {
+        async fn mirror_publish(&self, message: &FanoutMessage) -> Result<(), String> {
+            let call = self.calls.fetch_add(1, Ordering::Relaxed);
+            self.seen_sequences.lock().await.push(message.sequence);
+            if call < self.failures_before_success {
+                return Err("transient mirror failure".to_string());
+            }
+            Ok(())
+        }
+
+        fn descriptor(&self) -> ExternalFanoutHook {
+            ExternalFanoutHook {
+                backend: self.backend.clone(),
+                status: "active".to_string(),
+                note: "test mirror".to_string(),
+            }
         }
     }
 
@@ -641,6 +735,54 @@ mod tests {
         let fanout = FanoutHub::memory(4);
         let hooks = fanout.external_hooks();
         assert_eq!(hooks.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn fanout_mirror_retries_transient_publish_failures() -> Result<()> {
+        let mirror = Arc::new(TestMirror::new("spacetime", 2));
+        let fanout = FanoutHub::memory(4).with_mirror(mirror.clone());
+        fanout
+            .publish(
+                "run:mirror:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 1,
+                    kind: "run.step".to_string(),
+                    payload: json!({"seq": 1}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await?;
+
+        assert_eq!(mirror.call_count(), 3);
+        let hooks = fanout.external_hooks();
+        assert!(hooks.iter().any(|hook| hook.backend == "spacetime"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fanout_mirror_failure_bubbles_after_retry_budget() -> Result<()> {
+        let mirror = Arc::new(TestMirror::new("spacetime", 99));
+        let fanout = FanoutHub::memory(4).with_mirror(mirror);
+        let result = fanout
+            .publish(
+                "run:mirror-fail:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 1,
+                    kind: "run.step".to_string(),
+                    payload: json!({"seq": 1}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await;
+        match result {
+            Err(FanoutError::MirrorFailed { backend, .. }) => {
+                assert_eq!(backend, "spacetime");
+            }
+            other => return Err(anyhow!("expected mirror failure, got {other:?}")),
+        }
+        Ok(())
     }
 
     #[tokio::test]

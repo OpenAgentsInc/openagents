@@ -5,6 +5,7 @@ Current-state Khala sync documentation and runbooks (legacy lane during replacem
 - `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover procedure
 - `SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`: go/no-go gates, rollback triggers, and promotion evidence checklist
 - `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: scope grants, rotation, and runtime enforcement contract
+- `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime authority fanout to Spacetime stream mapping and parity checks
 - canonical contracts and invariants live in `docs/core/ARCHITECTURE.md` and `docs/protocol/OA_SYNC_WS_MAPPING.md`
 
 Spacetime replacement authority plans:

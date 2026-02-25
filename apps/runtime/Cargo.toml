@@ -34,6 +34,7 @@ nostr.workspace = true
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-l402 = { path = "../../crates/openagents-l402" }
 openagents-proto = { path = "../../crates/openagents-proto" }
+autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 neobank = { path = "../../crates/neobank" }
 
 [dev-dependencies]

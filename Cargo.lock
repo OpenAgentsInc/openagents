@@ -1112,6 +1112,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot-spacetime"
+version = "0.1.0"
+
+[[package]]
 name = "autopilot_app"
 version = "0.1.0"
 dependencies = [
@@ -7060,6 +7064,7 @@ dependencies = [
  "protobuf-src",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.17",
 ]
 
@@ -7107,6 +7112,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "autopilot-spacetime",
  "axum 0.7.9",
  "base64",
  "bitcoin",

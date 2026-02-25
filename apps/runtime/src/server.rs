@@ -6316,6 +6316,10 @@ impl ApiError {
                     max_payload_bytes,
                 }
             }
+            FanoutError::MirrorFailed { backend, reason } => {
+                tracing::warn!(backend, reason, "spacetime mirror publish failed");
+                Self::Internal(format!("fanout mirror {backend} publish failed: {reason}"))
+            }
         }
     }
 
