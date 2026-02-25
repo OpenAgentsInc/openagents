@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-#/ Usage: bin/test
-#/ Description: Runs all the tests for the project
-source bin/helpers/_utils.sh
-set_source_and_root_dir
-
-./vendor/bin/phpunit --verbose test

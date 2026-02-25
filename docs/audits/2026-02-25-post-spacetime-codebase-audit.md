@@ -1,6 +1,6 @@
 # 2026-02-25 Post-Spacetime Full Codebase Audit
 
-Status: comprehensive post-refactor snapshot  
+Status: comprehensive post-refactor snapshot (updated after issue `#2020` execution)  
 Date: 2026-02-25  
 Owner: repo audit (Codex)
 
@@ -13,6 +13,18 @@ Requested audit scope:
 3. Audit full current codebase for remaining cleanup, improvement, and upgrade opportunities after Spacetime refactor closure.
 
 This audit is code-first: when docs and code conflict, code is treated as implemented truth and docs are marked as drift.
+
+## Execution Update (Issue #2020)
+
+Issue reviewed:
+
+1. `#2020` (`OA-WEBPARITY-068`) explicitly requires eradication of remaining PHP/TypeScript implementation lanes.
+
+Action executed in this change:
+
+1. Deleted `apps/openagents.com/vendor` in full via `git rm -r`.
+2. Removal size: `11,272` tracked files.
+3. Current tracked vendor files: `0`.
 
 ## Mandatory Preflight Authority Check
 
@@ -63,9 +75,9 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 2. `./scripts/spacetime/runtime-desktop-e2e.sh` -> pass
 3. `cargo check -p openagents-proto -p autopilot-spacetime -p autopilot-desktop -p openagents-runtime-service -p openagents-control-service` -> pass
 
-## Codebase snapshot metrics (current main)
+## Codebase snapshot metrics (post-vendor deletion)
 
-1. Tracked files: `13,490`
+1. Tracked files: `2,219`
 2. Workspace packages: `52`
 3. Tracked Rust files: `1,296`
 4. Rust LOC total (tracked): `553,871`
@@ -82,6 +94,9 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
    - `apps/runtime/src` `.route(` occurrences: `83`
 7. Compatibility debt proxy:
    - `route_split|runtime_routing` references in control service source: `223`
+8. Remaining tracked PHP/TS after vendor deletion:
+   - PHP tracked files: `91` (`apps/openagents.com/storage`: `89`, `apps/openagents.com/bootstrap`: `2`)
+   - TS/TSX tracked files: `134` (`apps/openagents.com/resources`: `64`, `apps/lightning-ops/archived-ts`: `51`, `apps/lightning-wallet-executor/archived-ts`: `19`)
 
 ## Findings (severity ordered)
 
@@ -96,12 +111,11 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
      - `docs/plans/2026-02-23-open-agent-economy-execution-plan.md`
    - This conflicts with current authority index where `ADR-0010` is accepted and supersedes prior sync transport ADR posture.
 
-2. Repository still carries a large tracked legacy/vendor payload under `apps/openagents.com`.
-   - `apps/openagents.com/vendor`: `11,272` tracked files.
-   - `apps/openagents.com/storage`: `200` tracked files, including parity/cutover artifacts and generated framework views.
-   - Largest tracked file in repo is vendored binary `apps/openagents.com/vendor/laravel/pint/builds/pint` (~15.6 MB).
-   - Literal `.github/workflows` files exist inside tracked vendor subtree (`10` files), creating policy ambiguity with `INV-12`.
-   - Effect: architecture clarity, review signal quality, and repository hygiene remain weak despite Spacetime transport closure.
+2. Vendor deletion is complete, but residual PHP/TS lanes still remain outside `vendor/`.
+   - `apps/openagents.com/vendor` is now removed (`0` tracked files).
+   - Remaining tracked PHP is concentrated in `apps/openagents.com/storage` and `apps/openagents.com/bootstrap`.
+   - Remaining tracked TS/TSX is concentrated in `apps/openagents.com/resources` and archived TS app lanes.
+   - Effect: issue `#2020` intent is only partially complete; language-lane cleanup still requires a final pass outside `vendor/`.
 
 3. Control service compile warning debt is very high and dominated by dead code.
    - `cargo check -p openagents-control-service` reports `148` warnings.
@@ -158,16 +172,19 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 1. Spacetime-only transport regression guards pass on retained surfaces.
 2. Runtime-to-desktop Spacetime E2E suite passes.
 3. Retained source scan (`apps/runtime/src`, `apps/autopilot-desktop/src`, `apps/openagents.com/service/src`, key sync crates/proto) does not show active `khala|convex` symbol usage.
-4. Core package checks for retained services/clients compile successfully.
+4. `apps/openagents.com/vendor` has been fully removed from tracked repo state.
+5. Core package checks for retained services/clients compile successfully.
 
 ## Recommended cleanup / upgrade sequence
 
 ## Phase 0 (immediate, highest leverage)
 
 1. Reconcile active doc authority to `ADR-0010` in canonical/active docs.
-2. Decide and execute one policy for `apps/openagents.com/vendor` and `apps/openagents.com/storage`:
-   - archive/remove tracked artifacts that are not retained authority code, or
-   - explicitly classify retained subsets with ownership and invariant exceptions.
+2. Finish issue `#2020` follow-through by removing or archiving remaining tracked PHP/TS outside `vendor/`:
+   - `apps/openagents.com/storage` generated PHP artifacts,
+   - `apps/openagents.com/bootstrap` PHP stubs,
+   - `apps/openagents.com/resources` TS/TSX web assets,
+   - archived TS app lanes if no longer required in retained topology.
 3. Seed a new issue backlog for post-Spacetime cleanup (no open issues currently).
 
 ## Phase 1 (near-term)
