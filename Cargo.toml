@@ -40,7 +40,6 @@ members = [
     "crates/openagents-ui-core",
     "crates/openagents-registry",
     "crates/openagents-utils",
-    "apps/onyx",
     "crates/pylon",
     "crates/relay",
     "crates/runtime",

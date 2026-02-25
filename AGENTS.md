@@ -44,15 +44,15 @@ Documentation entry points:
 
 ## Product and Service Surfaces
 
-- Retained app/service surfaces (cleanup target topology):
 - Web control service: `apps/openagents.com/service/`
 - Runtime service: `apps/runtime/`
 - Desktop app: `apps/autopilot-desktop/`
 - Lightning ops service: `apps/lightning-ops/`
 - Lightning wallet executor: `apps/lightning-wallet-executor/`
-- Removal targets (phased cleanup, not retained):
-- Onyx app: `apps/onyx/` (Phase 3 decommission target)
 - Shared Rust crates: `crates/`
+
+Removed surface archive:
+- Onyx app archived to backroom (see `docs/audits/2026-02-25-app-surface-removal-archive-manifest.md`).
 
 ## Operations and Verification
 

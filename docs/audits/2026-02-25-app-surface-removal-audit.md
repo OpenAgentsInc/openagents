@@ -183,6 +183,8 @@ Without this, removals can break desktop/runtime dependencies and release flows.
 
 ## Phase 3: Onyx archive + deletion
 
+Status: completed on 2026-02-25 (archive manifest: `docs/audits/2026-02-25-app-surface-removal-archive-manifest.md`)
+
 1. Copy `apps/onyx/` to `~/code/backroom` archive.
 2. Remove `apps/onyx` from repo.
 3. Remove Onyx workspace entry.

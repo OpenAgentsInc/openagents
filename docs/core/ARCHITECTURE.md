@@ -9,7 +9,7 @@ Implementation sequencing: this document (`Implementation Sequencing` section)
 
 This is the single architecture authority for OpenAgents. It defines the implemented and target-steady-state system across:
 
-1. Client surfaces (web landing + desktop retained; Onyx decommission target).
+1. Client surfaces (web landing + desktop retained).
 2. Control/runtime/Khala service boundaries.
 3. Economy layers (Hydra liquidity + Aegis verification/underwriting).
 4. Contracts, replay, and operations invariants.
@@ -26,9 +26,8 @@ This architecture is constrained by:
 4. `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`
 5. `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
 6. `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
-7. `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
-8. `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
-9. `docs/plans/rust-migration-invariant-gates.md`
+7. `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+8. `docs/plans/rust-migration-invariant-gates.md`
 
 Hard rules that cannot be violated:
 
@@ -389,18 +388,12 @@ Hydra and Aegis contract authority lives in:
 4. Sync token issuance is explicit and scoped by topic grammar + ownership checks.
 5. Session/device revocation must force Khala eviction semantics.
 
-Onyx transitional constraints (until decommission completion):
-
-1. Allowed Khala scope: `run:{run_id}:events`.
-2. Denied: `runtime.codex_worker_events`, `worker:{worker_id}:lifecycle`, and all WS mutation semantics.
-
 ## UI Runtime and Surface Model
 
 1. Shared Rust UI and state crates power retained clients.
 2. Web is reduced to a landing/download page hosted by control service.
 3. Desktop is the primary Codex operator/admin surface.
-4. Onyx is a decommission target and not part of retained steady-state topology.
-5. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
+4. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
 
 ## Observability and Operations
 
@@ -430,7 +423,7 @@ App roots:
 
 App decommission targets:
 
-1. `apps/onyx/` (Phase 3 archive/remove)
+1. `apps/onyx/` (archived and removed)
 2. `apps/autopilot-ios/` (already removed)
 3. `apps/openagents.com/web-shell/` (already removed)
 
@@ -467,7 +460,7 @@ Cleanup phase dependency order (issues `#2199` to `#2204`):
 
 1. Phase 1 (web reduction) depends on this Phase 0 topology lock.
 2. Phase 2 (iOS removal) depends on this Phase 0 topology lock.
-3. Phase 3 (Onyx archive/remove) depends on Phase 0 and should follow the web/iOS state transition.
+3. Phase 3 (Onyx archive/remove) depends on Phase 0 and has been completed.
 4. Phase 4 (retained-app stabilization) depends on Phases 1-3 completion.
 5. Phase 5 (global reference cleanup) depends on Phase 4.
 6. Phase 6 (verification/signoff) depends on Phases 1-5.

@@ -1,7 +1,7 @@
 # ADR Index (Rust Era)
 
 Status: Active
-Last updated: 2026-02-22
+Last updated: 2026-02-25
 
 ## Numbering Policy
 
@@ -52,16 +52,20 @@ Next available ADR: **ADR-0009**
    - Date: 2026-02-21
    - File: `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
    - Source issue: `OA-RUST-095` (`#1930`)
-7. `ADR-0007` — Onyx integration surface and non-goals
-   - Status: `Accepted`
-   - Date: 2026-02-21
-   - File: `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
-   - Source issue: `OA-RUST-096` (`#1931`)
-8. `ADR-0008` — Bounded Vercel SSE compatibility lane
+7. `ADR-0008` — Bounded Vercel SSE compatibility lane
    - Status: `Accepted`
    - Date: 2026-02-22
    - File: `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
    - Source issue: `OA-WEBPARITY-069` (`#2039`)
+
+## Archived ADRs
+
+1. `ADR-0007` — Onyx integration surface and non-goals
+   - Status: `Archived`
+   - Original date: 2026-02-21
+   - Archive date: 2026-02-25
+   - File: `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
+   - Source issue: `OA-RUST-096` (`#1931`)
 
 ## Legacy Archive
 

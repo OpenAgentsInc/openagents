@@ -14,13 +14,16 @@ This directory is the Rust-era protocol system-of-record.
 - `docs/protocol/client-telemetry-v1.md`
 - `docs/protocol/nexus-nostr-bridge-v1.md`
 - `docs/protocol/marketplace-commerce-grammar-v1.md`
-- `docs/protocol/onyx-integration-contract-v1.md`
 - `docs/protocol/lightning-wallet-executor-receipt-v1.md`
 
 ## Fixtures and Taxonomy
 
 - `docs/protocol/fixtures/`
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json`
+
+## Archived (Historical)
+
+- `docs/protocol/onyx-integration-contract-v1.md`
 
 ## Proto Authority
 

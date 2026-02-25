@@ -22,7 +22,7 @@ This map reflects canonical Rust-only architecture boundaries.
 ## Decommission Targets (Not Retained)
 
 - `apps/onyx/`
-  Planned for archive/removal; not part of retained steady-state topology.
+  Archived to backroom and removed from this repo; not part of retained steady-state topology.
 
 ## Shared Code
 

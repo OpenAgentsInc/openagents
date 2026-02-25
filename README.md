@@ -7,7 +7,6 @@ Under the hood, the system is built around a shared runtime/control model so age
 Surfaces (explicit non-parity):
 - Desktop (execution): `apps/autopilot-desktop/`
 - Web (distribution landing only): `apps/openagents.com/service/`
-- Onyx (limited scope): `apps/onyx/`
 
 Optional: add your resources to the network by enrolling devices as **OpenAgents Compute** providers (provider mode, Pylon), earning credits and strengthening supply liquidity.
 

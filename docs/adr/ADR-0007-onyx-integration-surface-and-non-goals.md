@@ -1,9 +1,12 @@
 # ADR-0007: Onyx Integration Surface and Non-Goals
 
-- Status: Accepted
+- Status: Archived
 - Date: 2026-02-21
 - Owners: Runtime + Contracts
 - Source issue: OA-RUST-096 (`#1931`)
+- Archive date: 2026-02-25 (Phase 3 Onyx decommission)
+
+> Archived: `apps/onyx` has been removed from this repository and this ADR is retained for historical context only.
 
 ## Context
 
@@ -28,6 +31,8 @@ Onyx is a Rust local-first app, but its integration with OpenAgents control/runt
 3. Future Onyx scope expansion requires an ADR update and policy/test changes before rollout.
 
 ## Enforcement Artifacts
+
+Historical artifact list at time of acceptance (no longer active after decommission):
 
 1. `docs/protocol/onyx-integration-contract-v1.md`
 2. `apps/runtime/src/sync_auth.rs`

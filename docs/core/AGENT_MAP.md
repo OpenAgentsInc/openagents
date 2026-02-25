@@ -30,7 +30,6 @@ Start with canonical Rust docs, then drill into the service/app surface you are 
 - `apps/openagents.com/service/`
 - `apps/runtime/`
 - `apps/autopilot-desktop/`
-- `apps/onyx/`
 - `apps/lightning-ops/`
 - `apps/lightning-wallet-executor/`
 - `crates/`

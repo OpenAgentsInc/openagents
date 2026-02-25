@@ -1,7 +1,11 @@
 # Onyx Integration Contract v1 (OA-RUST-096)
 
-Status: Active  
+Status: Archived (historical)  
 Source issue: OA-RUST-096 (`#1931`)
+
+Archived on 2026-02-25 after `apps/onyx` removal from this repository.
+This document is retained for historical context only and is not active protocol guidance.
+Runtime Onyx surface-policy enforcement was removed as part of the same decommission.
 
 ## Purpose
 

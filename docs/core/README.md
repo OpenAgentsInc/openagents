@@ -51,7 +51,6 @@ This tree contains current Rust-era documentation and forward strategy only.
 - `../apps/openagents.com/service/`
 - `../apps/runtime/`
 - `../apps/autopilot-desktop/`
-- `../apps/onyx/`
 - `../crates/`
 
 ## Archiving Metadata

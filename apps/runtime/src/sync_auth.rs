@@ -237,7 +237,6 @@ impl SyncAuthorizer {
                 ensure_scope(principal, normalized_topic, &["runtime.run_events"])?;
             }
         }
-        enforce_surface_policy(principal, normalized_topic, &authorized_topic)?;
         Ok(authorized_topic)
     }
 }
@@ -314,37 +313,6 @@ fn ensure_scope(
                 .iter()
                 .map(|scope| (*scope).to_string())
                 .collect(),
-        })
-    }
-}
-
-fn enforce_surface_policy(
-    principal: &SyncPrincipal,
-    topic: &str,
-    authorized_topic: &AuthorizedKhalaTopic,
-) -> Result<(), SyncAuthError> {
-    if !matches!(principal.client_surface.as_deref(), Some("onyx")) {
-        return Ok(());
-    }
-
-    let has_bound_user = principal.user_id.is_some();
-    let has_device_id = principal
-        .device_id
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty());
-    if !has_bound_user || !has_device_id {
-        return Err(SyncAuthError::SurfacePolicyDenied {
-            topic: topic.to_string(),
-            client_surface: "onyx".to_string(),
-        });
-    }
-
-    if matches!(authorized_topic, AuthorizedKhalaTopic::RunEvents { .. }) {
-        Ok(())
-    } else {
-        Err(SyncAuthError::SurfacePolicyDenied {
-            topic: topic.to_string(),
-            client_surface: "onyx".to_string(),
         })
     }
 }
@@ -536,96 +504,4 @@ mod tests {
         assert_eq!(result, Err(SyncAuthError::TokenTooOld));
     }
 
-    #[test]
-    fn onyx_surface_policy_allows_run_events_only() {
-        let key = "sync-test-key";
-        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
-            signing_key: key.to_string(),
-            issuer: "https://openagents.com".to_string(),
-            audience: "openagents-sync".to_string(),
-            require_jti: true,
-            max_token_age_seconds: 300,
-            revoked_jtis: HashSet::new(),
-        });
-        let now = Utc::now().timestamp() as usize;
-        let claims = SyncTokenClaims {
-            iss: "https://openagents.com".to_string(),
-            aud: "openagents-sync".to_string(),
-            sub: "user:1".to_string(),
-            exp: now + 60,
-            nbf: now,
-            iat: now,
-            jti: "onyx-surface".to_string(),
-            oa_user_id: Some(1),
-            oa_org_id: Some("user:1".to_string()),
-            oa_device_id: Some("onyx-device".to_string()),
-            oa_client_surface: Some("onyx".to_string()),
-            oa_sync_scopes: vec![
-                "runtime.run_events".to_string(),
-                "runtime.codex_worker_events".to_string(),
-            ],
-        };
-        let token = make_token(claims, key);
-        let principal = authorizer.authenticate(&token).expect("principal");
-
-        let run_allowed = authorizer
-            .authorize_topic(&principal, "run:019c7f93:events")
-            .expect("onyx should allow run topics");
-        assert_eq!(
-            run_allowed,
-            AuthorizedKhalaTopic::RunEvents {
-                run_id: "019c7f93".to_string(),
-            }
-        );
-
-        let worker_denied = authorizer
-            .authorize_topic(&principal, "worker:desktopw:shared:lifecycle")
-            .expect_err("onyx should deny worker lifecycle topics");
-        assert!(matches!(
-            worker_denied,
-            SyncAuthError::SurfacePolicyDenied { .. }
-        ));
-
-        let codex_denied = authorizer
-            .authorize_topic(&principal, "runtime.codex_worker_events")
-            .expect_err("onyx should deny codex worker topics");
-        assert!(matches!(
-            codex_denied,
-            SyncAuthError::SurfacePolicyDenied { .. }
-        ));
-    }
-
-    #[test]
-    fn onyx_surface_policy_requires_user_binding() {
-        let key = "sync-test-key";
-        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
-            signing_key: key.to_string(),
-            issuer: "https://openagents.com".to_string(),
-            audience: "openagents-sync".to_string(),
-            require_jti: true,
-            max_token_age_seconds: 300,
-            revoked_jtis: HashSet::new(),
-        });
-        let now = Utc::now().timestamp() as usize;
-        let claims = SyncTokenClaims {
-            iss: "https://openagents.com".to_string(),
-            aud: "openagents-sync".to_string(),
-            sub: "guest:unknown".to_string(),
-            exp: now + 60,
-            nbf: now,
-            iat: now,
-            jti: "onyx-guest".to_string(),
-            oa_user_id: None,
-            oa_org_id: Some("user:1".to_string()),
-            oa_device_id: Some("onyx-device".to_string()),
-            oa_client_surface: Some("onyx".to_string()),
-            oa_sync_scopes: vec!["runtime.run_events".to_string()],
-        };
-        let token = make_token(claims, key);
-        let principal = authorizer.authenticate(&token).expect("principal");
-        let denied = authorizer
-            .authorize_topic(&principal, "run:019c7f93:events")
-            .expect_err("onyx without user binding should be denied");
-        assert!(matches!(denied, SyncAuthError::SurfacePolicyDenied { .. }));
-    }
 }
