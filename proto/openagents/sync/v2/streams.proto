@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package openagents.sync.v2;
+
+message StreamCursor {
+  string stream_id = 1;
+  uint64 watermark = 2;
+}
+

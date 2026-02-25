@@ -19,7 +19,7 @@ Recommended layering:
 2. Domain layer (Rust invariants/state machine types).
 3. Explicit conversion boundary (`TryFrom`/`From` mappings).
 
-Khala-specific requirement:
+Sync-envelope requirement:
 
 - Use an explicit envelope model with stable fields (topic, sequence, kind, payload bytes, schema version) to preserve replay and compatibility semantics.
 
@@ -57,6 +57,9 @@ Current files:
 - `proto/openagents/sync/v1/errors.proto`
 - `proto/openagents/sync/v1/sync.proto`
 - `proto/openagents/sync/v1/client_telemetry.proto`
+- `proto/openagents/sync/v2/streams.proto`
+- `proto/openagents/sync/v2/errors.proto`
+- `proto/openagents/sync/v2/sync.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
 - `proto/openagents/aegis/v1/aegis.proto`

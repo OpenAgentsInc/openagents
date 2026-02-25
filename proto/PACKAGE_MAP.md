@@ -11,7 +11,8 @@ Scope: cross-process and client/server contracts only
 | `openagents.control.v1` | Control-plane authority | `owner:openagents.com` | Auth/session/device, org membership, policy/comms intents, sync-token minting contracts | Runtime run state, WS replay internals |
 | `openagents.runtime.v1` | Runtime authority | `owner:runtime` | Run lifecycle, worker lifecycle, authority events, receipts/replay artifacts | Identity/session authority records |
 | `openagents.codex.v1` | Codex surface contracts | `owner:runtime` (with `owner:desktop` + `owner:ios` consumers) | Codex worker envelopes, sandbox bindings, Codex auth/worker projections consumed by web/desktop/iOS | Generic runtime-agnostic auth/session contracts |
-| `openagents.sync.v1` | Khala transport/replay | `owner:khala` | WS envelope, topic/cursor semantics, replay/bootstrap errors, subscription contracts | Authority mutation payloads |
+| `openagents.sync.v1` | Legacy Khala transport/replay | `owner:khala` | Legacy WS envelope, topic/cursor semantics, replay/bootstrap errors, subscription contracts | Authority mutation payloads |
+| `openagents.sync.v2` | Spacetime sync transport/replay | `owner:protocol-runtime` | Stream/cursor semantics, subscribe-applied + transaction update envelopes, compatibility error metadata | Authority mutation payloads |
 | `openagents.lightning.v1` | Lightning control/payments | `owner:infra` | Lightning policy/executor control-plane contract payloads | Codex/runtime generic orchestration |
 | `openagents.hydra.v1` | Hydra liquidity/credit/routing/fx contracts | `owner:runtime` (with `owner:infra` neobank consumer) | Credit intent/offer/envelope/settle, routing score, FX RFQ/selection/settle, health/exposure telemetry, Hydra error taxonomy | Generic runtime orchestration/worker lifecycles |
 | `openagents.aegis.v1` | Aegis verification/underwriting contracts | `owner:runtime` | Verification classify/verify receipts, risk-budget snapshots, warranty issue, claim open/resolve contracts | Generic runtime orchestration/worker lifecycles |
@@ -21,7 +22,7 @@ Scope: cross-process and client/server contracts only
 
 1. Every new cross-boundary message must be added in its canonical package domain above.
 2. New contracts are forbidden in `openagents.protocol.v1`.
-3. `openagents.sync.v1` carries delivery/replay protocol only; authority writes remain control/runtime HTTP contracts.
+3. `openagents.sync.v1` and `openagents.sync.v2` carry delivery/replay protocol only; authority writes remain control/runtime HTTP contracts.
 4. Domain auth/session contracts live in `openagents.control.v1`; Codex runtime auth state envelopes live in `openagents.codex.v1`.
 5. Runtime authority events/receipts are `openagents.runtime.v1`, even when streamed via Khala.
 
@@ -58,6 +59,9 @@ Scope: cross-process and client/server contracts only
 | `proto/openagents/sync/v1/errors.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
 | `proto/openagents/sync/v1/sync.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-008 |
 | `proto/openagents/sync/v1/client_telemetry.proto` | `openagents.sync.v1` | `openagents.sync.v1` | `owner:khala` | OA-RUST-093 |
+| `proto/openagents/sync/v2/streams.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
+| `proto/openagents/sync/v2/errors.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
+| `proto/openagents/sync/v2/sync.proto` | `openagents.sync.v2` | `openagents.sync.v2` | `owner:protocol-runtime` | OA-SPACETIME-005 |
 | `proto/openagents/lightning/v1/control_plane.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 / OA-RUST-101 / OA-RUST-102 |
 | `proto/openagents/lightning/v1/wallet_executor.proto` | `openagents.lightning.v1` | `openagents.lightning.v1` | `owner:infra` | OA-RUST-095 |
 | `proto/openagents/aegis/v1/aegis.proto` | `openagents.aegis.v1` | `openagents.aegis.v1` | `owner:runtime` | OA-AUDIT Phase 3 / #2220 |
