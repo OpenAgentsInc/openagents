@@ -1,4 +1,0 @@
-HTTP/1.1 200 OK
-content-type: text/event-stream; charset=utf-8
-x-vercel-ai-ui-message-stream: v1
-cache-control: no-store

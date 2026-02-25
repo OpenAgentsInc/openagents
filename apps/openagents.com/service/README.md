@@ -146,9 +146,7 @@ Operator CLI replacements (OA-WEBPARITY-055):
 cargo run --manifest-path apps/openagents.com/service/Cargo.toml \
   --bin openagents-control-ops -- demo:l402 --token <ACCESS_TOKEN>
 ```
-
-Command mapping and flags:
-- `apps/openagents.com/docs/20260222-oa-webparity-055-rust-cli-replacements.md`
+Use `--help` on `openagents-control-ops` for the full command and flag matrix.
 
 Health checks:
 
@@ -283,7 +281,6 @@ Rust ownership migration/backfill runbook + scripts:
 - `apps/openagents.com/service/scripts/run-rust-ownership-backfill.sh`
 - `apps/openagents.com/service/scripts/verify-rust-ownership-backfill.sh`
 - `apps/openagents.com/service/scripts/rollback-rust-ownership-backfill.sh`
-- `apps/openagents.com/service/scripts/seed-parity-fixtures.sh`
 
 ## Route split and rollback
 
@@ -312,11 +309,10 @@ Rust ownership migration/backfill runbook + scripts:
     - `POST /api/v1/control/route-split/override` with `{"target":"rollback","domain":"billing_l402"}` applies the configured rollback target for that route group.
 - Route-split status now includes per-domain rollback matrix and active domain overrides.
 - Route split decisions emit auditable events as `route.split.decision`.
-- Parity execution checklist (frozen baseline): `apps/openagents.com/docs/20260222-web-parity-charter-checklist.md`
-- Web parity program record: `apps/openagents.com/docs/20260222-laravel-rust-wgpui-full-parity-master-plan.md`
-- Production canary/rollback report: `apps/openagents.com/docs/20260222-oa-webparity-058-production-canary-rollback-drill.md`
-- Production Rust-only route flip report: `apps/openagents.com/docs/20260222-oa-webparity-059-production-rust-route-flip.md`
-- Laravel serving retirement report: `apps/openagents.com/docs/20260222-oa-webparity-060-retire-laravel-serving-path.md`
+- Post-cutover architecture audit: `docs/audits/2026-02-22-openagents-web-post-cutover-architecture-audit.md`
+- App-surface retirement audit: `docs/audits/2026-02-25-app-surface-removal-audit.md`
+- Legacy-code archive manifest: `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`
+- Compatibility-lane signoff audit: `docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md`
 - Domain rollback matrix: `apps/openagents.com/service/docs/ROUTE_SPLIT_ROLLBACK_MATRIX.md`
 
 ## Canary Runbook

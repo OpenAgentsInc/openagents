@@ -50,10 +50,12 @@ DRY_RUN=0 \
 apps/openagents.com/service/scripts/run-production-stream-contract-smoke.sh
 ```
 
-2. Parity regression lane:
+2. Control surface smoke:
 
 ```bash
-./apps/openagents.com/scripts/run-full-parity-regression.sh
+OPENAGENTS_BASE_URL=https://openagents.com \
+OPENAGENTS_CONTROL_ACCESS_TOKEN=<authenticated-user-token> \
+apps/openagents.com/service/deploy/smoke-control.sh
 ```
 
 3. Cutover gate rehearsal (non-mutating):

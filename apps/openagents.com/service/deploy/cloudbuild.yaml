@@ -15,7 +15,7 @@ steps:
     args:
       - build
       - -f
-      - apps/openagents.com/Dockerfile
+      - apps/openagents.com/service/Dockerfile
       - -t
       - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:${_TAG}
       - -t

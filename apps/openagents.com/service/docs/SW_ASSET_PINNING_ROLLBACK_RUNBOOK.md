@@ -7,7 +7,7 @@ Define rollout and rollback procedure for the landing-only web surface served by
 
 ## Build Inputs
 
-1. Control service image from `apps/openagents.com/Dockerfile`.
+1. Control service image from `apps/openagents.com/service/Dockerfile`.
 2. Landing static assets under `apps/openagents.com/service/static/`.
 3. Desktop distribution URL via `OA_DESKTOP_DOWNLOAD_URL`.
 4. Control static host path via `OA_CONTROL_STATIC_DIR` (container default: `/app/service/static`).

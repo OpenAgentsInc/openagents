@@ -1,6 +1,6 @@
 # 2026-02-25 Post-Spacetime Full Codebase Audit
 
-Status: comprehensive post-refactor snapshot (updated after issue `#2020` execution)  
+Status: comprehensive post-refactor snapshot (updated after issue `#2020` full eradication + openagents.com residue cleanup)  
 Date: 2026-02-25  
 Owner: repo audit (Codex)
 
@@ -25,6 +25,28 @@ Action executed in this change:
 1. Deleted `apps/openagents.com/vendor` in full via `git rm -r`.
 2. Removal size: `11,272` tracked files.
 3. Current tracked vendor files: `0`.
+4. Deleted all remaining tracked `.php`, `.ts`, and `.tsx` files via `git rm`.
+5. Full language-lane removal size after vendor pass: `225` files.
+6. Current tracked `.php/.ts/.tsx` files: `0`.
+
+## Execution Update (openagents.com deep cleanup follow-up)
+
+Action executed in this change:
+
+1. Applied tracked artifact deletions under `apps/openagents.com/storage/*` and `apps/openagents.com/database/database.sqlite`.
+2. Deleted stale tracked artifact inventory file: `apps/openagents.com/.posthog-events.json`.
+3. Deleted obsolete Laravel-retirement scripts/docs that referenced removed lanes:
+   - `apps/openagents.com/service/scripts/disable-legacy-laravel-async-jobs.sh`
+   - `apps/openagents.com/service/scripts/verify-laravel-async-lanes-disabled.sh`
+   - `apps/openagents.com/service/scripts/verify-laravel-serving-retired.sh`
+   - `apps/openagents.com/service/docs/LARAVEL_ASYNC_RETIREMENT.md`
+4. Deleted stale migration runbooks no longer referenced by active docs:
+   - `apps/openagents.com/service/docs/MIXED_VERSION_DEPLOY_SAFETY.md`
+   - `apps/openagents.com/service/docs/STAGING_DUAL_RUN_SHADOW_DIFF.md`
+   - `apps/openagents.com/service/docs/PRODUCTION_RUST_ROUTE_FLIP.md`
+   - `apps/openagents.com/service/docs/PRODUCTION_STREAM_CUTOVER.md`
+5. Fixed broken deploy build input by adding `apps/openagents.com/service/Dockerfile` and updating `apps/openagents.com/service/deploy/cloudbuild.yaml` to use it.
+6. Updated `apps/openagents.com/service/README.md` and `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md` to remove broken references to deleted paths/scripts.
 
 ## Mandatory Preflight Authority Check
 
@@ -77,7 +99,7 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 
 ## Codebase snapshot metrics (post-vendor deletion)
 
-1. Tracked files: `2,219`
+1. Tracked files: `1,984`
 2. Workspace packages: `52`
 3. Tracked Rust files: `1,296`
 4. Rust LOC total (tracked): `553,871`
@@ -94,9 +116,7 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
    - `apps/runtime/src` `.route(` occurrences: `83`
 7. Compatibility debt proxy:
    - `route_split|runtime_routing` references in control service source: `223`
-8. Remaining tracked PHP/TS after vendor deletion:
-   - PHP tracked files: `91` (`apps/openagents.com/storage`: `89`, `apps/openagents.com/bootstrap`: `2`)
-   - TS/TSX tracked files: `134` (`apps/openagents.com/resources`: `64`, `apps/lightning-ops/archived-ts`: `51`, `apps/lightning-wallet-executor/archived-ts`: `19`)
+8. Tracked PHP/TS/TSX files: `0` (eradicated).
 
 ## Findings (severity ordered)
 
@@ -111,11 +131,10 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
      - `docs/plans/2026-02-23-open-agent-economy-execution-plan.md`
    - This conflicts with current authority index where `ADR-0010` is accepted and supersedes prior sync transport ADR posture.
 
-2. Vendor deletion is complete, but residual PHP/TS lanes still remain outside `vendor/`.
-   - `apps/openagents.com/vendor` is now removed (`0` tracked files).
-   - Remaining tracked PHP is concentrated in `apps/openagents.com/storage` and `apps/openagents.com/bootstrap`.
-   - Remaining tracked TS/TSX is concentrated in `apps/openagents.com/resources` and archived TS app lanes.
-   - Effect: issue `#2020` intent is only partially complete; language-lane cleanup still requires a final pass outside `vendor/`.
+2. Issue `#2020` language-lane eradication is now fully complete in tracked repo content.
+   - `apps/openagents.com/vendor` removed.
+   - Tracked `.php/.ts/.tsx` count is `0`.
+   - Prior residual PHP/TS finding is closed by this execution pass.
 
 3. Control service compile warning debt is very high and dominated by dead code.
    - `cargo check -p openagents-control-service` reports `148` warnings.
@@ -139,9 +158,9 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
    - `route_split` / `runtime_routing` code remains deeply present in control service (`223` source references).
    - Sunset metadata is wired, but compatibility surface still imposes substantial complexity tax.
 
-6. Tracked generated parity/cutover artifacts in `apps/openagents.com/storage` remain as active repo payload.
-   - Includes historical parity/cutover snapshots and generated assets (`*.json`, `*.jsonl`, `*.headers`, `*.body`, framework compiled view outputs).
-   - These artifacts include stale legacy/Khala strings and increase false-positive audit noise.
+6. Tracked generated parity/cutover artifacts in `apps/openagents.com/storage` have now been removed from tracked payload.
+   - Prior noise source (`*.json`, `*.jsonl`, `*.headers`, `*.body`, test fixture captures) is closed by follow-up cleanup.
+   - Residual local-only ignored artifacts (`public/build`, local `.env*`) can still exist on disk but are not tracked repo payload.
 
 7. Dependency/version skew remains non-trivial across workspace.
    - Duplicate major/version families include:
@@ -173,18 +192,16 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 2. Runtime-to-desktop Spacetime E2E suite passes.
 3. Retained source scan (`apps/runtime/src`, `apps/autopilot-desktop/src`, `apps/openagents.com/service/src`, key sync crates/proto) does not show active `khala|convex` symbol usage.
 4. `apps/openagents.com/vendor` has been fully removed from tracked repo state.
-5. Core package checks for retained services/clients compile successfully.
+5. Tracked `.php/.ts/.tsx` files are fully eradicated (`0` remaining).
+6. Core package checks for retained services/clients compile successfully.
+7. Broken `apps/openagents.com/service/deploy/cloudbuild.yaml` Dockerfile path is fixed with a service-local Dockerfile.
 
 ## Recommended cleanup / upgrade sequence
 
 ## Phase 0 (immediate, highest leverage)
 
 1. Reconcile active doc authority to `ADR-0010` in canonical/active docs.
-2. Finish issue `#2020` follow-through by removing or archiving remaining tracked PHP/TS outside `vendor/`:
-   - `apps/openagents.com/storage` generated PHP artifacts,
-   - `apps/openagents.com/bootstrap` PHP stubs,
-   - `apps/openagents.com/resources` TS/TSX web assets,
-   - archived TS app lanes if no longer required in retained topology.
+2. Add/keep a repository gate to prevent `.php/.ts/.tsx` reintroduction in retained surfaces.
 3. Seed a new issue backlog for post-Spacetime cleanup (no open issues currently).
 
 ## Phase 1 (near-term)
