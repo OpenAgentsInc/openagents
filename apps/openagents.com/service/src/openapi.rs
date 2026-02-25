@@ -1723,22 +1723,22 @@ fn request_example(key: &str) -> Option<Value> {
         })),
         "thread_message" => Some(json!({ "text": "Summarize this thread." })),
         "runtime_tools_execute" => Some(json!({
-            "tool_pack": "coding.v1",
-            "mode": "replay",
-            "run_id": "run_tools_1",
-            "thread_id": "thread_tools_1",
-            "manifest_ref": {"integration_id": "github.primary"},
+            "tool_pack": "lightning.v1",
+            "mode": "execute",
+            "run_id": "run_tools_l402_1",
+            "thread_id": "thread_tools_l402_1",
+            "manifest_ref": {"integration_id": "lightning.l402"},
             "request": {
-                "integration_id": "github.primary",
-                "operation": "get_issue",
-                "repository": "OpenAgentsInc/openagents",
-                "issue_number": 1747,
-                "tool_call_id": "tool_call_001"
+                "operation": "lightning_l402_fetch",
+                "url": "https://sats4ai.com/api/answer",
+                "method": "GET",
+                "scope": "sats4ai.answer",
+                "tool_call_id": "tool_call_l402_001"
             },
             "policy": {
-                "authorization_id": "auth_123",
-                "authorization_mode": "delegated_budget",
-                "budget": {"max_per_call_sats": 100}
+                "l402_require_approval": false,
+                "l402_max_spend_msats_per_call": 100000,
+                "l402_allowed_hosts": ["sats4ai.com"]
             }
         })),
         "runtime_skill_tool_spec_store" => Some(json!({
@@ -2760,7 +2760,7 @@ fn response_example(key: &str) -> Option<Value> {
                     "invoicePayer": "spark_wallet",
                     "credentialTtlSeconds": 600,
                     "paymentTimeoutMs": 12000,
-                    "demoPresets": ["sats4ai", "ep212_openagents_premium", "ep212_openagents_expensive", "fake"]
+                    "demoPresets": ["sats4ai", "ep212_openagents_premium", "ep212_openagents_expensive"]
                 },
                 "filter": {
                     "autopilot": null
@@ -2848,40 +2848,45 @@ fn response_example(key: &str) -> Option<Value> {
             "data": {
                 "state": "succeeded",
                 "decision": "allowed",
-                "reason_code": "policy_allowed.default",
-                "tool_pack": "coding.v1",
-                "mode": "replay",
+                "reason_code": "paid_fetch_completed",
+                "tool_pack": "lightning.v1",
+                "mode": "execute",
                 "idempotentReplay": false,
                 "receipt": {
-                    "receipt_id": "coding_8b5f2caa1122334455667788",
+                    "receipt_id": "l402_8b5f2caa1122334455667788",
                     "replay_hash": "sha256:8b5f2caa11223344556677889900aabbccddeeff00112233445566778899aabb"
                 },
                 "policy": {
-                    "writeApproved": false,
-                    "writeOperationsMode": "enforce",
-                    "maxPerCallSats": 100,
-                    "operationCostSats": 5
+                    "requireApproval": false,
+                    "maxSpendMsatsPerCall": 100000,
+                    "maxSpendMsatsPerDay": null,
+                    "allowedHosts": ["sats4ai.com"]
                 },
                 "request": {
-                    "integration_id": "github.primary",
-                    "operation": "get_issue",
-                    "repository": "OpenAgentsInc/openagents",
-                    "issue_number": 1747,
-                    "pull_number": null,
-                    "tool_call_id": "tool_call_001",
-                    "run_id": "run_tools_1",
-                    "thread_id": "thread_tools_1",
+                    "operation": "lightning_l402_fetch",
+                    "url": "https://sats4ai.com/api/answer",
+                    "method": "GET",
+                    "host": "sats4ai.com",
+                    "scope": "sats4ai.answer",
+                    "task_id": null,
+                    "tool_call_id": "tool_call_l402_001",
+                    "run_id": "run_tools_l402_1",
+                    "thread_id": "thread_tools_l402_1",
                     "user_id": 42
                 },
                 "result": {
-                    "integration_id": "github.primary",
-                    "operation": "get_issue",
-                    "repository": "OpenAgentsInc/openagents",
-                    "issue_number": 1747,
-                    "issue": {
-                        "number": 1747,
-                        "title": "Issue #1747",
-                        "url": "https://github.com/OpenAgentsInc/openagents/issues/1747"
+                    "host": "sats4ai.com",
+                    "scope": "sats4ai.answer",
+                    "quotedAmountMsats": 100000,
+                    "maxSpendMsats": 100000,
+                    "response": {
+                        "statusCode": 200,
+                        "body": {"ok": true, "answer": "42"},
+                        "bodySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    },
+                    "payment": {
+                        "paymentId": "spark:12ab34cd56ef",
+                        "proofReference": "preimage:12ab34cd56ef7890"
                     }
                 }
             }
@@ -2892,6 +2897,12 @@ fn response_example(key: &str) -> Option<Value> {
                     "tool_id": "github.primary",
                     "version": 1,
                     "tool_pack": "coding.v1",
+                    "state": "published"
+                },
+                {
+                    "tool_id": "lightning_l402_fetch",
+                    "version": 1,
+                    "tool_pack": "lightning.v1",
                     "state": "published"
                 }
             ]

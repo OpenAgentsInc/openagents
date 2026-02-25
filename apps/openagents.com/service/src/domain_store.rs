@@ -198,6 +198,8 @@ pub struct UpsertAutopilotRuntimeBindingInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct L402CredentialRecord {
+    #[serde(default)]
+    pub user_id: String,
     pub host: String,
     pub scope: String,
     pub macaroon: String,
@@ -209,6 +211,7 @@ pub struct L402CredentialRecord {
 
 #[derive(Debug, Clone)]
 pub struct UpsertL402CredentialInput {
+    pub user_id: String,
     pub host: String,
     pub scope: String,
     pub macaroon: String,
@@ -244,6 +247,56 @@ pub struct RecordL402ReceiptInput {
     pub run_completed_at: Option<DateTime<Utc>>,
     pub payload: Value,
     pub created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L402ApprovalTaskRecord {
+    pub task_id: String,
+    pub user_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub autopilot_id: Option<String>,
+    pub host: String,
+    pub scope: String,
+    pub method: String,
+    pub url: String,
+    pub request_headers: Option<Value>,
+    pub request_body: Option<Value>,
+    pub challenge_macaroon: String,
+    pub challenge_invoice: String,
+    pub max_spend_msats: u64,
+    pub tool_call_id: Option<String>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub consumed_at: Option<DateTime<Utc>>,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertL402ApprovalTaskInput {
+    pub task_id: String,
+    pub user_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub autopilot_id: Option<String>,
+    pub host: String,
+    pub scope: String,
+    pub method: String,
+    pub url: String,
+    pub request_headers: Option<Value>,
+    pub request_body: Option<Value>,
+    pub challenge_macaroon: String,
+    pub challenge_invoice: String,
+    pub max_spend_msats: u64,
+    pub tool_call_id: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsumeL402ApprovalTaskResult {
+    pub task: L402ApprovalTaskRecord,
+    pub consumed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -586,6 +639,7 @@ struct DomainStoreState {
     runtime_driver_overrides: HashMap<String, RuntimeDriverOverrideRecord>,
     l402_credentials: HashMap<String, L402CredentialRecord>,
     l402_receipts: Vec<L402ReceiptRecord>,
+    l402_approval_tasks: HashMap<String, L402ApprovalTaskRecord>,
     l402_gateway_events: Vec<L402GatewayEventRecord>,
     l402_paywalls: HashMap<String, L402PaywallRecord>,
     user_spark_wallets: HashMap<String, UserSparkWalletRecord>,
@@ -1172,6 +1226,7 @@ impl DomainStore {
         &self,
         input: UpsertL402CredentialInput,
     ) -> Result<L402CredentialRecord, DomainStoreError> {
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
         let host = normalize_non_empty(&input.host, "host")?.to_lowercase();
         let scope = normalize_non_empty(&input.scope, "scope")?;
         let macaroon = normalize_non_empty(&input.macaroon, "macaroon")?;
@@ -1179,12 +1234,13 @@ impl DomainStore {
 
         self.mutate(|state| {
             let now = Utc::now();
-            let key = credential_key(&host, &scope);
+            let key = credential_key(&user_id, &host, &scope);
 
             let row = state
                 .l402_credentials
                 .entry(key)
                 .or_insert_with(|| L402CredentialRecord {
+                    user_id: user_id.clone(),
                     host: host.clone(),
                     scope: scope.clone(),
                     macaroon: macaroon.clone(),
@@ -1194,6 +1250,7 @@ impl DomainStore {
                     updated_at: now,
                 });
 
+            row.user_id = user_id.clone();
             row.macaroon = macaroon;
             row.preimage = preimage;
             row.expires_at = input.expires_at;
@@ -1204,23 +1261,52 @@ impl DomainStore {
         .await
     }
 
-    pub async fn list_active_l402_credentials(
+    pub async fn list_active_l402_credentials_for_user(
         &self,
+        user_id: &str,
     ) -> Result<Vec<L402CredentialRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
         let now = Utc::now();
         let state = self.state.read().await;
         let mut rows: Vec<L402CredentialRecord> = state
             .l402_credentials
             .values()
+            .filter(|row| row.user_id.is_empty() || row.user_id == user_id)
             .filter(|row| row.expires_at > now)
             .cloned()
             .collect();
         rows.sort_by(|left, right| {
-            left.host
-                .cmp(&right.host)
+            left.user_id
+                .cmp(&right.user_id)
+                .then(left.host.cmp(&right.host))
                 .then(left.scope.cmp(&right.scope))
         });
         Ok(rows)
+    }
+
+    pub async fn find_active_l402_credential_for_user(
+        &self,
+        user_id: &str,
+        host: &str,
+        scope: &str,
+    ) -> Result<Option<L402CredentialRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let host = normalize_non_empty(host, "host")?.to_lowercase();
+        let scope = normalize_non_empty(scope, "scope")?.to_lowercase();
+        let now = Utc::now();
+
+        let state = self.state.read().await;
+        let row = state
+            .l402_credentials
+            .values()
+            .filter(|row| row.expires_at > now)
+            .find(|row| {
+                row.host.eq_ignore_ascii_case(&host)
+                    && row.scope.eq_ignore_ascii_case(&scope)
+                    && (row.user_id.is_empty() || row.user_id == user_id)
+            })
+            .cloned();
+        Ok(row)
     }
 
     pub async fn record_l402_receipt(
@@ -1341,6 +1427,134 @@ impl DomainStore {
             .iter()
             .find(|row| row.user_id == user_id && row.id == event_id)
             .cloned())
+    }
+
+    pub async fn find_latest_l402_receipt_for_user_by_task_id(
+        &self,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<Option<L402ReceiptRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let task_id = normalize_non_empty(task_id, "task_id")?;
+
+        let state = self.state.read().await;
+        let row = state
+            .l402_receipts
+            .iter()
+            .filter(|row| row.user_id == user_id)
+            .filter(|row| {
+                row.payload
+                    .get("taskId")
+                    .and_then(Value::as_str)
+                    .map(|value| value == task_id)
+                    .unwrap_or(false)
+            })
+            .max_by_key(|row| row.id)
+            .cloned();
+        Ok(row)
+    }
+
+    pub async fn upsert_l402_approval_task(
+        &self,
+        input: UpsertL402ApprovalTaskInput,
+    ) -> Result<L402ApprovalTaskRecord, DomainStoreError> {
+        let task_id = normalize_non_empty(&input.task_id, "task_id")?;
+        let user_id = normalize_non_empty(&input.user_id, "user_id")?;
+        let thread_id = normalize_non_empty(&input.thread_id, "thread_id")?;
+        let run_id = normalize_non_empty(&input.run_id, "run_id")?;
+        let host = normalize_non_empty(&input.host, "host")?.to_lowercase();
+        let scope = normalize_non_empty(&input.scope, "scope")?;
+        let method = normalize_non_empty(&input.method, "method")?.to_ascii_uppercase();
+        let url = normalize_non_empty(&input.url, "url")?;
+        let challenge_macaroon = normalize_non_empty(&input.challenge_macaroon, "challenge_macaroon")?;
+        let challenge_invoice = normalize_non_empty(&input.challenge_invoice, "challenge_invoice")?;
+
+        self.mutate(|state| {
+            if let Some(existing) = state.l402_approval_tasks.get(&task_id).cloned() {
+                if existing.user_id == user_id {
+                    return Ok(existing);
+                }
+                return Err(DomainStoreError::Conflict {
+                    message: "approval task id already exists for another user".to_string(),
+                });
+            }
+
+            let now = Utc::now();
+            let row = L402ApprovalTaskRecord {
+                task_id: task_id.clone(),
+                user_id,
+                thread_id,
+                run_id,
+                autopilot_id: normalize_optional_string(input.autopilot_id.as_deref()),
+                host,
+                scope,
+                method,
+                url,
+                request_headers: input.request_headers,
+                request_body: input.request_body,
+                challenge_macaroon,
+                challenge_invoice,
+                max_spend_msats: input.max_spend_msats,
+                tool_call_id: normalize_optional_string(input.tool_call_id.as_deref()),
+                approved_at: None,
+                consumed_at: None,
+                expires_at: input.expires_at,
+                created_at: now,
+                updated_at: now,
+            };
+            state.l402_approval_tasks.insert(task_id, row.clone());
+            Ok(row)
+        })
+        .await
+    }
+
+    pub async fn find_l402_approval_task_for_user(
+        &self,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<Option<L402ApprovalTaskRecord>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let task_id = normalize_non_empty(task_id, "task_id")?;
+
+        let state = self.state.read().await;
+        let row = state
+            .l402_approval_tasks
+            .get(&task_id)
+            .filter(|row| row.user_id == user_id)
+            .cloned();
+        Ok(row)
+    }
+
+    pub async fn consume_l402_approval_task_for_user(
+        &self,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<Option<ConsumeL402ApprovalTaskResult>, DomainStoreError> {
+        let user_id = normalize_non_empty(user_id, "user_id")?;
+        let task_id = normalize_non_empty(task_id, "task_id")?;
+
+        self.mutate(|state| {
+            let Some(row) = state.l402_approval_tasks.get_mut(&task_id) else {
+                return Ok(None);
+            };
+            if row.user_id != user_id {
+                return Ok(None);
+            }
+
+            let now = Utc::now();
+            let mut consumed = false;
+            if row.consumed_at.is_none() {
+                row.consumed_at = Some(now);
+                row.approved_at = Some(now);
+                row.updated_at = now;
+                consumed = true;
+            }
+            Ok(Some(ConsumeL402ApprovalTaskResult {
+                task: row.clone(),
+                consumed,
+            }))
+        })
+        .await
     }
 
     pub async fn record_l402_gateway_event(
@@ -1577,6 +1791,8 @@ impl DomainStore {
         let user_id = normalize_non_empty(&input.user_id, "user_id")?;
         let wallet_id = normalize_non_empty(&input.wallet_id, "wallet_id")?;
         let mnemonic = normalize_non_empty(&input.mnemonic, "mnemonic")?;
+        let encrypted_mnemonic =
+            encrypt_wallet_mnemonic(&mnemonic, self.integration_secret_cipher.as_ref())?;
 
         self.mutate(|state| {
             let now = Utc::now();
@@ -1586,7 +1802,7 @@ impl DomainStore {
                 .or_insert_with(|| UserSparkWalletRecord {
                     user_id: user_id.clone(),
                     wallet_id: wallet_id.clone(),
-                    mnemonic: mnemonic.clone(),
+                    mnemonic: encrypted_mnemonic.clone(),
                     spark_address: normalize_optional_string(input.spark_address.as_deref()),
                     lightning_address: normalize_optional_string(
                         input.lightning_address.as_deref(),
@@ -1606,7 +1822,7 @@ impl DomainStore {
                 });
 
             row.wallet_id = wallet_id;
-            row.mnemonic = mnemonic;
+            row.mnemonic = encrypted_mnemonic;
             row.spark_address = normalize_optional_string(input.spark_address.as_deref());
             row.lightning_address = normalize_optional_string(input.lightning_address.as_deref());
             row.identity_pubkey = normalize_optional_string(input.identity_pubkey.as_deref());
@@ -1639,7 +1855,13 @@ impl DomainStore {
     ) -> Result<Option<UserSparkWalletRecord>, DomainStoreError> {
         let user_id = normalize_non_empty(user_id, "user_id")?;
         let state = self.state.read().await;
-        Ok(state.user_spark_wallets.get(&user_id).cloned())
+        let mut wallet = state.user_spark_wallets.get(&user_id).cloned();
+        drop(state);
+        if let Some(row) = wallet.as_mut() {
+            row.mnemonic =
+                decrypt_wallet_mnemonic(row.mnemonic.as_str(), self.integration_secret_cipher.as_ref())?;
+        }
+        Ok(wallet)
     }
 
     pub async fn upsert_resend_integration(
@@ -3101,6 +3323,42 @@ fn decrypt_integration_secret(
     })
 }
 
+fn encrypt_wallet_mnemonic(
+    plaintext: &str,
+    cipher: Option<&IntegrationSecretCipher>,
+) -> Result<String, DomainStoreError> {
+    if cipher.is_none() && !cfg!(test) {
+        return Err(DomainStoreError::Persistence {
+            message: format!(
+                "wallet mnemonic encryption key is required; configure {}",
+                INTEGRATION_SECRET_ENCRYPTION_KEY_ENV
+            ),
+        });
+    }
+
+    encrypt_integration_secret(plaintext, cipher)
+}
+
+fn decrypt_wallet_mnemonic(
+    stored: &str,
+    cipher: Option<&IntegrationSecretCipher>,
+) -> Result<String, DomainStoreError> {
+    if is_encrypted_integration_secret(stored) {
+        return decrypt_integration_secret(stored, cipher);
+    }
+
+    if cfg!(test) || cipher.is_some() {
+        return Ok(stored.to_string());
+    }
+
+    Err(DomainStoreError::Persistence {
+        message: format!(
+            "wallet mnemonic is plaintext and no key is configured; configure {} and rotate wallet records",
+            INTEGRATION_SECRET_ENCRYPTION_KEY_ENV
+        ),
+    })
+}
+
 fn normalize_display_name(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -3213,9 +3471,10 @@ fn normalize_handle_base(seed: &str) -> String {
     trimmed.chars().take(64).collect()
 }
 
-fn credential_key(host: &str, scope: &str) -> String {
+fn credential_key(user_id: &str, host: &str, scope: &str) -> String {
     format!(
-        "{}::{}",
+        "{}::{}::{}",
+        user_id.trim().to_lowercase(),
         host.trim().to_lowercase(),
         scope.trim().to_lowercase()
     )
@@ -3403,6 +3662,56 @@ mod tests {
             .expect("integration row after migration");
         let stored = row.encrypted_secret.clone().unwrap_or_default();
         assert!(is_encrypted_integration_secret(stored.as_str()));
+    }
+
+    #[tokio::test]
+    async fn wallet_mnemonic_is_encrypted_at_rest_when_cipher_is_enabled() {
+        let mut store = DomainStore::from_config(&test_config(None));
+        store.integration_secret_cipher = Some(IntegrationSecretCipher {
+            key_id: "v1".to_string(),
+            key: [29u8; 32],
+        });
+
+        store
+            .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
+                user_id: "usr_wallet".to_string(),
+                wallet_id: "wallet_123".to_string(),
+                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string(),
+                spark_address: Some("spark:abc".to_string()),
+                lightning_address: Some("ln@openagents.com".to_string()),
+                identity_pubkey: Some("pubkey_1".to_string()),
+                last_balance_sats: Some(4200),
+                status: Some("active".to_string()),
+                provider: Some("spark_executor".to_string()),
+                last_error: None,
+                meta: None,
+                last_synced_at: Some(Utc::now()),
+            })
+            .await
+            .expect("upsert encrypted wallet");
+
+        {
+            let state = store.state.read().await;
+            let row = state
+                .user_spark_wallets
+                .get("usr_wallet")
+                .expect("wallet row exists");
+            assert!(is_encrypted_integration_secret(row.mnemonic.as_str()));
+            assert_ne!(
+                row.mnemonic,
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+            );
+        }
+
+        let decrypted = store
+            .find_user_spark_wallet("usr_wallet")
+            .await
+            .expect("lookup wallet")
+            .expect("wallet present");
+        assert_eq!(
+            decrypted.mnemonic,
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        );
     }
 
     #[tokio::test]

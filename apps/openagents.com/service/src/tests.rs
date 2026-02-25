@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use anyhow::Result;
 use axum::body::{Body, Bytes};
@@ -10,7 +10,8 @@ use axum::http::header::{
     ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_TYPE, ETAG, IF_NONE_MATCH, SET_COOKIE,
 };
 use axum::http::{HeaderValue, Request, StatusCode};
-use axum::routing::{get, post};
+use axum::response::IntoResponse;
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use chrono::{Duration, Utc};
@@ -249,6 +250,288 @@ async fn read_json(response: axum::response::Response) -> Result<Value> {
 async fn read_text(response: axum::response::Response) -> Result<String> {
     let bytes = response.into_body().collect().await?.to_bytes();
     Ok(String::from_utf8(bytes.to_vec())?)
+}
+
+static WALLET_EXECUTOR_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+struct ScopedEnvVar {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl ScopedEnvVar {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var(key).ok();
+        // SAFETY: tests serialize environment mutation through WALLET_EXECUTOR_ENV_LOCK.
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+}
+
+impl Drop for ScopedEnvVar {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.as_deref() {
+            // SAFETY: tests serialize environment mutation through WALLET_EXECUTOR_ENV_LOCK.
+            unsafe {
+                std::env::set_var(self.key, previous);
+            }
+        } else {
+            // SAFETY: tests serialize environment mutation through WALLET_EXECUTOR_ENV_LOCK.
+            unsafe {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+}
+
+async fn start_wallet_executor_stub() -> Result<(SocketAddr, JoinHandle<()>)> {
+    let app = Router::new()
+        .route(
+            "/wallets/create",
+            post(|Json(payload): Json<Value>| async move {
+                let wallet_id = payload
+                    .get("walletId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("wallet_stub")
+                    .to_string();
+                let mnemonic = payload
+                    .get("mnemonic")
+                    .and_then(Value::as_str)
+                    .unwrap_or(
+                        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                    )
+                    .to_string();
+
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "result": {
+                            "walletId": wallet_id,
+                            "mnemonic": mnemonic,
+                            "sparkAddress": "wallet@spark.stub",
+                            "lightningAddress": "wallet@ln.stub",
+                            "identityPubkey": "npub1walletstub",
+                            "balanceSats": 42_000,
+                            "status": "active",
+                        }
+                    })),
+                )
+            }),
+        )
+        .route(
+            "/wallets/status",
+            post(|Json(payload): Json<Value>| async move {
+                let wallet_id = payload
+                    .get("walletId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("wallet_stub")
+                    .to_string();
+                let mnemonic = payload
+                    .get("mnemonic")
+                    .and_then(Value::as_str)
+                    .unwrap_or(
+                        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                    )
+                    .to_string();
+
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "result": {
+                            "walletId": wallet_id,
+                            "mnemonic": mnemonic,
+                            "sparkAddress": "wallet@spark.stub",
+                            "lightningAddress": "wallet@ln.stub",
+                            "identityPubkey": "npub1walletstub",
+                            "balanceSats": 42_000,
+                            "status": "active",
+                        }
+                    })),
+                )
+            }),
+        )
+        .route(
+            "/wallets/create-invoice",
+            post(|Json(payload): Json<Value>| async move {
+                let wallet_id = payload
+                    .get("walletId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("wallet_stub");
+                let amount_sats = payload
+                    .get("amountSats")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(1);
+                let payment_request = format!(
+                    "lnbc{amount_sats}n1{}",
+                    &super::sha256_hex(wallet_id.as_bytes())[..20]
+                );
+
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "result": {
+                            "walletId": wallet_id,
+                            "paymentRequest": payment_request,
+                            "invoice": payment_request,
+                            "amountSats": amount_sats,
+                            "description": payload.get("description").and_then(Value::as_str).unwrap_or("stub"),
+                            "expiresAt": "2026-02-25T00:15:00Z",
+                        }
+                    })),
+                )
+            }),
+        )
+        .route(
+            "/wallets/pay-bolt11",
+            post(|Json(payload): Json<Value>| async move {
+                let wallet_id = payload
+                    .get("walletId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("wallet_stub");
+                let invoice = payload
+                    .get("invoice")
+                    .and_then(Value::as_str)
+                    .unwrap_or("lnbc1stubinvoice");
+                let payment_hash = super::sha256_hex(format!("payment:{invoice}").as_bytes());
+                let preimage = super::sha256_hex(format!("preimage:{invoice}").as_bytes());
+                let max_amount_msats = payload
+                    .get("maxAmountMsats")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(1_000);
+
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "result": {
+                            "walletId": wallet_id,
+                            "paymentId": format!("spark:{}", &payment_hash[..16]),
+                            "preimage": preimage,
+                            "status": "completed",
+                            "amountMsats": max_amount_msats,
+                            "paidAtMs": 1_706_000_000_000i64,
+                        }
+                    })),
+                )
+            }),
+        )
+        .route(
+            "/wallets/send-spark",
+            post(|Json(payload): Json<Value>| async move {
+                let wallet_id = payload
+                    .get("walletId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("wallet_stub");
+                let spark_address = payload
+                    .get("sparkAddress")
+                    .and_then(Value::as_str)
+                    .unwrap_or("spark:recipient");
+                let amount_sats = payload
+                    .get("amountSats")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(1);
+                let payment_hash =
+                    super::sha256_hex(format!("{wallet_id}:{spark_address}:{amount_sats}").as_bytes());
+
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "result": {
+                            "walletId": wallet_id,
+                            "paymentId": format!("spark_{}", &payment_hash[..16]),
+                            "status": "completed",
+                            "amountSats": amount_sats,
+                            "amountMsats": amount_sats.saturating_mul(1000),
+                            "paidAtMs": 1_706_000_000_000i64,
+                        }
+                    })),
+                )
+            }),
+        );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app.into_make_service())
+            .await
+            .expect("wallet executor stub server failed");
+    });
+
+    Ok((addr, handle))
+}
+
+async fn start_l402_upstream_stub() -> Result<(SocketAddr, JoinHandle<()>)> {
+    let invoice = "lnbc10n1stubinvoice".to_string();
+    let expected_preimage = super::sha256_hex(format!("preimage:{invoice}").as_bytes());
+    let expected_auth = format!("L402 mac_stub:{expected_preimage}");
+
+    let protected_auth = expected_auth.clone();
+    let protected_invoice = invoice.clone();
+    let app = Router::new()
+        .route(
+            "/protected",
+            any(move |headers: HeaderMap| {
+                let expected_auth = protected_auth.clone();
+                let invoice = protected_invoice.clone();
+                async move {
+                    let authorization = headers
+                        .get(axum::http::header::AUTHORIZATION)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_string)
+                        .unwrap_or_default();
+                    if authorization == expected_auth {
+                        return (
+                            StatusCode::OK,
+                            Json(json!({
+                                "ok": true,
+                                "resource": "paid-content",
+                            })),
+                        )
+                            .into_response();
+                    }
+
+                    (
+                        StatusCode::PAYMENT_REQUIRED,
+                        [(
+                            axum::http::header::WWW_AUTHENTICATE,
+                            format!("L402 macaroon=\"mac_stub\", invoice=\"{invoice}\""),
+                        )],
+                        Json(json!({
+                            "error": "payment_required",
+                        })),
+                    )
+                        .into_response()
+                }
+            }),
+        )
+        .route(
+            "/plain",
+            any(|| async {
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "resource": "plain-content",
+                    })),
+                )
+            }),
+        );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app.into_make_service())
+            .await
+            .expect("l402 upstream stub server failed");
+    });
+
+    Ok((addr, handle))
 }
 
 fn sse_event_types(wire: &str) -> Vec<String> {
@@ -7617,6 +7900,210 @@ async fn runtime_tools_execute_enforces_write_approval_policy() -> Result<()> {
 }
 
 #[tokio::test]
+async fn runtime_tools_execute_lightning_fetch_pays_and_records_receipt() -> Result<()> {
+    let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
+    let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
+    let (upstream_addr, upstream_handle) = start_l402_upstream_stub().await?;
+    let _executor_base =
+        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
+    let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
+
+    let app = build_router(test_config(std::env::temp_dir()));
+    let token = authenticate_token(app.clone(), "runtime-l402-paid@openagents.com").await?;
+
+    let request_payload = format!(
+        r#"{{
+            "tool_pack":"lightning.v1",
+            "manifest_ref":{{"integration_id":"lightning.l402"}},
+            "request":{{
+                "operation":"lightning_l402_fetch",
+                "url":"http://{upstream_addr}/protected",
+                "method":"GET",
+                "scope":"demo.scope",
+                "tool_call_id":"tool_l402_1"
+            }},
+            "policy":{{
+                "l402_require_approval": false,
+                "l402_max_spend_msats_per_call": 5000
+            }}
+        }}"#
+    );
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/runtime/tools/execute")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(request_payload))?;
+    let response = app.clone().oneshot(request).await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await?;
+    assert_eq!(body["data"]["tool_pack"], "lightning.v1");
+    assert_eq!(body["data"]["state"], "succeeded");
+    assert_eq!(body["data"]["decision"], "allowed");
+    assert_eq!(body["data"]["result"]["response"]["statusCode"], 200);
+    assert!(
+        body["data"]["result"]["payment"]["proofReference"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("preimage:")
+    );
+
+    let transactions_request = Request::builder()
+        .method("GET")
+        .uri("/api/l402/transactions")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())?;
+    let transactions_response = app.clone().oneshot(transactions_request).await?;
+    assert_eq!(transactions_response.status(), StatusCode::OK);
+    let transactions_body = read_json(transactions_response).await?;
+    let transactions = transactions_body["data"]["transactions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        transactions.iter().any(|row| {
+            row.get("toolCallId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == "tool_l402_1")
+                && row
+                    .get("paid")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        }),
+        "expected paid l402 receipt with tool call id"
+    );
+
+    executor_handle.abort();
+    upstream_handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn runtime_tools_execute_lightning_approval_flow_is_replay_safe() -> Result<()> {
+    let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
+    let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
+    let (upstream_addr, upstream_handle) = start_l402_upstream_stub().await?;
+    let _executor_base =
+        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
+    let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
+
+    let app = build_router(test_config(std::env::temp_dir()));
+    let token = authenticate_token(app.clone(), "runtime-l402-approval@openagents.com").await?;
+
+    let fetch_payload = format!(
+        r#"{{
+            "tool_pack":"lightning.v1",
+            "manifest_ref":{{"integration_id":"lightning.l402"}},
+            "request":{{
+                "operation":"lightning_l402_fetch",
+                "url":"http://{upstream_addr}/protected",
+                "method":"GET",
+                "scope":"approval.scope",
+                "tool_call_id":"tool_l402_approval_1"
+            }},
+            "policy":{{
+                "l402_require_approval": true,
+                "l402_max_spend_msats_per_call": 5000
+            }}
+        }}"#
+    );
+    let fetch_request = Request::builder()
+        .method("POST")
+        .uri("/api/runtime/tools/execute")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(fetch_payload))?;
+    let fetch_response = app.clone().oneshot(fetch_request).await?;
+    assert_eq!(fetch_response.status(), StatusCode::OK);
+    let fetch_body = read_json(fetch_response).await?;
+    assert_eq!(fetch_body["data"]["state"], "blocked");
+    assert_eq!(fetch_body["data"]["decision"], "approval_requested");
+    let task_id = fetch_body["data"]["result"]["taskId"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(!task_id.is_empty());
+
+    let approve_payload = format!(
+        r#"{{
+            "tool_pack":"lightning.v1",
+            "manifest_ref":{{"integration_id":"lightning.l402"}},
+            "request":{{
+                "operation":"lightning_l402_approve",
+                "task_id":"{task_id}"
+            }},
+            "policy":{{"l402_require_approval": true}}
+        }}"#
+    );
+    let approve_request = Request::builder()
+        .method("POST")
+        .uri("/api/runtime/tools/execute")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(approve_payload.clone()))?;
+    let approve_response = app.clone().oneshot(approve_request).await?;
+    assert_eq!(approve_response.status(), StatusCode::OK);
+    let approve_body = read_json(approve_response).await?;
+    assert_eq!(approve_body["data"]["state"], "succeeded");
+    assert_eq!(approve_body["data"]["decision"], "allowed");
+    assert_eq!(approve_body["data"]["result"]["response"]["statusCode"], 200);
+
+    let replay_request = Request::builder()
+        .method("POST")
+        .uri("/api/runtime/tools/execute")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(approve_payload))?;
+    let replay_response = app.clone().oneshot(replay_request).await?;
+    assert_eq!(replay_response.status(), StatusCode::OK);
+    let replay_body = read_json(replay_response).await?;
+    assert_eq!(replay_body["data"]["idempotentReplay"], true);
+
+    let transactions_request = Request::builder()
+        .method("GET")
+        .uri("/api/l402/transactions")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())?;
+    let transactions_response = app.clone().oneshot(transactions_request).await?;
+    assert_eq!(transactions_response.status(), StatusCode::OK);
+    let transactions_body = read_json(transactions_response).await?;
+    let transactions = transactions_body["data"]["transactions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        transactions.iter().any(|row| {
+            row.get("taskId")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == task_id)
+                && row
+                    .get("paid")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        }),
+        "expected approved paid receipt"
+    );
+    assert!(
+        transactions.iter().any(|row| {
+            row.get("taskId")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == task_id)
+                && row
+                    .get("approvalRequired")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        }),
+        "expected approval-required receipt"
+    );
+
+    executor_handle.abort();
+    upstream_handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
 async fn runtime_skill_registry_routes_support_list_upsert_publish_and_release() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
     let token = authenticate_token(app.clone(), "runtime-skills@openagents.com").await?;
@@ -8420,7 +8907,7 @@ async fn l402_read_routes_match_wallet_transactions_and_deployments_shape() -> R
     );
     assert_eq!(
         wallet_body["data"]["settings"]["invoicePayer"],
-        json!("fake")
+        json!("spark_wallet")
     );
     assert_eq!(
         wallet_body["data"]["settings"]["allowlistHosts"],
@@ -8544,7 +9031,7 @@ async fn l402_read_routes_match_wallet_transactions_and_deployments_shape() -> R
     );
     assert_eq!(
         deployments_body["data"]["configSnapshot"]["invoicePayer"],
-        json!("fake")
+        json!("spark_wallet")
     );
     assert_eq!(
         deployments_body["data"]["configSnapshot"]["allowlistHosts"],
@@ -8555,8 +9042,7 @@ async fn l402_read_routes_match_wallet_transactions_and_deployments_shape() -> R
         json!(vec![
             "sats4ai",
             "ep212_openagents_premium",
-            "ep212_openagents_expensive",
-            "fake"
+            "ep212_openagents_expensive"
         ])
     );
 
@@ -8656,7 +9142,7 @@ async fn l402_autopilot_filter_returns_not_found_and_forbidden() -> Result<()> {
 }
 
 #[tokio::test]
-async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> Result<()> {
+async fn l402_paywall_lifecycle_is_self_serve_and_records_mutation_events() -> Result<()> {
     let static_dir = tempdir()?;
     std::fs::write(
         static_dir.path().join("index.html"),
@@ -8666,33 +9152,14 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
     config.auth_store_path = Some(static_dir.path().join("auth-store.json"));
     config.domain_store_path = Some(static_dir.path().join("domain-store.json"));
 
-    let admin_token = seed_local_test_token(&config, "routes@openagents.com").await?;
-    let member_token = seed_local_test_token(&config, "member@openagents.com").await?;
+    let token = seed_local_test_token(&config, "member@openagents.com").await?;
     let app = build_router(config);
-
-    let forbidden_request = Request::builder()
-        .method("POST")
-        .uri("/api/l402/paywalls")
-        .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {member_token}"))
-        .body(Body::from(
-            r#"{
-                    "name":"Default",
-                    "hostRegexp":"sats4ai\\.com",
-                    "pathRegexp":"^/api/.*",
-                    "priceMsats":1000,
-                    "upstream":"https://upstream.openagents.com",
-                    "enabled":true
-                }"#,
-        ))?;
-    let forbidden_response = app.clone().oneshot(forbidden_request).await?;
-    assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN);
 
     let invalid_request = Request::builder()
         .method("POST")
         .uri("/api/l402/paywalls")
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             r#"{
                     "name":"Invalid",
@@ -8709,7 +9176,7 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
         .method("POST")
         .uri("/api/l402/paywalls")
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             r#"{
                     "name":"Default",
@@ -8740,7 +9207,7 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
         .method("PATCH")
         .uri(format!("/api/l402/paywalls/{paywall_id}"))
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from("{}"))?;
     let empty_update_response = app.clone().oneshot(empty_update_request).await?;
     assert_eq!(
@@ -8757,7 +9224,7 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
         .method("PATCH")
         .uri(format!("/api/l402/paywalls/{paywall_id}"))
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             r#"{
                     "priceMsats":2500,
@@ -8778,7 +9245,7 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
     let delete_request = Request::builder()
         .method("DELETE")
         .uri(format!("/api/l402/paywalls/{paywall_id}"))
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())?;
     let delete_response = app.clone().oneshot(delete_request).await?;
     assert_eq!(delete_response.status(), StatusCode::OK);
@@ -8792,7 +9259,7 @@ async fn l402_paywall_lifecycle_requires_admin_and_records_mutation_events() -> 
     let deployments_request = Request::builder()
         .method("GET")
         .uri("/api/l402/deployments")
-        .header("authorization", format!("Bearer {admin_token}"))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())?;
     let deployments_response = app.oneshot(deployments_request).await?;
     assert_eq!(deployments_response.status(), StatusCode::OK);
@@ -9354,6 +9821,13 @@ async fn lightning_ops_control_plane_query_and_mutation_contracts() -> Result<()
 
 #[tokio::test]
 async fn agent_payments_wallet_balance_and_alias_routes_match() -> Result<()> {
+    let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
+    let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
+    let _executor_base =
+        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
+    let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
+
     let static_dir = tempdir()?;
     std::fs::write(
         static_dir.path().join("index.html"),
@@ -9438,11 +9912,19 @@ async fn agent_payments_wallet_balance_and_alias_routes_match() -> Result<()> {
     let balance_alias_body = read_json(balance_alias_response).await?;
     assert_eq!(balance_alias_body["data"]["walletId"], json!(wallet_id));
 
+    executor_handle.abort();
     Ok(())
 }
 
 #[tokio::test]
 async fn agent_payments_invoice_pay_send_and_alias_routes_match() -> Result<()> {
+    let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
+    let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
+    let _executor_base =
+        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
+    let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
+
     let static_dir = tempdir()?;
     std::fs::write(
         static_dir.path().join("index.html"),
@@ -9539,7 +10021,7 @@ async fn agent_payments_invoice_pay_send_and_alias_routes_match() -> Result<()> 
         .as_str()
         .unwrap_or_default()
         .to_string();
-    assert!(pay_payment_id.starts_with("fake:"));
+    assert!(pay_payment_id.starts_with("spark:"));
     assert_eq!(pay_preimage.len(), 64);
 
     let pay_alias_request = Request::builder()
@@ -9595,6 +10077,7 @@ async fn agent_payments_invoice_pay_send_and_alias_routes_match() -> Result<()> 
         json!("completed")
     );
 
+    executor_handle.abort();
     Ok(())
 }
 

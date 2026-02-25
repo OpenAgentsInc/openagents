@@ -28,7 +28,7 @@ use openagents_client_core::compatibility::{
     ClientCompatibilityHandshake, CompatibilityFailure, CompatibilitySurface, CompatibilityWindow,
     negotiate_compatibility,
 };
-use openagents_l402::Bolt11;
+use openagents_l402::{Bolt11, WwwAuthenticateParser};
 use openagents_runtime_client::{
     RuntimeClientError, RuntimeInternalClient, RuntimeWorkerHeartbeatRequest,
     RuntimeWorkerRegisterRequest, RuntimeWorkerTransitionRequest,
@@ -84,9 +84,10 @@ use crate::domain_store::{
     AutopilotAggregate, CreateAutopilotInput, CreateL402PaywallInput, CreateShoutInput,
     DomainStore, DomainStoreError, L402GatewayEventRecord, L402PaywallRecord, L402ReceiptRecord,
     MarkWebhookEventVerifiedInput, RecordInboxAuditInput, RecordL402GatewayEventInput,
-    RecordWebhookEventInput, SendWhisperInput, ShoutRecord, UpdateAutopilotInput,
-    UpdateL402PaywallInput, UpsertAutopilotPolicyInput, UpsertAutopilotProfileInput,
-    UpsertGoogleIntegrationInput, UpsertInboxThreadStateInput, UpsertResendIntegrationInput,
+    RecordL402ReceiptInput, RecordWebhookEventInput, SendWhisperInput, ShoutRecord,
+    UpdateAutopilotInput, UpdateL402PaywallInput, UpsertAutopilotPolicyInput,
+    UpsertAutopilotProfileInput, UpsertGoogleIntegrationInput, UpsertInboxThreadStateInput,
+    UpsertL402ApprovalTaskInput, UpsertL402CredentialInput, UpsertResendIntegrationInput,
     UpsertRuntimeDriverOverrideInput, UpsertUserSparkWalletInput, UserIntegrationRecord,
     UserSparkWalletRecord, WhisperRecord, ZoneCount,
 };
@@ -255,6 +256,9 @@ const AUTOPILOT_ALL_TOOLS: &[&str] = &[
     "lightning_l402_paywall_delete",
 ];
 const AUTOPILOT_GUEST_ALLOWED_TOOLS: &[&str] = &["chat_login", "openagents_api"];
+const RUNTIME_TOOL_PACK_CODING_V1: &str = "coding.v1";
+const RUNTIME_TOOL_PACK_LIGHTNING_V1: &str = "lightning.v1";
+const RUNTIME_TOOL_PACK_L402_ALIAS_V1: &str = "l402.v1";
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -703,6 +707,13 @@ struct AgentInvoicePaymentError {
     status: StatusCode,
     code: String,
     message: String,
+}
+
+#[derive(Debug, Clone)]
+struct AgentWalletExecutorConfig {
+    base_url: String,
+    auth_token: String,
+    timeout_ms: u64,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -3594,14 +3605,7 @@ async fn web_l402_paywall_create(
             return Redirect::temporary("/login").into_response();
         }
     };
-    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
-        return web_l402_status_response(
-            htmx.is_hx_request,
-            "l402-admin-required",
-            true,
-            StatusCode::FORBIDDEN,
-        );
-    }
+    let _ = bundle;
 
     let price_msats = payload
         .price_msats
@@ -3659,14 +3663,6 @@ async fn web_l402_paywall_toggle(
             return Redirect::temporary("/login").into_response();
         }
     };
-    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
-        return web_l402_status_response(
-            htmx.is_hx_request,
-            "l402-admin-required",
-            true,
-            StatusCode::FORBIDDEN,
-        );
-    }
 
     let existing = match state
         ._domain_store
@@ -3728,14 +3724,7 @@ async fn web_l402_paywall_delete(
             return Redirect::temporary("/login").into_response();
         }
     };
-    if !is_admin_email(&bundle.user.email, &state.config.admin_emails) {
-        return web_l402_status_response(
-            htmx.is_hx_request,
-            "l402-admin-required",
-            true,
-            StatusCode::FORBIDDEN,
-        );
-    }
+    let _ = bundle;
 
     match l402_paywall_delete(State(state), Path(paywall_id), headers.clone()).await {
         Ok(_) => web_l402_status_response(
@@ -8935,16 +8924,26 @@ async fn agent_payments_create_invoice(
         ));
     }
     let description = normalize_optional_bounded_string(payload.description, "description", 200)?;
-    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let executor_result = agent_wallet_executor_request_json(
+        "wallets/create-invoice",
+        serde_json::json!({
+            "walletId": wallet.wallet_id,
+            "mnemonic": wallet.mnemonic,
+            "amountSats": payload.amount_sats,
+            "description": description.clone(),
+        }),
+    )
+    .await?;
 
-    let payment_request = format!("lnbc{}n1{}", payload.amount_sats, Uuid::new_v4().simple());
-    let expires_at = timestamp(Utc::now() + chrono::Duration::minutes(15));
-    let raw = serde_json::json!({
-        "paymentRequest": payment_request,
-        "amountSats": payload.amount_sats,
-        "description": description.clone(),
-        "expiresAt": expires_at.clone(),
-    });
+    let payment_request = json_first_string(&executor_result, &["paymentRequest", "invoice"])
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                "wallet executor response did not include paymentRequest".to_string(),
+            )
+        })?;
 
     state.observability.audit(
         AuditEvent::new("agent_payments.invoice_created", request_id.clone())
@@ -8958,14 +8957,23 @@ async fn agent_payments_create_invoice(
         .observability
         .increment_counter("agent_payments.invoice_created", &request_id);
 
+    let mut invoice_payload = serde_json::json!({
+        "paymentRequest": payment_request,
+        "amountSats": payload.amount_sats,
+        "description": description,
+        "expiresAt": executor_result.get("expiresAt").cloned().unwrap_or(serde_json::Value::Null),
+        "raw": executor_result,
+    });
+    if let Some(receipt) = invoice_payload
+        .get("raw")
+        .and_then(|raw| raw.get("receipt"))
+        .cloned()
+    {
+        invoice_payload["receipt"] = receipt;
+    }
+
     Ok(ok_data(serde_json::json!({
-        "invoice": {
-            "paymentRequest": payment_request,
-            "amountSats": payload.amount_sats,
-            "description": description,
-            "expiresAt": expires_at,
-            "raw": raw,
-        }
+        "invoice": invoice_payload,
     })))
 }
 
@@ -9147,7 +9155,7 @@ async fn agent_payments_pay_invoice_with_adapter(
     agent_payments_invoice_cap_guard(invoice, max_amount_msats)?;
 
     match payer_kind {
-        "fake" => {
+        "fake" if cfg!(test) => {
             agent_payments_pay_invoice_fake(invoice, max_amount_msats, timeout_ms, host).await
         }
         "spark_wallet" => {
@@ -9163,6 +9171,11 @@ async fn agent_payments_pay_invoice_with_adapter(
             .await
         }
         "lnd_rest" => agent_payments_pay_invoice_lnd(invoice, max_amount_msats, timeout_ms).await,
+        "fake" => Err(agent_payments_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invoice_payer_invalid",
+            "Synthetic invoice payer is not allowed outside test builds.",
+        )),
         _ => Err(agent_payments_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "invoice_payer_invalid",
@@ -9190,13 +9203,7 @@ fn agent_payments_invoice_cap_guard(
 
 fn l402_invoice_payer_kind() -> String {
     env_non_empty_any(&["L402_INVOICE_PAYER", "OA_L402_INVOICE_PAYER"])
-        .unwrap_or_else(|| {
-            if cfg!(test) {
-                "fake".to_string()
-            } else {
-                "spark_wallet".to_string()
-            }
-        })
+        .unwrap_or_else(|| "spark_wallet".to_string())
         .to_ascii_lowercase()
 }
 
@@ -9266,12 +9273,17 @@ async fn agent_payments_pay_invoice_spark(
         .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CONTENT_TYPE, "application/json");
 
-    if let Some(auth_token) = env_non_empty_any(&[
+    let Some(auth_token) = env_non_empty_any(&[
         "SPARK_EXECUTOR_AUTH_TOKEN",
         "OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN",
-    ]) {
-        request = request.bearer_auth(auth_token);
-    }
+    ]) else {
+        return Err(agent_payments_error(
+            StatusCode::BAD_GATEWAY,
+            "spark_executor_not_configured",
+            "Spark wallet executor auth token is not configured in this environment. Set SPARK_EXECUTOR_AUTH_TOKEN or OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN.",
+        ));
+    };
+    request = request.bearer_auth(auth_token);
 
     let normalized_host = host.and_then(non_empty).map(|value| value.to_lowercase());
     let mut payload = serde_json::json!({
@@ -9580,6 +9592,41 @@ fn json_first_string(payload: &serde_json::Value, paths: &[&str]) -> Option<Stri
     None
 }
 
+fn json_first_u64(payload: &serde_json::Value, paths: &[&str]) -> Option<u64> {
+    for path in paths {
+        let mut current = payload;
+        let mut found = true;
+        for segment in path.split('.') {
+            let Some(next) = current.get(segment) else {
+                found = false;
+                break;
+            };
+            current = next;
+        }
+        if !found {
+            continue;
+        }
+        if let Some(value) = current.as_u64() {
+            return Some(value);
+        }
+        if let Some(value) = current
+            .as_i64()
+            .and_then(|value| u64::try_from(value).ok())
+        {
+            return Some(value);
+        }
+        if let Some(value) = current
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| value.parse::<u64>().ok())
+        {
+            return Some(value);
+        }
+    }
+    None
+}
+
 fn normalize_preimage_hex(preimage: &str) -> Result<String, AgentInvoicePaymentError> {
     let value = preimage.trim();
     if value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit()) {
@@ -9637,6 +9684,148 @@ fn env_bool(key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+fn agent_wallet_executor_api_config(
+) -> Result<AgentWalletExecutorConfig, (StatusCode, Json<ApiErrorResponse>)> {
+    let base_url = env_non_empty_any(&[
+        "SPARK_EXECUTOR_BASE_URL",
+        "OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL",
+    ])
+    .ok_or_else(|| {
+        error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Spark wallet executor base URL is not configured.".to_string(),
+        )
+    })?;
+    let auth_token = env_non_empty_any(&[
+        "SPARK_EXECUTOR_AUTH_TOKEN",
+        "OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN",
+    ])
+    .ok_or_else(|| {
+        error_response_with_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorCode::ServiceUnavailable,
+            "Spark wallet executor auth token is not configured.".to_string(),
+        )
+    })?;
+    let timeout_ms = env_u64("SPARK_EXECUTOR_TIMEOUT_MS", 20_000).clamp(1_000, 120_000);
+
+    Ok(AgentWalletExecutorConfig {
+        base_url,
+        auth_token,
+        timeout_ms,
+    })
+}
+
+fn map_wallet_executor_status_to_api_error(status: StatusCode) -> ApiErrorCode {
+    if status == StatusCode::UNPROCESSABLE_ENTITY {
+        ApiErrorCode::InvalidRequest
+    } else if status == StatusCode::UNAUTHORIZED {
+        ApiErrorCode::Unauthorized
+    } else if status == StatusCode::NOT_FOUND {
+        ApiErrorCode::NotFound
+    } else {
+        ApiErrorCode::ServiceUnavailable
+    }
+}
+
+async fn agent_wallet_executor_request_json(
+    path: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, (StatusCode, Json<ApiErrorResponse>)> {
+    let config = agent_wallet_executor_api_config()?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(config.timeout_ms))
+        .build()
+        .map_err(|error| {
+            error_response_with_status(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to build wallet executor client: {error}"),
+            )
+        })?;
+
+    let response = client
+        .post(format!(
+            "{}/{}",
+            config.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        ))
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .bearer_auth(config.auth_token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|error| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Wallet executor request failed: {error}"),
+            )
+        })?;
+
+    let status = response.status();
+    let body_text = response.text().await.map_err(|error| {
+        error_response_with_status(
+            StatusCode::BAD_GATEWAY,
+            ApiErrorCode::ServiceUnavailable,
+            format!("Wallet executor response read failed: {error}"),
+        )
+    })?;
+    let body = serde_json::from_str::<serde_json::Value>(&body_text).unwrap_or_else(|_| {
+        serde_json::json!({
+            "raw": body_text,
+        })
+    });
+
+    let payload_failed = body
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .map(|value| !value)
+        .unwrap_or(false);
+    if !status.is_success() || payload_failed {
+        let error_obj = body.get("error").and_then(serde_json::Value::as_object);
+        let error_code = error_obj
+            .and_then(|object| object.get("code"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("wallet_executor_error");
+        let error_message = error_obj
+            .and_then(|object| object.get("message"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!(
+                    "Wallet executor returned HTTP {}",
+                    status.as_u16()
+                )
+            });
+        return Err(error_response_with_status(
+            if status.is_client_error() || status.is_server_error() {
+                status
+            } else {
+                StatusCode::BAD_GATEWAY
+            },
+            map_wallet_executor_status_to_api_error(status),
+            format!("{error_code}: {error_message}"),
+        ));
+    }
+
+    let result = json_result_object(&body).cloned().ok_or_else(|| {
+        error_response_with_status(
+            StatusCode::BAD_GATEWAY,
+            ApiErrorCode::ServiceUnavailable,
+            "Wallet executor response did not include an object result.".to_string(),
+        )
+    })?;
+
+    Ok(result)
+}
+
 fn l402_allowlist_hosts_from_env() -> Vec<String> {
     env_non_empty("L402_ALLOWLIST_HOSTS")
         .map(|value| {
@@ -9684,16 +9873,21 @@ async fn agent_payments_send_spark(
         ));
     }
 
-    let _wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
-    let payment_id = format!("spark_{}", Uuid::new_v4().simple());
-    let status = "completed";
-    let raw = serde_json::json!({
-        "sparkAddress": spark_address,
-        "amountSats": payload.amount_sats,
-        "timeoutMs": timeout_ms,
-        "status": status,
-        "paymentId": payment_id,
-    });
+    let wallet = ensure_agent_wallet_for_user(&state, &bundle.user.id).await?;
+    let executor_result = agent_wallet_executor_request_json(
+        "wallets/send-spark",
+        serde_json::json!({
+            "walletId": wallet.wallet_id,
+            "mnemonic": wallet.mnemonic,
+            "sparkAddress": spark_address.clone(),
+            "amountSats": payload.amount_sats,
+            "timeoutMs": timeout_ms,
+        }),
+    )
+    .await?;
+    let payment_id = json_first_string(&executor_result, &["paymentId"]);
+    let status = json_first_string(&executor_result, &["status"])
+        .unwrap_or_else(|| "completed".to_string());
 
     state.observability.audit(
         AuditEvent::new("agent_payments.spark_sent", request_id.clone())
@@ -9703,7 +9897,7 @@ async fn agent_payments_send_spark(
             .with_device_id(bundle.session.device_id)
             .with_attribute("spark_address", spark_address.clone())
             .with_attribute("amount_sats", payload.amount_sats.to_string())
-            .with_attribute("payment_id", payment_id.clone()),
+            .with_attribute("payment_id", payment_id.clone().unwrap_or_default()),
     );
     state
         .observability
@@ -9715,7 +9909,7 @@ async fn agent_payments_send_spark(
             "amountSats": payload.amount_sats,
             "status": status,
             "paymentId": payment_id,
-            "raw": raw,
+            "raw": executor_result,
         }
     })))
 }
@@ -9737,35 +9931,56 @@ async fn upsert_agent_wallet_for_user(
         .map(|wallet| wallet.wallet_id.clone())
         .unwrap_or_else(|| format!("wallet_{}", Uuid::new_v4().simple()));
     let mnemonic = mnemonic_override
-        .or_else(|| existing.as_ref().map(|wallet| wallet.mnemonic.clone()))
-        .unwrap_or_else(|| format!("openagents seed phrase {}", Uuid::new_v4().simple()));
-    let spark_address = existing
+        .or_else(|| existing.as_ref().map(|wallet| wallet.mnemonic.clone()));
+
+    let mut payload = serde_json::json!({
+        "walletId": wallet_id.clone(),
+    });
+    if let Some(mnemonic) = mnemonic.clone() {
+        payload["mnemonic"] = serde_json::json!(mnemonic);
+    }
+
+    let executor_result = agent_wallet_executor_request_json("wallets/create", payload).await?;
+    let resolved_mnemonic = json_first_string(&executor_result, &["mnemonic"])
+        .or(mnemonic)
+        .ok_or_else(|| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                "wallet executor response did not include mnemonic".to_string(),
+            )
+        })?;
+    let spark_address = json_first_string(&executor_result, &["sparkAddress"])
+        .or_else(|| existing.as_ref().and_then(|wallet| wallet.spark_address.clone()));
+    let lightning_address = json_first_string(&executor_result, &["lightningAddress"])
+        .or_else(|| existing.as_ref().and_then(|wallet| wallet.lightning_address.clone()));
+    let identity_pubkey = json_first_string(&executor_result, &["identityPubkey"])
+        .or_else(|| existing.as_ref().and_then(|wallet| wallet.identity_pubkey.clone()));
+    let last_balance_sats = json_first_u64(&executor_result, &["balanceSats"]).or_else(|| {
+        existing
+            .as_ref()
+            .and_then(|wallet| wallet.last_balance_sats)
+    });
+    let status = json_first_string(&executor_result, &["status"])
+        .or_else(|| existing.as_ref().map(|wallet| wallet.status.clone()))
+        .unwrap_or_else(|| "active".to_string());
+    let provider = existing
         .as_ref()
-        .and_then(|wallet| wallet.spark_address.clone())
-        .or_else(|| Some(format!("{user_id}@spark.openagents.local")));
-    let lightning_address = existing
-        .as_ref()
-        .and_then(|wallet| wallet.lightning_address.clone())
-        .or_else(|| Some(format!("{user_id}@openagents.local")));
-    let identity_pubkey = existing
-        .as_ref()
-        .and_then(|wallet| wallet.identity_pubkey.clone())
-        .or_else(|| Some(format!("pubkey_{}", Uuid::new_v4().simple())));
+        .map(|wallet| wallet.provider.clone())
+        .unwrap_or_else(|| "spark_executor".to_string());
 
     state
         ._domain_store
         .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
             user_id: user_id.to_string(),
             wallet_id,
-            mnemonic,
+            mnemonic: resolved_mnemonic,
             spark_address,
             lightning_address,
             identity_pubkey,
-            last_balance_sats: existing
-                .as_ref()
-                .and_then(|wallet| wallet.last_balance_sats),
-            status: existing.as_ref().map(|wallet| wallet.status.clone()),
-            provider: existing.as_ref().map(|wallet| wallet.provider.clone()),
+            last_balance_sats,
+            status: Some(status),
+            provider: Some(provider),
             last_error: existing
                 .as_ref()
                 .and_then(|wallet| wallet.last_error.clone()),
@@ -9787,20 +10002,52 @@ async fn sync_agent_wallet(
     state: &AppState,
     wallet: UserSparkWalletRecord,
 ) -> Result<UserSparkWalletRecord, (StatusCode, Json<ApiErrorResponse>)> {
+    let UserSparkWalletRecord {
+        user_id,
+        wallet_id,
+        mnemonic,
+        spark_address,
+        lightning_address,
+        identity_pubkey,
+        last_balance_sats,
+        status,
+        provider,
+        last_error,
+        meta,
+        last_synced_at: _,
+        created_at: _,
+        updated_at: _,
+    } = wallet;
+    let executor_result = agent_wallet_executor_request_json(
+        "wallets/status",
+        serde_json::json!({
+            "walletId": wallet_id.clone(),
+            "mnemonic": mnemonic.clone(),
+        }),
+    )
+    .await?;
+
     state
         ._domain_store
         .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
-            user_id: wallet.user_id,
-            wallet_id: wallet.wallet_id,
-            mnemonic: wallet.mnemonic,
-            spark_address: wallet.spark_address,
-            lightning_address: wallet.lightning_address,
-            identity_pubkey: wallet.identity_pubkey,
-            last_balance_sats: wallet.last_balance_sats,
-            status: Some(wallet.status),
-            provider: Some(wallet.provider),
-            last_error: wallet.last_error,
-            meta: wallet.meta,
+            user_id,
+            wallet_id: wallet_id.clone(),
+            mnemonic: json_first_string(&executor_result, &["mnemonic"])
+                .unwrap_or(mnemonic),
+            spark_address: json_first_string(&executor_result, &["sparkAddress"])
+                .or(spark_address),
+            lightning_address: json_first_string(&executor_result, &["lightningAddress"])
+                .or(lightning_address),
+            identity_pubkey: json_first_string(&executor_result, &["identityPubkey"])
+                .or(identity_pubkey),
+            last_balance_sats: json_first_u64(&executor_result, &["balanceSats"])
+                .or(last_balance_sats),
+            status: Some(
+                json_first_string(&executor_result, &["status"]).unwrap_or(status),
+            ),
+            provider: Some(provider),
+            last_error,
+            meta,
             last_synced_at: Some(Utc::now()),
         })
         .await
@@ -11664,7 +11911,44 @@ fn validate_l402_upstream(
             "The field must start with http:// or https://.",
         ));
     }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| validation_error(field, "The field must include a valid host."))?;
+    if l402_upstream_host_is_forbidden(host) {
+        return Err(validation_error(
+            field,
+            "The upstream host is not allowed for self-serve paywalls.",
+        ));
+    }
     Ok(normalized)
+}
+
+fn l402_upstream_host_is_forbidden(host: &str) -> bool {
+    let normalized = host.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized == "localhost" || normalized.ends_with(".local") {
+        return true;
+    }
+
+    let Ok(ip) = normalized.parse::<std::net::IpAddr>() else {
+        return false;
+    };
+    match ip {
+        std::net::IpAddr::V4(value) => {
+            value.is_private()
+                || value.is_loopback()
+                || value.is_link_local()
+                || value.is_broadcast()
+                || value.is_documentation()
+                || value.is_unspecified()
+        }
+        std::net::IpAddr::V6(value) => {
+            value.is_loopback()
+                || value.is_unspecified()
+                || value.is_multicast()
+                || value.is_unique_local()
+                || value.is_unicast_link_local()
+        }
+    }
 }
 
 fn map_l402_receipt_row(row: L402ReceiptRecord) -> L402ReceiptView {
@@ -11815,7 +12099,6 @@ fn l402_deployments_config_snapshot_payload() -> serde_json::Value {
             "sats4ai",
             "ep212_openagents_premium",
             "ep212_openagents_expensive",
-            "fake",
         ],
     })
 }
@@ -12412,6 +12695,67 @@ struct CodingToolInvocation {
     tool_call_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct L402ToolInvocation {
+    operation: String,
+    url: Option<String>,
+    method: String,
+    host: Option<String>,
+    scope: Option<String>,
+    request_headers: Option<serde_json::Value>,
+    request_body: Option<serde_json::Value>,
+    max_spend_msats: Option<u64>,
+    require_approval: Option<bool>,
+    timeout_ms: u64,
+    task_id: Option<String>,
+    autopilot_id: Option<String>,
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct L402ToolPolicy {
+    require_approval: bool,
+    max_spend_msats_per_call: Option<u64>,
+    max_spend_msats_per_day: Option<u64>,
+    allowed_hosts: Vec<String>,
+    credential_ttl_seconds: i64,
+}
+
+#[derive(Debug, Clone)]
+struct L402ToolExecutionResult {
+    state: &'static str,
+    decision: &'static str,
+    reason_code: &'static str,
+    result: serde_json::Value,
+    error: Option<serde_json::Value>,
+    receipt_status: String,
+    paid: bool,
+    cache_hit: bool,
+    cache_status: Option<String>,
+    amount_msats: Option<u64>,
+    quoted_amount_msats: Option<u64>,
+    max_spend_msats: Option<u64>,
+    proof_reference: Option<String>,
+    deny_code: Option<String>,
+    task_id: Option<String>,
+    approval_required: bool,
+    response_status_code: Option<u16>,
+    response_body_sha256: Option<String>,
+}
+
+#[derive(Debug)]
+struct L402HttpResponseSnapshot {
+    status: StatusCode,
+    body: String,
+    body_sha256: String,
+    challenge_header: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct L402DailySpendSummary {
+    spent_msats_today: u64,
+}
+
 async fn runtime_tools_execute(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -12426,25 +12770,32 @@ async fn runtime_tools_execute(
         .await
         .map_err(map_auth_error)?;
 
-    let tool_pack = payload.tool_pack.trim().to_string();
-    if tool_pack.is_empty() {
+    let raw_tool_pack = payload.tool_pack.trim();
+    if raw_tool_pack.is_empty() {
         return Err(validation_error(
             "tool_pack",
             "The tool_pack field is required.",
         ));
     }
-    if tool_pack.chars().count() > 120 {
+    if raw_tool_pack.chars().count() > 120 {
         return Err(validation_error(
             "tool_pack",
             "The tool_pack field may not be greater than 120 characters.",
         ));
     }
-    if tool_pack != "coding.v1" {
-        return Err(validation_error(
-            "tool_pack",
-            "Only coding.v1 is currently supported.",
-        ));
-    }
+    let normalized_tool_pack = raw_tool_pack.to_ascii_lowercase();
+    let canonical_tool_pack = match normalized_tool_pack.as_str() {
+        RUNTIME_TOOL_PACK_CODING_V1 => RUNTIME_TOOL_PACK_CODING_V1,
+        RUNTIME_TOOL_PACK_LIGHTNING_V1 | RUNTIME_TOOL_PACK_L402_ALIAS_V1 => {
+            RUNTIME_TOOL_PACK_LIGHTNING_V1
+        }
+        _ => {
+            return Err(validation_error(
+                "tool_pack",
+                "Only coding.v1 and lightning.v1 are currently supported.",
+            ));
+        }
+    };
 
     let mode = payload
         .mode
@@ -12490,29 +12841,31 @@ async fn runtime_tools_execute(
     let policy = validate_optional_json_object_or_array(payload.policy, "policy")?
         .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
 
+    {
+        let request_object = request
+            .as_object_mut()
+            .ok_or_else(|| validation_error("request", "The request field must be an object."))?;
+        request_object.insert(
+            "user_id".to_string(),
+            serde_json::json!(authenticated_user_id),
+        );
+        if let Some(run_id) = run_id.as_ref() {
+            if !request_object.contains_key("run_id") {
+                request_object.insert("run_id".to_string(), serde_json::json!(run_id));
+            }
+        }
+        if let Some(thread_id) = thread_id.as_ref() {
+            if !request_object.contains_key("thread_id") {
+                request_object.insert("thread_id".to_string(), serde_json::json!(thread_id));
+            }
+        }
+    }
     let request_object = request
-        .as_object_mut()
+        .as_object()
         .ok_or_else(|| validation_error("request", "The request field must be an object."))?;
-    request_object.insert(
-        "user_id".to_string(),
-        serde_json::json!(authenticated_user_id),
-    );
-    if let Some(run_id) = run_id.as_ref() {
-        if !request_object.contains_key("run_id") {
-            request_object.insert("run_id".to_string(), serde_json::json!(run_id));
-        }
-    }
-    if let Some(thread_id) = thread_id.as_ref() {
-        if !request_object.contains_key("thread_id") {
-            request_object.insert("thread_id".to_string(), serde_json::json!(thread_id));
-        }
-    }
-
-    let invocation = parse_coding_tool_invocation(request_object)?;
-    let evaluation = evaluate_coding_policy(&invocation, manifest.as_ref(), &policy);
 
     let receipt_seed = serde_json::json!({
-        "tool_pack": tool_pack,
+        "tool_pack": canonical_tool_pack,
         "manifest": manifest.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
         "manifest_ref": manifest_ref.clone().unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
         "request": request,
@@ -12534,18 +12887,34 @@ async fn runtime_tools_execute(
         .cloned()
     {
         let replayed = mark_runtime_tools_replay(replayed);
+        let replay_operation = replayed
+            .get("request")
+            .and_then(|request| request.get("operation"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let replay_decision = replayed
+            .get("decision")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("allowed")
+            .to_string();
+        let replay_reason = replayed
+            .get("reason_code")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("replay")
+            .to_string();
         state.observability.audit(
             AuditEvent::new("runtime.tools.execute.accepted", request_id.clone())
                 .with_user_id(session.user.id.clone())
                 .with_session_id(session.session.session_id.clone())
                 .with_org_id(session.session.active_org_id.clone())
                 .with_device_id(session.session.device_id.clone())
-                .with_attribute("tool_pack", "coding.v1".to_string())
-                .with_attribute("operation", invocation.operation.clone())
+                .with_attribute("tool_pack", canonical_tool_pack.to_string())
+                .with_attribute("operation", replay_operation)
                 .with_attribute("mode", mode.clone())
                 .with_attribute("idempotent_replay", "true".to_string())
-                .with_attribute("decision", evaluation.decision.to_string())
-                .with_attribute("reason_code", evaluation.reason_code.to_string()),
+                .with_attribute("decision", replay_decision)
+                .with_attribute("reason_code", replay_reason),
         );
         state
             .observability
@@ -12553,44 +12922,173 @@ async fn runtime_tools_execute(
         return Ok(ok_data(replayed));
     }
 
-    let execution_result =
-        build_coding_execution_result(&invocation, &evaluation, &replay_hash_hex);
-    let mut response_payload = serde_json::json!({
-        "state": evaluation.state,
-        "decision": evaluation.decision,
-        "reason_code": evaluation.reason_code,
-        "tool_pack": "coding.v1",
-        "mode": mode.clone(),
-        "idempotentReplay": false,
-        "receipt": {
-            "receipt_id": format!("coding_{}", &replay_hash_hex[..24]),
-            "replay_hash": replay_hash,
-        },
-        "policy": {
-            "writeApproved": evaluation.write_approved,
-            "writeOperationsMode": evaluation.write_operations_mode,
-            "maxPerCallSats": evaluation.max_per_call_sats,
-            "operationCostSats": evaluation.operation_cost_sats,
-        },
-        "request": {
-            "integration_id": invocation.integration_id.clone(),
-            "operation": invocation.operation.clone(),
-            "repository": invocation.repository.clone(),
-            "issue_number": invocation.issue_number,
-            "pull_number": invocation.pull_number,
-            "tool_call_id": invocation.tool_call_id.clone(),
-            "run_id": run_id,
-            "thread_id": thread_id,
-            "user_id": authenticated_user_id,
-        },
-        "result": execution_result,
-    });
-    if let Some(message) = evaluation.denial_message.clone() {
-        response_payload["error"] = serde_json::json!({
-            "code": "policy_denied",
-            "message": message,
-        });
-    }
+    let effective_run_id = run_id
+        .clone()
+        .unwrap_or_else(|| format!("run_tools_{}", &replay_hash_hex[..16]));
+    let effective_thread_id = thread_id
+        .clone()
+        .unwrap_or_else(|| format!("thread_tools_{}", &replay_hash_hex[..16]));
+
+    let (response_payload, operation_for_audit, decision_for_audit, reason_for_audit) =
+        if canonical_tool_pack == RUNTIME_TOOL_PACK_CODING_V1 {
+            let invocation = parse_coding_tool_invocation(request_object)?;
+            let evaluation = evaluate_coding_policy(&invocation, manifest.as_ref(), &policy);
+            let execution_result =
+                build_coding_execution_result(&invocation, &evaluation, &replay_hash_hex);
+            let mut response_payload = serde_json::json!({
+                "state": evaluation.state,
+                "decision": evaluation.decision,
+                "reason_code": evaluation.reason_code,
+                "tool_pack": RUNTIME_TOOL_PACK_CODING_V1,
+                "mode": mode.clone(),
+                "idempotentReplay": false,
+                "receipt": {
+                    "receipt_id": format!("coding_{}", &replay_hash_hex[..24]),
+                    "replay_hash": replay_hash,
+                },
+                "policy": {
+                    "writeApproved": evaluation.write_approved,
+                    "writeOperationsMode": evaluation.write_operations_mode,
+                    "maxPerCallSats": evaluation.max_per_call_sats,
+                    "operationCostSats": evaluation.operation_cost_sats,
+                },
+                "request": {
+                    "integration_id": invocation.integration_id.clone(),
+                    "operation": invocation.operation.clone(),
+                    "repository": invocation.repository.clone(),
+                    "issue_number": invocation.issue_number,
+                    "pull_number": invocation.pull_number,
+                    "tool_call_id": invocation.tool_call_id.clone(),
+                    "run_id": run_id.clone(),
+                    "thread_id": thread_id.clone(),
+                    "user_id": authenticated_user_id,
+                },
+                "result": execution_result,
+            });
+            if let Some(message) = evaluation.denial_message.clone() {
+                response_payload["error"] = serde_json::json!({
+                    "code": "policy_denied",
+                    "message": message,
+                });
+            }
+            (
+                response_payload,
+                invocation.operation,
+                evaluation.decision.to_string(),
+                evaluation.reason_code.to_string(),
+            )
+        } else {
+            let invocation = parse_l402_tool_invocation(request_object)?;
+            let policy_settings = parse_l402_tool_policy(&policy);
+            let operation_name = invocation.operation.clone();
+            let tool_call_id = invocation.tool_call_id.clone();
+            let execution = execute_l402_tool(
+                &state,
+                &session.user.id,
+                &effective_run_id,
+                &effective_thread_id,
+                &replay_hash_hex,
+                &policy,
+                &invocation,
+            )
+            .await?;
+
+            let mut receipt_payload = serde_json::json!({
+                "status": execution.receipt_status,
+                "host": invocation.host.clone(),
+                "scope": invocation.scope.clone(),
+                "paid": execution.paid,
+                "cacheHit": execution.cache_hit,
+                "cacheStatus": execution.cache_status,
+                "amountMsats": execution.amount_msats,
+                "quotedAmountMsats": execution.quoted_amount_msats,
+                "maxSpendMsats": execution.max_spend_msats,
+                "proofReference": execution.proof_reference,
+                "denyCode": execution.deny_code,
+                "taskId": execution.task_id.clone(),
+                "approvalRequired": execution.approval_required,
+                "responseStatusCode": execution.response_status_code,
+                "responseBodySha256": execution.response_body_sha256,
+                "toolCallId": tool_call_id,
+                "toolPack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                "operation": operation_name.clone(),
+                "result": execution.result.clone(),
+            });
+            if let Some(host) = execution
+                .result
+                .get("host")
+                .and_then(serde_json::Value::as_str)
+            {
+                receipt_payload["host"] = serde_json::json!(host);
+            }
+            if let Some(scope) = execution
+                .result
+                .get("scope")
+                .and_then(serde_json::Value::as_str)
+            {
+                receipt_payload["scope"] = serde_json::json!(scope);
+            }
+
+            let autopilot_id = invocation.autopilot_id.clone();
+            state
+                ._domain_store
+                .record_l402_receipt(RecordL402ReceiptInput {
+                    user_id: session.user.id.clone(),
+                    thread_id: effective_thread_id.clone(),
+                    run_id: effective_run_id.clone(),
+                    autopilot_id,
+                    thread_title: None,
+                    run_status: Some(execution.state.to_string()),
+                    run_started_at: Some(Utc::now()),
+                    run_completed_at: Some(Utc::now()),
+                    payload: receipt_payload,
+                    created_at: Some(Utc::now()),
+                })
+                .await
+                .map_err(map_domain_store_error)?;
+
+            let mut response_payload = serde_json::json!({
+                "state": execution.state,
+                "decision": execution.decision,
+                "reason_code": execution.reason_code,
+                "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                "mode": mode.clone(),
+                "idempotentReplay": false,
+                "receipt": {
+                    "receipt_id": format!("l402_{}", &replay_hash_hex[..24]),
+                    "replay_hash": replay_hash,
+                },
+                "policy": {
+                    "requireApproval": policy_settings.require_approval,
+                    "maxSpendMsatsPerCall": policy_settings.max_spend_msats_per_call,
+                    "maxSpendMsatsPerDay": policy_settings.max_spend_msats_per_day,
+                    "allowedHosts": policy_settings.allowed_hosts,
+                },
+                "request": {
+                    "operation": operation_name.clone(),
+                    "url": invocation.url,
+                    "method": invocation.method,
+                    "host": invocation.host,
+                    "scope": invocation.scope,
+                    "task_id": invocation.task_id,
+                    "tool_call_id": invocation.tool_call_id,
+                    "run_id": effective_run_id,
+                    "thread_id": effective_thread_id,
+                    "user_id": authenticated_user_id,
+                },
+                "result": execution.result,
+            });
+            if let Some(error) = execution.error {
+                response_payload["error"] = error;
+            }
+
+            (
+                response_payload,
+                operation_name,
+                execution.decision.to_string(),
+                execution.reason_code.to_string(),
+            )
+        };
 
     state
         .runtime_tool_receipts
@@ -12605,12 +13103,12 @@ async fn runtime_tools_execute(
             .with_session_id(session.session.session_id.clone())
             .with_org_id(session.session.active_org_id.clone())
             .with_device_id(session.session.device_id.clone())
-            .with_attribute("tool_pack", "coding.v1".to_string())
-            .with_attribute("operation", invocation.operation.clone())
+            .with_attribute("tool_pack", canonical_tool_pack.to_string())
+            .with_attribute("operation", operation_for_audit)
             .with_attribute("mode", mode)
             .with_attribute("idempotent_replay", "false".to_string())
-            .with_attribute("decision", evaluation.decision.to_string())
-            .with_attribute("reason_code", evaluation.reason_code.to_string()),
+            .with_attribute("decision", decision_for_audit)
+            .with_attribute("reason_code", reason_for_audit),
     );
     state
         .observability
@@ -15198,6 +15696,1037 @@ fn parse_coding_tool_invocation(
     })
 }
 
+fn parse_l402_tool_invocation(
+    request: &serde_json::Map<String, serde_json::Value>,
+) -> Result<L402ToolInvocation, (StatusCode, Json<ApiErrorResponse>)> {
+    let operation = normalized_json_string(request.get("operation"))
+        .map(|value| value.to_lowercase())
+        .ok_or_else(|| {
+            validation_error(
+                "request.operation",
+                "The request.operation field is required.",
+            )
+        })?;
+    if !matches!(
+        operation.as_str(),
+        "lightning_l402_fetch" | "lightning_l402_approve"
+    ) {
+        return Err(validation_error(
+            "request.operation",
+            "The selected request.operation is invalid.",
+        ));
+    }
+
+    let tool_call_id = normalized_json_string(request.get("tool_call_id"))
+        .or_else(|| normalized_json_string(request.get("toolCallId")));
+    let autopilot_id = normalized_json_string(request.get("autopilot_id"))
+        .or_else(|| normalized_json_string(request.get("autopilotId")));
+
+    if operation == "lightning_l402_approve" {
+        let task_id = normalized_json_string(request.get("task_id"))
+            .or_else(|| normalized_json_string(request.get("taskId")))
+            .ok_or_else(|| {
+                validation_error(
+                    "request.task_id",
+                    "The request.task_id field is required for lightning_l402_approve.",
+                )
+            })?;
+        return Ok(L402ToolInvocation {
+            operation,
+            url: None,
+            method: "GET".to_string(),
+            host: None,
+            scope: None,
+            request_headers: None,
+            request_body: None,
+            max_spend_msats: None,
+            require_approval: None,
+            timeout_ms: 20_000,
+            task_id: Some(task_id),
+            autopilot_id,
+            tool_call_id,
+        });
+    }
+
+    let url = normalized_json_string(request.get("url")).ok_or_else(|| {
+        validation_error(
+            "request.url",
+            "The request.url field is required for lightning_l402_fetch.",
+        )
+    })?;
+    let parsed_url = reqwest::Url::parse(&url)
+        .map_err(|_| validation_error("request.url", "The request.url field must be a valid URL."))?;
+    if !matches!(parsed_url.scheme(), "http" | "https") {
+        return Err(validation_error(
+            "request.url",
+            "The request.url field must use http:// or https://.",
+        ));
+    }
+    if parsed_url.host_str().is_none() {
+        return Err(validation_error(
+            "request.url",
+            "The request.url field must include a valid host.",
+        ));
+    }
+
+    let method = normalized_json_string(request.get("method"))
+        .unwrap_or_else(|| "GET".to_string())
+        .to_ascii_uppercase();
+    if !matches!(
+        method.as_str(),
+        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"
+    ) {
+        return Err(validation_error(
+            "request.method",
+            "The selected request.method is invalid.",
+        ));
+    }
+
+    let request_headers = match request.get("headers") {
+        Some(serde_json::Value::Object(_)) | None => request.get("headers").cloned(),
+        Some(_) => {
+            return Err(validation_error(
+                "request.headers",
+                "The request.headers field must be an object.",
+            ));
+        }
+    };
+    if let Some(headers) = request_headers.as_ref() {
+        l402_validate_headers(headers)?;
+    }
+
+    let request_body = request.get("body").cloned();
+    let host = normalized_json_string(request.get("host"));
+    let scope = normalized_json_string(request.get("scope"));
+    let max_spend_msats = request
+        .get("max_spend_msats")
+        .or_else(|| request.get("maxSpendMsats"))
+        .and_then(positive_u64_from_value);
+    let require_approval = request
+        .get("require_approval")
+        .or_else(|| request.get("requireApproval"))
+        .and_then(l402_bool_from_value);
+    let timeout_ms = request
+        .get("timeout_ms")
+        .or_else(|| request.get("timeoutMs"))
+        .and_then(positive_u64_from_value)
+        .unwrap_or(20_000)
+        .clamp(1_000, 120_000);
+
+    Ok(L402ToolInvocation {
+        operation,
+        url: Some(url),
+        method,
+        host,
+        scope,
+        request_headers,
+        request_body,
+        max_spend_msats,
+        require_approval,
+        timeout_ms,
+        task_id: None,
+        autopilot_id,
+        tool_call_id,
+    })
+}
+
+fn l402_bool_from_value(value: &serde_json::Value) -> Option<bool> {
+    value.as_bool().or_else(|| {
+        value.as_str().and_then(|raw| {
+            let normalized = raw.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" => Some(true),
+                "0" | "false" | "no" => Some(false),
+                _ => None,
+            }
+        })
+    })
+}
+
+fn l402_validate_headers(value: &serde_json::Value) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(object) = value.as_object() else {
+        return Err(validation_error(
+            "request.headers",
+            "The request.headers field must be an object.",
+        ));
+    };
+    if object.len() > 40 {
+        return Err(validation_error(
+            "request.headers",
+            "The request.headers field may not include more than 40 entries.",
+        ));
+    }
+    for (key, value) in object {
+        if key.trim().is_empty() || key.chars().count() > 120 {
+            return Err(validation_error(
+                "request.headers",
+                "Header keys must be between 1 and 120 characters.",
+            ));
+        }
+        let Some(text) = value.as_str() else {
+            return Err(validation_error(
+                "request.headers",
+                "Header values must be strings.",
+            ));
+        };
+        if text.chars().count() > 1024 {
+            return Err(validation_error(
+                "request.headers",
+                "Header values may not be greater than 1024 characters.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_l402_tool_policy(policy: &serde_json::Value) -> L402ToolPolicy {
+    let mut require_approval = true;
+    let mut max_spend_msats_per_call = None;
+    let mut max_spend_msats_per_day = None;
+    let mut allowed_hosts = Vec::new();
+
+    if let Some(object) = policy.as_object() {
+        require_approval = object
+            .get("l402_require_approval")
+            .or_else(|| object.get("l402RequireApproval"))
+            .and_then(l402_bool_from_value)
+            .unwrap_or(true);
+        max_spend_msats_per_call = object
+            .get("l402_max_spend_msats_per_call")
+            .or_else(|| object.get("l402MaxSpendMsatsPerCall"))
+            .and_then(positive_u64_from_value);
+        max_spend_msats_per_day = object
+            .get("l402_max_spend_msats_per_day")
+            .or_else(|| object.get("l402MaxSpendMsatsPerDay"))
+            .and_then(positive_u64_from_value);
+        allowed_hosts = object
+            .get("l402_allowed_hosts")
+            .or_else(|| object.get("l402AllowedHosts"))
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_ascii_lowercase())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+    }
+
+    let credential_ttl_seconds = env_u64("L402_CREDENTIAL_TTL_SECONDS", 600)
+        .clamp(30, 86_400) as i64;
+
+    L402ToolPolicy {
+        require_approval,
+        max_spend_msats_per_call,
+        max_spend_msats_per_day,
+        allowed_hosts,
+        credential_ttl_seconds,
+    }
+}
+
+fn l402_host_is_allowed(host: &str, allowed_hosts: &[String]) -> bool {
+    if allowed_hosts.is_empty() {
+        return true;
+    }
+    let host = host.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+    allowed_hosts.iter().any(|allowed| {
+        host == *allowed
+            || host
+                .strip_suffix(allowed)
+                .map(|prefix| prefix.ends_with('.'))
+                .unwrap_or(false)
+    })
+}
+
+fn l402_scope_from_request(
+    invocation: &L402ToolInvocation,
+    parsed_url: &reqwest::Url,
+) -> String {
+    if let Some(scope) = invocation.scope.as_ref().map(|value| value.trim()) {
+        if !scope.is_empty() {
+            return scope.to_ascii_lowercase();
+        }
+    }
+    let path = parsed_url.path().trim();
+    if path.is_empty() || path == "/" {
+        "root".to_string()
+    } else {
+        path.to_ascii_lowercase()
+    }
+}
+
+fn l402_authorization_header(macaroon: &str, preimage: &str) -> String {
+    format!("L402 {macaroon}:{preimage}")
+}
+
+fn l402_response_body_value(body: &str) -> serde_json::Value {
+    if body.trim().is_empty() {
+        return serde_json::Value::Null;
+    }
+    serde_json::from_str::<serde_json::Value>(body)
+        .unwrap_or_else(|_| serde_json::json!({ "raw": body }))
+}
+
+async fn execute_l402_http_request(
+    invocation: &L402ToolInvocation,
+    authorization: Option<String>,
+) -> Result<L402HttpResponseSnapshot, (StatusCode, Json<ApiErrorResponse>)> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(invocation.timeout_ms))
+        .build()
+        .map_err(|error| {
+            error_response_with_status(
+                StatusCode::BAD_GATEWAY,
+                ApiErrorCode::ServiceUnavailable,
+                format!("Failed to create L402 HTTP client: {error}"),
+            )
+        })?;
+
+    let url = invocation.url.clone().ok_or_else(|| {
+        error_response_with_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiErrorCode::InvalidRequest,
+            "L402 fetch request did not include URL.".to_string(),
+        )
+    })?;
+    let method = reqwest::Method::from_bytes(invocation.method.as_bytes()).map_err(|_| {
+        validation_error("request.method", "The selected request.method is invalid.")
+    })?;
+    let mut request = client.request(method, &url);
+
+    if let Some(headers) = invocation.request_headers.as_ref().and_then(serde_json::Value::as_object)
+    {
+        for (key, value) in headers {
+            let name = key.trim();
+            let Some(text) = value.as_str().map(str::trim) else {
+                continue;
+            };
+            if text.is_empty() {
+                continue;
+            }
+            let lower_name = name.to_ascii_lowercase();
+            if matches!(lower_name.as_str(), "authorization" | "host" | "content-length") {
+                continue;
+            }
+            request = request.header(name, text);
+        }
+    }
+    if let Some(value) = authorization.as_deref() {
+        request = request.header(reqwest::header::AUTHORIZATION, value);
+    }
+
+    if let Some(body) = invocation.request_body.as_ref() {
+        if !body.is_null() {
+            request = if body.is_object() || body.is_array() {
+                request.json(body)
+            } else if let Some(text) = body.as_str() {
+                request.body(text.to_string())
+            } else {
+                request.body(body.to_string())
+            };
+        }
+    }
+
+    let response = request.send().await.map_err(|error| {
+        error_response_with_status(
+            StatusCode::BAD_GATEWAY,
+            ApiErrorCode::ServiceUnavailable,
+            format!("L402 request failed: {error}"),
+        )
+    })?;
+    let status = response.status();
+    let challenge_header = response
+        .headers()
+        .get(reqwest::header::WWW_AUTHENTICATE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let body = response.text().await.map_err(|error| {
+        error_response_with_status(
+            StatusCode::BAD_GATEWAY,
+            ApiErrorCode::ServiceUnavailable,
+            format!("L402 response read failed: {error}"),
+        )
+    })?;
+    let body_sha256 = sha256_hex(body.as_bytes());
+
+    Ok(L402HttpResponseSnapshot {
+        status,
+        body,
+        body_sha256,
+        challenge_header,
+    })
+}
+
+async fn l402_daily_spend_summary(
+    state: &AppState,
+    user_id: &str,
+    autopilot_id: Option<&str>,
+) -> Result<L402DailySpendSummary, (StatusCode, Json<ApiErrorResponse>)> {
+    let receipts = state
+        ._domain_store
+        .list_l402_receipts_for_user(user_id, autopilot_id, 1000, 0)
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let today = Utc::now().date_naive();
+    let mut spent_msats_today = 0u64;
+    for row in receipts {
+        if row.created_at.date_naive() != today {
+            continue;
+        }
+        let paid = row
+            .payload
+            .get("paid")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if !paid {
+            continue;
+        }
+        let amount = row
+            .payload
+            .get("amountMsats")
+            .and_then(positive_u64_from_value)
+            .unwrap_or(0);
+        spent_msats_today = spent_msats_today.saturating_add(amount);
+    }
+
+    Ok(L402DailySpendSummary { spent_msats_today })
+}
+
+async fn execute_l402_paid_fetch(
+    state: &AppState,
+    user_id: &str,
+    host: &str,
+    scope: &str,
+    invocation: &L402ToolInvocation,
+    challenge_macaroon: &str,
+    challenge_invoice: &str,
+    max_spend_msats: u64,
+    policy: &L402ToolPolicy,
+) -> Result<L402ToolExecutionResult, (StatusCode, Json<ApiErrorResponse>)> {
+    let quoted_amount_msats = Bolt11::amount_msats(challenge_invoice);
+    if quoted_amount_msats
+        .map(|quoted| quoted > max_spend_msats)
+        .unwrap_or(false)
+    {
+        return Ok(L402ToolExecutionResult {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.max_spend_per_call_exceeded",
+            result: serde_json::json!({
+                "blocked": true,
+                "host": host,
+                "scope": scope,
+                "quotedAmountMsats": quoted_amount_msats,
+                "maxSpendMsats": max_spend_msats,
+            }),
+            error: Some(serde_json::json!({
+                "code": "policy_denied.max_spend_per_call_exceeded",
+                "message": "Quoted L402 invoice amount exceeds configured max spend per call.",
+            })),
+            receipt_status: "blocked".to_string(),
+            paid: false,
+            cache_hit: false,
+            cache_status: None,
+            amount_msats: None,
+            quoted_amount_msats,
+            max_spend_msats: Some(max_spend_msats),
+            proof_reference: None,
+            deny_code: Some("policy_denied.max_spend_per_call_exceeded".to_string()),
+            task_id: None,
+            approval_required: false,
+            response_status_code: Some(StatusCode::PAYMENT_REQUIRED.as_u16()),
+            response_body_sha256: None,
+        });
+    }
+
+    let wallet = ensure_agent_wallet_for_user(state, user_id).await?;
+    let payer_kind = l402_invoice_payer_kind();
+    let payment = match agent_payments_pay_invoice_with_adapter(
+        state,
+        payer_kind.as_str(),
+        user_id,
+        &wallet,
+        challenge_invoice,
+        max_spend_msats,
+        invocation.timeout_ms,
+        Some(host.to_string()),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            return Ok(L402ToolExecutionResult {
+                state: "failed",
+                decision: "failed",
+                reason_code: "invoice_pay_failed",
+                result: serde_json::json!({
+                    "host": host,
+                    "scope": scope,
+                    "quotedAmountMsats": quoted_amount_msats,
+                    "maxSpendMsats": max_spend_msats,
+                    "paymentBackend": payer_kind,
+                }),
+                error: Some(serde_json::json!({
+                    "code": error.code,
+                    "message": error.message,
+                })),
+                receipt_status: "failed".to_string(),
+                paid: false,
+                cache_hit: false,
+                cache_status: None,
+                amount_msats: None,
+                quoted_amount_msats,
+                max_spend_msats: Some(max_spend_msats),
+                proof_reference: None,
+                deny_code: Some("invoice_pay_failed".to_string()),
+                task_id: None,
+                approval_required: false,
+                response_status_code: Some(StatusCode::PAYMENT_REQUIRED.as_u16()),
+                response_body_sha256: None,
+            });
+        }
+    };
+
+    state
+        ._domain_store
+        .upsert_l402_credential(UpsertL402CredentialInput {
+            user_id: user_id.to_string(),
+            host: host.to_string(),
+            scope: scope.to_string(),
+            macaroon: challenge_macaroon.to_string(),
+            preimage: payment.preimage.clone(),
+            expires_at: Utc::now() + Duration::seconds(policy.credential_ttl_seconds),
+        })
+        .await
+        .map_err(map_domain_store_error)?;
+
+    let authorization = l402_authorization_header(challenge_macaroon, &payment.preimage);
+    let second = execute_l402_http_request(invocation, Some(authorization)).await?;
+    let succeeded = second.status.is_success();
+
+    Ok(L402ToolExecutionResult {
+        state: if succeeded { "succeeded" } else { "failed" },
+        decision: if succeeded { "allowed" } else { "failed" },
+        reason_code: if succeeded {
+            "paid_fetch_completed"
+        } else {
+            "paid_fetch_failed"
+        },
+        result: serde_json::json!({
+            "host": host,
+            "scope": scope,
+            "quotedAmountMsats": quoted_amount_msats,
+            "maxSpendMsats": max_spend_msats,
+            "response": {
+                "statusCode": second.status.as_u16(),
+                "body": l402_response_body_value(second.body.as_str()),
+                "bodySha256": second.body_sha256.clone(),
+            },
+            "payment": {
+                "paymentId": payment.payment_id,
+                "proofReference": format!("preimage:{}", payment.preimage.chars().take(16).collect::<String>()),
+            }
+        }),
+        error: if succeeded {
+            None
+        } else {
+            Some(serde_json::json!({
+                "code": "paid_fetch_failed",
+                "message": format!("Paid retry returned HTTP {}", second.status.as_u16()),
+            }))
+        },
+        receipt_status: if succeeded {
+            "paid".to_string()
+        } else {
+            "failed".to_string()
+        },
+        paid: succeeded,
+        cache_hit: false,
+        cache_status: None,
+        amount_msats: quoted_amount_msats.or(Some(max_spend_msats)),
+        quoted_amount_msats,
+        max_spend_msats: Some(max_spend_msats),
+        proof_reference: Some(format!(
+            "preimage:{}",
+            payment.preimage.chars().take(16).collect::<String>()
+        )),
+        deny_code: None,
+        task_id: None,
+        approval_required: false,
+        response_status_code: Some(second.status.as_u16()),
+        response_body_sha256: Some(second.body_sha256),
+    })
+}
+
+async fn execute_l402_tool(
+    state: &AppState,
+    user_id: &str,
+    run_id: &str,
+    thread_id: &str,
+    replay_hash_hex: &str,
+    policy_payload: &serde_json::Value,
+    invocation: &L402ToolInvocation,
+) -> Result<L402ToolExecutionResult, (StatusCode, Json<ApiErrorResponse>)> {
+    let policy = parse_l402_tool_policy(policy_payload);
+
+    if invocation.operation == "lightning_l402_approve" {
+        let task_id = invocation.task_id.clone().ok_or_else(|| {
+            validation_error(
+                "request.task_id",
+                "The request.task_id field is required for lightning_l402_approve.",
+            )
+        })?;
+        let consumed = state
+            ._domain_store
+            .consume_l402_approval_task_for_user(user_id, &task_id)
+            .await
+            .map_err(map_domain_store_error)?
+            .ok_or_else(|| not_found_error("approval task not found"))?;
+
+        if consumed.task.expires_at <= Utc::now() {
+            return Ok(L402ToolExecutionResult {
+                state: "blocked",
+                decision: "denied",
+                reason_code: "approval_task_expired",
+                result: serde_json::json!({
+                    "taskId": consumed.task.task_id,
+                    "status": "expired",
+                    "host": consumed.task.host,
+                    "scope": consumed.task.scope,
+                }),
+                error: Some(serde_json::json!({
+                    "code": "approval_task_expired",
+                    "message": "Approval task expired before execution.",
+                })),
+                receipt_status: "blocked".to_string(),
+                paid: false,
+                cache_hit: false,
+                cache_status: None,
+                amount_msats: None,
+                quoted_amount_msats: Bolt11::amount_msats(consumed.task.challenge_invoice.as_str()),
+                max_spend_msats: Some(consumed.task.max_spend_msats),
+                proof_reference: None,
+                deny_code: Some("approval_task_expired".to_string()),
+                task_id: Some(consumed.task.task_id),
+                approval_required: true,
+                response_status_code: None,
+                response_body_sha256: None,
+            });
+        }
+
+        if !consumed.consumed {
+            if let Some(existing) = state
+                ._domain_store
+                .find_latest_l402_receipt_for_user_by_task_id(user_id, &task_id)
+                .await
+                .map_err(map_domain_store_error)?
+            {
+                let payload = existing.payload;
+                let result_payload = payload
+                    .get("result")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({ "taskId": task_id }));
+                return Ok(L402ToolExecutionResult {
+                    state: "succeeded",
+                    decision: "allowed",
+                    reason_code: "approval_already_executed",
+                    result: result_payload,
+                    error: None,
+                    receipt_status: payload
+                        .get("status")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("paid")
+                        .to_string(),
+                    paid: payload
+                        .get("paid")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false),
+                    cache_hit: payload
+                        .get("cacheHit")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false),
+                    cache_status: payload
+                        .get("cacheStatus")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                    amount_msats: payload
+                        .get("amountMsats")
+                        .and_then(positive_u64_from_value),
+                    quoted_amount_msats: payload
+                        .get("quotedAmountMsats")
+                        .and_then(positive_u64_from_value),
+                    max_spend_msats: payload
+                        .get("maxSpendMsats")
+                        .and_then(positive_u64_from_value),
+                    proof_reference: payload
+                        .get("proofReference")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                    deny_code: payload
+                        .get("denyCode")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                    task_id: Some(task_id),
+                    approval_required: true,
+                    response_status_code: payload
+                        .get("responseStatusCode")
+                        .and_then(positive_u64_from_value)
+                        .and_then(|value| u16::try_from(value).ok()),
+                    response_body_sha256: payload
+                        .get("responseBodySha256")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
+                });
+            }
+        }
+
+        let approved_invocation = L402ToolInvocation {
+            operation: "lightning_l402_fetch".to_string(),
+            url: Some(consumed.task.url.clone()),
+            method: consumed.task.method.clone(),
+            host: Some(consumed.task.host.clone()),
+            scope: Some(consumed.task.scope.clone()),
+            request_headers: consumed.task.request_headers.clone(),
+            request_body: consumed.task.request_body.clone(),
+            max_spend_msats: Some(consumed.task.max_spend_msats),
+            require_approval: Some(false),
+            timeout_ms: invocation.timeout_ms,
+            task_id: Some(consumed.task.task_id.clone()),
+            autopilot_id: consumed.task.autopilot_id.clone(),
+            tool_call_id: consumed.task.tool_call_id.clone(),
+        };
+        let mut result = execute_l402_paid_fetch(
+            state,
+            user_id,
+            consumed.task.host.as_str(),
+            consumed.task.scope.as_str(),
+            &approved_invocation,
+            consumed.task.challenge_macaroon.as_str(),
+            consumed.task.challenge_invoice.as_str(),
+            consumed.task.max_spend_msats,
+            &policy,
+        )
+        .await?;
+        result.task_id = Some(consumed.task.task_id);
+        result.approval_required = true;
+        return Ok(result);
+    }
+
+    let url = invocation.url.clone().ok_or_else(|| {
+        validation_error(
+            "request.url",
+            "The request.url field is required for lightning_l402_fetch.",
+        )
+    })?;
+    let parsed_url = reqwest::Url::parse(&url)
+        .map_err(|_| validation_error("request.url", "The request.url field must be a valid URL."))?;
+    let host = invocation
+        .host
+        .clone()
+        .or_else(|| parsed_url.host_str().map(str::to_string))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if host.is_empty() {
+        return Err(validation_error("request.url", "The request.url field must include a host."));
+    }
+    if !l402_host_is_allowed(&host, &policy.allowed_hosts) {
+        return Ok(L402ToolExecutionResult {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.host_not_allowed",
+            result: serde_json::json!({
+                "blocked": true,
+                "host": host,
+                "allowedHosts": policy.allowed_hosts,
+            }),
+            error: Some(serde_json::json!({
+                "code": "policy_denied.host_not_allowed",
+                "message": "Requested host is not in L402 allowed hosts policy.",
+            })),
+            receipt_status: "blocked".to_string(),
+            paid: false,
+            cache_hit: false,
+            cache_status: None,
+            amount_msats: None,
+            quoted_amount_msats: None,
+            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            proof_reference: None,
+            deny_code: Some("policy_denied.host_not_allowed".to_string()),
+            task_id: None,
+            approval_required: false,
+            response_status_code: None,
+            response_body_sha256: None,
+        });
+    }
+    let scope = l402_scope_from_request(invocation, &parsed_url);
+    let credential = state
+        ._domain_store
+        .find_active_l402_credential_for_user(user_id, &host, &scope)
+        .await
+        .map_err(map_domain_store_error)?;
+    let authorization = credential
+        .as_ref()
+        .map(|row| l402_authorization_header(row.macaroon.as_str(), row.preimage.as_str()));
+    let first = execute_l402_http_request(invocation, authorization).await?;
+
+    if first.status != StatusCode::PAYMENT_REQUIRED {
+        let succeeded = first.status.is_success();
+        return Ok(L402ToolExecutionResult {
+            state: if succeeded { "succeeded" } else { "failed" },
+            decision: if succeeded { "allowed" } else { "failed" },
+            reason_code: if succeeded {
+                if credential.is_some() {
+                    "cached_fetch_completed"
+                } else {
+                    "fetch_completed_without_challenge"
+                }
+            } else {
+                "fetch_failed"
+            },
+            result: serde_json::json!({
+                "host": host,
+                "scope": scope,
+                "response": {
+                    "statusCode": first.status.as_u16(),
+                    "body": l402_response_body_value(first.body.as_str()),
+                    "bodySha256": first.body_sha256.clone(),
+                }
+            }),
+            error: if succeeded {
+                None
+            } else {
+                Some(serde_json::json!({
+                    "code": "fetch_failed",
+                    "message": format!("Upstream returned HTTP {}", first.status.as_u16()),
+                }))
+            },
+            receipt_status: if succeeded {
+                if credential.is_some() {
+                    "cached".to_string()
+                } else {
+                    "succeeded".to_string()
+                }
+            } else {
+                "failed".to_string()
+            },
+            paid: false,
+            cache_hit: credential.is_some() && succeeded,
+            cache_status: if credential.is_some() && succeeded {
+                Some("hit".to_string())
+            } else {
+                None
+            },
+            amount_msats: None,
+            quoted_amount_msats: None,
+            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            proof_reference: None,
+            deny_code: None,
+            task_id: None,
+            approval_required: false,
+            response_status_code: Some(first.status.as_u16()),
+            response_body_sha256: Some(first.body_sha256),
+        });
+    }
+
+    let parser = WwwAuthenticateParser;
+    let challenge = parser.parse_l402_challenge(first.challenge_header.as_deref());
+    let Some(challenge) = challenge else {
+        return Ok(L402ToolExecutionResult {
+            state: "failed",
+            decision: "failed",
+            reason_code: "l402_challenge_missing",
+            result: serde_json::json!({
+                "host": host,
+                "scope": scope,
+                "response": {
+                    "statusCode": first.status.as_u16(),
+                    "body": l402_response_body_value(first.body.as_str()),
+                    "bodySha256": first.body_sha256.clone(),
+                }
+            }),
+            error: Some(serde_json::json!({
+                "code": "l402_challenge_missing",
+                "message": "Upstream returned 402 but no valid L402 challenge header was present.",
+            })),
+            receipt_status: "failed".to_string(),
+            paid: false,
+            cache_hit: false,
+            cache_status: None,
+            amount_msats: None,
+            quoted_amount_msats: None,
+            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            proof_reference: None,
+            deny_code: Some("l402_challenge_missing".to_string()),
+            task_id: None,
+            approval_required: false,
+            response_status_code: Some(first.status.as_u16()),
+            response_body_sha256: Some(first.body_sha256),
+        });
+    };
+
+    let quoted_amount_msats = Bolt11::amount_msats(challenge.invoice.as_str());
+    let max_spend_msats = invocation
+        .max_spend_msats
+        .or(policy.max_spend_msats_per_call)
+        .or(quoted_amount_msats)
+        .unwrap_or(100_000);
+    if quoted_amount_msats
+        .map(|quoted| quoted > max_spend_msats)
+        .unwrap_or(false)
+    {
+        return Ok(L402ToolExecutionResult {
+            state: "blocked",
+            decision: "denied",
+            reason_code: "policy_denied.max_spend_per_call_exceeded",
+            result: serde_json::json!({
+                "blocked": true,
+                "host": host,
+                "scope": scope,
+                "quotedAmountMsats": quoted_amount_msats,
+                "maxSpendMsats": max_spend_msats,
+            }),
+            error: Some(serde_json::json!({
+                "code": "policy_denied.max_spend_per_call_exceeded",
+                "message": "Quoted L402 invoice amount exceeds configured max spend per call.",
+            })),
+            receipt_status: "blocked".to_string(),
+            paid: false,
+            cache_hit: false,
+            cache_status: None,
+            amount_msats: None,
+            quoted_amount_msats,
+            max_spend_msats: Some(max_spend_msats),
+            proof_reference: None,
+            deny_code: Some("policy_denied.max_spend_per_call_exceeded".to_string()),
+            task_id: None,
+            approval_required: false,
+            response_status_code: Some(first.status.as_u16()),
+            response_body_sha256: Some(first.body_sha256),
+        });
+    }
+
+    if let Some(max_daily) = policy.max_spend_msats_per_day {
+        let summary = l402_daily_spend_summary(
+            state,
+            user_id,
+            invocation.autopilot_id.as_deref(),
+        )
+        .await?;
+        let projected = summary
+            .spent_msats_today
+            .saturating_add(quoted_amount_msats.unwrap_or(max_spend_msats));
+        if projected > max_daily {
+            return Ok(L402ToolExecutionResult {
+                state: "blocked",
+                decision: "denied",
+                reason_code: "policy_denied.max_spend_per_day_exceeded",
+                result: serde_json::json!({
+                    "blocked": true,
+                    "host": host,
+                    "scope": scope,
+                    "quotedAmountMsats": quoted_amount_msats,
+                    "maxSpendMsatsPerDay": max_daily,
+                    "spentMsatsToday": summary.spent_msats_today,
+                    "projectedMsatsToday": projected,
+                }),
+                error: Some(serde_json::json!({
+                    "code": "policy_denied.max_spend_per_day_exceeded",
+                    "message": "L402 daily spend policy would be exceeded by this payment.",
+                })),
+                receipt_status: "blocked".to_string(),
+                paid: false,
+                cache_hit: false,
+                cache_status: None,
+                amount_msats: None,
+                quoted_amount_msats,
+                max_spend_msats: Some(max_spend_msats),
+                proof_reference: None,
+                deny_code: Some("policy_denied.max_spend_per_day_exceeded".to_string()),
+                task_id: None,
+                approval_required: false,
+                response_status_code: Some(first.status.as_u16()),
+                response_body_sha256: Some(first.body_sha256),
+            });
+        }
+    }
+
+    let require_approval = invocation.require_approval.unwrap_or(policy.require_approval);
+    if require_approval {
+        let task_id = format!("l402tsk_{}", &replay_hash_hex[..24]);
+        let expires_at = Utc::now() + Duration::minutes(30);
+        let task = state
+            ._domain_store
+            .upsert_l402_approval_task(UpsertL402ApprovalTaskInput {
+                task_id: task_id.clone(),
+                user_id: user_id.to_string(),
+                thread_id: thread_id.to_string(),
+                run_id: run_id.to_string(),
+                autopilot_id: invocation.autopilot_id.clone(),
+                host: host.clone(),
+                scope: scope.clone(),
+                method: invocation.method.clone(),
+                url,
+                request_headers: invocation.request_headers.clone(),
+                request_body: invocation.request_body.clone(),
+                challenge_macaroon: challenge.macaroon.clone(),
+                challenge_invoice: challenge.invoice.clone(),
+                max_spend_msats,
+                tool_call_id: invocation.tool_call_id.clone(),
+                expires_at,
+            })
+            .await
+            .map_err(map_domain_store_error)?;
+        return Ok(L402ToolExecutionResult {
+            state: "blocked",
+            decision: "approval_requested",
+            reason_code: "approval_required",
+            result: serde_json::json!({
+                "taskId": task.task_id,
+                "status": "approval_requested",
+                "host": task.host,
+                "scope": task.scope,
+                "quotedAmountMsats": quoted_amount_msats,
+                "maxSpendMsats": max_spend_msats,
+                "expiresAt": timestamp(task.expires_at),
+            }),
+            error: None,
+            receipt_status: "blocked".to_string(),
+            paid: false,
+            cache_hit: false,
+            cache_status: None,
+            amount_msats: None,
+            quoted_amount_msats,
+            max_spend_msats: Some(max_spend_msats),
+            proof_reference: None,
+            deny_code: None,
+            task_id: Some(task_id),
+            approval_required: true,
+            response_status_code: Some(first.status.as_u16()),
+            response_body_sha256: Some(first.body_sha256),
+        });
+    }
+
+    execute_l402_paid_fetch(
+        state,
+        user_id,
+        host.as_str(),
+        scope.as_str(),
+        invocation,
+        challenge.macaroon.as_str(),
+        challenge.invoice.as_str(),
+        max_spend_msats,
+        &policy,
+    )
+    .await
+}
+
 fn evaluate_coding_policy(
     invocation: &CodingToolInvocation,
     manifest: Option<&serde_json::Value>,
@@ -15640,47 +17169,115 @@ fn parse_event_occurred_at(payload: &serde_json::Value) -> Option<chrono::DateTi
 }
 
 fn builtin_tool_specs() -> Vec<serde_json::Value> {
-    vec![serde_json::json!({
-        "tool_id": "github.primary",
-        "version": 1,
-        "tool_pack": "coding.v1",
-        "state": "published",
-        "tool_spec": {
+    vec![
+        serde_json::json!({
             "tool_id": "github.primary",
             "version": 1,
-            "tool_pack": "coding.v1",
-            "name": "GitHub Primary",
-            "execution_kind": "http",
-            "integration_manifest": {
-                "manifest_version": "coding.integration.v1",
-                "integration_id": "github.primary",
-                "provider": "github",
-                "status": "active",
-                "tool_pack": "coding.v1",
-                "capabilities": ["get_issue", "get_pull_request", "add_issue_comment"],
-            }
-        },
-        "created_at": "2026-02-22T00:00:00Z",
-        "updated_at": "2026-02-22T00:00:00Z"
-    })]
+            "tool_pack": RUNTIME_TOOL_PACK_CODING_V1,
+            "state": "published",
+            "tool_spec": {
+                "tool_id": "github.primary",
+                "version": 1,
+                "tool_pack": RUNTIME_TOOL_PACK_CODING_V1,
+                "name": "GitHub Primary",
+                "execution_kind": "http",
+                "integration_manifest": {
+                    "manifest_version": "coding.integration.v1",
+                    "integration_id": "github.primary",
+                    "provider": "github",
+                    "status": "active",
+                    "tool_pack": RUNTIME_TOOL_PACK_CODING_V1,
+                    "capabilities": ["get_issue", "get_pull_request", "add_issue_comment"],
+                }
+            },
+            "created_at": "2026-02-22T00:00:00Z",
+            "updated_at": "2026-02-22T00:00:00Z"
+        }),
+        serde_json::json!({
+            "tool_id": "lightning_l402_fetch",
+            "version": 1,
+            "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+            "state": "published",
+            "tool_spec": {
+                "tool_id": "lightning_l402_fetch",
+                "version": 1,
+                "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                "name": "Lightning L402 Fetch",
+                "execution_kind": "http",
+                "integration_manifest": {
+                    "manifest_version": "lightning.integration.v1",
+                    "integration_id": "lightning.l402",
+                    "provider": "lightning",
+                    "status": "active",
+                    "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                    "capabilities": ["lightning_l402_fetch", "lightning_l402_approve"],
+                }
+            },
+            "created_at": "2026-02-22T00:00:00Z",
+            "updated_at": "2026-02-22T00:00:00Z"
+        }),
+        serde_json::json!({
+            "tool_id": "lightning_l402_approve",
+            "version": 1,
+            "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+            "state": "published",
+            "tool_spec": {
+                "tool_id": "lightning_l402_approve",
+                "version": 1,
+                "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                "name": "Lightning L402 Approve",
+                "execution_kind": "http",
+                "integration_manifest": {
+                    "manifest_version": "lightning.integration.v1",
+                    "integration_id": "lightning.l402",
+                    "provider": "lightning",
+                    "status": "active",
+                    "tool_pack": RUNTIME_TOOL_PACK_LIGHTNING_V1,
+                    "capabilities": ["lightning_l402_fetch", "lightning_l402_approve"],
+                }
+            },
+            "created_at": "2026-02-22T00:00:00Z",
+            "updated_at": "2026-02-22T00:00:00Z"
+        }),
+    ]
 }
 
 fn builtin_skill_specs() -> Vec<serde_json::Value> {
-    vec![serde_json::json!({
-        "skill_id": "github-coding",
-        "version": 1,
-        "state": "published",
-        "skill_spec": {
+    vec![
+        serde_json::json!({
             "skill_id": "github-coding",
             "version": 1,
-            "name": "GitHub Coding",
-            "description": "Default GitHub coding workflow skill",
-            "allowed_tools": [{"tool_id": "github.primary", "version": 1}],
-            "compatibility": {"runtime": "runtime"},
-        },
-        "created_at": "2026-02-22T00:00:00Z",
-        "updated_at": "2026-02-22T00:00:00Z"
-    })]
+            "state": "published",
+            "skill_spec": {
+                "skill_id": "github-coding",
+                "version": 1,
+                "name": "GitHub Coding",
+                "description": "Default GitHub coding workflow skill",
+                "allowed_tools": [{"tool_id": "github.primary", "version": 1}],
+                "compatibility": {"runtime": "runtime"},
+            },
+            "created_at": "2026-02-22T00:00:00Z",
+            "updated_at": "2026-02-22T00:00:00Z"
+        }),
+        serde_json::json!({
+            "skill_id": "lightning-l402",
+            "version": 1,
+            "state": "published",
+            "skill_spec": {
+                "skill_id": "lightning-l402",
+                "version": 1,
+                "name": "Lightning L402",
+                "description": "Fetch and approve L402-protected resources.",
+                "allowed_tools": [
+                    {"tool_id": "lightning_l402_fetch", "version": 1},
+                    {"tool_id": "lightning_l402_approve", "version": 1}
+                ],
+                "compatibility": {"runtime": "runtime"},
+            },
+            "created_at": "2026-02-22T00:00:00Z",
+            "updated_at": "2026-02-22T00:00:00Z"
+        }),
+    ]
 }
 
 fn builtin_skill_spec(skill_id: &str, version: u64) -> Option<serde_json::Value> {
@@ -15793,10 +17390,26 @@ fn validate_tool_spec_schema(
                 "The tool_spec.tool_pack field is required.",
             )
         })?;
-    if tool_pack != "coding.v1" {
+    let normalized_tool_pack = tool_pack.to_ascii_lowercase();
+    let canonical_tool_pack = match normalized_tool_pack.as_str() {
+        RUNTIME_TOOL_PACK_CODING_V1 => RUNTIME_TOOL_PACK_CODING_V1,
+        RUNTIME_TOOL_PACK_LIGHTNING_V1 | RUNTIME_TOOL_PACK_L402_ALIAS_V1 => {
+            RUNTIME_TOOL_PACK_LIGHTNING_V1
+        }
+        _ => {
+            return Err(validation_error(
+                "tool_spec.tool_pack",
+                "Only coding.v1 and lightning.v1 tool packs are currently supported.",
+            ));
+        }
+    };
+    if !matches!(
+        canonical_tool_pack,
+        RUNTIME_TOOL_PACK_CODING_V1 | RUNTIME_TOOL_PACK_LIGHTNING_V1
+    ) {
         return Err(validation_error(
             "tool_spec.tool_pack",
-            "Only coding.v1 tool_pack is currently supported.",
+            "The selected tool_spec.tool_pack is invalid.",
         ));
     }
 
@@ -15820,7 +17433,7 @@ fn validate_tool_spec_schema(
         }
     }
 
-    Ok((tool_id, version, tool_pack))
+    Ok((tool_id, version, canonical_tool_pack.to_string()))
 }
 
 fn validate_skill_spec_schema(

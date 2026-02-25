@@ -61,7 +61,7 @@ pub(super) fn build_protected_api_router(
     let router = add_autopilot_routes(router);
     let router = add_settings_inbox_token_routes(router);
     let router = add_org_sync_social_routes(router);
-    let router = add_payments_l402_routes(router, admin_state.clone());
+    let router = add_payments_l402_routes(router);
     let router = add_legacy_compat_routes(router);
     let router = add_runtime_control_routes(
         router,
@@ -171,7 +171,7 @@ fn add_org_sync_social_routes(router: Router<AppState>) -> Router<AppState> {
         .route(ROUTE_WHISPERS_READ, patch(whispers_read))
 }
 
-fn add_payments_l402_routes(router: Router<AppState>, admin_state: AppState) -> Router<AppState> {
+fn add_payments_l402_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route(
             ROUTE_AGENT_PAYMENTS_WALLET,
@@ -199,21 +199,10 @@ fn add_payments_l402_routes(router: Router<AppState>, admin_state: AppState) -> 
         .route(ROUTE_L402_TRANSACTIONS, get(l402_transactions))
         .route(ROUTE_L402_TRANSACTION_BY_ID, get(l402_transaction_show))
         .route(ROUTE_L402_PAYWALLS, get(l402_paywalls))
-        .route(
-            ROUTE_L402_PAYWALLS,
-            post(l402_paywall_create).route_layer(middleware::from_fn_with_state(
-                admin_state.clone(),
-                admin_email_gate,
-            )),
-        )
+        .route(ROUTE_L402_PAYWALLS, post(l402_paywall_create))
         .route(
             ROUTE_L402_PAYWALL_BY_ID,
-            patch(l402_paywall_update)
-                .delete(l402_paywall_delete)
-                .route_layer(middleware::from_fn_with_state(
-                    admin_state,
-                    admin_email_gate,
-                )),
+            patch(l402_paywall_update).delete(l402_paywall_delete),
         )
         .route(ROUTE_L402_SETTLEMENTS, get(l402_settlements))
         .route(ROUTE_L402_DEPLOYMENTS, get(l402_deployments))
