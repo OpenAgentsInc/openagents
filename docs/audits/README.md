@@ -1,5 +1,6 @@
 # Audits
 
+- `docs/audits/2026-02-25-spacetimedb-first-architecture-simplification-audit.md`
 - `docs/audits/2026-02-25-comprehensive-codebase-audit.md`
 - `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`
 - `docs/audits/2026-02-24-email-inbox-functionality-audit.md`
