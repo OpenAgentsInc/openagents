@@ -1462,7 +1462,7 @@ components:
           type: string
           format: date-time
           nullable: true
-        khala_projection:
+        spacetime_projection:
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/CodexWorkerProjectionStatus'

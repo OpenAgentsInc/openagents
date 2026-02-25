@@ -7,11 +7,6 @@ pub const ROUTE_INTERNAL_V1_RUN_BY_ID: &str = "/internal/v1/runs/:run_id";
 pub const ROUTE_INTERNAL_V1_RUN_EVENTS: &str = "/internal/v1/runs/:run_id/events";
 pub const ROUTE_INTERNAL_V1_RUN_RECEIPT: &str = "/internal/v1/runs/:run_id/receipt";
 pub const ROUTE_INTERNAL_V1_RUN_REPLAY: &str = "/internal/v1/runs/:run_id/replay";
-pub const ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES: &str =
-    "/internal/v1/khala/topics/:topic/messages";
-pub const ROUTE_INTERNAL_V1_KHALA_TOPIC_WS: &str = "/internal/v1/khala/topics/:topic/ws";
-pub const ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS: &str = "/internal/v1/khala/fanout/hooks";
-pub const ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS: &str = "/internal/v1/khala/fanout/metrics";
 pub const ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS: &str = "/internal/v1/spacetime/sync/metrics";
 pub const ROUTE_INTERNAL_V1_PROJECTOR_CHECKPOINT: &str =
     "/internal/v1/projectors/checkpoints/:run_id";
@@ -154,26 +149,6 @@ pub const INTERNAL_V1_ROUTE_OWNERSHIP: &[RuntimeInternalRouteOwnership] = &[
         "GET",
         ROUTE_INTERNAL_V1_RUN_REPLAY,
         "runtime run replay authority",
-    ),
-    runtime_authority_route(
-        "GET",
-        ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES,
-        "runtime replay topic read authority",
-    ),
-    runtime_authority_route(
-        "GET",
-        ROUTE_INTERNAL_V1_KHALA_TOPIC_WS,
-        "runtime live topic ws authority",
-    ),
-    runtime_authority_route(
-        "GET",
-        ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS,
-        "runtime khala fanout hooks status authority",
-    ),
-    runtime_authority_route(
-        "GET",
-        ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS,
-        "runtime khala fanout metrics authority",
     ),
     runtime_authority_route(
         "GET",
@@ -484,10 +459,7 @@ mod tests {
             ("POST", ROUTE_INTERNAL_V1_RUN_EVENTS),
             ("GET", ROUTE_INTERNAL_V1_RUN_RECEIPT),
             ("GET", ROUTE_INTERNAL_V1_RUN_REPLAY),
-            ("GET", ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES),
-            ("GET", ROUTE_INTERNAL_V1_KHALA_TOPIC_WS),
-            ("GET", ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS),
-            ("GET", ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS),
+            ("GET", ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS),
             ("GET", ROUTE_INTERNAL_V1_PROJECTOR_CHECKPOINT),
             ("GET", ROUTE_INTERNAL_V1_PROJECTOR_DRIFT),
             ("GET", ROUTE_INTERNAL_V1_PROJECTOR_RUN_SUMMARY),

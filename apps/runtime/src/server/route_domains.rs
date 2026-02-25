@@ -9,7 +9,7 @@ pub(super) fn build_internal_router() -> Router<AppState> {
     let router = Router::<AppState>::new();
     let router = add_health_and_spec_routes(router);
     let router = add_run_routes(router);
-    let router = add_khala_and_projector_routes(router);
+    let router = add_projector_routes(router);
     let router = add_worker_routes(router);
     let router = add_marketplace_routes(router);
     let router = add_hydra_liquidity_credit_routes(router);
@@ -50,24 +50,8 @@ fn add_run_routes(router: Router<AppState>) -> Router<AppState> {
         )
 }
 
-fn add_khala_and_projector_routes(router: Router<AppState>) -> Router<AppState> {
+fn add_projector_routes(router: Router<AppState>) -> Router<AppState> {
     router
-        .route(
-            route_ownership::ROUTE_INTERNAL_V1_KHALA_TOPIC_MESSAGES,
-            get(get_khala_topic_messages),
-        )
-        .route(
-            route_ownership::ROUTE_INTERNAL_V1_KHALA_TOPIC_WS,
-            get(get_khala_topic_ws),
-        )
-        .route(
-            route_ownership::ROUTE_INTERNAL_V1_KHALA_FANOUT_HOOKS,
-            get(get_khala_fanout_hooks),
-        )
-        .route(
-            route_ownership::ROUTE_INTERNAL_V1_KHALA_FANOUT_METRICS,
-            get(get_khala_fanout_metrics),
-        )
         .route(
             route_ownership::ROUTE_INTERNAL_V1_SPACETIME_SYNC_METRICS,
             get(get_spacetime_sync_observability),

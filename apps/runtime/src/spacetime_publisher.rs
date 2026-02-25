@@ -1,20 +1,30 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use autopilot_spacetime::mapping::topic_to_stream_id;
 use autopilot_spacetime::reducers::{
     AppendSyncEventOutcome, AppendSyncEventRequest, ReducerError, ReducerStore, SyncEvent,
 };
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::Mutex;
-
-use crate::fanout::{ExternalFanoutHook, FanoutMessage, FanoutPublishMirror};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SpacetimePublisherMetrics {
     pub published: u64,
     pub duplicates: u64,
     pub failed: u64,
+    pub stream_count: u64,
+    pub event_count: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RuntimeSyncMessage {
+    pub topic: String,
+    pub sequence: u64,
+    pub kind: String,
+    pub payload: serde_json::Value,
+    pub published_at: chrono::DateTime<Utc>,
 }
 
 #[derive(Clone)]
@@ -50,7 +60,7 @@ impl SpacetimePublisher {
         self.store.lock().await.stream_events(stream_id)
     }
 
-    pub async fn publish_from_fanout(&self, message: &FanoutMessage) -> Result<(), String> {
+    pub async fn publish(&self, message: &RuntimeSyncMessage) -> Result<(), String> {
         let payload = projected_payload(message);
         let payload_bytes = serde_json::to_vec(&payload)
             .map_err(|error| format!("encode payload failed: {error}"))?;
@@ -79,19 +89,17 @@ impl SpacetimePublisher {
             let outcome = self.store.lock().await.append_sync_event(request.clone());
             match outcome {
                 Ok(AppendSyncEventOutcome::Applied(event)) => {
-                    if !parity_matches(
-                        message,
-                        &payload_hash,
-                        &payload_bytes,
-                        &stream_id,
-                        &event,
-                    ) {
+                    if !parity_matches(message, &payload_hash, &payload_bytes, &stream_id, &event) {
                         let mut metrics = self.metrics.lock().await;
                         metrics.failed = metrics.failed.saturating_add(1);
                         return Err("spacetime parity mismatch".to_string());
                     }
                     let mut metrics = self.metrics.lock().await;
                     metrics.published = metrics.published.saturating_add(1);
+                    metrics.event_count = metrics.event_count.saturating_add(1);
+                    if event.seq == 1 {
+                        metrics.stream_count = metrics.stream_count.saturating_add(1);
+                    }
                     return Ok(());
                 }
                 Ok(AppendSyncEventOutcome::Duplicate(_event)) => {
@@ -100,10 +108,8 @@ impl SpacetimePublisher {
                     return Ok(());
                 }
                 Err(ReducerError::SequenceConflict { .. }) if attempts < 3 => {
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        10 * u64::from(attempts),
-                    ))
-                    .await;
+                    tokio::time::sleep(std::time::Duration::from_millis(10 * u64::from(attempts)))
+                        .await;
                     continue;
                 }
                 Err(error) => {
@@ -116,22 +122,7 @@ impl SpacetimePublisher {
     }
 }
 
-#[async_trait]
-impl FanoutPublishMirror for SpacetimePublisher {
-    async fn mirror_publish(&self, message: &FanoutMessage) -> Result<(), String> {
-        self.publish_from_fanout(message).await
-    }
-
-    fn descriptor(&self) -> ExternalFanoutHook {
-        ExternalFanoutHook {
-            backend: Self::backend_name().to_string(),
-            status: "active".to_string(),
-            note: "runtime fanout events mirrored to spacetime reducer store".to_string(),
-        }
-    }
-}
-
-fn projected_payload(message: &FanoutMessage) -> serde_json::Value {
+fn projected_payload(message: &RuntimeSyncMessage) -> serde_json::Value {
     json!({
         "topic": message.topic,
         "sequence": message.sequence,
@@ -142,7 +133,7 @@ fn projected_payload(message: &FanoutMessage) -> serde_json::Value {
 }
 
 fn parity_matches(
-    message: &FanoutMessage,
+    message: &RuntimeSyncMessage,
     payload_hash: &str,
     payload_bytes: &[u8],
     stream_id: &str,
@@ -166,11 +157,10 @@ mod tests {
     use chrono::Utc;
     use serde_json::json;
 
-    use crate::fanout::FanoutMessage;
-    use crate::spacetime_publisher::{SpacetimePublisher, stream_id_for_topic};
+    use crate::spacetime_publisher::{RuntimeSyncMessage, SpacetimePublisher, stream_id_for_topic};
 
-    fn message(topic: &str, sequence: u64) -> FanoutMessage {
-        FanoutMessage {
+    fn message(topic: &str, sequence: u64) -> RuntimeSyncMessage {
+        RuntimeSyncMessage {
             topic: topic.to_string(),
             sequence,
             kind: "runtime.event".to_string(),
@@ -201,11 +191,11 @@ mod tests {
         let first = message("run:job-1:events", 1);
 
         publisher
-            .publish_from_fanout(&first)
+            .publish(&first)
             .await
             .expect("first publish should apply");
         publisher
-            .publish_from_fanout(&first)
+            .publish(&first)
             .await
             .expect("duplicate publish should be idempotent");
 
@@ -213,6 +203,8 @@ mod tests {
         assert_eq!(metrics.published, 1);
         assert_eq!(metrics.duplicates, 1);
         assert_eq!(metrics.failed, 0);
+        assert_eq!(metrics.stream_count, 1);
+        assert_eq!(metrics.event_count, 1);
 
         let stream_id = stream_id_for_topic("run:job-1:events");
         let stored = publisher.stream_events(stream_id.as_str()).await;
@@ -226,10 +218,12 @@ mod tests {
     async fn publisher_rejects_out_of_order_sequence_for_same_topic() {
         let publisher = SpacetimePublisher::in_memory();
         publisher
-            .publish_from_fanout(&message("run:job-2:events", 2))
+            .publish(&message("run:job-2:events", 2))
             .await
             .expect_err("out of order sequence must fail");
         let metrics = publisher.metrics().await;
         assert_eq!(metrics.failed, 1);
+        assert_eq!(metrics.stream_count, 0);
+        assert_eq!(metrics.event_count, 0);
     }
 }

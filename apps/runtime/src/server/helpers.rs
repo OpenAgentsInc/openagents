@@ -17,50 +17,6 @@ pub(super) fn owner_from_parts(
     }
 }
 
-pub(super) fn fanout_window_details(
-    window: Option<&FanoutTopicWindow>,
-) -> (Option<u64>, Option<u64>, Option<usize>, Option<u64>) {
-    match window {
-        Some(window) => (
-            Some(window.oldest_sequence.saturating_sub(1)),
-            Some(window.head_sequence),
-            Some(window.queue_depth),
-            Some(window.dropped_messages),
-        ),
-        None => (None, None, None, None),
-    }
-}
-
-pub(super) fn khala_principal_key(principal: &SyncPrincipal) -> String {
-    let user = principal
-        .user_id
-        .map(|value| format!("user:{value}"))
-        .unwrap_or_else(|| "user:none".to_string());
-    let org = principal
-        .org_id
-        .clone()
-        .unwrap_or_else(|| "org:none".to_string());
-    let device = principal
-        .device_id
-        .clone()
-        .unwrap_or_else(|| "device:none".to_string());
-    format!("{user}|{org}|{device}")
-}
-
-pub(super) fn khala_consumer_key(principal: &SyncPrincipal, topic: &str) -> String {
-    format!("{}|{topic}", khala_principal_key(principal))
-}
-
-pub(super) fn deterministic_jitter_ms(seed_key: &str, cursor: u64, max_jitter_ms: u64) -> u64 {
-    if max_jitter_ms == 0 {
-        return 0;
-    }
-    let mut hasher = DefaultHasher::new();
-    seed_key.hash(&mut hasher);
-    cursor.hash(&mut hasher);
-    hasher.finish() % (max_jitter_ms.saturating_add(1))
-}
-
 pub(super) fn ensure_runtime_write_authority(state: &AppState) -> Result<(), ApiError> {
     if state.config.authority_write_mode.writes_enabled() {
         Ok(())

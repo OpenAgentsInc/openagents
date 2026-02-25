@@ -7,7 +7,6 @@ use std::{
 use thiserror::Error;
 
 use crate::credit::service::CreditPolicyConfig;
-use crate::fanout::{FanoutLimitConfig, FanoutTierLimits, QosTier};
 use nostr::nsec_to_private_key;
 
 #[derive(Clone, Debug)]
@@ -655,36 +654,6 @@ impl Config {
             treasury_reconciliation_interval_seconds,
             treasury_reconciliation_max_jobs,
         })
-    }
-
-    #[must_use]
-    pub fn khala_fanout_limits(&self) -> FanoutLimitConfig {
-        FanoutLimitConfig {
-            run_events: FanoutTierLimits {
-                qos_tier: QosTier::Warm,
-                replay_budget_events: self.khala_run_events_replay_budget_events,
-                max_publish_per_second: self.khala_run_events_publish_rate_per_second,
-                max_payload_bytes: self.khala_run_events_max_payload_bytes,
-            },
-            worker_lifecycle: FanoutTierLimits {
-                qos_tier: QosTier::Warm,
-                replay_budget_events: self.khala_worker_lifecycle_replay_budget_events,
-                max_publish_per_second: self.khala_worker_lifecycle_publish_rate_per_second,
-                max_payload_bytes: self.khala_worker_lifecycle_max_payload_bytes,
-            },
-            codex_worker_events: FanoutTierLimits {
-                qos_tier: QosTier::Hot,
-                replay_budget_events: self.khala_codex_worker_events_replay_budget_events,
-                max_publish_per_second: self.khala_codex_worker_events_publish_rate_per_second,
-                max_payload_bytes: self.khala_codex_worker_events_max_payload_bytes,
-            },
-            fallback: FanoutTierLimits {
-                qos_tier: QosTier::Cold,
-                replay_budget_events: self.khala_fallback_replay_budget_events,
-                max_publish_per_second: self.khala_fallback_publish_rate_per_second,
-                max_payload_bytes: self.khala_fallback_max_payload_bytes,
-            },
-        }
     }
 }
 

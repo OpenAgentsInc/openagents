@@ -1,6 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
-    hash::{Hash, Hasher},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -10,15 +9,11 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{
-        Path, Query, State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
-    },
-    http::{HeaderMap, StatusCode, header},
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
     response::IntoResponse,
 };
 use chrono::Utc;
-use futures::StreamExt;
 use openagents_l402::Bolt11;
 use openagents_proto::aegis::{
     AEGIS_CLAIM_OPEN_REQUEST_SCHEMA_V1, AEGIS_CLAIM_OPEN_RESPONSE_SCHEMA_V1,
@@ -63,7 +58,6 @@ use crate::{
         CreditSettleResponseV1,
     },
     db::RuntimeDb,
-    fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
     fx::{
         service::{FxService, FxServiceError},
@@ -101,8 +95,7 @@ use crate::{
     },
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     route_ownership,
-    spacetime_publisher::{SpacetimePublisher, SpacetimePublisherMetrics},
-    sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer, SyncPrincipal},
+    spacetime_publisher::{RuntimeSyncMessage, SpacetimePublisher, SpacetimePublisherMetrics},
     treasury::Treasury,
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
@@ -126,11 +119,7 @@ pub struct AppState {
     liquidity_pool: Arc<LiquidityPoolService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
-    fanout: Arc<FanoutHub>,
     spacetime_publisher: Arc<SpacetimePublisher>,
-    sync_auth: Arc<SyncAuthorizer>,
-    sync_auth_observability: Arc<SyncAuthObservability>,
-    khala_delivery: Arc<KhalaDeliveryControl>,
     compute_abuse: Arc<ComputeAbuseControls>,
     compute_telemetry: Arc<ComputeTelemetry>,
     hydra_observability: Arc<HydraObservabilityTelemetry>,
@@ -149,9 +138,7 @@ impl AppState {
         config: Config,
         orchestrator: Arc<RuntimeOrchestrator>,
         workers: Arc<InMemoryWorkerRegistry>,
-        fanout: Arc<FanoutHub>,
         spacetime_publisher: Arc<SpacetimePublisher>,
-        sync_auth: Arc<SyncAuthorizer>,
         db: Option<Arc<RuntimeDb>>,
     ) -> Self {
         let liquidity_store = match db.clone() {
@@ -239,11 +226,7 @@ impl AppState {
             config,
             orchestrator,
             workers,
-            fanout,
             spacetime_publisher,
-            sync_auth,
-            sync_auth_observability: Arc::new(SyncAuthObservability::default()),
-            khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
             hydra_observability: Arc::new(HydraObservabilityTelemetry::default()),
@@ -261,92 +244,6 @@ impl AppState {
         maybe_spawn_treasury_reconciliation_worker(&state);
 
         state
-    }
-}
-
-#[derive(Debug, Clone)]
-struct KhalaConsumerState {
-    last_poll_at: Option<chrono::DateTime<Utc>>,
-    last_cursor: u64,
-    slow_consumer_strikes: u32,
-}
-
-impl Default for KhalaConsumerState {
-    fn default() -> Self {
-        Self {
-            last_poll_at: None,
-            last_cursor: 0,
-            slow_consumer_strikes: 0,
-        }
-    }
-}
-
-#[derive(Default)]
-struct KhalaDeliveryControl {
-    consumers: Mutex<HashMap<String, KhalaConsumerState>>,
-    recent_disconnect_causes: Mutex<VecDeque<String>>,
-    total_polls: AtomicU64,
-    throttled_polls: AtomicU64,
-    limited_polls: AtomicU64,
-    fairness_limited_polls: AtomicU64,
-    slow_consumer_evictions: AtomicU64,
-    served_messages: AtomicU64,
-}
-
-#[derive(Default)]
-struct SyncAuthObservability {
-    unauthorized_total: AtomicU64,
-    forbidden_total: AtomicU64,
-    invalid_token_total: AtomicU64,
-    token_expired_total: AtomicU64,
-    token_not_yet_valid_total: AtomicU64,
-    token_revoked_total: AtomicU64,
-}
-
-#[derive(Debug, Serialize)]
-struct SyncAuthObservabilitySnapshot {
-    unauthorized_total: u64,
-    forbidden_total: u64,
-    invalid_token_total: u64,
-    token_expired_total: u64,
-    token_not_yet_valid_total: u64,
-    token_revoked_total: u64,
-}
-
-impl SyncAuthObservability {
-    fn record(&self, error: &SyncAuthError) {
-        if error.is_unauthorized() {
-            self.unauthorized_total.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.forbidden_total.fetch_add(1, Ordering::Relaxed);
-        }
-        match error {
-            SyncAuthError::InvalidToken => {
-                self.invalid_token_total.fetch_add(1, Ordering::Relaxed);
-            }
-            SyncAuthError::TokenExpired => {
-                self.token_expired_total.fetch_add(1, Ordering::Relaxed);
-            }
-            SyncAuthError::TokenNotYetValid => {
-                self.token_not_yet_valid_total
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            SyncAuthError::TokenRevoked => {
-                self.token_revoked_total.fetch_add(1, Ordering::Relaxed);
-            }
-            _ => {}
-        }
-    }
-
-    fn snapshot(&self) -> SyncAuthObservabilitySnapshot {
-        SyncAuthObservabilitySnapshot {
-            unauthorized_total: self.unauthorized_total.load(Ordering::Relaxed),
-            forbidden_total: self.forbidden_total.load(Ordering::Relaxed),
-            invalid_token_total: self.invalid_token_total.load(Ordering::Relaxed),
-            token_expired_total: self.token_expired_total.load(Ordering::Relaxed),
-            token_not_yet_valid_total: self.token_not_yet_valid_total.load(Ordering::Relaxed),
-            token_revoked_total: self.token_revoked_total.load(Ordering::Relaxed),
-        }
     }
 }
 
@@ -951,71 +848,6 @@ impl HydraObservabilityTelemetry {
 }
 
 #[derive(Debug, Serialize)]
-struct KhalaDeliveryMetricsSnapshot {
-    total_polls: u64,
-    throttled_polls: u64,
-    limited_polls: u64,
-    fairness_limited_polls: u64,
-    slow_consumer_evictions: u64,
-    served_messages: u64,
-    active_consumers: usize,
-    recent_disconnect_causes: Vec<String>,
-}
-
-impl KhalaDeliveryControl {
-    fn record_total_poll(&self, served_messages: usize) {
-        self.total_polls.fetch_add(1, Ordering::Relaxed);
-        self.served_messages
-            .fetch_add(served_messages as u64, Ordering::Relaxed);
-    }
-
-    fn record_throttled_poll(&self) {
-        self.throttled_polls.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn record_limit_capped(&self) {
-        self.limited_polls.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn record_fairness_limited(&self) {
-        self.fairness_limited_polls.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn record_slow_consumer_eviction(&self) {
-        self.slow_consumer_evictions.fetch_add(1, Ordering::Relaxed);
-    }
-
-    async fn record_disconnect_cause(&self, cause: &str) {
-        let mut causes = self.recent_disconnect_causes.lock().await;
-        causes.push_back(cause.to_string());
-        while causes.len() > 32 {
-            let _ = causes.pop_front();
-        }
-    }
-
-    async fn snapshot(&self) -> KhalaDeliveryMetricsSnapshot {
-        let active_consumers = self.consumers.lock().await.len();
-        let recent_disconnect_causes = self
-            .recent_disconnect_causes
-            .lock()
-            .await
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        KhalaDeliveryMetricsSnapshot {
-            total_polls: self.total_polls.load(Ordering::Relaxed),
-            throttled_polls: self.throttled_polls.load(Ordering::Relaxed),
-            limited_polls: self.limited_polls.load(Ordering::Relaxed),
-            fairness_limited_polls: self.fairness_limited_polls.load(Ordering::Relaxed),
-            slow_consumer_evictions: self.slow_consumer_evictions.load(Ordering::Relaxed),
-            served_messages: self.served_messages.load(Ordering::Relaxed),
-            active_consumers,
-            recent_disconnect_causes,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
 struct HealthResponse {
     status: &'static str,
     service: String,
@@ -1023,7 +855,6 @@ struct HealthResponse {
     uptime_seconds: i64,
     authority_write_mode: String,
     authority_writer_active: bool,
-    fanout_driver: String,
     db_configured: bool,
 }
 
@@ -1034,7 +865,6 @@ struct ReadinessResponse {
     projector_ready: bool,
     workers_ready: bool,
     authority_writer_active: bool,
-    fanout_driver: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1078,84 +908,11 @@ struct RunSummaryResponse {
     summary: RunProjectionSummary,
 }
 
-#[derive(Debug, Deserialize)]
-struct FanoutPollQuery {
-    after_seq: Option<u64>,
-    limit: Option<usize>,
-}
-
-#[derive(Debug, Serialize)]
-struct FanoutPollResponse {
-    topic: String,
-    driver: String,
-    messages: Vec<FanoutMessage>,
-    oldest_available_cursor: Option<u64>,
-    head_cursor: Option<u64>,
-    queue_depth: Option<usize>,
-    dropped_messages: Option<u64>,
-    next_cursor: u64,
-    replay_complete: bool,
-    limit_applied: usize,
-    limit_capped: bool,
-    fairness_applied: bool,
-    active_topic_count: usize,
-    outbound_queue_limit: usize,
-    consumer_lag: Option<u64>,
-    slow_consumer_strikes: u32,
-    slow_consumer_max_strikes: u32,
-    recommended_reconnect_backoff_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum KhalaWsFrame {
-    Hello {
-        topic: String,
-        after_seq: u64,
-        limit: usize,
-        recommended_reconnect_backoff_ms: u64,
-    },
-    Message {
-        message: FanoutMessage,
-    },
-    StaleCursor {
-        topic: String,
-        requested_cursor: u64,
-        oldest_available_cursor: u64,
-        head_cursor: u64,
-        reason_codes: Vec<String>,
-        replay_lag: u64,
-        replay_budget_events: u64,
-        qos_tier: String,
-    },
-    Error {
-        code: String,
-        message: String,
-    },
-}
-
-#[derive(Debug, Serialize)]
-struct FanoutHooksResponse {
-    driver: String,
-    hooks: Vec<ExternalFanoutHook>,
-    delivery_metrics: KhalaDeliveryMetricsSnapshot,
-    topic_windows: Vec<FanoutTopicWindow>,
-}
-
-#[derive(Debug, Serialize)]
-struct FanoutMetricsResponse {
-    driver: String,
-    delivery_metrics: KhalaDeliveryMetricsSnapshot,
-    topic_windows: Vec<FanoutTopicWindow>,
-}
-
 #[derive(Debug, Serialize)]
 struct SpacetimeSyncObservabilityResponse {
     transport: &'static str,
-    khala_emergency_mode_enabled: bool,
     mirror: SpacetimeMirrorMetricsSnapshot,
     delivery: SpacetimeDeliveryMetricsSnapshot,
-    auth_failures: SyncAuthObservabilitySnapshot,
     generated_at: chrono::DateTime<Utc>,
 }
 
@@ -1169,17 +926,8 @@ struct SpacetimeMirrorMetricsSnapshot {
 
 #[derive(Debug, Serialize)]
 struct SpacetimeDeliveryMetricsSnapshot {
-    active_consumers: usize,
-    total_polls: u64,
-    served_messages: u64,
-    max_replay_lag: u64,
-    dropped_messages_total: u64,
-    stale_cursor_events_total: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct FanoutMetricsQuery {
-    topic_limit: Option<usize>,
+    stream_count: usize,
+    event_count: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1577,7 +1325,6 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         uptime_seconds,
         authority_write_mode: state.config.authority_write_mode.as_str().to_string(),
         authority_writer_active: state.config.authority_write_mode.writes_enabled(),
-        fanout_driver: state.fanout.driver_name().to_string(),
         db_configured: state.db.is_some(),
     })
 }
@@ -1608,7 +1355,6 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             projector_ready: runtime_readiness.projector_ready,
             workers_ready,
             authority_writer_active: state.config.authority_write_mode.writes_enabled(),
-            fanout_driver: state.fanout.driver_name().to_string(),
         }),
     )
 }
@@ -1866,468 +1612,9 @@ async fn get_run_replay(
     Ok(([(header::CONTENT_TYPE, "application/x-ndjson")], replay))
 }
 
-async fn get_khala_topic_messages(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-    Path(topic): Path<String>,
-    Query(query): Query<FanoutPollQuery>,
-) -> Result<Json<FanoutPollResponse>, ApiError> {
-    enforce_khala_emergency_mode(&state)?;
-    if topic.trim().is_empty() {
-        return Err(ApiError::InvalidRequest(
-            "topic is required for khala fanout polling".to_string(),
-        ));
-    }
-    enforce_khala_origin_policy(&state, &headers)?;
-    let principal = authorize_khala_topic_access(&state, &headers, &topic).await?;
-    let after_seq = query.after_seq.unwrap_or(0);
-    let requested_limit = query
-        .limit
-        .unwrap_or(state.config.khala_poll_default_limit)
-        .max(1);
-    let principal_key = khala_principal_key(&principal);
-    let active_topic_count = {
-        let prefix = format!("{principal_key}|");
-        let consumers = state.khala_delivery.consumers.lock().await;
-        consumers
-            .keys()
-            .filter(|key| key.starts_with(prefix.as_str()))
-            .count()
-    };
-    let mut limit = requested_limit
-        .min(state.config.khala_poll_max_limit)
-        .min(state.config.khala_outbound_queue_limit);
-    let mut fairness_applied = false;
-    if active_topic_count >= 2 && limit > state.config.khala_fair_topic_slice_limit {
-        limit = state.config.khala_fair_topic_slice_limit;
-        fairness_applied = true;
-        state.khala_delivery.record_fairness_limited();
-    }
-    let limit_capped = requested_limit > limit;
-    if limit_capped {
-        state.khala_delivery.record_limit_capped();
-    }
-    let window = state
-        .fanout
-        .topic_window(&topic)
-        .await
-        .map_err(ApiError::from_fanout)?;
-    let (oldest_available_cursor, head_cursor, queue_depth, dropped_messages) =
-        fanout_window_details(window.as_ref());
-    let consumer_lag = head_cursor.map(|head| head.saturating_sub(after_seq));
-    let consumer_key = khala_consumer_key(&principal, topic.as_str());
-    let now = Utc::now();
-    let jitter_ms = deterministic_jitter_ms(
-        consumer_key.as_str(),
-        after_seq,
-        state.config.khala_reconnect_jitter_ms,
-    );
-    let reconnect_backoff_ms = state
-        .config
-        .khala_reconnect_base_backoff_ms
-        .saturating_add(jitter_ms);
-
-    let slow_consumer_strikes = {
-        let mut consumers = state.khala_delivery.consumers.lock().await;
-        if !consumers.contains_key(&consumer_key)
-            && consumers.len() >= state.config.khala_consumer_registry_capacity
-            && let Some(oldest_key) = consumers
-                .iter()
-                .min_by_key(|(_, value)| value.last_poll_at)
-                .map(|(key, _)| key.clone())
-        {
-            let _ = consumers.remove(&oldest_key);
-        }
-        let consumer_state = consumers.entry(consumer_key.clone()).or_default();
-        if let Some(last_poll_at) = consumer_state.last_poll_at {
-            let elapsed_ms = now
-                .signed_duration_since(last_poll_at)
-                .num_milliseconds()
-                .max(0) as u64;
-            if elapsed_ms < state.config.khala_poll_min_interval_ms {
-                consumer_state.last_poll_at = Some(now);
-                drop(consumers);
-                state.khala_delivery.record_throttled_poll();
-                state
-                    .khala_delivery
-                    .record_disconnect_cause("rate_limited")
-                    .await;
-                let retry_after_ms = state
-                    .config
-                    .khala_poll_min_interval_ms
-                    .saturating_sub(elapsed_ms)
-                    .saturating_add(jitter_ms);
-                return Err(ApiError::RateLimited {
-                    retry_after_ms,
-                    reason_code: "poll_interval_guard".to_string(),
-                });
-            }
-        }
-
-        let lag = consumer_lag.unwrap_or(0);
-        if lag > state.config.khala_slow_consumer_lag_threshold {
-            consumer_state.slow_consumer_strikes =
-                consumer_state.slow_consumer_strikes.saturating_add(1);
-        } else {
-            consumer_state.slow_consumer_strikes = 0;
-        }
-        if consumer_state.slow_consumer_strikes >= state.config.khala_slow_consumer_max_strikes {
-            let strikes = consumer_state.slow_consumer_strikes;
-            let _ = consumers.remove(&consumer_key);
-            drop(consumers);
-            state.khala_delivery.record_slow_consumer_eviction();
-            state
-                .khala_delivery
-                .record_disconnect_cause("slow_consumer_evicted")
-                .await;
-            return Err(ApiError::SlowConsumerEvicted {
-                topic: topic.clone(),
-                lag,
-                lag_threshold: state.config.khala_slow_consumer_lag_threshold,
-                strikes,
-                max_strikes: state.config.khala_slow_consumer_max_strikes,
-                suggested_after_seq: oldest_available_cursor,
-            });
-        }
-
-        consumer_state.last_poll_at = Some(now);
-        consumer_state.slow_consumer_strikes
-    };
-
-    let messages = state
-        .fanout
-        .poll(&topic, after_seq, limit)
-        .await
-        .map_err(ApiError::from_fanout)?;
-    state.khala_delivery.record_total_poll(messages.len());
-    let next_cursor = messages
-        .last()
-        .map_or(after_seq, |message| message.sequence);
-    {
-        let mut consumers = state.khala_delivery.consumers.lock().await;
-        if let Some(consumer_state) = consumers.get_mut(&consumer_key) {
-            consumer_state.last_cursor = next_cursor;
-            consumer_state.last_poll_at = Some(now);
-        }
-    }
-    let replay_complete = head_cursor.map_or(true, |head| next_cursor >= head);
-    Ok(Json(FanoutPollResponse {
-        topic,
-        driver: state.fanout.driver_name().to_string(),
-        messages,
-        oldest_available_cursor,
-        head_cursor,
-        queue_depth,
-        dropped_messages,
-        next_cursor,
-        replay_complete,
-        limit_applied: limit,
-        limit_capped,
-        fairness_applied,
-        active_topic_count,
-        outbound_queue_limit: state.config.khala_outbound_queue_limit,
-        consumer_lag,
-        slow_consumer_strikes,
-        slow_consumer_max_strikes: state.config.khala_slow_consumer_max_strikes,
-        recommended_reconnect_backoff_ms: reconnect_backoff_ms,
-    }))
-}
-
-async fn get_khala_topic_ws(
-    headers: HeaderMap,
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-    Path(topic): Path<String>,
-    Query(query): Query<FanoutPollQuery>,
-) -> Result<impl IntoResponse, ApiError> {
-    enforce_khala_emergency_mode(&state)?;
-    if topic.trim().is_empty() {
-        return Err(ApiError::InvalidRequest(
-            "topic is required for khala websocket".to_string(),
-        ));
-    }
-    enforce_khala_origin_policy(&state, &headers)?;
-    let principal = authorize_khala_topic_access(&state, &headers, &topic).await?;
-    let after_seq = query.after_seq.unwrap_or(0);
-    let requested_limit = query
-        .limit
-        .unwrap_or(state.config.khala_poll_default_limit)
-        .max(1);
-
-    let state_for_socket = state.clone();
-    let topic_for_socket = topic.clone();
-    Ok(ws.on_upgrade(move |socket| {
-        khala_ws_stream(
-            state_for_socket,
-            socket,
-            principal,
-            topic_for_socket,
-            after_seq,
-            requested_limit,
-        )
-    }))
-}
-
-async fn khala_ws_stream(
-    state: AppState,
-    mut socket: WebSocket,
-    principal: SyncPrincipal,
-    topic: String,
-    mut after_seq: u64,
-    requested_limit: usize,
-) {
-    let principal_key = khala_principal_key(&principal);
-    let consumer_key = khala_consumer_key(&principal, topic.as_str());
-    {
-        let mut consumers = state.khala_delivery.consumers.lock().await;
-        if !consumers.contains_key(&consumer_key)
-            && consumers.len() >= state.config.khala_consumer_registry_capacity
-            && let Some(oldest_key) = consumers
-                .iter()
-                .min_by_key(|(_, value)| value.last_poll_at)
-                .map(|(key, _)| key.clone())
-        {
-            let _ = consumers.remove(&oldest_key);
-        }
-        consumers.entry(consumer_key.clone()).or_default();
-    }
-
-    let jitter_ms = deterministic_jitter_ms(
-        consumer_key.as_str(),
-        after_seq,
-        state.config.khala_reconnect_jitter_ms,
-    );
-    let reconnect_backoff_ms = state
-        .config
-        .khala_reconnect_base_backoff_ms
-        .saturating_add(jitter_ms);
-
-    let hello = KhalaWsFrame::Hello {
-        topic: topic.clone(),
-        after_seq,
-        limit: requested_limit,
-        recommended_reconnect_backoff_ms: reconnect_backoff_ms,
-    };
-    if let Ok(payload) = serde_json::to_string(&hello) {
-        let _ = socket.send(Message::Text(payload)).await;
-    }
-
-    let mut slow_consumer_strikes = 0u32;
-    let mut last_head_cursor = None::<u64>;
-
-    loop {
-        let active_topic_count = {
-            let prefix = format!("{principal_key}|");
-            let consumers = state.khala_delivery.consumers.lock().await;
-            consumers
-                .keys()
-                .filter(|key| key.starts_with(prefix.as_str()))
-                .count()
-        };
-
-        let mut limit = requested_limit
-            .min(state.config.khala_poll_max_limit)
-            .min(state.config.khala_outbound_queue_limit);
-        if active_topic_count >= 2 && limit > state.config.khala_fair_topic_slice_limit {
-            limit = state.config.khala_fair_topic_slice_limit;
-            state.khala_delivery.record_fairness_limited();
-        }
-
-        let window = state.fanout.topic_window(&topic).await.ok().flatten();
-        let (_oldest_available_cursor, head_cursor, _queue_depth, _dropped_messages) =
-            fanout_window_details(window.as_ref());
-        if head_cursor != last_head_cursor {
-            last_head_cursor = head_cursor;
-        }
-        let consumer_lag = head_cursor.map(|head| head.saturating_sub(after_seq));
-
-        if consumer_lag.unwrap_or(0) > state.config.khala_slow_consumer_lag_threshold {
-            slow_consumer_strikes = slow_consumer_strikes.saturating_add(1);
-        } else {
-            slow_consumer_strikes = 0;
-        }
-        if slow_consumer_strikes >= state.config.khala_slow_consumer_max_strikes {
-            state.khala_delivery.record_slow_consumer_eviction();
-            state
-                .khala_delivery
-                .record_disconnect_cause("slow_consumer_evicted")
-                .await;
-            let frame = KhalaWsFrame::Error {
-                code: "slow_consumer_evicted".to_string(),
-                message: format!(
-                    "topic={} lag={} threshold={} strikes={} max_strikes={}",
-                    topic,
-                    consumer_lag.unwrap_or(0),
-                    state.config.khala_slow_consumer_lag_threshold,
-                    slow_consumer_strikes,
-                    state.config.khala_slow_consumer_max_strikes
-                ),
-            };
-            if let Ok(payload) = serde_json::to_string(&frame) {
-                let _ = socket.send(Message::Text(payload)).await;
-            }
-            break;
-        }
-
-        match state.fanout.poll(&topic, after_seq, limit).await {
-            Ok(messages) => {
-                state.khala_delivery.record_total_poll(messages.len());
-                let next_cursor = messages
-                    .last()
-                    .map_or(after_seq, |message| message.sequence);
-                {
-                    let mut consumers = state.khala_delivery.consumers.lock().await;
-                    if let Some(consumer_state) = consumers.get_mut(&consumer_key) {
-                        consumer_state.last_cursor = next_cursor;
-                        consumer_state.last_poll_at = Some(Utc::now());
-                    }
-                }
-                after_seq = next_cursor;
-
-                for message in messages {
-                    let frame = KhalaWsFrame::Message { message };
-                    let Ok(payload) = serde_json::to_string(&frame) else {
-                        continue;
-                    };
-                    if socket.send(Message::Text(payload)).await.is_err() {
-                        state
-                            .khala_delivery
-                            .record_disconnect_cause("send_failed")
-                            .await;
-                        break;
-                    }
-                }
-            }
-            Err(FanoutError::StaleCursor {
-                topic: stale_topic,
-                requested_cursor,
-                oldest_available_cursor,
-                head_cursor,
-                reason_codes,
-                replay_lag,
-                replay_budget_events,
-                qos_tier,
-            }) => {
-                state
-                    .khala_delivery
-                    .record_disconnect_cause("stale_cursor")
-                    .await;
-                let frame = KhalaWsFrame::StaleCursor {
-                    topic: stale_topic,
-                    requested_cursor,
-                    oldest_available_cursor,
-                    head_cursor,
-                    reason_codes,
-                    replay_lag,
-                    replay_budget_events,
-                    qos_tier,
-                };
-                if let Ok(payload) = serde_json::to_string(&frame) {
-                    let _ = socket.send(Message::Text(payload)).await;
-                }
-                break;
-            }
-            Err(error) => {
-                state
-                    .khala_delivery
-                    .record_disconnect_cause("fanout_error")
-                    .await;
-                let frame = KhalaWsFrame::Error {
-                    code: "fanout_error".to_string(),
-                    message: error.to_string(),
-                };
-                if let Ok(payload) = serde_json::to_string(&frame) {
-                    let _ = socket.send(Message::Text(payload)).await;
-                }
-                break;
-            }
-        }
-
-        tokio::select! {
-            biased;
-            next = socket.next() => {
-                match next {
-                    Some(Ok(Message::Close(_))) | None => break,
-                    Some(Ok(Message::Ping(payload))) => {
-                        let _ = socket.send(Message::Pong(payload)).await;
-                    }
-                    Some(Ok(_)) => {}
-                    Some(Err(_)) => break,
-                }
-            }
-            _ = tokio::time::sleep(Duration::from_millis(25)) => {}
-        }
-    }
-
-    let mut consumers = state.khala_delivery.consumers.lock().await;
-    consumers.remove(&consumer_key);
-}
-
-async fn get_khala_fanout_hooks(
-    State(state): State<AppState>,
-) -> Result<Json<FanoutHooksResponse>, ApiError> {
-    enforce_khala_emergency_mode(&state)?;
-    let delivery_metrics = state.khala_delivery.snapshot().await;
-    let topic_windows = state
-        .fanout
-        .topic_windows(20)
-        .await
-        .map_err(ApiError::from_fanout)?;
-    Ok(Json(FanoutHooksResponse {
-        driver: state.fanout.driver_name().to_string(),
-        hooks: state.fanout.external_hooks(),
-        delivery_metrics,
-        topic_windows,
-    }))
-}
-
-async fn get_khala_fanout_metrics(
-    State(state): State<AppState>,
-    Query(query): Query<FanoutMetricsQuery>,
-) -> Result<Json<FanoutMetricsResponse>, ApiError> {
-    enforce_khala_emergency_mode(&state)?;
-    let delivery_metrics = state.khala_delivery.snapshot().await;
-    let topic_windows = state
-        .fanout
-        .topic_windows(query.topic_limit.unwrap_or(20))
-        .await
-        .map_err(ApiError::from_fanout)?;
-    Ok(Json(FanoutMetricsResponse {
-        driver: state.fanout.driver_name().to_string(),
-        delivery_metrics,
-        topic_windows,
-    }))
-}
-
 async fn get_spacetime_sync_observability(
     State(state): State<AppState>,
 ) -> Result<Json<SpacetimeSyncObservabilityResponse>, ApiError> {
-    let delivery_metrics = state.khala_delivery.snapshot().await;
-    let topic_windows = state
-        .fanout
-        .topic_windows(200)
-        .await
-        .map_err(ApiError::from_fanout)?;
-    let max_replay_lag = topic_windows
-        .iter()
-        .map(|window| {
-            window
-                .head_sequence
-                .saturating_sub(window.oldest_sequence.saturating_sub(1))
-        })
-        .max()
-        .unwrap_or(0);
-    let dropped_messages_total = topic_windows
-        .iter()
-        .map(|window| window.dropped_messages)
-        .sum();
-    let stale_cursor_events_total = topic_windows
-        .iter()
-        .map(|window| {
-            window.stale_cursor_budget_exceeded_count + window.stale_cursor_retention_floor_count
-        })
-        .sum();
-
     let mirror_metrics: SpacetimePublisherMetrics = state.spacetime_publisher.metrics().await;
     let duplicate_suppression_rate_pct = if mirror_metrics.published == 0 {
         0.0
@@ -2337,7 +1624,6 @@ async fn get_spacetime_sync_observability(
 
     Ok(Json(SpacetimeSyncObservabilityResponse {
         transport: "spacetime_ws",
-        khala_emergency_mode_enabled: state.config.khala_emergency_mode_enabled,
         mirror: SpacetimeMirrorMetricsSnapshot {
             published_total: mirror_metrics.published,
             duplicate_suppressed_total: mirror_metrics.duplicates,
@@ -2345,139 +1631,11 @@ async fn get_spacetime_sync_observability(
             duplicate_suppression_rate_pct,
         },
         delivery: SpacetimeDeliveryMetricsSnapshot {
-            active_consumers: delivery_metrics.active_consumers,
-            total_polls: delivery_metrics.total_polls,
-            served_messages: delivery_metrics.served_messages,
-            max_replay_lag,
-            dropped_messages_total,
-            stale_cursor_events_total,
+            stream_count: mirror_metrics.stream_count as usize,
+            event_count: mirror_metrics.event_count,
         },
-        auth_failures: state.sync_auth_observability.snapshot(),
         generated_at: Utc::now(),
     }))
-}
-
-fn enforce_khala_emergency_mode(state: &AppState) -> Result<(), ApiError> {
-    if state.config.khala_emergency_mode_enabled {
-        return Ok(());
-    }
-    Err(ApiError::KhalaEmergencyModeDisabled(
-        "khala endpoints are disabled; enable RUNTIME_KHALA_EMERGENCY_MODE_ENABLED=1 only for emergency fallback".to_string(),
-    ))
-}
-
-fn enforce_khala_origin_policy(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
-    if !state.config.khala_enforce_origin {
-        return Ok(());
-    }
-    let Some(origin_header) = headers.get(header::ORIGIN) else {
-        return Ok(());
-    };
-    let origin = origin_header
-        .to_str()
-        .unwrap_or_default()
-        .trim()
-        .trim_end_matches('/')
-        .to_ascii_lowercase();
-    if origin.is_empty() {
-        return Ok(());
-    }
-    if state.config.khala_allowed_origins.contains(&origin) {
-        return Ok(());
-    }
-
-    tracing::warn!(
-        origin = %origin,
-        allowed = ?state.config.khala_allowed_origins,
-        "khala origin denied by policy"
-    );
-    Err(ApiError::KhalaOriginDenied(
-        "origin_not_allowed".to_string(),
-    ))
-}
-
-async fn authorize_khala_topic_access(
-    state: &AppState,
-    headers: &HeaderMap,
-    topic: &str,
-) -> Result<SyncPrincipal, ApiError> {
-    let authorization_header = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok());
-    let token = SyncAuthorizer::extract_bearer_token(authorization_header).map_err(|error| {
-        tracing::warn!(
-            topic,
-            reason_code = error.code(),
-            "sync auth denied while extracting token"
-        );
-        state.sync_auth_observability.record(&error);
-        ApiError::from_sync_auth(error)
-    })?;
-    let principal = state.sync_auth.authenticate(token).map_err(|error| {
-        tracing::warn!(
-            topic,
-            reason_code = error.code(),
-            "sync auth denied while validating token"
-        );
-        state.sync_auth_observability.record(&error);
-        ApiError::from_sync_auth(error)
-    })?;
-    let authorized_topic = state
-        .sync_auth
-        .authorize_topic(&principal, topic)
-        .map_err(|error| {
-            tracing::warn!(
-                topic,
-                reason_code = error.code(),
-                "sync auth denied by topic authorization policy"
-            );
-            state.sync_auth_observability.record(&error);
-            ApiError::from_sync_auth(error)
-        })?;
-
-    match authorized_topic {
-        AuthorizedKhalaTopic::WorkerLifecycle { worker_id } => {
-            let owner = WorkerOwner {
-                user_id: principal.user_id,
-                guest_scope: if principal.user_id.is_some() {
-                    None
-                } else {
-                    principal.org_id.clone()
-                },
-            };
-            match state.workers.get_worker(&worker_id, &owner).await {
-                Ok(_) => {}
-                Err(WorkerError::NotFound(_)) | Err(WorkerError::Forbidden(_)) => {
-                    tracing::warn!(
-                        topic,
-                        worker_id,
-                        user_id = principal.user_id,
-                        org_id = ?principal.org_id,
-                        device_id = ?principal.device_id,
-                        "khala auth denied: worker owner mismatch"
-                    );
-                    return Err(ApiError::KhalaForbiddenTopic("owner_mismatch".to_string()));
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        topic,
-                        worker_id,
-                        user_id = principal.user_id,
-                        org_id = ?principal.org_id,
-                        device_id = ?principal.device_id,
-                        reason = %error,
-                        "khala auth denied while validating worker ownership"
-                    );
-                    return Err(ApiError::KhalaForbiddenTopic(error.to_string()));
-                }
-            }
-        }
-        AuthorizedKhalaTopic::FleetWorkers { .. }
-        | AuthorizedKhalaTopic::RunEvents { .. }
-        | AuthorizedKhalaTopic::CodexWorkerEvents => {}
-    }
-
-    Ok(principal)
 }
 
 async fn get_run_checkpoint(
@@ -6347,45 +5505,9 @@ enum ApiError {
     NotFound,
     Forbidden(String),
     Conflict(String),
-    KhalaUnauthorized(String),
-    KhalaForbiddenTopic(String),
-    KhalaEmergencyModeDisabled(String),
-    KhalaOriginDenied(String),
-    PublishRateLimited {
-        retry_after_ms: u64,
-        reason_code: String,
-        topic: String,
-        topic_class: String,
-        max_publish_per_second: u32,
-    },
-    PayloadTooLarge {
-        reason_code: String,
-        topic: String,
-        topic_class: String,
-        payload_bytes: usize,
-        max_payload_bytes: usize,
-    },
     RateLimited {
         retry_after_ms: u64,
         reason_code: String,
-    },
-    SlowConsumerEvicted {
-        topic: String,
-        lag: u64,
-        lag_threshold: u64,
-        strikes: u32,
-        max_strikes: u32,
-        suggested_after_seq: Option<u64>,
-    },
-    StaleCursor {
-        topic: String,
-        requested_cursor: u64,
-        oldest_available_cursor: u64,
-        head_cursor: u64,
-        reason_codes: Vec<String>,
-        replay_lag: u64,
-        replay_budget_events: u64,
-        qos_tier: String,
     },
     WritePathFrozen(String),
     DependencyUnavailable(String),
@@ -6449,92 +5571,8 @@ impl ApiError {
         Self::Internal(error.to_string())
     }
 
-    fn from_fanout(error: FanoutError) -> Self {
-        match error {
-            FanoutError::InvalidTopic => {
-                Self::InvalidRequest("topic is required for khala fanout operations".to_string())
-            }
-            FanoutError::StaleCursor {
-                topic,
-                requested_cursor,
-                oldest_available_cursor,
-                head_cursor,
-                reason_codes,
-                replay_lag,
-                replay_budget_events,
-                qos_tier,
-            } => Self::StaleCursor {
-                topic,
-                requested_cursor,
-                oldest_available_cursor,
-                head_cursor,
-                reason_codes,
-                replay_lag,
-                replay_budget_events,
-                qos_tier,
-            },
-            FanoutError::PublishRateLimited {
-                topic,
-                topic_class,
-                reason_code,
-                max_publish_per_second,
-                retry_after_ms,
-            } => {
-                tracing::warn!(
-                    topic,
-                    topic_class,
-                    reason_code,
-                    max_publish_per_second,
-                    retry_after_ms,
-                    "khala publish rate limit triggered"
-                );
-                Self::PublishRateLimited {
-                    retry_after_ms,
-                    reason_code,
-                    topic,
-                    topic_class,
-                    max_publish_per_second,
-                }
-            }
-            FanoutError::FramePayloadTooLarge {
-                topic,
-                topic_class,
-                reason_code,
-                payload_bytes,
-                max_payload_bytes,
-            } => {
-                tracing::warn!(
-                    topic,
-                    topic_class,
-                    reason_code,
-                    payload_bytes,
-                    max_payload_bytes,
-                    "khala publish payload exceeds frame-size limit"
-                );
-                Self::PayloadTooLarge {
-                    reason_code,
-                    topic,
-                    topic_class,
-                    payload_bytes,
-                    max_payload_bytes,
-                }
-            }
-            FanoutError::MirrorFailed { backend, reason } => {
-                tracing::warn!(backend, reason, "spacetime mirror publish failed");
-                Self::Internal(format!("fanout mirror {backend} publish failed: {reason}"))
-            }
-        }
-    }
-
-    fn from_sync_auth(error: SyncAuthError) -> Self {
-        let code = error.code();
-        if error.is_unauthorized() {
-            tracing::warn!(reason_code = code, reason = %error, "khala auth denied");
-            Self::KhalaUnauthorized(code.to_string())
-        } else {
-            tracing::warn!(reason_code = code, reason = %error, "khala topic denied");
-            Self::KhalaForbiddenTopic(code.to_string())
-        }
+    fn from_spacetime_publish(reason: String) -> Self {
+        Self::Internal(format!("spacetime publish failed: {reason}"))
     }
 }
 
@@ -7102,17 +6140,14 @@ async fn record_fraud_incident(state: &AppState, incident: crate::fraud::FraudIn
         .unwrap_or_else(|_| serde_json::json!({"error": "incident_serialization_failed"}));
 
     if let Err(error) = state
-        .fanout
-        .publish(
-            topic,
-            FanoutMessage {
-                topic: topic.to_string(),
-                sequence: seq,
-                kind: incident.incident_type.clone(),
-                payload,
-                published_at: Utc::now(),
-            },
-        )
+        .spacetime_publisher
+        .publish(&RuntimeSyncMessage {
+            topic: topic.to_string(),
+            sequence: seq,
+            kind: incident.incident_type.clone(),
+            payload,
+            published_at: Utc::now(),
+        })
         .await
     {
         tracing::warn!(reason = %error, "fraud incident publish failed");
@@ -7127,19 +6162,16 @@ async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<
     };
     let topic = format!("run:{}:events", run.id);
     state
-        .fanout
-        .publish(
-            &topic,
-            FanoutMessage {
-                topic: topic.clone(),
-                sequence: event.seq,
-                kind: event.event_type.clone(),
-                payload: event.payload.clone(),
-                published_at: Utc::now(),
-            },
-        )
+        .spacetime_publisher
+        .publish(&RuntimeSyncMessage {
+            topic: topic.clone(),
+            sequence: event.seq,
+            kind: event.event_type.clone(),
+            payload: event.payload.clone(),
+            published_at: Utc::now(),
+        })
         .await
-        .map_err(ApiError::from_fanout)
+        .map_err(ApiError::from_spacetime_publish)
 }
 
 async fn publish_worker_snapshot(
@@ -7196,19 +6228,16 @@ async fn publish_worker_snapshot(
 
     let topic = format!("worker:{}:lifecycle", snapshot.worker.worker_id);
     state
-        .fanout
-        .publish(
-            &topic,
-            FanoutMessage {
-                topic: topic.clone(),
-                sequence: snapshot.worker.latest_seq,
-                kind: snapshot.worker.status.as_event_label().to_string(),
-                payload: payload.clone(),
-                published_at: Utc::now(),
-            },
-        )
+        .spacetime_publisher
+        .publish(&RuntimeSyncMessage {
+            topic: topic.clone(),
+            sequence: snapshot.worker.latest_seq,
+            kind: snapshot.worker.status.as_event_label().to_string(),
+            payload: payload.clone(),
+            published_at: Utc::now(),
+        })
         .await
-        .map_err(ApiError::from_fanout)?;
+        .map_err(ApiError::from_spacetime_publish)?;
 
     if let Some(user_id) = snapshot.worker.owner.user_id {
         let fleet_topic = format!("fleet:user:{user_id}:workers");
@@ -7217,19 +6246,16 @@ async fn publish_worker_snapshot(
             .fetch_add(1, Ordering::Relaxed)
             .saturating_add(1);
         state
-            .fanout
-            .publish(
-                &fleet_topic,
-                FanoutMessage {
-                    topic: fleet_topic.clone(),
-                    sequence: fleet_seq,
-                    kind: snapshot.worker.status.as_event_label().to_string(),
-                    payload,
-                    published_at: Utc::now(),
-                },
-            )
+            .spacetime_publisher
+            .publish(&RuntimeSyncMessage {
+                topic: fleet_topic.clone(),
+                sequence: fleet_seq,
+                kind: snapshot.worker.status.as_event_label().to_string(),
+                payload,
+                published_at: Utc::now(),
+            })
             .await
-            .map_err(ApiError::from_fanout)?;
+            .map_err(ApiError::from_spacetime_publish)?;
     }
 
     Ok(())
@@ -7585,80 +6611,6 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
-            Self::KhalaUnauthorized(reason_code) => (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({
-                    "error": "unauthorized",
-                    "message": "khala sync authorization failed",
-                    "reason_code": reason_code,
-                })),
-            )
-                .into_response(),
-            Self::KhalaForbiddenTopic(reason_code) => (
-                StatusCode::FORBIDDEN,
-                Json(serde_json::json!({
-                    "error": "forbidden_topic",
-                    "message": "topic subscription is not authorized",
-                    "reason_code": reason_code,
-                })),
-            )
-                .into_response(),
-            Self::KhalaEmergencyModeDisabled(message) => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({
-                    "error": "khala_emergency_mode_disabled",
-                    "message": message,
-                    "recovery": "use_spacetime_default_or_enable_emergency_mode_explicitly",
-                })),
-            )
-                .into_response(),
-            Self::KhalaOriginDenied(reason_code) => (
-                StatusCode::FORBIDDEN,
-                Json(serde_json::json!({
-                    "error": "forbidden_origin",
-                    "message": "origin is not allowed for khala access",
-                    "reason_code": reason_code,
-                })),
-            )
-                .into_response(),
-            Self::PublishRateLimited {
-                retry_after_ms,
-                reason_code,
-                topic,
-                topic_class,
-                max_publish_per_second,
-            } => (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(serde_json::json!({
-                    "error": "rate_limited",
-                    "message": "khala publish rate limit exceeded",
-                    "reason_code": reason_code,
-                    "retry_after_ms": retry_after_ms,
-                    "topic": topic,
-                    "topic_class": topic_class,
-                    "max_publish_per_second": max_publish_per_second,
-                })),
-            )
-                .into_response(),
-            Self::PayloadTooLarge {
-                reason_code,
-                topic,
-                topic_class,
-                payload_bytes,
-                max_payload_bytes,
-            } => (
-                StatusCode::PAYLOAD_TOO_LARGE,
-                Json(serde_json::json!({
-                    "error": "payload_too_large",
-                    "message": "khala frame payload exceeds configured limit",
-                    "reason_code": reason_code,
-                    "topic": topic,
-                    "topic_class": topic_class,
-                    "payload_bytes": payload_bytes,
-                    "max_payload_bytes": max_payload_bytes,
-                })),
-            )
-                .into_response(),
             Self::RateLimited {
                 retry_after_ms,
                 reason_code,
@@ -7672,64 +6624,11 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
-            Self::SlowConsumerEvicted {
-                topic,
-                lag,
-                lag_threshold,
-                strikes,
-                max_strikes,
-                suggested_after_seq,
-            } => (
-                StatusCode::CONFLICT,
-                Json(serde_json::json!({
-                    "error": "slow_consumer_evicted",
-                    "message": "consumer lag exceeded threshold repeatedly",
-                    "reason_code": "slow_consumer_evicted",
-                    "details": {
-                        "topic": topic,
-                        "lag": lag,
-                        "lag_threshold": lag_threshold,
-                        "strikes": strikes,
-                        "max_strikes": max_strikes,
-                        "suggested_after_seq": suggested_after_seq,
-                        "recovery": "advance_cursor_or_rebootstrap"
-                    }
-                })),
-            )
-                .into_response(),
             Self::Conflict(message) => (
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({
                     "error": "conflict",
                     "message": message,
-                })),
-            )
-                .into_response(),
-            Self::StaleCursor {
-                topic,
-                requested_cursor,
-                oldest_available_cursor,
-                head_cursor,
-                reason_codes,
-                replay_lag,
-                replay_budget_events,
-                qos_tier,
-            } => (
-                StatusCode::GONE,
-                Json(serde_json::json!({
-                    "error": "stale_cursor",
-                    "message": "cursor cannot be resumed from retained stream window",
-                    "details": {
-                        "topic": topic,
-                        "requested_cursor": requested_cursor,
-                        "oldest_available_cursor": oldest_available_cursor,
-                        "head_cursor": head_cursor,
-                        "reason_codes": reason_codes,
-                        "replay_lag": replay_lag,
-                        "replay_budget_events": replay_budget_events,
-                        "qos_tier": qos_tier,
-                        "recovery": "reset_local_watermark_and_replay_bootstrap"
-                    },
                 })),
             )
                 .into_response(),
