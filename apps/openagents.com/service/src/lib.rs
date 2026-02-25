@@ -2526,12 +2526,12 @@ async fn smoke_stream(
 
     let mut response = ok_data(serde_json::json!({
         "status": "ok",
-        "stream_protocol": "khala_ws",
+        "stream_protocol": "spacetime_ws",
         "delivery": {
-            "transport": "khala_ws",
+            "transport": "spacetime_ws",
             "topic": "runtime.codex_worker_events",
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
             "sseEnabled": false,
         },
         "event_contract": {
@@ -4920,7 +4920,7 @@ async fn autopilot_stream(
                     .unwrap_or(false)
                     .to_string(),
             )
-            .with_attribute("transport", "khala_ws".to_string()),
+            .with_attribute("transport", "spacetime_ws".to_string()),
     );
     state
         .observability
@@ -4937,10 +4937,10 @@ async fn autopilot_stream(
         "toolPolicy": tool_policy_audit,
         "runtimeBinding": runtime_binding_payload,
         "delivery": {
-            "transport": "khala_ws",
+            "transport": "spacetime_ws",
             "topic": worker_events_topic,
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
         },
         "control": {
             "method": "turn/start",
@@ -9660,10 +9660,7 @@ fn json_first_u64(payload: &serde_json::Value, paths: &[&str]) -> Option<u64> {
         if let Some(value) = current.as_u64() {
             return Some(value);
         }
-        if let Some(value) = current
-            .as_i64()
-            .and_then(|value| u64::try_from(value).ok())
-        {
+        if let Some(value) = current.as_i64().and_then(|value| u64::try_from(value).ok()) {
             return Some(value);
         }
         if let Some(value) = current
@@ -9735,8 +9732,8 @@ fn env_bool(key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
-fn agent_wallet_executor_api_config(
-) -> Result<AgentWalletExecutorConfig, (StatusCode, Json<ApiErrorResponse>)> {
+fn agent_wallet_executor_api_config()
+-> Result<AgentWalletExecutorConfig, (StatusCode, Json<ApiErrorResponse>)> {
     let base_url = env_non_empty_any(&[
         "SPARK_EXECUTOR_BASE_URL",
         "OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL",
@@ -9849,12 +9846,7 @@ async fn agent_wallet_executor_request_json(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| {
-                format!(
-                    "Wallet executor returned HTTP {}",
-                    status.as_u16()
-                )
-            });
+            .unwrap_or_else(|| format!("Wallet executor returned HTTP {}", status.as_u16()));
         return Err(error_response_with_status(
             if status.is_client_error() || status.is_server_error() {
                 status
@@ -9937,8 +9929,8 @@ async fn agent_payments_send_spark(
     )
     .await?;
     let payment_id = json_first_string(&executor_result, &["paymentId"]);
-    let status = json_first_string(&executor_result, &["status"])
-        .unwrap_or_else(|| "completed".to_string());
+    let status =
+        json_first_string(&executor_result, &["status"]).unwrap_or_else(|| "completed".to_string());
 
     state.observability.audit(
         AuditEvent::new("agent_payments.spark_sent", request_id.clone())
@@ -9981,8 +9973,8 @@ async fn upsert_agent_wallet_for_user(
         .as_ref()
         .map(|wallet| wallet.wallet_id.clone())
         .unwrap_or_else(|| format!("wallet_{}", Uuid::new_v4().simple()));
-    let mnemonic = mnemonic_override
-        .or_else(|| existing.as_ref().map(|wallet| wallet.mnemonic.clone()));
+    let mnemonic =
+        mnemonic_override.or_else(|| existing.as_ref().map(|wallet| wallet.mnemonic.clone()));
 
     let mut payload = serde_json::json!({
         "walletId": wallet_id.clone(),
@@ -10001,12 +9993,22 @@ async fn upsert_agent_wallet_for_user(
                 "wallet executor response did not include mnemonic".to_string(),
             )
         })?;
-    let spark_address = json_first_string(&executor_result, &["sparkAddress"])
-        .or_else(|| existing.as_ref().and_then(|wallet| wallet.spark_address.clone()));
-    let lightning_address = json_first_string(&executor_result, &["lightningAddress"])
-        .or_else(|| existing.as_ref().and_then(|wallet| wallet.lightning_address.clone()));
-    let identity_pubkey = json_first_string(&executor_result, &["identityPubkey"])
-        .or_else(|| existing.as_ref().and_then(|wallet| wallet.identity_pubkey.clone()));
+    let spark_address = json_first_string(&executor_result, &["sparkAddress"]).or_else(|| {
+        existing
+            .as_ref()
+            .and_then(|wallet| wallet.spark_address.clone())
+    });
+    let lightning_address =
+        json_first_string(&executor_result, &["lightningAddress"]).or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|wallet| wallet.lightning_address.clone())
+        });
+    let identity_pubkey = json_first_string(&executor_result, &["identityPubkey"]).or_else(|| {
+        existing
+            .as_ref()
+            .and_then(|wallet| wallet.identity_pubkey.clone())
+    });
     let last_balance_sats = json_first_u64(&executor_result, &["balanceSats"]).or_else(|| {
         existing
             .as_ref()
@@ -10083,19 +10085,15 @@ async fn sync_agent_wallet(
         .upsert_user_spark_wallet(UpsertUserSparkWalletInput {
             user_id,
             wallet_id: wallet_id.clone(),
-            mnemonic: json_first_string(&executor_result, &["mnemonic"])
-                .unwrap_or(mnemonic),
-            spark_address: json_first_string(&executor_result, &["sparkAddress"])
-                .or(spark_address),
+            mnemonic: json_first_string(&executor_result, &["mnemonic"]).unwrap_or(mnemonic),
+            spark_address: json_first_string(&executor_result, &["sparkAddress"]).or(spark_address),
             lightning_address: json_first_string(&executor_result, &["lightningAddress"])
                 .or(lightning_address),
             identity_pubkey: json_first_string(&executor_result, &["identityPubkey"])
                 .or(identity_pubkey),
             last_balance_sats: json_first_u64(&executor_result, &["balanceSats"])
                 .or(last_balance_sats),
-            status: Some(
-                json_first_string(&executor_result, &["status"]).unwrap_or(status),
-            ),
+            status: Some(json_first_string(&executor_result, &["status"]).unwrap_or(status)),
             provider: Some(provider),
             last_error,
             meta,
@@ -14006,14 +14004,14 @@ async fn runtime_codex_worker_stream(
 
     Ok(ok_data(serde_json::json!({
         "worker_id": normalized_worker_id,
-        "stream_protocol": "khala_ws",
+        "stream_protocol": "spacetime_ws",
         "cursor": cursor,
         "tail_ms": query.tail_ms.unwrap_or(15_000),
         "delivery": {
-            "transport": "khala_ws",
+            "transport": "spacetime_ws",
             "topic": org_worker_events_topic(&bundle.session.active_org_id),
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SYNC_TOKEN,
+            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
         },
         "snapshot": runtime_worker_snapshot_payload(&worker, now),
         "events": events,
@@ -14658,6 +14656,12 @@ async fn control_status(
             "routeSplit": route_split_status,
             "runtimeRouting": runtime_routing_status,
             "runtimeRouteOwnership": runtime_route_ownership(),
+            "syncCutover": {
+                "defaultTransport": "spacetime_ws",
+                "khalaEmergencyModeEnabled": state.config.khala_token_enabled,
+                "khalaTokenRoute": ROUTE_KHALA_TOKEN,
+                "spacetimeTokenRoute": ROUTE_SPACETIME_TOKEN,
+            }
         }
     });
 
@@ -15805,8 +15809,9 @@ fn parse_l402_tool_invocation(
             "The request.url field is required for lightning_l402_fetch.",
         )
     })?;
-    let parsed_url = reqwest::Url::parse(&url)
-        .map_err(|_| validation_error("request.url", "The request.url field must be a valid URL."))?;
+    let parsed_url = reqwest::Url::parse(&url).map_err(|_| {
+        validation_error("request.url", "The request.url field must be a valid URL.")
+    })?;
     if !matches!(parsed_url.scheme(), "http" | "https") {
         return Err(validation_error(
             "request.url",
@@ -15894,7 +15899,9 @@ fn l402_bool_from_value(value: &serde_json::Value) -> Option<bool> {
     })
 }
 
-fn l402_validate_headers(value: &serde_json::Value) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+fn l402_validate_headers(
+    value: &serde_json::Value,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
     let Some(object) = value.as_object() else {
         return Err(validation_error(
             "request.headers",
@@ -15966,8 +15973,8 @@ fn parse_l402_tool_policy(policy: &serde_json::Value) -> L402ToolPolicy {
             .unwrap_or_default();
     }
 
-    let credential_ttl_seconds = env_u64("L402_CREDENTIAL_TTL_SECONDS", 600)
-        .clamp(30, 86_400) as i64;
+    let credential_ttl_seconds =
+        env_u64("L402_CREDENTIAL_TTL_SECONDS", 600).clamp(30, 86_400) as i64;
 
     L402ToolPolicy {
         require_approval,
@@ -15995,10 +16002,7 @@ fn l402_host_is_allowed(host: &str, allowed_hosts: &[String]) -> bool {
     })
 }
 
-fn l402_scope_from_request(
-    invocation: &L402ToolInvocation,
-    parsed_url: &reqwest::Url,
-) -> String {
+fn l402_scope_from_request(invocation: &L402ToolInvocation, parsed_url: &reqwest::Url) -> String {
     if let Some(scope) = invocation.scope.as_ref().map(|value| value.trim()) {
         if !scope.is_empty() {
             return scope.to_ascii_lowercase();
@@ -16051,7 +16055,10 @@ async fn execute_l402_http_request(
     })?;
     let mut request = client.request(method, &url);
 
-    if let Some(headers) = invocation.request_headers.as_ref().and_then(serde_json::Value::as_object)
+    if let Some(headers) = invocation
+        .request_headers
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
     {
         for (key, value) in headers {
             let name = key.trim();
@@ -16062,7 +16069,10 @@ async fn execute_l402_http_request(
                 continue;
             }
             let lower_name = name.to_ascii_lowercase();
-            if matches!(lower_name.as_str(), "authorization" | "host" | "content-length") {
+            if matches!(
+                lower_name.as_str(),
+                "authorization" | "host" | "content-length"
+            ) {
                 continue;
             }
             request = request.header(name, text);
@@ -16407,9 +16417,7 @@ async fn execute_l402_tool(
                         .get("cacheStatus")
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string),
-                    amount_msats: payload
-                        .get("amountMsats")
-                        .and_then(positive_u64_from_value),
+                    amount_msats: payload.get("amountMsats").and_then(positive_u64_from_value),
                     quoted_amount_msats: payload
                         .get("quotedAmountMsats")
                         .and_then(positive_u64_from_value),
@@ -16476,8 +16484,9 @@ async fn execute_l402_tool(
             "The request.url field is required for lightning_l402_fetch.",
         )
     })?;
-    let parsed_url = reqwest::Url::parse(&url)
-        .map_err(|_| validation_error("request.url", "The request.url field must be a valid URL."))?;
+    let parsed_url = reqwest::Url::parse(&url).map_err(|_| {
+        validation_error("request.url", "The request.url field must be a valid URL.")
+    })?;
     let host = invocation
         .host
         .clone()
@@ -16485,7 +16494,10 @@ async fn execute_l402_tool(
         .unwrap_or_default()
         .to_ascii_lowercase();
     if host.is_empty() {
-        return Err(validation_error("request.url", "The request.url field must include a host."));
+        return Err(validation_error(
+            "request.url",
+            "The request.url field must include a host.",
+        ));
     }
     if !l402_host_is_allowed(&host, &policy.allowed_hosts) {
         return Ok(L402ToolExecutionResult {
@@ -16507,7 +16519,9 @@ async fn execute_l402_tool(
             cache_status: None,
             amount_msats: None,
             quoted_amount_msats: None,
-            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            max_spend_msats: invocation
+                .max_spend_msats
+                .or(policy.max_spend_msats_per_call),
             proof_reference: None,
             deny_code: Some("policy_denied.host_not_allowed".to_string()),
             task_id: None,
@@ -16576,7 +16590,9 @@ async fn execute_l402_tool(
             },
             amount_msats: None,
             quoted_amount_msats: None,
-            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            max_spend_msats: invocation
+                .max_spend_msats
+                .or(policy.max_spend_msats_per_call),
             proof_reference: None,
             deny_code: None,
             task_id: None,
@@ -16612,7 +16628,9 @@ async fn execute_l402_tool(
             cache_status: None,
             amount_msats: None,
             quoted_amount_msats: None,
-            max_spend_msats: invocation.max_spend_msats.or(policy.max_spend_msats_per_call),
+            max_spend_msats: invocation
+                .max_spend_msats
+                .or(policy.max_spend_msats_per_call),
             proof_reference: None,
             deny_code: Some("l402_challenge_missing".to_string()),
             task_id: None,
@@ -16664,12 +16682,8 @@ async fn execute_l402_tool(
     }
 
     if let Some(max_daily) = policy.max_spend_msats_per_day {
-        let summary = l402_daily_spend_summary(
-            state,
-            user_id,
-            invocation.autopilot_id.as_deref(),
-        )
-        .await?;
+        let summary =
+            l402_daily_spend_summary(state, user_id, invocation.autopilot_id.as_deref()).await?;
         let projected = summary
             .spent_msats_today
             .saturating_add(quoted_amount_msats.unwrap_or(max_spend_msats));
@@ -16708,7 +16722,9 @@ async fn execute_l402_tool(
         }
     }
 
-    let require_approval = invocation.require_approval.unwrap_or(policy.require_approval);
+    let require_approval = invocation
+        .require_approval
+        .unwrap_or(policy.require_approval);
     if require_approval {
         let task_id = format!("l402tsk_{}", &replay_hash_hex[..24]);
         let expires_at = Utc::now() + Duration::minutes(30);

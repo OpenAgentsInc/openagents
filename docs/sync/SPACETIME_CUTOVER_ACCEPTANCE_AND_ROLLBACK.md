@@ -50,7 +50,8 @@ Required artifacts:
 3. Auth/scope security test report.
 4. Staging canary summary with cohort progression evidence.
 5. Chaos drill summary (restart, temporary partition, token-expiry storm).
-6. On-call signoff and rollback rehearsal confirmation.
+6. Cutover-state announcement artifact confirming Spacetime default mode.
+7. On-call signoff and rollback rehearsal confirmation.
 
 Staging canary command:
 
@@ -67,6 +68,14 @@ Production phased rollout command:
 ```
 
 Attach `output/canary/spacetime/production-<timestamp>/SUMMARY.md` with `gate-results.jsonl`, `cohort-results.jsonl`, and `slo-results.jsonl`.
+
+Cutover state announcement command:
+
+```bash
+./scripts/spacetime/announce-cutover-state.sh
+```
+
+Attach `output/canary/spacetime/cutover-state-<timestamp>/SUMMARY.md` and `result.json`.
 
 Chaos drill command:
 

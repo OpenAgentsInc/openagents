@@ -93,6 +93,7 @@ pub struct Config {
     pub khala_consumer_registry_capacity: usize,
     pub khala_reconnect_base_backoff_ms: u64,
     pub khala_reconnect_jitter_ms: u64,
+    pub khala_emergency_mode_enabled: bool,
     pub khala_enforce_origin: bool,
     pub khala_allowed_origins: HashSet<String>,
     pub khala_run_events_publish_rate_per_second: u32,
@@ -189,6 +190,8 @@ pub enum ConfigError {
     InvalidKhalaReconnectBaseBackoffMs(String),
     #[error("invalid RUNTIME_KHALA_RECONNECT_JITTER_MS: {0}")]
     InvalidKhalaReconnectJitterMs(String),
+    #[error("invalid RUNTIME_KHALA_EMERGENCY_MODE_ENABLED: {0}")]
+    InvalidKhalaEmergencyModeEnabled(String),
     #[error("invalid RUNTIME_KHALA_ENFORCE_ORIGIN: {0}")]
     InvalidKhalaEnforceOrigin(String),
     #[error("invalid khala publish rate limit setting: {0}")]
@@ -310,6 +313,12 @@ impl Config {
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
             .map_err(|error| ConfigError::InvalidKhalaReconnectJitterMs(error.to_string()))?;
+        let khala_emergency_mode_enabled =
+            parse_bool_env("RUNTIME_KHALA_EMERGENCY_MODE_ENABLED", false).map_err(|error| {
+                ConfigError::InvalidKhalaEmergencyModeEnabled(format!(
+                    "RUNTIME_KHALA_EMERGENCY_MODE_ENABLED: {error}"
+                ))
+            })?;
         let khala_enforce_origin =
             parse_bool_env("RUNTIME_KHALA_ENFORCE_ORIGIN", true).map_err(|error| {
                 ConfigError::InvalidKhalaEnforceOrigin(format!(
@@ -601,6 +610,7 @@ impl Config {
             khala_consumer_registry_capacity,
             khala_reconnect_base_backoff_ms,
             khala_reconnect_jitter_ms,
+            khala_emergency_mode_enabled,
             khala_enforce_origin,
             khala_allowed_origins,
             khala_run_events_publish_rate_per_second,

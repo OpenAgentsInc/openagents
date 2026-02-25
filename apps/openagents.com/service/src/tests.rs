@@ -2299,7 +2299,7 @@ async fn smoke_stream_requires_secret_header() -> Result<()> {
 }
 
 #[tokio::test]
-async fn smoke_stream_returns_khala_ws_contract_metadata() -> Result<()> {
+async fn smoke_stream_returns_spacetime_ws_contract_metadata() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
 
     let request = Request::builder()
@@ -2326,12 +2326,12 @@ async fn smoke_stream_returns_khala_ws_contract_metadata() -> Result<()> {
 
     let body = read_json(response).await?;
     assert_eq!(body["data"]["status"], "ok");
-    assert_eq!(body["data"]["stream_protocol"], "khala_ws");
-    assert_eq!(body["data"]["delivery"]["transport"], "khala_ws");
+    assert_eq!(body["data"]["stream_protocol"], "spacetime_ws");
+    assert_eq!(body["data"]["delivery"]["transport"], "spacetime_ws");
     assert_eq!(body["data"]["delivery"]["sseEnabled"], false);
     assert_eq!(
         body["data"]["delivery"]["syncTokenRoute"],
-        super::ROUTE_SYNC_TOKEN
+        super::ROUTE_SPACETIME_TOKEN
     );
 
     Ok(())
@@ -5546,7 +5546,7 @@ async fn autopilot_thread_routes_support_create_and_list() -> Result<()> {
 }
 
 #[tokio::test]
-async fn autopilot_stream_route_bootstraps_codex_and_returns_ws_delivery() -> Result<()> {
+async fn autopilot_stream_route_bootstraps_codex_and_returns_spacetime_delivery() -> Result<()> {
     let app = build_router(test_config(std::env::temp_dir()));
     let token = authenticate_token(app.clone(), "autopilot-stream@openagents.com").await?;
 
@@ -5589,7 +5589,7 @@ async fn autopilot_stream_route_bootstraps_codex_and_returns_ws_delivery() -> Re
     );
     assert_eq!(
         stream_body["data"]["delivery"]["transport"],
-        json!("khala_ws")
+        json!("spacetime_ws")
     );
     let delivery_topic = stream_body["data"]["delivery"]["topic"]
         .as_str()
@@ -6830,7 +6830,10 @@ async fn sync_token_failure_paths_emit_observability_counters() -> Result<()> {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(r#"{"scopes":["runtime.unknown_scope"]}"#))?;
     let invalid_scope_response = app.clone().oneshot(invalid_scope_request).await?;
-    assert_eq!(invalid_scope_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        invalid_scope_response.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
 
     assert_eq!(
         observability.counter_value("sync.token.issue.policy_denied"),
@@ -6839,12 +6842,16 @@ async fn sync_token_failure_paths_emit_observability_counters() -> Result<()> {
     assert_eq!(observability.counter_value("sync.token.issue.failed"), 1);
 
     let events = sink.events();
-    assert!(events
-        .iter()
-        .any(|event| event.event_name == "sync.token.issue.policy_denied"));
-    assert!(events
-        .iter()
-        .any(|event| event.event_name == "sync.token.issue.failed"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_name == "sync.token.issue.policy_denied")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_name == "sync.token.issue.failed")
+    );
 
     Ok(())
 }
@@ -7604,6 +7611,18 @@ async fn control_status_exposes_runtime_route_ownership_map() -> Result<()> {
     let response = app.oneshot(request).await?;
     assert_eq!(response.status(), StatusCode::OK);
     let body = read_json(response).await?;
+    assert_eq!(
+        body["data"]["syncCutover"]["defaultTransport"],
+        json!("spacetime_ws")
+    );
+    assert_eq!(
+        body["data"]["syncCutover"]["khalaEmergencyModeEnabled"],
+        json!(true)
+    );
+    assert_eq!(
+        body["data"]["syncCutover"]["spacetimeTokenRoute"],
+        json!(super::ROUTE_SPACETIME_TOKEN)
+    );
     let ownership_rows = body["data"]["runtimeRouteOwnership"]
         .as_array()
         .cloned()
@@ -7789,8 +7808,8 @@ async fn runtime_codex_worker_lifecycle_routes_support_create_events_stream_and_
     let stream_response = app.clone().oneshot(stream_request).await?;
     assert_eq!(stream_response.status(), StatusCode::OK);
     let stream_body = read_json(stream_response).await?;
-    assert_eq!(stream_body["data"]["stream_protocol"], "khala_ws");
-    assert_eq!(stream_body["data"]["delivery"]["transport"], "khala_ws");
+    assert_eq!(stream_body["data"]["stream_protocol"], "spacetime_ws");
+    assert_eq!(stream_body["data"]["delivery"]["transport"], "spacetime_ws");
     let events = stream_body["data"]["events"]
         .as_array()
         .cloned()
@@ -8126,8 +8145,10 @@ async fn runtime_tools_execute_lightning_fetch_pays_and_records_receipt() -> Res
     let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
     let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
     let (upstream_addr, upstream_handle) = start_l402_upstream_stub().await?;
-    let _executor_base =
-        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_base = ScopedEnvVar::set(
+        "SPARK_EXECUTOR_BASE_URL",
+        &format!("http://{executor_addr}"),
+    );
     let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
     let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
 
@@ -8188,10 +8209,7 @@ async fn runtime_tools_execute_lightning_fetch_pays_and_records_receipt() -> Res
             row.get("toolCallId")
                 .and_then(Value::as_str)
                 .is_some_and(|id| id == "tool_l402_1")
-                && row
-                    .get("paid")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
+                && row.get("paid").and_then(Value::as_bool).unwrap_or(false)
         }),
         "expected paid l402 receipt with tool call id"
     );
@@ -8206,8 +8224,10 @@ async fn runtime_tools_execute_lightning_approval_flow_is_replay_safe() -> Resul
     let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
     let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
     let (upstream_addr, upstream_handle) = start_l402_upstream_stub().await?;
-    let _executor_base =
-        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_base = ScopedEnvVar::set(
+        "SPARK_EXECUTOR_BASE_URL",
+        &format!("http://{executor_addr}"),
+    );
     let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
     let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
 
@@ -8270,7 +8290,10 @@ async fn runtime_tools_execute_lightning_approval_flow_is_replay_safe() -> Resul
     let approve_body = read_json(approve_response).await?;
     assert_eq!(approve_body["data"]["state"], "succeeded");
     assert_eq!(approve_body["data"]["decision"], "allowed");
-    assert_eq!(approve_body["data"]["result"]["response"]["statusCode"], 200);
+    assert_eq!(
+        approve_body["data"]["result"]["response"]["statusCode"],
+        200
+    );
 
     let replay_request = Request::builder()
         .method("POST")
@@ -8300,10 +8323,7 @@ async fn runtime_tools_execute_lightning_approval_flow_is_replay_safe() -> Resul
             row.get("taskId")
                 .and_then(Value::as_str)
                 .is_some_and(|value| value == task_id)
-                && row
-                    .get("paid")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
+                && row.get("paid").and_then(Value::as_bool).unwrap_or(false)
         }),
         "expected approved paid receipt"
     );
@@ -10045,8 +10065,10 @@ async fn lightning_ops_control_plane_query_and_mutation_contracts() -> Result<()
 async fn agent_payments_wallet_balance_and_alias_routes_match() -> Result<()> {
     let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
     let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
-    let _executor_base =
-        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_base = ScopedEnvVar::set(
+        "SPARK_EXECUTOR_BASE_URL",
+        &format!("http://{executor_addr}"),
+    );
     let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
     let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
 
@@ -10142,8 +10164,10 @@ async fn agent_payments_wallet_balance_and_alias_routes_match() -> Result<()> {
 async fn agent_payments_invoice_pay_send_and_alias_routes_match() -> Result<()> {
     let _env_lock = WALLET_EXECUTOR_ENV_LOCK.lock().await;
     let (executor_addr, executor_handle) = start_wallet_executor_stub().await?;
-    let _executor_base =
-        ScopedEnvVar::set("SPARK_EXECUTOR_BASE_URL", &format!("http://{executor_addr}"));
+    let _executor_base = ScopedEnvVar::set(
+        "SPARK_EXECUTOR_BASE_URL",
+        &format!("http://{executor_addr}"),
+    );
     let _executor_token = ScopedEnvVar::set("SPARK_EXECUTOR_AUTH_TOKEN", "test-token");
     let _invoice_payer = ScopedEnvVar::set("L402_INVOICE_PAYER", "spark_wallet");
 

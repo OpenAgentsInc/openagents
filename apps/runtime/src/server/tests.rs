@@ -68,6 +68,7 @@ fn build_test_router_with_config(
         khala_consumer_registry_capacity: 4096,
         khala_reconnect_base_backoff_ms: 400,
         khala_reconnect_jitter_ms: 250,
+        khala_emergency_mode_enabled: true,
         khala_enforce_origin: true,
         khala_allowed_origins: HashSet::from([
             "https://openagents.com".to_string(),
@@ -139,11 +140,10 @@ fn build_test_router_with_config(
             projector_pipeline,
         )),
         Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
-        Arc::new(FanoutHub::memory_with_limits(
-            fanout_capacity,
-            fanout_limits,
-        )
-        .with_mirror(spacetime_publisher.clone())),
+        Arc::new(
+            FanoutHub::memory_with_limits(fanout_capacity, fanout_limits)
+                .with_mirror(spacetime_publisher.clone()),
+        ),
         spacetime_publisher,
         Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
             signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
@@ -2224,6 +2224,38 @@ async fn projector_summary_endpoint_returns_projected_run_state() -> Result<()> 
 }
 
 #[tokio::test]
+async fn khala_endpoints_require_explicit_emergency_mode() -> Result<()> {
+    let app =
+        build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |config| {
+            config.khala_emergency_mode_enabled = false;
+        });
+    let sync_token = issue_sync_token(
+        &["runtime.run_events"],
+        Some(1),
+        Some("user:1"),
+        "khala-emergency-disabled",
+        300,
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/internal/v1/khala/topics/runtime.fallback/messages?after_seq=0&limit=1")
+                .header("authorization", format!("Bearer {sync_token}"))
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    let body = response_json(response).await?;
+    assert_eq!(body["error"], json!("khala_emergency_mode_disabled"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
     let app = test_router();
     let sync_token = issue_sync_token(
@@ -2389,7 +2421,10 @@ async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
                 .body(Body::empty())?,
         )
         .await?;
-    assert_eq!(spacetime_metrics_response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        spacetime_metrics_response.status(),
+        axum::http::StatusCode::OK
+    );
     let spacetime_metrics_json = response_json(spacetime_metrics_response).await?;
     assert_eq!(
         spacetime_metrics_json
@@ -2397,6 +2432,13 @@ async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default(),
         "spacetime_ws"
+    );
+    assert_eq!(
+        spacetime_metrics_json
+            .pointer("/khala_emergency_mode_enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        true
     );
     assert_eq!(
         spacetime_metrics_json

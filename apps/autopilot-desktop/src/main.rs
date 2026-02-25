@@ -130,6 +130,7 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
+const ENV_RUNTIME_SYNC_ALLOW_KHALA_FALLBACK: &str = "OPENAGENTS_RUNTIME_SYNC_ALLOW_KHALA_FALLBACK";
 const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
 const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
 const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
@@ -780,11 +781,17 @@ impl RuntimeCodexSync {
         {
             Ok(response) => response,
             Err(primary_error) => {
-                tracing::warn!(
-                    error = %primary_error,
-                    "runtime sync spacetime token mint failed; falling back to /api/sync/token"
-                );
-                self.post_json("/api/sync/token", payload).await?
+                if runtime_sync_allow_khala_fallback() {
+                    tracing::warn!(
+                        error = %primary_error,
+                        "runtime sync spacetime token mint failed; emergency fallback to /api/sync/token enabled"
+                    );
+                    self.post_json("/api/sync/token", payload).await?
+                } else {
+                    return Err(format!(
+                        "runtime sync spacetime token mint failed and khala fallback is disabled: {primary_error}"
+                    ));
+                }
             }
         };
         let refresh_after_in_seconds = response
@@ -1734,6 +1741,18 @@ fn parse_positive_u64_env(name: &str) -> Option<u64> {
     }
 
     trimmed.parse::<u64>().ok().filter(|value| *value > 0)
+}
+
+fn runtime_sync_allow_khala_fallback() -> bool {
+    env::var(ENV_RUNTIME_SYNC_ALLOW_KHALA_FALLBACK)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone)]

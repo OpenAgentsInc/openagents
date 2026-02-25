@@ -26,13 +26,12 @@ use openagents_proto::aegis::{
     AEGIS_CLASSIFY_REQUEST_SCHEMA_V1, AEGIS_CLASSIFY_RESPONSE_SCHEMA_V1,
     AEGIS_RISK_BUDGET_RESPONSE_SCHEMA_V1, AEGIS_VERIFY_REQUEST_SCHEMA_V1,
     AEGIS_VERIFY_RESPONSE_SCHEMA_V1, AEGIS_WARRANTY_ISSUE_REQUEST_SCHEMA_V1,
-    AEGIS_WARRANTY_ISSUE_RESPONSE_SCHEMA_V1, AegisClaimOpenRequestV1,
-    AegisClaimOpenResponseV1, AegisClaimResolveRequestV1, AegisClaimResolveResponseV1,
-    AegisClaimStatusV1, AegisClassifyRequestV1, AegisClassifyResponseV1,
-    AegisConversionError, AegisReceiptLinkageV1, AegisRiskBudgetResponseV1,
-    AegisVerificationClassV1, AegisVerificationTierV1, AegisVerifyRequestV1,
-    AegisVerifyResponseV1, AegisWarrantyIssueRequestV1, AegisWarrantyIssueResponseV1,
-    AegisWarrantyStatusV1,
+    AEGIS_WARRANTY_ISSUE_RESPONSE_SCHEMA_V1, AegisClaimOpenRequestV1, AegisClaimOpenResponseV1,
+    AegisClaimResolveRequestV1, AegisClaimResolveResponseV1, AegisClaimStatusV1,
+    AegisClassifyRequestV1, AegisClassifyResponseV1, AegisConversionError, AegisReceiptLinkageV1,
+    AegisRiskBudgetResponseV1, AegisVerificationClassV1, AegisVerificationTierV1,
+    AegisVerifyRequestV1, AegisVerifyResponseV1, AegisWarrantyIssueRequestV1,
+    AegisWarrantyIssueResponseV1, AegisWarrantyStatusV1,
 };
 use openagents_proto::hydra_routing::{
     ROUTING_SCORE_RESPONSE_SCHEMA_V1, RoutingCandidateQuoteV1 as HydraRoutingCandidateQuoteV1,
@@ -1153,6 +1152,7 @@ struct FanoutMetricsResponse {
 #[derive(Debug, Serialize)]
 struct SpacetimeSyncObservabilityResponse {
     transport: &'static str,
+    khala_emergency_mode_enabled: bool,
     mirror: SpacetimeMirrorMetricsSnapshot,
     delivery: SpacetimeDeliveryMetricsSnapshot,
     auth_failures: SyncAuthObservabilitySnapshot,
@@ -1305,11 +1305,9 @@ const HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1: &str =
 const HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1: &str = "openagents.hydra.risk_health_response.v1";
 const HYDRA_ROUTE_PROVIDER_DIRECT: &str = "route-direct";
 const HYDRA_ROUTE_PROVIDER_CEP: &str = "route-cep";
-const AEGIS_CLASSIFICATION_RECEIPT_SCHEMA_V1: &str =
-    "openagents.aegis.classification_receipt.v1";
+const AEGIS_CLASSIFICATION_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.classification_receipt.v1";
 const AEGIS_VERIFICATION_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.verification_receipt.v1";
-const AEGIS_WARRANTY_ISSUE_RECEIPT_SCHEMA_V1: &str =
-    "openagents.aegis.warranty_issue_receipt.v1";
+const AEGIS_WARRANTY_ISSUE_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.warranty_issue_receipt.v1";
 const AEGIS_CLAIM_OPEN_RECEIPT_SCHEMA_V1: &str = "openagents.aegis.claim_open_receipt.v1";
 const AEGIS_CLAIM_RESOLUTION_RECEIPT_SCHEMA_V1: &str =
     "openagents.aegis.claim_resolution_receipt.v1";
@@ -1874,6 +1872,7 @@ async fn get_khala_topic_messages(
     Path(topic): Path<String>,
     Query(query): Query<FanoutPollQuery>,
 ) -> Result<Json<FanoutPollResponse>, ApiError> {
+    enforce_khala_emergency_mode(&state)?;
     if topic.trim().is_empty() {
         return Err(ApiError::InvalidRequest(
             "topic is required for khala fanout polling".to_string(),
@@ -2041,6 +2040,7 @@ async fn get_khala_topic_ws(
     Path(topic): Path<String>,
     Query(query): Query<FanoutPollQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
+    enforce_khala_emergency_mode(&state)?;
     if topic.trim().is_empty() {
         return Err(ApiError::InvalidRequest(
             "topic is required for khala websocket".to_string(),
@@ -2266,6 +2266,7 @@ async fn khala_ws_stream(
 async fn get_khala_fanout_hooks(
     State(state): State<AppState>,
 ) -> Result<Json<FanoutHooksResponse>, ApiError> {
+    enforce_khala_emergency_mode(&state)?;
     let delivery_metrics = state.khala_delivery.snapshot().await;
     let topic_windows = state
         .fanout
@@ -2284,6 +2285,7 @@ async fn get_khala_fanout_metrics(
     State(state): State<AppState>,
     Query(query): Query<FanoutMetricsQuery>,
 ) -> Result<Json<FanoutMetricsResponse>, ApiError> {
+    enforce_khala_emergency_mode(&state)?;
     let delivery_metrics = state.khala_delivery.snapshot().await;
     let topic_windows = state
         .fanout
@@ -2308,7 +2310,11 @@ async fn get_spacetime_sync_observability(
         .map_err(ApiError::from_fanout)?;
     let max_replay_lag = topic_windows
         .iter()
-        .map(|window| window.head_sequence.saturating_sub(window.oldest_sequence.saturating_sub(1)))
+        .map(|window| {
+            window
+                .head_sequence
+                .saturating_sub(window.oldest_sequence.saturating_sub(1))
+        })
         .max()
         .unwrap_or(0);
     let dropped_messages_total = topic_windows
@@ -2331,6 +2337,7 @@ async fn get_spacetime_sync_observability(
 
     Ok(Json(SpacetimeSyncObservabilityResponse {
         transport: "spacetime_ws",
+        khala_emergency_mode_enabled: state.config.khala_emergency_mode_enabled,
         mirror: SpacetimeMirrorMetricsSnapshot {
             published_total: mirror_metrics.published,
             duplicate_suppressed_total: mirror_metrics.duplicates,
@@ -2348,6 +2355,15 @@ async fn get_spacetime_sync_observability(
         auth_failures: state.sync_auth_observability.snapshot(),
         generated_at: Utc::now(),
     }))
+}
+
+fn enforce_khala_emergency_mode(state: &AppState) -> Result<(), ApiError> {
+    if state.config.khala_emergency_mode_enabled {
+        return Ok(());
+    }
+    Err(ApiError::KhalaEmergencyModeDisabled(
+        "khala endpoints are disabled; enable RUNTIME_KHALA_EMERGENCY_MODE_ENABLED=1 only for emergency fallback".to_string(),
+    ))
 }
 
 fn enforce_khala_origin_policy(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -2389,23 +2405,32 @@ async fn authorize_khala_topic_access(
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
     let token = SyncAuthorizer::extract_bearer_token(authorization_header).map_err(|error| {
-        tracing::warn!(topic, reason_code = error.code(), "sync auth denied while extracting token");
+        tracing::warn!(
+            topic,
+            reason_code = error.code(),
+            "sync auth denied while extracting token"
+        );
         state.sync_auth_observability.record(&error);
         ApiError::from_sync_auth(error)
     })?;
-    let principal = state
-        .sync_auth
-        .authenticate(token)
-        .map_err(|error| {
-            tracing::warn!(topic, reason_code = error.code(), "sync auth denied while validating token");
-            state.sync_auth_observability.record(&error);
-            ApiError::from_sync_auth(error)
-        })?;
+    let principal = state.sync_auth.authenticate(token).map_err(|error| {
+        tracing::warn!(
+            topic,
+            reason_code = error.code(),
+            "sync auth denied while validating token"
+        );
+        state.sync_auth_observability.record(&error);
+        ApiError::from_sync_auth(error)
+    })?;
     let authorized_topic = state
         .sync_auth
         .authorize_topic(&principal, topic)
         .map_err(|error| {
-            tracing::warn!(topic, reason_code = error.code(), "sync auth denied by topic authorization policy");
+            tracing::warn!(
+                topic,
+                reason_code = error.code(),
+                "sync auth denied by topic authorization policy"
+            );
             state.sync_auth_observability.record(&error);
             ApiError::from_sync_auth(error)
         })?;
@@ -4249,7 +4274,9 @@ fn normalize_aegis_classify_request(
     wire.try_into().map_err(aegis_request_contract_error)
 }
 
-fn normalize_aegis_verify_request(body: AegisVerifyRequestV1) -> Result<AegisVerifyRequestV1, ApiError> {
+fn normalize_aegis_verify_request(
+    body: AegisVerifyRequestV1,
+) -> Result<AegisVerifyRequestV1, ApiError> {
     let wire: wire_aegis::AegisVerifyRequestV1 =
         body.try_into().map_err(aegis_request_contract_error)?;
     wire.try_into().map_err(aegis_request_contract_error)
@@ -4271,7 +4298,9 @@ fn normalize_aegis_claim_open_request(
     wire.try_into().map_err(aegis_request_contract_error)
 }
 
-fn normalize_aegis_claim_resolve_request(body: AegisClaimResolveRequestV1) -> AegisClaimResolveRequestV1 {
+fn normalize_aegis_claim_resolve_request(
+    body: AegisClaimResolveRequestV1,
+) -> AegisClaimResolveRequestV1 {
     let wire: wire_aegis::AegisClaimResolveRequestV1 = body.into();
     wire.into()
 }
@@ -4361,7 +4390,9 @@ fn aegis_class_for_signals(
     }
 }
 
-fn aegis_default_tier_for_class(classification: AegisVerificationClassV1) -> AegisVerificationTierV1 {
+fn aegis_default_tier_for_class(
+    classification: AegisVerificationClassV1,
+) -> AegisVerificationTierV1 {
     match classification {
         AegisVerificationClassV1::Objective => AegisVerificationTierV1::TierO,
         AegisVerificationClassV1::Subjective => AegisVerificationTierV1::Tier2,
@@ -4459,8 +4490,11 @@ async fn aegis_classify(
         }
     }
 
-    let mut verification_class =
-        aegis_class_for_signals(work_type.as_str(), objective_hash.as_deref(), body.requires_human_underwrite);
+    let mut verification_class = aegis_class_for_signals(
+        work_type.as_str(),
+        objective_hash.as_deref(),
+        body.requires_human_underwrite,
+    );
     let mut required_tier = aegis_default_tier_for_class(verification_class);
     let mut confidence = match verification_class {
         AegisVerificationClassV1::Objective => 0.92,
@@ -4631,7 +4665,8 @@ async fn aegis_verify(
             "verifier_id must not be empty".to_string(),
         ));
     }
-    let owner_key = aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
+    let owner_key =
+        aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
     let objective_hash = body
         .objective_hash
         .as_ref()
@@ -4654,7 +4689,8 @@ async fn aegis_verify(
         }
     }
 
-    let verification_class = aegis_class_for_signals(work_type.as_str(), objective_hash.as_deref(), false);
+    let verification_class =
+        aegis_class_for_signals(work_type.as_str(), objective_hash.as_deref(), false);
     let hydra_risk = compute_hydra_risk_health(&state).await?;
     let mut violations: Vec<String> = body
         .observed_violations
@@ -4666,20 +4702,26 @@ async fn aegis_verify(
 
     let mut passed;
     if work_type == "sandbox_run" {
-        let sandbox_request: protocol::SandboxRunRequest = serde_json::from_value(body.sandbox_request.clone())
-            .map_err(|error| ApiError::InvalidRequest(format!("sandbox_request invalid: {error}")))?;
+        let sandbox_request: protocol::SandboxRunRequest =
+            serde_json::from_value(body.sandbox_request.clone()).map_err(|error| {
+                ApiError::InvalidRequest(format!("sandbox_request invalid: {error}"))
+            })?;
         let sandbox_response: protocol::SandboxRunResponse =
-            serde_json::from_value(body.sandbox_response.clone())
-                .map_err(|error| ApiError::InvalidRequest(format!("sandbox_response invalid: {error}")))?;
+            serde_json::from_value(body.sandbox_response.clone()).map_err(|error| {
+                ApiError::InvalidRequest(format!("sandbox_response invalid: {error}"))
+            })?;
         let outcome = crate::verification::verify_sandbox_run(&sandbox_request, &sandbox_response);
         passed = outcome.passed;
         violations.extend(outcome.violations);
     } else if work_type == "repo_index" {
-        let repo_request: protocol::RepoIndexRequest = serde_json::from_value(body.repo_index_request.clone())
-            .map_err(|error| ApiError::InvalidRequest(format!("repo_index_request invalid: {error}")))?;
+        let repo_request: protocol::RepoIndexRequest =
+            serde_json::from_value(body.repo_index_request.clone()).map_err(|error| {
+                ApiError::InvalidRequest(format!("repo_index_request invalid: {error}"))
+            })?;
         let repo_response: protocol::RepoIndexResponse =
-            serde_json::from_value(body.repo_index_response.clone())
-                .map_err(|error| ApiError::InvalidRequest(format!("repo_index_response invalid: {error}")))?;
+            serde_json::from_value(body.repo_index_response.clone()).map_err(|error| {
+                ApiError::InvalidRequest(format!("repo_index_response invalid: {error}"))
+            })?;
         let outcome = crate::verification::verify_repo_index(&repo_request, &repo_response);
         passed = outcome.passed;
         violations.extend(outcome.violations);
@@ -4687,7 +4729,9 @@ async fn aegis_verify(
         passed = violations.is_empty();
     }
 
-    if hydra_risk.routing.degraded && aegis_tier_rank(body.tier) < aegis_tier_rank(AegisVerificationTierV1::Tier2) {
+    if hydra_risk.routing.degraded
+        && aegis_tier_rank(body.tier) < aegis_tier_rank(AegisVerificationTierV1::Tier2)
+    {
         passed = false;
         violations.push("hydra_risk_degraded_requires_tier_2_or_higher".to_string());
     }
@@ -4815,7 +4859,10 @@ async fn aegis_risk_budget(
     let owner = owner_from_parts(query.owner_user_id, query.owner_guest_scope)?;
     let owner_key = owner_rate_key(&owner);
     let hydra_risk = compute_hydra_risk_health(&state).await?;
-    let treasury_summary = state.treasury.summarize_compute_owner(owner_key.as_str(), 32).await;
+    let treasury_summary = state
+        .treasury
+        .summarize_compute_owner(owner_key.as_str(), 32)
+        .await;
     let now_unix = Utc::now().timestamp().max(0) as u64;
     let cutoff_unix = now_unix.saturating_sub(24 * 60 * 60);
     let unverified_units_24h = {
@@ -4823,7 +4870,9 @@ async fn aegis_risk_budget(
         guard
             .verifications
             .values()
-            .filter(|record| record.owner_key == owner_key && record.verified_at_unix >= cutoff_unix)
+            .filter(|record| {
+                record.owner_key == owner_key && record.verified_at_unix >= cutoff_unix
+            })
             .filter(|record| !record.passed)
             .count() as u64
     };
@@ -4900,7 +4949,8 @@ async fn aegis_warranty_issue(
             "duration_seconds must be greater than zero".to_string(),
         ));
     }
-    let owner_key = aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
+    let owner_key =
+        aegis_owner_key_from_optional(body.owner_user_id, body.owner_guest_scope.clone())?;
     let request_sha = aegis_canonical_hash(&body, "aegis warranty idempotency hash failed")?;
     {
         let guard = state.aegis.inner.lock().await;
@@ -5111,9 +5161,7 @@ async fn aegis_claim_open(
                 "warranty has no remaining coverage".to_string(),
             ));
         }
-        let max_payable_msats = body
-            .requested_msats
-            .min(warranty.remaining_coverage_msats);
+        let max_payable_msats = body.requested_msats.min(warranty.remaining_coverage_msats);
         let claim_id = format!("aegisclm_{}", &request_sha[..16]);
 
         #[derive(Serialize)]
@@ -5259,9 +5307,7 @@ async fn aegis_claim_resolve(
             && warranty.status == AegisWarrantyStatusV1::Active
             && warranty.remaining_coverage_msats > 0
         {
-            let max_allowed = claim
-                .requested_msats
-                .min(warranty.remaining_coverage_msats);
+            let max_allowed = claim.requested_msats.min(warranty.remaining_coverage_msats);
             let requested_payout = if body.payout_msats == 0 {
                 max_allowed
             } else {
@@ -5340,7 +5386,9 @@ async fn aegis_claim_resolve(
         })?;
 
         guard.claims.insert(claim.claim_id.clone(), claim);
-        guard.warranties.insert(warranty.warranty_id.clone(), warranty);
+        guard
+            .warranties
+            .insert(warranty.warranty_id.clone(), warranty);
         guard.claim_resolve_replays.insert(
             idempotency_key.clone(),
             AegisIdempotentReplay {
@@ -6301,6 +6349,7 @@ enum ApiError {
     Conflict(String),
     KhalaUnauthorized(String),
     KhalaForbiddenTopic(String),
+    KhalaEmergencyModeDisabled(String),
     KhalaOriginDenied(String),
     PublishRateLimited {
         retry_after_ms: u64,
@@ -7551,6 +7600,15 @@ impl IntoResponse for ApiError {
                     "error": "forbidden_topic",
                     "message": "topic subscription is not authorized",
                     "reason_code": reason_code,
+                })),
+            )
+                .into_response(),
+            Self::KhalaEmergencyModeDisabled(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "khala_emergency_mode_disabled",
+                    "message": message,
+                    "recovery": "use_spacetime_default_or_enable_emergency_mode_explicitly",
                 })),
             )
                 .into_response(),
