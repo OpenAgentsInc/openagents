@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use autopilot_spacetime::mapping::topic_to_stream_id;
 use autopilot_spacetime::reducers::{
     AppendSyncEventOutcome, AppendSyncEventRequest, ReducerError, ReducerStore, SyncEvent,
 };
@@ -55,7 +56,7 @@ impl SpacetimePublisher {
             .map_err(|error| format!("encode payload failed: {error}"))?;
         let payload_hash = protocol::hash::canonical_hash(&payload)
             .map_err(|error| format!("hash failed: {error}"))?;
-        let stream_id = stream_id_for_topic(message.topic.as_str());
+        let stream_id = topic_to_stream_id(message.topic.as_str());
         let idempotency_key = format!(
             "topic:{}:seq:{}:kind:{}",
             message.topic, message.sequence, message.kind
@@ -157,30 +158,7 @@ fn parity_matches(
 }
 
 pub fn stream_id_for_topic(topic: &str) -> String {
-    if topic == "runtime.codex_worker_events" {
-        return "runtime.codex.worker.events".to_string();
-    }
-    if let Some(rest) = topic.strip_prefix("run:")
-        && let Some(run_id) = rest.strip_suffix(":events")
-    {
-        return format!("runtime.run.{run_id}.events");
-    }
-    if let Some(rest) = topic.strip_prefix("worker:")
-        && let Some(worker_id) = rest.strip_suffix(":lifecycle")
-    {
-        return format!("runtime.worker.{worker_id}.lifecycle");
-    }
-    if let Some(rest) = topic.strip_prefix("fleet:user:")
-        && let Some(user_id) = rest.strip_suffix(":workers")
-    {
-        return format!("runtime.fleet.user.{user_id}.workers");
-    }
-    if let Some(rest) = topic.strip_prefix("fleet:guest:")
-        && let Some(guest_id) = rest.strip_suffix(":workers")
-    {
-        return format!("runtime.fleet.guest.{guest_id}.workers");
-    }
-    format!("runtime.topic.{}", topic.replace(':', "."))
+    topic_to_stream_id(topic)
 }
 
 #[cfg(test)]
