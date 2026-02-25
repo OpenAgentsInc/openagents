@@ -384,6 +384,10 @@ EP212 target:
 4. Client apply path must remain idempotent by `(topic, seq)`.
 5. Runtime-driver string compatibility aliases (`legacy`, `laravel`, `elixir`, `openagents.com`) are retired; canonical labels are `control_service` and `runtime_service`.
 6. Remaining compatibility lanes (`legacy chat aliases`, `/api/v1/control/*`, `/api/v1/auth/*`, `/api/v1/sync/token`) are formally sunset with target retirement date `2026-06-30`.
+7. Session fork is a canonical timeline/snapshot primitive and is not defined in git terms.
+8. Git branch/PR behavior is integration-adapter behavior backed by replayable, idempotent export intents.
+9. Startup execution/review output and preflight configuration separate canonical core state/readiness from integration adapter diagnostics/readiness.
+10. Desktop git runtime/panel is an optional integration capability (`git-integration` feature + `OA_GIT_INTEGRATION` env) and can be disabled without breaking core session/chat/editor flows.
 
 ## Plan Alignment Matrix
 

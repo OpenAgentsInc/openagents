@@ -382,3 +382,28 @@ Introduce measurable complexity budgets (route counts, production file size, sup
 
 12. **[#2223 OA-AUDIT Phase 5: Retire compatibility lanes and finalize cleanup signoff](https://github.com/OpenAgentsInc/openagents/issues/2223)**
 Remove legacy compatibility lanes (route split/alias debt) after parity evidence, clean `local-ci` trigger residue, and produce final architecture consistency signoff across docs and code.
+
+## Follow-on Adapter-Decoupling Sequence (Completed 2026-02-25)
+
+Post-audit, the primitive hierarchy and adapter decoupling lane was implemented through the following closed issues:
+
+1. **[#2224 Enforce primitive hierarchy: DB-native sync core, Git/GitHub as non-blocking adapters](https://github.com/OpenAgentsInc/openagents/issues/2224)**  
+Parent tracking issue closed after all children completed.
+
+2. **[#2225 Decouple issue execution core from inline GitHub branch/PR workflow](https://github.com/OpenAgentsInc/openagents/issues/2225)**  
+Core issue progression now queues adapter exports instead of inline branch/PR mutation.
+
+3. **[#2226 Refactor session fork primitive to be git-agnostic](https://github.com/OpenAgentsInc/openagents/issues/2226)**  
+Session fork UX/commands now define a snapshot/timeline primitive independent of git; git export is separate.
+
+4. **[#2227 Make git diagnostics optional adapter telemetry in execution/review lanes](https://github.com/OpenAgentsInc/openagents/issues/2227)**  
+Execution/review output now separates `core_session_state` from `integration.git` and remains complete without git availability.
+
+5. **[#2228 Split preflight into core readiness vs non-blocking git/github integration readiness](https://github.com/OpenAgentsInc/openagents/issues/2228)**  
+Preflight now models core readiness and integration readiness as separate lanes; git/github checks are warnings/capabilities, not core blockers.
+
+6. **[#2229 Implement replayable, idempotent Git/GitHub export queue](https://github.com/OpenAgentsInc/openagents/issues/2229)**  
+Export intents are durably persisted with deterministic idempotency keys, checkpoint watermarks, and outage/restart replay recovery.
+
+7. **[#2230 Make desktop git panel/runtime a pluggable integration capability](https://github.com/OpenAgentsInc/openagents/issues/2230)**  
+Git runtime/panel is now explicitly optional (feature + env capability), while core session/chat/editor paths remain operational when disabled.
