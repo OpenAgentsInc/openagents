@@ -39,9 +39,10 @@ use full_auto::{
 use futures::{SinkExt, StreamExt};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
-use openagents_client_core::auth::{
-    ENV_CONTROL_BASE_URL, ENV_CONTROL_BASE_URL_LEGACY,
-    normalize_base_url as normalize_control_base_url, resolve_control_base_url,
+use openagents_client_core::auth::{ENV_CONTROL_BASE_URL, ENV_CONTROL_BASE_URL_LEGACY};
+use openagents_client_core::execution::{
+    ENV_RUNTIME_SYNC_BASE_URL, RUNTIME_BASE_SOURCE_STORED_AUTH, resolve_execution_fallback_order,
+    resolve_runtime_sync_base_url as resolve_runtime_sync_base_url_core,
 };
 use pylon::PylonConfig;
 use reqwest::{Client as HttpClient, Method};
@@ -107,13 +108,11 @@ const ZOOM_STEP_WHEEL: f32 = 0.05;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const SHORTCUT_PRIORITY_APP: u8 = 100;
 const SHORTCUT_PRIORITY_GLOBAL: u8 = 50;
-const ENV_RUNTIME_SYNC_BASE_URL: &str = "OPENAGENTS_RUNTIME_SYNC_BASE_URL";
 const ENV_RUNTIME_SYNC_TOKEN: &str = "OPENAGENTS_RUNTIME_SYNC_TOKEN";
 const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_REF";
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
-const RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH: &str = "runtime_auth_state";
 const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
 const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
 const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
@@ -1213,6 +1212,48 @@ impl RuntimeCodexSync {
         extract_inbox_snapshot(&response)
     }
 
+    async fn runtime_turn_start_fallback(
+        &self,
+        thread_id: &str,
+        text: &str,
+        session_id: SessionId,
+    ) -> Result<Value, String> {
+        let normalized_thread_id = thread_id.trim();
+        if normalized_thread_id.is_empty() {
+            return Err("thread_id is required for runtime fallback".to_string());
+        }
+        let normalized_text = text.trim();
+        if normalized_text.is_empty() {
+            return Err("text is required for runtime fallback".to_string());
+        }
+        let worker_id = self.worker_id_for_thread(normalized_thread_id);
+        let path = format!("/api/runtime/codex/workers/{worker_id}/requests");
+        let request_id = format!(
+            "desktop-fallback-{}",
+            Uuid::new_v4().to_string().to_lowercase()
+        );
+        let response = self
+            .post_json(
+                path.as_str(),
+                json!({
+                    "request": {
+                        "request_id": request_id,
+                        "method": "turn/start",
+                        "thread_id": normalized_thread_id,
+                        "session_id": session_id.to_string(),
+                        "source": "autopilot-desktop:fallback",
+                        "request_version": "v1",
+                        "params": {
+                            "thread_id": normalized_thread_id,
+                            "text": normalized_text,
+                        }
+                    }
+                }),
+            )
+            .await?;
+        Ok(response.get("data").cloned().unwrap_or(response))
+    }
+
     async fn get_json(&self, path: &str) -> Result<Value, String> {
         let response = self
             .request_builder(Method::GET, path)
@@ -1362,6 +1403,80 @@ fn parse_positive_u64_env(name: &str) -> Option<u64> {
     }
 
     trimmed.parse::<u64>().ok().filter(|value| *value > 0)
+}
+
+#[derive(Debug, Clone)]
+struct Nip90TextResult {
+    event_id: String,
+    content: String,
+}
+
+async fn submit_nip90_text_generation(
+    kind: u16,
+    prompt: &str,
+    relays_override: Vec<String>,
+    provider: Option<String>,
+) -> Result<Nip90TextResult, String> {
+    let config =
+        PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
+    let data_dir = config
+        .data_path()
+        .map_err(|err| format!("Failed to resolve Pylon data dir: {err}"))?;
+    let identity_path = data_dir.join("identity.mnemonic");
+    if !identity_path.exists() {
+        return Err(format!(
+            "No identity found. Run 'pylon init' first. Expected: {}",
+            identity_path.display()
+        ));
+    }
+
+    let mnemonic = std::fs::read_to_string(&identity_path)
+        .map_err(|err| format!("Failed to read identity: {err}"))?
+        .trim()
+        .to_string();
+    let keypair = nostr::derive_keypair(&mnemonic)
+        .map_err(|err| format!("Failed to derive Nostr keys: {err}"))?;
+    let client = DvmClient::new(keypair.private_key)
+        .map_err(|err| format!("Failed to init DVM client: {err}"))?;
+
+    let relays = if relays_override.is_empty() {
+        config.relays.clone()
+    } else {
+        relays_override
+    };
+    if relays.is_empty() {
+        return Err("No relays configured for NIP-90 submission.".to_string());
+    }
+
+    let normalized_kind = if kind == 0 {
+        KIND_JOB_TEXT_GENERATION
+    } else {
+        kind
+    };
+    let mut request = JobRequest::new(normalized_kind)
+        .map_err(|err| format!("Invalid job kind {normalized_kind}: {err}"))?
+        .add_input(JobInput::text(prompt.to_string()));
+    for relay in &relays {
+        request = request.add_relay(relay.clone());
+    }
+    if let Some(provider) = provider {
+        request = request.add_service_provider(provider);
+    }
+
+    let relay_refs: Vec<&str> = relays.iter().map(|relay| relay.as_str()).collect();
+    let submission = client
+        .submit_job(request, &relay_refs)
+        .await
+        .map_err(|err| format!("Job submission failed: {err}"))?;
+    let result = client
+        .await_result(&submission.event_id, std::time::Duration::from_secs(60))
+        .await
+        .map_err(|err| format!("Result timeout/error: {err}"))?;
+
+    Ok(Nip90TextResult {
+        event_id: submission.event_id,
+        content: result.content,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3361,6 +3476,8 @@ fn spawn_event_bridge(
             let runtime_sync_actions = runtime_sync.clone();
             let pending_runtime_auth_flow_actions = pending_runtime_auth_flow.clone();
             tokio::task::spawn_blocking(move || {
+                let (execution_fallback_order, execution_fallback_source) =
+                    resolve_execution_fallback_order();
                 let mut pylon_runtime = InProcessPylon::new();
                 let mut inbox_state = DesktopInboxState::new();
                 let liquidity_online = Arc::new(AtomicBool::new(false));
@@ -3368,6 +3485,18 @@ fn spawn_event_bridge(
                 let mut liquidity_status = liquidity_provider_status_default();
                 let mut wallet_last_invoice: Option<String> = None;
                 let mut wallet_last_payment_id: Option<String> = None;
+                let _ = proxy_actions.send_event(AppEvent::AppServerEvent {
+                    message: json!({
+                        "method": "execution/policy",
+                        "params": {
+                            "fallbackOrder": execution_fallback_order.as_str(),
+                            "source": execution_fallback_source,
+                            "runtimeEnabled": execution_fallback_order.allows_runtime(),
+                            "swarmEnabled": execution_fallback_order.allows_swarm(),
+                        }
+                    })
+                    .to_string(),
+                });
                 let _ = proxy_actions.send_event(AppEvent::LiquidityProviderStatus {
                     status: liquidity_status.clone(),
                 });
@@ -3718,6 +3847,8 @@ fn spawn_event_bridge(
                             let cwd = cwd_for_actions.clone();
                             let session_states = session_states_for_actions.clone();
                             let full_auto_state = full_auto_state.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let execution_fallback_order = execution_fallback_order;
                             handle.spawn(async move {
                                 let session_state =
                                     session_states.lock().await.get(&session_id).cloned();
@@ -3891,9 +4022,12 @@ fn spawn_event_bridge(
                                 }
 
                                 let thread_id_for_turn = thread_id.clone();
+                                let turn_text = text.clone();
                                 let params = TurnStartParams {
                                     thread_id: thread_id_for_turn,
-                                    input: vec![UserInput::Text { text }],
+                                    input: vec![UserInput::Text {
+                                        text: turn_text.clone(),
+                                    }],
                                     model,
                                     effort: reasoning.as_deref().and_then(parse_reasoning_effort),
                                     summary: None,
@@ -3903,13 +4037,117 @@ fn spawn_event_bridge(
                                 };
 
                                 if let Err(err) = client.turn_start(params).await {
-                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                        message: json!({
-                                            "method": "codex/error",
-                                            "params": { "message": err.to_string() }
-                                        })
-                                        .to_string(),
-                                    });
+                                    let mut fallback_errors = vec![format!(
+                                        "local_codex_failed:{}",
+                                        err
+                                    )];
+                                    let mut fallback_handled = false;
+
+                                    if execution_fallback_order.allows_runtime() {
+                                        if let Some(sync) = runtime_sync.as_ref() {
+                                            match sync
+                                                .runtime_turn_start_fallback(
+                                                    thread_id.as_str(),
+                                                    turn_text.as_str(),
+                                                    session_id,
+                                                )
+                                                .await
+                                            {
+                                                Ok(response_payload) => {
+                                                    fallback_handled = true;
+                                                    let _ = proxy.send_event(
+                                                        AppEvent::AppServerEvent {
+                                                            message: json!({
+                                                                "method": "execution/fallback",
+                                                                "params": {
+                                                                    "threadId": thread_id.clone(),
+                                                                    "lane": "shared_runtime",
+                                                                    "status": "accepted",
+                                                                    "response": response_payload,
+                                                                }
+                                                            })
+                                                            .to_string(),
+                                                        },
+                                                    );
+                                                }
+                                                Err(fallback_error) => {
+                                                    fallback_errors.push(format!(
+                                                        "shared_runtime_failed:{}",
+                                                        fallback_error
+                                                    ));
+                                                }
+                                            }
+                                        } else {
+                                            fallback_errors.push(
+                                                "shared_runtime_unavailable:runtime_sync_not_configured"
+                                                    .to_string(),
+                                            );
+                                        }
+                                    }
+
+                                    if !fallback_handled && execution_fallback_order.allows_swarm() {
+                                        match submit_nip90_text_generation(
+                                            KIND_JOB_TEXT_GENERATION,
+                                            turn_text.as_str(),
+                                            Vec::new(),
+                                            None,
+                                        )
+                                        .await
+                                        {
+                                            Ok(result) => {
+                                                fallback_handled = true;
+                                                let preview = if result.content.len() > 400 {
+                                                    format!("{}…", &result.content[..400])
+                                                } else {
+                                                    result.content.clone()
+                                                };
+                                                let _ = proxy
+                                                    .send_event(AppEvent::Nip90Log {
+                                                        message: format!(
+                                                            "Fallback NIP-90 job {} completed",
+                                                            result.event_id
+                                                        ),
+                                                    });
+                                                let _ = proxy.send_event(
+                                                    AppEvent::AppServerEvent {
+                                                        message: json!({
+                                                            "method": "execution/fallback",
+                                                            "params": {
+                                                                "threadId": thread_id.clone(),
+                                                                "lane": "swarm",
+                                                                "status": "accepted",
+                                                                "eventId": result.event_id,
+                                                                "preview": preview,
+                                                            }
+                                                        })
+                                                        .to_string(),
+                                                    },
+                                                );
+                                            }
+                                            Err(fallback_error) => {
+                                                fallback_errors.push(format!(
+                                                    "swarm_failed:{}",
+                                                    fallback_error
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    if !fallback_handled {
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "codex/error",
+                                                "params": {
+                                                    "message": format!(
+                                                        "Execution failed with no fallback success (policy={}): {}",
+                                                        execution_fallback_order.as_str(),
+                                                        fallback_errors.join(" | ")
+                                                    )
+                                                }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
                                 }
                             });
                         }
@@ -4686,107 +4924,16 @@ fn spawn_event_bridge(
                                 };
 
                                 log("Submitting NIP-90 job...".to_string());
-
-                                let config = match PylonConfig::load() {
-                                    Ok(config) => config,
-                                    Err(err) => {
-                                        log(format!("Failed to load Pylon config: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                let data_dir = match config.data_path() {
-                                    Ok(path) => path,
-                                    Err(err) => {
-                                        log(format!("Failed to resolve Pylon data dir: {err}"));
-                                        return;
-                                    }
-                                };
-                                let identity_path = data_dir.join("identity.mnemonic");
-                                if !identity_path.exists() {
-                                    log(format!(
-                                        "No identity found. Run 'pylon init' first. Expected: {}",
-                                        identity_path.display()
-                                    ));
-                                    return;
-                                }
-
-                                let mnemonic = match std::fs::read_to_string(&identity_path) {
-                                    Ok(value) => value.trim().to_string(),
-                                    Err(err) => {
-                                        log(format!("Failed to read identity: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                let keypair = match nostr::derive_keypair(&mnemonic) {
-                                    Ok(pair) => pair,
-                                    Err(err) => {
-                                        log(format!("Failed to derive Nostr keys: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                let client = match DvmClient::new(keypair.private_key) {
-                                    Ok(client) => client,
-                                    Err(err) => {
-                                        log(format!("Failed to init DVM client: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                let relays = if relays.is_empty() {
-                                    config.relays.clone()
-                                } else {
-                                    relays
-                                };
-                                if relays.is_empty() {
-                                    log("No relays configured for NIP-90 submission.".to_string());
-                                    return;
-                                }
-
-                                let kind = if kind == 0 {
-                                    KIND_JOB_TEXT_GENERATION
-                                } else {
-                                    kind
-                                };
-
-                                let mut request = match JobRequest::new(kind) {
-                                    Ok(request) => request.add_input(JobInput::text(prompt)),
-                                    Err(err) => {
-                                        log(format!("Invalid job kind {kind}: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                for relay in &relays {
-                                    request = request.add_relay(relay.clone());
-                                }
-                                if let Some(provider) = provider {
-                                    request = request.add_service_provider(provider);
-                                }
-
-                                let relay_refs: Vec<&str> =
-                                    relays.iter().map(|relay| relay.as_str()).collect();
-                                let submission = match client.submit_job(request, &relay_refs).await
-                                {
-                                    Ok(submission) => submission,
-                                    Err(err) => {
-                                        log(format!("Job submission failed: {err}"));
-                                        return;
-                                    }
-                                };
-
-                                log(format!("Submitted job {}", submission.event_id));
-
-                                match client
-                                    .await_result(
-                                        &submission.event_id,
-                                        std::time::Duration::from_secs(60),
-                                    )
-                                    .await
+                                match submit_nip90_text_generation(
+                                    kind,
+                                    prompt.as_str(),
+                                    relays,
+                                    provider,
+                                )
+                                .await
                                 {
                                     Ok(result) => {
+                                        log(format!("Submitted job {}", result.event_id));
                                         let preview = if result.content.len() > 400 {
                                             format!("{}…", &result.content[..400])
                                         } else {
@@ -4795,7 +4942,7 @@ fn spawn_event_bridge(
                                         log(format!("Result: {}", preview));
                                     }
                                     Err(err) => {
-                                        log(format!("Result timeout/error: {err}"));
+                                        log(err);
                                     }
                                 }
                             });
@@ -4913,71 +5060,24 @@ fn guidance_goal_intent() -> String {
         .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
 }
 
-fn trimmed_env_url(key: &str) -> Option<String> {
-    env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn validated_base_url(raw: &str, source: &str) -> Option<String> {
-    match normalize_control_base_url(raw) {
-        Ok(value) => Some(value),
-        Err(error) => {
-            tracing::warn!(source = source, value = %raw, error = %error, "invalid endpoint URL override; ignoring");
-            None
-        }
-    }
-}
-
-fn validated_base_url_from_env(key: &str) -> Option<String> {
-    trimmed_env_url(key).and_then(|raw| validated_base_url(&raw, key))
-}
-
 fn resolve_runtime_sync_base_url(
     stored_auth: Option<&RuntimeSyncAuthState>,
 ) -> (String, String, bool) {
-    if let Some(base_url) = validated_base_url_from_env(ENV_RUNTIME_SYNC_BASE_URL) {
-        return (base_url, ENV_RUNTIME_SYNC_BASE_URL.to_string(), true);
-    }
-
-    let mut control_resolution: Option<(String, &'static str)> = None;
-    match resolve_control_base_url() {
-        Ok((base_url, source)) => {
-            if source == ENV_CONTROL_BASE_URL || source == ENV_CONTROL_BASE_URL_LEGACY {
-                return (base_url, source.to_string(), true);
-            }
-            control_resolution = Some((base_url, source));
-        }
+    let stored_base_url = stored_auth.map(|state| state.base_url.as_str());
+    match resolve_runtime_sync_base_url_core(stored_base_url) {
+        Ok(resolved) => (resolved.base_url, resolved.source, resolved.locked_by_env),
         Err(error) => {
             tracing::warn!(
                 error = %error,
-                "invalid control base URL configuration; runtime sync will ignore control env override"
+                "invalid runtime sync base URL configuration; defaulting to local control base"
             );
-        }
-    }
-
-    if let Some(state) = stored_auth {
-        if let Some(base_url) =
-            validated_base_url(&state.base_url, RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH)
-        {
-            return (
-                base_url,
-                RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH.to_string(),
+            (
+                DEFAULT_AUTH_BASE_URL.to_string(),
+                "default_local_fallback".to_string(),
                 false,
-            );
+            )
         }
     }
-
-    if let Some((base_url, source)) = control_resolution {
-        return (base_url, source.to_string(), false);
-    }
-
-    (
-        DEFAULT_AUTH_BASE_URL.to_string(),
-        "default_local_fallback".to_string(),
-        false,
-    )
 }
 
 #[allow(dead_code)]
@@ -6105,7 +6205,7 @@ mod tests {
                 };
                 let (base_url, source, locked) = resolve_runtime_sync_base_url(Some(&stored));
                 assert_eq!(base_url, "https://saved.openagents.example");
-                assert_eq!(source, RUNTIME_SYNC_BASE_SOURCE_STORED_AUTH);
+                assert_eq!(source, RUNTIME_BASE_SOURCE_STORED_AUTH);
                 assert!(!locked);
             },
         );

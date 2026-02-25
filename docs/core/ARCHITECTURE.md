@@ -66,10 +66,11 @@ Research/optional context (not execution authority):
    - `apps/lightning-ops/`
    - `apps/lightning-wallet-executor/`
 2. Desktop is the primary execution surface with Codex, runtime sync/auth, NIP-90 lanes, and local Spark wallet actions.
-3. Runtime internal authority APIs are active under `/internal/v1/*` (runs, workers, marketplace, treasury, verifications, liquidity/credit/Hydra, pools, fraud).
-4. Control service owns auth/session/sync token issuance and also serves substantial web/API product and compatibility surfaces.
-5. Hydra internal authority and FX MVP-3 lanes are implemented and covered by harnesses.
-6. Aegis is mostly a planned architecture lane; no dedicated `/internal/v1/aegis/*` namespace is implemented yet.
+3. Local-first execution contract is explicit: local Codex first, then optional shared runtime fallback, then optional swarm fallback (`docs/core/LOCAL_FIRST_EXECUTION_CONTRACT.md`).
+4. Runtime internal authority APIs are active under `/internal/v1/*` (runs, workers, marketplace, treasury, verifications, liquidity/credit/Hydra, pools, fraud).
+5. Control service owns auth/session/sync token issuance and also serves substantial web/API product and compatibility surfaces.
+6. Hydra internal authority and FX MVP-3 lanes are implemented and covered by harnesses.
+7. Aegis is mostly a planned architecture lane; no dedicated `/internal/v1/aegis/*` namespace is implemented yet.
 
 ### Target direction (active plans)
 

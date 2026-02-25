@@ -56,10 +56,19 @@ Endpoint resolution (local-first):
 - Runtime sync/auth base defaults to `http://127.0.0.1:8787`.
 - Override order:
   - `OPENAGENTS_RUNTIME_SYNC_BASE_URL` (runtime-specific)
+  - `OPENAGENTS_RUNTIME_BASE_URL` (portable runtime alias)
   - `OPENAGENTS_CONTROL_BASE_URL` (shared control base)
   - `OPENAGENTS_AUTH_BASE_URL` (legacy alias)
   - saved auth-state base URL
   - local default
+
+Execution fallback policy:
+
+- `OPENAGENTS_EXECUTION_FALLBACK_ORDER`:
+  - `local_only`
+  - `local_then_runtime`
+  - `local_then_runtime_then_swarm` (default)
+- Local Codex execution runs first; runtime/swarm are optional fallback lanes.
 
 ### CLI Fallback (Automation / Headless)
 
