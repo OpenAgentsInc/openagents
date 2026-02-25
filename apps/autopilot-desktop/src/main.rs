@@ -589,6 +589,7 @@ impl RuntimeCodexSync {
         }
         {
             let mut lifecycle = self.lifecycle.lock().await;
+            lifecycle.mark_replay_bootstrap(&worker_id, cursor, remote_latest);
             lifecycle.mark_connecting(&worker_id);
         }
 
@@ -647,6 +648,8 @@ impl RuntimeCodexSync {
                     worker_id = %worker_id,
                     "runtime sync cursor reset due to stale replay window"
                 );
+                let mut lifecycle = self.lifecycle.lock().await;
+                lifecycle.mark_replay_progress(&worker_id, cursor, Some(cursor));
             }
 
             if reconnect_plan.refresh_token {
@@ -945,6 +948,7 @@ impl RuntimeCodexSync {
     ) -> Result<(), String> {
         let stream_id = runtime_sync_worker_stream_id(worker_id);
         let starting_cursor = *cursor;
+        let mut observed_max_seq: Option<u64> = None;
         let events =
             extract_runtime_events_from_khala_update(payload, RUNTIME_SYNC_KHALA_TOPIC, worker_id);
         if events.is_empty() {
@@ -963,6 +967,7 @@ impl RuntimeCodexSync {
                 );
                 continue;
             };
+            observed_max_seq = Some(observed_max_seq.unwrap_or(seq_value).max(seq_value));
 
             let apply_preview = {
                 let apply_engine = self.apply_engine.lock().await;
@@ -1070,6 +1075,10 @@ impl RuntimeCodexSync {
                     "runtime sync failed to persist replay watermark checkpoint"
                 );
             }
+        }
+        {
+            let mut lifecycle = self.lifecycle.lock().await;
+            lifecycle.mark_replay_progress(worker_id, *cursor, observed_max_seq);
         }
 
         Ok(())
@@ -1938,6 +1947,18 @@ async fn runtime_auth_state_view(
         sync_token_refresh_after_in_seconds: sync_health
             .as_ref()
             .and_then(|snapshot| snapshot.token_refresh_after_in_seconds),
+        sync_replay_cursor_seq: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.replay_cursor_seq),
+        sync_replay_target_seq: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.replay_target_seq),
+        sync_replay_lag_seq: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.replay_lag_seq),
+        sync_replay_progress_pct: sync_health
+            .as_ref()
+            .and_then(|snapshot| snapshot.replay_progress_pct),
     }
 }
 

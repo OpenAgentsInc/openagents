@@ -1,5 +1,23 @@
 use super::*;
 
+fn runtime_sync_recovery_hint(reason: &str) -> Option<(&'static str, Hsla)> {
+    match reason {
+        "unauthorized" | "forbidden" => Some((
+            "Action: re-authenticate in Runtime Login (Send code -> Verify) to restore sync.",
+            theme::accent::RED,
+        )),
+        "token_refresh_due" => Some((
+            "Action: token lease rotated; desktop is reconnecting with a fresh sync token.",
+            theme::accent::PRIMARY,
+        )),
+        "stale_cursor" => Some((
+            "Action: replay cursor reset to 0; desktop is rebootstrapping from retained history.",
+            theme::accent::PRIMARY,
+        )),
+        _ => None,
+    }
+}
+
 pub(super) fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 24.0;
     let padding_top = 4.0;
@@ -518,6 +536,44 @@ pub(super) fn paint_auth_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut P
             format!("Sync token refresh lease: {} s", refresh_after),
             theme::text::MUTED,
         );
+        if refresh_after <= 60 {
+            push_wrapped_line(
+                "Action: token lease is near expiry; expect a reconnect shortly.".to_string(),
+                theme::accent::PRIMARY,
+            );
+        }
+    }
+    if let (Some(progress_pct), Some(cursor), Some(target)) = (
+        root.runtime_auth.sync_replay_progress_pct,
+        root.runtime_auth.sync_replay_cursor_seq,
+        root.runtime_auth.sync_replay_target_seq,
+    ) {
+        push_wrapped_line(
+            format!(
+                "Replay progress: {}% (cursor {} / target {})",
+                progress_pct, cursor, target
+            ),
+            if progress_pct < 100 {
+                theme::accent::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        );
+    }
+    if let Some(lag_seq) = root.runtime_auth.sync_replay_lag_seq {
+        push_wrapped_line(
+            format!("Replay lag: {} events", lag_seq),
+            if lag_seq > 0 {
+                theme::accent::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        );
+    }
+    if let Some(reason) = root.runtime_auth.sync_last_disconnect_reason.as_deref()
+        && let Some((hint, color)) = runtime_sync_recovery_hint(reason)
+    {
+        push_wrapped_line(hint.to_string(), color);
     }
     if let Some(message) = root.runtime_auth.last_message.as_deref() {
         push_wrapped_line(message.to_string(), theme::text::PRIMARY);

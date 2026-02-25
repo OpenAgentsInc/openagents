@@ -386,6 +386,10 @@ pub struct RuntimeAuthStateView {
     pub sync_last_disconnect_reason: Option<String>,
     pub sync_last_error: Option<String>,
     pub sync_token_refresh_after_in_seconds: Option<u64>,
+    pub sync_replay_cursor_seq: Option<u64>,
+    pub sync_replay_target_seq: Option<u64>,
+    pub sync_replay_lag_seq: Option<u64>,
+    pub sync_replay_progress_pct: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

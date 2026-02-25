@@ -57,6 +57,10 @@ pub struct RuntimeSyncHealthSnapshot {
     pub last_disconnect_reason: Option<RuntimeSyncDisconnectReason>,
     pub last_error: Option<String>,
     pub token_refresh_after_in_seconds: Option<u64>,
+    pub replay_cursor_seq: Option<u64>,
+    pub replay_target_seq: Option<u64>,
+    pub replay_lag_seq: Option<u64>,
+    pub replay_progress_pct: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +96,8 @@ struct WorkerState {
     last_disconnect_reason: Option<RuntimeSyncDisconnectReason>,
     last_error: Option<String>,
     token_refresh_after_in_seconds: Option<u64>,
+    replay_cursor_seq: Option<u64>,
+    replay_target_seq: Option<u64>,
 }
 
 impl Default for WorkerState {
@@ -104,6 +110,8 @@ impl Default for WorkerState {
             last_disconnect_reason: None,
             last_error: None,
             token_refresh_after_in_seconds: None,
+            replay_cursor_seq: None,
+            replay_target_seq: None,
         }
     }
 }
@@ -115,6 +123,33 @@ pub struct RuntimeSyncLifecycleManager {
 }
 
 impl RuntimeSyncLifecycleManager {
+    pub fn mark_replay_bootstrap(
+        &mut self,
+        worker_id: &str,
+        replay_cursor_seq: u64,
+        replay_target_seq: Option<u64>,
+    ) {
+        let state = self.worker_mut(worker_id);
+        state.replay_cursor_seq = Some(replay_cursor_seq);
+        let target = replay_target_seq
+            .unwrap_or(replay_cursor_seq)
+            .max(replay_cursor_seq);
+        state.replay_target_seq = Some(state.replay_target_seq.unwrap_or(0).max(target));
+    }
+
+    pub fn mark_replay_progress(
+        &mut self,
+        worker_id: &str,
+        replay_cursor_seq: u64,
+        replay_target_seq_hint: Option<u64>,
+    ) {
+        let state = self.worker_mut(worker_id);
+        state.replay_cursor_seq = Some(replay_cursor_seq);
+        let baseline = state.replay_target_seq.unwrap_or(replay_cursor_seq);
+        let hinted = replay_target_seq_hint.unwrap_or(baseline);
+        state.replay_target_seq = Some(hinted.max(baseline).max(replay_cursor_seq));
+    }
+
     pub fn mark_connecting(&mut self, worker_id: &str) {
         let state = self.worker_mut(worker_id);
         state.state = RuntimeSyncConnectionState::Connecting;
@@ -163,9 +198,22 @@ impl RuntimeSyncLifecycleManager {
 
     #[must_use]
     pub fn snapshot(&self, worker_id: &str) -> Option<RuntimeSyncHealthSnapshot> {
-        self.workers
-            .get(worker_id)
-            .map(|state| RuntimeSyncHealthSnapshot {
+        self.workers.get(worker_id).map(|state| {
+            let replay_lag_seq = match (state.replay_cursor_seq, state.replay_target_seq) {
+                (Some(cursor), Some(target)) => Some(target.saturating_sub(cursor)),
+                _ => None,
+            };
+            let replay_progress_pct = match (state.replay_cursor_seq, state.replay_target_seq) {
+                (Some(_), Some(0)) => Some(100),
+                (Some(cursor), Some(target)) => Some(
+                    ((cursor.min(target).saturating_mul(100)) / target)
+                        .min(100)
+                        .try_into()
+                        .unwrap_or(100),
+                ),
+                _ => None,
+            };
+            RuntimeSyncHealthSnapshot {
                 worker_id: worker_id.to_string(),
                 state: state.state,
                 connect_attempts: state.connect_attempts,
@@ -174,7 +222,12 @@ impl RuntimeSyncLifecycleManager {
                 last_disconnect_reason: state.last_disconnect_reason,
                 last_error: state.last_error.clone(),
                 token_refresh_after_in_seconds: state.token_refresh_after_in_seconds,
-            })
+                replay_cursor_seq: state.replay_cursor_seq,
+                replay_target_seq: state.replay_target_seq,
+                replay_lag_seq,
+                replay_progress_pct,
+            }
+        })
     }
 
     #[must_use]
@@ -348,6 +401,39 @@ mod tests {
             .expect("snapshot should exist after live");
         assert_eq!(live.state, RuntimeSyncConnectionState::Live);
         assert_eq!(live.token_refresh_after_in_seconds, Some(45));
+        assert_eq!(live.replay_cursor_seq, None);
+        assert_eq!(live.replay_target_seq, None);
+    }
+
+    #[test]
+    fn lifecycle_tracks_replay_cursor_target_lag_and_percent() {
+        let mut lifecycle = RuntimeSyncLifecycleManager::default();
+        let worker = "desktopw:test:replay";
+
+        lifecycle.mark_replay_bootstrap(worker, 10, Some(40));
+        let initial = lifecycle
+            .snapshot(worker)
+            .expect("snapshot should exist after replay bootstrap");
+        assert_eq!(initial.replay_cursor_seq, Some(10));
+        assert_eq!(initial.replay_target_seq, Some(40));
+        assert_eq!(initial.replay_lag_seq, Some(30));
+        assert_eq!(initial.replay_progress_pct, Some(25));
+
+        lifecycle.mark_replay_progress(worker, 32, None);
+        let mid = lifecycle
+            .snapshot(worker)
+            .expect("snapshot should exist after replay progress");
+        assert_eq!(mid.replay_cursor_seq, Some(32));
+        assert_eq!(mid.replay_target_seq, Some(40));
+        assert_eq!(mid.replay_lag_seq, Some(8));
+        assert_eq!(mid.replay_progress_pct, Some(80));
+
+        lifecycle.mark_replay_progress(worker, 40, Some(40));
+        let caught_up = lifecycle
+            .snapshot(worker)
+            .expect("snapshot should exist after catch-up");
+        assert_eq!(caught_up.replay_lag_seq, Some(0));
+        assert_eq!(caught_up.replay_progress_pct, Some(100));
     }
 
     #[test]
