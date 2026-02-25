@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque, hash_map::DefaultHasher},
+    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     sync::{
         Arc,
@@ -439,6 +439,13 @@ struct HydraObservabilityState {
     withdraw_throttle_affected_requests_total: u64,
     withdraw_throttle_rejected_requests_total: u64,
     withdraw_throttle_stressed_requests_total: u64,
+    fx_seen_rfq_ids: HashSet<String>,
+    fx_seen_quote_ids: HashSet<String>,
+    fx_seen_settlement_ids: HashSet<String>,
+    fx_settlement_withheld_total: u64,
+    fx_settlement_failed_total: u64,
+    fx_settlement_spreads_bps: Vec<u32>,
+    fx_treasury_provider_ids: HashSet<String>,
 }
 
 impl Default for HydraObservabilityState {
@@ -468,6 +475,13 @@ impl Default for HydraObservabilityState {
             withdraw_throttle_affected_requests_total: 0,
             withdraw_throttle_rejected_requests_total: 0,
             withdraw_throttle_stressed_requests_total: 0,
+            fx_seen_rfq_ids: HashSet::new(),
+            fx_seen_quote_ids: HashSet::new(),
+            fx_seen_settlement_ids: HashSet::new(),
+            fx_settlement_withheld_total: 0,
+            fx_settlement_failed_total: 0,
+            fx_settlement_spreads_bps: Vec::new(),
+            fx_treasury_provider_ids: HashSet::new(),
         }
     }
 }
@@ -514,12 +528,26 @@ struct HydraWithdrawalThrottleObservabilityV1 {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct HydraFxObservabilityV1 {
+    rfq_total: u64,
+    quote_total: u64,
+    settlement_total: u64,
+    quote_to_settlement_rate: f64,
+    spread_bps_avg: f64,
+    spread_bps_median: f64,
+    settlement_withheld_total: u64,
+    settlement_failed_total: u64,
+    treasury_provider_breadth: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct HydraObservabilityResponseV1 {
     schema: String,
     generated_at: chrono::DateTime<Utc>,
     routing: HydraRoutingObservabilityV1,
     breakers: HydraBreakersObservabilityV1,
     withdrawal_throttle: HydraWithdrawalThrottleObservabilityV1,
+    fx: HydraFxObservabilityV1,
 }
 
 impl HydraObservabilityTelemetry {
@@ -661,8 +689,87 @@ impl HydraObservabilityTelemetry {
         }
     }
 
+    async fn record_fx_rfq(&self, rfq_id: &str) {
+        let normalized = rfq_id.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        let mut state = self.state.lock().await;
+        state.fx_seen_rfq_ids.insert(normalized.to_string());
+    }
+
+    async fn record_fx_quote(&self, quote_id: &str) {
+        let normalized = quote_id.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        let mut state = self.state.lock().await;
+        state.fx_seen_quote_ids.insert(normalized.to_string());
+    }
+
+    async fn record_fx_settlement(
+        &self,
+        settlement_id: &str,
+        status: &str,
+        spread_bps: u32,
+        provider_id: &str,
+    ) {
+        let normalized_settlement_id = settlement_id.trim();
+        if normalized_settlement_id.is_empty() {
+            return;
+        }
+        let mut state = self.state.lock().await;
+        if !state
+            .fx_seen_settlement_ids
+            .insert(normalized_settlement_id.to_string())
+        {
+            return;
+        }
+        match status {
+            "withheld" => {
+                state.fx_settlement_withheld_total =
+                    state.fx_settlement_withheld_total.saturating_add(1);
+            }
+            "failed" => {
+                state.fx_settlement_failed_total =
+                    state.fx_settlement_failed_total.saturating_add(1);
+            }
+            _ => {}
+        }
+        state.fx_settlement_spreads_bps.push(spread_bps);
+        let normalized_provider_id = provider_id.trim();
+        if !normalized_provider_id.is_empty() {
+            state
+                .fx_treasury_provider_ids
+                .insert(normalized_provider_id.to_string());
+        }
+    }
+
     async fn snapshot(&self) -> HydraObservabilityResponseV1 {
         let state = self.state.lock().await.clone();
+        let fx_quote_total = state.fx_seen_quote_ids.len() as u64;
+        let fx_settlement_total = state.fx_seen_settlement_ids.len() as u64;
+        let quote_to_settlement_rate = if fx_quote_total == 0 {
+            0.0
+        } else {
+            fx_settlement_total as f64 / fx_quote_total as f64
+        };
+        let spread_bps_avg = if state.fx_settlement_spreads_bps.is_empty() {
+            0.0
+        } else {
+            let sum = state
+                .fx_settlement_spreads_bps
+                .iter()
+                .fold(0_u64, |acc, value| acc.saturating_add(u64::from(*value)));
+            sum as f64 / state.fx_settlement_spreads_bps.len() as f64
+        };
+        let spread_bps_median = if state.fx_settlement_spreads_bps.is_empty() {
+            0.0
+        } else {
+            let mut values = state.fx_settlement_spreads_bps.clone();
+            values.sort_unstable();
+            values[(values.len() - 1) / 2] as f64
+        };
         HydraObservabilityResponseV1 {
             schema: "openagents.hydra.observability_response.v1".to_string(),
             generated_at: Utc::now(),
@@ -698,6 +805,17 @@ impl HydraObservabilityTelemetry {
                 affected_requests_total: state.withdraw_throttle_affected_requests_total,
                 rejected_requests_total: state.withdraw_throttle_rejected_requests_total,
                 stressed_requests_total: state.withdraw_throttle_stressed_requests_total,
+            },
+            fx: HydraFxObservabilityV1 {
+                rfq_total: state.fx_seen_rfq_ids.len() as u64,
+                quote_total: fx_quote_total,
+                settlement_total: fx_settlement_total,
+                quote_to_settlement_rate,
+                spread_bps_avg,
+                spread_bps_median,
+                settlement_withheld_total: state.fx_settlement_withheld_total,
+                settlement_failed_total: state.fx_settlement_failed_total,
+                treasury_provider_breadth: state.fx_treasury_provider_ids.len() as u64,
             },
         }
     }
@@ -2759,6 +2877,10 @@ async fn hydra_fx_rfq_create(
         .create_or_get_rfq(body)
         .await
         .map_err(api_error_from_fx)?;
+    state
+        .hydra_observability
+        .record_fx_rfq(response.rfq.rfq_id.as_str())
+        .await;
     Ok(Json(response))
 }
 
@@ -2778,6 +2900,10 @@ async fn hydra_fx_quote_upsert(
         .upsert_quote(body)
         .await
         .map_err(api_error_from_fx)?;
+    state
+        .hydra_observability
+        .record_fx_quote(response.quote.quote_id.as_str())
+        .await;
     Ok(Json(response))
 }
 
@@ -2816,6 +2942,19 @@ async fn hydra_fx_settle(
         .settle_quote(body, state.treasury.as_ref())
         .await
         .map_err(api_error_from_fx)?;
+    state
+        .hydra_observability
+        .record_fx_settlement(
+            response.settlement_id.as_str(),
+            match response.status {
+                openagents_proto::hydra_fx::FxSettlementStatusV1::Released => "released",
+                openagents_proto::hydra_fx::FxSettlementStatusV1::Withheld => "withheld",
+                openagents_proto::hydra_fx::FxSettlementStatusV1::Failed => "failed",
+            },
+            response.receipt.spread_bps,
+            response.receipt.provider_id.as_str(),
+        )
+        .await;
     Ok(Json(response))
 }
 

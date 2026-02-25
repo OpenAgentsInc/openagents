@@ -2547,6 +2547,46 @@ components:
         stressed_requests_total:
           type: integer
           minimum: 0
+    HydraFxObservabilityV1:
+      type: object
+      required:
+        - rfq_total
+        - quote_total
+        - settlement_total
+        - quote_to_settlement_rate
+        - spread_bps_avg
+        - spread_bps_median
+        - settlement_withheld_total
+        - settlement_failed_total
+        - treasury_provider_breadth
+      properties:
+        rfq_total:
+          type: integer
+          minimum: 0
+        quote_total:
+          type: integer
+          minimum: 0
+        settlement_total:
+          type: integer
+          minimum: 0
+        quote_to_settlement_rate:
+          type: number
+          minimum: 0
+        spread_bps_avg:
+          type: number
+          minimum: 0
+        spread_bps_median:
+          type: number
+          minimum: 0
+        settlement_withheld_total:
+          type: integer
+          minimum: 0
+        settlement_failed_total:
+          type: integer
+          minimum: 0
+        treasury_provider_breadth:
+          type: integer
+          minimum: 0
     HydraObservabilityResponseV1:
       type: object
       required:
@@ -2555,6 +2595,7 @@ components:
         - routing
         - breakers
         - withdrawal_throttle
+        - fx
       properties:
         schema:
           type: string
@@ -2568,6 +2609,8 @@ components:
           $ref: '#/components/schemas/HydraBreakersObservabilityV1'
         withdrawal_throttle:
           $ref: '#/components/schemas/HydraWithdrawalThrottleObservabilityV1'
+        fx:
+          $ref: '#/components/schemas/HydraFxObservabilityV1'
     ErrorEnvelope:
       type: object
       required: [error]

@@ -280,6 +280,19 @@ pub struct RuntimeHydraWithdrawalThrottleObservabilityV1 {
     pub stressed_requests_total: u64,
 }
 
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct RuntimeHydraFxObservabilityV1 {
+    pub rfq_total: u64,
+    pub quote_total: u64,
+    pub settlement_total: u64,
+    pub quote_to_settlement_rate: f64,
+    pub spread_bps_avg: f64,
+    pub spread_bps_median: f64,
+    pub settlement_withheld_total: u64,
+    pub settlement_failed_total: u64,
+    pub treasury_provider_breadth: u64,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct RuntimeHydraObservabilityResponseV1 {
     pub schema: String,
@@ -287,6 +300,8 @@ pub struct RuntimeHydraObservabilityResponseV1 {
     pub routing: RuntimeHydraRoutingObservabilityV1,
     pub breakers: RuntimeHydraBreakersObservabilityV1,
     pub withdrawal_throttle: RuntimeHydraWithdrawalThrottleObservabilityV1,
+    #[serde(default)]
+    pub fx: RuntimeHydraFxObservabilityV1,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]

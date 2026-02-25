@@ -634,6 +634,10 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
             .is_some()
     );
     assert!(
+        json.pointer("/components/schemas/HydraObservabilityResponseV1/properties/fx")
+            .is_some()
+    );
+    assert!(
         json.pointer("/components/schemas/HydraFxRfqRequestV1/properties/schema")
             .is_some()
     );
@@ -6227,6 +6231,240 @@ async fn hydra_routing_score_filters_cep_candidate_when_breaker_halts_envelopes(
 }
 
 #[tokio::test]
+async fn hydra_observability_tracks_fx_metrics() -> Result<()> {
+    let app = test_router();
+
+    async fn create_rfq(
+        app: &axum::Router,
+        idempotency_key: &str,
+        requester_id: &str,
+        budget_scope_id: &str,
+    ) -> Result<String> {
+        let body = serde_json::json!({
+            "schema": "openagents.hydra.fx_rfq_request.v1",
+            "idempotency_key": idempotency_key,
+            "requester_id": requester_id,
+            "budget_scope_id": budget_scope_id,
+            "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+            "buy_asset": "BTC_LN",
+            "min_buy_amount": 2000000,
+            "max_spread_bps": 120,
+            "max_fee_bps": 70,
+            "max_latency_ms": 5000,
+            "quote_ttl_seconds": 60,
+            "policy_context": {"policy":"reputation_first_v0"}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/hydra/fx/rfq")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        if response.status() != axum::http::StatusCode::OK {
+            return Err(anyhow!("rfq create failed"));
+        }
+        let json = response_json(response).await?;
+        let rfq_id = json
+            .pointer("/rfq/rfq_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing rfq_id"))?;
+        Ok(rfq_id.to_string())
+    }
+
+    async fn upsert_quote(
+        app: &axum::Router,
+        idempotency_key: &str,
+        rfq_id: &str,
+        quote_id: &str,
+        provider_id: &str,
+        spread_bps: u64,
+    ) -> Result<()> {
+        let valid_until_unix = Utc::now().timestamp().max(0) as u64 + 60;
+        let body = serde_json::json!({
+            "schema": "openagents.hydra.fx_quote_upsert_request.v1",
+            "idempotency_key": idempotency_key,
+            "quote": {
+                "quote_id": quote_id,
+                "rfq_id": rfq_id,
+                "provider_id": provider_id,
+                "sell": {"asset": "USD", "amount": 100000, "unit": "cents"},
+                "buy": {"asset": "BTC_LN", "amount": 2500000, "unit": "msats"},
+                "spread_bps": spread_bps,
+                "fee_bps": 20,
+                "latency_ms": 900,
+                "reliability_bps": 9200,
+                "valid_until_unix": valid_until_unix,
+                "status": "active",
+                "constraints": {},
+                "quote_sha256": ""
+            }
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/hydra/fx/quote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        if response.status() != axum::http::StatusCode::OK {
+            return Err(anyhow!("quote upsert failed"));
+        }
+        Ok(())
+    }
+
+    async fn select_quote(
+        app: &axum::Router,
+        idempotency_key: &str,
+        rfq_id: &str,
+    ) -> Result<String> {
+        let body = serde_json::json!({
+            "schema": "openagents.hydra.fx_select_request.v1",
+            "idempotency_key": idempotency_key,
+            "rfq_id": rfq_id,
+            "policy": "reputation_first_v0"
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/hydra/fx/select")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        if response.status() != axum::http::StatusCode::OK {
+            return Err(anyhow!("select failed"));
+        }
+        let json = response_json(response).await?;
+        let quote_id = json
+            .pointer("/selected/quote_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("missing selected quote_id"))?;
+        Ok(quote_id.to_string())
+    }
+
+    async fn settle_quote(
+        app: &axum::Router,
+        idempotency_key: &str,
+        rfq_id: &str,
+        quote_id: &str,
+        release_allowed: bool,
+    ) -> Result<()> {
+        let reservation_id = fx_expected_reservation_id(rfq_id, quote_id)?;
+        let body = serde_json::json!({
+            "schema": "openagents.hydra.fx_settle_request.v1",
+            "idempotency_key": idempotency_key,
+            "rfq_id": rfq_id,
+            "quote_id": quote_id,
+            "reservation_id": reservation_id,
+            "policy_context": {"release_allowed": release_allowed}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/hydra/fx/settle")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body)?))?,
+            )
+            .await?;
+        if response.status() != axum::http::StatusCode::OK {
+            return Err(anyhow!("settle failed"));
+        }
+        Ok(())
+    }
+
+    let rfq_1 = create_rfq(&app, "obs-fx-rfq-1", "autopilot:obs-1", "budget:obs-1").await?;
+    upsert_quote(
+        &app,
+        "obs-fx-quote-1",
+        rfq_1.as_str(),
+        "obs-quote-1",
+        "provider-a",
+        40,
+    )
+    .await?;
+    let selected_1 = select_quote(&app, "obs-fx-select-1", rfq_1.as_str()).await?;
+    settle_quote(
+        &app,
+        "obs-fx-settle-1",
+        rfq_1.as_str(),
+        selected_1.as_str(),
+        true,
+    )
+    .await?;
+
+    let rfq_2 = create_rfq(&app, "obs-fx-rfq-2", "autopilot:obs-2", "budget:obs-2").await?;
+    upsert_quote(
+        &app,
+        "obs-fx-quote-2",
+        rfq_2.as_str(),
+        "obs-quote-2",
+        "provider-b",
+        60,
+    )
+    .await?;
+    let selected_2 = select_quote(&app, "obs-fx-select-2", rfq_2.as_str()).await?;
+    settle_quote(
+        &app,
+        "obs-fx-settle-2",
+        rfq_2.as_str(),
+        selected_2.as_str(),
+        false,
+    )
+    .await?;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/internal/v1/hydra/observability")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let json = response_json(response).await?;
+    assert_eq!(
+        json.pointer("/fx/rfq_total").and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/fx/quote_total").and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/fx/settlement_total").and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/fx/settlement_withheld_total")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        json.pointer("/fx/treasury_provider_breadth")
+            .and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/fx/spread_bps_avg")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
+        50.0
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn hydra_observability_endpoint_reports_mvp2_metrics() -> Result<()> {
     let pool_id = "d".repeat(64);
 
@@ -6436,6 +6674,18 @@ async fn hydra_observability_endpoint_reports_mvp2_metrics() -> Result<()> {
         json.pointer("/withdrawal_throttle/affected_requests_total")
             .and_then(Value::as_u64)
             .is_some_and(|value| value >= 2)
+    );
+    assert_eq!(
+        json.pointer("/fx/rfq_total").and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        json.pointer("/fx/quote_total").and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        json.pointer("/fx/settlement_total").and_then(Value::as_u64),
+        Some(0)
     );
     Ok(())
 }

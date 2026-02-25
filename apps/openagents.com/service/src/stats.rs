@@ -449,6 +449,15 @@ pub(super) fn empty_stats_metrics_view() -> LiquidityStatsMetricsView {
         hydra_throttle_affected_requests_total: 0,
         hydra_throttle_rejected_requests_total: 0,
         hydra_throttle_stressed_requests_total: 0,
+        hydra_fx_rfq_total: 0,
+        hydra_fx_quote_total: 0,
+        hydra_fx_settlement_total: 0,
+        hydra_fx_quote_to_settlement_rate_pct: 0.0,
+        hydra_fx_spread_bps_avg: 0.0,
+        hydra_fx_spread_bps_median: 0.0,
+        hydra_fx_settlement_withheld_total: 0,
+        hydra_fx_settlement_failed_total: 0,
+        hydra_fx_treasury_provider_breadth: 0,
     }
 }
 
@@ -787,6 +796,33 @@ pub(super) fn build_stats_metrics_view(
         hydra_throttle_stressed_requests_total: hydra_observability
             .map(|value| value.withdrawal_throttle.stressed_requests_total)
             .unwrap_or(0),
+        hydra_fx_rfq_total: hydra_observability
+            .map(|value| value.fx.rfq_total)
+            .unwrap_or(0),
+        hydra_fx_quote_total: hydra_observability
+            .map(|value| value.fx.quote_total)
+            .unwrap_or(0),
+        hydra_fx_settlement_total: hydra_observability
+            .map(|value| value.fx.settlement_total)
+            .unwrap_or(0),
+        hydra_fx_quote_to_settlement_rate_pct: hydra_observability
+            .map(|value| (value.fx.quote_to_settlement_rate * 100.0).max(0.0))
+            .unwrap_or(0.0),
+        hydra_fx_spread_bps_avg: hydra_observability
+            .map(|value| value.fx.spread_bps_avg.max(0.0))
+            .unwrap_or(0.0),
+        hydra_fx_spread_bps_median: hydra_observability
+            .map(|value| value.fx.spread_bps_median.max(0.0))
+            .unwrap_or(0.0),
+        hydra_fx_settlement_withheld_total: hydra_observability
+            .map(|value| value.fx.settlement_withheld_total)
+            .unwrap_or(0),
+        hydra_fx_settlement_failed_total: hydra_observability
+            .map(|value| value.fx.settlement_failed_total)
+            .unwrap_or(0),
+        hydra_fx_treasury_provider_breadth: hydra_observability
+            .map(|value| value.fx.treasury_provider_breadth)
+            .unwrap_or(0),
     }
 }
 
@@ -1007,8 +1043,8 @@ mod tests {
     use openagents_runtime_client::{
         RuntimeCreditCircuitBreakersV1, RuntimeCreditHealthResponseV1,
         RuntimeCreditPolicySnapshotV1, RuntimeHydraBreakersObservabilityV1,
-        RuntimeHydraObservabilityResponseV1, RuntimeHydraRoutingObservabilityV1,
-        RuntimeHydraWithdrawalThrottleObservabilityV1,
+        RuntimeHydraFxObservabilityV1, RuntimeHydraObservabilityResponseV1,
+        RuntimeHydraRoutingObservabilityV1, RuntimeHydraWithdrawalThrottleObservabilityV1,
     };
 
     fn sample_pool_view() -> LiquidityPoolView {
@@ -1107,6 +1143,17 @@ mod tests {
                 rejected_requests_total: 2,
                 stressed_requests_total: 5,
             },
+            fx: RuntimeHydraFxObservabilityV1 {
+                rfq_total: 11,
+                quote_total: 8,
+                settlement_total: 6,
+                quote_to_settlement_rate: 0.75,
+                spread_bps_avg: 42.5,
+                spread_bps_median: 40.0,
+                settlement_withheld_total: 1,
+                settlement_failed_total: 0,
+                treasury_provider_breadth: 4,
+            },
         }
     }
 
@@ -1144,6 +1191,15 @@ mod tests {
         assert_eq!(view.hydra_throttle_affected_requests_total, 7);
         assert_eq!(view.hydra_throttle_rejected_requests_total, 2);
         assert_eq!(view.hydra_throttle_stressed_requests_total, 5);
+        assert_eq!(view.hydra_fx_rfq_total, 11);
+        assert_eq!(view.hydra_fx_quote_total, 8);
+        assert_eq!(view.hydra_fx_settlement_total, 6);
+        assert_eq!(view.hydra_fx_quote_to_settlement_rate_pct, 75.0);
+        assert_eq!(view.hydra_fx_spread_bps_avg, 42.5);
+        assert_eq!(view.hydra_fx_spread_bps_median, 40.0);
+        assert_eq!(view.hydra_fx_settlement_withheld_total, 1);
+        assert_eq!(view.hydra_fx_settlement_failed_total, 0);
+        assert_eq!(view.hydra_fx_treasury_provider_breadth, 4);
     }
 
     #[test]
@@ -1165,5 +1221,7 @@ mod tests {
         assert_eq!(view.hydra_breaker_transition_total, 0);
         assert!(view.hydra_throttle_mode.is_none());
         assert_eq!(view.hydra_throttle_affected_requests_total, 0);
+        assert_eq!(view.hydra_fx_rfq_total, 0);
+        assert_eq!(view.hydra_fx_settlement_total, 0);
     }
 }

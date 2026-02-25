@@ -125,6 +125,15 @@ pub struct LiquidityStatsMetricsView {
     pub hydra_throttle_affected_requests_total: u64,
     pub hydra_throttle_rejected_requests_total: u64,
     pub hydra_throttle_stressed_requests_total: u64,
+    pub hydra_fx_rfq_total: u64,
+    pub hydra_fx_quote_total: u64,
+    pub hydra_fx_settlement_total: u64,
+    pub hydra_fx_quote_to_settlement_rate_pct: f64,
+    pub hydra_fx_spread_bps_avg: f64,
+    pub hydra_fx_spread_bps_median: f64,
+    pub hydra_fx_settlement_withheld_total: u64,
+    pub hydra_fx_settlement_failed_total: u64,
+    pub hydra_fx_treasury_provider_breadth: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -1091,6 +1100,51 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
     } else {
         "-".to_string()
     };
+    let hydra_fx_rfq_total = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_rfq_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_quote_total = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_quote_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_settlement_total = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_settlement_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_quote_to_settlement_rate_pct = if metrics.hydra_metrics_available {
+        format!("{:.2}", metrics.hydra_fx_quote_to_settlement_rate_pct)
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_spread_bps_avg = if metrics.hydra_metrics_available {
+        format!("{:.2}", metrics.hydra_fx_spread_bps_avg)
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_spread_bps_median = if metrics.hydra_metrics_available {
+        format!("{:.2}", metrics.hydra_fx_spread_bps_median)
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_settlement_withheld_total = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_settlement_withheld_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_settlement_failed_total = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_settlement_failed_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_fx_treasury_provider_breadth = if metrics.hydra_metrics_available {
+        metrics.hydra_fx_treasury_provider_breadth.to_string()
+    } else {
+        "-".to_string()
+    };
 
     let body = html! {
         h3 { "Metrics" }
@@ -1156,6 +1210,22 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
                 div class="oa-kv" { span { "Hydra throttle affected requests" } strong { (hydra_throttle_affected_requests_total) } }
                 div class="oa-kv" { span { "Hydra throttle rejected requests" } strong { (hydra_throttle_rejected_requests_total) } }
                 div class="oa-kv" { span { "Hydra throttle stressed requests" } strong { (hydra_throttle_stressed_requests_total) } }
+            }
+        }
+        h3 { "Hydra FX" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "Hydra FX RFQ count" } strong { (hydra_fx_rfq_total) } }
+                div class="oa-kv" { span { "Hydra FX quote count" } strong { (hydra_fx_quote_total) } }
+                div class="oa-kv" { span { "Hydra FX settlement count" } strong { (hydra_fx_settlement_total) } }
+                div class="oa-kv" { span { "Hydra FX quote->settle conversion (%)" } strong { (hydra_fx_quote_to_settlement_rate_pct) } }
+                div class="oa-kv" { span { "Hydra FX treasury provider breadth" } strong { (hydra_fx_treasury_provider_breadth) } }
+            }
+            div {
+                div class="oa-kv" { span { "Hydra FX spread avg (bps)" } strong { (hydra_fx_spread_bps_avg) } }
+                div class="oa-kv" { span { "Hydra FX spread median (bps)" } strong { (hydra_fx_spread_bps_median) } }
+                div class="oa-kv" { span { "Hydra FX withheld settlements" } strong { (hydra_fx_settlement_withheld_total) } }
+                div class="oa-kv" { span { "Hydra FX failed settlements" } strong { (hydra_fx_settlement_failed_total) } }
             }
         }
     };
