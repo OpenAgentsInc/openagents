@@ -56,10 +56,7 @@ These are removed from active architecture and appear only in archived/historica
 - `apps/inbox-autopilot/` (removed)
 - `apps/openagents-runtime/` (removed; replaced by `apps/runtime/`)
 - `packages/` (removed)
-- `apps/openagents.com/app/` (legacy Laravel implementation; archival reference only)
-- `apps/openagents.com/bootstrap/` (legacy Laravel bootstrap; archival reference only)
-- `apps/openagents.com/config/` (legacy Laravel config lane; archival reference only)
-- `apps/openagents.com/database/` (legacy Laravel migrations/seeds lane; archival reference only)
-- `apps/openagents.com/resources/` (legacy Laravel/Inertia frontend lane; archival reference only)
-- `apps/openagents.com/routes/` (legacy Laravel route definitions; archival reference only)
-- `apps/openagents.com/tests/` (legacy Laravel test suite; archival reference only)
+
+`apps/openagents.com` legacy web/code lanes were archived to backroom and removed from this repo in OA-AUDIT `#2212`:
+- `app/`, `bootstrap/`, `config/`, `database/`, `resources/`, `routes/`, `tests/`, and related legacy PHP/TS assets.
+- Manifest: `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`.

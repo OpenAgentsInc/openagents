@@ -411,7 +411,7 @@ This sequencing is dependency-driven and aligns to the active plan set.
 7. Phase 6: compatibility lane retirement
    - Retire legacy chat aliases/route split/runtime driver aliases after parity evidence.
 8. Phase 7: repository debt and invariant cleanup
-   - Remove stale legacy web trees once no longer required.
+   - Complete legacy web tree removal/archival (completed for tracked PHP/TS legacy lanes in OA-AUDIT `#2212`).
    - Resolve `INV-12` workflow-file conflict.
 
 ## Repository Shape (Accurate Current State)
@@ -436,9 +436,12 @@ Shared code roots:
 
 Tracked migration-debt lanes still present under `apps/openagents.com/`:
 
-1. Legacy PHP app tree (`app/`, `routes/`, `database/`, `tests/`).
-2. Legacy TS/React resource tree (`resources/`).
-3. Nested `.github/workflows/` files (conflicts with `INV-12` until removed/relocated).
+1. Nested `.github/workflows/` files (conflicts with `INV-12` until removed/relocated).
+
+Legacy web code removal status:
+
+1. Tracked PHP/TS legacy lanes were archived and removed in OA-AUDIT `#2212`.
+2. Archive manifest: `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`.
 
 ## Known Drift to Resolve
 
