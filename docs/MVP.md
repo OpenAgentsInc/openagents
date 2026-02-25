@@ -1,8 +1,8 @@
 # Desktop-First MVP Spec (WGPUI + NIP-90 + Spark + Spacetime)
 
-Status: draft spec for immediate implementation alignment
-Date: 2026-02-25
-Owner lanes: `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:wallet`
+- `Status`: draft spec for immediate implementation alignment
+- `Date`: 2026-02-25
+- `Owner lanes`: `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:wallet`
 
 ## 1) Product Definition
 
