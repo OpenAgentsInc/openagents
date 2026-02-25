@@ -20,7 +20,7 @@ Validate runtime publish/delivery metrics, retained route retirement guards, and
 
 ## Runtime Checks
 
-- `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
+- `cargo test -p openagents-runtime-service spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture`
 - `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 ## Shared Client Checks

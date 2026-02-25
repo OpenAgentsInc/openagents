@@ -921,6 +921,12 @@ struct SpacetimeMirrorMetricsSnapshot {
     published_total: u64,
     duplicate_suppressed_total: u64,
     failed_total: u64,
+    outbox_depth: u64,
+    auth_failures_total: u64,
+    rate_limited_failures_total: u64,
+    network_failures_total: u64,
+    validation_failures_total: u64,
+    unknown_failures_total: u64,
     duplicate_suppression_rate_pct: f64,
 }
 
@@ -1628,6 +1634,12 @@ async fn get_spacetime_sync_observability(
             published_total: mirror_metrics.published,
             duplicate_suppressed_total: mirror_metrics.duplicates,
             failed_total: mirror_metrics.failed,
+            outbox_depth: mirror_metrics.outbox_depth,
+            auth_failures_total: mirror_metrics.auth_failures,
+            rate_limited_failures_total: mirror_metrics.rate_limited_failures,
+            network_failures_total: mirror_metrics.network_failures,
+            validation_failures_total: mirror_metrics.validation_failures,
+            unknown_failures_total: mirror_metrics.unknown_failures,
             duplicate_suppression_rate_pct,
         },
         delivery: SpacetimeDeliveryMetricsSnapshot {

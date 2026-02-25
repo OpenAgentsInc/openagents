@@ -18,17 +18,23 @@ pub mod domain {
     use thiserror::Error;
 
     use crate::wire::openagents::codex::v1::{
-        CodexNotificationEnvelope as WireCodexNotificationEnvelope,
-        CodexNotificationMethod as WireCodexNotificationMethod, codex_notification_envelope,
+        codex_notification_envelope, CodexNotificationEnvelope as WireCodexNotificationEnvelope,
+        CodexNotificationMethod as WireCodexNotificationMethod,
     };
     use crate::wire::openagents::control::v1::{
         AuthSession as WireAuthSession, SessionStatus as WireSessionStatus,
     };
     use crate::wire::openagents::runtime::v1::{
-        RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunStatus as WireRuntimeRunStatus,
-        runtime_run_event,
+        runtime_run_event, RuntimeRunEvent as WireRuntimeRunEvent,
+        RuntimeRunStatus as WireRuntimeRunStatus,
     };
-    use crate::wire::openagents::sync::v1::{SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind};
+    use crate::wire::openagents::sync::v1::{
+        SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind,
+    };
+    use crate::wire::openagents::sync::v2::{
+        StreamCheckpoint as WireStreamCheckpoint, SyncErrorCode as WireSyncErrorCode,
+        SyncFrame as WireSyncFrame, SyncFrameKind as WireSyncFrameKind,
+    };
 
     /// Conversion failures from wire-level payloads.
     #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -80,6 +86,50 @@ pub mod domain {
         UpdateBatch,
         Heartbeat,
         Error,
+        Unknown(i32),
+    }
+
+    /// Stream-first sync frame model aligned with `openagents.sync.v2.SyncFrame`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SyncStreamFrame {
+        pub channel: String,
+        pub frame_seq: u64,
+        pub kind: SyncStreamFrameKind,
+        pub payload_bytes: Vec<u8>,
+        pub schema_version: u32,
+    }
+
+    /// Stable domain enum mapped from proto `openagents.sync.v2.SyncFrameKind`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SyncStreamFrameKind {
+        SubscribeApplied,
+        TransactionBatch,
+        Heartbeat,
+        Error,
+        Unknown(i32),
+    }
+
+    /// Stream checkpoint domain shape aligned with `openagents.sync.v2.StreamCheckpoint`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SyncStreamCheckpoint {
+        pub stream_id: String,
+        pub last_applied_seq: u64,
+        pub durable_offset: u64,
+    }
+
+    /// Typed sync failure classes aligned with `openagents.sync.v2.SyncErrorCode`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SyncFailureClass {
+        Unauthorized,
+        ForbiddenStream,
+        BadSubscription,
+        StaleCursor,
+        PayloadTooLarge,
+        RateLimited,
+        UnsupportedProtocolVersion,
+        UnsupportedSchemaVersion,
+        UpgradeRequired,
+        Internal,
         Unknown(i32),
     }
 
@@ -174,6 +224,57 @@ pub mod domain {
                 kind: kind_to_i32(value.kind),
                 payload_bytes: value.payload_bytes,
                 schema_version: value.schema_version,
+            }
+        }
+    }
+
+    impl TryFrom<WireSyncFrame> for SyncStreamFrame {
+        type Error = ConversionError;
+
+        fn try_from(value: WireSyncFrame) -> Result<Self, Self::Error> {
+            require_non_empty(&value.channel, "SyncFrame", "channel")?;
+
+            Ok(Self {
+                channel: value.channel,
+                frame_seq: value.frame_seq,
+                kind: sync_v2_kind_from_i32(value.kind),
+                payload_bytes: value.payload_bytes,
+                schema_version: value.schema_version,
+            })
+        }
+    }
+
+    impl From<SyncStreamFrame> for WireSyncFrame {
+        fn from(value: SyncStreamFrame) -> Self {
+            Self {
+                channel: value.channel,
+                frame_seq: value.frame_seq,
+                kind: sync_v2_kind_to_i32(value.kind),
+                payload_bytes: value.payload_bytes,
+                schema_version: value.schema_version,
+            }
+        }
+    }
+
+    impl TryFrom<WireStreamCheckpoint> for SyncStreamCheckpoint {
+        type Error = ConversionError;
+
+        fn try_from(value: WireStreamCheckpoint) -> Result<Self, Self::Error> {
+            require_non_empty(&value.stream_id, "StreamCheckpoint", "stream_id")?;
+            Ok(Self {
+                stream_id: value.stream_id,
+                last_applied_seq: value.last_applied_seq,
+                durable_offset: value.durable_offset,
+            })
+        }
+    }
+
+    impl From<SyncStreamCheckpoint> for WireStreamCheckpoint {
+        fn from(value: SyncStreamCheckpoint) -> Self {
+            Self {
+                stream_id: value.stream_id,
+                last_applied_seq: value.last_applied_seq,
+                durable_offset: value.durable_offset,
             }
         }
     }
@@ -429,6 +530,57 @@ pub mod domain {
         }
     }
 
+    fn sync_v2_kind_from_i32(raw: i32) -> SyncStreamFrameKind {
+        if raw == WireSyncFrameKind::SubscribeApplied as i32 {
+            SyncStreamFrameKind::SubscribeApplied
+        } else if raw == WireSyncFrameKind::TransactionBatch as i32 {
+            SyncStreamFrameKind::TransactionBatch
+        } else if raw == WireSyncFrameKind::Heartbeat as i32 {
+            SyncStreamFrameKind::Heartbeat
+        } else if raw == WireSyncFrameKind::Error as i32 {
+            SyncStreamFrameKind::Error
+        } else {
+            SyncStreamFrameKind::Unknown(raw)
+        }
+    }
+
+    fn sync_v2_kind_to_i32(kind: SyncStreamFrameKind) -> i32 {
+        match kind {
+            SyncStreamFrameKind::SubscribeApplied => WireSyncFrameKind::SubscribeApplied as i32,
+            SyncStreamFrameKind::TransactionBatch => WireSyncFrameKind::TransactionBatch as i32,
+            SyncStreamFrameKind::Heartbeat => WireSyncFrameKind::Heartbeat as i32,
+            SyncStreamFrameKind::Error => WireSyncFrameKind::Error as i32,
+            SyncStreamFrameKind::Unknown(raw) => raw,
+        }
+    }
+
+    #[must_use]
+    pub fn sync_failure_class_from_i32(raw: i32) -> SyncFailureClass {
+        if raw == WireSyncErrorCode::Unauthorized as i32 {
+            SyncFailureClass::Unauthorized
+        } else if raw == WireSyncErrorCode::ForbiddenStream as i32 {
+            SyncFailureClass::ForbiddenStream
+        } else if raw == WireSyncErrorCode::BadSubscription as i32 {
+            SyncFailureClass::BadSubscription
+        } else if raw == WireSyncErrorCode::StaleCursor as i32 {
+            SyncFailureClass::StaleCursor
+        } else if raw == WireSyncErrorCode::PayloadTooLarge as i32 {
+            SyncFailureClass::PayloadTooLarge
+        } else if raw == WireSyncErrorCode::RateLimited as i32 {
+            SyncFailureClass::RateLimited
+        } else if raw == WireSyncErrorCode::UnsupportedProtocolVersion as i32 {
+            SyncFailureClass::UnsupportedProtocolVersion
+        } else if raw == WireSyncErrorCode::UnsupportedSchemaVersion as i32 {
+            SyncFailureClass::UnsupportedSchemaVersion
+        } else if raw == WireSyncErrorCode::UpgradeRequired as i32 {
+            SyncFailureClass::UpgradeRequired
+        } else if raw == WireSyncErrorCode::Internal as i32 {
+            SyncFailureClass::Internal
+        } else {
+            SyncFailureClass::Unknown(raw)
+        }
+    }
+
     fn session_status_from_i32(value: i32) -> Result<ControlSessionStatus, ConversionError> {
         if value == WireSessionStatus::Active as i32 {
             Ok(ControlSessionStatus::Active)
@@ -554,17 +706,20 @@ pub mod domain {
 #[cfg(test)]
 mod tests {
     use crate::domain::{
-        ControlAuthSession, ControlSessionStatus, ConversionError, SpacetimeFrame, RuntimeRunEvent,
-        RuntimeRunEventPayloadKind,
+        sync_failure_class_from_i32, ControlAuthSession, ControlSessionStatus, ConversionError,
+        RuntimeRunEvent, RuntimeRunEventPayloadKind, SpacetimeFrame, SyncStreamFrame,
     };
     use crate::wire::openagents::codex::v1::{
-        CodexNotificationEnvelope, codex_notification_envelope,
+        codex_notification_envelope, CodexNotificationEnvelope,
     };
     use crate::wire::openagents::control::v1::{AuthSession, SessionStatus};
     use crate::wire::openagents::runtime::v1::{
-        RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunFinishedPayload, runtime_run_event,
+        runtime_run_event, RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunFinishedPayload,
     };
     use crate::wire::openagents::sync::v1::SpacetimeFrame as WireSpacetimeFrame;
+    use crate::wire::openagents::sync::v2::{
+        SyncErrorCode, SyncFrame as WireSyncFrame, SyncFrameKind,
+    };
 
     #[test]
     fn spacetime_frame_wire_domain_round_trip() {
@@ -582,6 +737,37 @@ mod tests {
 
         let round_trip = WireSpacetimeFrame::from(domain);
         assert_eq!(round_trip, wire);
+    }
+
+    #[test]
+    fn sync_stream_frame_wire_domain_round_trip() {
+        let wire = WireSyncFrame {
+            channel: "runtime.codex.worker.events.desktop".to_string(),
+            frame_seq: 9,
+            kind: SyncFrameKind::TransactionBatch as i32,
+            payload_bytes: vec![4, 5, 6],
+            schema_version: 2,
+        };
+        let domain = SyncStreamFrame::try_from(wire.clone()).expect("wire to domain should work");
+        assert_eq!(domain.channel, "runtime.codex.worker.events.desktop");
+        assert_eq!(domain.frame_seq, 9);
+
+        let round_trip = WireSyncFrame::from(domain);
+        assert_eq!(round_trip, wire);
+    }
+
+    #[test]
+    fn sync_failure_class_mapping_is_typed_for_v2_error_codes() {
+        let stale = sync_failure_class_from_i32(SyncErrorCode::StaleCursor as i32);
+        assert!(matches!(
+            stale,
+            crate::domain::SyncFailureClass::StaleCursor
+        ));
+        let unknown = sync_failure_class_from_i32(9999);
+        assert!(matches!(
+            unknown,
+            crate::domain::SyncFailureClass::Unknown(9999)
+        ));
     }
 
     #[test]

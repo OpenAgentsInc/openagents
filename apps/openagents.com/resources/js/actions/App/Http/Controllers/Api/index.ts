@@ -4,7 +4,7 @@ import Webhooks from './Webhooks'
 import Internal from './Internal'
 import MeController from './MeController'
 import TokenController from './TokenController'
-import ConvexTokenController from './ConvexTokenController'
+import SpacetimeTokenController from './SpacetimeTokenController'
 import ChatController from './ChatController'
 import RuntimeToolsController from './RuntimeToolsController'
 import RuntimeSkillRegistryController from './RuntimeSkillRegistryController'
@@ -24,7 +24,7 @@ const Api = {
     Internal: Object.assign(Internal, Internal),
     MeController: Object.assign(MeController, MeController),
     TokenController: Object.assign(TokenController, TokenController),
-    ConvexTokenController: Object.assign(ConvexTokenController, ConvexTokenController),
+    SpacetimeTokenController: Object.assign(SpacetimeTokenController, SpacetimeTokenController),
     ChatController: Object.assign(ChatController, ChatController),
     RuntimeToolsController: Object.assign(RuntimeToolsController, RuntimeToolsController),
     RuntimeSkillRegistryController: Object.assign(RuntimeSkillRegistryController, RuntimeSkillRegistryController),

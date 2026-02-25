@@ -190,8 +190,11 @@ mod tests {
             schema_version: 1,
         };
 
-        let result =
-            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
+        let result = negotiate_compatibility(
+            CompatibilitySurface::SpacetimeWebSocket,
+            &handshake,
+            &window(),
+        );
         assert!(result.is_ok());
     }
 
@@ -246,8 +249,11 @@ mod tests {
             schema_version: 1,
         };
 
-        let result =
-            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
+        let result = negotiate_compatibility(
+            CompatibilitySurface::SpacetimeWebSocket,
+            &handshake,
+            &window(),
+        );
         let error = result.expect_err("old client should fail");
         assert_eq!(error.code, "upgrade_required");
         assert!(error.message.contains("minimum supported"));
@@ -261,8 +267,11 @@ mod tests {
             schema_version: 1,
         };
 
-        let result =
-            negotiate_compatibility(CompatibilitySurface::SpacetimeWebSocket, &handshake, &window());
+        let result = negotiate_compatibility(
+            CompatibilitySurface::SpacetimeWebSocket,
+            &handshake,
+            &window(),
+        );
         let error = result.expect_err("too new client should fail");
         assert_eq!(error.code, "unsupported_client_build");
     }

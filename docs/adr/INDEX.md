@@ -1,7 +1,7 @@
 # ADR Index (Rust Era)
 
 Status: Active
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 
 ## Numbering Policy
 
@@ -10,7 +10,7 @@ Last updated: 2026-02-25
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0010**
+Next available ADR: **ADR-0011**
 
 ## Lifecycle Statuses
 
@@ -58,10 +58,15 @@ Next available ADR: **ADR-0010**
    - File: `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
    - Source issue: `OA-WEBPARITY-069` (`#2039`)
 8. `ADR-0009` — SpacetimeDB canonical sync transport
-   - Status: `Accepted`
+   - Status: `Superseded`
    - Date: 2026-02-25
    - File: `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
    - Source issue: `OA-SPACETIME-001` (`#2231`)
+9. `ADR-0010` — Spacetime-only sync transport hard mandate
+   - Status: `Accepted`
+   - Date: 2026-02-26
+   - File: `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`
+   - Source issue: `OA-SPACETIME-TOTAL-001` (`#2269`)
 
 ## Archived ADRs
 

@@ -171,7 +171,7 @@ Current exposed API/web groups (implemented):
    - `/api/tokens*`
    - `/api/orgs/*`, `/api/policy/authorize`
 4. Runtime sync + worker control lanes:
-   - `/api/sync/token`, `/api/v1/sync/token`, `/api/spacetime/token`, `/api/v1/spacetime/token`
+   - `/api/sync/token` (canonical; legacy sync token aliases retired)
    - `/api/runtime/codex/workers*`
    - `/api/runtime/threads*`
    - `/api/runtime/workers*`
@@ -386,9 +386,9 @@ EP212 target:
 1. Mutations are HTTP-only authority commands.
 2. Live replay/tail for retained lanes follows Spacetime transport semantics with deterministic replay/idempotency guarantees.
 3. Compatibility SSE lane is adapter-only over existing authority outputs.
-4. Client apply path must remain idempotent with ordered watermarks (`(stream_id, seq)` canonical, with compatibility handling for legacy `(topic, seq)` payloads).
+4. Client apply path must remain idempotent with ordered watermarks (`(stream_id, seq)` canonical).
 5. Runtime-driver string compatibility aliases (`legacy`, `laravel`, `elixir`, `openagents.com`) are retired; canonical labels are `control_service` and `runtime_service`.
-6. Remaining compatibility lanes (`legacy chat aliases`, `/api/v1/control/*`, `/api/v1/auth/*`, `/api/v1/sync/token`) are formally sunset with target retirement date `2026-06-30`.
+6. Remaining compatibility lanes (`legacy chat aliases`, `/api/v1/control/*`, `/api/v1/auth/*`) are formally sunset with target retirement date `2026-06-30`.
 7. Session fork is a canonical timeline/snapshot primitive and is not defined in git terms.
 8. Git branch/PR behavior is integration-adapter behavior backed by replayable, idempotent export intents.
 9. Startup execution/review output and preflight configuration separate canonical core state/readiness from integration adapter diagnostics/readiness.
@@ -404,7 +404,8 @@ EP212 target:
 | `docs/plans/aegis.md` | Defines verification/underwriting substrate | Runtime MVP namespace implemented; advanced phases still planned |
 | `docs/plans/ep212-autopilot-bitcoin-100pct.md` | Defines wallet/L402/paywall parity closure criteria | Active gap-closure plan; not fully complete |
 | `docs/plans/spacetimedb-full-integration.md` | Defines full migration cleanup to Spacetime sync/replay transport | Active migration cleanup program |
-| `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md` | Defines Autopilot-first execution path for Spacetime cutover | Active execution slice; pre-cutover |
+| `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md` | Defines Autopilot-first execution path for early Spacetime cutover | Historical precursor; superseded by total convergence plan |
+| `docs/plans/2026-02-25-spacetime-only-total-convergence-plan.md` | Defines zero-legacy Spacetime-only retained sync closure criteria | Active closure program; implementation in progress |
 | `docs/plans/vignette-phase0-issue-to-pr.md` | Gate L issue->verified PR execution authority harness | Active acceptance harness lane |
 | `docs/plans/vignette-hydra-mvp2.md` | Hydra routing/risk observability regression gate | Implemented and active |
 | `docs/plans/vignette-hydra-mvp3.md` | Hydra FX determinism/idempotency regression gate | Implemented and active |

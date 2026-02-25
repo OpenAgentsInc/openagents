@@ -14,15 +14,21 @@ Primary signals:
 1. `mirror.published_total`
 2. `mirror.duplicate_suppressed_total`
 3. `mirror.failed_total`
-4. `delivery.max_replay_lag`
-5. `delivery.dropped_messages_total`
-6. `delivery.stale_cursor_events_total`
-7. `auth_failures.unauthorized_total`
-8. `auth_failures.forbidden_total`
-9. `auth_failures.invalid_token_total`
-10. `auth_failures.token_expired_total`
-11. `auth_failures.token_not_yet_valid_total`
-12. `auth_failures.token_revoked_total`
+4. `mirror.outbox_depth`
+5. `mirror.auth_failures_total`
+6. `mirror.rate_limited_failures_total`
+7. `mirror.network_failures_total`
+8. `mirror.validation_failures_total`
+9. `mirror.unknown_failures_total`
+10. `delivery.max_replay_lag`
+11. `delivery.dropped_messages_total`
+12. `delivery.stale_cursor_events_total`
+13. `auth_failures.unauthorized_total`
+14. `auth_failures.forbidden_total`
+15. `auth_failures.invalid_token_total`
+16. `auth_failures.token_expired_total`
+17. `auth_failures.token_not_yet_valid_total`
+18. `auth_failures.token_revoked_total`
 
 ## Control-Plane Counters
 
@@ -39,10 +45,11 @@ Control service emits counters/audit events for sync token issuance paths:
 Trigger investigation if any of the following holds for 5+ minutes:
 
 1. `mirror.failed_total` increases continuously with no corresponding recoveries.
-2. `delivery.max_replay_lag > 10_000` on retained streams.
-3. `delivery.stale_cursor_events_total` spikes > 50 per 5 minutes.
-4. `auth_failures.unauthorized_total` or `token_expired_total` jumps > 3x trailing hourly baseline.
-5. `sync.token.issue.failed` error-rate > 2% of token issue attempts.
+2. `mirror.outbox_depth` trends upward for > 10 minutes.
+3. `delivery.max_replay_lag > 10_000` on retained streams.
+4. `delivery.stale_cursor_events_total` spikes > 50 per 5 minutes.
+5. `auth_failures.unauthorized_total` or `token_expired_total` jumps > 3x trailing hourly baseline.
+6. `sync.token.issue.failed` error-rate > 2% of token issue attempts.
 
 ## Runbook Links
 

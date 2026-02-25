@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
-use crate::wire::google::protobuf::{ListValue, Struct, Value as ProtoValue, value::Kind};
+use crate::wire::google::protobuf::{value::Kind, ListValue, Struct, Value as ProtoValue};
 use crate::wire::openagents::hydra::v1 as wire;
 use crate::wire::openagents::lightning::v1 as wire_lightning;
 

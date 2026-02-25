@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by `ADR-0010`
 
 ## Date
 
@@ -144,4 +144,3 @@ cargo test -p openagents-runtime-service server::tests::spacetime_topic_messages
 - `docs/plans/spacetimedb-full-integration.md`
 - `docs/plans/2026-02-25-spacetimedb-autopilot-primary-comms-integration-plan.md`
 - Related issue: `OA-SPACETIME-001` / `#2231`
-

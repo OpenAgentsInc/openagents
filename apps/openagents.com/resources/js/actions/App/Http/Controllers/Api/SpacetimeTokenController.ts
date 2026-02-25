@@ -1,8 +1,8 @@
 import { queryParams, type RouteQueryOptions, type RouteDefinition, type RouteFormDefinition } from './../../../../../wayfinder'
 /**
-* @see \App\Http\Controllers\Api\ConvexTokenController::store
-* @see app/Http/Controllers/Api/ConvexTokenController.php:13
-* @route '/api/convex/token'
+* @see \App\Http\Controllers\Api\SpacetimeTokenController::store
+* @see app/Http/Controllers/Api/SpacetimeTokenController.php:13
+* @route '/api/sync/token'
 */
 export const store = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
     url: store.url(options),
@@ -11,22 +11,22 @@ export const store = (options?: RouteQueryOptions): RouteDefinition<'post'> => (
 
 store.definition = {
     methods: ["post"],
-    url: '/api/convex/token',
+    url: '/api/sync/token',
 } satisfies RouteDefinition<["post"]>
 
 /**
-* @see \App\Http\Controllers\Api\ConvexTokenController::store
-* @see app/Http/Controllers/Api/ConvexTokenController.php:13
-* @route '/api/convex/token'
+* @see \App\Http\Controllers\Api\SpacetimeTokenController::store
+* @see app/Http/Controllers/Api/SpacetimeTokenController.php:13
+* @route '/api/sync/token'
 */
 store.url = (options?: RouteQueryOptions) => {
     return store.definition.url + queryParams(options)
 }
 
 /**
-* @see \App\Http\Controllers\Api\ConvexTokenController::store
-* @see app/Http/Controllers/Api/ConvexTokenController.php:13
-* @route '/api/convex/token'
+* @see \App\Http\Controllers\Api\SpacetimeTokenController::store
+* @see app/Http/Controllers/Api/SpacetimeTokenController.php:13
+* @route '/api/sync/token'
 */
 store.post = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
     url: store.url(options),
@@ -34,9 +34,9 @@ store.post = (options?: RouteQueryOptions): RouteDefinition<'post'> => ({
 })
 
 /**
-* @see \App\Http\Controllers\Api\ConvexTokenController::store
-* @see app/Http/Controllers/Api/ConvexTokenController.php:13
-* @route '/api/convex/token'
+* @see \App\Http\Controllers\Api\SpacetimeTokenController::store
+* @see app/Http/Controllers/Api/SpacetimeTokenController.php:13
+* @route '/api/sync/token'
 */
 const storeForm = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
     action: store.url(options),
@@ -44,9 +44,9 @@ const storeForm = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => 
 })
 
 /**
-* @see \App\Http\Controllers\Api\ConvexTokenController::store
-* @see app/Http/Controllers/Api/ConvexTokenController.php:13
-* @route '/api/convex/token'
+* @see \App\Http\Controllers\Api\SpacetimeTokenController::store
+* @see app/Http/Controllers/Api/SpacetimeTokenController.php:13
+* @route '/api/sync/token'
 */
 storeForm.post = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
     action: store.url(options),
@@ -55,6 +55,6 @@ storeForm.post = (options?: RouteQueryOptions): RouteFormDefinition<'post'> => (
 
 store.form = storeForm
 
-const ConvexTokenController = { store }
+const SpacetimeTokenController = { store }
 
-export default ConvexTokenController
+export default SpacetimeTokenController

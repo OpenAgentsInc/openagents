@@ -1,6 +1,6 @@
 use openagents_proto::domain::{
     CodexNotification, CodexNotificationMethod, ControlAuthSession, ControlSessionStatus,
-    ConversionError, SpacetimeFrame, RuntimeRunEvent, RuntimeRunEventPayloadKind,
+    ConversionError, RuntimeRunEvent, RuntimeRunEventPayloadKind, SpacetimeFrame,
 };
 use openagents_proto::wire::openagents::codex::v1::{
     CodexDesktopHandshakeAckPayload, CodexIosHandshakePayload, CodexNotificationEnvelope,
@@ -14,7 +14,9 @@ use openagents_proto::wire::openagents::runtime::v1::{
     RuntimeRunEvent as WireRuntimeRunEvent, RuntimeRunFinishedPayload, RuntimeRunStatus,
     RuntimeTextDeltaPayload, runtime_run_event,
 };
-use openagents_proto::wire::openagents::sync::v1::{SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind};
+use openagents_proto::wire::openagents::sync::v1::{
+    SpacetimeFrame as WireSpacetimeFrame, SpacetimeFrameKind,
+};
 use serde_json::Value;
 
 fn fixture() -> Value {

@@ -38,7 +38,6 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/v1/control/route-split/override`
   - `POST /api/v1/control/route-split/evaluate`
   - `POST /api/sync/token`
-  - `POST /api/v1/sync/token`
   - `GET /api/runtime/threads` (Codex thread projection list)
   - `GET /api/runtime/threads/:thread_id/messages` (Codex thread message projection read)
   - `POST /api/runtime/threads/:thread_id/messages` (Codex thread command lane)
@@ -116,7 +115,8 @@ Rust control service scaffold for `apps/openagents.com`.
 ## Migration Notes
 
 - `POST /api/spacetime/token` is retired and no longer served by control.
-- Clients must use `POST /api/sync/token` (or `/api/spacetime/token` aliases) for sync claims.
+- `POST /api/v1/spacetime/token` and `POST /api/v1/sync/token` are retired and no longer served by control.
+- Clients must use `POST /api/sync/token` for sync claims.
 
 ## Run locally
 

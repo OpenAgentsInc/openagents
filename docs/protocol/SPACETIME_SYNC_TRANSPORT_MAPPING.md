@@ -19,8 +19,8 @@ Archived historical mapping:
 
 Clients obtain scoped sync claims from control service:
 
-- primary endpoint: `POST /api/spacetime/token`
-- compatibility aliases: `POST /api/sync/token`, `POST /api/v1/spacetime/token`, `POST /api/v1/sync/token`
+- canonical endpoint: `POST /api/sync/token`
+- retired aliases: `/api/spacetime/token`, `/api/v1/spacetime/token`, `/api/v1/sync/token`
 
 Claims must bind:
 
@@ -72,7 +72,7 @@ Exact wire envelopes are governed by proto contracts and runtime implementations
 
 ## References
 
-- `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
+- `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - `docs/sync/SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`
 - `docs/sync/SPACETIME_TOPIC_STREAM_CURSOR_CONTINUITY.md`

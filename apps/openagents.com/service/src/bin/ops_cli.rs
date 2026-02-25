@@ -535,8 +535,8 @@ fn run_spacetime_import_chat(args: SpacetimeImportChatArgs) -> Result<()> {
             continue;
         };
 
-        let message_id =
-            value_string(row, "messageId").unwrap_or_else(|| format!("spacetime_msg_{}", index + 1));
+        let message_id = value_string(row, "messageId")
+            .unwrap_or_else(|| format!("spacetime_msg_{}", index + 1));
         let role = value_string(row, "role").unwrap_or_else(|| "user".to_string());
         let text = value_string(row, "text").unwrap_or_default();
 

@@ -26,22 +26,28 @@ OA_CONTROL_STATUS_URL="https://<control-host>/api/status" \
 1. `replay_resume_harness`
    - Command: `./scripts/spacetime/replay-resume-parity-harness.sh`
    - Expectation: replay/resume parity checks pass across runtime/shared-client/desktop.
-2. `runtime_sync_metrics`
-   - Command: `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
-   - Expectation: runtime publishes deterministic Spacetime delivery metrics.
-3. `runtime_retired_spacetime_routes`
+2. `runtime_desktop_e2e_suite`
+   - Command: `./scripts/spacetime/runtime-desktop-e2e.sh`
+   - Expectation: runtime publish + desktop parse/apply gates remain green for Spacetime-only retained paths.
+3. `legacy_symbol_guard`
+   - Command: `./scripts/spacetime/verify-spacetime-only-symbols.sh`
+   - Expectation: no retired sync endpoints/protocol symbols are reintroduced in retained surfaces/docs.
+4. `runtime_publish_observability`
+   - Command: `cargo test -p openagents-runtime-service spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture`
+   - Expectation: runtime publish failure classes and outbox-depth observability remain deterministic.
+5. `runtime_retired_spacetime_routes`
    - Command: `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
    - Expectation: retired Spacetime internal routes remain removed with deterministic 404 behavior.
-4. `shared_client_stale_cursor`
+6. `shared_client_stale_cursor`
    - Command: `cargo test -p autopilot-spacetime subscribe_rejects_stale_cursor -- --nocapture`
    - Expectation: stale-cursor handling remains deterministic.
-5. `shared_client_reconnect_helpers`
+7. `shared_client_reconnect_helpers`
    - Command: `cargo test -p autopilot-spacetime reconnect_resume_helpers_plan_rebootstrap_and_backoff -- --nocapture`
    - Expectation: reconnect helpers choose deterministic bootstrap/backoff plans.
-6. `shared_client_reconnect_storm`
+8. `shared_client_reconnect_storm`
    - Command: `cargo test -p autopilot-spacetime reconnect_storm_resubscribe_keeps_duplicate_delivery_deterministic -- --nocapture`
    - Expectation: repeated reconnect/resubscribe preserves deterministic duplicate handling.
-7. `desktop_reconnect_backoff`
+9. `desktop_reconnect_backoff`
    - Command: `cargo test -p autopilot-desktop reconnect_backoff_grows_and_caps_across_disconnects -- --nocapture`
    - Expectation: desktop reconnect backoff is bounded and monotonic.
 

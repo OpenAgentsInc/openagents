@@ -1,4 +1,4 @@
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 const COMPATIBILITY_LANE_MIGRATION_DOC: &str =
     "docs/audits/2026-02-25-oa-audit-phase5-compatibility-lane-signoff.md";
@@ -65,7 +65,6 @@ pub const ROUTE_INBOX_THREAD_REJECT: &str = "/api/inbox/threads/:thread_id/draft
 pub const ROUTE_INBOX_REPLY_SEND: &str = "/api/inbox/threads/:thread_id/reply/send";
 pub const ROUTE_INBOX_REFRESH: &str = "/api/inbox/refresh";
 pub const ROUTE_SYNC_TOKEN: &str = "/api/sync/token";
-pub const ROUTE_SPACETIME_TOKEN: &str = "/api/spacetime/token";
 pub const ROUTE_RUNTIME_INTERNAL_SECRET_FETCH: &str =
     "/api/internal/runtime/integrations/secrets/fetch";
 pub const ROUTE_LIGHTNING_OPS_CONTROL_PLANE_QUERY: &str =
@@ -103,8 +102,6 @@ pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE: &str =
     "/api/v1/control/runtime-routing/override";
 pub const ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE: &str =
     "/api/v1/control/runtime-routing/evaluate";
-pub const ROUTE_V1_SYNC_TOKEN: &str = "/api/v1/sync/token";
-pub const ROUTE_V1_SPACETIME_TOKEN: &str = "/api/v1/spacetime/token";
 
 #[derive(Clone, Copy)]
 struct OpenApiContract {
@@ -975,18 +972,6 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
     },
     OpenApiContract {
         method: "post",
-        route_path: ROUTE_SPACETIME_TOKEN,
-        operation_id: "spacetimeToken",
-        summary: "Issue a Spacetime WebSocket token using the canonical route.",
-        tag: "sync",
-        secured: true,
-        deprecated: false,
-        success_status: "200",
-        request_example: Some("sync_token"),
-        response_example: Some("sync_token"),
-    },
-    OpenApiContract {
-        method: "post",
         route_path: ROUTE_RUNTIME_INTERNAL_SECRET_FETCH,
         operation_id: "runtimeInternalSecretFetch",
         summary: "Fetch active integration credentials via signed runtime-internal headers.",
@@ -1346,30 +1331,6 @@ const OPENAPI_CONTRACTS: &[OpenApiContract] = &[
         response_example: Some("runtime_routing_evaluate"),
     },
     OpenApiContract {
-        method: "post",
-        route_path: ROUTE_V1_SYNC_TOKEN,
-        operation_id: "v1SyncToken",
-        summary: "Compatibility alias for sync token issuance.",
-        tag: "compat",
-        secured: true,
-        deprecated: true,
-        success_status: "200",
-        request_example: Some("sync_token"),
-        response_example: Some("sync_token"),
-    },
-    OpenApiContract {
-        method: "post",
-        route_path: ROUTE_V1_SPACETIME_TOKEN,
-        operation_id: "v1SpacetimeToken",
-        summary: "Compatibility alias for canonical Spacetime token issuance.",
-        tag: "compat",
-        secured: true,
-        deprecated: true,
-        success_status: "200",
-        request_example: Some("sync_token"),
-        response_example: Some("sync_token"),
-    },
-    OpenApiContract {
         method: "get",
         route_path: ROUTE_SMOKE_STREAM,
         operation_id: "smokeStream",
@@ -1537,8 +1498,8 @@ fn add_operation(paths: &mut Map<String, Value>, contract: &OpenApiContract) {
 
     if let Some(example_key) = contract.response_example {
         if let Some(example) = response_example(example_key) {
-            operation["responses"][contract.success_status]["content"]["application/json"]["example"] =
-                example;
+            operation["responses"][contract.success_status]["content"]["application/json"]
+                ["example"] = example;
         }
     }
 
@@ -1559,10 +1520,7 @@ fn compatibility_lane_has_sunset(path: &str) -> bool {
     if path.starts_with("/api/v1/control/") {
         return true;
     }
-    if path.starts_with("/api/v1/auth/")
-        || path == ROUTE_V1_SYNC_TOKEN
-        || path == ROUTE_V1_SPACETIME_TOKEN
-    {
+    if path.starts_with("/api/v1/auth/") {
         return true;
     }
     if path == ROUTE_LEGACY_CHAT_STREAM || path == ROUTE_LEGACY_CHATS_STREAM {
@@ -3209,13 +3167,11 @@ mod tests {
         let openapi = document.get("openapi").and_then(Value::as_str);
         assert_eq!(openapi, Some("3.0.2"));
         assert!(document.get("paths").and_then(Value::as_object).is_some());
-        assert!(
-            document
-                .get("components")
-                .and_then(|value| value.get("schemas"))
-                .and_then(Value::as_object)
-                .is_some()
-        );
+        assert!(document
+            .get("components")
+            .and_then(|value| value.get("schemas"))
+            .and_then(Value::as_object)
+            .is_some());
     }
 
     #[test]

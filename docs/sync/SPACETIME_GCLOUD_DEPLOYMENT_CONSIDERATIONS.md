@@ -1,6 +1,6 @@
 # Spacetime GCloud Deployment Considerations
 
-Date: 2026-02-25
+Date: 2026-02-26
 Status: planning + readiness audit (not a deploy runbook)
 Owner lanes: Infra, Runtime, Control, Desktop
 
@@ -8,13 +8,15 @@ Owner lanes: Infra, Runtime, Control, Desktop
 
 Capture current Spacetime deployment posture and what is still required to run SpacetimeDB as a real GCP-hosted sync substrate for OpenAgents.
 
+For managed-hosting guidance (Maincloud), see `docs/sync/SPACETIME_MAINCLOUD_MANAGED_DEPLOYMENT.md`.
+
 This document answers:
 
 1. Do we currently have Spacetime/SpacetimeDB deployed from this repo to GCP?
 2. Are we close to deployment?
 3. What still must be built/validated before production deployment is real?
 
-## Current State Snapshot (As of 2026-02-25)
+## Current State Snapshot (As of 2026-02-26)
 
 ### 1) What is clearly deployed and managed in GCP from this repo
 
@@ -40,15 +42,15 @@ There is currently no canonical in-repo GCP deploy script/manifests for a dedica
 
 ### 3) Implementation reality relevant to deployment
 
-Current retained code paths still reflect transitional sync architecture:
+Current retained code paths are Spacetime-native:
 
-1. Desktop sync uses `/sync/socket/websocket` and Phoenix-style frames in `apps/autopilot-desktop/src/main.rs`.
-2. Runtime Spacetime publisher is in-memory (`SpacetimePublisher::in_memory()` in `apps/runtime/src/lib.rs`).
-3. Runtime sync publish path writes through in-process reducer store (`apps/runtime/src/spacetime_publisher.rs`).
+1. Desktop sync opens Spacetime subscribe sessions at `/v1/database/{database}/subscribe`.
+2. Runtime state bootstrap requires configured Spacetime publisher bootstrap (`SpacetimePublisher::from_env()`).
+3. Runtime publish path writes through shared `autopilot-spacetime` network client APIs with outbox/retry semantics.
 
 Implication:
 
-Deploying SpacetimeDB infra alone is not sufficient; client/runtime integration must still be completed for true SpacetimeDB-native operation.
+Deploying SpacetimeDB infra is now an operations/deployment problem (durability, auth boundaries, observability, rollout), not a legacy transport migration problem.
 
 ### 4) Live GCP state verification attempt in this session
 
@@ -144,12 +146,12 @@ Today, only provisioning checks and rollout probes exist; deploy orchestration i
 
 ### G) App readiness dependencies (blocking)
 
-Infra deployment should not be declared complete until app integration is complete:
+Infra deployment should not be declared complete until app integration is validated continuously:
 
-1. Desktop switched from `/sync/socket/websocket` to SpacetimeDB subscribe flow (`/v1/database/:name_or_identity/subscribe` target semantics).
-2. Runtime publish path switched from in-memory reducer store to real SpacetimeDB writes.
-3. Protocol surface converged on stream/query-set model and stale-cursor/replay semantics.
-4. Control token endpoint and docs/tests made internally consistent (current repo has contradictory retired-vs-active assertions for `/api/spacetime/token`).
+1. Desktop subscribe/reconnect behavior remains green against Spacetime endpoint semantics.
+2. Runtime publish path remains green with real reducer writes and durable outbox/retry gates.
+3. Protocol surface remains converged on stream/query-set model and stale-cursor/replay semantics.
+4. Control token endpoint/docs/tests remain internally consistent on canonical `POST /api/sync/token`.
 
 ## Required Work Before "Spacetime on GCP" Can Be Called Production-Ready
 
@@ -162,9 +164,9 @@ Infra deployment should not be declared complete until app integration is comple
 
 ### 2) Runtime/control/desktop cutover (in progress)
 
-1. wire runtime to real SpacetimeDB write path
-2. wire desktop to SpacetimeDB-native subscription path
-3. lock compatibility/token route behavior and docs
+1. keep runtime real-write Spacetime path green through release cycles
+2. keep desktop Spacetime-native subscription path green through release cycles
+3. keep canonical sync token route behavior/docs locked (`POST /api/sync/token`)
 
 ### 3) Gate evidence (must be green with real infra)
 

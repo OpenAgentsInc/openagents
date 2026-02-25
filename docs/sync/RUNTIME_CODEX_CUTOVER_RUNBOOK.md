@@ -7,7 +7,7 @@ Scope: retained-client sync rollout, gate enforcement, and rollback posture
 
 1. Runtime sync observability tests pass.
 2. Retired Spacetime runtime route guard test passes.
-3. Control sync claim issuance is healthy (`POST /api/spacetime/token`).
+3. Control sync claim issuance is healthy (`POST /api/sync/token`).
 4. Target surface builds are deployed with retained sync compatibility settings.
 5. Rollback revision IDs are captured for control and runtime services.
 
@@ -36,7 +36,7 @@ Scope: retained-client sync rollout, gate enforcement, and rollback posture
 Do not advance stages unless all gates are green:
 
 1. Error budget gate
-   - sync auth/topic errors and stale-cursor rates below thresholds.
+   - sync auth/stream errors and stale-cursor rates below thresholds.
 2. Replay gate
    - replay bootstrap latency within budget.
 3. Reconnect gate
@@ -51,7 +51,7 @@ Do not advance stages unless all gates are green:
 Runtime sync correctness:
 
 ```bash
-cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+cargo test -p openagents-runtime-service spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture
 cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture
 ```
 
@@ -59,6 +59,8 @@ Cross-surface replay/resume parity:
 
 ```bash
 ./scripts/spacetime/replay-resume-parity-harness.sh
+./scripts/spacetime/runtime-desktop-e2e.sh
+./scripts/spacetime/verify-spacetime-only-symbols.sh
 ```
 
 Chaos drill gate:

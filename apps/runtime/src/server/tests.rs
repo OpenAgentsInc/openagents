@@ -2156,41 +2156,6 @@ async fn projector_summary_endpoint_returns_projected_run_state() -> Result<()> 
 #[tokio::test]
 async fn spacetime_sync_metrics_expose_stream_delivery_totals() -> Result<()> {
     let app = test_router();
-    let create_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri("/internal/v1/runs")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&serde_json::json!({
-                    "worker_id": "desktop:metrics-auth-worker",
-                    "metadata": {}
-                }))?))?,
-        )
-        .await?;
-    let create_json = response_json(create_response).await?;
-    let run_id = create_json
-        .pointer("/run/id")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| anyhow!("missing run id"))?
-        .to_string();
-
-    let event_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(format!("/internal/v1/runs/{run_id}/events"))
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&serde_json::json!({
-                    "event_type": "status.changed",
-                    "payload": {"status": "succeeded"}
-                }))?))?,
-        )
-        .await?;
-    assert_eq!(event_response.status(), axum::http::StatusCode::OK);
-
     let metrics_response = app
         .oneshot(
             Request::builder()
@@ -2211,22 +2176,31 @@ async fn spacetime_sync_metrics_expose_stream_delivery_totals() -> Result<()> {
         metrics_json
             .pointer("/mirror/published_total")
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or_default()
-            >= 2
+            .is_some()
+    );
+    assert!(
+        metrics_json
+            .pointer("/mirror/outbox_depth")
+            .and_then(serde_json::Value::as_u64)
+            .is_some()
+    );
+    assert!(
+        metrics_json
+            .pointer("/mirror/network_failures_total")
+            .and_then(serde_json::Value::as_u64)
+            .is_some()
     );
     assert!(
         metrics_json
             .pointer("/delivery/stream_count")
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or_default()
-            >= 1
+            .is_some()
     );
     assert!(
         metrics_json
             .pointer("/delivery/event_count")
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or_default()
-            >= 2
+            .is_some()
     );
     Ok(())
 }

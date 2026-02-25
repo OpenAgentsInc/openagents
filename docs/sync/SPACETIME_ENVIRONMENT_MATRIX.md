@@ -65,3 +65,7 @@ This command validates:
 1. required env var presence,
 2. base URL format,
 3. health endpoint reachability.
+
+Tracked dev example:
+
+1. `docs/sync/examples/maincloud-dev.envvars`

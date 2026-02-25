@@ -504,6 +504,25 @@ pub(super) fn paint_auth_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut P
     if let Some(worker_id) = root.runtime_auth.sync_worker_id.as_deref() {
         push_wrapped_line(format!("Sync worker: {}", worker_id), theme::text::MUTED);
     }
+    if let Some(connected_users) = root.runtime_auth.sync_connected_users {
+        push_wrapped_line(
+            format!("Connected users (Spacetime presence): {}", connected_users),
+            if connected_users > 0 {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        );
+    }
+    if !root.runtime_auth.sync_connected_identities.is_empty() {
+        push_wrapped_line(
+            "Connected identities (Nostr npub/hex):".to_string(),
+            theme::text::MUTED,
+        );
+        for identity in root.runtime_auth.sync_connected_identities.iter().take(5) {
+            push_wrapped_line(format!("- {}", identity), theme::text::MUTED);
+        }
+    }
     if let Some(connect_attempts) = root.runtime_auth.sync_connect_attempts {
         push_wrapped_line(
             format!("Sync connect attempts: {}", connect_attempts),

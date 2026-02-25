@@ -63,6 +63,9 @@ Removed surface archive:
 - Control service staging deploy runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Runtime deploy + migrate runbook: `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - Runtime WS incident runbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
+- Spacetime managed deployment lane: `docs/sync/SPACETIME_MAINCLOUD_MANAGED_DEPLOYMENT.md`
+- Spacetime immediate two-client handshake check: `docs/sync/SPACETIME_MAINCLOUD_HANDSHAKE_SMOKE_TEST.md`
+- Spacetime dev env example: `docs/sync/examples/maincloud-dev.envvars`
 
 Canonical Rust runtime deploy + migrate command:
 

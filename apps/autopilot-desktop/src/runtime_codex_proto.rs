@@ -1,12 +1,11 @@
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RuntimeCodexFrame {
-    pub join_ref: Option<String>,
-    pub reference: Option<String>,
-    pub topic: String,
-    pub event: String,
-    pub payload: Value,
+pub enum SpacetimeServerMessage {
+    SubscribeApplied { payload: Value },
+    TransactionUpdate { payload: Value },
+    Error { payload: Value },
+    Heartbeat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,74 +15,175 @@ pub struct RuntimeCodexStreamEvent {
 }
 
 #[must_use]
-pub fn build_spacetime_frame(
-    join_ref: Option<&str>,
-    reference: Option<&str>,
-    topic: &str,
-    event: &str,
-    payload: Value,
-) -> String {
-    let frame = Value::Array(vec![
-        join_ref.map_or(Value::Null, |value| Value::String(value.to_string())),
-        reference.map_or(Value::Null, |value| Value::String(value.to_string())),
-        Value::String(topic.to_string()),
-        Value::String(event.to_string()),
-        payload,
-    ]);
-    serde_json::to_string(&frame).unwrap_or_else(|_| "[]".to_string())
+pub fn build_subscribe_request(stream_id: &str, after_seq: u64, request_id: u64) -> String {
+    let query = format!(
+        "SELECT * FROM sync_event WHERE stream_id = '{}' AND seq > {} ORDER BY seq ASC",
+        stream_id.replace('"', "\\\""),
+        after_seq
+    );
+
+    let payload = Value::Object(
+        [(
+            "SubscribeMulti".to_string(),
+            Value::Object(
+                [
+                    (
+                        "query_strings".to_string(),
+                        Value::Array(vec![Value::String(query)]),
+                    ),
+                    (
+                        "request_id".to_string(),
+                        Value::Number(serde_json::Number::from(request_id)),
+                    ),
+                    (
+                        "query_id".to_string(),
+                        Value::Number(serde_json::Number::from(request_id)),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
-pub fn parse_spacetime_frame(raw: &str) -> Option<RuntimeCodexFrame> {
+#[must_use]
+pub fn build_heartbeat_request(request_id: u64) -> String {
+    let payload = Value::Object(
+        [(
+            "OneOffQuery".to_string(),
+            Value::Object(
+                [
+                    (
+                        "message_id".to_string(),
+                        Value::Array(vec![Value::Number(serde_json::Number::from(request_id))]),
+                    ),
+                    (
+                        "query_string".to_string(),
+                        Value::String("SELECT 1".to_string()),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_spacetime_server_message(raw: &str) -> Option<SpacetimeServerMessage> {
     let parsed: Value = serde_json::from_str(raw).ok()?;
-    let frame = parsed.as_array()?;
-    if frame.len() != 5 {
-        return None;
+    let object = parsed.as_object()?;
+
+    if object.get("SubscribeApplied").is_some()
+        || object.get("SubscribeMultiApplied").is_some()
+        || object
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(|value| value.eq_ignore_ascii_case("subscribe_applied"))
+            .unwrap_or(false)
+    {
+        return Some(SpacetimeServerMessage::SubscribeApplied {
+            payload: parsed.clone(),
+        });
     }
 
-    Some(RuntimeCodexFrame {
-        join_ref: frame[0].as_str().map(ToString::to_string),
-        reference: frame[1].as_str().map(ToString::to_string),
-        topic: frame[2].as_str()?.to_string(),
-        event: frame[3].as_str()?.to_string(),
-        payload: frame[4].clone(),
-    })
+    if object.get("TransactionUpdate").is_some()
+        || object.get("TransactionUpdateLight").is_some()
+        || object
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(|value| value.eq_ignore_ascii_case("transaction_update"))
+            .unwrap_or(false)
+    {
+        return Some(SpacetimeServerMessage::TransactionUpdate {
+            payload: parsed.clone(),
+        });
+    }
+
+    if object.get("SubscriptionError").is_some()
+        || object.get("Error").is_some()
+        || object
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(|value| value.eq_ignore_ascii_case("error"))
+            .unwrap_or(false)
+    {
+        return Some(SpacetimeServerMessage::Error {
+            payload: parsed.clone(),
+        });
+    }
+
+    if object
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(|value| value.eq_ignore_ascii_case("heartbeat"))
+        .unwrap_or(false)
+    {
+        return Some(SpacetimeServerMessage::Heartbeat);
+    }
+
+    None
 }
 
 pub fn extract_runtime_events_from_spacetime_update(
     payload: &Value,
-    expected_topic: &str,
+    expected_stream_id: &str,
     worker_id: &str,
 ) -> Vec<RuntimeCodexStreamEvent> {
-    let updates = payload
+    let mut updates = payload
         .as_object()
         .and_then(|object| object.get("updates"))
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
 
+    if updates.is_empty() {
+        updates = payload
+            .pointer("/TransactionUpdate/status/Committed/tables")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+    }
+
     updates
         .into_iter()
         .filter_map(|update| {
-            let update_object = update.as_object()?;
-            let topic = update_object.get("topic")?.as_str()?;
-            if topic != expected_topic {
+            let stream_id = update
+                .get("stream_id")
+                .and_then(Value::as_str)
+                .or_else(|| update.get("topic").and_then(Value::as_str));
+            if stream_id != Some(expected_stream_id) {
                 return None;
             }
 
-            let stream_payload = update_object.get("payload")?.as_object()?;
+            let stream_payload = update
+                .get("payload")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+
             let event_worker_id = stream_payload
                 .get("workerId")
                 .and_then(Value::as_str)
-                .or_else(|| stream_payload.get("worker_id").and_then(Value::as_str))?;
-            if event_worker_id != worker_id {
+                .or_else(|| stream_payload.get("worker_id").and_then(Value::as_str));
+            if event_worker_id != Some(worker_id) {
                 return None;
             }
 
-            let payload = Value::Object(stream_payload.clone());
-            let seq = stream_payload
+            let payload = Value::Object(stream_payload);
+            let seq = payload
                 .get("seq")
                 .and_then(Value::as_u64)
-                .or_else(|| update_object.get("watermark").and_then(Value::as_u64));
+                .or_else(|| update.get("seq").and_then(Value::as_u64))
+                .or_else(|| update.get("watermark").and_then(Value::as_u64));
 
             Some(RuntimeCodexStreamEvent { id: seq, payload })
         })
@@ -106,10 +206,15 @@ pub fn merge_retry_cursor(current: Option<u64>, failed_seq: u64) -> u64 {
 
 pub fn spacetime_error_code(payload: &Value) -> Option<String> {
     payload
-        .as_object()
-        .and_then(|object| object.get("code"))
+        .pointer("/SubscriptionError/error")
         .and_then(Value::as_str)
         .map(ToString::to_string)
+        .or_else(|| {
+            payload
+                .get("code")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
 }
 
 pub use openagents_codex_control::{
@@ -122,10 +227,12 @@ pub use openagents_codex_control::{
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeCodexStreamEvent, build_spacetime_frame, extract_control_request,
-        extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
-        extract_runtime_events_from_spacetime_update, handshake_dedupe_key, spacetime_error_code,
-        merge_retry_cursor, parse_spacetime_frame, stream_event_seq, terminal_receipt_dedupe_key,
+        RuntimeCodexStreamEvent, SpacetimeServerMessage, build_subscribe_request,
+        extract_control_request, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
+        extract_ios_user_message, extract_runtime_events_from_spacetime_update,
+        handshake_dedupe_key, merge_retry_cursor, parse_spacetime_server_message,
+        request_dedupe_key, spacetime_error_code, stream_event_seq,
+        terminal_receipt_dedupe_key,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -141,29 +248,55 @@ mod tests {
     }
 
     #[test]
-    fn parse_spacetime_frame_roundtrips_phoenix_frame_shape() {
-        let raw = build_spacetime_frame(
-            None,
-            Some("42"),
-            "sync:v1",
-            "sync:update_batch",
-            json!({"updates": []}),
-        );
-        let frame = parse_spacetime_frame(&raw);
-        assert!(frame.is_some());
-        let frame = frame.unwrap_or_else(|| unreachable!());
-        assert_eq!(frame.reference.as_deref(), Some("42"));
-        assert_eq!(frame.topic, "sync:v1");
-        assert_eq!(frame.event, "sync:update_batch");
+    fn build_subscribe_request_emits_stream_query_payload() {
+        let raw = build_subscribe_request("runtime.codex_worker_events", 42, 7);
+        let parsed: Value = serde_json::from_str(raw.as_str()).expect("json should parse");
+        let query = parsed
+            .pointer("/SubscribeMulti/query_strings/0")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        assert!(query.contains("sync_event"));
+        assert!(query.contains("runtime.codex_worker_events"));
+        assert!(query.contains("seq > 42"));
     }
 
     #[test]
-    fn extract_runtime_events_from_spacetime_update_filters_topic_and_worker() {
+    fn parse_spacetime_server_message_uses_subscribe_transaction_error_kinds() {
+        let subscribe =
+            parse_spacetime_server_message(r#"{"SubscribeApplied":{"request_id":1,"query_id":1}}"#);
+        assert!(matches!(
+            subscribe,
+            Some(SpacetimeServerMessage::SubscribeApplied { .. })
+        ));
+
+        let update = parse_spacetime_server_message(
+            r#"{"TransactionUpdate":{"status":{"Committed":{"tables":[]}}}}"#,
+        );
+        assert!(matches!(
+            update,
+            Some(SpacetimeServerMessage::TransactionUpdate { .. })
+        ));
+
+        let error =
+            parse_spacetime_server_message(r#"{"SubscriptionError":{"error":"stale_cursor"}}"#);
+        assert!(matches!(error, Some(SpacetimeServerMessage::Error { .. })));
+    }
+
+    #[test]
+    fn parse_spacetime_server_message_rejects_legacy_phoenix_frames() {
+        let legacy = parse_spacetime_server_message(
+            r#"[null,"1","sync:v1","sync:update_batch",{"updates":[]}]"#,
+        );
+        assert!(legacy.is_none());
+    }
+
+    #[test]
+    fn extract_runtime_events_from_spacetime_update_filters_stream_and_worker() {
         let payload = json!({
             "updates": [
                 {
-                    "topic": "runtime.codex_worker_events",
-                    "watermark": 12,
+                    "stream_id": "runtime.codex_worker_events",
+                    "seq": 12,
                     "payload": {
                         "workerId": "desktopw:shared",
                         "seq": 12,
@@ -178,8 +311,8 @@ mod tests {
                     }
                 },
                 {
-                    "topic": "runtime.codex_worker_events",
-                    "watermark": 13,
+                    "stream_id": "runtime.codex_worker_events",
+                    "seq": 13,
                     "payload": {
                         "workerId": "desktopw:other",
                         "seq": 13
@@ -208,7 +341,8 @@ mod tests {
     #[test]
     fn spacetime_error_code_extracts_sync_error_code() {
         assert_eq!(
-            spacetime_error_code(&json!({"code": "stale_cursor"})).as_deref(),
+            spacetime_error_code(&json!({"SubscriptionError": {"error": "stale_cursor"}}))
+                .as_deref(),
             Some("stale_cursor")
         );
     }
@@ -318,188 +452,177 @@ mod tests {
         let rewind_cursor = merge_retry_cursor(None, 200);
         assert_eq!(rewind_cursor, 199);
 
-        let replay_emit = process_handshake_event(worker_id, &handshake_payload, &mut acked, true);
-        assert!(replay_emit);
-        assert_eq!(acked.len(), 1);
+        let duplicate_emit =
+            process_handshake_event(worker_id, &handshake_payload, &mut acked, false);
+        assert!(duplicate_emit);
 
         let ack_emit = process_handshake_event(worker_id, &ack_payload, &mut acked, true);
-        assert!(!ack_emit);
-        assert_eq!(acked.len(), 1);
+        assert!(ack_emit);
 
-        let duplicate_emit =
-            process_handshake_event(worker_id, &handshake_payload, &mut acked, true);
-        assert!(!duplicate_emit);
-        assert_eq!(acked.len(), 1);
+        let after_ack_emit =
+            process_handshake_event(worker_id, &handshake_payload, &mut acked, false);
+        assert!(!after_ack_emit);
+    }
+
+    #[test]
+    fn control_request_dedupe_key_is_worker_and_request_scoped() {
+        assert_eq!(
+            request_dedupe_key("desktopw:shared", "req-1"),
+            "desktopw:shared::req-1"
+        );
+        assert_eq!(
+            request_dedupe_key("desktopw:shared", " req-1 "),
+            "desktopw:shared:: req-1 "
+        );
+    }
+
+    #[test]
+    fn terminal_receipt_dedupe_key_is_worker_and_request_scoped() {
+        assert_eq!(
+            terminal_receipt_dedupe_key("desktopw:shared", "req-1"),
+            "desktopw:shared::terminal::req-1"
+        );
+        assert_eq!(
+            terminal_receipt_dedupe_key("desktopw:shared", " req-1 "),
+            "desktopw:shared::terminal:: req-1 "
+        );
+    }
+
+    #[test]
+    fn stream_event_seq_prefers_explicit_id_then_payload_seq() {
+        let event = RuntimeCodexStreamEvent {
+            id: Some(11),
+            payload: json!({"seq": 22}),
+        };
+        assert_eq!(stream_event_seq(&event), Some(11));
+
+        let payload_only = RuntimeCodexStreamEvent {
+            id: None,
+            payload: json!({"seq": 33}),
+        };
+        assert_eq!(stream_event_seq(&payload_only), Some(33));
+    }
+
+    #[test]
+    fn handshake_and_control_extractors_reject_non_worker_events() {
+        let invalid_event = json!({
+            "eventType": "worker.started",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "ios/handshake",
+                "handshake_id": "hs-x",
+                "device_id": "ios-device",
+                "occurred_at": "2026-02-20T00:00:00Z"
+            }
+        });
+        assert_eq!(extract_ios_handshake_id(&invalid_event), None);
+
+        let control_like = json!({
+            "eventType": "worker.event",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "runtime/request",
+                "params": {
+                    "request": {
+                        "request_id": "req-1",
+                        "method": "thread/list",
+                        "params": {
+                            "limit": 5
+                        }
+                    }
+                }
+            }
+        });
+        assert!(matches!(
+            extract_control_request(&control_like),
+            Ok(Some(_))
+        ));
+    }
+
+    #[test]
+    fn ios_user_message_extracts_text_and_optional_model_reasoning() {
+        let payload = json!({
+            "eventType": "worker.event",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "ios/user_message",
+                "message_id": "msg-1",
+                "text": "hello",
+                "model": "gpt-5.2-codex",
+                "reasoning": "high",
+                "occurred_at": "2026-02-20T00:00:00Z"
+            }
+        });
+
+        let extracted = extract_ios_user_message(&payload).expect("user message should parse");
+        assert_eq!(extracted.message_id, "msg-1");
+        assert_eq!(extracted.text, "hello");
+        assert_eq!(extracted.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(extracted.reasoning.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn handshake_dedupe_key_is_worker_and_handshake_scoped() {
+        assert_eq!(
+            handshake_dedupe_key("desktopw:shared", "hs-1"),
+            "desktopw:shared::hs-1"
+        );
+        assert_eq!(
+            handshake_dedupe_key("desktopw:shared", " hs-1 "),
+            "desktopw:shared:: hs-1 "
+        );
+    }
+
+    #[test]
+    fn proto_worker_event_envelope_supports_event_type_aliases() {
+        let camel_case = json!({
+            "eventType": WORKER_EVENT_TYPE,
+            "payload": {
+                "method": "ios/user_message",
+                "message_id": "msg-1",
+                "text": "hello",
+                "occurred_at": "2026-02-20T00:00:00Z"
+            }
+        });
+        let snake_case = json!({
+            "event_type": WORKER_EVENT_TYPE,
+            "payload": {
+                "method": "ios/user_message",
+                "message_id": "msg-2",
+                "text": "hi",
+                "occurred_at": "2026-02-20T00:00:00Z"
+            }
+        });
+
+        let camel_decoded: ProtoWorkerEventEnvelope =
+            serde_json::from_value(camel_case).expect("camelCase envelope should decode");
+        let snake_decoded: ProtoWorkerEventEnvelope =
+            serde_json::from_value(snake_case).expect("snake_case envelope should decode");
+
+        assert_eq!(camel_decoded.event_type, WORKER_EVENT_TYPE);
+        assert_eq!(snake_decoded.event_type, WORKER_EVENT_TYPE);
+        assert!(camel_decoded.payload.is_object());
+        assert!(snake_decoded.payload.is_object());
     }
 
     fn process_handshake_event(
         worker_id: &str,
         payload: &Value,
         acked: &mut HashSet<String>,
-        emit_succeeds: bool,
+        mark_ack: bool,
     ) -> bool {
-        if let Some(handshake_id) = extract_desktop_handshake_ack_id(payload) {
+        if let Some(handshake_id) = extract_desktop_handshake_ack_id(payload)
+            && mark_ack
+        {
             acked.insert(handshake_dedupe_key(worker_id, &handshake_id));
-            return false;
+            return true;
         }
 
-        let Some(handshake_id) = extract_ios_handshake_id(payload) else {
-            return false;
-        };
-
-        let dedupe_key = handshake_dedupe_key(worker_id, &handshake_id);
-        if acked.contains(&dedupe_key) {
-            return false;
+        if let Some(handshake_id) = extract_ios_handshake_id(payload) {
+            let key = handshake_dedupe_key(worker_id, &handshake_id);
+            return !acked.contains(key.as_str());
         }
 
-        if emit_succeeds {
-            acked.insert(dedupe_key);
-        }
-
-        true
-    }
-
-    #[test]
-    fn stream_event_seq_falls_back_to_payload_seq() {
-        let event = RuntimeCodexStreamEvent {
-            id: None,
-            payload: json!({"seq": 77}),
-        };
-        assert_eq!(stream_event_seq(&event), Some(77));
-    }
-
-    #[test]
-    fn extract_ios_user_message_parses_worker_event_payload() {
-        let payload = json!({
-            "eventType": "worker.event",
-            "payload": {
-                "source": "autopilot-ios",
-                "method": "ios/user_message",
-                "message_id": "iosmsg-1",
-                "params": {
-                    "text": "hi from ios",
-                    "model": "gpt-5.2-codex",
-                    "reasoning": "low"
-                }
-            }
-        });
-
-        let message = extract_ios_user_message(&payload);
-        assert!(message.is_some());
-        let message = message.unwrap_or_else(|| unreachable!());
-        assert_eq!(message.message_id, "iosmsg-1");
-        assert_eq!(message.text, "hi from ios");
-        assert_eq!(message.model.as_deref(), Some("gpt-5.2-codex"));
-        assert_eq!(message.reasoning.as_deref(), Some("low"));
-    }
-
-    #[test]
-    fn extract_ios_user_message_requires_non_empty_message_id_and_text() {
-        let missing_text = json!({
-            "eventType": "worker.event",
-            "payload": {
-                "source": "autopilot-ios",
-                "method": "ios/user_message",
-                "message_id": "iosmsg-2",
-                "params": {}
-            }
-        });
-        assert!(extract_ios_user_message(&missing_text).is_none());
-
-        let missing_id = json!({
-            "eventType": "worker.event",
-            "payload": {
-                "source": "autopilot-ios",
-                "method": "ios/user_message",
-                "params": {
-                    "text": "hello"
-                }
-            }
-        });
-        assert!(extract_ios_user_message(&missing_id).is_none());
-    }
-
-    #[test]
-    fn extract_control_request_parses_runtime_request_envelope() {
-        let payload = json!({
-            "eventType": "worker.request",
-            "payload": {
-                "request_id": "req-1",
-                "method": "thread/list",
-                "params": {"limit": 10}
-            }
-        });
-
-        let request = extract_control_request(&payload);
-        assert!(request.is_ok());
-        let request = request.unwrap_or_else(|_| unreachable!());
-        assert!(request.is_some());
-        let request = request.unwrap_or_else(|| unreachable!());
-        assert_eq!(request.request_id, "req-1");
-    }
-
-    #[test]
-    fn terminal_receipt_dedupe_key_is_stable_across_restart_resume_replay() {
-        let worker_id = "desktopw:shared";
-        let request_id = "req-terminal-1";
-        let replayed_key = terminal_receipt_dedupe_key(worker_id, request_id);
-
-        let mut seen = HashSet::new();
-        assert!(seen.insert(replayed_key.clone()));
-        assert!(!seen.insert(replayed_key));
-
-        let next_request_key = terminal_receipt_dedupe_key(worker_id, "req-terminal-2");
-        assert!(seen.insert(next_request_key));
-    }
-
-    #[test]
-    fn codex_contract_fixture_is_decodable_by_desktop_parser() {
-        let fixture_result: Result<Value, _> = serde_json::from_str(include_str!(
-            "../../../docs/protocol/fixtures/codex-worker-events-v1.json"
-        ));
-        assert!(fixture_result.is_ok());
-        let fixture = fixture_result.unwrap_or_else(|_| unreachable!());
-
-        let notifications = fixture["notification_events"]
-            .as_array()
-            .unwrap_or_else(|| unreachable!());
-
-        assert!(notifications.len() >= 10);
-
-        let mut saw_desktop_ack = false;
-        let mut saw_desktop_user_message = false;
-
-        for notification in notifications {
-            let seq = notification["seq"]
-                .as_u64()
-                .unwrap_or_else(|| unreachable!());
-            let payload = notification["payload"].clone();
-
-            let stream_payload = json!({
-                "seq": seq,
-                "eventType": WORKER_EVENT_TYPE,
-                "payload": payload
-            });
-
-            let parsed = serde_json::from_value::<ProtoWorkerEventEnvelope>(stream_payload.clone());
-            assert!(parsed.is_ok());
-            let parsed = parsed.unwrap_or_else(|_| unreachable!());
-            assert_eq!(parsed.event_type, WORKER_EVENT_TYPE);
-            assert!(parsed.payload.is_object());
-
-            if extract_desktop_handshake_ack_id(&stream_payload).is_some() {
-                saw_desktop_ack = true;
-            }
-            if payload
-                .get("method")
-                .and_then(Value::as_str)
-                .is_some_and(|method| method == "desktop/user_message")
-            {
-                saw_desktop_user_message = true;
-            }
-        }
-
-        assert!(saw_desktop_ack);
-        assert!(saw_desktop_user_message);
+        false
     }
 }

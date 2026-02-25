@@ -5,6 +5,8 @@ Current canonical Spacetime sync documentation and runbooks:
 - `ROADMAP.md`: active sync sequencing and closure checklist
 - `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover/rollback procedure
 - `SPACETIME_ENVIRONMENT_MATRIX.md`: environment and ownership matrix
+- `SPACETIME_MAINCLOUD_MANAGED_DEPLOYMENT.md`: managed Maincloud deployment lane and operator bring-up flow
+- `SPACETIME_MAINCLOUD_HANDSHAKE_SMOKE_TEST.md`: immediate two-client handshake and connected-count verification
 - `SPACETIME_GCLOUD_DEPLOYMENT_CONSIDERATIONS.md`: GCP deployment state, gaps, and readiness checklist
 - `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: control-issued claim scope and refresh policy
 - `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime mirror and stream mapping rules
@@ -23,10 +25,20 @@ Canonical contracts and invariants:
 - `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 
+Environment example:
+
+- `examples/maincloud-dev.envvars`: tracked dev bootstrap values for current Maincloud database
+
+Automation scripts:
+
+- `scripts/spacetime/maincloud-handshake-smoke.sh`
+- `scripts/spacetime/runtime-desktop-e2e.sh`
+- `scripts/spacetime/verify-spacetime-only-symbols.sh`
+
 Token issuance notes:
 
-- Primary endpoint: `POST /api/spacetime/token`
-- Compatibility aliases: `POST /api/sync/token`, `POST /api/v1/spacetime/token`, `POST /api/v1/sync/token`
+- Canonical endpoint: `POST /api/sync/token`
+- Retired aliases: `/api/spacetime/token`, `/api/v1/spacetime/token`, `/api/v1/sync/token`
 
 Archived/superseded sync docs:
 

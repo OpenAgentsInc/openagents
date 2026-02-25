@@ -294,20 +294,27 @@ impl Config {
                 .map_err(|error| {
                     ConfigError::InvalidSpacetimeSlowConsumerLagThreshold(error.to_string())
                 })?;
-        let spacetime_slow_consumer_max_strikes = env::var("RUNTIME_SPACETIME_SLOW_CONSUMER_MAX_STRIKES")
-            .unwrap_or_else(|_| "3".to_string())
-            .parse::<u32>()
-            .map_err(|error| ConfigError::InvalidSpacetimeSlowConsumerMaxStrikes(error.to_string()))?;
-        let spacetime_consumer_registry_capacity = env::var("RUNTIME_SPACETIME_CONSUMER_REGISTRY_CAPACITY")
-            .unwrap_or_else(|_| "4096".to_string())
-            .parse::<usize>()
-            .map_err(|error| {
-                ConfigError::InvalidSpacetimeConsumerRegistryCapacity(error.to_string())
-            })?;
-        let spacetime_reconnect_base_backoff_ms = env::var("RUNTIME_SPACETIME_RECONNECT_BASE_BACKOFF_MS")
-            .unwrap_or_else(|_| "400".to_string())
-            .parse::<u64>()
-            .map_err(|error| ConfigError::InvalidSpacetimeReconnectBaseBackoffMs(error.to_string()))?;
+        let spacetime_slow_consumer_max_strikes =
+            env::var("RUNTIME_SPACETIME_SLOW_CONSUMER_MAX_STRIKES")
+                .unwrap_or_else(|_| "3".to_string())
+                .parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidSpacetimeSlowConsumerMaxStrikes(error.to_string())
+                })?;
+        let spacetime_consumer_registry_capacity =
+            env::var("RUNTIME_SPACETIME_CONSUMER_REGISTRY_CAPACITY")
+                .unwrap_or_else(|_| "4096".to_string())
+                .parse::<usize>()
+                .map_err(|error| {
+                    ConfigError::InvalidSpacetimeConsumerRegistryCapacity(error.to_string())
+                })?;
+        let spacetime_reconnect_base_backoff_ms =
+            env::var("RUNTIME_SPACETIME_RECONNECT_BASE_BACKOFF_MS")
+                .unwrap_or_else(|_| "400".to_string())
+                .parse::<u64>()
+                .map_err(|error| {
+                    ConfigError::InvalidSpacetimeReconnectBaseBackoffMs(error.to_string())
+                })?;
         let spacetime_reconnect_jitter_ms = env::var("RUNTIME_SPACETIME_RECONNECT_JITTER_MS")
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
@@ -318,8 +325,8 @@ impl Config {
                     "RUNTIME_SPACETIME_EMERGENCY_MODE_ENABLED: {error}"
                 ))
             })?;
-        let spacetime_enforce_origin =
-            parse_bool_env("RUNTIME_SPACETIME_ENFORCE_ORIGIN", true).map_err(|error| {
+        let spacetime_enforce_origin = parse_bool_env("RUNTIME_SPACETIME_ENFORCE_ORIGIN", true)
+            .map_err(|error| {
                 ConfigError::InvalidSpacetimeEnforceOrigin(format!(
                     "RUNTIME_SPACETIME_ENFORCE_ORIGIN: {error}"
                 ))
@@ -368,7 +375,9 @@ impl Config {
                 .unwrap_or_else(|_| default.to_string())
                 .parse::<u64>()
                 .map(|value| value.max(1))
-                .map_err(|error| ConfigError::InvalidSpacetimeReplayBudget(format!("{key}: {error}")))
+                .map_err(|error| {
+                    ConfigError::InvalidSpacetimeReplayBudget(format!("{key}: {error}"))
+                })
         };
         let parse_max_payload = |key: &str, default: &str| -> Result<usize, ConfigError> {
             env::var(key)
@@ -379,8 +388,10 @@ impl Config {
                     ConfigError::InvalidSpacetimeMaxPayloadBytes(format!("{key}: {error}"))
                 })
         };
-        let spacetime_run_events_publish_rate_per_second =
-            parse_publish_rate("RUNTIME_SPACETIME_RUN_EVENTS_PUBLISH_RATE_PER_SECOND", "240")?;
+        let spacetime_run_events_publish_rate_per_second = parse_publish_rate(
+            "RUNTIME_SPACETIME_RUN_EVENTS_PUBLISH_RATE_PER_SECOND",
+            "240",
+        )?;
         let spacetime_worker_lifecycle_publish_rate_per_second = parse_publish_rate(
             "RUNTIME_SPACETIME_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND",
             "180",
@@ -405,8 +416,10 @@ impl Config {
             parse_replay_budget("RUNTIME_SPACETIME_FALLBACK_REPLAY_BUDGET_EVENTS", "500")?;
         let spacetime_run_events_max_payload_bytes =
             parse_max_payload("RUNTIME_SPACETIME_RUN_EVENTS_MAX_PAYLOAD_BYTES", "262144")?;
-        let spacetime_worker_lifecycle_max_payload_bytes =
-            parse_max_payload("RUNTIME_SPACETIME_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES", "65536")?;
+        let spacetime_worker_lifecycle_max_payload_bytes = parse_max_payload(
+            "RUNTIME_SPACETIME_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES",
+            "65536",
+        )?;
         let spacetime_codex_worker_events_max_payload_bytes = parse_max_payload(
             "RUNTIME_SPACETIME_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES",
             "131072",
@@ -414,7 +427,9 @@ impl Config {
         let spacetime_fallback_max_payload_bytes =
             parse_max_payload("RUNTIME_SPACETIME_FALLBACK_MAX_PAYLOAD_BYTES", "65536")?;
         let spacetime_poll_max_limit = spacetime_poll_max_limit.max(1);
-        let spacetime_poll_default_limit = spacetime_poll_default_limit.max(1).min(spacetime_poll_max_limit);
+        let spacetime_poll_default_limit = spacetime_poll_default_limit
+            .max(1)
+            .min(spacetime_poll_max_limit);
         let spacetime_outbound_queue_limit = spacetime_outbound_queue_limit.max(1);
         let spacetime_fair_topic_slice_limit = spacetime_fair_topic_slice_limit.max(1);
         let spacetime_slow_consumer_max_strikes = spacetime_slow_consumer_max_strikes.max(1);

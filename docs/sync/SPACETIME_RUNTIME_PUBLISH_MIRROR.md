@@ -10,7 +10,7 @@ Spacetime reducer storage for sync delivery parity. This mirror does not change 
 
 ## Topic to Stream Mapping
 
-Runtime fanout topic keys map to Spacetime `stream_id` as follows:
+Runtime sync topic keys map to Spacetime `stream_id` as follows:
 
 1. `run:<run_id>:events` -> `runtime.run.<run_id>.events`
 2. `worker:<worker_id>:lifecycle` -> `runtime.worker.<worker_id>.lifecycle`
@@ -24,17 +24,15 @@ Runtime fanout topic keys map to Spacetime `stream_id` as follows:
 1. Mirror publishes use deterministic idempotency key:
    - `topic:<topic>:seq:<sequence>:kind:<kind>`
 2. Mirror append requires `expected_next_seq = sequence` for each stream.
-3. Sequence conflicts are retried with bounded backoff.
+3. Runtime retries transient publish failures with bounded backoff.
 4. Duplicate idempotency keys are treated as success (idempotent duplicate).
+5. Failed publishes are enqueued to durable outbox for replay on next publish cycle.
 
 ## Parity Checks
 
-For each mirrored event, runtime validates:
+Runtime mirror health is validated by:
 
-1. Stream id equals mapped stream id.
-2. Sequence equals runtime fanout sequence.
-3. Stored `payload_hash` equals canonical hash of mirrored payload.
-4. Stored bytes equal encoded mirrored payload bytes.
-5. Durable offset equals fanout sequence.
-
-If parity validation fails, mirror publish returns an explicit error and increments failure metrics.
+1. deterministic topic->stream mapping tests,
+2. idempotent duplicate publish tests,
+3. out-of-order/sequence conflict rejection tests,
+4. durable outbox enqueue-on-failure tests.

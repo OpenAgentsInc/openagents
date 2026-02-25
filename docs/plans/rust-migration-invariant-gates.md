@@ -1,15 +1,15 @@
 # Rust Migration Invariant Gates
 
 Status: active
-Last updated: 2026-02-22
+Last updated: 2026-02-26
 
 These invariants gate Rust migration work and release decisions.
 
-Transition note (2026-02-25):
+Transport enforcement note (2026-02-26):
 
-1. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md` is accepted and is canonical sync doctrine.
-2. Spacetime is an implemented legacy lane during migration and must not be treated as long-term sync authority.
-3. Replacement execution details are tracked in `docs/plans/spacetimedb-full-integration.md`.
+1. `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md` is the active sync doctrine.
+2. Retained runtime/client sync paths must be Spacetime-only; no legacy websocket/topic lanes.
+3. Any temporary legacy exception requires explicit owner + expiry + deletion issue per ADR-0010.
 
 ## INV-01: Proto-first contracts
 
@@ -19,17 +19,20 @@ Cross-process contracts are defined in `proto/` and generated into Rust.
 
 Authority mutations happen through authenticated HTTP APIs only.
 
-## INV-03: Spacetime WS canonical live transport
+## INV-03: Spacetime-Only Live Transport
 
-Spacetime live subscriptions are the canonical transport for retained OpenAgents sync delivery. No SSE/poll live authority lanes are allowed.
+Spacetime live subscriptions are the only permitted retained live sync transport for runtime/client
+delivery.
 
-Migration allowance:
-- Spacetime WS may remain enabled only as an explicitly bounded legacy fallback lane until replacement cutover gates pass.
-- New sync feature work must target Spacetime transport semantics, not Spacetime expansion.
+Hard rules:
+- Legacy websocket pathing, Phoenix frame semantics, and topic poll/fanout compatibility lanes are prohibited in retained paths.
+- SSE is allowed only as an HTTP presentation adapter over existing authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
+- SSE is prohibited as an alternate live-sync authority transport.
+- No new compatibility alias may be introduced for sync transport without an approved ADR-0010 exception.
 
-Bounded exception:
-- SSE is allowed only as an HTTP presentation adapter over existing codex/sync authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
-- SSE is prohibited as an alternate authority source or as a live-sync authority transport.
+Exception gate:
+- Must include owner, expiry, blast radius, rollback path, and linked deletion issue.
+- Exception automatically fails compliance after expiry.
 
 ## INV-04: Control-plane authority isolation
 

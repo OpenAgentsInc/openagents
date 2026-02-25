@@ -3,7 +3,7 @@
 Date: 2026-02-25
 Status: Active
 Owner lanes: Runtime, Desktop, Control, Protocol, Infra
-Authority ADRs: `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
+Authority ADRs: `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 ## Program Goal
 
@@ -29,7 +29,7 @@ Completed baseline capabilities:
 1. Runtime publishes retained sync events through Spacetime publisher path.
 2. Runtime exposes sync observability at `/internal/v1/spacetime/sync/metrics`.
 3. Retired runtime Spacetime internal endpoints return deterministic `404` and are no longer active authority lanes.
-4. Control service issues scoped sync claims through canonical Spacetime token endpoint.
+4. Control service issues scoped sync claims through canonical `POST /api/sync/token` endpoint.
 
 Remaining closure work:
 
@@ -63,7 +63,7 @@ Done when:
 
 Verification:
 
-- `cargo test -p openagents-runtime-service spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture`
+- `cargo test -p openagents-runtime-service spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture`
 - `cargo test -p openagents-runtime-service retired_spacetime_routes_return_not_found -- --nocapture`
 
 ### SYNC-003: Cross-Surface Replay/Resume Reliability
@@ -95,7 +95,7 @@ Verification:
 
 Do not advance cohort promotion unless all are green:
 
-1. sync auth/topic error rates remain within SLO.
+1. sync auth/stream error rates remain within SLO.
 2. replay bootstrap latency remains in budget.
 3. reconnect storms remain bounded.
 4. duplicate delivery stays deterministic and idempotent.

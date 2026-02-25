@@ -82,7 +82,7 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
 3. Spacetime sync contract lane
 
 ```bash
-cargo test --manifest-path apps/runtime/Cargo.toml server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+cargo test --manifest-path apps/runtime/Cargo.toml spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture
 cargo test --manifest-path apps/runtime/Cargo.toml server::tests::retired_spacetime_routes_return_not_found -- --nocapture
 ```
 

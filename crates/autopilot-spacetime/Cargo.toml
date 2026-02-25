@@ -8,4 +8,6 @@ publish.workspace = true
 description = "OpenAgents Spacetime sync schema and reducer primitives"
 
 [dependencies]
-
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -1,6 +1,7 @@
 use axum::{
-    Router, middleware,
+    middleware,
     routing::{delete, get, patch, post},
+    Router,
 };
 
 use super::*;
@@ -70,8 +71,6 @@ pub(super) fn build_protected_api_router(
     );
     let router = add_admin_control_routes(router, admin_state);
     router
-        .route(ROUTE_V1_SYNC_TOKEN, post(sync_token))
-        .route(ROUTE_V1_SPACETIME_TOKEN, post(sync_token))
         .route_layer(middleware::from_fn_with_state(
             workos_session_state,
             workos_session_gate,
@@ -162,7 +161,6 @@ fn add_settings_inbox_token_routes(router: Router<AppState>) -> Router<AppState>
 
 fn add_org_sync_social_routes(router: Router<AppState>) -> Router<AppState> {
     router
-        .route(ROUTE_SPACETIME_TOKEN, post(sync_token))
         .route(ROUTE_ORGS_MEMBERSHIPS, get(org_memberships))
         .route(ROUTE_ORGS_ACTIVE, post(set_active_org))
         .route(ROUTE_POLICY_AUTHORIZE, post(policy_authorize))

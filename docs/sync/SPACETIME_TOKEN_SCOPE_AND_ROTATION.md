@@ -49,8 +49,7 @@ Validation behavior:
 
 Desktop sync token minting behavior:
 
-1. Prefer `POST /api/spacetime/token`.
-2. Fallback to `POST /api/sync/token` for compatibility.
-3. Treat missing/invalid token payload as hard error.
-4. Use `refresh_after_in` as the proactive remint boundary for long-lived sessions.
-
+1. Use canonical endpoint `POST /api/sync/token`.
+2. Treat missing/invalid token payload as hard error.
+3. Use `refresh_after_in` as the proactive remint boundary for long-lived sessions.
+4. Alias routes (`/api/spacetime/token`, `/api/v1/sync/token`, `/api/v1/spacetime/token`) are retired and must not be used.

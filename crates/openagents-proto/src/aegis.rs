@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value};
 use thiserror::Error;
 
-use crate::wire::google::protobuf::{ListValue, Struct, Value as ProtoValue, value::Kind};
+use crate::wire::google::protobuf::{value::Kind, ListValue, Struct, Value as ProtoValue};
 use crate::wire::openagents::aegis::v1 as wire;
 
 pub const AEGIS_CLASSIFY_REQUEST_SCHEMA_V1: &str = "openagents.aegis.classify_request.v1";

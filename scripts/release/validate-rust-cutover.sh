@@ -292,7 +292,7 @@ if [[ "${RUN_SPACETIME_SYNC_CONTRACT_TESTS}" == "1" ]]; then
     "spacetime-sync-contract-tests" \
     "required" \
     "runtime spacetime sync contract tests" \
-    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" spacetime_publisher::tests::http_publish_failure_queues_outbox_for_retry -- --nocapture
 
   run_check \
     "spacetime-retired-route-guards" \

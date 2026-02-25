@@ -116,14 +116,13 @@ use crate::openapi::{
     ROUTE_SETTINGS_INTEGRATIONS_GOOGLE, ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_CALLBACK,
     ROUTE_SETTINGS_INTEGRATIONS_GOOGLE_REDIRECT, ROUTE_SETTINGS_INTEGRATIONS_RESEND,
     ROUTE_SETTINGS_INTEGRATIONS_RESEND_TEST, ROUTE_SETTINGS_PROFILE, ROUTE_SHOUTS,
-    ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SPACETIME_TOKEN, ROUTE_SYNC_TOKEN, ROUTE_TOKENS,
-    ROUTE_TOKENS_BY_ID, ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
+    ROUTE_SHOUTS_ZONES, ROUTE_SMOKE_STREAM, ROUTE_SYNC_TOKEN, ROUTE_TOKENS, ROUTE_TOKENS_BY_ID,
+    ROUTE_TOKENS_CURRENT, ROUTE_V1_AUTH_SESSION, ROUTE_V1_AUTH_SESSIONS,
     ROUTE_V1_AUTH_SESSIONS_REVOKE, ROUTE_V1_CONTROL_ROUTE_SPLIT_EVALUATE,
     ROUTE_V1_CONTROL_ROUTE_SPLIT_OVERRIDE, ROUTE_V1_CONTROL_ROUTE_SPLIT_STATUS,
     ROUTE_V1_CONTROL_RUNTIME_ROUTING_EVALUATE, ROUTE_V1_CONTROL_RUNTIME_ROUTING_OVERRIDE,
-    ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_V1_SPACETIME_TOKEN,
-    ROUTE_V1_SYNC_TOKEN, ROUTE_WEBHOOKS_RESEND, ROUTE_WHISPERS, ROUTE_WHISPERS_READ,
-    openapi_document,
+    ROUTE_V1_CONTROL_RUNTIME_ROUTING_STATUS, ROUTE_V1_CONTROL_STATUS, ROUTE_WEBHOOKS_RESEND,
+    ROUTE_WHISPERS, ROUTE_WHISPERS_READ, openapi_document,
 };
 use crate::render::{
     apply_html_security_headers, apply_static_security_headers,
@@ -2297,10 +2296,7 @@ fn compatibility_lane_is_sunset_path(path: &str) -> bool {
     if path.starts_with("/api/v1/control/") {
         return true;
     }
-    if path.starts_with("/api/v1/auth/")
-        || path == ROUTE_V1_SYNC_TOKEN
-        || path == ROUTE_V1_SPACETIME_TOKEN
-    {
+    if path.starts_with("/api/v1/auth/") {
         return true;
     }
     if path == "/api/chat/guest-session" || path == ROUTE_LEGACY_CHAT_STREAM {
@@ -2315,10 +2311,6 @@ fn compatibility_lane_is_sunset_path(path: &str) -> bool {
 
 fn compatibility_surface_for_path(path: &str) -> Option<CompatibilitySurface> {
     if path.starts_with("/api/v1/control/") {
-        return Some(CompatibilitySurface::ControlApi);
-    }
-
-    if path == ROUTE_V1_SYNC_TOKEN || path == ROUTE_V1_SPACETIME_TOKEN {
         return Some(CompatibilitySurface::ControlApi);
     }
 
@@ -2516,7 +2508,7 @@ async fn smoke_stream(
             "transport": "spacetime_ws",
             "topic": "runtime.codex_worker_events",
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
             "sseEnabled": false,
         },
         "event_contract": {
@@ -4925,7 +4917,7 @@ async fn autopilot_stream(
             "transport": "spacetime_ws",
             "topic": worker_events_topic,
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
         },
         "control": {
             "method": "turn/start",
@@ -13920,7 +13912,7 @@ async fn runtime_codex_worker_stream(
             "transport": "spacetime_ws",
             "topic": org_worker_events_topic(&bundle.session.active_org_id),
             "scope": "runtime.codex_worker_events",
-            "syncTokenRoute": ROUTE_SPACETIME_TOKEN,
+            "syncTokenRoute": ROUTE_SYNC_TOKEN,
         },
         "snapshot": runtime_worker_snapshot_payload(&worker, now),
         "events": events,
@@ -14567,7 +14559,7 @@ async fn control_status(
             "runtimeRouteOwnership": runtime_route_ownership(),
             "syncCutover": {
                 "defaultTransport": "spacetime_ws",
-                "spacetimeTokenRoute": ROUTE_SPACETIME_TOKEN,
+                "syncTokenRoute": ROUTE_SYNC_TOKEN,
             }
         }
     });

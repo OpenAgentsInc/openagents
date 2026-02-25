@@ -1073,6 +1073,7 @@ dependencies = [
  "arboard",
  "autopilot-core",
  "autopilot-inbox-domain",
+ "autopilot-spacetime",
  "autopilot_app",
  "autopilot_ui",
  "chrono",
@@ -1115,6 +1116,11 @@ dependencies = [
 [[package]]
 name = "autopilot-spacetime"
 version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "autopilot_app"

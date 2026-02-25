@@ -1,5 +1,7 @@
 # Audits
 
+- `docs/audits/2026-02-26-spacetime-only-compliance-signoff.md`
+- `docs/audits/2026-02-25-maincloud-bootstrap-and-handshake-audit.md`
 - `docs/audits/2026-02-25-spacetimedb-first-architecture-simplification-audit.md`
 - `docs/audits/2026-02-25-comprehensive-codebase-audit.md`
 - `docs/audits/2026-02-25-openagents-com-legacy-code-archive-manifest.md`

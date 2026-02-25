@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 use crate::wire::google::protobuf::{
-    ListValue, Struct, Timestamp, Value as ProtoValue, value::Kind,
+    value::Kind, ListValue, Struct, Timestamp, Value as ProtoValue,
 };
 use crate::wire::openagents::hydra::v1 as wire;
 

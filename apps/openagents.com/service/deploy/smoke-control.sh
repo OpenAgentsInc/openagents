@@ -94,11 +94,20 @@ if [[ -n "${ACCESS_TOKEN}" ]]; then
     -H 'content-type: application/json' \
     -d '{"scopes":["runtime.codex_worker_events"]}' \
     "${BASE_URL}/api/sync/token" >/dev/null
-  curl_with_session -X POST \
+
+  status_v1_sync="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
     -H "authorization: Bearer ${ACCESS_TOKEN}" \
     -H 'content-type: application/json' \
     -d '{"scopes":["runtime.codex_worker_events"]}' \
-    "${BASE_URL}/api/v1/sync/token" >/dev/null
+    "${BASE_URL}/api/v1/sync/token")"
+  [[ "${status_v1_sync}" == "404" ]]
+
+  status_spacetime="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+    -H "authorization: Bearer ${ACCESS_TOKEN}" \
+    -H 'content-type: application/json' \
+    -d '{"scopes":["runtime.codex_worker_events"]}' \
+    "${BASE_URL}/api/spacetime/token")"
+  [[ "${status_spacetime}" == "404" ]]
 else
   echo "[smoke] OPENAGENTS_CONTROL_ACCESS_TOKEN is unset; skipping authenticated session/token checks"
 fi

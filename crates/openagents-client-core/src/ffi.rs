@@ -722,8 +722,8 @@ mod tests {
         extract_control_request_from_payload_json, extract_control_success_context_json,
         extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
         normalize_verification_code_string, oa_client_core_ffi_contract_version,
-        oa_client_core_free_string, oa_client_core_normalize_email,
-        select_preferred_worker_json, with_c_string_input, with_mut_ptr, with_ref_ptr,
+        oa_client_core_free_string, oa_client_core_normalize_email, select_preferred_worker_json,
+        with_c_string_input, with_mut_ptr, with_ref_ptr,
     };
 
     #[test]

@@ -2,6 +2,9 @@
 
 use std::sync::{Arc, Mutex};
 
+use reqwest::{Client as HttpClient, StatusCode};
+use serde_json::{Value, json};
+
 use crate::{
     auth::{
         SyncAuthorizationError, SyncSessionClaims, authorize_ack_checkpoint,
@@ -155,6 +158,32 @@ pub struct SpacetimeClient {
     store: Arc<Mutex<ReducerStore>>,
     config: SpacetimeClientConfig,
     negotiated_protocol: Arc<Mutex<Option<ProtocolVersion>>>,
+}
+
+/// Network reducer error classes for runtime observability and retry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpacetimeReducerErrorClass {
+    Auth,
+    RateLimited,
+    Network,
+    Validation,
+    Unknown,
+}
+
+/// Structured reducer call failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpacetimeReducerError {
+    pub class: SpacetimeReducerErrorClass,
+    pub message: String,
+}
+
+/// Shared network client for calling Spacetime reducers over HTTP.
+#[derive(Clone)]
+pub struct SpacetimeReducerHttpClient {
+    client: HttpClient,
+    base_url: String,
+    database: String,
+    auth_token: Option<String>,
 }
 
 impl SpacetimeClient {
@@ -363,16 +392,233 @@ fn stream_window(
     })
 }
 
+impl SpacetimeReducerHttpClient {
+    pub fn new(base_url: &str, database: &str, auth_token: Option<String>) -> Result<Self, String> {
+        let base_url = normalize_http_base_url(base_url)?;
+        let database = database.trim().to_string();
+        if database.is_empty() {
+            return Err("database must not be empty".to_string());
+        }
+        let auth_token = auth_token
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        Ok(Self {
+            client: HttpClient::builder()
+                .build()
+                .map_err(|error| format!("spacetime http client init failed: {error}"))?,
+            base_url,
+            database,
+            auth_token,
+        })
+    }
+
+    pub async fn append_sync_event(
+        &self,
+        request: AppendSyncEventRequest,
+    ) -> Result<AppendSyncEventOutcome, SpacetimeReducerError> {
+        let payload_json = String::from_utf8(request.payload_bytes.clone()).map_err(|error| {
+            SpacetimeReducerError {
+                class: SpacetimeReducerErrorClass::Validation,
+                message: format!("payload bytes must be valid utf-8 json: {error}"),
+            }
+        })?;
+
+        let endpoint = format!(
+            "{}/v1/database/{}/call/append_sync_event",
+            self.base_url, self.database
+        );
+        let body = json!([
+            request.stream_id,
+            request.idempotency_key,
+            request.payload_hash,
+            payload_json,
+            request.committed_at_unix_ms,
+            request.durable_offset,
+            request.confirmed_read,
+            request.expected_next_seq.unwrap_or(0),
+        ]);
+
+        let mut http_request = self
+            .client
+            .post(endpoint)
+            .header("accept", "application/json")
+            .header("content-type", "application/json")
+            .json(&body);
+        if let Some(token) = self.auth_token.as_deref() {
+            http_request = http_request.bearer_auth(token);
+        }
+
+        let response = http_request
+            .send()
+            .await
+            .map_err(|error| SpacetimeReducerError {
+                class: SpacetimeReducerErrorClass::Network,
+                message: format!("spacetime reducer call failed: {error}"),
+            })?;
+        let status = response.status();
+        let payload = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(SpacetimeReducerError {
+                class: classify_network_status(status),
+                message: format!(
+                    "spacetime reducer call failed status={} body={}",
+                    status.as_u16(),
+                    payload
+                ),
+            });
+        }
+
+        let parsed = serde_json::from_str::<Value>(payload.as_str()).ok();
+        let seq = parsed
+            .as_ref()
+            .and_then(parse_reducer_seq)
+            .or(request.expected_next_seq)
+            .unwrap_or(request.durable_offset);
+
+        Ok(AppendSyncEventOutcome::Applied(SyncEvent {
+            stream_id: request.stream_id,
+            seq,
+            idempotency_key: request.idempotency_key,
+            payload_hash: request.payload_hash,
+            payload_bytes: request.payload_bytes,
+            committed_at_unix_ms: request.committed_at_unix_ms,
+            durable_offset: request.durable_offset,
+            confirmed_read: request.confirmed_read,
+        }))
+    }
+
+    pub async fn query_sql(&self, query: &str) -> Result<Value, SpacetimeReducerError> {
+        let endpoint = format!("{}/v1/database/{}/sql", self.base_url, self.database);
+        let mut request = self
+            .client
+            .post(endpoint.as_str())
+            .header("accept", "application/json")
+            .header("content-type", "application/json")
+            .json(&json!({ "query": query }));
+        if let Some(token) = self.auth_token.as_deref() {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|error| SpacetimeReducerError {
+                class: SpacetimeReducerErrorClass::Network,
+                message: format!("spacetime sql request failed: {error}"),
+            })?;
+
+        if response.status().is_success() {
+            return response
+                .json::<Value>()
+                .await
+                .map_err(|error| SpacetimeReducerError {
+                    class: SpacetimeReducerErrorClass::Validation,
+                    message: format!("spacetime sql parse failed: {error}"),
+                });
+        }
+
+        if response.status() == StatusCode::METHOD_NOT_ALLOWED
+            || response.status() == StatusCode::NOT_FOUND
+            || response.status() == StatusCode::BAD_REQUEST
+        {
+            let mut fallback = self
+                .client
+                .get(endpoint.as_str())
+                .header("accept", "application/json")
+                .query(&[("query", query)]);
+            if let Some(token) = self.auth_token.as_deref() {
+                fallback = fallback.bearer_auth(token);
+            }
+            let fallback_response =
+                fallback
+                    .send()
+                    .await
+                    .map_err(|error| SpacetimeReducerError {
+                        class: SpacetimeReducerErrorClass::Network,
+                        message: format!("spacetime sql GET fallback failed: {error}"),
+                    })?;
+            if fallback_response.status().is_success() {
+                return fallback_response.json::<Value>().await.map_err(|error| {
+                    SpacetimeReducerError {
+                        class: SpacetimeReducerErrorClass::Validation,
+                        message: format!("spacetime sql fallback parse failed: {error}"),
+                    }
+                });
+            }
+
+            let status = fallback_response.status();
+            let body = fallback_response.text().await.unwrap_or_default();
+            return Err(SpacetimeReducerError {
+                class: classify_network_status(status),
+                message: format!(
+                    "spacetime sql GET fallback failed status={} body={}",
+                    status.as_u16(),
+                    body
+                ),
+            });
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(SpacetimeReducerError {
+            class: classify_network_status(status),
+            message: format!(
+                "spacetime sql failed status={} body={}",
+                status.as_u16(),
+                body
+            ),
+        })
+    }
+}
+
+fn normalize_http_base_url(value: &str) -> Result<String, String> {
+    let normalized = value.trim();
+    if normalized.is_empty() {
+        return Err("base_url must not be empty".to_string());
+    }
+    let parsed =
+        reqwest::Url::parse(normalized).map_err(|error| format!("invalid base_url: {error}"))?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err(format!("unsupported base_url scheme: {scheme}"));
+    }
+    Ok(normalized.trim_end_matches('/').to_string())
+}
+
+fn classify_network_status(status: StatusCode) -> SpacetimeReducerErrorClass {
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => SpacetimeReducerErrorClass::Auth,
+        StatusCode::TOO_MANY_REQUESTS => SpacetimeReducerErrorClass::RateLimited,
+        StatusCode::BAD_REQUEST
+        | StatusCode::UNPROCESSABLE_ENTITY
+        | StatusCode::CONFLICT
+        | StatusCode::NOT_FOUND => SpacetimeReducerErrorClass::Validation,
+        s if s.is_server_error() => SpacetimeReducerErrorClass::Network,
+        _ => SpacetimeReducerErrorClass::Unknown,
+    }
+}
+
+fn parse_reducer_seq(value: &Value) -> Option<u64> {
+    value
+        .pointer("/data/result")
+        .and_then(Value::as_u64)
+        .or_else(|| value.pointer("/result").and_then(Value::as_u64))
+        .or_else(|| value.get("seq").and_then(Value::as_u64))
+        .or_else(|| value.pointer("/data/seq").and_then(Value::as_u64))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         auth::SyncSessionClaims,
         client::{
             ProtocolVersion, ResumeAction, SpacetimeClient, SpacetimeClientConfig,
-            SpacetimeClientError, SubscribeRequest,
+            SpacetimeClientError, SpacetimeReducerHttpClient, SubscribeRequest, parse_reducer_seq,
         },
         reducers::{AckCheckpointRequest, AppendSyncEventRequest},
     };
+    use serde_json::json;
 
     fn claims(scopes: &[&str], streams: &[&str]) -> SyncSessionClaims {
         SyncSessionClaims {
@@ -698,5 +944,21 @@ mod tests {
             .expect("resume subscribe should succeed");
         assert!(resumed.snapshot_events.is_empty());
         assert_eq!(resumed.next_after_seq, 3);
+    }
+
+    #[test]
+    fn reducer_http_client_requires_valid_base_url() {
+        let result = SpacetimeReducerHttpClient::new("://bad", "autopilot", None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert!(error.contains("invalid base_url"));
+        }
+    }
+
+    #[test]
+    fn reducer_seq_parser_accepts_common_shapes() {
+        assert_eq!(parse_reducer_seq(&json!({"data":{"result":17}})), Some(17));
+        assert_eq!(parse_reducer_seq(&json!({"result":11})), Some(11));
+        assert_eq!(parse_reducer_seq(&json!({"seq":9})), Some(9));
     }
 }

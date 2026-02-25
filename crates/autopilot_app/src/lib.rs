@@ -390,6 +390,8 @@ pub struct RuntimeAuthStateView {
     pub sync_replay_target_seq: Option<u64>,
     pub sync_replay_lag_seq: Option<u64>,
     pub sync_replay_progress_pct: Option<u8>,
+    pub sync_connected_users: Option<u64>,
+    pub sync_connected_identities: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

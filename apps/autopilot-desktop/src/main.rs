@@ -16,6 +16,7 @@ use autopilot_app::{
     InboxThreadSummary, LiquidityProviderStatus, RuntimeAuthStateView, SessionId, UserAction,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
+use autopilot_spacetime::client::SpacetimeReducerHttpClient;
 use autopilot_ui::{
     MinimalRoot, ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutRegistry, ShortcutScope,
 };
@@ -46,7 +47,10 @@ use openagents_client_core::execution::{
 use pylon::PylonConfig;
 use reqwest::{Client as HttpClient, Method};
 use serde_json::{Map, Value, json};
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
+};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 use wgpui::renderer::Renderer;
@@ -93,11 +97,12 @@ use runtime_auth::{
     runtime_auth_state_path,
 };
 use runtime_codex_proto::{
-    ControlMethod, RuntimeCodexStreamEvent, build_error_receipt, build_spacetime_frame,
-    build_success_receipt, extract_control_request, extract_desktop_handshake_ack_id,
-    extract_ios_handshake_id, extract_ios_user_message, extract_runtime_events_from_spacetime_update,
-    handshake_dedupe_key, spacetime_error_code, merge_retry_cursor, parse_spacetime_frame,
-    request_dedupe_key, stream_event_seq, terminal_receipt_dedupe_key,
+    ControlMethod, RuntimeCodexStreamEvent, SpacetimeServerMessage, build_error_receipt,
+    build_heartbeat_request, build_subscribe_request, build_success_receipt,
+    extract_control_request, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
+    extract_ios_user_message, extract_runtime_events_from_spacetime_update, handshake_dedupe_key,
+    merge_retry_cursor, parse_spacetime_server_message, request_dedupe_key, spacetime_error_code,
+    stream_event_seq, terminal_receipt_dedupe_key,
 };
 use sync_apply_engine::{ApplyDecision, RuntimeSyncApplyEngine};
 use sync_checkpoint_store::{
@@ -130,12 +135,19 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
+const ENV_SPACETIME_HTTP_BASE_URL: &str = "OPENAGENTS_SPACETIME_HTTP_BASE_URL";
+const ENV_SPACETIME_DATABASE: &str = "OPENAGENTS_SPACETIME_DATABASE";
+const ENV_SPACETIME_WEBSOCKET_PATH: &str = "OPENAGENTS_SPACETIME_WEBSOCKET_PATH";
+const ENV_SPACETIME_WS_PROTOCOL: &str = "OPENAGENTS_SPACETIME_WS_PROTOCOL";
 const ENV_LIQUIDITY_MAX_INVOICE_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_INVOICE_SATS";
 const ENV_LIQUIDITY_MAX_HOURLY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_HOURLY_SATS";
 const ENV_LIQUIDITY_MAX_DAILY_SATS: &str = "OPENAGENTS_LIQUIDITY_MAX_DAILY_SATS";
-const RUNTIME_SYNC_SPACETIME_TOPIC: &str = "runtime.codex_worker_events";
-const RUNTIME_SYNC_SPACETIME_CHANNEL: &str = "sync:v1";
-const RUNTIME_SYNC_SPACETIME_WS_VSN: &str = "2.0.0";
+const DEFAULT_SPACETIME_WEBSOCKET_PATH_TEMPLATE: &str = "/v1/database/{database}/subscribe";
+const DEFAULT_SPACETIME_WS_PROTOCOL: &str = "v1.json.spacetimedb";
+const RUNTIME_SYNC_SCOPE_CODEX_WORKER_EVENTS: &str = "runtime.codex_worker_events";
+const SPACETIME_CONNECTED_USERS_QUERY: &str =
+    "SELECT COUNT(*) AS connected_users FROM active_connection";
+const SPACETIME_CONNECTED_IDENTITIES_QUERY: &str = "SELECT COALESCE(NULLIF(nostr_pubkey_npub, ''), NULLIF(nostr_pubkey_hex, ''), identity_hex) AS identity FROM active_connection ORDER BY connected_at_unix_ms DESC LIMIT 16";
 const RUNTIME_SYNC_SPACETIME_HEARTBEAT_MS: u64 = 20_000;
 const RUNTIME_SYNC_CONTROL_PARSE_METHOD_FALLBACK: &str = "runtime/request";
 const RUNTIME_SYNC_CONTROL_PARSE_REQUEST_ID_PREFIX: &str = "invalid-request-seq";
@@ -198,6 +210,7 @@ struct RuntimeCodexSync {
     apply_engine: Arc<tokio::sync::Mutex<RuntimeSyncApplyEngine>>,
     checkpoints: Arc<tokio::sync::Mutex<RuntimeSyncCheckpointStore>>,
     lifecycle: Arc<tokio::sync::Mutex<RuntimeSyncLifecycleManager>>,
+    presence_snapshot: Arc<tokio::sync::RwLock<SpacetimePresenceSnapshot>>,
     remote_control_tx: tokio::sync::mpsc::Sender<RuntimeRemoteControlRequest>,
     action_tx: mpsc::Sender<UserAction>,
 }
@@ -206,6 +219,20 @@ struct RuntimeCodexSync {
 struct RuntimeSyncTokenLease {
     token: String,
     refresh_after_in_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SpacetimePresenceSnapshot {
+    connected_users: Option<u64>,
+    connected_identities: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SpacetimeSubscribeTarget {
+    http_base_url: String,
+    database: String,
+    websocket_path_template: String,
+    websocket_protocol: String,
 }
 
 impl RuntimeCodexSync {
@@ -284,6 +311,9 @@ impl RuntimeCodexSync {
             lifecycle: Arc::new(tokio::sync::Mutex::new(
                 RuntimeSyncLifecycleManager::default(),
             )),
+            presence_snapshot: Arc::new(tokio::sync::RwLock::new(
+                SpacetimePresenceSnapshot::default(),
+            )),
             remote_control_tx,
             action_tx,
         })
@@ -330,6 +360,48 @@ impl RuntimeCodexSync {
     async fn sync_health_snapshots(&self) -> Vec<RuntimeSyncHealthSnapshot> {
         let lifecycle = self.lifecycle.lock().await;
         lifecycle.snapshots()
+    }
+
+    async fn refresh_presence_snapshot(&self) -> SpacetimePresenceSnapshot {
+        match self.fetch_presence_snapshot().await {
+            Ok(snapshot) => {
+                let mut guard = self.presence_snapshot.write().await;
+                *guard = snapshot.clone();
+                snapshot
+            }
+            Err(error) => {
+                tracing::debug!(error = %error, "runtime sync presence query unavailable");
+                self.presence_snapshot.read().await.clone()
+            }
+        }
+    }
+
+    async fn fetch_presence_snapshot(&self) -> Result<SpacetimePresenceSnapshot, String> {
+        let target = self.resolve_spacetime_subscribe_target()?;
+        let token_lease = self
+            .mint_runtime_sync_token(
+                vec![RUNTIME_SYNC_SCOPE_CODEX_WORKER_EVENTS.to_string()],
+                Vec::new(),
+            )
+            .await?;
+        let reducer_client = SpacetimeReducerHttpClient::new(
+            target.http_base_url.as_str(),
+            target.database.as_str(),
+            Some(token_lease.token.clone()),
+        )?;
+        let connected_users_response = reducer_client
+            .query_sql(SPACETIME_CONNECTED_USERS_QUERY)
+            .await
+            .map_err(|error| error.message)?;
+        let identities_response = reducer_client
+            .query_sql(SPACETIME_CONNECTED_IDENTITIES_QUERY)
+            .await
+            .map_err(|error| error.message)?;
+
+        Ok(SpacetimePresenceSnapshot {
+            connected_users: parse_connected_users_count(&connected_users_response),
+            connected_identities: parse_connected_identities(&identities_response),
+        })
     }
 
     async fn apply_auth_state(&self, state: &RuntimeSyncAuthState) {
@@ -600,7 +672,9 @@ impl RuntimeCodexSync {
         );
 
         loop {
-            let session_result = self.run_worker_spacetime_session(&worker_id, &mut cursor).await;
+            let session_result = self
+                .run_worker_spacetime_session(&worker_id, &mut cursor)
+                .await;
             let (disconnect_reason, disconnect_error) = match session_result {
                 Ok(()) => (RuntimeSyncDisconnectReason::StreamClosed, None),
                 Err(error) => (classify_disconnect_reason(error.as_str()), Some(error)),
@@ -667,57 +741,52 @@ impl RuntimeCodexSync {
         worker_id: &str,
         cursor: &mut u64,
     ) -> Result<(), String> {
+        let stream_id = runtime_sync_worker_stream_id(worker_id);
         let token_lease = self
             .mint_runtime_sync_token(
-                vec![RUNTIME_SYNC_SPACETIME_TOPIC.to_string()],
-                vec![RUNTIME_SYNC_SPACETIME_TOPIC.to_string()],
+                vec![RUNTIME_SYNC_SCOPE_CODEX_WORKER_EVENTS.to_string()],
+                Vec::new(),
             )
             .await?;
-        let websocket_url = self.build_spacetime_websocket_url(&token_lease.token).await?;
-        let (mut socket, _response) = connect_async(websocket_url.as_str())
+        let target = self.resolve_spacetime_subscribe_target()?;
+        let websocket_url = self
+            .build_spacetime_websocket_url(&target, &token_lease.token)
+            .await?;
+        let mut request = websocket_url
+            .as_str()
+            .into_client_request()
+            .map_err(|error| format!("invalid websocket request: {error}"))?;
+        let protocol_value = HeaderValue::from_str(target.websocket_protocol.as_str())
+            .map_err(|error| format!("invalid websocket protocol header: {error}"))?;
+        request
+            .headers_mut()
+            .insert("Sec-WebSocket-Protocol", protocol_value);
+        let (mut socket, response) = connect_async(request)
             .await
             .map_err(|error| error.to_string())?;
+        let negotiated_protocol = response
+            .headers()
+            .get("Sec-WebSocket-Protocol")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if negotiated_protocol != target.websocket_protocol {
+            return Err(format!(
+                "spacetime websocket protocol negotiation failed: requested={} negotiated={}",
+                target.websocket_protocol, negotiated_protocol
+            ));
+        }
 
         let mut ref_counter: u64 = 0;
-        let join_ref = Self::next_spacetime_ref(&mut ref_counter);
-        let join_frame = build_spacetime_frame(
-            None,
-            Some(join_ref.as_str()),
-            RUNTIME_SYNC_SPACETIME_CHANNEL,
-            "phx_join",
-            json!({}),
-        );
-        socket
-            .send(Message::Text(join_frame))
-            .await
-            .map_err(|error| error.to_string())?;
-
-        let _join_response = self
-            .await_spacetime_reply(&mut socket, worker_id, cursor, join_ref.as_str())
-            .await?;
-
-        let subscribe_ref = Self::next_spacetime_ref(&mut ref_counter);
-        let subscribe_frame = build_spacetime_frame(
-            Some(join_ref.as_str()),
-            Some(subscribe_ref.as_str()),
-            RUNTIME_SYNC_SPACETIME_CHANNEL,
-            "sync:subscribe",
-            json!({
-                "topics": [RUNTIME_SYNC_SPACETIME_TOPIC],
-                "resume_after": {
-                    RUNTIME_SYNC_SPACETIME_TOPIC: *cursor,
-                },
-                "replay_batch_size": 200,
-            }),
+        let subscribe_request_id = Self::next_spacetime_ref(&mut ref_counter);
+        let subscribe_frame = build_subscribe_request(
+            stream_id.as_str(),
+            *cursor,
+            subscribe_request_id.parse::<u64>().unwrap_or(1),
         );
         socket
             .send(Message::Text(subscribe_frame))
             .await
             .map_err(|error| error.to_string())?;
-
-        let _subscribe_response = self
-            .await_spacetime_reply(&mut socket, worker_id, cursor, subscribe_ref.as_str())
-            .await?;
 
         {
             let mut lifecycle = self.lifecycle.lock().await;
@@ -735,13 +804,8 @@ impl RuntimeCodexSync {
             tokio::select! {
                 _ = heartbeat.tick() => {
                     let heartbeat_ref = Self::next_spacetime_ref(&mut ref_counter);
-                    let heartbeat_frame = build_spacetime_frame(
-                        Some(join_ref.as_str()),
-                        Some(heartbeat_ref.as_str()),
-                        RUNTIME_SYNC_SPACETIME_CHANNEL,
-                        "sync:heartbeat",
-                        json!({}),
-                    );
+                    let heartbeat_frame =
+                        build_heartbeat_request(heartbeat_ref.parse::<u64>().unwrap_or(1));
                     socket
                         .send(Message::Text(heartbeat_frame))
                         .await
@@ -775,7 +839,7 @@ impl RuntimeCodexSync {
             "streams": streams,
         });
         let response = self
-            .post_json("/api/spacetime/token", payload)
+            .post_json("/api/sync/token", payload)
             .await
             .map_err(|error| format!("runtime sync spacetime token mint failed: {error}"))?;
         let refresh_after_in_seconds = response
@@ -801,103 +865,83 @@ impl RuntimeCodexSync {
         })
     }
 
-    async fn build_spacetime_websocket_url(&self, token: &str) -> Result<String, String> {
-        let base_url = self.base_url.read().await.clone();
-        let mut url = reqwest::Url::parse(base_url.as_str()).map_err(|error| error.to_string())?;
+    fn resolve_spacetime_subscribe_target(&self) -> Result<SpacetimeSubscribeTarget, String> {
+        let http_base_url = std::env::var(ENV_SPACETIME_HTTP_BASE_URL)
+            .ok()
+            .or_else(|| std::env::var("OA_SPACETIME_DEV_HTTP_BASE_URL").ok())
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "missing {} (or OA_SPACETIME_DEV_HTTP_BASE_URL) for spacetime subscribe target",
+                    ENV_SPACETIME_HTTP_BASE_URL
+                )
+            })?;
+        let database = std::env::var(ENV_SPACETIME_DATABASE)
+            .ok()
+            .or_else(|| std::env::var("OA_SPACETIME_DEV_DATABASE").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "missing {} (or OA_SPACETIME_DEV_DATABASE) for spacetime subscribe target",
+                    ENV_SPACETIME_DATABASE
+                )
+            })?;
+        let websocket_path_template = std::env::var(ENV_SPACETIME_WEBSOCKET_PATH)
+            .ok()
+            .or_else(|| std::env::var("OA_SPACETIME_DEV_WEBSOCKET_PATH").ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_SPACETIME_WEBSOCKET_PATH_TEMPLATE.to_string());
+        let websocket_protocol = std::env::var(ENV_SPACETIME_WS_PROTOCOL)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_SPACETIME_WS_PROTOCOL.to_string());
+
+        Ok(SpacetimeSubscribeTarget {
+            http_base_url,
+            database,
+            websocket_path_template,
+            websocket_protocol,
+        })
+    }
+
+    async fn build_spacetime_websocket_url(
+        &self,
+        target: &SpacetimeSubscribeTarget,
+        token: &str,
+    ) -> Result<String, String> {
+        let mut url = reqwest::Url::parse(target.http_base_url.as_str())
+            .map_err(|error| format!("invalid spacetime http base url: {error}"))?;
         let ws_scheme = match url.scheme() {
             "https" => "wss",
             "http" => "ws",
             other => {
                 return Err(format!(
-                    "runtime sync base URL uses unsupported scheme for websocket: {other}"
+                    "spacetime base URL uses unsupported scheme for websocket: {other}"
                 ));
             }
         };
         url.set_scheme(ws_scheme)
             .map_err(|_| "failed to set websocket URL scheme".to_string())?;
-        url.set_path("/sync/socket/websocket");
+        let path = target
+            .websocket_path_template
+            .replace("{database}", target.database.as_str());
+        if !path.starts_with('/') {
+            return Err(format!(
+                "spacetime websocket path template must start with '/': {}",
+                path
+            ));
+        }
+        url.set_path(path.as_str());
         {
             let mut query = url.query_pairs_mut();
             query.clear();
             query.append_pair("token", token);
-            query.append_pair("vsn", RUNTIME_SYNC_SPACETIME_WS_VSN);
         }
         Ok(url.to_string())
-    }
-
-    async fn await_spacetime_reply(
-        &self,
-        socket: &mut RuntimeSyncWebSocket,
-        worker_id: &str,
-        cursor: &mut u64,
-        expected_reference: &str,
-    ) -> Result<Value, String> {
-        loop {
-            let next_message = socket
-                .next()
-                .await
-                .ok_or_else(|| "spacetime websocket closed while awaiting reply".to_string())?;
-            let message = next_message.map_err(|error| error.to_string())?;
-            let raw = Self::decode_websocket_text(message)?;
-            let Some(frame) = parse_spacetime_frame(raw.as_str()) else {
-                continue;
-            };
-
-            if frame.topic != RUNTIME_SYNC_SPACETIME_CHANNEL {
-                continue;
-            }
-
-            if frame.event == "sync:update_batch" {
-                self.process_spacetime_update_batch(worker_id, cursor, &frame.payload)
-                    .await?;
-                continue;
-            }
-
-            if frame.event == "sync:error" {
-                if spacetime_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
-                    *cursor = 0;
-                    return Err("spacetime stale_cursor; replay bootstrap required".to_string());
-                }
-                return Err(format!(
-                    "spacetime sync error while awaiting reply: {}",
-                    frame.payload
-                ));
-            }
-
-            if frame.event != "phx_reply" || frame.reference.as_deref() != Some(expected_reference)
-            {
-                continue;
-            }
-
-            let payload_object = frame
-                .payload
-                .as_object()
-                .ok_or_else(|| "spacetime phx_reply payload is not an object".to_string())?;
-            let status = payload_object
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("error");
-            if status != "ok" {
-                let response = payload_object
-                    .get("response")
-                    .and_then(Value::as_object)
-                    .cloned()
-                    .unwrap_or_default();
-                let code = response
-                    .get("code")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown");
-                if code == "stale_cursor" {
-                    *cursor = 0;
-                }
-                return Err(format!("spacetime phx_reply status={status} code={code}"));
-            }
-
-            return Ok(payload_object
-                .get("response")
-                .cloned()
-                .unwrap_or_else(|| json!({})));
-        }
     }
 
     async fn process_spacetime_socket_message(
@@ -907,27 +951,27 @@ impl RuntimeCodexSync {
         message: Message,
     ) -> Result<(), String> {
         let raw = Self::decode_websocket_text(message)?;
-        let Some(frame) = parse_spacetime_frame(raw.as_str()) else {
-            return Ok(());
-        };
-        if frame.topic != RUNTIME_SYNC_SPACETIME_CHANNEL {
+        if raw.trim().is_empty() {
             return Ok(());
         }
+        let Some(message) = parse_spacetime_server_message(raw.as_str()) else {
+            return Ok(());
+        };
 
-        match frame.event.as_str() {
-            "sync:update_batch" => {
-                self.process_spacetime_update_batch(worker_id, cursor, &frame.payload)
+        match message {
+            SpacetimeServerMessage::SubscribeApplied { payload }
+            | SpacetimeServerMessage::TransactionUpdate { payload } => {
+                self.process_spacetime_update_batch(worker_id, cursor, &payload)
                     .await
             }
-            "sync:error" => {
-                if spacetime_error_code(&frame.payload).as_deref() == Some("stale_cursor") {
+            SpacetimeServerMessage::Error { payload } => {
+                if spacetime_error_code(&payload).as_deref() == Some("stale_cursor") {
                     *cursor = 0;
                     return Err("spacetime stale_cursor; resetting replay cursor".to_string());
                 }
-                Err(format!("spacetime sync error: {}", frame.payload))
+                Err(format!("spacetime sync error: {}", payload))
             }
-            "phx_error" | "phx_close" => Err(format!("spacetime channel error: {}", frame.event)),
-            _ => Ok(()),
+            SpacetimeServerMessage::Heartbeat => Ok(()),
         }
     }
 
@@ -941,7 +985,7 @@ impl RuntimeCodexSync {
         let starting_cursor = *cursor;
         let mut observed_max_seq: Option<u64> = None;
         let events =
-            extract_runtime_events_from_spacetime_update(payload, RUNTIME_SYNC_SPACETIME_TOPIC, worker_id);
+            extract_runtime_events_from_spacetime_update(payload, stream_id.as_str(), worker_id);
         if events.is_empty() {
             return Ok(());
         }
@@ -1727,6 +1771,101 @@ fn parse_positive_u64_env(name: &str) -> Option<u64> {
     trimmed.parse::<u64>().ok().filter(|value| *value > 0)
 }
 
+fn parse_connected_users_count(response: &Value) -> Option<u64> {
+    if let Some(rows) = response.as_array() {
+        for row in rows {
+            if let Some(count) = parse_count_from_row(row) {
+                return Some(count);
+            }
+        }
+    }
+
+    if let Some(rows) = response.get("rows").and_then(Value::as_array) {
+        for row in rows {
+            if let Some(count) = parse_count_from_row(row) {
+                return Some(count);
+            }
+        }
+    }
+
+    if let Some(rows) = response.pointer("/data/rows").and_then(Value::as_array) {
+        for row in rows {
+            if let Some(count) = parse_count_from_row(row) {
+                return Some(count);
+            }
+        }
+    }
+
+    if let Some(rows) = response.pointer("/data").and_then(Value::as_array) {
+        for row in rows {
+            if let Some(count) = parse_count_from_row(row) {
+                return Some(count);
+            }
+        }
+    }
+
+    None
+}
+
+fn parse_count_from_row(row: &Value) -> Option<u64> {
+    let object = row.as_object()?;
+    for key in ["connected_users", "connected_clients", "count", "COUNT(*)"] {
+        if let Some(value) = object.get(key) {
+            if let Some(count) = value.as_u64() {
+                return Some(count);
+            }
+            if let Some(text) = value.as_str() {
+                if let Ok(parsed) = text.parse::<u64>() {
+                    return Some(parsed);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_connected_identities(response: &Value) -> Vec<String> {
+    let mut identities = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut rows: Vec<&Value> = Vec::new();
+    if let Some(array) = response.as_array() {
+        rows.extend(array.iter());
+    }
+    if let Some(array) = response.get("rows").and_then(Value::as_array) {
+        rows.extend(array.iter());
+    }
+    if let Some(array) = response.pointer("/data/rows").and_then(Value::as_array) {
+        rows.extend(array.iter());
+    }
+    if let Some(array) = response.pointer("/data").and_then(Value::as_array) {
+        rows.extend(array.iter());
+    }
+
+    for row in rows {
+        let Some(object) = row.as_object() else {
+            continue;
+        };
+        let candidate = object
+            .get("identity")
+            .and_then(Value::as_str)
+            .or_else(|| object.get("nostr_pubkey_npub").and_then(Value::as_str))
+            .or_else(|| object.get("nostr_pubkey_hex").and_then(Value::as_str))
+            .or_else(|| object.get("identity_hex").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let Some(identity) = candidate else {
+            continue;
+        };
+        if seen.insert(identity.clone()) {
+            identities.push(identity);
+        }
+    }
+
+    identities
+}
+
 #[derive(Debug, Clone)]
 struct Nip90TextResult {
     event_id: String,
@@ -1873,9 +2012,11 @@ async fn runtime_auth_state_view(
 ) -> RuntimeAuthStateView {
     let stored = load_runtime_auth_state();
     let mut sync_health: Option<RuntimeSyncHealthSnapshot> = None;
+    let mut presence_snapshot = SpacetimePresenceSnapshot::default();
 
     let (base_url, token_present) = if let Some(sync) = runtime_sync.as_ref() {
         sync.refresh_auth_from_disk().await;
+        presence_snapshot = sync.refresh_presence_snapshot().await;
         let base_url = sync.current_base_url().await;
         sync_health = sync.sync_health_snapshots().await.into_iter().next();
         let token_present = sync
@@ -1950,6 +2091,8 @@ async fn runtime_auth_state_view(
         sync_replay_progress_pct: sync_health
             .as_ref()
             .and_then(|snapshot| snapshot.replay_progress_pct),
+        sync_connected_users: presence_snapshot.connected_users,
+        sync_connected_identities: presence_snapshot.connected_identities,
     }
 }
 

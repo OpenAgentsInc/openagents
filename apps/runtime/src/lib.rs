@@ -59,7 +59,10 @@ pub async fn build_runtime_state(config: Config) -> Result<AppState> {
         orchestrator.projectors(),
         120_000,
     ));
-    let spacetime_publisher = Arc::new(SpacetimePublisher::in_memory());
+    let spacetime_publisher = Arc::new(
+        SpacetimePublisher::from_env()
+            .map_err(|error| anyhow::anyhow!("spacetime publisher init failed: {error}"))?,
+    );
     Ok(AppState::new(
         config,
         orchestrator,
