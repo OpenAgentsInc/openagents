@@ -22,6 +22,11 @@ Policy is resolved from:
 
 Default policy is `local_then_runtime_then_swarm`.
 
+Implementation guardrail:
+
+- Lane ordering is centralized in `crates/openagents-client-core/src/execution.rs` via
+  `execution_lane_order(...)` and is always `local_codex` first for every policy.
+
 ## Runtime Endpoint Resolution (Portable, Env-Driven)
 
 Runtime sync/control base URL resolution is centralized in
@@ -49,3 +54,14 @@ For `UserAction::Message`:
 4. If all enabled lanes fail, emit structured error with lane failure details.
 
 This preserves local-first operation while allowing optional remote/network continuity.
+
+Remote control safety:
+
+1. Runtime sync control requests (`thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`)
+   execute through local `AppServerClient` first-party calls on desktop.
+2. Remote control dispatch telemetry labels lane as `local_codex` to make precedence auditable.
+
+Regression evidence:
+
+- `cargo test -p openagents-client-core execution_lane_order_keeps_local_codex_first_for_all_policies -- --nocapture`
+- `cargo test -p openagents-client-core execution_lane_order_matches_policy_shape -- --nocapture`

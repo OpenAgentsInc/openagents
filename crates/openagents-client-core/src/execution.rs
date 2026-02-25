@@ -43,6 +43,44 @@ impl ExecutionFallbackOrder {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionLane {
+    LocalCodex,
+    SharedRuntime,
+    Swarm,
+}
+
+impl ExecutionLane {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalCodex => "local_codex",
+            Self::SharedRuntime => "shared_runtime",
+            Self::Swarm => "swarm",
+        }
+    }
+}
+
+const EXECUTION_LANE_ORDER_LOCAL_ONLY: [ExecutionLane; 1] = [ExecutionLane::LocalCodex];
+const EXECUTION_LANE_ORDER_LOCAL_RUNTIME: [ExecutionLane; 2] =
+    [ExecutionLane::LocalCodex, ExecutionLane::SharedRuntime];
+const EXECUTION_LANE_ORDER_LOCAL_RUNTIME_SWARM: [ExecutionLane; 3] = [
+    ExecutionLane::LocalCodex,
+    ExecutionLane::SharedRuntime,
+    ExecutionLane::Swarm,
+];
+
+#[must_use]
+pub fn execution_lane_order(order: ExecutionFallbackOrder) -> &'static [ExecutionLane] {
+    match order {
+        ExecutionFallbackOrder::LocalOnly => &EXECUTION_LANE_ORDER_LOCAL_ONLY,
+        ExecutionFallbackOrder::LocalThenRuntime => &EXECUTION_LANE_ORDER_LOCAL_RUNTIME,
+        ExecutionFallbackOrder::LocalThenRuntimeThenSwarm => {
+            &EXECUTION_LANE_ORDER_LOCAL_RUNTIME_SWARM
+        }
+    }
+}
+
 #[must_use]
 pub fn parse_execution_fallback_order(raw: &str) -> Option<ExecutionFallbackOrder> {
     let normalized = raw.trim().to_ascii_lowercase();
@@ -254,6 +292,38 @@ mod tests {
                 assert_eq!(order, ExecutionFallbackOrder::LocalThenRuntime);
                 assert_eq!(source, ENV_EXECUTION_FALLBACK_ORDER);
             },
+        );
+    }
+
+    #[test]
+    fn execution_lane_order_keeps_local_codex_first_for_all_policies() {
+        for order in [
+            ExecutionFallbackOrder::LocalOnly,
+            ExecutionFallbackOrder::LocalThenRuntime,
+            ExecutionFallbackOrder::LocalThenRuntimeThenSwarm,
+        ] {
+            let lanes = execution_lane_order(order);
+            assert_eq!(lanes.first(), Some(&ExecutionLane::LocalCodex));
+        }
+    }
+
+    #[test]
+    fn execution_lane_order_matches_policy_shape() {
+        assert_eq!(
+            execution_lane_order(ExecutionFallbackOrder::LocalOnly),
+            [ExecutionLane::LocalCodex]
+        );
+        assert_eq!(
+            execution_lane_order(ExecutionFallbackOrder::LocalThenRuntime),
+            [ExecutionLane::LocalCodex, ExecutionLane::SharedRuntime]
+        );
+        assert_eq!(
+            execution_lane_order(ExecutionFallbackOrder::LocalThenRuntimeThenSwarm),
+            [
+                ExecutionLane::LocalCodex,
+                ExecutionLane::SharedRuntime,
+                ExecutionLane::Swarm,
+            ]
         );
     }
 }

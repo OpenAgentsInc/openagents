@@ -40,7 +40,7 @@ use futures::{SinkExt, StreamExt};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_client_core::execution::{
-    resolve_execution_fallback_order,
+    ExecutionLane, execution_lane_order, resolve_execution_fallback_order,
     resolve_runtime_sync_base_url as resolve_runtime_sync_base_url_core,
 };
 use pylon::PylonConfig;
@@ -3789,6 +3789,8 @@ fn spawn_event_bridge(
                                         "workerId": request.worker_id,
                                         "requestId": request.request_id,
                                         "method": request.method.as_str(),
+                                        "lane": ExecutionLane::LocalCodex.as_str(),
+                                        "localCodexFirst": true,
                                         "status": "ok",
                                         "response": response_payload,
                                     }
@@ -3824,6 +3826,8 @@ fn spawn_event_bridge(
                                         "workerId": request.worker_id,
                                         "requestId": request.request_id,
                                         "method": request.method.as_str(),
+                                        "lane": ExecutionLane::LocalCodex.as_str(),
+                                        "localCodexFirst": true,
                                         "status": "error",
                                         "code": error.code,
                                         "message": error.message,
@@ -3860,9 +3864,17 @@ fn spawn_event_bridge(
                         "method": "execution/policy",
                         "params": {
                             "fallbackOrder": execution_fallback_order.as_str(),
+                            "laneOrder": execution_lane_order(execution_fallback_order)
+                                .iter()
+                                .map(|lane| lane.as_str())
+                                .collect::<Vec<_>>(),
                             "source": execution_fallback_source,
                             "runtimeEnabled": execution_fallback_order.allows_runtime(),
                             "swarmEnabled": execution_fallback_order.allows_swarm(),
+                            "localCodexPrimary": execution_lane_order(execution_fallback_order)
+                                .first()
+                                .map(|lane| *lane == ExecutionLane::LocalCodex)
+                                .unwrap_or(false),
                         }
                     })
                     .to_string(),
@@ -4405,6 +4417,7 @@ fn spawn_event_bridge(
                                     sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                     cwd: Some(cwd),
                                 };
+                                let lane_order = execution_lane_order(execution_fallback_order);
 
                                 if let Err(err) = client.turn_start(params).await {
                                     let mut fallback_errors = vec![format!(
@@ -4413,93 +4426,100 @@ fn spawn_event_bridge(
                                     )];
                                     let mut fallback_handled = false;
 
-                                    if execution_fallback_order.allows_runtime() {
-                                        if let Some(sync) = runtime_sync.as_ref() {
-                                            match sync
-                                                .runtime_turn_start_fallback(
-                                                    thread_id.as_str(),
-                                                    turn_text.as_str(),
-                                                    session_id,
-                                                )
-                                                .await
-                                            {
-                                                Ok(response_payload) => {
-                                                    fallback_handled = true;
-                                                    let _ = proxy.send_event(
-                                                        AppEvent::AppServerEvent {
-                                                            message: json!({
-                                                                "method": "execution/fallback",
-                                                                "params": {
-                                                                    "threadId": thread_id.clone(),
-                                                                    "lane": "shared_runtime",
-                                                                    "status": "accepted",
-                                                                    "response": response_payload,
-                                                                }
-                                                            })
+                                    for lane in lane_order.iter().copied().skip(1) {
+                                        if fallback_handled {
+                                            break;
+                                        }
+                                        match lane {
+                                            ExecutionLane::SharedRuntime => {
+                                                if let Some(sync) = runtime_sync.as_ref() {
+                                                    match sync
+                                                        .runtime_turn_start_fallback(
+                                                            thread_id.as_str(),
+                                                            turn_text.as_str(),
+                                                            session_id,
+                                                        )
+                                                        .await
+                                                    {
+                                                        Ok(response_payload) => {
+                                                            fallback_handled = true;
+                                                            let _ = proxy.send_event(
+                                                                AppEvent::AppServerEvent {
+                                                                    message: json!({
+                                                                        "method": "execution/fallback",
+                                                                        "params": {
+                                                                            "threadId": thread_id.clone(),
+                                                                            "lane": ExecutionLane::SharedRuntime.as_str(),
+                                                                            "status": "accepted",
+                                                                            "response": response_payload,
+                                                                        }
+                                                                    })
+                                                                    .to_string(),
+                                                                },
+                                                            );
+                                                        }
+                                                        Err(fallback_error) => {
+                                                            fallback_errors.push(format!(
+                                                                "shared_runtime_failed:{}",
+                                                                fallback_error
+                                                            ));
+                                                        }
+                                                    }
+                                                } else {
+                                                    fallback_errors.push(
+                                                        "shared_runtime_unavailable:runtime_sync_not_configured"
                                                             .to_string(),
-                                                        },
                                                     );
                                                 }
-                                                Err(fallback_error) => {
-                                                    fallback_errors.push(format!(
-                                                        "shared_runtime_failed:{}",
-                                                        fallback_error
-                                                    ));
+                                            }
+                                            ExecutionLane::Swarm => {
+                                                match submit_nip90_text_generation(
+                                                    KIND_JOB_TEXT_GENERATION,
+                                                    turn_text.as_str(),
+                                                    Vec::new(),
+                                                    None,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(result) => {
+                                                        fallback_handled = true;
+                                                        let preview = if result.content.len() > 400 {
+                                                            format!("{}…", &result.content[..400])
+                                                        } else {
+                                                            result.content.clone()
+                                                        };
+                                                        let _ =
+                                                            proxy.send_event(AppEvent::Nip90Log {
+                                                                message: format!(
+                                                                    "Fallback NIP-90 job {} completed",
+                                                                    result.event_id
+                                                                ),
+                                                            });
+                                                        let _ = proxy.send_event(
+                                                            AppEvent::AppServerEvent {
+                                                                message: json!({
+                                                                    "method": "execution/fallback",
+                                                                    "params": {
+                                                                        "threadId": thread_id.clone(),
+                                                                        "lane": ExecutionLane::Swarm.as_str(),
+                                                                        "status": "accepted",
+                                                                        "eventId": result.event_id,
+                                                                        "preview": preview,
+                                                                    }
+                                                                })
+                                                                .to_string(),
+                                                            },
+                                                        );
+                                                    }
+                                                    Err(fallback_error) => {
+                                                        fallback_errors.push(format!(
+                                                            "swarm_failed:{}",
+                                                            fallback_error
+                                                        ));
+                                                    }
                                                 }
                                             }
-                                        } else {
-                                            fallback_errors.push(
-                                                "shared_runtime_unavailable:runtime_sync_not_configured"
-                                                    .to_string(),
-                                            );
-                                        }
-                                    }
-
-                                    if !fallback_handled && execution_fallback_order.allows_swarm() {
-                                        match submit_nip90_text_generation(
-                                            KIND_JOB_TEXT_GENERATION,
-                                            turn_text.as_str(),
-                                            Vec::new(),
-                                            None,
-                                        )
-                                        .await
-                                        {
-                                            Ok(result) => {
-                                                fallback_handled = true;
-                                                let preview = if result.content.len() > 400 {
-                                                    format!("{}…", &result.content[..400])
-                                                } else {
-                                                    result.content.clone()
-                                                };
-                                                let _ = proxy
-                                                    .send_event(AppEvent::Nip90Log {
-                                                        message: format!(
-                                                            "Fallback NIP-90 job {} completed",
-                                                            result.event_id
-                                                        ),
-                                                    });
-                                                let _ = proxy.send_event(
-                                                    AppEvent::AppServerEvent {
-                                                        message: json!({
-                                                            "method": "execution/fallback",
-                                                            "params": {
-                                                                "threadId": thread_id.clone(),
-                                                                "lane": "swarm",
-                                                                "status": "accepted",
-                                                                "eventId": result.event_id,
-                                                                "preview": preview,
-                                                            }
-                                                        })
-                                                        .to_string(),
-                                                    },
-                                                );
-                                            }
-                                            Err(fallback_error) => {
-                                                fallback_errors.push(format!(
-                                                    "swarm_failed:{}",
-                                                    fallback_error
-                                                ));
-                                            }
+                                            ExecutionLane::LocalCodex => {}
                                         }
                                     }
 
@@ -4518,6 +4538,18 @@ fn spawn_event_bridge(
                                             .to_string(),
                                         });
                                     }
+                                } else {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "execution/dispatch",
+                                            "params": {
+                                                "threadId": thread_id.clone(),
+                                                "lane": ExecutionLane::LocalCodex.as_str(),
+                                                "status": "accepted",
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
                                 }
                             });
                         }
