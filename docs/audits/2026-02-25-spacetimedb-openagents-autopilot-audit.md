@@ -1,260 +1,298 @@
-# SpacetimeDB Architecture and OpenAgents/Autopilot Adoption Audit
+# SpacetimeDB Architecture and OpenAgents/Autopilot Adoption Audit (Deep Follow-Up)
 
-Status: draft-audit snapshot
-Date: 2026-02-25
+Status: deep-audit follow-up snapshot  
+Date: 2026-02-25  
 Owner: repo audit (Codex)
 
-## Question this answers
+## Follow-up question this answers
 
-What SpacetimeDB is, how it is structured internally, and how OpenAgents/Autopilot can adopt it without violating current architecture and invariant gates.
+How far can we push this model for OpenAgents/Autopilot:
 
-## Method
+1. Multi-agent systems should run inside a database (MMORPG-style shared world).
+2. Agents should edit shared files in realtime and coordinate conflicts in one world state.
+3. Worktrees/branches/merges/commits should be minimized or removed from the inner loop.
+4. State changes should be ACID and replayable at line-level granularity.
 
-This audit is docs-first and code-first across both repos.
+## Method and evidence base
 
-OpenAgents authority sources reviewed:
+This follow-up is docs-first and code-first across both repos, with emphasis on transaction/replay internals.
+
+### OpenAgents sources re-reviewed
 
 1. `docs/core/ARCHITECTURE.md`
-2. `docs/core/PROJECT_OVERVIEW.md`
-3. `docs/core/ROADMAP.md`
-4. `docs/adr/INDEX.md`
-5. `docs/plans/rust-migration-invariant-gates.md`
-6. ADRs `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0008`
+2. `docs/execution/REPLAY.md`
+3. `apps/runtime/docs/KHALA_ORDERING_DELIVERY_CONTRACT.md`
+4. `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
+5. `apps/runtime/docs/KHALA_SYNC.md`
+6. `apps/runtime/src/event_log.rs`
+7. `apps/runtime/src/authority.rs`
+8. `apps/runtime/src/fanout.rs`
+9. `apps/runtime/src/server.rs`
+10. `crates/openagents-client-core/src/khala_protocol.rs`
+11. `crates/openagents-app-state/src/reducer.rs`
+12. `crates/openagents-app-state/tests/reducer_replay.rs`
+13. `crates/openagents-app-state/tests/stream_watermarks.rs`
+14. `crates/autopilot-core/src/workflow.rs`
+15. `crates/autopilot-core/src/preflight.rs`
+16. `crates/autopilot-core/src/startup.rs`
+17. `crates/autopilot/src/app/git.rs`
+18. `crates/autopilot/src/app_entry/state_actions.rs`
+
+### SpacetimeDB sources re-reviewed
+
+1. `/Users/christopherdavid/code/SpacetimeDB/README.md`
+2. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00100-databases/00100-transactions-atomicity.md`
+3. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00200-functions/00300-reducers/00300-reducers.md`
+4. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00200-functions/00400-procedures.md`
+5. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00300-tables/00550-event-tables.md`
+6. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00300-tables/00500-schedule-tables.md`
+7. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00200-core-concepts/00400-subscriptions/00200-subscription-semantics.md`
+8. `/Users/christopherdavid/code/SpacetimeDB/docs/docs/00300-resources/00100-how-to/00400-row-level-security.md`
+9. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/host/module_host.rs`
+10. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/subscription/module_subscription_actor.rs`
+11. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/db/relational_db.rs`
+12. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/db/durability.rs`
+13. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/host/instance_env.rs`
+14. `/Users/christopherdavid/code/SpacetimeDB/crates/core/src/host/scheduler.rs`
+15. `/Users/christopherdavid/code/SpacetimeDB/crates/subscription/src/lib.rs`
+16. `/Users/christopherdavid/code/SpacetimeDB/crates/durability/src/lib.rs`
+17. `/Users/christopherdavid/code/SpacetimeDB/crates/commitlog/src/lib.rs`
+
+## Executive conclusion
+
+The thesis is directionally correct for the collaborative inner loop.
+
+1. SpacetimeDB already provides the core MMORPG-like primitives: one shared state world, ACID reducers, realtime subscriptions, and durable replay history.
+2. OpenAgents already enforces deterministic replay/idempotency on its authority side and would benefit from a shared collaboration world.
+3. The hard blocker is not database capability, it is product/contract reality: current Autopilot and OpenAgents flows are explicitly git branch/PR centric and bound to current authority invariants.
+4. Best path is phased: Spacetime as collaborative world authority for editor/session state first, while git remains an export/provenance boundary during migration.
+
+## What SpacetimeDB is, deeper than the first audit
+
+SpacetimeDB is not only storage. It is a transaction engine plus application runtime plus push replication.
+
+### Transaction and execution model
 
-SpacetimeDB sources reviewed:
+1. Reducers are automatic ACID transactions (`transactions-atomicity.md`).
+2. Nested reducer calls execute in the same transaction, not nested transactions.
+3. Procedures are more flexible but dangerous for determinism:
+   - `with_tx` blocks may be re-invoked and must be side-effect deterministic (`procedures.md`).
+4. Runtime implementation uses serializable mutable transactions broadly:
+   - `begin_mut_tx(IsolationLevel::Serializable, ...)` appears across reducer/scheduler/subscription paths.
+5. Current host behavior documents that only one reducer runs at a time in practice (`module_host.rs` comments), with procedure concurrency as a separate lane.
+6. Procedure HTTP requests are rejected if a transaction is open (`instance_env.rs`, `WouldBlockTransaction`), which is an explicit safety boundary against long blocking calls inside transactional critical sections.
 
-1. Docs under `/Users/christopherdavid/code/SpacetimeDB/docs/docs/`
-2. Workspace structure via `/Users/christopherdavid/code/SpacetimeDB/Cargo.toml`
-3. Runtime/control and protocol code in:
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/standalone`
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/client-api`
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/core`
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/subscription`
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/durability`
-   - `/Users/christopherdavid/code/SpacetimeDB/crates/commitlog`
+### Commit, durability, and replay path
 
-## Executive summary
+1. `RelationalDB::commit_tx` commits state first, then requests async durability (`relational_db.rs` + `db/durability.rs`).
+2. Durability is non-blocking append API with monotonic durable offsets (`durability/src/lib.rs`).
+3. Startup restore logic is explicit:
+   - choose snapshot not newer than durable offset,
+   - then replay history via `apply_history` fold,
+   - then rebuild state (`relational_db.rs`).
+4. Commitlog and durability are first-class crates, not incidental logging.
 
-SpacetimeDB is a stateful application runtime embedded into a database, not just a storage engine. It combines:
+This matches the requirement for deterministic rebuild and replayable history.
 
-1. In-database module logic (`reducers`, `procedures`, `views`).
-2. Realtime client replication via SQL subscriptions over websocket.
-3. Durable commitlog-backed state with snapshots.
+### Subscription semantics and delivery behavior
 
-For OpenAgents/Autopilot, SpacetimeDB is a good fit as a bounded realtime projection/collaboration plane, but it is not a good immediate replacement for OpenAgents authority lanes (control/runtime HTTP authority, proto-governed contracts, Khala replay semantics).
+1. Docs state atomic subscription initialization and atomic transaction update semantics.
+2. Runtime code is careful about lock ordering:
+   - DB lock before subscription lock to avoid deadlocks.
+   - Commit path takes a subscription lock before commit/broadcast to avoid duplicate delivery (`module_subscription_actor.rs`).
+3. Subscription compiler enforces constraints:
+   - indexed joins required,
+   - event table lookup-side join restrictions (`crates/subscription/src/lib.rs`).
 
-Recommended posture:
+### Event and schedule primitives for agent worlds
+
+1. Event tables are ephemeral per transaction but recorded in commit history.
+2. Event table inserts can be used as transient fanout channel with RLS-aware filtering.
+3. Schedule tables provide periodic or delayed reducer/procedure execution for maintenance, compaction, snapshots, and background reconciliation.
+
+### Security and access posture caveat
+
+RLS exists but is explicitly marked experimental, and docs recommend views for most access-control needs.
+
+## OpenAgents reality that matters to this thesis
+
+### Authority and replay invariants are already strict
+
+1. `docs/core/ARCHITECTURE.md` keeps HTTP mutation authority, Khala WS transport, and `(topic, seq)` replay/idempotency as non-negotiable.
+2. `docs/execution/REPLAY.md` requires deterministic replay logs with hashable tool call/result structure.
+3. Runtime run-event authority path is already deterministic and idempotent:
+   - `event_log.rs` enforces per-run monotonic seq, idempotency key replay, and expected seq conflicts.
+4. Khala fanout explicitly sorts by logical sequence and emits deterministic stale-cursor reasons:
+   - `retention_floor_breach`, `replay_budget_exceeded`,
+   - recovery metadata returned by API (`fanout.rs`, `server.rs`).
+5. Client and app state code are already watermark monotonic/idempotent:
+   - `khala_protocol.rs`,
+   - app reducer watermarks + deterministic replay tests.
 
-1. Use SpacetimeDB for additive, non-authority, high-fanout realtime domains.
-2. Do not place canonical auth, custody, treasury, or replay authority inside SpacetimeDB under current ADR/invariant constraints.
-3. Adopt through a sidecar/projection model first, with strict boundary adapters.
+### Autopilot is still deeply git-centered today
 
-## What SpacetimeDB is
+Evidence from code:
 
-At a system level, SpacetimeDB is a database + app-server runtime where module code executes next to data and pushes delta updates to clients.
+1. Workflow explicitly orchestrates issue -> branch -> PR (`autopilot-core/src/workflow.rs`).
+2. Preflight collects branch status, unpushed commits, and dirty tree (`autopilot-core/src/preflight.rs`).
+3. Startup execution/review lanes embed `git status` and `git diff --stat` (`autopilot-core/src/startup.rs`).
+4. UI runtime has dedicated git status/diff/log system (`autopilot/src/app/git.rs`).
+5. Session UI includes explicit fork semantics (`autopilot/src/app_entry/state_actions.rs`).
 
-Core conceptual model:
+This is the current product contract. A total immediate "no commits/no branches" switch would be a breaking change, not a refactor.
 
-1. Tables are application state.
-2. `reducers` are transactionally atomic mutation entrypoints.
-3. `procedures` and `views` support additional callable/read patterns.
-4. Clients subscribe to SQL queries and receive live updates as state changes.
-5. Identity and token context are available to module code.
+## Thesis analysis: what is true now, what is not
 
-This differs from a classic OpenAgents service pattern (separate app service + DB + bespoke pub/sub) by collapsing execution and replication into one runtime substrate.
+### 1) "Multi-agent systems should run inside a database"
 
-## Internal structure (SpacetimeDB repo)
+Mostly true for collaboration state.
 
-## Workspace shape
+1. SpacetimeDB is built for shared mutable worlds and low-latency subscriptions.
+2. OpenAgents already needs deterministic replay and conflict-safe coordination.
+3. A shared transactional world removes many out-of-band race conditions between agents.
 
-The workspace is split into clear layers:
+### 2) "All agents share one world and edit in realtime"
 
-1. Host/runtime core (`crates/core`, `crates/vm`, `crates/schema`, `crates/table`, `crates/expr`).
-2. API surface (`crates/client-api`, websocket protocol crates, HTTP routes).
-3. Local orchestration (`crates/standalone`, control-db management).
-4. Replication/subscription engine (`crates/subscription`).
-5. Durability and logs (`crates/durability`, `crates/commitlog`, snapshot handling).
-6. Tooling/dev UX (`crates/cli`, bindings/codegen crates).
+Feasible and strongly aligned.
 
-This layering is coherent: API ingress -> module host/reducer execution -> commit/durability -> subscription fanout.
+1. Reducers can make collaborative edits atomic.
+2. Subscriptions can push state deltas immediately.
+3. Event tables can carry transient conflict/presence signals.
 
-## Runtime/control path
+### 3) "No worktrees, no branches, no merges, no commits"
 
-Observed from `standalone`, `client-api`, and `core`:
+Not fully feasible immediately in OpenAgents as currently designed.
 
-1. `standalone` runs the local server process, tracks configured databases/replicas, and launches module hosts.
-2. `client-api` exposes DB endpoints, reducer/procedure invocation paths, and websocket subscribe endpoints.
-3. `core::host::HostController` manages module lifecycle, updates, and host coordination.
-4. `core::host::ModuleHost` executes reducer/procedure/view logic and drives broadcast to subscribers.
-5. `core::host::scheduler` executes scheduled table-driven tasks.
+1. Current Autopilot workflow and customer expectations are PR/git based.
+2. External ecosystem integration (GitHub, CI, code review) still depends on commits.
+3. Removing git from the outer loop today would fight the product and architecture, not help it.
 
-## Data/durability model
+Practical interpretation:
 
-SpacetimeDB persists through commitlog + snapshots with in-memory serving characteristics.
+1. Yes: no branch/worktree overhead inside the live collaborative session world.
+2. Not yet: remove commits from outer provenance/publishing boundary.
 
-Practical consequences:
+### 4) "ACID and replayable, line-by-line"
 
-1. Strong live-update responsiveness.
-2. Deterministic mutation boundaries around reducer transactions.
-3. Recovery and replay grounded in commit history.
+Feasible with careful data model.
 
-For OpenAgents, this is useful for projection/read optimization, but commitlog semantics are not a drop-in match for existing `(topic, seq)` Khala replay contracts.
+1. ACID comes from reducer transactions.
+2. Replay comes from append-only operation/event history plus snapshots.
+3. Line-level behavior requires explicit operation schema and deterministic conflict protocol.
 
-## Subscription engine details
+## Proposed OpenAgents/Autopilot "Agent World" design on SpacetimeDB
 
-`crates/subscription` compiles and executes SQL subscription plans with constraints.
+This is the concrete architecture that matches the thesis without violating current invariants.
 
-Important properties:
+### Data model (minimum viable)
 
-1. Subscription semantics are first-class, not bolted on.
-2. Query shape/indexing matter for scalability and accepted query forms.
-3. Event-table use has specialized behavior and limitations vs normal tables.
+1. `workspace`
+   - workspace identity, policy mode, creation metadata.
+2. `workspace_member`
+   - agent/human identity, role, capabilities.
+3. `file_head`
+   - `workspace_id`, `file_id`, path, current version, current content hash, current content blob or chunk pointer.
+4. `file_op` (append-only canonical history)
+   - `op_seq`, `op_id`, actor, timestamp, `expected_base_version`, operation payload, before/after hash.
+5. `file_snapshot`
+   - periodic checkpoint of fully materialized content at version N.
+6. `presence_event` (event table)
+   - cursor, typing, active span, soft locks.
+7. `conflict_event` (event table + optional persistent `conflict_ticket`)
+   - conflict reason and remediation metadata.
 
-This is a strength for collaborative realtime UIs where many clients need synchronized state projections.
+### Reducers
 
-## Auth/identity model
+1. `apply_file_ops(...)`
+   - idempotent by `op_id`,
+   - validates `expected_base_version`,
+   - applies operation batch atomically,
+   - updates `file_head`,
+   - appends `file_op`,
+   - emits presence/conflict events.
+2. `resolve_conflict(...)`
+   - deterministic resolution path (accept head, rebase, or explicit patch).
+3. `checkpoint_file(...)`
+   - emits periodic `file_snapshot` for replay efficiency.
+4. `rebuild_file_from_snapshot(...)`
+   - deterministic fold for audit/recovery testing.
 
-SpacetimeDB supports identity and token-based auth, including OIDC-based flows and claims propagation into reducer context.
+### Conflict protocol
 
-Important distinction for OpenAgents:
+1. Every write carries `expected_base_version` and optional range hash.
+2. Mismatch returns explicit conflict payload with current head metadata.
+3. No silent last-write-wins for overlapping edits unless policy explicitly enables it.
+4. Conflict intent and resolution become first-class replay events.
 
-1. Spacetime identity can authenticate usage of Spacetime modules.
-2. It should not supersede OpenAgents canonical session/custody/economic authority under current architecture.
+### Replay and determinism
 
-## Protocol and API surfaces
+1. Materialized file state is derived from `file_snapshot + file_op fold`.
+2. `file_op` is append-only and idempotent by `op_id`.
+3. Hash chaining of operations gives tamper-evident provenance.
+4. Replay test should prove equal final content and equal hash for identical op stream.
 
-SpacetimeDB exposes both HTTP and websocket surfaces and has protocol evolution (`v1`/`v2`) with stronger delivery semantics in newer paths.
+## How this integrates with OpenAgents today
 
-For integration design, treat websocket replication as a specialized data sync lane, not a universal authority bus.
+### Boundary-preserving integration model
 
-## Migrations/operations
+1. Keep OpenAgents control/runtime authority lanes unchanged for current canonical domains.
+2. Add a new collaboration world lane backed by SpacetimeDB for shared session/file state.
+3. Bridge adapters translate between proto/HTTP authority boundaries and Spacetime reducer contracts where needed.
+4. Keep Khala as authority replay transport for existing runtime authority topics.
 
-Schema evolution has both automatic and incremental migration patterns, with explicit docs guidance for breaking-change handling.
+### Git posture during migration
 
-Operationally:
+1. Inner loop:
+   - agents collaborate in one shared DB world (branchless session state).
+2. Outer loop:
+   - export deterministic result to git commit/PR when crossing ecosystem boundary.
+3. This removes most merge/worktree overhead without breaking current product rails.
 
-1. Managed cloud exists.
-2. Self-hosting is supported.
-3. PG-wire exists but is partial and not a full replacement for native semantics.
+## What we should do vs should not do
 
-## Fit against OpenAgents invariants
+### Should do
 
-Under OpenAgents canonical gates, SpacetimeDB must currently be bounded.
+1. Use SpacetimeDB as a shared collaboration authority for multi-agent editing/session coordination.
+2. Make line-level operations first-class, idempotent, and replayable.
+3. Preserve OpenAgents authority invariants by isolating domains and using explicit adapters.
+4. Keep deterministic replay tests as release gates for the new world model.
 
-Constraint mapping:
+### Should not do right now
 
-1. `INV-01`/ADR-0002 (proto-first contracts):
-   - Spacetime module schema/codegen is not the authority for OpenAgents cross-service contracts.
-   - Any integration must translate to/from existing proto contracts at boundaries.
+1. Replace control/runtime canonical economic/auth authority with SpacetimeDB.
+2. Remove git as final provenance/publish boundary immediately.
+3. Introduce dual competing authority paths for the same domain without ADR changes.
 
-2. `INV-02` (HTTP-only authority mutations for control):
-   - Control-plane canonical writes stay in existing HTTP authority lanes.
-   - Spacetime reducers cannot become control authority without an ADR-level architecture change.
+## Adoption sequence (pragmatic)
 
-3. `INV-03`/ADR-0003 (Khala WS authority transport):
-   - Khala remains authority live-transport lane.
-   - Spacetime websocket streams can be used for non-authority projection lanes.
-
-4. `INV-04`/`INV-05`/`INV-06` (authority ownership boundaries):
-   - Control/runtime authority boundaries stay explicit.
-   - Spacetime should not blur those by introducing a second canonical authority plane.
-
-5. `INV-07` (deterministic replay by `(topic, seq)`):
-   - Existing replay/idempotency contracts remain source of truth.
-   - If Spacetime consumes or emits domain events, adapters must preserve deterministic ordering semantics required by OpenAgents.
-
-## Recommended use for OpenAgents/Autopilot
-
-## Where SpacetimeDB should be used
-
-1. Realtime collaborative projection lanes:
-   - Presence, cursors, typing, ephemeral shared agent context, live dashboard state.
-
-2. High-fanout read models:
-   - Derived state that many clients subscribe to, where low-latency push matters more than authority ownership.
-
-3. Desktop/local-first sync adjunct:
-   - Optional local Spacetime instance for fast local collaborative state and offline-friendly projection caches.
-
-4. Marketplace observability overlays:
-   - Non-authority market heatmaps, provider health views, transient matching signals.
-
-## Where SpacetimeDB should not be used (current state)
-
-1. Canonical auth/session authority.
-2. Canonical treasury/custody/liquidity/credit state (Hydra/Spark lanes).
-3. Canonical runtime/control mutation authority.
-4. Replacement of proto-governed boundary contracts.
-5. Replacement of Khala replay/idempotency guarantees.
-
-## Recommended integration architecture
-
-Adopt an additive projection architecture:
-
-1. Existing OpenAgents authority services remain source of truth.
-2. Authority events are projected into Spacetime via explicit adapter(s).
-3. Clients subscribe to Spacetime for low-latency collaborative/read views.
-4. Any user intent that mutates authority state still goes through canonical OpenAgents APIs.
-
-Boundary rules:
-
-1. No direct coupling from critical authority write path to Spacetime availability.
-2. Projection lag is acceptable; authority correctness is not delegated.
-3. Replay adapters must encode source `(topic, seq)` and preserve idempotent apply semantics.
-
-## Adoption plan (phased)
-
-## Phase 0: technical spike (bounded)
-
-1. Build one projection-only domain (for example, desktop collaborative presence lane).
-2. Implement adapter from OpenAgents authority event stream to Spacetime table reducers.
-3. Validate latency, fanout, failure/restart behavior, and replay reconciliation.
-
-Exit criteria:
-
-1. No authority regression.
-2. Deterministic rebuild from OpenAgents source events.
-3. Measurable UX gain (latency/fanout) over current path.
-
-## Phase 1: production pilot
-
-1. Scope to one non-financial, non-custody, non-auth lane.
-2. Add operational SLOs, backup/restore procedure, and observability for projection freshness.
-3. Keep hard rollback path to existing OpenAgents-only read path.
-
-Exit criteria:
-
-1. Stable operations and acceptable pager load.
-2. Proven containment of failure domain.
-3. No drift in authority state semantics.
-
-## Phase 2: selective expansion
-
-1. Expand only to additional projection/collaboration domains that benefit from native subscriptions.
-2. Maintain explicit contract adapters and schema governance.
-3. Revisit authority usage only through new ADRs and invariant updates.
+1. Phase A: pilot collaboration world
+   - one bounded domain, for example Autopilot live collaborative file editing/presence.
+2. Phase B: branchless inner loop
+   - default multi-agent editing session in shared world with deterministic export-to-git step.
+3. Phase C: selective authority expansion
+   - only after ADR and invariant changes, and only where replay and ownership semantics remain clear.
 
 ## Risks and mitigations
 
 1. Risk: accidental second authority plane.
-   - Mitigation: enforce adapter pattern and write-path guardrails; document forbidden domains.
-
-2. Risk: schema/protocol drift between proto contracts and Spacetime schemas.
-   - Mitigation: generated adapters + contract conformance tests in CI.
-
-3. Risk: operational complexity (new datastore/runtime to run).
-   - Mitigation: start with narrow pilot, clear oncall boundaries, explicit rollback.
-
-4. Risk: replay mismatch with existing `(topic, seq)` semantics.
-   - Mitigation: include source sequence metadata in projection tables and idempotent projector reducers.
-
-5. Risk: team bandwidth split during Rust migration priorities.
-   - Mitigation: gate adoption to bounded ROI lane and keep roadmap-critical migrations first.
+   - Mitigation: explicit domain ownership map and adapter-only crossings.
+2. Risk: deterministic mismatch in edit replay.
+   - Mitigation: hash-chain op log, snapshot+fold replay tests, idempotency keys.
+3. Risk: subscription query cost explosion.
+   - Mitigation: schema/index design aligned with subscription compiler constraints.
+4. Risk: procedure nondeterminism and side effects.
+   - Mitigation: keep critical write logic in reducers; isolate external I/O.
+5. Risk: user workflow mismatch with existing git-centric tooling.
+   - Mitigation: keep git export boundary until product contract intentionally changes.
 
 ## Concrete recommendation
 
-OpenAgents should use SpacetimeDB now only as a bounded realtime projection layer for Autopilot/OpenAgents collaborative UX and high-fanout read models.
+OpenAgents should adopt SpacetimeDB as the shared multi-agent collaboration world for Autopilot editing/session state, with ACID operation application and deterministic replay by design.
 
-OpenAgents should not currently use SpacetimeDB as canonical authority for control/runtime, auth/session, or economic/custody domains.
+OpenAgents should not currently replace existing control/runtime canonical authority domains or remove git as the external provenance boundary.
 
-If a future architecture wants deeper authority usage, that should be proposed as a dedicated ADR set with explicit updates to invariant gates (`INV-01` through `INV-07`) and replay semantics.
+The right near-term target is:
+
+1. branchless, realtime, shared DB world in the inner loop;
+2. deterministic export to current git/PR rails at the outer boundary;
+3. future deeper changes only through ADR and invariant gate updates.
