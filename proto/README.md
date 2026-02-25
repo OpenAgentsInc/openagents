@@ -61,6 +61,7 @@ Current files:
 - `proto/openagents/sync/v2/errors.proto`
 - `proto/openagents/sync/v2/checkpoints.proto`
 - `proto/openagents/sync/v2/sync.proto`
+- `proto/openagents/sync/v2/auth.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
 - `proto/openagents/aegis/v1/aegis.proto`

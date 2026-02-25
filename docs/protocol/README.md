@@ -38,6 +38,7 @@ This directory is the Rust-era protocol system-of-record.
 - `proto/openagents/sync/v2/errors.proto`
 - `proto/openagents/sync/v2/streams.proto`
 - `proto/openagents/sync/v2/checkpoints.proto`
+- `proto/openagents/sync/v2/auth.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
 
