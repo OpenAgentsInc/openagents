@@ -1,5 +1,6 @@
 # Audits
 
+- `docs/audits/2026-02-25-post-spacetime-codebase-audit.md`
 - `docs/audits/2026-02-26-spacetime-only-compliance-signoff.md`
 - `docs/audits/2026-02-25-maincloud-bootstrap-and-handshake-audit.md`
 - `docs/audits/2026-02-25-spacetimedb-first-architecture-simplification-audit.md`
