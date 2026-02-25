@@ -347,7 +347,11 @@ impl SpacetimeClient {
     }
 }
 
-fn stream_window(store: &ReducerStore, stream_id: &str, replay_budget_events: u64) -> Option<StreamWindow> {
+fn stream_window(
+    store: &ReducerStore,
+    stream_id: &str,
+    replay_budget_events: u64,
+) -> Option<StreamWindow> {
     let events = store.stream_events(stream_id);
     let oldest = events.first()?.seq;
     let head = events.last()?.seq;
@@ -393,7 +397,9 @@ mod tests {
     #[test]
     fn protocol_negotiation_rejects_when_no_overlap() {
         let client = SpacetimeClient::new(
-            std::sync::Arc::new(std::sync::Mutex::new(crate::reducers::ReducerStore::default())),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::reducers::ReducerStore::default(),
+            )),
             SpacetimeClientConfig {
                 supported_protocols: vec![ProtocolVersion::V2Bsatn],
                 replay_budget_events: 20_000,
@@ -413,7 +419,9 @@ mod tests {
     #[test]
     fn subscribe_rejects_stale_cursor() {
         let client = SpacetimeClient::new(
-            std::sync::Arc::new(std::sync::Mutex::new(crate::reducers::ReducerStore::default())),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::reducers::ReducerStore::default(),
+            )),
             SpacetimeClientConfig {
                 supported_protocols: vec![ProtocolVersion::V2Bsatn],
                 replay_budget_events: 2,
@@ -451,7 +459,10 @@ mod tests {
             },
             2_000,
         );
-        assert!(matches!(result, Err(SpacetimeClientError::StaleCursor { .. })));
+        assert!(matches!(
+            result,
+            Err(SpacetimeClientError::StaleCursor { .. })
+        ));
     }
 
     #[test]
@@ -471,13 +482,18 @@ mod tests {
             },
             1_600,
         );
-        assert!(matches!(denied, Err(SpacetimeClientError::Forbidden { .. })));
+        assert!(matches!(
+            denied,
+            Err(SpacetimeClientError::Forbidden { .. })
+        ));
     }
 
     #[test]
     fn reconnect_resume_helpers_plan_rebootstrap_and_backoff() {
         let client = SpacetimeClient::new(
-            std::sync::Arc::new(std::sync::Mutex::new(crate::reducers::ReducerStore::default())),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::reducers::ReducerStore::default(),
+            )),
             SpacetimeClientConfig {
                 supported_protocols: vec![ProtocolVersion::V2Bsatn],
                 replay_budget_events: 5,
@@ -541,5 +557,146 @@ mod tests {
             )
             .expect("checkpoint ack should succeed");
         assert_eq!(checkpoint.last_applied_seq, 1);
+    }
+
+    #[test]
+    fn multi_client_subscribe_preserves_ordering_for_shared_stream() {
+        let shared_store = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::reducers::ReducerStore::default(),
+        ));
+        let client_a = SpacetimeClient::new(shared_store.clone(), SpacetimeClientConfig::default());
+        let client_b = SpacetimeClient::new(shared_store, SpacetimeClientConfig::default());
+        let auth_claims = claims(
+            &["sync.append", "sync.subscribe", "sync.checkpoint.write"],
+            &["runtime.run.ordering.events"],
+        );
+
+        for seq in 1..=4 {
+            let appended = client_a.append_sync_event(
+                &auth_claims,
+                AppendSyncEventRequest {
+                    stream_id: "runtime.run.ordering.events".to_string(),
+                    idempotency_key: format!("ordering-{seq}"),
+                    payload_hash: format!("ordering-hash-{seq}"),
+                    payload_bytes: vec![seq as u8],
+                    committed_at_unix_ms: 1_200 + seq,
+                    durable_offset: seq,
+                    confirmed_read: true,
+                    expected_next_seq: Some(seq),
+                },
+                1_500,
+            );
+            assert!(appended.is_ok());
+        }
+
+        let subscribe_a = client_a
+            .subscribe(
+                &claims(&["sync.subscribe"], &["runtime.run.ordering.events"]),
+                SubscribeRequest {
+                    stream_id: "runtime.run.ordering.events".to_string(),
+                    after_seq: 0,
+                    confirmed_read_durable_floor: None,
+                },
+                1_600,
+            )
+            .expect("client A subscribe should succeed");
+        let subscribe_b = client_b
+            .subscribe(
+                &claims(&["sync.subscribe"], &["runtime.run.ordering.events"]),
+                SubscribeRequest {
+                    stream_id: "runtime.run.ordering.events".to_string(),
+                    after_seq: 0,
+                    confirmed_read_durable_floor: None,
+                },
+                1_600,
+            )
+            .expect("client B subscribe should succeed");
+
+        let seqs_a = subscribe_a
+            .snapshot_events
+            .iter()
+            .map(|event| event.seq)
+            .collect::<Vec<_>>();
+        let seqs_b = subscribe_b
+            .snapshot_events
+            .iter()
+            .map(|event| event.seq)
+            .collect::<Vec<_>>();
+        assert_eq!(seqs_a, vec![1, 2, 3, 4]);
+        assert_eq!(seqs_b, seqs_a);
+
+        let hashes_a = subscribe_a
+            .snapshot_events
+            .iter()
+            .map(|event| event.payload_hash.clone())
+            .collect::<Vec<_>>();
+        let hashes_b = subscribe_b
+            .snapshot_events
+            .iter()
+            .map(|event| event.payload_hash.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(hashes_b, hashes_a);
+    }
+
+    #[test]
+    fn reconnect_storm_resubscribe_keeps_duplicate_delivery_deterministic() {
+        let client = SpacetimeClient::in_memory();
+        let auth_claims = claims(
+            &["sync.append", "sync.subscribe", "sync.checkpoint.write"],
+            &["runtime.run.reconnect.events"],
+        );
+
+        for seq in 1..=3 {
+            let appended = client.append_sync_event(
+                &auth_claims,
+                AppendSyncEventRequest {
+                    stream_id: "runtime.run.reconnect.events".to_string(),
+                    idempotency_key: format!("reconnect-{seq}"),
+                    payload_hash: format!("reconnect-hash-{seq}"),
+                    payload_bytes: vec![seq as u8],
+                    committed_at_unix_ms: 1_200 + seq,
+                    durable_offset: seq,
+                    confirmed_read: true,
+                    expected_next_seq: Some(seq),
+                },
+                1_500,
+            );
+            assert!(appended.is_ok());
+        }
+
+        for _ in 0..5 {
+            let replay_batch = client
+                .subscribe(
+                    &claims(&["sync.subscribe"], &["runtime.run.reconnect.events"]),
+                    SubscribeRequest {
+                        stream_id: "runtime.run.reconnect.events".to_string(),
+                        after_seq: 0,
+                        confirmed_read_durable_floor: None,
+                    },
+                    1_600,
+                )
+                .expect("subscribe should succeed");
+            let seqs = replay_batch
+                .snapshot_events
+                .iter()
+                .map(|event| event.seq)
+                .collect::<Vec<_>>();
+            assert_eq!(seqs, vec![1, 2, 3]);
+            assert_eq!(replay_batch.next_after_seq, 3);
+        }
+
+        let resumed = client
+            .subscribe(
+                &claims(&["sync.subscribe"], &["runtime.run.reconnect.events"]),
+                SubscribeRequest {
+                    stream_id: "runtime.run.reconnect.events".to_string(),
+                    after_seq: 3,
+                    confirmed_read_durable_floor: None,
+                },
+                1_600,
+            )
+            .expect("resume subscribe should succeed");
+        assert!(resumed.snapshot_events.is_empty());
+        assert_eq!(resumed.next_after_seq, 3);
     }
 }

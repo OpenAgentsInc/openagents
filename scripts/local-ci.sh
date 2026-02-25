@@ -14,6 +14,7 @@ ALLOW_ATTR_TRIGGER_PATTERN="${RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN}"
 ARCHITECTURE_BUDGET_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/|apps/runtime/src/|apps/autopilot-desktop/src/|crates/autopilot/src/|crates/autopilot-core/src/|scripts/(architecture-budget-gate|allow-attribute-gate|local-ci)\.sh$|docs/ci/(architecture-budget-baseline|allow-attribute-baseline)\.env$|docs/core/LOCAL_CI\.md$)'
 INBOX_GMAIL_TRIGGER_PATTERN='^(apps/openagents\.com/service/src/(lib|openapi|domain_store)\.rs$|apps/autopilot-desktop/src/(main|inbox_domain|runtime_auth)\.rs$|apps/runtime/src/server(\.rs|/tests\.rs)$|apps/openagents\.com/service/docs/GMAIL_INBOX_OAUTH_AND_SECRET_ROTATION_RUNBOOK\.md$|docs/LOCAL_CI\.md$|docs/RUST_STAGING_PROD_VALIDATION\.md$|docs/DEPLOYMENT_RUST_SERVICES\.md$|docs/audits/2026-02-24-email-inbox-functionality-audit\.md$|scripts/local-ci\.sh$)'
 SYNC_SECURITY_TRIGGER_PATTERN='^(apps/runtime/src/(sync_auth|server|server/tests)\.rs$|crates/autopilot-spacetime/src/auth\.rs$|apps/openagents\.com/service/src/(sync_handlers|tests)\.rs$|docs/sync/(SPACETIME_TOKEN_SCOPE_AND_ROTATION|SPACETIME_OBSERVABILITY_AND_ALERTS)\.md$|docs/core/LOCAL_CI\.md$|scripts/local-ci\.sh$)'
+SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN='^(apps/autopilot-desktop/src/(main|sync_apply_engine|sync_checkpoint_store|sync_lifecycle)\.rs$|apps/runtime/src/(spacetime_publisher|shadow|shadow_control_khala)\.rs$|crates/autopilot-spacetime/src/(client|mapping|reducers)\.rs$|docs/sync/(SPACETIME_DESKTOP_APPLY_ENGINE|SPACETIME_DESKTOP_CHECKPOINT_PERSISTENCE|SPACETIME_DESKTOP_CONNECTION_LIFECYCLE|SPACETIME_SHADOW_PARITY_HARNESS)\.md$|scripts/spacetime/replay-resume-parity-harness\.sh$|scripts/local-ci\.sh$)'
 
 is_truthy() {
   local value="${1:-}"
@@ -170,6 +171,9 @@ run_trigger_tests() {
   assert_trigger "sync-security" "$SYNC_SECURITY_TRIGGER_PATTERN" "apps/runtime/src/sync_auth.rs" "true"
   assert_trigger "sync-security" "$SYNC_SECURITY_TRIGGER_PATTERN" "crates/autopilot-spacetime/src/auth.rs" "true"
   assert_trigger "sync-security" "$SYNC_SECURITY_TRIGGER_PATTERN" "docs/core/README.md" "false"
+  assert_trigger "spacetime-replay-resume" "$SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN" "apps/autopilot-desktop/src/sync_checkpoint_store.rs" "true"
+  assert_trigger "spacetime-replay-resume" "$SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN" "crates/autopilot-spacetime/src/client.rs" "true"
+  assert_trigger "spacetime-replay-resume" "$SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN" "docs/core/README.md" "false"
 
   echo "local-ci trigger tests passed"
 }
@@ -351,6 +355,14 @@ run_sync_security_checks() {
   )
 }
 
+run_spacetime_replay_resume_checks() {
+  echo "==> spacetime replay/resume parity harness"
+  (
+    cd "$ROOT_DIR"
+    ./scripts/spacetime/replay-resume-parity-harness.sh
+  )
+}
+
 has_match() {
   local pattern="$1"
   local files="$2"
@@ -370,6 +382,7 @@ run_all_rust() {
   run_runtime_history_checks
   run_inbox_gmail_checks
   run_sync_security_checks
+  run_spacetime_replay_resume_checks
 }
 
 run_all() {
@@ -432,6 +445,10 @@ run_changed() {
 
   if has_match "$SYNC_SECURITY_TRIGGER_PATTERN" "$changed_files"; then
     run_sync_security_checks
+  fi
+
+  if has_match "$SPACETIME_REPLAY_RESUME_TRIGGER_PATTERN" "$changed_files"; then
+    run_spacetime_replay_resume_checks
   fi
 }
 
@@ -499,6 +516,9 @@ case "$MODE" in
   sync-security)
     run_sync_security_checks
     ;;
+  spacetime-replay-resume)
+    run_spacetime_replay_resume_checks
+    ;;
   test-triggers)
     run_trigger_tests
     ;;
@@ -512,7 +532,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|inbox-gmail|sync-security|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|web-parity|staging-dual-run-diff|canary-drill|auth-session-edge-cases|webhook-parity-harness|static-asset-sw-parity-harness|async-lane-parity-harness|mixed-version-deploy-safety|rust-only-terminal-gate|workspace-compile|panic-surface|allow-attrs|architecture-budgets|clippy-rust|cross-surface|inbox-gmail|sync-security|spacetime-replay-resume|test-triggers]" >&2
     exit 2
     ;;
 esac
