@@ -207,6 +207,13 @@ pub enum UserAction {
     PylonStop,
     PylonRefresh,
     WalletRefresh,
+    WalletCreateInvoice {
+        amount_sats: u64,
+    },
+    WalletPay {
+        payment_request: String,
+        amount_sats: Option<u64>,
+    },
     LiquidityProviderOnline,
     LiquidityProviderOffline,
     LiquidityProviderRefresh,
@@ -282,14 +289,27 @@ pub struct PylonStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct WalletPaymentSummary {
+    pub id: String,
+    pub direction: String,
+    pub status: String,
+    pub amount_sats: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct WalletStatus {
     pub network: Option<String>,
+    pub network_status: Option<String>,
     pub spark_sats: u64,
     pub lightning_sats: u64,
     pub onchain_sats: u64,
     pub total_sats: u64,
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
+    pub last_invoice: Option<String>,
+    pub last_payment_id: Option<String>,
+    pub recent_payments: Vec<WalletPaymentSummary>,
     pub identity_exists: bool,
     pub last_error: Option<String>,
 }

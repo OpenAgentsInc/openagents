@@ -14,7 +14,7 @@ use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
     InboxAuditEntry, InboxSnapshot, InboxThreadSummary, LiquidityProviderStatus, PylonStatus,
-    RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
+    RuntimeAuthStateView, SessionId, UserAction, WalletPaymentSummary, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -44,7 +44,10 @@ use openagents_client_core::auth::{
     ENV_CONTROL_BASE_URL, ENV_CONTROL_BASE_URL_LEGACY,
     normalize_base_url as normalize_control_base_url, resolve_control_base_url,
 };
-use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
+use openagents_spark::{
+    Network as SparkNetwork, PaymentStatus as SparkPaymentStatus, PaymentType as SparkPaymentType,
+    SparkSigner, SparkWallet, WalletConfig,
+};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
@@ -3375,6 +3378,8 @@ fn spawn_event_bridge(
                 let liquidity_online = Arc::new(AtomicBool::new(false));
                 let mut liquidity_heartbeat: Option<tokio::task::JoinHandle<()>> = None;
                 let mut liquidity_status = liquidity_provider_status_default();
+                let mut wallet_last_invoice: Option<String> = None;
+                let mut wallet_last_payment_id: Option<String> = None;
                 let _ = proxy_actions.send_event(AppEvent::LiquidityProviderStatus {
                     status: liquidity_status.clone(),
                 });
@@ -4374,10 +4379,69 @@ fn spawn_event_bridge(
                         }
                         UserAction::WalletRefresh => {
                             let proxy = proxy_actions.clone();
+                            let last_invoice = wallet_last_invoice.clone();
+                            let last_payment_id = wallet_last_payment_id.clone();
                             handle.block_on(async move {
-                                let status = fetch_wallet_status().await;
+                                let status = fetch_wallet_status(last_invoice, last_payment_id).await;
                                 let _ = proxy.send_event(AppEvent::WalletStatus { status });
                             });
+                        }
+                        UserAction::WalletCreateInvoice { amount_sats } => {
+                            let proxy = proxy_actions.clone();
+                            let (status, next_invoice) = handle.block_on(async {
+                                match create_wallet_invoice(amount_sats).await {
+                                    Ok(invoice) => {
+                                        let status = fetch_wallet_status(
+                                            Some(invoice.clone()),
+                                            wallet_last_payment_id.clone(),
+                                        )
+                                        .await;
+                                        (status, Some(invoice))
+                                    }
+                                    Err(error) => {
+                                        let mut status = fetch_wallet_status(
+                                            wallet_last_invoice.clone(),
+                                            wallet_last_payment_id.clone(),
+                                        )
+                                        .await;
+                                        status.last_error = Some(error);
+                                        (status, wallet_last_invoice.clone())
+                                    }
+                                }
+                            });
+
+                            wallet_last_invoice = next_invoice;
+                            let _ = proxy.send_event(AppEvent::WalletStatus { status });
+                        }
+                        UserAction::WalletPay {
+                            payment_request,
+                            amount_sats,
+                        } => {
+                            let proxy = proxy_actions.clone();
+                            let (status, next_payment_id) = handle.block_on(async {
+                                match pay_wallet_request(payment_request.as_str(), amount_sats).await {
+                                    Ok(payment_id) => {
+                                        let status = fetch_wallet_status(
+                                            wallet_last_invoice.clone(),
+                                            Some(payment_id.clone()),
+                                        )
+                                        .await;
+                                        (status, Some(payment_id))
+                                    }
+                                    Err(error) => {
+                                        let mut status = fetch_wallet_status(
+                                            wallet_last_invoice.clone(),
+                                            wallet_last_payment_id.clone(),
+                                        )
+                                        .await;
+                                        status.last_error = Some(error);
+                                        (status, wallet_last_payment_id.clone())
+                                    }
+                                }
+                            });
+
+                            wallet_last_payment_id = next_payment_id;
+                            let _ = proxy.send_event(AppEvent::WalletStatus { status });
                         }
                         UserAction::LiquidityProviderOnline => {
                             let proxy = proxy_actions.clone();
@@ -6229,112 +6293,12 @@ fn spark_network_for_pylon(network: &str) -> SparkNetwork {
     }
 }
 
-async fn fetch_wallet_status() -> WalletStatus {
-    let mut status = WalletStatus {
-        network: None,
-        spark_sats: 0,
-        lightning_sats: 0,
-        onchain_sats: 0,
-        total_sats: 0,
-        spark_address: None,
-        bitcoin_address: None,
-        identity_exists: false,
-        last_error: None,
-    };
-
-    let config = match PylonConfig::load() {
-        Ok(config) => config,
-        Err(err) => {
-            status.last_error = Some(format!("Failed to load Pylon config: {err}"));
-            return status;
-        }
-    };
-
-    status.network = Some(config.network.clone());
-
-    let data_dir = match config.data_path() {
-        Ok(path) => path,
-        Err(err) => {
-            status.last_error = Some(format!("Failed to resolve Pylon data dir: {err}"));
-            return status;
-        }
-    };
-    let identity_path = data_dir.join("identity.mnemonic");
-    if !identity_path.exists() {
-        status.identity_exists = false;
-        status.last_error = Some(format!(
-            "No identity found. Run 'pylon init' first. Expected: {}",
-            identity_path.display()
-        ));
-        return status;
-    }
-    status.identity_exists = true;
-
-    let mnemonic = match std::fs::read_to_string(&identity_path) {
-        Ok(value) => value.trim().to_string(),
-        Err(err) => {
-            status.last_error = Some(format!("Failed to read identity: {err}"));
-            return status;
-        }
-    };
-
-    let signer = match SparkSigner::from_mnemonic(&mnemonic, "") {
-        Ok(signer) => signer,
-        Err(err) => {
-            status.last_error = Some(format!("Failed to derive Spark signer: {err}"));
-            return status;
-        }
-    };
-
-    let wallet_config = WalletConfig {
-        network: spark_network_for_pylon(&config.network),
-        api_key: None,
-        storage_dir: data_dir.join("spark"),
-    };
-
-    let wallet = match SparkWallet::new(signer, wallet_config).await {
-        Ok(wallet) => wallet,
-        Err(err) => {
-            status.last_error = Some(format!("Failed to init Spark wallet: {err}"));
-            return status;
-        }
-    };
-
-    match wallet.get_balance().await {
-        Ok(balance) => {
-            status.spark_sats = balance.spark_sats;
-            status.lightning_sats = balance.lightning_sats;
-            status.onchain_sats = balance.onchain_sats;
-            status.total_sats = balance.total_sats();
-        }
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch balance: {err}"));
-            return status;
-        }
-    }
-
-    match wallet.get_spark_address().await {
-        Ok(address) => status.spark_address = Some(address),
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch Spark address: {err}"));
-        }
-    }
-
-    match wallet.get_bitcoin_address().await {
-        Ok(address) => status.bitcoin_address = Some(address),
-        Err(err) => {
-            status.last_error = Some(format!("Failed to fetch Bitcoin address: {err}"));
-        }
-    }
-
-    status
+struct LocalSparkWalletContext {
+    wallet: SparkWallet,
+    network: String,
 }
 
-async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
-    if amount_sats == 0 {
-        return Err("Amount must be > 0 sats.".to_string());
-    }
-
+async fn connect_local_spark_wallet() -> Result<LocalSparkWalletContext, String> {
     let config =
         PylonConfig::load().map_err(|err| format!("Failed to load Pylon config: {err}"))?;
     let data_dir = config
@@ -6352,30 +6316,162 @@ async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
         .map_err(|err| format!("Failed to read identity: {err}"))?
         .trim()
         .to_string();
-
     let signer = SparkSigner::from_mnemonic(&mnemonic, "")
         .map_err(|err| format!("Failed to derive Spark signer: {err}"))?;
-
     let wallet_config = WalletConfig {
         network: spark_network_for_pylon(&config.network),
         api_key: None,
         storage_dir: data_dir.join("spark"),
     };
-
     let wallet = SparkWallet::new(signer, wallet_config)
         .await
         .map_err(|err| format!("Failed to init Spark wallet: {err}"))?;
 
-    let response = wallet
+    Ok(LocalSparkWalletContext {
+        wallet,
+        network: config.network,
+    })
+}
+
+fn map_wallet_payment_status(status: SparkPaymentStatus) -> String {
+    match status {
+        SparkPaymentStatus::Completed => "completed".to_string(),
+        SparkPaymentStatus::Pending => "pending".to_string(),
+        SparkPaymentStatus::Failed => "failed".to_string(),
+    }
+}
+
+fn map_wallet_payment_direction(direction: SparkPaymentType) -> String {
+    match direction {
+        SparkPaymentType::Send => "send".to_string(),
+        SparkPaymentType::Receive => "receive".to_string(),
+    }
+}
+
+async fn fetch_wallet_status(
+    last_invoice: Option<String>,
+    last_payment_id: Option<String>,
+) -> WalletStatus {
+    let mut status = WalletStatus {
+        network: None,
+        network_status: None,
+        spark_sats: 0,
+        lightning_sats: 0,
+        onchain_sats: 0,
+        total_sats: 0,
+        spark_address: None,
+        bitcoin_address: None,
+        last_invoice,
+        last_payment_id,
+        recent_payments: Vec::new(),
+        identity_exists: false,
+        last_error: None,
+    };
+
+    let wallet_ctx = match connect_local_spark_wallet().await {
+        Ok(wallet_ctx) => wallet_ctx,
+        Err(err) => {
+            status.last_error = Some(err);
+            return status;
+        }
+    };
+    status.network = Some(wallet_ctx.network.clone());
+    status.identity_exists = true;
+
+    let network_report = wallet_ctx
+        .wallet
+        .network_status(Duration::from_secs(5))
+        .await;
+    status.network_status = Some(network_report.status.as_str().to_ascii_lowercase());
+    if let Some(detail) = network_report.detail {
+        status.last_error = Some(format!("Wallet connectivity: {detail}"));
+    }
+
+    match wallet_ctx.wallet.get_balance().await {
+        Ok(balance) => {
+            status.spark_sats = balance.spark_sats;
+            status.lightning_sats = balance.lightning_sats;
+            status.onchain_sats = balance.onchain_sats;
+            status.total_sats = balance.total_sats();
+        }
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch balance: {err}"));
+            return status;
+        }
+    }
+
+    match wallet_ctx.wallet.get_spark_address().await {
+        Ok(address) => status.spark_address = Some(address),
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch Spark address: {err}"));
+        }
+    }
+
+    match wallet_ctx.wallet.get_bitcoin_address().await {
+        Ok(address) => status.bitcoin_address = Some(address),
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch Bitcoin address: {err}"));
+        }
+    }
+
+    match wallet_ctx.wallet.list_payments(Some(25), None).await {
+        Ok(payments) => {
+            status.recent_payments = payments
+                .into_iter()
+                .take(10)
+                .map(|payment| WalletPaymentSummary {
+                    id: payment.id,
+                    direction: map_wallet_payment_direction(payment.payment_type),
+                    status: map_wallet_payment_status(payment.status),
+                    amount_sats: payment.amount as u64,
+                    timestamp: payment.timestamp,
+                })
+                .collect();
+        }
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch wallet history: {err}"));
+        }
+    }
+
+    status
+}
+
+async fn create_wallet_invoice(amount_sats: u64) -> Result<String, String> {
+    if amount_sats == 0 {
+        return Err("Amount must be > 0 sats.".to_string());
+    }
+
+    let wallet_ctx = connect_local_spark_wallet().await?;
+    let response = wallet_ctx
+        .wallet
         .create_invoice(
             amount_sats,
-            Some("OpenAgents liquidity funding".to_string()),
+            Some("OpenAgents wallet receive".to_string()),
             Some(3600),
         )
         .await
         .map_err(|err| format!("Failed to create invoice: {err}"))?;
 
     Ok(response.payment_request)
+}
+
+async fn pay_wallet_request(
+    payment_request: &str,
+    amount_sats: Option<u64>,
+) -> Result<String, String> {
+    let request = payment_request.trim();
+    if request.is_empty() {
+        return Err("Payment request is required.".to_string());
+    }
+
+    let wallet_ctx = connect_local_spark_wallet().await?;
+    let response = wallet_ctx
+        .wallet
+        .send_payment_simple(request, amount_sats)
+        .await
+        .map_err(|err| format!("Failed to send payment: {err}"))?;
+
+    Ok(response.payment.id)
 }
 
 fn map_key(key: &WinitKey) -> Option<Key> {

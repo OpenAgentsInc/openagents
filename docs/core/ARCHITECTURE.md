@@ -397,7 +397,8 @@ Hydra and Aegis contract authority lives in:
 1. Shared Rust UI and state crates power retained clients.
 2. Web is reduced to a landing/download page hosted by control service.
 3. Desktop is the primary Codex operator/admin surface.
-4. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
+4. Desktop wallet operations are local-first via Rust Breez Spark SDK bindings (balance, invoice receive, payment send, history), using the local Pylon identity lane.
+5. Legacy UI runtimes (Laravel/React/Inertia/Electron/React Native SwiftUI product logic) are not authority lanes.
 
 ## Observability and Operations
 

@@ -69,6 +69,24 @@ Logout:
 cargo run -p autopilot-desktop -- auth logout
 ```
 
+## Spark Wallet Pane (Local Breez SDK)
+
+Desktop includes a native wallet pane (`WL`) backed by `crates/spark` and the Rust Breez SDK binding.
+
+What it supports:
+
+1. Local balance visibility (Spark/Lightning/On-chain + total sats).
+2. Connectivity status from wallet sync checks.
+3. Receive flow: create a Lightning/Spark invoice for a sats amount and copy the last invoice.
+4. Send flow: pay a pasted BOLT11 invoice or Spark request (optional amount for zero-amount requests).
+5. Recent payment history (direction, amount, status, id/timestamp).
+
+Implementation notes:
+
+1. Wallet identity is derived from the local Pylon mnemonic at `~/.openagents/pylon/identity.mnemonic`.
+2. Wallet local storage is `~/.openagents/pylon/spark`.
+3. If identity is missing, initialize Pylon identity first (`Pylon` pane or `pylon init`).
+
 ## Run App
 
 ```bash

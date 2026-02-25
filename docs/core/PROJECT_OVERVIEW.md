@@ -11,7 +11,7 @@ This map reflects canonical Rust-only architecture boundaries.
   Rust execution authority: run lifecycle, worker lifecycle, event log, projector/read models, Khala delivery semantics.
 
 - `apps/autopilot-desktop/`
-  Rust desktop surface for Codex/inbox administration and local operator workflows.
+  Rust desktop surface for Codex/inbox administration, local Spark wallet operations (balance/send/receive/history), and local operator workflows.
 
 - `apps/lightning-ops/`
   Rust Lightning policy/reconcile service.

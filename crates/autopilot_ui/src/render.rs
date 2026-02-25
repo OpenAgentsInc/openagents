@@ -946,9 +946,25 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
     let refresh_width = 90.0;
     let liquidity_width = 96.0;
+    let invoice_button_width = 140.0;
+    let invoice_copy_width = 100.0;
+    let pay_amount_width = 170.0;
+    let pay_button_width = 84.0;
     let gap = 8.0;
+
+    root.wallet_invoice_copy_button
+        .set_disabled(root.wallet_status.last_invoice.is_none());
+    root.wallet_pay_button
+        .set_disabled(root.wallet_pay_request_input.get_value().trim().is_empty());
+
     root.wallet_refresh_bounds = Bounds::ZERO;
     root.wallet_liquidity_bounds = Bounds::ZERO;
+    root.wallet_invoice_amount_bounds = Bounds::ZERO;
+    root.wallet_invoice_create_bounds = Bounds::ZERO;
+    root.wallet_invoice_copy_bounds = Bounds::ZERO;
+    root.wallet_pay_request_bounds = Bounds::ZERO;
+    root.wallet_pay_amount_bounds = Bounds::ZERO;
+    root.wallet_pay_bounds = Bounds::ZERO;
 
     let identity_line = if root.wallet_status.identity_exists {
         "Identity: present"
@@ -956,13 +972,17 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
         "Identity: missing"
     };
     enum WalletStep {
-        Refresh,
+        ButtonRow,
+        InvoiceRow,
+        InvoiceCopyRow,
+        PayRequestRow,
+        PayActionRow,
         Line(String, wgpui::color::Hsla, f32),
         Spacer(f32),
     }
 
     let mut steps = vec![
-        WalletStep::Refresh,
+        WalletStep::ButtonRow,
         WalletStep::Spacer(14.0),
         WalletStep::Line(identity_line.to_string(), theme::text::MUTED, label_height),
         WalletStep::Spacer(value_spacing),
@@ -971,6 +991,15 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
     if let Some(network) = root.wallet_status.network.as_deref() {
         steps.push(WalletStep::Line(
             format!("Network: {}", network),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(value_spacing));
+    }
+
+    if let Some(network_status) = root.wallet_status.network_status.as_deref() {
+        steps.push(WalletStep::Line(
+            format!("Connectivity: {}", network_status),
             theme::text::MUTED,
             label_height,
         ));
@@ -1038,6 +1067,84 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
         steps.push(WalletStep::Spacer(value_spacing));
     }
 
+    steps.push(WalletStep::Spacer(10.0));
+    steps.push(WalletStep::Line(
+        "Receive payment".to_string(),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(4.0));
+    steps.push(WalletStep::InvoiceRow);
+    steps.push(WalletStep::Spacer(value_spacing));
+
+    if let Some(invoice) = root.wallet_status.last_invoice.as_deref() {
+        let mut text = Text::new(invoice).font_size(text_size);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(WalletStep::Line(
+            "Last invoice".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(4.0));
+        steps.push(WalletStep::Line(
+            invoice.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(WalletStep::Spacer(6.0));
+        steps.push(WalletStep::InvoiceCopyRow);
+        steps.push(WalletStep::Spacer(value_spacing));
+    }
+
+    steps.push(WalletStep::Spacer(8.0));
+    steps.push(WalletStep::Line(
+        "Send payment".to_string(),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(4.0));
+    steps.push(WalletStep::PayRequestRow);
+    steps.push(WalletStep::Spacer(6.0));
+    steps.push(WalletStep::PayActionRow);
+    steps.push(WalletStep::Spacer(value_spacing));
+
+    if let Some(last_payment_id) = root.wallet_status.last_payment_id.as_deref() {
+        steps.push(WalletStep::Line(
+            format!("Last payment id: {}", last_payment_id),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(value_spacing));
+    }
+
+    if !root.wallet_status.recent_payments.is_empty() {
+        steps.push(WalletStep::Line(
+            "Recent payments".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(4.0));
+        for payment in root.wallet_status.recent_payments.iter().take(5) {
+            let direction = if payment.direction.eq_ignore_ascii_case("send") {
+                "->"
+            } else {
+                "<-"
+            };
+            let short_id = if payment.id.len() > 12 {
+                &payment.id[..12]
+            } else {
+                payment.id.as_str()
+            };
+            let line = format!(
+                "{} {:>8} sats  {}  {}  @{}",
+                direction, payment.amount_sats, payment.status, short_id, payment.timestamp
+            );
+            steps.push(WalletStep::Line(line, theme::text::SECONDARY, label_height));
+            steps.push(WalletStep::Spacer(4.0));
+        }
+    }
+
     if let Some(err) = root.wallet_status.last_error.as_deref() {
         steps.push(WalletStep::Line(
             err.to_string(),
@@ -1049,7 +1156,11 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
     let heights: Vec<ColumnItem> = steps
         .iter()
         .map(|step| match step {
-            WalletStep::Refresh => ColumnItem::Fixed(button_height),
+            WalletStep::ButtonRow => ColumnItem::Fixed(button_height),
+            WalletStep::InvoiceRow => ColumnItem::Fixed(button_height),
+            WalletStep::InvoiceCopyRow => ColumnItem::Fixed(button_height),
+            WalletStep::PayRequestRow => ColumnItem::Fixed(button_height),
+            WalletStep::PayActionRow => ColumnItem::Fixed(button_height),
             WalletStep::Line(_, _, height) => ColumnItem::Fixed(*height),
             WalletStep::Spacer(height) => ColumnItem::Fixed(*height),
         })
@@ -1058,7 +1169,7 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
 
     for (step, bounds) in steps.into_iter().zip(bounds_list) {
         match step {
-            WalletStep::Refresh => {
+            WalletStep::ButtonRow => {
                 let button_bounds = aligned_row_bounds(
                     bounds,
                     button_height,
@@ -1078,6 +1189,72 @@ pub(super) fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut
                 } else if let Some(first) = button_bounds.into_iter().next() {
                     root.wallet_refresh_bounds = first;
                     root.wallet_refresh_button.paint(first, cx);
+                }
+            }
+            WalletStep::InvoiceRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[
+                        wgpui::RowItem::flex(1.0),
+                        wgpui::RowItem::fixed(invoice_button_width),
+                    ],
+                    gap,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if row_bounds.len() >= 2 {
+                    root.wallet_invoice_amount_bounds = row_bounds[0];
+                    root.wallet_invoice_create_bounds = row_bounds[1];
+                    root.wallet_invoice_amount_input.paint(row_bounds[0], cx);
+                    root.wallet_invoice_create_button.paint(row_bounds[1], cx);
+                }
+            }
+            WalletStep::InvoiceCopyRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(invoice_copy_width)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if let Some(copy_bounds) = row_bounds.into_iter().next() {
+                    root.wallet_invoice_copy_bounds = copy_bounds;
+                    root.wallet_invoice_copy_button.paint(copy_bounds, cx);
+                }
+            }
+            WalletStep::PayRequestRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::flex(1.0)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if let Some(input_bounds) = row_bounds.into_iter().next() {
+                    root.wallet_pay_request_bounds = input_bounds;
+                    root.wallet_pay_request_input.paint(input_bounds, cx);
+                }
+            }
+            WalletStep::PayActionRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[
+                        wgpui::RowItem::fixed(pay_amount_width),
+                        wgpui::RowItem::fixed(pay_button_width),
+                    ],
+                    gap,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                if row_bounds.len() >= 2 {
+                    root.wallet_pay_amount_bounds = row_bounds[0];
+                    root.wallet_pay_bounds = row_bounds[1];
+                    root.wallet_pay_amount_input.paint(row_bounds[0], cx);
+                    root.wallet_pay_button.paint(row_bounds[1], cx);
                 }
             }
             WalletStep::Line(text, color, _) => {

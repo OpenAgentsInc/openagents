@@ -584,6 +584,21 @@ pub struct MinimalRoot {
     wallet_liquidity_bounds: Bounds,
     pending_wallet_refresh: Rc<RefCell<bool>>,
     pending_wallet_liquidity: Rc<RefCell<bool>>,
+    wallet_invoice_amount_input: TextInput,
+    wallet_invoice_amount_bounds: Bounds,
+    wallet_invoice_create_button: Button,
+    wallet_invoice_create_bounds: Bounds,
+    pending_wallet_invoice_create: Rc<RefCell<bool>>,
+    wallet_invoice_copy_button: Button,
+    wallet_invoice_copy_bounds: Bounds,
+    pending_wallet_invoice_copy: Rc<RefCell<bool>>,
+    wallet_pay_request_input: TextInput,
+    wallet_pay_request_bounds: Bounds,
+    wallet_pay_amount_input: TextInput,
+    wallet_pay_amount_bounds: Bounds,
+    wallet_pay_button: Button,
+    wallet_pay_bounds: Bounds,
+    pending_wallet_pay: Rc<RefCell<bool>>,
     liquidity_status: LiquidityProviderStatusView,
     liquidity_online_button: Button,
     liquidity_offline_button: Button,
@@ -2863,6 +2878,76 @@ impl MinimalRoot {
                 *pending_wallet_liquidity_click.borrow_mut() = true;
             });
 
+        let pending_wallet_invoice_create = Rc::new(RefCell::new(false));
+        let pending_wallet_invoice_create_submit = pending_wallet_invoice_create.clone();
+        let mut wallet_invoice_amount_input = TextInput::new()
+            .placeholder("Invoice amount (sats)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_wallet_invoice_create_submit.borrow_mut() = true;
+            });
+        wallet_invoice_amount_input.set_value("1000");
+
+        let pending_wallet_invoice_create_click = pending_wallet_invoice_create.clone();
+        let wallet_invoice_create_button = Button::new("Create invoice")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_wallet_invoice_create_click.borrow_mut() = true;
+            });
+
+        let pending_wallet_invoice_copy = Rc::new(RefCell::new(false));
+        let pending_wallet_invoice_copy_click = pending_wallet_invoice_copy.clone();
+        let wallet_invoice_copy_button = Button::new("Copy invoice")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_wallet_invoice_copy_click.borrow_mut() = true;
+            });
+
+        let pending_wallet_pay = Rc::new(RefCell::new(false));
+        let pending_wallet_pay_submit = pending_wallet_pay.clone();
+        let wallet_pay_request_input = TextInput::new()
+            .placeholder("Invoice or Spark address")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_wallet_pay_submit.borrow_mut() = true;
+            });
+
+        let pending_wallet_pay_amount_submit = pending_wallet_pay.clone();
+        let wallet_pay_amount_input = TextInput::new()
+            .placeholder("Amount sats (optional)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_wallet_pay_amount_submit.borrow_mut() = true;
+            });
+
+        let pending_wallet_pay_click = pending_wallet_pay.clone();
+        let wallet_pay_button = Button::new("Pay")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_wallet_pay_click.borrow_mut() = true;
+            });
+
         let pending_liquidity_online = Rc::new(RefCell::new(false));
         let pending_liquidity_online_click = pending_liquidity_online.clone();
         let liquidity_online_button = Button::new("Go online")
@@ -3144,6 +3229,21 @@ impl MinimalRoot {
             wallet_liquidity_bounds: Bounds::ZERO,
             pending_wallet_refresh,
             pending_wallet_liquidity,
+            wallet_invoice_amount_input,
+            wallet_invoice_amount_bounds: Bounds::ZERO,
+            wallet_invoice_create_button,
+            wallet_invoice_create_bounds: Bounds::ZERO,
+            pending_wallet_invoice_create,
+            wallet_invoice_copy_button,
+            wallet_invoice_copy_bounds: Bounds::ZERO,
+            pending_wallet_invoice_copy,
+            wallet_pay_request_input,
+            wallet_pay_request_bounds: Bounds::ZERO,
+            wallet_pay_amount_input,
+            wallet_pay_amount_bounds: Bounds::ZERO,
+            wallet_pay_button,
+            wallet_pay_bounds: Bounds::ZERO,
+            pending_wallet_pay,
             liquidity_status: LiquidityProviderStatusView::default(),
             liquidity_online_button,
             liquidity_offline_button,
@@ -3275,12 +3375,26 @@ impl MinimalRoot {
             AppEvent::WalletStatus { status } => {
                 self.wallet_status = WalletStatusView {
                     network: status.network,
+                    network_status: status.network_status,
                     spark_sats: status.spark_sats,
                     lightning_sats: status.lightning_sats,
                     onchain_sats: status.onchain_sats,
                     total_sats: status.total_sats,
                     spark_address: status.spark_address,
                     bitcoin_address: status.bitcoin_address,
+                    last_invoice: status.last_invoice,
+                    last_payment_id: status.last_payment_id,
+                    recent_payments: status
+                        .recent_payments
+                        .into_iter()
+                        .map(|payment| WalletPaymentView {
+                            id: payment.id,
+                            direction: payment.direction,
+                            status: payment.status,
+                            amount_sats: payment.amount_sats,
+                            timestamp: payment.timestamp,
+                        })
+                        .collect(),
                     identity_exists: status.identity_exists,
                     last_error: status.last_error,
                 };
@@ -5148,7 +5262,62 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            handled |= refresh_handled || liquidity_handled;
+                            let invoice_amount_handled = matches!(
+                                self.wallet_invoice_amount_input.event(
+                                    event,
+                                    self.wallet_invoice_amount_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let invoice_create_handled = matches!(
+                                self.wallet_invoice_create_button.event(
+                                    event,
+                                    self.wallet_invoice_create_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let invoice_copy_handled = matches!(
+                                self.wallet_invoice_copy_button.event(
+                                    event,
+                                    self.wallet_invoice_copy_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let pay_request_handled = matches!(
+                                self.wallet_pay_request_input.event(
+                                    event,
+                                    self.wallet_pay_request_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let pay_amount_handled = matches!(
+                                self.wallet_pay_amount_input.event(
+                                    event,
+                                    self.wallet_pay_amount_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let pay_handled = matches!(
+                                self.wallet_pay_button.event(
+                                    event,
+                                    self.wallet_pay_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= refresh_handled
+                                || liquidity_handled
+                                || invoice_amount_handled
+                                || invoice_create_handled
+                                || invoice_copy_handled
+                                || pay_request_handled
+                                || pay_amount_handled
+                                || pay_handled;
                         }
                         PaneKind::Liquidity => {
                             let online_handled = matches!(
@@ -5517,6 +5686,77 @@ impl MinimalRoot {
         };
         if should_wallet_liquidity {
             self.toggle_liquidity_pane(self.screen_size());
+        }
+
+        let should_wallet_invoice_create = {
+            let mut pending = self.pending_wallet_invoice_create.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_wallet_invoice_create {
+            let amount = self
+                .wallet_invoice_amount_input
+                .get_value()
+                .trim()
+                .parse::<u64>()
+                .unwrap_or(0);
+            if amount > 0 {
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::WalletCreateInvoice {
+                        amount_sats: amount,
+                    });
+                }
+            } else {
+                self.wallet_status.last_error = Some("Invoice amount must be > 0".to_string());
+            }
+        }
+
+        let should_wallet_invoice_copy = {
+            let mut pending = self.pending_wallet_invoice_copy.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_wallet_invoice_copy
+            && let Some(invoice) = self.wallet_status.last_invoice.as_deref()
+        {
+            let _ = copy_to_clipboard(invoice);
+        }
+
+        let should_wallet_pay = {
+            let mut pending = self.pending_wallet_pay.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_wallet_pay {
+            let payment_request = self.wallet_pay_request_input.get_value().trim().to_string();
+            if payment_request.is_empty() {
+                self.wallet_status.last_error = Some("Enter a payment request first.".to_string());
+            } else {
+                let amount_input = self.wallet_pay_amount_input.get_value();
+                let amount_sats = {
+                    let trimmed = amount_input.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        trimmed.parse::<u64>().ok()
+                    }
+                };
+
+                if amount_input.trim().is_empty() || amount_sats.is_some() {
+                    if let Some(handler) = self.send_handler.as_mut() {
+                        handler(UserAction::WalletPay {
+                            payment_request,
+                            amount_sats,
+                        });
+                    }
+                } else {
+                    self.wallet_status.last_error =
+                        Some("Amount must be an integer sats value.".to_string());
+                }
+            }
         }
 
         let should_liquidity_online = {
@@ -7496,14 +7736,27 @@ struct PylonStatusView {
 }
 
 #[derive(Clone, Debug, Default)]
+struct WalletPaymentView {
+    id: String,
+    direction: String,
+    status: String,
+    amount_sats: u64,
+    timestamp: u64,
+}
+
+#[derive(Clone, Debug, Default)]
 struct WalletStatusView {
     network: Option<String>,
+    network_status: Option<String>,
     spark_sats: u64,
     lightning_sats: u64,
     onchain_sats: u64,
     total_sats: u64,
     spark_address: Option<String>,
     bitcoin_address: Option<String>,
+    last_invoice: Option<String>,
+    last_payment_id: Option<String>,
+    recent_payments: Vec<WalletPaymentView>,
     identity_exists: bool,
     last_error: Option<String>,
 }
@@ -7604,6 +7857,16 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::PylonStop => "PylonStop".to_string(),
             UserAction::PylonRefresh => "PylonRefresh".to_string(),
             UserAction::WalletRefresh => "WalletRefresh".to_string(),
+            UserAction::WalletCreateInvoice { amount_sats } => {
+                format!("WalletCreateInvoice ({amount_sats} sats)")
+            }
+            UserAction::WalletPay {
+                payment_request: _,
+                amount_sats,
+            } => match amount_sats {
+                Some(amount_sats) => format!("WalletPay ({amount_sats} sats)"),
+                None => "WalletPay".to_string(),
+            },
             UserAction::LiquidityProviderOnline => "LiquidityProviderOnline".to_string(),
             UserAction::LiquidityProviderOffline => "LiquidityProviderOffline".to_string(),
             UserAction::LiquidityProviderRefresh => "LiquidityProviderRefresh".to_string(),
