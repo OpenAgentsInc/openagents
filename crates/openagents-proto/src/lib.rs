@@ -4,6 +4,7 @@
 //! It intentionally separates wire types from richer domain models.
 
 pub mod hydra_credit;
+pub mod hydra_fx;
 pub mod hydra_routing;
 
 /// Proto-generated wire contracts.

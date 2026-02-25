@@ -60,6 +60,8 @@ Current files:
 - `proto/openagents/lightning/v1/control_plane.proto`
 - `proto/openagents/lightning/v1/wallet_executor.proto`
 - `proto/openagents/hydra/v1/credit.proto`
+- `proto/openagents/hydra/v1/routing.proto`
+- `proto/openagents/hydra/v1/fx.proto`
 
 `openagents.protocol.v1` is transitional legacy namespace only. New contracts must be placed using `proto/PACKAGE_MAP.md`.
 
