@@ -10,7 +10,7 @@ This document audits the Episode 212 announcement claims ("Autopilot Learns Bitc
 
 Checked authorities (required by `AGENTS.md`):
 
-- Invariants: `docs/plans/active/rust-migration-invariant-gates.md`
+- Invariants: `docs/plans/rust-migration-invariant-gates.md`
 - ADRs:
   - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
   - `docs/adr/ADR-0002-proto-first-contract-governance.md`
@@ -342,7 +342,7 @@ Work items:
    - Decide which messages are:
      - authority mutations (signed + receipted)
      - ephemeral coordination (session-authenticated)
-   - Align with the Nexus/Nostr boundary decisions in the main economy plan (`docs/plans/active/2026-02-23-open-agent-economy-execution-plan.md`).
+   - Align with the Nexus/Nostr boundary decisions in the main economy plan (`docs/plans/2026-02-23-open-agent-economy-execution-plan.md`).
 
 2. **Implement minimum negotiation loop on the web surface.**
    - Discover/lookup another Autopilot/user.

@@ -34,7 +34,7 @@ Indicate which architecture boundaries are impacted:
 
 Map this ADR to migration invariants (`INV-*`) from:
 
-- `docs/plans/active/rust-migration-invariant-gates.md`
+- `docs/plans/rust-migration-invariant-gates.md`
 
 Required:
 

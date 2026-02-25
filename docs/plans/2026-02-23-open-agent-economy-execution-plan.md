@@ -44,7 +44,7 @@ Out of scope:
 ### 3.1) Authority And Drift Notes
 
 - `docs/core/SYNTHESIS.md` is a synthesis document, not an execution authority. If it conflicts with code or Rust-era canonical docs, the Rust-era authorities win (ADRs + invariant gates + code).
-- Part Fourteen of `docs/core/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/active/rust-migration-invariant-gates.md`.
+- Part Fourteen of `docs/core/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/rust-migration-invariant-gates.md`.
 
 ## 4) Priority Ladder (Liquidity-First)
 
@@ -201,7 +201,7 @@ Autopilot is multi-surface, but parity is not promised. One identity, different 
 | Part Eleven: UI Architecture | WGPUI command surfaces, HUD, fleet control, mobile remote ops | `OA-ECON-171` to `OA-ECON-173`, `OA-ECON-201` to `OA-ECON-205`, `OA-ECON-214` | Next |
 | Part Twelve: Quality Assurance | No-stubs enforcement, layered tests, e2e scenarios, coverage gates | `OA-ECON-220` to `OA-ECON-227`, `OA-ECON-257` to `OA-ECON-259` | Next |
 | Part Thirteen: Implementation Architecture | Crate boundary governance, protocol boundary checks, architecture conformance | `OA-ECON-240` to `OA-ECON-243`, `OA-ECON-263` to `OA-ECON-265` | Later |
-| Part Fourteen: Directive System (stale) | Superseded by ADRs + invariant gates; no directive system work is planned | `docs/adr/*`, `docs/plans/active/rust-migration-invariant-gates.md` | N/A (superseded) |
+| Part Fourteen: Directive System (stale) | Superseded by ADRs + invariant gates; no directive system work is planned | `docs/adr/*`, `docs/plans/rust-migration-invariant-gates.md` | N/A (superseded) |
 | Part Fifteen: Emergent Whole | Integration-level acceptance and replayable proof of coherent operation | `OA-ECON-257` to `OA-ECON-262` | Next |
 | Part Sixteen: Company and Mission | Revenue rails, packaging, procurement/audit requirements | `OA-ECON-249` to `OA-ECON-256`, `OA-ECON-266` to `OA-ECON-279` | Later |
 | Part Seventeen: Wedge to Platform | Demand-floor progression, platformization sequencing and metrics | `OA-ECON-001` to `OA-ECON-009`, `OA-ECON-206` to `OA-ECON-209` | Now |

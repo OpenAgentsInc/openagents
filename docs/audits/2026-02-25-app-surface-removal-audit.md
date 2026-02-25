@@ -18,7 +18,7 @@ Scope owner: repo-wide (apps, workspace manifests, scripts, docs, deploy runbook
 Reviewed before drafting this audit:
 
 1. `docs/adr/INDEX.md`
-2. `docs/plans/active/rust-migration-invariant-gates.md`
+2. `docs/plans/rust-migration-invariant-gates.md`
 
 Constraints applied to this cleanup plan:
 
