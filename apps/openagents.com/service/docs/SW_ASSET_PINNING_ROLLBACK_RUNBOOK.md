@@ -1,58 +1,37 @@
-# Web Shell SW Asset Pinning + Rollback Runbook (OA-RUST-082)
+# Landing Static Host Rollback Runbook (OA-RUST-082)
 
 ## Purpose
 
-Define the release order and rollback-safe procedure for Rust/WASM web-shell bundles using service-worker pinned assets.
+Define rollout and rollback procedure for the landing-only web surface served by
+`apps/openagents.com/service`.
 
 ## Build Inputs
 
-`apps/openagents.com/web-shell/build-dist.sh` now emits `manifest.json` v2 with:
-
-- `buildId`
-- compatibility window (`minClientBuildId`, `maxClientBuildId`)
-- service-worker pinned asset set and cache name
-
-Optional env controls:
-
-- `OA_MIN_CLIENT_BUILD_ID` (default: current build)
-- `OA_MAX_CLIENT_BUILD_ID` (default: unset)
-- `OA_PROTOCOL_VERSION` (default: `khala.ws.v1`)
-- `OA_SYNC_SCHEMA_MIN` / `OA_SYNC_SCHEMA_MAX` (default: `1`)
-- `OA_ROLLBACK_BUILD_IDS` (comma list of cache-compatible prior build IDs)
+1. Control service image from `apps/openagents.com/Dockerfile`.
+2. Landing static assets under `apps/openagents.com/service/static/`.
+3. Desktop distribution URL via `OA_DESKTOP_DOWNLOAD_URL`.
+4. Control static host path via `OA_CONTROL_STATIC_DIR` (container default: `/app/service/static`).
 
 ## Release Order (Required)
 
-1. Build and verify new web-shell dist:
-   - `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`
-2. Deploy control service static host with new `dist/` assets (`manifest.json`, `sw.js`, `/assets/*`).
-3. Keep backend compatibility window permissive enough for existing live clients during rollout.
-4. Observe client skew telemetry/status and ensure clients promote to the new service worker.
-5. Tighten compatibility window only after rollout saturation.
+1. Build and validate control service image.
+2. Confirm landing routes:
+   - `GET /` returns landing page.
+   - `GET /download-desktop` redirects to expected desktop artifact URL.
+3. Deploy control service.
+4. Validate health/ready:
+   - `GET /healthz`
+   - `GET /readyz`
+5. Validate desktop download redirect target after deploy.
 
 ## Rollback Procedure
 
-1. Deploy previous known-good `dist/` (older `buildId`) and include the newer build ID in `OA_ROLLBACK_BUILD_IDS` if needed during transition.
-2. Keep compatibility window broad enough for both rollback build and currently connected clients.
-3. Verify `GET /manifest.json` reports rollback `buildId` and correct compatibility window.
-4. Verify `GET /sw.js` is `no-store` and service worker installs rollback pinned assets.
-5. Once clients converge, remove temporary rollback cache allowances.
-
-## Recovery: Build Skew Detected
-
-Client behavior:
-
-1. Host shim fetches `/manifest.json` with `no-store`.
-2. If local `buildId` is out of compatibility window or mismatched, it attempts service-worker promotion.
-3. If promotion succeeds, client reloads automatically.
-4. If promotion fails, client surfaces deterministic hard-refresh prompt.
+1. Roll back control service revision to previous known-good image.
+2. Restore previous `OA_DESKTOP_DOWNLOAD_URL` value if changed in failed rollout.
+3. Re-run route checks for `/`, `/download-desktop`, `/healthz`, `/readyz`.
 
 ## Verification
 
-- Static route checks:
-  - `GET /manifest.json` -> `Cache-Control: no-cache, no-store, must-revalidate`
-  - `GET /sw.js` -> `Cache-Control: no-cache, no-store, must-revalidate`
-- Browser drill:
-  - deploy canary build
-  - open client on prior build
-  - confirm skew detection and promotion path
-  - rollback and confirm prior compatible build activation
+1. Landing route returns HTML and desktop CTA.
+2. Download redirect points to intended release artifact location.
+3. Control API routes required by retained clients remain responsive.
