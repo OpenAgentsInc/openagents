@@ -7,7 +7,7 @@ Owner: `owner:contracts-docs`
 This document defines the canonical compatibility negotiation contract across:
 
 1. control-service APIs,
-2. Khala websocket join/subscribe flows,
+2. sync websocket join/subscribe flows (Spacetime canonical; Khala legacy during migration),
 3. retained-client support windows,
 4. compatibility stream aliases (`/api/chat/stream`, `/api/chats/{conversationId}/stream`).
 
@@ -74,13 +74,25 @@ Steady-state operations for these compatibility aliases are governed by:
 
 - `apps/openagents.com/service/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md`
 
-## Khala WS Contract
+## Sync WS Contract
 
 Failure response semantics:
 
 - Join/subscribe failure payload uses same `code` set and required support-window fields.
 - If failure occurs after socket establishment, `sync:error` must carry deterministic compatibility code.
 - Client behavior: stop reconnect loops and surface upgrade-required UX until compatibility window changes.
+
+Protocol-version policy:
+
+- Canonical sync protocol version: `spacetime.sync.v1`
+- Legacy migration alias: `khala.ws.v1`
+- Unsupported examples: `khala.ws.v2`, unknown custom protocol strings
+
+Negotiation requirements:
+
+1. Servers must advertise one canonical protocol per environment window.
+2. During migration windows, servers may accept canonical/legacy alias pairs only when explicitly configured.
+3. Failure responses for protocol mismatch must always use `unsupported_protocol_version` with full support-window metadata.
 
 ## Environment Support-Window Policy
 

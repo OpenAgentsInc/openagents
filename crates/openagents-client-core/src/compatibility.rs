@@ -77,9 +77,7 @@ pub fn negotiate_compatibility(
         )
     })?;
 
-    if normalize_build_id(&handshake.protocol_version)
-        != normalize_build_id(&window.protocol_version)
-    {
+    if !protocol_versions_compatible(&handshake.protocol_version, &window.protocol_version) {
         return Err(CompatibilityFailure::new(
             "unsupported_protocol_version",
             format!(
@@ -158,13 +156,36 @@ fn compare_build_ids(left: &str, right: &str) -> i32 {
     }
 }
 
+const PROTOCOL_SYNC_SPACETIME_V1: &str = "spacetime.sync.v1";
+const PROTOCOL_SYNC_KHALA_WS_V1: &str = "khala.ws.v1";
+
+fn protocol_versions_compatible(client: &str, server: &str) -> bool {
+    let Some(client_norm) = normalize_build_id(client) else {
+        return false;
+    };
+    let Some(server_norm) = normalize_build_id(server) else {
+        return false;
+    };
+
+    if client_norm == server_norm {
+        return true;
+    }
+
+    // Bounded migration alias while Khala is being retired.
+    matches!(
+        (client_norm.as_str(), server_norm.as_str()),
+        (PROTOCOL_SYNC_KHALA_WS_V1, PROTOCOL_SYNC_SPACETIME_V1)
+            | (PROTOCOL_SYNC_SPACETIME_V1, PROTOCOL_SYNC_KHALA_WS_V1)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn window() -> CompatibilityWindow {
         CompatibilityWindow {
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
             min_client_build_id: "20260221T120000Z".to_string(),
             max_client_build_id: Some("20260221T180000Z".to_string()),
             min_schema_version: 1,
@@ -176,7 +197,20 @@ mod tests {
     fn negotiation_accepts_supported_client() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "20260221T130000Z".to_string(),
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
+            schema_version: 1,
+        };
+
+        let result =
+            negotiate_compatibility(CompatibilitySurface::KhalaWebSocket, &handshake, &window());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn negotiation_accepts_legacy_khala_alias_when_window_is_spacetime_v1() {
+        let handshake = ClientCompatibilityHandshake {
+            client_build_id: "20260221T130000Z".to_string(),
+            protocol_version: PROTOCOL_SYNC_KHALA_WS_V1.to_string(),
             schema_version: 1,
         };
 
@@ -189,7 +223,7 @@ mod tests {
     fn negotiation_rejects_missing_build_id() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "   ".to_string(),
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
             schema_version: 1,
         };
 
@@ -218,7 +252,7 @@ mod tests {
     fn negotiation_rejects_schema_outside_window() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "20260221T130000Z".to_string(),
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
             schema_version: 9,
         };
 
@@ -232,7 +266,7 @@ mod tests {
     fn negotiation_rejects_client_below_minimum() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "20260221T110000Z".to_string(),
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
             schema_version: 1,
         };
 
@@ -247,7 +281,7 @@ mod tests {
     fn negotiation_rejects_client_above_maximum() {
         let handshake = ClientCompatibilityHandshake {
             client_build_id: "20260221T190000Z".to_string(),
-            protocol_version: "khala.ws.v1".to_string(),
+            protocol_version: PROTOCOL_SYNC_SPACETIME_V1.to_string(),
             schema_version: 1,
         };
 
