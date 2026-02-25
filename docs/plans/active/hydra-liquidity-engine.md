@@ -389,6 +389,14 @@ MVP-2 routing/risk columns (current contract):
 * breaker transitions + recoveries
 * withdrawal throttle mode + affected/rejected/stressed request counters
 
+MVP-3 FX columns (current contract):
+
+* FX RFQ/quote/settlement totals
+* quote-to-settlement conversion ratio
+* spread bps average + median
+* withheld + failed settlement totals
+* treasury provider breadth
+
 ---
 
 ## 5) Trust Zones + Message Classes
@@ -475,6 +483,13 @@ MVP-2 executable harness (single command):
 * RFQ ingestion + quote selection surfaces
 * Settlement v0 (reputation-first) → v1 (atomic where supported)
 * FX provenance receipts
+* Runtime/public observability parity for FX metrics
+
+MVP-3 executable harness (single command):
+
+```bash
+./scripts/vignette-hydra-mvp3.sh
+```
 
 ### MVP-4 — Interop surfaces (Bridge/Nostr)
 

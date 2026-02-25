@@ -11,6 +11,7 @@ This directory stores execution plans.
 - `docs/plans/active/rust-migration-execution-control-plane.md`
 - `docs/plans/active/rust-migration-invariant-gates.md`
 - `docs/plans/active/vignette-hydra-mvp2.md`
+- `docs/plans/active/vignette-hydra-mvp3.md`
 - `docs/plans/active/vignette-phase0-issue-to-pr.md`
 
 ## Research / Optional Plans

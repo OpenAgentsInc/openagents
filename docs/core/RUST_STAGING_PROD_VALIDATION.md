@@ -66,6 +66,10 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
   - `GET /internal/v1/openapi.json` includes `/hydra/routing/score`, `/hydra/risk/health`, `/hydra/observability`
   - `GET /internal/v1/hydra/observability` returns routing counts, confidence distribution buckets, breaker transitions/recoveries, and withdrawal throttle affected-request counters
   - `./scripts/vignette-hydra-mvp2.sh`
+- Hydra MVP-3 FX contract + determinism checks:
+  - `GET /internal/v1/openapi.json` includes `/hydra/fx/rfq`, `/hydra/fx/quote`, `/hydra/fx/select`, `/hydra/fx/settle`
+  - `GET /internal/v1/hydra/observability` returns `fx` metrics (`rfq_total`, `quote_total`, `settlement_total`, conversion, spread avg/median, withheld/failed, provider breadth)
+  - `./scripts/vignette-hydra-mvp3.sh`
 
 2.5. Public stats lane
 - `GET /stats` renders minute-cache Hydra rows with stable columns for:
@@ -73,6 +77,7 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
   - confidence distribution buckets (`<0.40`, `0.40-0.70`, `0.70-0.90`, `>=0.90`)
   - breaker transitions + recoveries
   - throttle mode + affected/rejected/stressed request totals
+  - FX rows (`rfq/quote/settlement`, quote->settle conversion, spread avg/median, withheld/failed, treasury provider breadth)
 
 3. Khala contract lane
 
