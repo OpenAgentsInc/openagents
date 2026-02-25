@@ -143,7 +143,7 @@ PROD_CONTROL_BASE_URL=https://openagents.com \
 scripts/release/validate-rust-cutover.sh
 ```
 
-Canonical matrix spec: `docs/RUST_STAGING_PROD_VALIDATION.md`.
+Canonical matrix spec: `docs/core/RUST_STAGING_PROD_VALIDATION.md`.
 
 ## Rollback
 

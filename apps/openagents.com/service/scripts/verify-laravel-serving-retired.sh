@@ -93,7 +93,7 @@ check_exists "rust-agents-active" "apps/openagents.com/AGENTS.md"
 check_file_contains "wrapper-forwards-rust" "apps/openagents.com/deploy/deploy-production.sh" "Forwarding to apps/openagents.com/service/deploy/deploy-production.sh."
 check_file_contains "deploy-readme-rust-only" "apps/openagents.com/deploy/README.md" "Deploy Entry Points (Rust-Only Active Lane)"
 check_file_contains "app-readme-legacy-archived" "apps/openagents.com/README.md" "historical/transition artifacts"
-check_file_contains "project-overview-archive-note" "docs/PROJECT_OVERVIEW.md" "apps/openagents.com/app/"
+check_file_contains "project-overview-archive-note" "docs/core/PROJECT_OVERVIEW.md" "apps/openagents.com/app/"
 
 check_file_not_contains "active-agents-no-laravel-boost" "apps/openagents.com/AGENTS.md" "Laravel Boost"
 

@@ -7,7 +7,7 @@ Current active auth/session implementation is the Rust control service under `ap
 Use these docs instead:
 
 1. `apps/openagents.com/service/README.md`
-2. `docs/DEPLOYMENT_RUST_SERVICES.md`
-3. `docs/ARCHITECTURE-RUST.md`
+2. `docs/core/DEPLOYMENT_RUST_SERVICES.md`
+3. `docs/core/ARCHITECTURE.md`
 
 Legacy Sanctum material was archived to backroom in OA-RUST-113.

@@ -3,7 +3,7 @@
 Signatures are typed input/output contracts for model-facing decisions and generation steps.
 
 Canonical terminology:
-- `Signature`, `Module`, `Predictor`, `Optimizer`, `Metric` are defined in `docs/GLOSSARY.md`.
+- `Signature`, `Module`, `Predictor`, `Optimizer`, `Metric` are defined in `docs/core/GLOSSARY.md`.
 
 Normative expectations (agent-first invariants):
 - Any decision point that gates behavior SHOULD be a signature (or signature-backed pipeline).

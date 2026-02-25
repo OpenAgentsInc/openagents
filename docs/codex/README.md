@@ -9,7 +9,7 @@ Rust-era Codex planning and integration boundaries.
 
 ## Related Docs
 
-- `docs/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
 - `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/protocol/codex-worker-events-v1.md`

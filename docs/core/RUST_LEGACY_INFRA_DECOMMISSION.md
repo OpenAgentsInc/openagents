@@ -13,7 +13,7 @@ Remove legacy Laravel-era infrastructure in controlled phases without breaking p
 1. Do not delete production `openagents-web` or production domain mappings before final cutover approval.
 2. Run the Rust validation matrix before any destructive phase:
    - `scripts/release/validate-rust-cutover.sh`
-   - `docs/RUST_STAGING_PROD_VALIDATION.md`
+   - `docs/core/RUST_STAGING_PROD_VALIDATION.md`
 3. Capture before/after inventory artifacts for each action.
 4. Capture fresh Laravel DB backups before destructive production deletion:
    - `scripts/release/backup-laravel-db.sh`

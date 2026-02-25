@@ -128,6 +128,6 @@ cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- smoke
 
 - `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`
 - `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
 - Related issue: `OA-RUST-095` / `#1930`

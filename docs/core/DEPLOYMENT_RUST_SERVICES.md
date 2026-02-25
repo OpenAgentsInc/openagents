@@ -7,8 +7,8 @@ This is the canonical deploy/process map for active Rust service lanes.
 
 Cross-environment release validation gate:
 
-- `docs/RUST_STAGING_PROD_VALIDATION.md`
-- Legacy teardown policy: `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
+- `docs/core/RUST_STAGING_PROD_VALIDATION.md`
+- Legacy teardown policy: `docs/core/RUST_LEGACY_INFRA_DECOMMISSION.md`
 - Pre-delete Laravel DB backup gate: `scripts/release/backup-laravel-db.sh`
 
 ## Canonical deploy entrypoints

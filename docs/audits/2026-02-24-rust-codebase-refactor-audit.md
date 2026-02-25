@@ -18,11 +18,11 @@ Mandatory baseline authorities read before audit work:
 
 Additional architecture/ownership references used to constrain recommendations:
 
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/ROADMAP.md`
-- `docs/LOCAL_CI.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/PROJECT_OVERVIEW.md`
+- `docs/core/ROADMAP.md`
+- `docs/core/LOCAL_CI.md`
 - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 - `docs/adr/ADR-0002-proto-first-contract-governance.md`
 - `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`

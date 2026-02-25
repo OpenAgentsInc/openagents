@@ -41,6 +41,6 @@ Generated Rust wire crate:
 ## Related
 
 - `docs/adr/`
-- `docs/GLOSSARY.md`
+- `docs/core/GLOSSARY.md`
 - `proto/README.md`
 - `proto/PACKAGE_MAP.md`

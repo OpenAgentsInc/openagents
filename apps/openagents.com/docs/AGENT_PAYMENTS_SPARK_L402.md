@@ -14,4 +14,4 @@ Status: current architecture note.
 2. No client-side secret custody.
 3. Receipts remain replayable and auditable.
 
-Use `docs/ARCHITECTURE-RUST.md` and lightning runbooks under `docs/lightning/` for current operational detail.
+Use `docs/core/ARCHITECTURE.md` and lightning runbooks under `docs/lightning/` for current operational detail.

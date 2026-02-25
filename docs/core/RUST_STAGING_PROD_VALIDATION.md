@@ -125,4 +125,4 @@ HTMX perf lane toggle:
 - `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - `apps/openagents.com/service/docs/HTMX_ROUTE_GROUP_ROLLOUT.md`
 - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
-- `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
+- `docs/core/SCHEMA_EVOLUTION_PLAYBOOK.md`

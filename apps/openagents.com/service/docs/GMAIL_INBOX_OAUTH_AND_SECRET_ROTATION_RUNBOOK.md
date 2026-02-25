@@ -60,7 +60,7 @@ Mismatch between deployed `GOOGLE_OAUTH_REDIRECT_URI` and Google Console config 
 3. Deploy staging control service with updated secret reference.
 4. Validate connect callback, inbox refresh, and reply send in staging.
 5. Promote the same secret version to production deploy.
-6. Re-run staging/prod validation checklist (`docs/RUST_STAGING_PROD_VALIDATION.md`).
+6. Re-run staging/prod validation checklist (`docs/core/RUST_STAGING_PROD_VALIDATION.md`).
 7. Disable old OAuth secret version only after production validation passes.
 
 ## Integration Secret Key Rotation Procedure

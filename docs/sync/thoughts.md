@@ -96,5 +96,5 @@ Runbook authority:
 
 - `docs/sync/SURFACES.md`
 - `docs/sync/ROADMAP.md`
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/core/ARCHITECTURE.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`

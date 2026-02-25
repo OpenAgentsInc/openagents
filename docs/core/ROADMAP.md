@@ -3,7 +3,7 @@
 This document is the high-level roadmap summary.
 
 Detailed execution backlog and OA-RUST issue ordering live in:
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
 
 ## Program Objective
 
@@ -39,8 +39,8 @@ Complete migration to a Rust-only production architecture with:
 
 ## Canonical References
 
-- `docs/ARCHITECTURE.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- `docs/DEPLOYMENT_RUST_SERVICES.md`
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/README.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/DEPLOYMENT_RUST_SERVICES.md`
+- `docs/core/PROJECT_OVERVIEW.md`
+- `docs/core/README.md`

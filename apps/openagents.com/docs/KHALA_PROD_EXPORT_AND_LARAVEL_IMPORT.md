@@ -6,7 +6,7 @@ Current target architecture is Rust-only service lanes. Use runtime/control migr
 
 Canonical references:
 
-1. `docs/ARCHITECTURE-RUST.md`
+1. `docs/core/ARCHITECTURE.md`
 2. `apps/runtime/docs/KHALA_SYNC.md`
 3. `docs/protocol/README.md`
 

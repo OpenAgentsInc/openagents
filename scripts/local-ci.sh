@@ -155,7 +155,7 @@ run_trigger_tests() {
 
   assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "true"
   assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
-  assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "docs/README.md" "false"
+  assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "docs/core/README.md" "false"
 
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "true"
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "false"
@@ -187,9 +187,9 @@ run_trigger_tests() {
 
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
-  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/README.md" "false"
+  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/core/README.md" "false"
   assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "true"
-  assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "docs/README.md" "false"
+  assert_trigger "rust-clippy" "$RUST_CLIPPY_TRIGGER_PATTERN" "docs/core/README.md" "false"
 
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php" "true"
   assert_trigger "runtime-codex-workers-php" "$RUNTIME_CODEX_WORKERS_PHP_TRIGGER_PATTERN" "apps/openagents.com/tests/Feature/ChatStreamingTest.php" "false"

@@ -129,6 +129,6 @@ OA_BUF_BREAKING_MODE=strict OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,sub
 
 - `proto/README.md`
 - `proto/PACKAGE_MAP.md`
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/core/ARCHITECTURE.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - Related issue: `OA-RUST-075` / `#1890`

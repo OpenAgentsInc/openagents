@@ -14,7 +14,7 @@ Issue: OA-WEBPARITY-060
 - Historical Laravel agent guidance archived:
   - `apps/openagents.com/docs/archived/legacy-laravel-deploy/AGENTS.laravel-boost.md`
 - Ownership docs updated to classify Laravel tree as archival:
-  - `docs/PROJECT_OVERVIEW.md`
+  - `docs/core/PROJECT_OVERVIEW.md`
 
 ## Retirement Invariants Enforced
 

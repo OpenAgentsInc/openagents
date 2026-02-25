@@ -4,30 +4,30 @@ This file is a map. Start here, then follow the linked canonical docs.
 
 ## Core Orientation
 
-- Progressive disclosure map: `docs/AGENT_MAP.md`
-- Documentation index: `docs/README.md`
-- Repository map / ownership: `docs/PROJECT_OVERVIEW.md`
-- Priorities and sequencing: `docs/ROADMAP.md`
-- Vocabulary authority: `docs/GLOSSARY.md`
-- Canonical architecture: `docs/ARCHITECTURE.md`
-- Canonical build roadmap: `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- Canonical deploy/process matrix: `docs/DEPLOYMENT_RUST_SERVICES.md`
+- Progressive disclosure map: `docs/core/AGENT_MAP.md`
+- Documentation index: `docs/core/README.md`
+- Repository map / ownership: `docs/core/PROJECT_OVERVIEW.md`
+- Priorities and sequencing: `docs/core/ROADMAP.md`
+- Vocabulary authority: `docs/core/GLOSSARY.md`
+- Canonical architecture: `docs/core/ARCHITECTURE.md`
+- Canonical build roadmap: `docs/core/ARCHITECTURE.md`
+- Canonical deploy/process matrix: `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 - ADR index: `docs/adr/INDEX.md`
 
 ## README Doc Index (Moved)
 
 Canonical architecture and migration sequencing:
 
-- `docs/ARCHITECTURE.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- `docs/DEPLOYMENT_RUST_SERVICES.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 
 Documentation entry points:
 
 - `AGENTS.md`
-- `docs/README.md`
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/ROADMAP.md`
+- `docs/core/README.md`
+- `docs/core/PROJECT_OVERVIEW.md`
+- `docs/core/ROADMAP.md`
 
 ## Contracts (Canonical Specs)
 
@@ -40,8 +40,8 @@ Documentation entry points:
 
 - Plans index: `docs/plans/README.md`
 - Active plans: `docs/plans/`
-- Synthesis strategy: `docs/SYNTHESIS.md`
-- Synthesis execution posture: `docs/SYNTHESIS_EXECUTION.md`
+- Synthesis strategy: `docs/core/SYNTHESIS.md`
+- Synthesis execution posture: `docs/core/SYNTHESIS_EXECUTION.md`
 
 ## Product and Service Surfaces
 
@@ -55,10 +55,10 @@ Documentation entry points:
 
 ## Operations and Verification
 
-- Local CI policy: `docs/LOCAL_CI.md`
-- Staging/prod validation matrix: `docs/RUST_STAGING_PROD_VALIDATION.md`
-- Legacy infra decommission sequencing: `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
-- Deploy/process matrix (canonical commands): `docs/DEPLOYMENT_RUST_SERVICES.md`
+- Local CI policy: `docs/core/LOCAL_CI.md`
+- Staging/prod validation matrix: `docs/core/RUST_STAGING_PROD_VALIDATION.md`
+- Legacy infra decommission sequencing: `docs/core/RUST_LEGACY_INFRA_DECOMMISSION.md`
+- Deploy/process matrix (canonical commands): `docs/core/DEPLOYMENT_RUST_SERVICES.md`
 - Control service staging deploy runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Runtime deploy + migrate runbook: `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - Runtime WS incident runbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
@@ -81,10 +81,10 @@ Note:
 ## Authority (Non-Negotiable)
 
 1. If docs conflict with behavior: code wins.
-2. If terminology conflicts: `docs/GLOSSARY.md` wins.
+2. If terminology conflicts: `docs/core/GLOSSARY.md` wins.
 3. If architecture intent conflicts: ADRs win.
-4. If status conflicts: active codebase + `docs/PROJECT_OVERVIEW.md` win.
-5. If sequencing conflicts: `docs/ROADMAP.md` wins.
+4. If status conflicts: active codebase + `docs/core/PROJECT_OVERVIEW.md` win.
+5. If sequencing conflicts: `docs/core/ROADMAP.md` wins.
 
 ## Mandatory Pre-Coding Gate (Non-Negotiable)
 

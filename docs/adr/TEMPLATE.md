@@ -87,6 +87,6 @@ buf breaking --against .git#branch=main,subdir=proto
 
 ## References
 
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
 - Related issue(s): `OA-RUST-...`

@@ -152,7 +152,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [CONTAINERS.md](docs/CONTAINERS.md) | Container spawning (Local, Cloudflare, Daytona, DVMs) |
 | [AGENTS.md](docs/AGENTS.md) | Codex Agent SDK integration (tunnels, workers, security) |
 | [HUD.md](docs/HUD.md) | HUD integration (events, redaction, public access) |
-| [ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap (build order, milestones) |
+| [ROADMAP.md](docs/core/ROADMAP.md) | Implementation roadmap (build order, milestones) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
 
 ## Quick Example
@@ -217,7 +217,7 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 ## Status
 
-**Implementation in progress.** Milestones 0-14 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers, HUD, `/codex`). See [ROADMAP.md](docs/ROADMAP.md) for details.
+**Implementation in progress.** Milestones 0-14 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers, HUD, `/codex`). See [ROADMAP.md](docs/core/ROADMAP.md) for details.
 
 ## License
 

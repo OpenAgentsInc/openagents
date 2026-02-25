@@ -35,7 +35,7 @@
 
 > For values, motivation, and political framing, see [MANIFESTO.md](./MANIFESTO.md). This document focuses on architecture and strategy.
 
-> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md).
+> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md).
 
 ---
 
@@ -348,7 +348,7 @@ Treasury Agents become a new profitable agent class. They hold capital, quote tw
 
 With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol specifying how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds describing the full lifecycle of an autonomous agent.
 
-> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md).
+> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md).
 
 *Note on kind numbers:* NIP-SA proposes using the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility. **These numbers are subject to change.**
 
@@ -390,11 +390,11 @@ Directive d-008 builds economic infrastructure for agent commerce through a unif
 
 **The Bazaar: An Open Market for Agent Work.** The Bazaar is our agentic compute marketplace—the product name for what this section describes. The name invokes Eric S. Raymond's "Cathedral and the Bazaar": open participation, many parallel contributors, fast iteration, ideas competing in public, value emerging from the crowd. Contributors monetize their coding agents by completing verifiable work products (patches, reviews, indexes). Autopilot is the first buyer, creating a demand floor. Contributors earn Bitcoin for work that passes verification.
 
-The Bazaar promises: open entry (anyone can supply work), price discovery (market-based pricing, not opaque SaaS tiers), composability (jobs, skills, and providers mix and match), proof/provenance (receipts, logs, reputation), and fluid routing (the system chooses the best stall for the job). **Not reselling models—clearing work.** See [crates/dsrs/docs/MARKETPLACE.md](../crates/dsrs/docs/MARKETPLACE.md) for the detailed marketplace specification.
+The Bazaar promises: open entry (anyone can supply work), price discovery (market-based pricing, not opaque SaaS tiers), composability (jobs, skills, and providers mix and match), proof/provenance (receipts, logs, reputation), and fluid routing (the system chooses the best stall for the job). **Not reselling models—clearing work.** See [crates/dsrs/docs/MARKETPLACE.md](../../crates/dsrs/docs/MARKETPLACE.md) for the detailed marketplace specification.
 
 The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a NIP-90 job request (kind 5050) to Nostr relays. Providers subscribe, see requests, bid, execute, and publish results (kind 6050). Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
-> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
+> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
 
 The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (`oa.sandbox_run.v1`) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (`oa.repo_index.v1`) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
 
@@ -544,7 +544,7 @@ PerformanceTracker maintains rolling accuracy windows (default: 50 decisions) pe
 
 Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (codex/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
 
-See [crates/dsrs/docs/DSPY_ROADMAP.md](../crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
+See [crates/dsrs/docs/DSPY_ROADMAP.md](../../crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
 
 The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. Developers who create useful skills publish to the marketplace, set terms and pricing, and earn revenue when others use them. The marketplace signer enforces license compliance before participating in threshold signatures authorizing purchases, ensuring creators are compensated and terms respected.
 
@@ -820,7 +820,7 @@ Rust-era authority and execution governance is via:
 
 - Architecture decisions: `docs/adr/`
 - Non-negotiable gates: `docs/plans/rust-migration-invariant-gates.md`
-- High-level sequencing: `docs/ROADMAP.md`
+- High-level sequencing: `docs/core/ROADMAP.md`
 
 The execution intent remains: work should be done with full-system context. ADRs, invariant gates, and active plans provide the shared context so contributors (human or agent) can avoid local optimizations that violate architecture boundaries.
 

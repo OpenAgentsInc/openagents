@@ -46,12 +46,12 @@ This map reflects canonical Rust-only architecture boundaries.
 
 ## Canonical Documentation
 
-- `docs/ARCHITECTURE.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
-- `docs/DEPLOYMENT_RUST_SERVICES.md`
-- `docs/README.md`
-- `docs/ROADMAP.md`
-- `docs/AGENT_MAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/DEPLOYMENT_RUST_SERVICES.md`
+- `docs/core/README.md`
+- `docs/core/ROADMAP.md`
+- `docs/core/AGENT_MAP.md`
 
 ## Historical/Removed Surfaces (Non-Canonical)
 

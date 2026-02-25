@@ -6,7 +6,7 @@ This file tracks current execution posture for the Rust-era system.
 
 - Current implementation truth: codebase + runtime behavior.
 - Contract authority: `docs/execution/`, `docs/protocol/`, `docs/dse/`.
-- Architecture authority: `docs/ARCHITECTURE.md`.
+- Architecture authority: `docs/core/ARCHITECTURE.md`.
 
 ## Canonical Contract Docs
 

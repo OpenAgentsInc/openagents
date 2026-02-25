@@ -73,5 +73,5 @@ buf lint
 
 - `proto/README.md`
 - `docs/protocol/README.md`
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`

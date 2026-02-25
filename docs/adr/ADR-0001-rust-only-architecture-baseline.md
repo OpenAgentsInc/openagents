@@ -25,7 +25,7 @@ Without this baseline ADR, migration work risks reintroducing implicit coupling,
 
 ## Decision
 
-OpenAgents adopts the Rust-only architecture baseline defined in `docs/ARCHITECTURE-RUST.md` as the canonical architecture authority for all new migration and closure work.
+OpenAgents adopts the Rust-only architecture baseline defined in `docs/core/ARCHITECTURE.md` as the canonical architecture authority for all new migration and closure work.
 
 Normative constraints:
 
@@ -34,7 +34,7 @@ Normative constraints:
 3. Khala remains delivery/replay infrastructure and never becomes an authority write path.
 4. Control and runtime authority planes remain separate, with no cross-plane SQL joins in production code.
 5. Production service boundaries (`openagents.com` control service, runtime service, Khala service) must communicate via explicit network/proto contracts and not via in-memory coupling.
-6. Rust-only endstate requirements in `docs/ARCHITECTURE-RUST.md` are the migration completion criteria.
+6. Rust-only endstate requirements in `docs/core/ARCHITECTURE.md` are the migration completion criteria.
 
 ## Rust-Era Boundary Impact
 
@@ -62,7 +62,7 @@ Source: `docs/plans/rust-migration-invariant-gates.md`
 1. Backward/forward compatibility:
    - Transitional hybrid deployments are allowed only while preserving proto contract compatibility and authority boundaries.
 2. Rollout sequence:
-   - Follow `docs/ARCHITECTURE-RUST-ROADMAP.md` issue ordering and phase gates.
+   - Follow `docs/core/ARCHITECTURE.md` issue ordering and phase gates.
 3. Data/schema/protocol migration:
    - Keep proto-first compatibility checks (`buf lint`, breaking checks).
    - Preserve control/runtime plane ownership during migration.
@@ -117,7 +117,7 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 
 ## Alternatives Considered
 
-1. Keep hybrid architecture doc (`docs/ARCHITECTURE.md`) as co-equal authority.
+1. Keep hybrid architecture doc (`docs/core/ARCHITECTURE.md`) as co-equal authority.
    - Rejected: creates ambiguity and inconsistent gate interpretation.
 2. Defer baseline ADR until all closure issues are complete.
    - Rejected: allows drift during the highest-risk migration window.
@@ -126,7 +126,7 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 
 ## References
 
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - Related issue: `OA-RUST-074` / `#1889`

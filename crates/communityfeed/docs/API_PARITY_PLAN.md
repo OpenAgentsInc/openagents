@@ -211,7 +211,7 @@ Worker components:
 ## 9) Docs & contract changes
 
 Update:
-- `docs/README.md` (new API base).
+- `docs/core/README.md` (new API base).
 - `apps/api/docs/*` (new endpoints, auth, rate limits).
 - `crates/communityfeed/README.md` (client base and env flags).
 - `docs/communityfeed/skill.md` if it references direct CommunityFeed only.

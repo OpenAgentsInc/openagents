@@ -4,7 +4,7 @@ Defines protocol-level contract fields referenced across receipts, replay, and s
 
 Authority order:
 
-1. Terminology: `docs/GLOSSARY.md`
+1. Terminology: `docs/core/GLOSSARY.md`
 2. Architecture intent: ADRs
 3. Behavior: code
 

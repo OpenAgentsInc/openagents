@@ -129,7 +129,7 @@ cd apps/runtime && mix test test/openagents_runtime_web/channels/sync_channel_te
 
 ## References
 
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/core/ARCHITECTURE.md`
 - `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`

@@ -112,10 +112,10 @@ for (const dir of Array.from(topDirs).sort()) {
 const canonicalDocs = [
   "README.md",
   "AGENTS.md",
-  "docs/README.md",
-  "docs/PROJECT_OVERVIEW.md",
-  "docs/AGENT_MAP.md",
-  "docs/ROADMAP.md",
+  "docs/core/README.md",
+  "docs/core/PROJECT_OVERVIEW.md",
+  "docs/core/AGENT_MAP.md",
+  "docs/core/ROADMAP.md",
 ]
 
 const historicalQualifierRe = /\b(legacy|historical|archived|removed|deleted|deprecated|non-canonical)\b/i
@@ -157,7 +157,7 @@ for (const file of canonicalDocs) {
 
 // 5) Guard active deploy docs from legacy deploy commands/service names.
 const deployDocs = [
-  "docs/DEPLOYMENT_RUST_SERVICES.md",
+  "docs/core/DEPLOYMENT_RUST_SERVICES.md",
   "apps/openagents.com/docs/GCP_DEPLOY_PLAN.md",
   "apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md",
   "apps/openagents.com/deploy/README.md",
@@ -193,8 +193,8 @@ for (const file of deployDocs) {
 // 6) Guard active Rust entry docs from unqualified legacy-stack references.
 const activeRustEntryDocs = [
   "AGENTS.md",
-  "docs/README.md",
-  "docs/AGENT_MAP.md",
+  "docs/core/README.md",
+  "docs/core/AGENT_MAP.md",
   "docs/STORYBOOK.md",
   "docs/autopilot/testing/PROD_E2E_TESTING.md",
   "docs/autopilot/testing/TRACE_RETRIEVAL.md",

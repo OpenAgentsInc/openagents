@@ -139,6 +139,6 @@ Review evidence must include:
 
 ## References
 
-- `docs/ARCHITECTURE-RUST.md` (Rivet integration exploration section)
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md` (Rivet integration exploration section)
+- `docs/core/ARCHITECTURE.md`
 - Related issue: `OA-RUST-077` / `#1892`

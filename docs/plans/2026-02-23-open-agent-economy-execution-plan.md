@@ -4,7 +4,7 @@ Status: Active draft (timeline-free)
 Date: 2026-02-23
 Author: Codex
 Primary context sources:
-- `docs/SYNTHESIS.md`
+- `docs/core/SYNTHESIS.md`
 - `docs/local/hehehe.md`
 - `docs/transcripts/194-the-trillion-dollar-question.md`
 - `docs/transcripts/199-introducing-autopilot.md`
@@ -16,7 +16,7 @@ Primary context sources:
 
 ## 1) Purpose
 
-This plan converts the full system model in `docs/SYNTHESIS.md` into a single execution roadmap where each major concept has a concrete GitHub issue definition.
+This plan converts the full system model in `docs/core/SYNTHESIS.md` into a single execution roadmap where each major concept has a concrete GitHub issue definition.
 
 This plan is intentionally timeline-free.
 
@@ -49,8 +49,8 @@ Out of scope:
 
 ### 3.1) Authority And Drift Notes
 
-- `docs/SYNTHESIS.md` is a synthesis document, not an execution authority. If it conflicts with code or Rust-era canonical docs, the Rust-era authorities win (ADRs + invariant gates + code).
-- Part Fourteen of `docs/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/rust-migration-invariant-gates.md`.
+- `docs/core/SYNTHESIS.md` is a synthesis document, not an execution authority. If it conflicts with code or Rust-era canonical docs, the Rust-era authorities win (ADRs + invariant gates + code).
+- Part Fourteen of `docs/core/SYNTHESIS.md` (“Directive System”) is stale for the Rust-era repo: `.openagents/DIRECTIVES.md` is archived and Rust-era governance is via `docs/adr/` and `docs/plans/rust-migration-invariant-gates.md`.
 
 ## 4) Priority Ladder (Liquidity-First)
 

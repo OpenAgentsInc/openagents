@@ -70,4 +70,4 @@ Result: success (`openagents-control-service-staging-00003-d4c`), `GET /` return
 ## Follow-up gates
 
 1. Before production use, confirm staging custom domain is stable and certificate is `Ready=True`.
-2. Keep production decommission actions blocked by Laravel DB backup + data-port gates in `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`.
+2. Keep production decommission actions blocked by Laravel DB backup + data-port gates in `docs/core/RUST_LEGACY_INFRA_DECOMMISSION.md`.

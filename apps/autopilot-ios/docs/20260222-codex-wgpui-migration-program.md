@@ -18,7 +18,7 @@ Replace SwiftUI-powered iOS Codex product UI/state orchestration with Rust/WGPUI
 Canonical references:
 - `docs/plans/rust-migration-invariant-gates.md` (`INV-11`)
 - `apps/autopilot-ios/docs/ios-codex-first-structure.md`
-- `docs/ARCHITECTURE-RUST.md`
+- `docs/core/ARCHITECTURE.md`
 
 ## Current implementation inventory (to migrate)
 

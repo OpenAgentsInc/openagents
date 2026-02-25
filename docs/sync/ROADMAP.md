@@ -164,6 +164,6 @@ Do not advance to broader cohorts unless all are green:
 
 - `docs/sync/SURFACES.md`
 - `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
-- `docs/ARCHITECTURE-RUST.md`
-- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/core/ARCHITECTURE.md`
+- `docs/core/ARCHITECTURE.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`

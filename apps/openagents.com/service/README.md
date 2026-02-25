@@ -358,5 +358,5 @@ Optional staging helper (no-traffic revision + local verification gates):
 ## Schema Evolution Policy
 
 - Zero-downtime expand/migrate/contract policy and mixed-version sequencing:
-  - `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
+  - `docs/core/SCHEMA_EVOLUTION_PLAYBOOK.md`
 - Apply this playbook for any control/runtime schema or proto contract rollout where old+new binaries may overlap.

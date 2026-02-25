@@ -6,7 +6,7 @@ Current frontend is Rust/WASM web shell. Telemetry should be emitted through the
 
 Use current architecture docs:
 
-1. `docs/ARCHITECTURE-RUST.md`
+1. `docs/core/ARCHITECTURE.md`
 2. `apps/openagents.com/web-shell/README.md`
 
 Legacy React-specific guidance was archived to backroom in OA-RUST-113.
