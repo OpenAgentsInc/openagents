@@ -52,6 +52,10 @@ use crate::{
     db::RuntimeDb,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     fraud::FraudIncidentLog,
+    fx::{
+        service::{FxService, FxServiceError},
+        types::{FX_RFQ_REQUEST_SCHEMA_V1, FxRfqRequestV1, FxRfqResponseV1},
+    },
     lightning_node,
     liquidity::store,
     liquidity::types::{
@@ -97,6 +101,7 @@ pub struct AppState {
     db: Option<Arc<RuntimeDb>>,
     liquidity: Arc<LiquidityService>,
     credit: Arc<CreditService>,
+    fx: Arc<FxService>,
     liquidity_pool: Arc<LiquidityPoolService>,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
@@ -146,6 +151,7 @@ impl AppState {
             config.bridge_nostr_secret_key,
             config.credit_policy.clone(),
         ));
+        let fx = Arc::new(FxService::new(config.hydra_fx_policy.clone()));
 
         let pool_store = match db.clone() {
             Some(db) => liquidity_pool_store::postgres(db),
@@ -164,6 +170,7 @@ impl AppState {
         let state = Self {
             liquidity,
             credit,
+            fx,
             liquidity_pool: Arc::new(
                 LiquidityPoolService::new_with_lightning_node(
                     pool_store,
@@ -1347,6 +1354,8 @@ pub fn build_router(state: AppState) -> Router {
             "/internal/v1/hydra/routing/score",
             post(hydra_routing_score),
         )
+        .route("/internal/v1/hydra/fx/rfq", post(hydra_fx_rfq_create))
+        .route("/internal/v1/hydra/fx/rfq/:rfq_id", get(hydra_fx_rfq_get))
         .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
         .route("/internal/v1/hydra/observability", get(hydra_observability))
         .route(
@@ -2724,6 +2733,37 @@ async fn router_select_compute(
         candidates,
         nostr_event,
     }))
+}
+
+async fn hydra_fx_rfq_create(
+    State(state): State<AppState>,
+    Json(body): Json<FxRfqRequestV1>,
+) -> Result<Json<FxRfqResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+    if body.schema.trim() != FX_RFQ_REQUEST_SCHEMA_V1 {
+        return Err(ApiError::InvalidRequest(format!(
+            "schema must be {}",
+            FX_RFQ_REQUEST_SCHEMA_V1
+        )));
+    }
+    let response = state
+        .fx
+        .create_or_get_rfq(body)
+        .await
+        .map_err(api_error_from_fx)?;
+    Ok(Json(response))
+}
+
+async fn hydra_fx_rfq_get(
+    State(state): State<AppState>,
+    Path(rfq_id): Path<String>,
+) -> Result<Json<FxRfqResponseV1>, ApiError> {
+    let response = state
+        .fx
+        .get_rfq(rfq_id.as_str())
+        .await
+        .map_err(api_error_from_fx)?;
+    Ok(Json(response))
 }
 
 async fn compute_hydra_risk_health(
@@ -4817,6 +4857,16 @@ fn api_error_from_liquidity_pool(error: LiquidityPoolError) -> ApiError {
         LiquidityPoolError::Conflict(message) => ApiError::Conflict(message),
         LiquidityPoolError::DependencyUnavailable(message) => ApiError::Internal(message),
         LiquidityPoolError::Internal(message) => ApiError::Internal(message),
+    }
+}
+
+fn api_error_from_fx(error: FxServiceError) -> ApiError {
+    match error {
+        FxServiceError::InvalidRequest(message) => ApiError::InvalidRequest(message),
+        FxServiceError::NotFound(_) => ApiError::NotFound,
+        FxServiceError::Conflict(message) => ApiError::Conflict(message),
+        FxServiceError::PolicyDenied(message) => ApiError::Forbidden(message),
+        FxServiceError::Internal(message) => ApiError::Internal(message),
     }
 }
 

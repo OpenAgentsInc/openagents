@@ -116,6 +116,7 @@ fn build_test_router_with_config(
         liquidity_pool_snapshot_interval_seconds: 60,
         liquidity_pool_snapshot_jitter_seconds: 0,
         liquidity_pool_snapshot_retention_count: 120,
+        hydra_fx_policy: crate::config::HydraFxPolicyConfig::default(),
         credit_policy: crate::credit::service::CreditPolicyConfig::default(),
         treasury_reconciliation_enabled: false,
         treasury_reservation_ttl_seconds: 3600,
@@ -607,10 +608,19 @@ async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas(
         json.pointer("/paths/~1hydra~1routing~1score/post")
             .is_some()
     );
+    assert!(json.pointer("/paths/~1hydra~1fx~1rfq/post").is_some());
+    assert!(
+        json.pointer("/paths/~1hydra~1fx~1rfq~1{rfq_id}/get")
+            .is_some()
+    );
     assert!(json.pointer("/paths/~1hydra~1risk~1health/get").is_some());
     assert!(json.pointer("/paths/~1hydra~1observability/get").is_some());
     assert!(
         json.pointer("/components/schemas/HydraObservabilityResponseV1/properties/routing")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/components/schemas/HydraFxRfqRequestV1/properties/schema")
             .is_some()
     );
     Ok(())
@@ -5249,6 +5259,141 @@ async fn hydra_routing_score_rejects_non_object_constraints() -> Result<()> {
             .is_some_and(|value| value.contains("candidate.constraints"))
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_rfq_endpoints_enforce_idempotency_and_readback() -> Result<()> {
+    let app = test_router();
+
+    let body = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-idem-1",
+        "requester_id": "autopilot:user-1",
+        "budget_scope_id": "budget:scope-1",
+        "sell": {
+            "asset": "usd",
+            "amount": 100000,
+            "unit": "cents"
+        },
+        "buy_asset": "btc_ln",
+        "min_buy_amount": 2500000,
+        "max_spread_bps": 100,
+        "max_fee_bps": 50,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 30,
+        "policy_context": {"policy":"balanced_v1"}
+    });
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first_json = response_json(first).await?;
+    assert_eq!(
+        first_json.pointer("/schema").and_then(Value::as_str),
+        Some("openagents.hydra.fx_rfq_response.v1")
+    );
+    let rfq_id = first_json
+        .pointer("/rfq/rfq_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing rfq_id"))?
+        .to_string();
+
+    let get_rfq = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/internal/v1/hydra/fx/rfq/{rfq_id}"))
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(get_rfq.status(), axum::http::StatusCode::OK);
+    let get_json = response_json(get_rfq).await?;
+    assert_eq!(
+        get_json.pointer("/rfq/rfq_id").and_then(Value::as_str),
+        Some(rfq_id.as_str())
+    );
+    assert_eq!(
+        get_json.pointer("/rfq/sell/asset").and_then(Value::as_str),
+        Some("USD")
+    );
+
+    let replay = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(replay.status(), axum::http::StatusCode::OK);
+    let replay_json = response_json(replay).await?;
+    assert_eq!(
+        replay_json.pointer("/rfq/rfq_id").and_then(Value::as_str),
+        Some(rfq_id.as_str())
+    );
+
+    let mut drifted = body.clone();
+    drifted["max_fee_bps"] = json!(90);
+    let conflict = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&drifted)?))?,
+        )
+        .await?;
+    assert_eq!(conflict.status(), axum::http::StatusCode::CONFLICT);
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_fx_rfq_rejects_disallowed_asset_pairs() -> Result<()> {
+    let app = build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+        c.hydra_fx_policy.allowed_pairs = HashSet::from(["EUR->BTC_LN".to_string()]);
+    });
+
+    let body = serde_json::json!({
+        "schema": "openagents.hydra.fx_rfq_request.v1",
+        "idempotency_key": "fx-rfq-policy-denied",
+        "requester_id": "autopilot:user-1",
+        "budget_scope_id": "budget:scope-1",
+        "sell": {
+            "asset": "USD",
+            "amount": 100000,
+            "unit": "cents"
+        },
+        "buy_asset": "BTC_LN",
+        "min_buy_amount": 2500000,
+        "max_spread_bps": 100,
+        "max_fee_bps": 50,
+        "max_latency_ms": 5000,
+        "quote_ttl_seconds": 30,
+        "policy_context": {"policy":"balanced_v1"}
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/fx/rfq")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
     Ok(())
 }
 

@@ -793,6 +793,55 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
+  /hydra/fx/rfq:
+    post:
+      summary: Create or replay a Hydra FX RFQ under policy bounds
+      operationId: hydraFxRfqCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HydraFxRfqRequestV1'
+      responses:
+        '200':
+          description: RFQ accepted or idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraFxRfqResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /hydra/fx/rfq/{rfq_id}:
+    get:
+      summary: Read one Hydra FX RFQ by id
+      operationId: hydraFxRfqGet
+      parameters:
+        - name: rfq_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: RFQ snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraFxRfqResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /hydra/risk/health:
     get:
       summary: Read Hydra risk snapshot (credit breakers + liquidity throttle posture)
@@ -1850,6 +1899,142 @@ components:
         decided_at_unix:
           type: integer
           minimum: 0
+    HydraFxMoneyV1:
+      type: object
+      required: [asset, amount, unit]
+      properties:
+        asset:
+          type: string
+          minLength: 1
+        amount:
+          type: integer
+          minimum: 1
+        unit:
+          type: string
+          minLength: 1
+    HydraFxRfqRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - requester_id
+        - budget_scope_id
+        - sell
+        - buy_asset
+        - min_buy_amount
+        - max_spread_bps
+        - max_fee_bps
+        - max_latency_ms
+        - quote_ttl_seconds
+        - policy_context
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_rfq_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        requester_id:
+          type: string
+          minLength: 1
+        budget_scope_id:
+          type: string
+          minLength: 1
+        sell:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        buy_asset:
+          type: string
+          minLength: 1
+        min_buy_amount:
+          type: integer
+          minimum: 1
+        max_spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_latency_ms:
+          type: integer
+          minimum: 1
+        quote_ttl_seconds:
+          type: integer
+          minimum: 1
+        policy_context:
+          type: object
+          additionalProperties: true
+    HydraFxRfqRecordV1:
+      type: object
+      required:
+        - rfq_id
+        - requester_id
+        - budget_scope_id
+        - sell
+        - buy_asset
+        - min_buy_amount
+        - max_spread_bps
+        - max_fee_bps
+        - max_latency_ms
+        - quote_ttl_seconds
+        - status
+        - created_at_unix
+        - expires_at_unix
+        - policy_context
+      properties:
+        rfq_id:
+          type: string
+          minLength: 1
+        requester_id:
+          type: string
+          minLength: 1
+        budget_scope_id:
+          type: string
+          minLength: 1
+        sell:
+          $ref: '#/components/schemas/HydraFxMoneyV1'
+        buy_asset:
+          type: string
+          minLength: 1
+        min_buy_amount:
+          type: integer
+          minimum: 1
+        max_spread_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_fee_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_latency_ms:
+          type: integer
+          minimum: 1
+        quote_ttl_seconds:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          minLength: 1
+        created_at_unix:
+          type: integer
+          minimum: 0
+        expires_at_unix:
+          type: integer
+          minimum: 0
+        policy_context:
+          type: object
+          additionalProperties: true
+    HydraFxRfqResponseV1:
+      type: object
+      required: [schema, rfq]
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.fx_rfq_response.v1
+        rfq:
+          $ref: '#/components/schemas/HydraFxRfqRecordV1'
     HydraRiskCreditBreakersV1:
       type: object
       required: [halt_new_envelopes, halt_large_settlements]

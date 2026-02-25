@@ -42,6 +42,31 @@ impl Default for LiquidityPoolWithdrawThrottleConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct HydraFxPolicyConfig {
+    pub allowed_pairs: HashSet<String>,
+    pub max_spread_bps: u32,
+    pub max_fee_bps: u32,
+    pub min_quote_ttl_seconds: u32,
+    pub max_quote_ttl_seconds: u32,
+}
+
+impl Default for HydraFxPolicyConfig {
+    fn default() -> Self {
+        Self {
+            allowed_pairs: HashSet::from([
+                "USD->BTC_LN".to_string(),
+                "USDT->BTC_LN".to_string(),
+                "BTC_LN->USD".to_string(),
+            ]),
+            max_spread_bps: 300,
+            max_fee_bps: 150,
+            min_quote_ttl_seconds: 5,
+            max_quote_ttl_seconds: 300,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Config {
     pub service_name: String,
     pub bind_addr: SocketAddr,
@@ -95,6 +120,7 @@ pub struct Config {
     pub liquidity_pool_snapshot_interval_seconds: u64,
     pub liquidity_pool_snapshot_jitter_seconds: u64,
     pub liquidity_pool_snapshot_retention_count: i64,
+    pub hydra_fx_policy: HydraFxPolicyConfig,
     pub credit_policy: CreditPolicyConfig,
     pub treasury_reconciliation_enabled: bool,
     pub treasury_reservation_ttl_seconds: u64,
@@ -197,6 +223,8 @@ pub enum ConfigError {
     InvalidLiquidityPoolSnapshotJitterSeconds(String),
     #[error("invalid RUNTIME_LIQUIDITY_POOL_SNAPSHOT_RETENTION_COUNT: {0}")]
     InvalidLiquidityPoolSnapshotRetentionCount(String),
+    #[error("invalid hydra fx policy config: {0}")]
+    InvalidHydraFxPolicyConfig(String),
     #[error("invalid credit policy config: {0}")]
     InvalidCreditPolicyConfig(String),
 }
@@ -527,6 +555,7 @@ impl Config {
                     ConfigError::InvalidLiquidityPoolSnapshotRetentionCount(error.to_string())
                 })?
                 .clamp(1, 10_000);
+        let hydra_fx_policy = parse_hydra_fx_policy_from_env(|key| env::var(key).ok())?;
         let credit_policy = parse_credit_policy_from_env(|key| env::var(key).ok())?;
         Ok(Self {
             service_name,
@@ -581,6 +610,7 @@ impl Config {
             liquidity_pool_snapshot_interval_seconds,
             liquidity_pool_snapshot_jitter_seconds,
             liquidity_pool_snapshot_retention_count,
+            hydra_fx_policy,
             credit_policy,
             treasury_reconciliation_enabled,
             treasury_reservation_ttl_seconds,
@@ -1039,6 +1069,140 @@ fn parse_authority_write_mode(raw: &str) -> Result<AuthorityWriteMode, ConfigErr
     }
 }
 
+fn normalize_hydra_fx_asset(value: &str) -> String {
+    value.trim().to_ascii_uppercase()
+}
+
+fn normalize_hydra_fx_pair(sell_asset: &str, buy_asset: &str) -> String {
+    format!(
+        "{}->{}",
+        normalize_hydra_fx_asset(sell_asset),
+        normalize_hydra_fx_asset(buy_asset)
+    )
+}
+
+fn parse_hydra_fx_pair(raw: &str) -> Result<String, ConfigError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ConfigError::InvalidHydraFxPolicyConfig(
+            "empty pair token".to_string(),
+        ));
+    }
+    let (sell, buy) = if let Some((sell, buy)) = trimmed.split_once("->") {
+        (sell, buy)
+    } else if let Some((sell, buy)) = trimmed.split_once(':') {
+        (sell, buy)
+    } else {
+        return Err(ConfigError::InvalidHydraFxPolicyConfig(format!(
+            "invalid pair format: {trimmed}"
+        )));
+    };
+    let sell_norm = normalize_hydra_fx_asset(sell);
+    let buy_norm = normalize_hydra_fx_asset(buy);
+    if sell_norm.is_empty() || buy_norm.is_empty() {
+        return Err(ConfigError::InvalidHydraFxPolicyConfig(format!(
+            "invalid pair with empty asset: {trimmed}"
+        )));
+    }
+    Ok(normalize_hydra_fx_pair(&sell_norm, &buy_norm))
+}
+
+fn parse_hydra_fx_policy_from_env(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<HydraFxPolicyConfig, ConfigError> {
+    let defaults = HydraFxPolicyConfig::default();
+
+    let allowed_pairs = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_ALLOWED_PAIRS",
+        defaults.allowed_pairs.clone(),
+        |raw| {
+            let mut parsed = HashSet::new();
+            for token in raw.split(',') {
+                let pair = parse_hydra_fx_pair(token)?;
+                parsed.insert(pair);
+            }
+            if parsed.is_empty() {
+                return Err(ConfigError::InvalidHydraFxPolicyConfig(
+                    "RUNTIME_HYDRA_FX_ALLOWED_PAIRS cannot be empty".to_string(),
+                ));
+            }
+            Ok(parsed)
+        },
+    )?;
+
+    let max_spread_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_MAX_SPREAD_BPS",
+        defaults.max_spread_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_MAX_SPREAD_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 10_000))
+        },
+    )?;
+
+    let max_fee_bps = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_MAX_FEE_BPS",
+        defaults.max_fee_bps,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_MAX_FEE_BPS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(0, 10_000))
+        },
+    )?;
+
+    let min_quote_ttl_seconds = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_MIN_QUOTE_TTL_SECONDS",
+        defaults.min_quote_ttl_seconds,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_MIN_QUOTE_TTL_SECONDS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 3600))
+        },
+    )?;
+
+    let mut max_quote_ttl_seconds = parse_with_lookup(
+        &lookup,
+        "RUNTIME_HYDRA_FX_MAX_QUOTE_TTL_SECONDS",
+        defaults.max_quote_ttl_seconds,
+        |raw| {
+            raw.parse::<u32>()
+                .map_err(|error| {
+                    ConfigError::InvalidHydraFxPolicyConfig(format!(
+                        "RUNTIME_HYDRA_FX_MAX_QUOTE_TTL_SECONDS: {error}"
+                    ))
+                })
+                .map(|value| value.clamp(1, 86_400))
+        },
+    )?;
+    if max_quote_ttl_seconds < min_quote_ttl_seconds {
+        max_quote_ttl_seconds = min_quote_ttl_seconds;
+    }
+
+    Ok(HydraFxPolicyConfig {
+        allowed_pairs,
+        max_spread_bps,
+        max_fee_bps,
+        min_quote_ttl_seconds,
+        max_quote_ttl_seconds,
+    })
+}
+
 fn parse_bridge_nostr_secret_key(value: &str) -> Result<[u8; 32], ConfigError> {
     let trimmed = value.trim();
     if trimmed.starts_with("nsec1") {
@@ -1062,7 +1226,7 @@ fn parse_bridge_nostr_secret_key(value: &str) -> Result<[u8; 32], ConfigError> {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{ConfigError, parse_credit_policy_from_env};
+    use super::{ConfigError, parse_credit_policy_from_env, parse_hydra_fx_policy_from_env};
 
     #[test]
     fn credit_policy_parser_applies_env_overrides() {
@@ -1102,6 +1266,38 @@ mod tests {
         match error {
             ConfigError::InvalidCreditPolicyConfig(message) => {
                 assert!(message.contains("RUNTIME_CREDIT_UNDERWRITING_K"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hydra_fx_policy_parser_normalizes_pairs_and_bounds() {
+        let values = HashMap::from([
+            ("RUNTIME_HYDRA_FX_ALLOWED_PAIRS", "usd:btc_ln, usdt->btc_ln"),
+            ("RUNTIME_HYDRA_FX_MAX_SPREAD_BPS", "250"),
+            ("RUNTIME_HYDRA_FX_MAX_FEE_BPS", "45"),
+            ("RUNTIME_HYDRA_FX_MIN_QUOTE_TTL_SECONDS", "15"),
+            ("RUNTIME_HYDRA_FX_MAX_QUOTE_TTL_SECONDS", "45"),
+        ]);
+        let policy = parse_hydra_fx_policy_from_env(|key| values.get(key).map(ToString::to_string))
+            .expect("hydra fx policy parse");
+        assert!(policy.allowed_pairs.contains("USD->BTC_LN"));
+        assert!(policy.allowed_pairs.contains("USDT->BTC_LN"));
+        assert_eq!(policy.max_spread_bps, 250);
+        assert_eq!(policy.max_fee_bps, 45);
+        assert_eq!(policy.min_quote_ttl_seconds, 15);
+        assert_eq!(policy.max_quote_ttl_seconds, 45);
+    }
+
+    #[test]
+    fn hydra_fx_policy_parser_rejects_invalid_pair_token() {
+        let values = HashMap::from([("RUNTIME_HYDRA_FX_ALLOWED_PAIRS", "badtoken")]);
+        let error = parse_hydra_fx_policy_from_env(|key| values.get(key).map(ToString::to_string))
+            .expect_err("invalid pair token should fail");
+        match error {
+            ConfigError::InvalidHydraFxPolicyConfig(message) => {
+                assert!(message.contains("invalid pair format"));
             }
             other => panic!("unexpected error: {other:?}"),
         }
