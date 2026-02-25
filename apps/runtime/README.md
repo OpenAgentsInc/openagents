@@ -98,8 +98,8 @@ apps/runtime/deploy/cloudrun/run-migrate-job.sh
 
 - `apps/runtime/docs/RUST_RUNTIME_SERVICE_FOUNDATION.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/runtime/docs/KHALA_ORDERING_DELIVERY_CONTRACT.md`
-- `apps/runtime/docs/KHALA_WS_THREAT_MODEL.md`
+- `docs/sync/SPACETIME_PARITY_HARNESS.md`
+- `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - `apps/runtime/docs/DEPLOY_GCP.md`
 - `apps/runtime/docs/DB_ROLE_ISOLATION.md`

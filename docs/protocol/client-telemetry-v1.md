@@ -1,4 +1,4 @@
-# Client Telemetry v1 (Khala/Runtime)
+# Client Telemetry v1 (Spacetime/Runtime)
 
 Status: Active  
 Schema authority: `proto/openagents/sync/v1/client_telemetry.proto`  

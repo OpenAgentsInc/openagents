@@ -617,20 +617,20 @@ Validation failure (`400`):
 }
 ```
 
-## Khala Projection Boundary
+## Spacetime Projection Boundary
 
-Khala (self-hosted or cloud) may be used as a reactive sync layer for
-web/mobile/desktop, but it is not part of runtime source-of-truth semantics.
+Spacetime is the canonical retained sync delivery layer for OpenAgents, but it
+is not part of runtime source-of-truth mutation semantics.
 
 Normative rules:
 
 1. Runtime/Postgres remains authoritative for run/codex events and policy/spend state.
-2. Khala stores projection/read-model data only.
-3. Runtime is the single writer for Khala projection docs.
-4. Drift repair is replay from runtime event history, not mutation in Khala.
+2. Spacetime stores delivery/projection state only.
+3. Runtime is the single writer for retained sync projection emissions.
+4. Drift repair is replay from runtime event history, not mutation in sync transport.
 
-See `docs/KHALA_SYNC.md` and
-`docs/plans/khala-self-hosting-runtime-sync-plan.md`.
+See `docs/sync/README.md` and
+`docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`.
 
 ### `POST /internal/v1/runs/{run_id}/frames`
 

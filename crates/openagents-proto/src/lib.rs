@@ -63,7 +63,7 @@ pub mod domain {
         },
     }
 
-    /// Domain-level representation for a Khala frame.
+    /// Domain-level representation for a legacy sync frame.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct KhalaFrame {
         pub topic: String,

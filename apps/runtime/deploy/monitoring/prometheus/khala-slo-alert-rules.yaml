@@ -67,4 +67,4 @@ spec:
           annotations:
             summary: Client auth failures are elevated for one or more app versions
             description: Investigate compatibility window and token policy regressions by app version.
-            runbook: apps/runtime/docs/KHALA_WS_THREAT_MODEL.md
+            runbook: docs/sync/SPACETIME_OBSERVABILITY_AND_ALERTS.md

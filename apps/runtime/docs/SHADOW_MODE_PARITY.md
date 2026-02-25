@@ -1,12 +1,16 @@
 # Runtime Shadow Parity Harness
 
-Status: Added in OA-RUST-039.
+Status: active
 
-This runbook defines the Rust runtime shadow-mode parity harness used to gate authority cutover.
+This runbook defines the runtime authority shadow-mode parity harness used to gate authority cutover.
 
-For control-service + Khala parity gates (OA-RUST-091), use:
+Historical control+Khala parity harness (archived):
 
-- `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
+- `apps/runtime/docs/archived/spacetime-cutover-2026-02-25/CONTROL_KHALA_SHADOW_PARITY.md`
+
+Canonical retained sync parity lane:
+
+- `docs/sync/SPACETIME_PARITY_HARNESS.md`
 
 ## Purpose
 
@@ -58,26 +62,6 @@ Default policy:
 
 1. Any critical diff blocks cutover.
 2. Warning diffs above `max_warnings` block cutover.
-
-Typical cutover policy:
-
-- `max_warnings = 0`
-- `block_on_critical = true`
-
-## Diff Classes
-
-Critical:
-
-- `trajectory_hash`
-- run/session identity mismatch
-- projected status mismatch
-- checkpoint sequence mismatch
-
-Warning:
-
-- replay hash
-- event count or last event-type mismatches
-- projection hash differences
 
 ## Review Workflow
 

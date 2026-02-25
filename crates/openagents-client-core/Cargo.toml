@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Shared Rust client core for auth, command transport, and Khala sync"
+description = "Shared Rust client core for auth, command transport, and retained sync compatibility"
 
 [lib]
 crate-type = ["rlib", "staticlib", "cdylib"]

@@ -200,7 +200,7 @@ const activeRustEntryDocs = [
   "docs/autopilot/testing/TRACE_RETRIEVAL.md",
   "docs/autopilot/testing/STREAM_TESTING.md",
   "apps/runtime/docs/RUNTIME_CONTRACT.md",
-  "apps/runtime/docs/KHALA_SYNC.md",
+  "apps/runtime/docs/RUST_RUNTIME_SERVICE_FOUNDATION.md",
   "apps/runtime/docs/OBSERVABILITY.md",
   "apps/openagents.com/docs/API_SANCTUM.md",
   "apps/openagents.com/docs/WEB_PARITY_STATUS.md",

@@ -10,7 +10,7 @@ This contract set defines control-plane boundaries for:
 - WorkOS-backed email-code challenge/verify flow.
 - OpenAgents session authority (access/refresh/session/device lifecycle).
 - Org membership and role/scope claims used for enforcement.
-- Sync token request/response semantics for Khala topic access.
+- Sync token request/response semantics for retained Spacetime stream access.
 
 ## Authority and Ownership
 
@@ -22,7 +22,7 @@ This contract set defines control-plane boundaries for:
 
 1. Refresh token rotation is mandatory for `SessionRefreshResponse`; `replaced_refresh_token_id` tracks revoked predecessor token lineage.
 2. `device_id` is required on session and sync-token paths for per-device revocation and auditability.
-3. Sync-token grants are scope-limited (`granted_scopes` + `granted_topics`) and may not imply mutation authority.
+3. Sync-token grants are scope-limited (`granted_scopes` + stream/topic claims) and may not imply mutation authority.
 4. Sync-token claims include client-surface attribution (`oa_client_surface`) for client compatibility/audit lanes.
 5. Reauthentication states are explicit (`SESSION_STATUS_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_REAUTH_REQUIRED`, `CONTROL_ERROR_CODE_SESSION_REVOKED`) for deterministic client UX.
 6. Control-plane errors are machine-readable via `ControlErrorCode` and must preserve the `request_id` correlation boundary.
@@ -35,4 +35,4 @@ This contract set defines control-plane boundaries for:
 4. Fixture and proto contract checks must pass before merge:
    - `buf lint`
    - `./scripts/verify-proto-generate.sh`
-   - `mix runtime.contract.check`
+   - `./scripts/local-ci.sh proto`

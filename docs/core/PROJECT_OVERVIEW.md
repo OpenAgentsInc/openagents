@@ -9,7 +9,7 @@ This map reflects canonical Rust-only architecture boundaries.
   Compatibility lanes under `/api/v1/*` and legacy chat aliases are sunset-marked (`2026-06-30`) and treated as migration debt, not new authority surface.
 
 - `apps/runtime/`
-  Rust execution authority: run lifecycle, worker lifecycle, event log, projector/read models, and sync projection delivery (current Khala lane, target Spacetime lane).
+  Rust execution authority: run lifecycle, worker lifecycle, event log, projector/read models, and sync projection delivery (Spacetime canonical retained lane).
 
 - `apps/autopilot-desktop/`
   Rust desktop surface for Codex/inbox administration, local Spark wallet operations (balance/send/receive/history), and local operator workflows.
@@ -37,8 +37,8 @@ This map reflects canonical Rust-only architecture boundaries.
 
 - Control plane authority: `control.*` domain (identity, sessions, org/device authorization state).
 - Runtime authority: `runtime.*` domain (execution events, projectors, sync journal, replay artifacts).
-- Sync transport is currently Khala and is being replaced by SpacetimeDB under active plans.
-- Khala/Spacetime are projection/replay delivery lanes and do not perform authority mutations.
+- Sync transport for retained lanes is SpacetimeDB.
+- Legacy Khala-named compatibility surfaces are migration debt and do not perform authority mutations.
 - Nostr is the interop substrate for portable events across independently-run operator domains.
 - Nexus is the high-throughput intra-domain fabric for swarm coordination/streaming; a Bridge/Gateway controls what crosses between Nexus and Nostr.
 

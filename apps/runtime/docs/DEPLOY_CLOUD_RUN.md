@@ -9,7 +9,7 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 - DB role isolation tooling: `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 - Script index: `apps/runtime/deploy/cloudrun/README.md`
 - Zero-downtime schema evolution policy: `docs/core/SCHEMA_EVOLUTION_PLAYBOOK.md`
-- Control + Khala shadow parity harness: `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
+- Spacetime replay/resume parity harness: `docs/sync/SPACETIME_PARITY_HARNESS.md`
 - Shared staging/prod release matrix: `docs/core/RUST_STAGING_PROD_VALIDATION.md`
 
 ## Artifact Registry + legacy lane note (non-negotiable)
@@ -22,7 +22,7 @@ Do not overwrite the legacy `openagents-runtime/runtime:latest` tag with Rust im
 
 ## Why this exists
 
-We previously hit a production incident where the migration job stayed pinned to an older image, so newer runtime tables were never created (`runtime.khala_projection_checkpoints`, `runtime.sync_stream_events`), causing 500s.
+We previously hit a production incident where the migration job stayed pinned to an older image, so newer runtime sync tables were never created (`runtime.sync_stream_events`), causing 500s.
 
 ## Non-negotiable invariant
 
@@ -37,7 +37,7 @@ Never run the migrate job directly without first syncing the job image.
 ## Deploy sequence
 
 0. Confirm this rollout follows the expand/migrate/contract policy and mixed-version gates in `docs/core/SCHEMA_EVOLUTION_PLAYBOOK.md`.
-0.1. For staged cutovers, run control/Khala shadow parity harness and archive the parity report artifact before promotion.
+0.1. For staged cutovers, run the Spacetime replay/resume parity harness and archive the parity report artifact before promotion.
 
 1. Build and push runtime image.
 

@@ -20,7 +20,7 @@ It owns:
 
 Desktop adapter:
 - `apps/autopilot-desktop/src/runtime_codex_proto.rs`
-- Re-exports core parsing/receipt helpers and composes with Khala frame parsing from `openagents-client-core`.
+- Re-exports core parsing/receipt helpers and composes with desktop-local sync frame parsing helpers.
 
 iOS/thin shared adapter:
 - `crates/openagents-client-core/src/codex_control.rs`

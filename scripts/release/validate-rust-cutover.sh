@@ -24,6 +24,7 @@ CONTROL_SERVICE="${CONTROL_SERVICE:-openagents-control-service}"
 
 RUN_RUNTIME_DRIFT_CHECK="${RUN_RUNTIME_DRIFT_CHECK:-1}"
 RUN_KHALA_CONTRACT_TESTS="${RUN_KHALA_CONTRACT_TESTS:-1}"
+RUN_SPACETIME_SYNC_CONTRACT_TESTS="${RUN_SPACETIME_SYNC_CONTRACT_TESTS:-${RUN_KHALA_CONTRACT_TESTS}}"
 RUN_CROSS_SURFACE="${RUN_CROSS_SURFACE:-0}"
 RUN_LOG_PROBES="${RUN_LOG_PROBES:-1}"
 RUN_HTMX_PERF_CHECKS="${RUN_HTMX_PERF_CHECKS:-1}"
@@ -285,19 +286,31 @@ else
     "RUN_RUNTIME_DRIFT_CHECK=0"
 fi
 
-# C) Khala websocket/replay contract lane.
-if [[ "${RUN_KHALA_CONTRACT_TESTS}" == "1" ]]; then
+# C) Spacetime sync contract lane.
+if [[ "${RUN_SPACETIME_SYNC_CONTRACT_TESTS}" == "1" ]]; then
   run_check \
-    "khala-contract-tests" \
+    "spacetime-sync-contract-tests" \
     "required" \
-    "runtime khala topic/replay contract tests" \
-    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::khala_topic_messages -- --nocapture
+    "runtime spacetime sync contract tests" \
+    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::spacetime_sync_metrics_expose_stream_delivery_totals -- --nocapture
+
+  run_check \
+    "spacetime-retired-route-guards" \
+    "required" \
+    "retired khala internal routes remain removed" \
+    cargo test --manifest-path "${ROOT_DIR}/apps/runtime/Cargo.toml" server::tests::retired_khala_routes_return_not_found -- --nocapture
 else
   skip_check \
-    "khala-contract-tests" \
+    "spacetime-sync-contract-tests" \
     "required" \
-    "runtime khala topic/replay contract tests" \
-    "RUN_KHALA_CONTRACT_TESTS=0"
+    "runtime spacetime sync contract tests" \
+    "RUN_SPACETIME_SYNC_CONTRACT_TESTS=0"
+
+  skip_check \
+    "spacetime-retired-route-guards" \
+    "required" \
+    "retired khala internal routes remain removed" \
+    "RUN_SPACETIME_SYNC_CONTRACT_TESTS=0"
 fi
 
 # D) Surface parity lane.
