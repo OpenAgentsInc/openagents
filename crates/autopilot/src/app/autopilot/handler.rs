@@ -1,3 +1,6 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
@@ -6,12 +9,240 @@ use adjutant::{
     generate_session_id,
 };
 use agent_client_protocol_schema as acp;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 
 use crate::app::AppState;
 use crate::app::chat::MessageMetadata;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::events::ResponseEvent;
 use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AutopilotDispatchMode {
+    LocalFirst,
+    LocalOnly,
+    RemoteOnly,
+}
+
+impl AutopilotDispatchMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalFirst => "local_first",
+            Self::LocalOnly => "local_only",
+            Self::RemoteOnly => "remote_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AutopilotExecutionLane {
+    LocalCodex,
+    RemoteFallback,
+}
+
+impl AutopilotExecutionLane {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalCodex => "local_codex",
+            Self::RemoteFallback => "remote_fallback",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalCodexProbe {
+    available: bool,
+    healthy: bool,
+    reason: Option<String>,
+}
+
+impl LocalCodexProbe {
+    fn healthy() -> Self {
+        Self {
+            available: true,
+            healthy: true,
+            reason: None,
+        }
+    }
+
+    fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            available: false,
+            healthy: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    fn unhealthy(reason: impl Into<String>) -> Self {
+        Self {
+            available: true,
+            healthy: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AutopilotDispatchDecision {
+    mode: AutopilotDispatchMode,
+    lane: AutopilotExecutionLane,
+    reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LocalReplayQueueEntry {
+    timestamp_ms: u64,
+    dispatch_mode: String,
+    lane: String,
+    reason: String,
+    workspace_root: String,
+    prompt_sha256: String,
+    local_codex_available: bool,
+    local_codex_healthy: bool,
+}
+
+fn parse_autopilot_dispatch_mode(value: Option<&str>) -> AutopilotDispatchMode {
+    match value
+        .unwrap_or("local_first")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "local_only" => AutopilotDispatchMode::LocalOnly,
+        "remote_only" => AutopilotDispatchMode::RemoteOnly,
+        _ => AutopilotDispatchMode::LocalFirst,
+    }
+}
+
+fn resolve_autopilot_dispatch_mode() -> AutopilotDispatchMode {
+    parse_autopilot_dispatch_mode(std::env::var("OA_AUTOPILOT_DISPATCH_MODE").ok().as_deref())
+}
+
+async fn probe_local_codex_health(cwd: &Path) -> LocalCodexProbe {
+    if !CodexRuntime::is_available() {
+        return LocalCodexProbe::unavailable("codex_binary_not_found");
+    }
+
+    let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
+        cwd: Some(cwd.to_path_buf()),
+        wire_log: None,
+    })
+    .await
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            return LocalCodexProbe::unhealthy(format!("spawn_failed: {}", err));
+        }
+    };
+
+    match runtime.shutdown().await {
+        Ok(()) => LocalCodexProbe::healthy(),
+        Err(err) => LocalCodexProbe::unhealthy(format!("shutdown_failed: {}", err)),
+    }
+}
+
+fn select_autopilot_dispatch_lane(
+    mode: AutopilotDispatchMode,
+    probe: &LocalCodexProbe,
+) -> Result<AutopilotDispatchDecision, String> {
+    match mode {
+        AutopilotDispatchMode::RemoteOnly => Ok(AutopilotDispatchDecision {
+            mode,
+            lane: AutopilotExecutionLane::RemoteFallback,
+            reason: "dispatch_mode_remote_only".to_string(),
+        }),
+        AutopilotDispatchMode::LocalFirst => {
+            if probe.available && probe.healthy {
+                Ok(AutopilotDispatchDecision {
+                    mode,
+                    lane: AutopilotExecutionLane::LocalCodex,
+                    reason: "local_codex_healthy".to_string(),
+                })
+            } else {
+                Ok(AutopilotDispatchDecision {
+                    mode,
+                    lane: AutopilotExecutionLane::RemoteFallback,
+                    reason: probe
+                        .reason
+                        .clone()
+                        .unwrap_or_else(|| "local_codex_unavailable".to_string()),
+                })
+            }
+        }
+        AutopilotDispatchMode::LocalOnly => {
+            if probe.available && probe.healthy {
+                Ok(AutopilotDispatchDecision {
+                    mode,
+                    lane: AutopilotExecutionLane::LocalCodex,
+                    reason: "local_codex_healthy".to_string(),
+                })
+            } else {
+                Err(probe
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "local_codex_unavailable".to_string()))
+            }
+        }
+    }
+}
+
+fn local_replay_queue_path() -> PathBuf {
+    if let Ok(path) = std::env::var("OA_AUTOPILOT_LOCAL_REPLAY_QUEUE_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    crate::app::config::sessions_dir().join("autopilot-local-replay-queue.jsonl")
+}
+
+fn append_local_replay_queue_entry(entry: &LocalReplayQueueEntry) {
+    let path = local_replay_queue_path();
+    append_local_replay_queue_entry_at(&path, entry);
+}
+
+fn append_local_replay_queue_entry_at(path: &Path, entry: &LocalReplayQueueEntry) {
+    if let Some(parent) = path.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            tracing::warn!(error = %err, path = %parent.display(), "Failed to create replay queue directory");
+            return;
+        }
+    }
+
+    let mut file = match OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(err) => {
+            tracing::warn!(error = %err, path = %path.display(), "Failed to open local replay queue");
+            return;
+        }
+    };
+
+    let line = match serde_json::to_string(entry) {
+        Ok(line) => line,
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to encode local replay queue entry");
+            return;
+        }
+    };
+
+    if let Err(err) = writeln!(file, "{}", line) {
+        tracing::warn!(error = %err, path = %path.display(), "Failed to append local replay queue entry");
+    }
+}
+
+fn prompt_sha256_hex(prompt: &str) -> String {
+    format!("{:x}", Sha256::digest(prompt.as_bytes()))
+}
+
+fn current_timestamp_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 pub(crate) fn submit_autopilot_prompt(
     runtime_handle: &tokio::runtime::Handle,
@@ -20,21 +251,12 @@ pub(crate) fn submit_autopilot_prompt(
 ) {
     tracing::info!("Autopilot mode: starting autonomous loop");
 
-    // Autopilot always routes execution to Adjutant; backend selection is for chat only.
+    // Backend selection controls chat UX; Autopilot lane is selected by dispatch policy.
     let selected_backend = state.agent_selection.agent;
-    let use_codex = false;
     tracing::info!(
-        "Autopilot: forcing Adjutant execution loop (selected backend={:?})",
+        "Autopilot: preparing execution lane (selected backend={:?})",
         selected_backend
     );
-
-    // Check which LM provider will be used (for logging only)
-    let provider = if use_codex {
-        adjutant::dspy::lm_config::detect_provider()
-    } else {
-        adjutant::dspy::lm_config::detect_provider_skip_codex()
-    };
-    tracing::info!("Autopilot: will use LM provider: {:?}", provider);
 
     // Create channels for receiving responses.
     let (tx, rx) = mpsc::unbounded_channel();
@@ -114,10 +336,6 @@ pub(crate) fn submit_autopilot_prompt(
             }
         };
 
-        // Get model name for metadata
-        let model_name = adjutant::dspy::lm_config::detect_provider()
-            .map(|p| p.short_name().to_string());
-
         // Get workspace root for verification commands
         let workspace_root = manifest
             .workspace
@@ -125,15 +343,53 @@ pub(crate) fn submit_autopilot_prompt(
             .map(|w| w.root.clone())
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-        // EARLY BRANCH: If Codex is selected, skip dsrs/Adjutant and use CodexRuntime
-        if use_codex {
-            tracing::info!("Autopilot: Codex selected, routing to app-server");
+        let dispatch_mode = resolve_autopilot_dispatch_mode();
+        let local_codex_probe = if matches!(dispatch_mode, AutopilotDispatchMode::RemoteOnly) {
+            LocalCodexProbe::unavailable("dispatch_mode_remote_only")
+        } else {
+            probe_local_codex_health(&workspace_root).await
+        };
+        let dispatch_decision =
+            match select_autopilot_dispatch_lane(dispatch_mode, &local_codex_probe) {
+                Ok(decision) => decision,
+                Err(reason) => {
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Autopilot local-only mode requires healthy local Codex: {}",
+                        reason
+                    )));
+                    window.request_redraw();
+                    return;
+                }
+            };
+
+        tracing::info!(
+            mode = dispatch_decision.mode.as_str(),
+            lane = dispatch_decision.lane.as_str(),
+            reason = %dispatch_decision.reason,
+            local_codex_available = local_codex_probe.available,
+            local_codex_healthy = local_codex_probe.healthy,
+            "Autopilot dispatch lane selected"
+        );
+
+        append_local_replay_queue_entry(&LocalReplayQueueEntry {
+            timestamp_ms: current_timestamp_ms(),
+            dispatch_mode: dispatch_decision.mode.as_str().to_string(),
+            lane: dispatch_decision.lane.as_str().to_string(),
+            reason: dispatch_decision.reason.clone(),
+            workspace_root: workspace_root.display().to_string(),
+            prompt_sha256: prompt_sha256_hex(&prompt_clone),
+            local_codex_available: local_codex_probe.available,
+            local_codex_healthy: local_codex_probe.healthy,
+        });
+
+        if matches!(dispatch_decision.lane, AutopilotExecutionLane::LocalCodex) {
+            tracing::info!("Autopilot: routing to local Codex app-server lane");
 
             // Build enriched prompt with OANIX context
             let full_prompt = build_autopilot_context(&manifest, &workspace_root, &prompt_clone);
 
             tracing::info!(
-                "Autopilot: context gathered for Codex (directives: {}, issues: {})",
+                "Autopilot: context gathered for local Codex (directives: {}, issues: {})",
                 manifest
                     .workspace
                     .as_ref()
@@ -146,11 +402,24 @@ pub(crate) fn submit_autopilot_prompt(
                     .unwrap_or(0)
             );
 
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Autopilot lane: local Codex ({})",
+                dispatch_decision.reason
+            )));
             // Signal to UI to submit this prompt via Codex
             let _ = tx.send(ResponseEvent::CodexPromptReady(full_prompt));
             window.request_redraw();
             return;
         }
+
+        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            "Autopilot lane: remote fallback ({})",
+            dispatch_decision.reason
+        )));
+
+        let provider = adjutant::dspy::lm_config::detect_provider_skip_codex();
+        tracing::info!("Autopilot: using fallback provider {:?}", provider);
+        let model_name = provider.map(|p| p.short_name().to_string());
 
         // dsrs/Adjutant path (for local models like llama.cpp, Ollama, Pylon, etc.)
         match Adjutant::new(manifest.clone()) {
@@ -158,7 +427,7 @@ pub(crate) fn submit_autopilot_prompt(
                 tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
 
                 // Configure dsrs global settings with user-selected backend preference
-                if let Err(e) = adjutant::dspy::lm_config::configure_dsrs_with_preference(use_codex).await {
+                if let Err(e) = adjutant::dspy::lm_config::configure_dsrs_with_preference(false).await {
                     tracing::error!("Autopilot: failed to configure dsrs: {}", e);
                     let _ = tx.send(ResponseEvent::Error(format!(
                         "Failed to configure LM: {}",
@@ -172,71 +441,8 @@ pub(crate) fn submit_autopilot_prompt(
                 // Note: Issue suggestions are already run during bootloader (coder_actions.rs)
                 // when the OANIX manifest arrives, so we don't duplicate them here.
 
-                // Build rich context from OANIX manifest
-                let mut context_parts = Vec::new();
-
-                // Add active directive info
-                if let Some(workspace) = &manifest.workspace {
-                    // Find active directive
-                    if let Some(active_id) = &workspace.active_directive {
-                        if let Some(directive) =
-                            workspace.directives.iter().find(|d| &d.id == active_id)
-                        {
-                            let priority = directive.priority.as_deref().unwrap_or("unknown");
-                            let progress = directive.progress_pct.unwrap_or(0);
-                            context_parts.push(format!(
-                                "## Active Directive\n{}: {} (Priority: {}, Progress: {}%)",
-                                directive.id, directive.title, priority, progress
-                            ));
-                        }
-                    }
-
-                    // Add open issues
-                    let open_issues: Vec<_> = workspace
-                        .issues
-                        .iter()
-                        .filter(|i| i.status == "open" && !i.is_blocked)
-                        .take(5)
-                        .collect();
-
-                    if !open_issues.is_empty() {
-                        let mut issues_text = String::from("## Open Issues\n");
-                        for issue in open_issues {
-                            issues_text.push_str(&format!(
-                                "- #{}: {} (Priority: {})\n",
-                                issue.number, issue.title, issue.priority
-                            ));
-                        }
-                        context_parts.push(issues_text);
-                    }
-                }
-
-                // Get recent commits (quick git log)
-                if let Ok(output) = ProcessCommand::new("git")
-                    .args(["log", "--oneline", "-5", "--no-decorate"])
-                    .current_dir(&workspace_root)
-                    .output()
-                {
-                    if output.status.success() {
-                        let commits = String::from_utf8_lossy(&output.stdout);
-                        if !commits.trim().is_empty() {
-                            context_parts
-                                .push(format!("## Recent Commits\n{}", commits.trim()));
-                        }
-                    }
-                }
-
-                // Build the full prompt with context
-                let full_prompt = if context_parts.is_empty() {
-                    prompt_clone.clone()
-                } else {
-                    format!(
-                        "{}\n\n---\n\n## User Request\n{}\n\n\
-                        Use the tools to complete the task. Read relevant files, make changes, run tests.",
-                        context_parts.join("\n\n"),
-                        prompt_clone
-                    )
-                };
+                // Build enriched prompt with OANIX context
+                let full_prompt = build_autopilot_context(&manifest, &workspace_root, &prompt_clone);
 
                 tracing::info!(
                     "Autopilot: context gathered (directives: {}, issues: {})",
@@ -732,5 +938,53 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, ResponseEvent::ToolResult { .. }))
         );
+    }
+
+    #[test]
+    fn dispatch_prefers_local_codex_when_healthy() {
+        let probe = LocalCodexProbe::healthy();
+        let decision =
+            select_autopilot_dispatch_lane(AutopilotDispatchMode::LocalFirst, &probe).unwrap();
+        assert_eq!(decision.lane, AutopilotExecutionLane::LocalCodex);
+        assert_eq!(decision.reason, "local_codex_healthy");
+    }
+
+    #[test]
+    fn dispatch_falls_back_when_local_codex_is_degraded() {
+        let probe = LocalCodexProbe::unhealthy("spawn_failed: timeout");
+        let decision =
+            select_autopilot_dispatch_lane(AutopilotDispatchMode::LocalFirst, &probe).unwrap();
+        assert_eq!(decision.lane, AutopilotExecutionLane::RemoteFallback);
+        assert_eq!(decision.reason, "spawn_failed: timeout");
+    }
+
+    #[test]
+    fn dispatch_remote_only_mode_forces_fallback_lane() {
+        let probe = LocalCodexProbe::healthy();
+        let decision =
+            select_autopilot_dispatch_lane(AutopilotDispatchMode::RemoteOnly, &probe).unwrap();
+        assert_eq!(decision.lane, AutopilotExecutionLane::RemoteFallback);
+        assert_eq!(decision.reason, "dispatch_mode_remote_only");
+    }
+
+    #[test]
+    fn replay_queue_entry_writes_jsonl() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let queue_path = temp_dir.path().join("autopilot-local-replay-queue.jsonl");
+        let entry = LocalReplayQueueEntry {
+            timestamp_ms: 123,
+            dispatch_mode: "local_first".to_string(),
+            lane: "local_codex".to_string(),
+            reason: "local_codex_healthy".to_string(),
+            workspace_root: "/tmp/workspace".to_string(),
+            prompt_sha256: "abc123".to_string(),
+            local_codex_available: true,
+            local_codex_healthy: true,
+        };
+        append_local_replay_queue_entry_at(&queue_path, &entry);
+
+        let data = std::fs::read_to_string(&queue_path).expect("queue data");
+        assert!(data.contains("\"lane\":\"local_codex\""));
+        assert!(data.contains("\"prompt_sha256\":\"abc123\""));
     }
 }
