@@ -2,8 +2,9 @@ use super::*;
 use openagents_runtime_client::{
     ComputeRuntimeProviderCatalogEntry, ComputeRuntimeTelemetryResponse,
     ComputeRuntimeTreasurySummary, ComputeRuntimeWorkerSnapshot, RuntimeClientError,
-    RuntimeCreditHealthResponseV1, RuntimeInternalClient, RuntimePoolSnapshotResponseV1,
-    RuntimePoolStatusResponseV1, RuntimeWorkerStatusTransitionRequest,
+    RuntimeCreditHealthResponseV1, RuntimeHydraObservabilityResponseV1, RuntimeInternalClient,
+    RuntimePoolSnapshotResponseV1, RuntimePoolStatusResponseV1,
+    RuntimeWorkerStatusTransitionRequest,
 };
 
 pub(super) async fn compute_page(
@@ -431,6 +432,23 @@ pub(super) fn empty_stats_metrics_view() -> LiquidityStatsMetricsView {
         cep_ln_failure_rate_pct: 0.0,
         cep_breaker_halt_new_envelopes: false,
         cep_breaker_halt_large_settlements: false,
+        hydra_metrics_available: false,
+        hydra_routing_decision_total: 0,
+        hydra_routing_selected_route_direct: 0,
+        hydra_routing_selected_route_cep: 0,
+        hydra_routing_selected_route_other: 0,
+        hydra_routing_confidence_lt_040: 0,
+        hydra_routing_confidence_040_070: 0,
+        hydra_routing_confidence_070_090: 0,
+        hydra_routing_confidence_gte_090: 0,
+        hydra_breaker_transition_total: 0,
+        hydra_breaker_recovery_total: 0,
+        hydra_breaker_halt_new_envelopes: false,
+        hydra_breaker_halt_large_settlements: false,
+        hydra_throttle_mode: None,
+        hydra_throttle_affected_requests_total: 0,
+        hydra_throttle_rejected_requests_total: 0,
+        hydra_throttle_stressed_requests_total: 0,
     }
 }
 
@@ -445,7 +463,15 @@ pub(super) async fn fetch_stats_dashboard_views(
             None
         }
     };
-    let metrics = build_stats_metrics_view(&pools, cep_health.as_ref());
+    let hydra_observability = match fetch_runtime_hydra_observability(state).await {
+        Ok(observability) => Some(observability),
+        Err(error) => {
+            tracing::warn!(error = %error, "stats hydra observability fetch failed");
+            None
+        }
+    };
+    let metrics =
+        build_stats_metrics_view(&pools, cep_health.as_ref(), hydra_observability.as_ref());
     Ok((metrics, pools))
 }
 
@@ -460,7 +486,18 @@ pub(super) async fn fetch_stats_metrics_view(
             None
         }
     };
-    Ok(build_stats_metrics_view(&pools, cep_health.as_ref()))
+    let hydra_observability = match fetch_runtime_hydra_observability(state).await {
+        Ok(observability) => Some(observability),
+        Err(error) => {
+            tracing::warn!(error = %error, "stats hydra observability fetch failed");
+            None
+        }
+    };
+    Ok(build_stats_metrics_view(
+        &pools,
+        cep_health.as_ref(),
+        hydra_observability.as_ref(),
+    ))
 }
 
 pub(super) async fn fetch_stats_pools_view(
@@ -616,6 +653,7 @@ pub(super) fn build_pool_view(
 pub(super) fn build_stats_metrics_view(
     pools: &[LiquidityPoolView],
     cep_health: Option<&RuntimeCreditHealthResponseV1>,
+    hydra_observability: Option<&RuntimeHydraObservabilityResponseV1>,
 ) -> LiquidityStatsMetricsView {
     let mut total_assets_sats = 0_i64;
     let mut total_wallet_sats = 0_i64;
@@ -696,6 +734,59 @@ pub(super) fn build_stats_metrics_view(
         cep_breaker_halt_large_settlements: cep_health
             .map(|health| health.breakers.halt_large_settlements)
             .unwrap_or(false),
+        hydra_metrics_available: hydra_observability.is_some(),
+        hydra_routing_decision_total: hydra_observability
+            .map(|value| value.routing.decision_total)
+            .unwrap_or(0),
+        hydra_routing_selected_route_direct: hydra_observability
+            .map(|value| value.routing.selected_route_direct)
+            .unwrap_or(0),
+        hydra_routing_selected_route_cep: hydra_observability
+            .map(|value| value.routing.selected_route_cep)
+            .unwrap_or(0),
+        hydra_routing_selected_route_other: hydra_observability
+            .map(|value| value.routing.selected_route_other)
+            .unwrap_or(0),
+        hydra_routing_confidence_lt_040: hydra_observability
+            .map(|value| value.routing.confidence_lt_040)
+            .unwrap_or(0),
+        hydra_routing_confidence_040_070: hydra_observability
+            .map(|value| value.routing.confidence_040_070)
+            .unwrap_or(0),
+        hydra_routing_confidence_070_090: hydra_observability
+            .map(|value| value.routing.confidence_070_090)
+            .unwrap_or(0),
+        hydra_routing_confidence_gte_090: hydra_observability
+            .map(|value| value.routing.confidence_gte_090)
+            .unwrap_or(0),
+        hydra_breaker_transition_total: hydra_observability
+            .map(|value| value.breakers.transition_total)
+            .unwrap_or(0),
+        hydra_breaker_recovery_total: hydra_observability
+            .map(|value| value.breakers.recovery_total)
+            .unwrap_or(0),
+        hydra_breaker_halt_new_envelopes: hydra_observability
+            .map(|value| value.breakers.halt_new_envelopes)
+            .unwrap_or(false),
+        hydra_breaker_halt_large_settlements: hydra_observability
+            .map(|value| value.breakers.halt_large_settlements)
+            .unwrap_or(false),
+        hydra_throttle_mode: hydra_observability.and_then(|value| {
+            value
+                .withdrawal_throttle
+                .mode
+                .as_deref()
+                .map(str::to_string)
+        }),
+        hydra_throttle_affected_requests_total: hydra_observability
+            .map(|value| value.withdrawal_throttle.affected_requests_total)
+            .unwrap_or(0),
+        hydra_throttle_rejected_requests_total: hydra_observability
+            .map(|value| value.withdrawal_throttle.rejected_requests_total)
+            .unwrap_or(0),
+        hydra_throttle_stressed_requests_total: hydra_observability
+            .map(|value| value.withdrawal_throttle.stressed_requests_total)
+            .unwrap_or(0),
     }
 }
 
@@ -705,6 +796,16 @@ pub(super) async fn fetch_runtime_credit_health(
     let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
     client
         .credit_health()
+        .await
+        .map_err(runtime_client_error_string)
+}
+
+pub(super) async fn fetch_runtime_hydra_observability(
+    state: &AppState,
+) -> Result<RuntimeHydraObservabilityResponseV1, String> {
+    let client = runtime_internal_client(state).map_err(runtime_client_error_string)?;
+    client
+        .hydra_observability()
         .await
         .map_err(runtime_client_error_string)
 }
@@ -905,7 +1006,9 @@ mod tests {
     use super::*;
     use openagents_runtime_client::{
         RuntimeCreditCircuitBreakersV1, RuntimeCreditHealthResponseV1,
-        RuntimeCreditPolicySnapshotV1,
+        RuntimeCreditPolicySnapshotV1, RuntimeHydraBreakersObservabilityV1,
+        RuntimeHydraObservabilityResponseV1, RuntimeHydraRoutingObservabilityV1,
+        RuntimeHydraWithdrawalThrottleObservabilityV1,
     };
 
     fn sample_pool_view() -> LiquidityPoolView {
@@ -970,11 +1073,49 @@ mod tests {
         }
     }
 
+    fn sample_hydra_observability() -> RuntimeHydraObservabilityResponseV1 {
+        RuntimeHydraObservabilityResponseV1 {
+            schema: "openagents.hydra.observability_response.v1".to_string(),
+            generated_at: Utc::now(),
+            routing: RuntimeHydraRoutingObservabilityV1 {
+                decision_total: 9,
+                selected_route_direct: 3,
+                selected_route_cep: 5,
+                selected_route_other: 1,
+                confidence_lt_040: 1,
+                confidence_040_070: 2,
+                confidence_070_090: 3,
+                confidence_gte_090: 3,
+            },
+            breakers: RuntimeHydraBreakersObservabilityV1 {
+                halt_new_envelopes: true,
+                halt_large_settlements: false,
+                transition_total: 4,
+                recovery_total: 1,
+                halt_new_envelopes_transition_total: 3,
+                halt_new_envelopes_recovery_total: 1,
+                halt_large_settlements_transition_total: 1,
+                halt_large_settlements_recovery_total: 0,
+                last_transition_at: Some(Utc::now()),
+            },
+            withdrawal_throttle: RuntimeHydraWithdrawalThrottleObservabilityV1 {
+                mode: Some("stressed".to_string()),
+                reasons: vec!["liabilities_pressure_stress_threshold".to_string()],
+                extra_delay_hours: Some(24),
+                execution_cap_per_tick: Some(5),
+                affected_requests_total: 7,
+                rejected_requests_total: 2,
+                stressed_requests_total: 5,
+            },
+        }
+    }
+
     #[test]
     fn build_stats_metrics_view_includes_cep_metrics_when_available() {
         let pools = vec![sample_pool_view()];
         let health = sample_credit_health();
-        let view = build_stats_metrics_view(&pools, Some(&health));
+        let hydra = sample_hydra_observability();
+        let view = build_stats_metrics_view(&pools, Some(&health), Some(&hydra));
         assert_eq!(view.pool_count, 1);
         assert_eq!(view.total_assets_sats, 600);
         assert!(view.cep_metrics_available);
@@ -986,12 +1127,29 @@ mod tests {
         assert_eq!(view.cep_ln_failure_rate_pct, 30.0);
         assert!(!view.cep_breaker_halt_new_envelopes);
         assert!(view.cep_breaker_halt_large_settlements);
+        assert!(view.hydra_metrics_available);
+        assert_eq!(view.hydra_routing_decision_total, 9);
+        assert_eq!(view.hydra_routing_selected_route_direct, 3);
+        assert_eq!(view.hydra_routing_selected_route_cep, 5);
+        assert_eq!(view.hydra_routing_selected_route_other, 1);
+        assert_eq!(view.hydra_routing_confidence_lt_040, 1);
+        assert_eq!(view.hydra_routing_confidence_040_070, 2);
+        assert_eq!(view.hydra_routing_confidence_070_090, 3);
+        assert_eq!(view.hydra_routing_confidence_gte_090, 3);
+        assert_eq!(view.hydra_breaker_transition_total, 4);
+        assert_eq!(view.hydra_breaker_recovery_total, 1);
+        assert!(view.hydra_breaker_halt_new_envelopes);
+        assert!(!view.hydra_breaker_halt_large_settlements);
+        assert_eq!(view.hydra_throttle_mode.as_deref(), Some("stressed"));
+        assert_eq!(view.hydra_throttle_affected_requests_total, 7);
+        assert_eq!(view.hydra_throttle_rejected_requests_total, 2);
+        assert_eq!(view.hydra_throttle_stressed_requests_total, 5);
     }
 
     #[test]
     fn build_stats_metrics_view_gracefully_handles_missing_cep_metrics() {
         let pools = vec![sample_pool_view()];
-        let view = build_stats_metrics_view(&pools, None);
+        let view = build_stats_metrics_view(&pools, None, None);
         assert_eq!(view.pool_count, 1);
         assert!(!view.cep_metrics_available);
         assert_eq!(view.cep_outstanding_envelope_count, 0);
@@ -1002,5 +1160,10 @@ mod tests {
         assert_eq!(view.cep_ln_failure_rate_pct, 0.0);
         assert!(!view.cep_breaker_halt_new_envelopes);
         assert!(!view.cep_breaker_halt_large_settlements);
+        assert!(!view.hydra_metrics_available);
+        assert_eq!(view.hydra_routing_decision_total, 0);
+        assert_eq!(view.hydra_breaker_transition_total, 0);
+        assert!(view.hydra_throttle_mode.is_none());
+        assert_eq!(view.hydra_throttle_affected_requests_total, 0);
     }
 }

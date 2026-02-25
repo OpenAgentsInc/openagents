@@ -62,6 +62,17 @@ apps/openagents.com/service/scripts/htmx-route-group-canary.sh
   - `GET /internal/v1/openapi.json` includes `/credit/*` operations
   - `GET /internal/v1/credit/health`
   - `GET /internal/v1/credit/agents/{agent_id}/exposure` (known test agent)
+- Hydra MVP-2 contract + observability checks:
+  - `GET /internal/v1/openapi.json` includes `/hydra/routing/score`, `/hydra/risk/health`, `/hydra/observability`
+  - `GET /internal/v1/hydra/observability` returns routing counts, confidence distribution buckets, breaker transitions/recoveries, and withdrawal throttle affected-request counters
+  - `./scripts/vignette-hydra-mvp2.sh`
+
+2.5. Public stats lane
+- `GET /stats` renders minute-cache Hydra rows with stable columns for:
+  - selected route counts (`route-direct`, `route-cep`, `other`)
+  - confidence distribution buckets (`<0.40`, `0.40-0.70`, `0.70-0.90`, `>=0.90`)
+  - breaker transitions + recoveries
+  - throttle mode + affected/rejected/stressed request totals
 
 3. Khala contract lane
 

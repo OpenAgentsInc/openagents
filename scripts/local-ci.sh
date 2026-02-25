@@ -207,6 +207,7 @@ run_runtime_checks() {
     rm -rf output/vignettes/local-ci/neobank-pay-bolt11
     cargo run --manifest-path apps/runtime/Cargo.toml --bin vignette-neobank-pay-bolt11 -- \
       --output-dir output/vignettes/local-ci/neobank-pay-bolt11
+    ./scripts/vignette-hydra-mvp2.sh
     test -f output/vignettes/local-ci/neobank-pay-bolt11/summary.json
   )
 }

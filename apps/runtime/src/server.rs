@@ -105,6 +105,7 @@ pub struct AppState {
     khala_delivery: Arc<KhalaDeliveryControl>,
     compute_abuse: Arc<ComputeAbuseControls>,
     compute_telemetry: Arc<ComputeTelemetry>,
+    hydra_observability: Arc<HydraObservabilityTelemetry>,
     treasury: Arc<Treasury>,
     fraud: Arc<FraudIncidentLog>,
     comms_delivery_events: Arc<Mutex<HashMap<String, CommsDeliveryAccepted>>>,
@@ -211,6 +212,7 @@ impl AppState {
             khala_delivery: Arc::new(KhalaDeliveryControl::default()),
             compute_abuse: Arc::new(ComputeAbuseControls::default()),
             compute_telemetry: Arc::new(ComputeTelemetry::default()),
+            hydra_observability: Arc::new(HydraObservabilityTelemetry::default()),
             treasury: Arc::new(Treasury::default()),
             fraud: Arc::new(FraudIncidentLog::default()),
             comms_delivery_events: Arc::new(Mutex::new(HashMap::new())),
@@ -391,6 +393,301 @@ impl ComputeTelemetry {
         let entry = owners.entry(owner_key.to_string()).or_default();
         f(entry);
         entry.updated_at = Some(now);
+    }
+}
+
+#[derive(Default)]
+struct HydraObservabilityTelemetry {
+    state: Mutex<HydraObservabilityState>,
+}
+
+#[derive(Debug, Clone)]
+struct HydraObservabilityState {
+    routing_decision_total: u64,
+    routing_selected_route_direct: u64,
+    routing_selected_route_cep: u64,
+    routing_selected_route_other: u64,
+    confidence_lt_040: u64,
+    confidence_040_070: u64,
+    confidence_070_090: u64,
+    confidence_gte_090: u64,
+    breaker_halt_new_envelopes: bool,
+    breaker_halt_large_settlements: bool,
+    breaker_transition_total: u64,
+    breaker_recovery_total: u64,
+    breaker_halt_new_envelopes_transition_total: u64,
+    breaker_halt_new_envelopes_recovery_total: u64,
+    breaker_halt_large_settlements_transition_total: u64,
+    breaker_halt_large_settlements_recovery_total: u64,
+    last_breaker_transition_at: Option<chrono::DateTime<Utc>>,
+    withdraw_throttle_mode: Option<String>,
+    withdraw_throttle_reasons: Vec<String>,
+    withdraw_throttle_extra_delay_hours: Option<i64>,
+    withdraw_throttle_execution_cap_per_tick: Option<u32>,
+    withdraw_throttle_affected_requests_total: u64,
+    withdraw_throttle_rejected_requests_total: u64,
+    withdraw_throttle_stressed_requests_total: u64,
+}
+
+impl Default for HydraObservabilityState {
+    fn default() -> Self {
+        Self {
+            routing_decision_total: 0,
+            routing_selected_route_direct: 0,
+            routing_selected_route_cep: 0,
+            routing_selected_route_other: 0,
+            confidence_lt_040: 0,
+            confidence_040_070: 0,
+            confidence_070_090: 0,
+            confidence_gte_090: 0,
+            breaker_halt_new_envelopes: false,
+            breaker_halt_large_settlements: false,
+            breaker_transition_total: 0,
+            breaker_recovery_total: 0,
+            breaker_halt_new_envelopes_transition_total: 0,
+            breaker_halt_new_envelopes_recovery_total: 0,
+            breaker_halt_large_settlements_transition_total: 0,
+            breaker_halt_large_settlements_recovery_total: 0,
+            last_breaker_transition_at: None,
+            withdraw_throttle_mode: None,
+            withdraw_throttle_reasons: Vec::new(),
+            withdraw_throttle_extra_delay_hours: None,
+            withdraw_throttle_execution_cap_per_tick: None,
+            withdraw_throttle_affected_requests_total: 0,
+            withdraw_throttle_rejected_requests_total: 0,
+            withdraw_throttle_stressed_requests_total: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraRoutingObservabilityV1 {
+    decision_total: u64,
+    selected_route_direct: u64,
+    selected_route_cep: u64,
+    selected_route_other: u64,
+    confidence_lt_040: u64,
+    confidence_040_070: u64,
+    confidence_070_090: u64,
+    confidence_gte_090: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraBreakersObservabilityV1 {
+    halt_new_envelopes: bool,
+    halt_large_settlements: bool,
+    transition_total: u64,
+    recovery_total: u64,
+    halt_new_envelopes_transition_total: u64,
+    halt_new_envelopes_recovery_total: u64,
+    halt_large_settlements_transition_total: u64,
+    halt_large_settlements_recovery_total: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_transition_at: Option<chrono::DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraWithdrawalThrottleObservabilityV1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extra_delay_hours: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution_cap_per_tick: Option<u32>,
+    affected_requests_total: u64,
+    rejected_requests_total: u64,
+    stressed_requests_total: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HydraObservabilityResponseV1 {
+    schema: String,
+    generated_at: chrono::DateTime<Utc>,
+    routing: HydraRoutingObservabilityV1,
+    breakers: HydraBreakersObservabilityV1,
+    withdrawal_throttle: HydraWithdrawalThrottleObservabilityV1,
+}
+
+impl HydraObservabilityTelemetry {
+    async fn record_risk_health(&self, health: &HydraRiskHealthResponseV1) {
+        let now = Utc::now();
+        let mut state = self.state.lock().await;
+
+        let next_halt_new_envelopes = health.credit_breakers.halt_new_envelopes;
+        let next_halt_large_settlements = health.credit_breakers.halt_large_settlements;
+
+        if next_halt_new_envelopes != state.breaker_halt_new_envelopes {
+            state.breaker_transition_total = state.breaker_transition_total.saturating_add(1);
+            state.breaker_halt_new_envelopes_transition_total = state
+                .breaker_halt_new_envelopes_transition_total
+                .saturating_add(1);
+            if state.breaker_halt_new_envelopes && !next_halt_new_envelopes {
+                state.breaker_recovery_total = state.breaker_recovery_total.saturating_add(1);
+                state.breaker_halt_new_envelopes_recovery_total = state
+                    .breaker_halt_new_envelopes_recovery_total
+                    .saturating_add(1);
+            }
+            state.last_breaker_transition_at = Some(now);
+        }
+        if next_halt_large_settlements != state.breaker_halt_large_settlements {
+            state.breaker_transition_total = state.breaker_transition_total.saturating_add(1);
+            state.breaker_halt_large_settlements_transition_total = state
+                .breaker_halt_large_settlements_transition_total
+                .saturating_add(1);
+            if state.breaker_halt_large_settlements && !next_halt_large_settlements {
+                state.breaker_recovery_total = state.breaker_recovery_total.saturating_add(1);
+                state.breaker_halt_large_settlements_recovery_total = state
+                    .breaker_halt_large_settlements_recovery_total
+                    .saturating_add(1);
+            }
+            state.last_breaker_transition_at = Some(now);
+        }
+
+        state.breaker_halt_new_envelopes = next_halt_new_envelopes;
+        state.breaker_halt_large_settlements = next_halt_large_settlements;
+        state.withdraw_throttle_mode = health.liquidity.withdraw_throttle_mode.clone();
+        state.withdraw_throttle_reasons = health.liquidity.withdraw_throttle_reasons.clone();
+        state.withdraw_throttle_extra_delay_hours =
+            health.liquidity.withdraw_throttle_extra_delay_hours;
+        state.withdraw_throttle_execution_cap_per_tick =
+            health.liquidity.withdraw_throttle_execution_cap_per_tick;
+    }
+
+    async fn record_routing_decision(
+        &self,
+        selected_provider_id: &str,
+        confidence: f64,
+        throttle_mode: Option<&str>,
+    ) {
+        let mut state = self.state.lock().await;
+        state.routing_decision_total = state.routing_decision_total.saturating_add(1);
+
+        match selected_provider_id {
+            HYDRA_ROUTE_PROVIDER_DIRECT => {
+                state.routing_selected_route_direct =
+                    state.routing_selected_route_direct.saturating_add(1);
+            }
+            HYDRA_ROUTE_PROVIDER_CEP => {
+                state.routing_selected_route_cep =
+                    state.routing_selected_route_cep.saturating_add(1);
+            }
+            _ => {
+                state.routing_selected_route_other =
+                    state.routing_selected_route_other.saturating_add(1);
+            }
+        }
+
+        let confidence = confidence.clamp(0.0, 1.0);
+        if confidence < 0.40 {
+            state.confidence_lt_040 = state.confidence_lt_040.saturating_add(1);
+        } else if confidence < 0.70 {
+            state.confidence_040_070 = state.confidence_040_070.saturating_add(1);
+        } else if confidence < 0.90 {
+            state.confidence_070_090 = state.confidence_070_090.saturating_add(1);
+        } else {
+            state.confidence_gte_090 = state.confidence_gte_090.saturating_add(1);
+        }
+
+        if let Some(mode) = throttle_mode {
+            match mode {
+                "normal" | "" => {}
+                "stressed" => {
+                    state.withdraw_throttle_affected_requests_total = state
+                        .withdraw_throttle_affected_requests_total
+                        .saturating_add(1);
+                    state.withdraw_throttle_stressed_requests_total = state
+                        .withdraw_throttle_stressed_requests_total
+                        .saturating_add(1);
+                }
+                _ => {
+                    state.withdraw_throttle_affected_requests_total = state
+                        .withdraw_throttle_affected_requests_total
+                        .saturating_add(1);
+                }
+            }
+        }
+    }
+
+    async fn record_withdraw_request_throttle(
+        &self,
+        mode: Option<crate::liquidity_pool::types::WithdrawThrottleModeV1>,
+        rejected: bool,
+    ) {
+        let mut state = self.state.lock().await;
+        if rejected {
+            state.withdraw_throttle_affected_requests_total = state
+                .withdraw_throttle_affected_requests_total
+                .saturating_add(1);
+            state.withdraw_throttle_rejected_requests_total = state
+                .withdraw_throttle_rejected_requests_total
+                .saturating_add(1);
+            return;
+        }
+
+        if let Some(mode) = mode {
+            match mode {
+                crate::liquidity_pool::types::WithdrawThrottleModeV1::Normal => {}
+                crate::liquidity_pool::types::WithdrawThrottleModeV1::Stressed => {
+                    state.withdraw_throttle_affected_requests_total = state
+                        .withdraw_throttle_affected_requests_total
+                        .saturating_add(1);
+                    state.withdraw_throttle_stressed_requests_total = state
+                        .withdraw_throttle_stressed_requests_total
+                        .saturating_add(1);
+                }
+                crate::liquidity_pool::types::WithdrawThrottleModeV1::Halted => {
+                    state.withdraw_throttle_affected_requests_total = state
+                        .withdraw_throttle_affected_requests_total
+                        .saturating_add(1);
+                    state.withdraw_throttle_rejected_requests_total = state
+                        .withdraw_throttle_rejected_requests_total
+                        .saturating_add(1);
+                }
+            }
+        }
+    }
+
+    async fn snapshot(&self) -> HydraObservabilityResponseV1 {
+        let state = self.state.lock().await.clone();
+        HydraObservabilityResponseV1 {
+            schema: "openagents.hydra.observability_response.v1".to_string(),
+            generated_at: Utc::now(),
+            routing: HydraRoutingObservabilityV1 {
+                decision_total: state.routing_decision_total,
+                selected_route_direct: state.routing_selected_route_direct,
+                selected_route_cep: state.routing_selected_route_cep,
+                selected_route_other: state.routing_selected_route_other,
+                confidence_lt_040: state.confidence_lt_040,
+                confidence_040_070: state.confidence_040_070,
+                confidence_070_090: state.confidence_070_090,
+                confidence_gte_090: state.confidence_gte_090,
+            },
+            breakers: HydraBreakersObservabilityV1 {
+                halt_new_envelopes: state.breaker_halt_new_envelopes,
+                halt_large_settlements: state.breaker_halt_large_settlements,
+                transition_total: state.breaker_transition_total,
+                recovery_total: state.breaker_recovery_total,
+                halt_new_envelopes_transition_total: state
+                    .breaker_halt_new_envelopes_transition_total,
+                halt_new_envelopes_recovery_total: state.breaker_halt_new_envelopes_recovery_total,
+                halt_large_settlements_transition_total: state
+                    .breaker_halt_large_settlements_transition_total,
+                halt_large_settlements_recovery_total: state
+                    .breaker_halt_large_settlements_recovery_total,
+                last_transition_at: state.last_breaker_transition_at,
+            },
+            withdrawal_throttle: HydraWithdrawalThrottleObservabilityV1 {
+                mode: state.withdraw_throttle_mode,
+                reasons: state.withdraw_throttle_reasons,
+                extra_delay_hours: state.withdraw_throttle_extra_delay_hours,
+                execution_cap_per_tick: state.withdraw_throttle_execution_cap_per_tick,
+                affected_requests_total: state.withdraw_throttle_affected_requests_total,
+                rejected_requests_total: state.withdraw_throttle_rejected_requests_total,
+                stressed_requests_total: state.withdraw_throttle_stressed_requests_total,
+            },
+        }
     }
 }
 
@@ -1051,6 +1348,7 @@ pub fn build_router(state: AppState) -> Router {
             post(hydra_routing_score),
         )
         .route("/internal/v1/hydra/risk/health", get(hydra_risk_health))
+        .route("/internal/v1/hydra/observability", get(hydra_observability))
         .route(
             "/internal/v1/marketplace/dispatch/sandbox-run",
             post(dispatch_sandbox_run),
@@ -2514,7 +2812,7 @@ async fn compute_hydra_risk_health(
         || withdraw_throttle_stressed
         || withdraw_throttle_halted;
 
-    Ok(HydraRiskHealthResponseV1 {
+    let response = HydraRiskHealthResponseV1 {
         schema: HYDRA_RISK_HEALTH_RESPONSE_SCHEMA_V1.to_string(),
         generated_at: Utc::now(),
         credit_breakers: HydraRiskCreditBreakersV1 {
@@ -2535,13 +2833,24 @@ async fn compute_hydra_risk_health(
             direct_disabled,
             reasons,
         },
-    })
+    };
+    state
+        .hydra_observability
+        .record_risk_health(&response)
+        .await;
+    Ok(response)
 }
 
 async fn hydra_risk_health(
     State(state): State<AppState>,
 ) -> Result<Json<HydraRiskHealthResponseV1>, ApiError> {
     Ok(Json(compute_hydra_risk_health(&state).await?))
+}
+
+async fn hydra_observability(
+    State(state): State<AppState>,
+) -> Result<Json<HydraObservabilityResponseV1>, ApiError> {
+    Ok(Json(state.hydra_observability.snapshot().await))
 }
 
 async fn hydra_routing_score(
@@ -2808,6 +3117,14 @@ async fn hydra_routing_score(
             notes
         },
     };
+    state
+        .hydra_observability
+        .record_routing_decision(
+            selected.provider_id.as_str(),
+            factors.confidence,
+            risk_health.liquidity.withdraw_throttle_mode.as_deref(),
+        )
+        .await;
 
     #[derive(Serialize)]
     struct DecisionHashInput<'a> {
@@ -3470,11 +3787,39 @@ async fn liquidity_pool_withdraw_request(
     Json(body): Json<WithdrawRequestV1>,
 ) -> Result<Json<WithdrawResponseV1>, ApiError> {
     ensure_runtime_write_authority(&state)?;
-    let response = state
+    let response = match state
         .liquidity_pool
         .withdraw_request(pool_id.as_str(), body)
         .await
-        .map_err(api_error_from_liquidity_pool)?;
+    {
+        Ok(response) => {
+            state
+                .hydra_observability
+                .record_withdraw_request_throttle(
+                    response.withdraw_throttle.as_ref().map(|value| value.mode),
+                    false,
+                )
+                .await;
+            response
+        }
+        Err(error) => {
+            let rejected_by_throttle = matches!(
+                &error,
+                LiquidityPoolError::Conflict(message)
+                if message.contains("withdrawals halted by throttle")
+            );
+            if rejected_by_throttle {
+                state
+                    .hydra_observability
+                    .record_withdraw_request_throttle(
+                        Some(crate::liquidity_pool::types::WithdrawThrottleModeV1::Halted),
+                        true,
+                    )
+                    .await;
+            }
+            return Err(api_error_from_liquidity_pool(error));
+        }
+    };
     Ok(Json(response))
 }
 

@@ -12,6 +12,7 @@ This directory stores execution plans.
 - `docs/plans/rust-migration-execution-control-plane.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - `docs/plans/simple-agi-economics-research.md`
+- `docs/plans/vignette-hydra-mvp2.md`
 - `docs/plans/vignette-phase0-issue-to-pr.md`
 
 Historical/superseded plan documents were moved to:

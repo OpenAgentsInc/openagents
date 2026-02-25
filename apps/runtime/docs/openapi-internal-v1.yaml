@@ -770,6 +770,63 @@ paths:
           $ref: '#/components/responses/Error'
         '502':
           $ref: '#/components/responses/Error'
+  /hydra/routing/score:
+    post:
+      summary: Score Hydra routing candidates and emit deterministic decision receipt
+      operationId: hydraRoutingScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HydraRoutingScoreRequestV1'
+      responses:
+        '200':
+          description: Routing decision accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraRoutingScoreResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /hydra/risk/health:
+    get:
+      summary: Read Hydra risk snapshot (credit breakers + liquidity throttle posture)
+      operationId: hydraRiskHealth
+      responses:
+        '200':
+          description: Hydra risk health snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraRiskHealthResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+  /hydra/observability:
+    get:
+      summary: Read Hydra MVP-2 observability counters used by /stats
+      operationId: hydraObservability
+      responses:
+        '200':
+          description: Hydra routing/risk/throttle observability snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HydraObservabilityResponseV1'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     RuntimeSignature:
@@ -1635,6 +1692,353 @@ components:
         computed_at:
           type: string
           format: date-time
+    HydraRoutingCandidateQuoteV1:
+      type: object
+      required:
+        - marketplace_id
+        - provider_id
+        - total_price_msats
+        - reliability_bps
+        - constraints
+      properties:
+        marketplace_id:
+          type: string
+        provider_id:
+          type: string
+        provider_worker_id:
+          type: string
+          nullable: true
+        total_price_msats:
+          type: integer
+          minimum: 1
+        latency_ms:
+          type: integer
+          minimum: 1
+          nullable: true
+        reliability_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        constraints:
+          type: object
+          additionalProperties: true
+        quote_id:
+          type: string
+          nullable: true
+        quote_sha256:
+          type: string
+          nullable: true
+    HydraRoutingScoreRequestV1:
+      type: object
+      required:
+        - schema
+        - idempotency_key
+        - run_id
+        - marketplace_id
+        - capability
+        - policy
+        - decided_at_unix
+        - candidates
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.routing_score_request.v1
+        idempotency_key:
+          type: string
+          minLength: 1
+        run_id:
+          type: string
+          minLength: 1
+        marketplace_id:
+          type: string
+          minLength: 1
+        capability:
+          type: string
+          minLength: 1
+        policy:
+          type: string
+          minLength: 1
+        objective_hash:
+          type: string
+          nullable: true
+        decided_at_unix:
+          type: integer
+          minimum: 0
+        candidates:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/HydraRoutingCandidateQuoteV1'
+    HydraRoutingDecisionFactorsV1:
+      type: object
+      required:
+        - expected_fee_msats
+        - confidence
+        - liquidity_score
+        - policy_notes
+      properties:
+        expected_fee_msats:
+          type: integer
+          minimum: 0
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        liquidity_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        policy_notes:
+          type: array
+          items:
+            type: string
+    HydraRoutingDecisionReceiptLinkageV1:
+      type: object
+      required: [receipt_schema, receipt_id, canonical_json_sha256]
+      properties:
+        receipt_schema:
+          type: string
+        receipt_id:
+          type: string
+        canonical_json_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    HydraRoutingScoreResponseV1:
+      type: object
+      required:
+        - schema
+        - decision_sha256
+        - policy
+        - run_id
+        - marketplace_id
+        - capability
+        - selected
+        - candidates
+        - factors
+        - decided_at_unix
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.routing_score_response.v1
+        decision_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        policy:
+          type: string
+        run_id:
+          type: string
+        marketplace_id:
+          type: string
+        capability:
+          type: string
+        objective_hash:
+          type: string
+          nullable: true
+        selected:
+          $ref: '#/components/schemas/HydraRoutingCandidateQuoteV1'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HydraRoutingCandidateQuoteV1'
+        factors:
+          $ref: '#/components/schemas/HydraRoutingDecisionFactorsV1'
+        receipt:
+          $ref: '#/components/schemas/HydraRoutingDecisionReceiptLinkageV1'
+        nostr_event:
+          type: object
+          additionalProperties: true
+        decided_at_unix:
+          type: integer
+          minimum: 0
+    HydraRiskCreditBreakersV1:
+      type: object
+      required: [halt_new_envelopes, halt_large_settlements]
+      properties:
+        halt_new_envelopes:
+          type: boolean
+        halt_large_settlements:
+          type: boolean
+    HydraRiskLiquidityStateV1:
+      type: object
+      required: [wallet_executor_configured, wallet_executor_reachable]
+      properties:
+        wallet_executor_configured:
+          type: boolean
+        wallet_executor_reachable:
+          type: boolean
+        error_code:
+          type: string
+          nullable: true
+        withdraw_throttle_mode:
+          type: string
+          nullable: true
+        withdraw_throttle_reasons:
+          type: array
+          items:
+            type: string
+        withdraw_throttle_extra_delay_hours:
+          type: integer
+          nullable: true
+        withdraw_throttle_execution_cap_per_tick:
+          type: integer
+          nullable: true
+    HydraRiskRoutingStateV1:
+      type: object
+      required: [degraded, direct_disabled, reasons]
+      properties:
+        degraded:
+          type: boolean
+        direct_disabled:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+    HydraRiskHealthResponseV1:
+      type: object
+      required:
+        - schema
+        - generated_at
+        - credit_breakers
+        - liquidity
+        - routing
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.risk_health_response.v1
+        generated_at:
+          type: string
+          format: date-time
+        credit_breakers:
+          $ref: '#/components/schemas/HydraRiskCreditBreakersV1'
+        liquidity:
+          $ref: '#/components/schemas/HydraRiskLiquidityStateV1'
+        routing:
+          $ref: '#/components/schemas/HydraRiskRoutingStateV1'
+    HydraRoutingObservabilityV1:
+      type: object
+      required:
+        - decision_total
+        - selected_route_direct
+        - selected_route_cep
+        - selected_route_other
+        - confidence_lt_040
+        - confidence_040_070
+        - confidence_070_090
+        - confidence_gte_090
+      properties:
+        decision_total:
+          type: integer
+          minimum: 0
+        selected_route_direct:
+          type: integer
+          minimum: 0
+        selected_route_cep:
+          type: integer
+          minimum: 0
+        selected_route_other:
+          type: integer
+          minimum: 0
+        confidence_lt_040:
+          type: integer
+          minimum: 0
+        confidence_040_070:
+          type: integer
+          minimum: 0
+        confidence_070_090:
+          type: integer
+          minimum: 0
+        confidence_gte_090:
+          type: integer
+          minimum: 0
+    HydraBreakersObservabilityV1:
+      type: object
+      required:
+        - halt_new_envelopes
+        - halt_large_settlements
+        - transition_total
+        - recovery_total
+        - halt_new_envelopes_transition_total
+        - halt_new_envelopes_recovery_total
+        - halt_large_settlements_transition_total
+        - halt_large_settlements_recovery_total
+      properties:
+        halt_new_envelopes:
+          type: boolean
+        halt_large_settlements:
+          type: boolean
+        transition_total:
+          type: integer
+          minimum: 0
+        recovery_total:
+          type: integer
+          minimum: 0
+        halt_new_envelopes_transition_total:
+          type: integer
+          minimum: 0
+        halt_new_envelopes_recovery_total:
+          type: integer
+          minimum: 0
+        halt_large_settlements_transition_total:
+          type: integer
+          minimum: 0
+        halt_large_settlements_recovery_total:
+          type: integer
+          minimum: 0
+        last_transition_at:
+          type: string
+          format: date-time
+          nullable: true
+    HydraWithdrawalThrottleObservabilityV1:
+      type: object
+      required:
+        - affected_requests_total
+        - rejected_requests_total
+        - stressed_requests_total
+      properties:
+        mode:
+          type: string
+          nullable: true
+        reasons:
+          type: array
+          items:
+            type: string
+        extra_delay_hours:
+          type: integer
+          nullable: true
+        execution_cap_per_tick:
+          type: integer
+          nullable: true
+        affected_requests_total:
+          type: integer
+          minimum: 0
+        rejected_requests_total:
+          type: integer
+          minimum: 0
+        stressed_requests_total:
+          type: integer
+          minimum: 0
+    HydraObservabilityResponseV1:
+      type: object
+      required:
+        - schema
+        - generated_at
+        - routing
+        - breakers
+        - withdrawal_throttle
+      properties:
+        schema:
+          type: string
+          const: openagents.hydra.observability_response.v1
+        generated_at:
+          type: string
+          format: date-time
+        routing:
+          $ref: '#/components/schemas/HydraRoutingObservabilityV1'
+        breakers:
+          $ref: '#/components/schemas/HydraBreakersObservabilityV1'
+        withdrawal_throttle:
+          $ref: '#/components/schemas/HydraWithdrawalThrottleObservabilityV1'
     ErrorEnvelope:
       type: object
       required: [error]

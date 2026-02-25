@@ -577,7 +577,7 @@ async fn health_and_readiness_endpoints_are_available() -> Result<()> {
 }
 
 #[tokio::test]
-async fn internal_openapi_route_includes_credit_endpoints_and_schemas() -> Result<()> {
+async fn internal_openapi_route_includes_credit_and_hydra_endpoints_and_schemas() -> Result<()> {
     let app = test_router();
     let response = app
         .oneshot(
@@ -601,6 +601,16 @@ async fn internal_openapi_route_includes_credit_endpoints_and_schemas() -> Resul
     );
     assert!(
         json.pointer("/components/schemas/CreditSettleResponseV1/properties/settlement_id")
+            .is_some()
+    );
+    assert!(
+        json.pointer("/paths/~1hydra~1routing~1score/post")
+            .is_some()
+    );
+    assert!(json.pointer("/paths/~1hydra~1risk~1health/get").is_some());
+    assert!(json.pointer("/paths/~1hydra~1observability/get").is_some());
+    assert!(
+        json.pointer("/components/schemas/HydraObservabilityResponseV1/properties/routing")
             .is_some()
     );
     Ok(())
@@ -5345,6 +5355,220 @@ async fn hydra_routing_score_filters_cep_candidate_when_breaker_halts_envelopes(
         notes
             .iter()
             .any(|value| value.as_str() == Some("cep_candidate_filtered_by_breaker"))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_observability_endpoint_reports_mvp2_metrics() -> Result<()> {
+    let pool_id = "d".repeat(64);
+
+    let app = build_test_router_with_config(AuthorityWriteMode::RustActive, HashSet::new(), |c| {
+        c.liquidity_pool_withdraw_throttle.lp_mode_enabled = true;
+        c.liquidity_pool_withdraw_throttle
+            .stress_liability_ratio_bps = 1;
+        c.liquidity_pool_withdraw_throttle.halt_liability_ratio_bps = 1;
+        c.liquidity_pool_snapshot_pool_ids = vec![pool_id.clone()];
+    });
+
+    let create_pool = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!("/internal/v1/pools/{pool_id}/admin/create"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.liquidity.pool.create_request.v1",
+                    "operator_id": "operator:hydra-observability-test",
+                    "pool_kind": "llp",
+                    "status": "active",
+                    "config": {}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_pool.status(), axum::http::StatusCode::OK);
+
+    let withdraw_request = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!("/internal/v1/pools/{pool_id}/withdraw_request"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.liquidity.pool.withdraw_request.v1",
+                    "lp_id": "lp:hydra-observability",
+                    "idempotency_key": "hydra-observability:withdraw-1",
+                    "shares_burned": 10,
+                    "rail_preference": "onchain",
+                    "payout_address": "bc1qhydraobservability0000000000000000000000000",
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(withdraw_request.status(), axum::http::StatusCode::OK);
+
+    let create_first_run = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "worker_id": "desktop:hydra-observability-a",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_first_run.status(), axum::http::StatusCode::CREATED);
+    let first_run_json = response_json(create_first_run).await?;
+    let first_run_id = first_run_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing first run id"))?
+        .to_string();
+
+    let first_score = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.hydra.routing_score_request.v1",
+                    "idempotency_key": "hydra-observability:first",
+                    "run_id": first_run_id,
+                    "marketplace_id": "openagents",
+                    "capability": "oa.sandbox_run.v1",
+                    "policy": "lowest_total_cost_v1",
+                    "decided_at_unix": 1_700_000_400,
+                    "candidates": [
+                        {
+                            "marketplace_id": "openagents",
+                            "provider_id": "route-direct",
+                            "total_price_msats": 500,
+                            "latency_ms": 20,
+                            "reliability_bps": 9900,
+                            "constraints": {"routeKind":"direct_liquidity"}
+                        },
+                        {
+                            "marketplace_id": "openagents",
+                            "provider_id": "route-cep",
+                            "total_price_msats": 900,
+                            "latency_ms": 40,
+                            "reliability_bps": 9800,
+                            "constraints": {"routeKind":"cep_envelope"}
+                        }
+                    ]
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(first_score.status(), axum::http::StatusCode::OK);
+    let first_score_json = response_json(first_score).await?;
+    assert_eq!(
+        first_score_json
+            .pointer("/selected/provider_id")
+            .and_then(Value::as_str),
+        Some("route-cep"),
+        "direct route should be filtered when throttle mode is halted"
+    );
+
+    let create_second_run = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "worker_id": "desktop:hydra-observability-b",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_second_run.status(), axum::http::StatusCode::CREATED);
+    let second_run_json = response_json(create_second_run).await?;
+    let second_run_id = second_run_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing second run id"))?
+        .to_string();
+
+    let second_score = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json!({
+                    "schema": "openagents.hydra.routing_score_request.v1",
+                    "idempotency_key": "hydra-observability:second",
+                    "run_id": second_run_id,
+                    "marketplace_id": "openagents",
+                    "capability": "oa.sandbox_run.v1",
+                    "policy": "lowest_total_cost_v1",
+                    "decided_at_unix": 1_700_000_401,
+                    "candidates": [
+                        {
+                            "marketplace_id": "openagents",
+                            "provider_id": "provider-low-confidence",
+                            "total_price_msats": 1000,
+                            "latency_ms": 5000,
+                            "reliability_bps": 0,
+                            "constraints": {}
+                        }
+                    ]
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(second_score.status(), axum::http::StatusCode::OK);
+
+    let observability = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/internal/v1/hydra/observability")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(observability.status(), axum::http::StatusCode::OK);
+    let json = response_json(observability).await?;
+    assert_eq!(
+        json.pointer("/schema").and_then(Value::as_str),
+        Some("openagents.hydra.observability_response.v1")
+    );
+    assert_eq!(
+        json.pointer("/routing/decision_total")
+            .and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/routing/selected_route_cep")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        json.pointer("/routing/selected_route_other")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert!(
+        json.pointer("/routing/confidence_lt_040")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value >= 1)
+    );
+    assert_eq!(
+        json.pointer("/withdrawal_throttle/mode")
+            .and_then(Value::as_str),
+        Some("halted")
+    );
+    assert!(
+        json.pointer("/withdrawal_throttle/affected_requests_total")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value >= 2)
     );
     Ok(())
 }

@@ -376,6 +376,19 @@ This serves three roles:
 
 All metrics are emitted as tables with stable column names so agents can read `/stats` directly.
 
+MVP-2 internal authority endpoints backing those columns:
+
+* `POST /internal/v1/hydra/routing/score`
+* `GET /internal/v1/hydra/risk/health`
+* `GET /internal/v1/hydra/observability`
+
+MVP-2 routing/risk columns (current contract):
+
+* selected route counts: `route-direct`, `route-cep`, `other`
+* confidence buckets: `<0.40`, `0.40-0.70`, `0.70-0.90`, `>=0.90`
+* breaker transitions + recoveries
+* withdrawal throttle mode + affected/rejected/stressed request counters
+
 ---
 
 ## 5) Trust Zones + Message Classes
@@ -449,6 +462,13 @@ Hydra must make fees explicit in quotes and receipts. “Hidden fees” are rout
 * Routing scorer integrated into TreasuryRouter decision path
 * Circuit breakers (loss spikes, failure spikes)
 * Withdrawal/availability throttles (if LP pool share model enabled)
+* Runtime/public observability parity for routing + breaker + throttle states
+
+MVP-2 executable harness (single command):
+
+```bash
+./scripts/vignette-hydra-mvp2.sh
+```
 
 ### MVP-3 — FX RFQ integration + Treasury Agents
 

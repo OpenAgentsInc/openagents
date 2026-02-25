@@ -108,6 +108,23 @@ pub struct LiquidityStatsMetricsView {
     pub cep_ln_failure_rate_pct: f64,
     pub cep_breaker_halt_new_envelopes: bool,
     pub cep_breaker_halt_large_settlements: bool,
+    pub hydra_metrics_available: bool,
+    pub hydra_routing_decision_total: u64,
+    pub hydra_routing_selected_route_direct: u64,
+    pub hydra_routing_selected_route_cep: u64,
+    pub hydra_routing_selected_route_other: u64,
+    pub hydra_routing_confidence_lt_040: u64,
+    pub hydra_routing_confidence_040_070: u64,
+    pub hydra_routing_confidence_070_090: u64,
+    pub hydra_routing_confidence_gte_090: u64,
+    pub hydra_breaker_transition_total: u64,
+    pub hydra_breaker_recovery_total: u64,
+    pub hydra_breaker_halt_new_envelopes: bool,
+    pub hydra_breaker_halt_large_settlements: bool,
+    pub hydra_throttle_mode: Option<String>,
+    pub hydra_throttle_affected_requests_total: u64,
+    pub hydra_throttle_rejected_requests_total: u64,
+    pub hydra_throttle_stressed_requests_total: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -939,7 +956,9 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
         "-".to_string()
     };
     let cep_outstanding_reserved_commitments_sats = if metrics.cep_metrics_available {
-        metrics.cep_outstanding_reserved_commitments_sats.to_string()
+        metrics
+            .cep_outstanding_reserved_commitments_sats
+            .to_string()
     } else {
         "-".to_string()
     };
@@ -981,6 +1000,97 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
     } else {
         "-".to_string()
     };
+    let hydra_routing_decision_total = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_decision_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_selected_route_direct = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_selected_route_direct.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_selected_route_cep = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_selected_route_cep.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_selected_route_other = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_selected_route_other.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_confidence_lt_040 = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_confidence_lt_040.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_confidence_040_070 = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_confidence_040_070.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_confidence_070_090 = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_confidence_070_090.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_routing_confidence_gte_090 = if metrics.hydra_metrics_available {
+        metrics.hydra_routing_confidence_gte_090.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_breaker_transition_total = if metrics.hydra_metrics_available {
+        metrics.hydra_breaker_transition_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_breaker_recovery_total = if metrics.hydra_metrics_available {
+        metrics.hydra_breaker_recovery_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_breaker_halt_new_envelopes = if metrics.hydra_metrics_available {
+        if metrics.hydra_breaker_halt_new_envelopes {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    } else {
+        "-".to_string()
+    };
+    let hydra_breaker_halt_large_settlements = if metrics.hydra_metrics_available {
+        if metrics.hydra_breaker_halt_large_settlements {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    } else {
+        "-".to_string()
+    };
+    let hydra_throttle_mode = if metrics.hydra_metrics_available {
+        metrics
+            .hydra_throttle_mode
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
+    } else {
+        "-".to_string()
+    };
+    let hydra_throttle_affected_requests_total = if metrics.hydra_metrics_available {
+        metrics.hydra_throttle_affected_requests_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_throttle_rejected_requests_total = if metrics.hydra_metrics_available {
+        metrics.hydra_throttle_rejected_requests_total.to_string()
+    } else {
+        "-".to_string()
+    };
+    let hydra_throttle_stressed_requests_total = if metrics.hydra_metrics_available {
+        metrics.hydra_throttle_stressed_requests_total.to_string()
+    } else {
+        "-".to_string()
+    };
 
     let body = html! {
         h3 { "Metrics" }
@@ -1015,6 +1125,37 @@ fn stats_metrics_panel(metrics: &LiquidityStatsMetricsView, out_of_band: bool) -
                 div class="oa-kv" { span { "CEP LN failure rate (%)" } strong { (cep_ln_failure_rate_pct) } }
                 div class="oa-kv" { span { "CEP breaker halt_new_envelopes" } strong { (cep_breaker_halt_new_envelopes) } }
                 div class="oa-kv" { span { "CEP breaker halt_large_settlements" } strong { (cep_breaker_halt_large_settlements) } }
+            }
+        }
+        h3 { "Hydra Routing" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "Hydra data available" } strong { (if metrics.hydra_metrics_available { "yes" } else { "no" }) } }
+                div class="oa-kv" { span { "Hydra routing decisions" } strong { (hydra_routing_decision_total) } }
+                div class="oa-kv" { span { "Hydra selected route-direct" } strong { (hydra_routing_selected_route_direct) } }
+                div class="oa-kv" { span { "Hydra selected route-cep" } strong { (hydra_routing_selected_route_cep) } }
+                div class="oa-kv" { span { "Hydra selected other routes" } strong { (hydra_routing_selected_route_other) } }
+            }
+            div {
+                div class="oa-kv" { span { "Hydra confidence <0.40" } strong { (hydra_routing_confidence_lt_040) } }
+                div class="oa-kv" { span { "Hydra confidence 0.40-0.70" } strong { (hydra_routing_confidence_040_070) } }
+                div class="oa-kv" { span { "Hydra confidence 0.70-0.90" } strong { (hydra_routing_confidence_070_090) } }
+                div class="oa-kv" { span { "Hydra confidence >=0.90" } strong { (hydra_routing_confidence_gte_090) } }
+            }
+        }
+        h3 { "Hydra Risk" }
+        div class="oa-grid two" {
+            div {
+                div class="oa-kv" { span { "Hydra breaker transitions" } strong { (hydra_breaker_transition_total) } }
+                div class="oa-kv" { span { "Hydra breaker recoveries" } strong { (hydra_breaker_recovery_total) } }
+                div class="oa-kv" { span { "Hydra breaker halt_new_envelopes" } strong { (hydra_breaker_halt_new_envelopes) } }
+                div class="oa-kv" { span { "Hydra breaker halt_large_settlements" } strong { (hydra_breaker_halt_large_settlements) } }
+            }
+            div {
+                div class="oa-kv" { span { "Hydra throttle mode" } strong { (hydra_throttle_mode) } }
+                div class="oa-kv" { span { "Hydra throttle affected requests" } strong { (hydra_throttle_affected_requests_total) } }
+                div class="oa-kv" { span { "Hydra throttle rejected requests" } strong { (hydra_throttle_rejected_requests_total) } }
+                div class="oa-kv" { span { "Hydra throttle stressed requests" } strong { (hydra_throttle_stressed_requests_total) } }
             }
         }
     };

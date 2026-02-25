@@ -173,12 +173,15 @@ Served OpenAPI contract:
 
 - `GET /internal/v1/openapi.json` (runtime-served JSON projection of `apps/runtime/docs/openapi-internal-v1.yaml`)
 - CEP settle response includes deterministic `settlement_id` in addition to envelope/outcome/receipt fields.
+- Hydra MVP-2 observability endpoint:
+  - `GET /internal/v1/hydra/observability`
 
 MVP-1 verification commands:
 
 ```bash
 cargo test -p openagents-runtime-service --no-fail-fast
 cargo run -p openagents-runtime-service --bin vignette-neobank-pay-bolt11
+./scripts/vignette-hydra-mvp2.sh
 ```
 
 Harness artifact:

@@ -243,6 +243,52 @@ pub struct RuntimeCreditHealthResponseV1 {
     pub policy: RuntimeCreditPolicySnapshotV1,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeHydraRoutingObservabilityV1 {
+    pub decision_total: u64,
+    pub selected_route_direct: u64,
+    pub selected_route_cep: u64,
+    pub selected_route_other: u64,
+    pub confidence_lt_040: u64,
+    pub confidence_040_070: u64,
+    pub confidence_070_090: u64,
+    pub confidence_gte_090: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeHydraBreakersObservabilityV1 {
+    pub halt_new_envelopes: bool,
+    pub halt_large_settlements: bool,
+    pub transition_total: u64,
+    pub recovery_total: u64,
+    pub halt_new_envelopes_transition_total: u64,
+    pub halt_new_envelopes_recovery_total: u64,
+    pub halt_large_settlements_transition_total: u64,
+    pub halt_large_settlements_recovery_total: u64,
+    pub last_transition_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeHydraWithdrawalThrottleObservabilityV1 {
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    pub extra_delay_hours: Option<i64>,
+    pub execution_cap_per_tick: Option<u32>,
+    pub affected_requests_total: u64,
+    pub rejected_requests_total: u64,
+    pub stressed_requests_total: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeHydraObservabilityResponseV1 {
+    pub schema: String,
+    pub generated_at: DateTime<Utc>,
+    pub routing: RuntimeHydraRoutingObservabilityV1,
+    pub breakers: RuntimeHydraBreakersObservabilityV1,
+    pub withdrawal_throttle: RuntimeHydraWithdrawalThrottleObservabilityV1,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeCreditScopeTypeV1 {
@@ -479,6 +525,11 @@ impl RuntimeInternalClient {
     }
 
     #[must_use]
+    pub fn hydra_observability_path() -> &'static str {
+        "/internal/v1/hydra/observability"
+    }
+
+    #[must_use]
     pub fn credit_intent_path() -> &'static str {
         "/internal/v1/credit/intent"
     }
@@ -605,6 +656,12 @@ impl RuntimeInternalClient {
 
     pub async fn credit_health(&self) -> Result<RuntimeCreditHealthResponseV1, RuntimeClientError> {
         self.get_json(Self::credit_health_path()).await
+    }
+
+    pub async fn hydra_observability(
+        &self,
+    ) -> Result<RuntimeHydraObservabilityResponseV1, RuntimeClientError> {
+        self.get_json(Self::hydra_observability_path()).await
     }
 
     pub async fn credit_intent(
@@ -813,6 +870,10 @@ mod tests {
         assert_eq!(
             RuntimeInternalClient::credit_health_path(),
             "/internal/v1/credit/health"
+        );
+        assert_eq!(
+            RuntimeInternalClient::hydra_observability_path(),
+            "/internal/v1/hydra/observability"
         );
         assert_eq!(
             RuntimeInternalClient::credit_intent_path(),
