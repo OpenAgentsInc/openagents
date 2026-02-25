@@ -11,7 +11,9 @@ use autopilot_app::{
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
-use nostr::derive_keypair;
+use nostr::{
+    derive_keypair, get_public_key, nsec_to_private_key, private_key_to_nsec, public_key_to_npub,
+};
 use openagents_spark::SparkSigner;
 use openagents_ui_core::tokens::palette as ui_palette;
 use rand::RngCore;
@@ -202,6 +204,48 @@ fn generate_nip06_keypair() -> Result<(String, String, String, String), String> 
         SparkSigner::from_mnemonic(&mnemonic, "").map_err(|e| format!("spark error: {e}"))?;
     let spark_pubkey = spark_signer.public_key_hex();
     Ok((npub, nsec, spark_pubkey, mnemonic))
+}
+
+fn parse_private_key_hex(input: &str) -> Result<[u8; 32], String> {
+    let trimmed = input.trim();
+    let normalized = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+
+    if normalized.len() != 64 {
+        return Err("private key hex must be exactly 64 characters".to_string());
+    }
+
+    let mut bytes = [0u8; 32];
+    let raw = normalized.as_bytes();
+    for (index, pair_bytes) in raw.chunks_exact(2).enumerate() {
+        let pair = std::str::from_utf8(pair_bytes)
+            .map_err(|_| "private key hex contains invalid characters".to_string())?;
+        bytes[index] = u8::from_str_radix(pair, 16)
+            .map_err(|_| "private key hex contains invalid characters".to_string())?;
+    }
+    Ok(bytes)
+}
+
+fn import_nostr_private_key(input: &str) -> Result<(String, String), String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("enter an nsec or 64-char hex private key".to_string());
+    }
+
+    let private_key = if trimmed.starts_with("nsec1") {
+        nsec_to_private_key(trimmed).map_err(|e| format!("invalid nsec: {e}"))?
+    } else {
+        parse_private_key_hex(trimmed)?
+    };
+
+    let public_key =
+        get_public_key(&private_key).map_err(|e| format!("public key derivation error: {e}"))?;
+    let npub = public_key_to_npub(&public_key).map_err(|e| format!("npub encoding error: {e}"))?;
+    let nsec =
+        private_key_to_nsec(&private_key).map_err(|e| format!("nsec encoding error: {e}"))?;
+    Ok((npub, nsec))
 }
 
 fn format_seed_phrase(seed: &str) -> String {
@@ -499,9 +543,20 @@ pub struct MinimalRoot {
     pending_runtime_auth_verify: Rc<RefCell<bool>>,
     pending_runtime_auth_status: Rc<RefCell<bool>>,
     pending_runtime_auth_logout: Rc<RefCell<bool>>,
+    identity_private_key_input: TextInput,
+    identity_private_key_bounds: Bounds,
+    identity_load_button: Button,
+    identity_load_bounds: Bounds,
+    pending_identity_load: Rc<RefCell<bool>>,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
+    identity_copy_npub_button: Button,
+    identity_copy_npub_bounds: Bounds,
+    pending_identity_copy_npub: Rc<RefCell<bool>>,
+    identity_copy_nsec_button: Button,
+    identity_copy_nsec_bounds: Bounds,
+    pending_identity_copy_nsec: Rc<RefCell<bool>>,
     pylon_status: PylonStatusView,
     pylon_toggle_button: Button,
     pylon_toggle_bounds: Bounds,
@@ -2675,6 +2730,29 @@ impl MinimalRoot {
                 *pending_runtime_auth_logout_click.borrow_mut() = true;
             });
 
+        let pending_identity_load = Rc::new(RefCell::new(false));
+        let pending_identity_load_submit = pending_identity_load.clone();
+        let identity_private_key_input = TextInput::new()
+            .placeholder("nsec1... or 64-char hex private key")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_identity_load_submit.borrow_mut() = true;
+            });
+
+        let pending_identity_load_click = pending_identity_load.clone();
+        let identity_load_button = Button::new("Load key")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS + 4.0)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_identity_load_click.borrow_mut() = true;
+            });
+
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
         let keygen_button = Button::new("Generate keys")
@@ -2684,6 +2762,28 @@ impl MinimalRoot {
             .corner_radius(6.0)
             .on_click(move || {
                 *pending_keygen_click.borrow_mut() = true;
+            });
+
+        let pending_identity_copy_npub = Rc::new(RefCell::new(false));
+        let pending_identity_copy_npub_click = pending_identity_copy_npub.clone();
+        let identity_copy_npub_button = Button::new("Copy")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_identity_copy_npub_click.borrow_mut() = true;
+            });
+
+        let pending_identity_copy_nsec = Rc::new(RefCell::new(false));
+        let pending_identity_copy_nsec_click = pending_identity_copy_nsec.clone();
+        let identity_copy_nsec_button = Button::new("Copy")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_identity_copy_nsec_click.borrow_mut() = true;
             });
 
         let pending_pylon_toggle = Rc::new(RefCell::new(false));
@@ -3007,9 +3107,20 @@ impl MinimalRoot {
             pending_runtime_auth_verify,
             pending_runtime_auth_status,
             pending_runtime_auth_logout,
+            identity_private_key_input,
+            identity_private_key_bounds: Bounds::ZERO,
+            identity_load_button,
+            identity_load_bounds: Bounds::ZERO,
+            pending_identity_load,
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
+            identity_copy_npub_button,
+            identity_copy_npub_bounds: Bounds::ZERO,
+            pending_identity_copy_npub,
+            identity_copy_nsec_button,
+            identity_copy_nsec_bounds: Bounds::ZERO,
+            pending_identity_copy_nsec,
             pylon_status: PylonStatusView::default(),
             pylon_toggle_button,
             pylon_toggle_bounds: Bounds::ZERO,
@@ -3091,7 +3202,7 @@ impl MinimalRoot {
         };
 
         let screen = Size::new(1280.0, 720.0);
-        root.toggle_auth_pane(screen);
+        root.toggle_identity_pane(screen);
         root.sync_route_state();
         root
     }
@@ -3113,6 +3224,7 @@ impl MinimalRoot {
             || self.file_editor.path_input.is_focused()
             || self.runtime_auth_email_input.is_focused()
             || self.runtime_auth_code_input.is_focused()
+            || self.identity_private_key_input.is_focused()
             || self.liquidity_invoice_amount_input.is_focused();
         ShortcutContext { text_input_focused }
     }
@@ -3140,13 +3252,12 @@ impl MinimalRoot {
                 self.file_editor.set_workspace_root(path.clone());
             }
             AppEvent::SessionStarted { session_id, .. } => {
-                let pane_id = self.pending_session_panes.pop_front().unwrap_or_else(|| {
-                    self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
-                });
-                if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
-                    chat.set_session_id(session_id);
+                if let Some(pane_id) = self.pending_session_panes.pop_front() {
+                    if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
+                        chat.set_session_id(session_id);
+                    }
+                    self.session_to_pane.insert(session_id, pane_id);
                 }
-                self.session_to_pane.insert(session_id, pane_id);
             }
             AppEvent::PylonStatus { status } => {
                 self.pylon_status = PylonStatusView {
@@ -4961,6 +5072,22 @@ impl MinimalRoot {
                                 || logout_handled;
                         }
                         PaneKind::Identity => {
+                            let key_input_handled = matches!(
+                                self.identity_private_key_input.event(
+                                    event,
+                                    self.identity_private_key_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let load_handled = matches!(
+                                self.identity_load_button.event(
+                                    event,
+                                    self.identity_load_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
                             let keygen_handled = matches!(
                                 self.keygen_button.event(
                                     event,
@@ -4969,7 +5096,27 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            handled |= keygen_handled;
+                            let copy_npub_handled = matches!(
+                                self.identity_copy_npub_button.event(
+                                    event,
+                                    self.identity_copy_npub_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let copy_nsec_handled = matches!(
+                                self.identity_copy_nsec_button.event(
+                                    event,
+                                    self.identity_copy_nsec_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= key_input_handled
+                                || load_handled
+                                || keygen_handled
+                                || copy_npub_handled
+                                || copy_nsec_handled;
                         }
                         PaneKind::Pylon => {
                             let toggle_handled = matches!(
@@ -5204,6 +5351,28 @@ impl MinimalRoot {
             }
         }
 
+        let should_identity_load = {
+            let mut pending = self.pending_identity_load.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_identity_load {
+            let input_value = self.identity_private_key_input.get_value().trim().to_string();
+            match import_nostr_private_key(&input_value) {
+                Ok((npub, nsec)) => {
+                    self.nostr_npub = Some(npub);
+                    self.nostr_nsec = Some(nsec);
+                    self.spark_pubkey_hex = None;
+                    self.seed_phrase = None;
+                    self.nostr_error = None;
+                }
+                Err(err) => {
+                    self.nostr_error = Some(err);
+                }
+            }
+        }
+
         let should_generate = {
             let mut pending = self.pending_keygen.borrow_mut();
             let value = *pending;
@@ -5226,6 +5395,34 @@ impl MinimalRoot {
                     self.nostr_nsec = None;
                     self.spark_pubkey_hex = None;
                     self.seed_phrase = None;
+                }
+            }
+        }
+
+        let should_copy_npub = {
+            let mut pending = self.pending_identity_copy_npub.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_copy_npub {
+            if let Some(npub) = self.nostr_npub.as_deref() {
+                if copy_to_clipboard(npub).is_err() {
+                    self.nostr_error = Some("failed to copy npub to clipboard".to_string());
+                }
+            }
+        }
+
+        let should_copy_nsec = {
+            let mut pending = self.pending_identity_copy_nsec.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_copy_nsec {
+            if let Some(nsec) = self.nostr_nsec.as_deref() {
+                if copy_to_clipboard(nsec).is_err() {
+                    self.nostr_error = Some("failed to copy nsec to clipboard".to_string());
                 }
             }
         }
@@ -5812,7 +6009,11 @@ impl MinimalRoot {
             .any(|chat| chat.stop_button.is_hovered() && !chat.stop_button.is_disabled())
         {
             Cursor::Pointer
-        } else if self.keygen_button.is_hovered() {
+        } else if self.keygen_button.is_hovered()
+            || self.identity_load_button.is_hovered()
+            || self.identity_copy_npub_button.is_hovered()
+            || self.identity_copy_nsec_button.is_hovered()
+        {
             Cursor::Pointer
         } else if self.pylon_toggle_button.is_hovered() {
             Cursor::Pointer
@@ -5895,6 +6096,10 @@ impl MinimalRoot {
             || self.runtime_auth_code_bounds.contains(self.cursor_position)
             || self.runtime_auth_email_input.is_focused()
             || self.runtime_auth_code_input.is_focused()
+            || self
+                .identity_private_key_bounds
+                .contains(self.cursor_position)
+            || self.identity_private_key_input.is_focused()
         {
             Cursor::Text
         } else if self.nip90_kind_bounds.contains(self.cursor_position)
@@ -5956,6 +6161,10 @@ impl Component for MinimalRoot {
         self.inbox.list_row_bounds.clear();
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
+        self.identity_private_key_bounds = Bounds::ZERO;
+        self.identity_load_bounds = Bounds::ZERO;
+        self.identity_copy_npub_bounds = Bounds::ZERO;
+        self.identity_copy_nsec_bounds = Bounds::ZERO;
         self.file_editor.path_bounds = Bounds::ZERO;
         self.file_editor.open_bounds = Bounds::ZERO;
         self.file_editor.reload_bounds = Bounds::ZERO;
@@ -7172,6 +7381,7 @@ fn column_bounds(bounds: Bounds, items: &[ColumnItem], gap: f32) -> Vec<Bounds> 
         .collect()
 }
 
+#[allow(dead_code)]
 fn centered_bounds(
     bounds: Bounds,
     content_width: f32,

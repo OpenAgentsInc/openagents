@@ -555,175 +555,232 @@ pub(super) fn paint_auth_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut P
 
 pub(super) fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
-    let button_height = 28.0;
-    let nostr_font = theme::font_size::XS + 4.0;
+    let button_height = 30.0;
+    let input_height = 30.0;
+    let text_size = theme::font_size::XS;
+    let value_text_size = theme::font_size::XS + 4.0;
     let label_height = 16.0;
-    let label_value_gap = 4.0;
-    let value_spacing = 12.0;
+    let row_gap = 10.0;
+    let copy_button_width = 70.0;
 
-    let mut content_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
+    let mut content_width = (bounds.size.width * 0.85).min(760.0).max(320.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
-    let mut content_height = button_height + 12.0;
-    if let Some(npub) = &root.nostr_npub {
-        let seed_display = format_seed_phrase(root.seed_phrase.as_deref().unwrap_or(""));
-        let mut npub_text = Text::new(npub).font_size(nostr_font);
-        let (_, npub_height) = npub_text.size_hint_with_width(content_width);
-        let npub_height = npub_height.unwrap_or(label_height);
-        content_height += label_height + label_value_gap + npub_height + value_spacing;
+    root.identity_private_key_bounds = Bounds::ZERO;
+    root.identity_load_bounds = Bounds::ZERO;
+    root.keygen_bounds = Bounds::ZERO;
+    root.identity_copy_npub_bounds = Bounds::ZERO;
+    root.identity_copy_nsec_bounds = Bounds::ZERO;
 
-        let mut nsec_text =
-            Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
-        let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
-        let nsec_height = nsec_height.unwrap_or(label_height);
-        content_height += label_height + label_value_gap + nsec_height + value_spacing;
+    root.identity_load_button.set_disabled(
+        root.identity_private_key_input
+            .get_value()
+            .trim()
+            .is_empty(),
+    );
+    root.identity_copy_npub_button
+        .set_disabled(root.nostr_npub.is_none());
+    root.identity_copy_nsec_button
+        .set_disabled(root.nostr_nsec.is_none());
 
-        let mut spark_text =
-            Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
-        let (_, spark_height) = spark_text.size_hint_with_width(content_width);
-        let spark_height = spark_height.unwrap_or(label_height);
-        content_height += label_height + label_value_gap + spark_height + value_spacing;
-
-        let mut seed_text = Text::new(seed_display).font_size(nostr_font);
-        let (_, seed_height) = seed_text.size_hint_with_width(content_width);
-        let seed_height = seed_height.unwrap_or(label_height);
-        content_height += label_height + label_value_gap + seed_height + value_spacing;
-    } else if let Some(err) = &root.nostr_error {
-        let mut err_text = Text::new(err).font_size(nostr_font);
-        let (_, err_height) = err_text.size_hint_with_width(content_width);
-        let err_height = err_height.unwrap_or(label_height);
-        content_height += err_height + value_spacing;
-    } else {
-        content_height += label_height + value_spacing;
+    fn text_height(text: &str, font_size: f32, width: f32, fallback: f32) -> f32 {
+        let mut value = Text::new(text).font_size(font_size);
+        let (_, height) = value.size_hint_with_width(width);
+        height.unwrap_or(fallback)
     }
 
-    let content_bounds = centered_bounds(bounds, content_width, content_height, padding);
+    #[derive(Clone, Copy)]
+    enum IdentityCopyField {
+        Npub,
+        Nsec,
+    }
 
-    let button_width =
-        (cx.text
-            .measure_styled_mono("Generate keys", nostr_font, FontStyle::default())
-            + 32.0)
-            .max(160.0)
-            .min(content_width);
     enum IdentityStep {
-        Button,
-        Label(&'static str),
+        Intro(String, f32),
+        InputLabel,
+        Input,
+        ActionRow,
+        Label(String, Option<IdentityCopyField>),
         Value(String, wgpui::color::Hsla, f32),
         Spacer(f32),
     }
 
     let mut steps = Vec::new();
-    steps.push(IdentityStep::Button);
-    steps.push(IdentityStep::Spacer(12.0));
+    let intro = "Generate a new NIP-06 identity or load an existing Nostr private key.";
+    steps.push(IdentityStep::Intro(
+        intro.to_string(),
+        text_height(intro, text_size, content_width, label_height),
+    ));
+    steps.push(IdentityStep::Spacer(8.0));
+    steps.push(IdentityStep::InputLabel);
+    steps.push(IdentityStep::Input);
+    steps.push(IdentityStep::ActionRow);
+    steps.push(IdentityStep::Spacer(8.0));
 
-    if let Some(npub) = &root.nostr_npub {
-        let seed_display = format_seed_phrase(root.seed_phrase.as_deref().unwrap_or(""));
-
-        let mut npub_text = Text::new(npub).font_size(nostr_font);
-        let (_, npub_height) = npub_text.size_hint_with_width(content_width);
-        let npub_height = npub_height.unwrap_or(label_height);
-
-        let mut nsec_text =
-            Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
-        let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
-        let nsec_height = nsec_height.unwrap_or(label_height);
-
-        let mut spark_text =
-            Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
-        let (_, spark_height) = spark_text.size_hint_with_width(content_width);
-        let spark_height = spark_height.unwrap_or(label_height);
-
-        let mut seed_text = Text::new(seed_display.as_str()).font_size(nostr_font);
-        let (_, seed_height) = seed_text.size_hint_with_width(content_width);
-        let seed_height = seed_height.unwrap_or(label_height);
-
-        steps.push(IdentityStep::Label("nostr public key"));
-        steps.push(IdentityStep::Spacer(label_value_gap));
-        steps.push(IdentityStep::Value(
-            npub.clone(),
-            theme::text::PRIMARY,
-            npub_height,
-        ));
-        steps.push(IdentityStep::Spacer(value_spacing));
-
-        steps.push(IdentityStep::Label("nostr secret key"));
-        steps.push(IdentityStep::Spacer(label_value_gap));
-        steps.push(IdentityStep::Value(
-            root.nostr_nsec.as_deref().unwrap_or("").to_string(),
-            theme::text::PRIMARY,
-            nsec_height,
-        ));
-        steps.push(IdentityStep::Spacer(value_spacing));
-
-        steps.push(IdentityStep::Label("spark public key"));
-        steps.push(IdentityStep::Spacer(label_value_gap));
-        steps.push(IdentityStep::Value(
-            root.spark_pubkey_hex.as_deref().unwrap_or("").to_string(),
-            theme::text::PRIMARY,
-            spark_height,
-        ));
-        steps.push(IdentityStep::Spacer(value_spacing));
-
-        steps.push(IdentityStep::Label("seed phrase"));
-        steps.push(IdentityStep::Spacer(label_value_gap));
-        steps.push(IdentityStep::Value(
-            seed_display,
-            theme::text::PRIMARY,
-            seed_height,
-        ));
-    } else if let Some(err) = &root.nostr_error {
-        let mut err_text = Text::new(err).font_size(nostr_font);
-        let (_, err_height) = err_text.size_hint_with_width(content_width);
-        let err_height = err_height.unwrap_or(label_height);
+    if let Some(err) = root.nostr_error.as_deref() {
+        let err_height = text_height(err, text_size, content_width, label_height);
         steps.push(IdentityStep::Value(
             err.to_string(),
             theme::status::ERROR,
             err_height,
         ));
-    } else {
+        steps.push(IdentityStep::Spacer(8.0));
+    }
+
+    if let Some(npub) = &root.nostr_npub {
+        let npub_height = text_height(npub, value_text_size, content_width, label_height);
+        steps.push(IdentityStep::Label(
+            "nostr public key".to_string(),
+            Some(IdentityCopyField::Npub),
+        ));
         steps.push(IdentityStep::Value(
-            "No keypair generated yet.".to_string(),
+            npub.clone(),
+            theme::text::PRIMARY,
+            npub_height,
+        ));
+        steps.push(IdentityStep::Spacer(row_gap));
+
+        let nsec_value = root.nostr_nsec.as_deref().unwrap_or("").to_string();
+        let nsec_height = text_height(&nsec_value, value_text_size, content_width, label_height);
+        steps.push(IdentityStep::Label(
+            "nostr secret key".to_string(),
+            Some(IdentityCopyField::Nsec),
+        ));
+        steps.push(IdentityStep::Value(
+            nsec_value,
+            theme::text::PRIMARY,
+            nsec_height,
+        ));
+        steps.push(IdentityStep::Spacer(row_gap));
+
+        if let Some(spark_pubkey) = root.spark_pubkey_hex.as_deref() {
+            let spark_height =
+                text_height(spark_pubkey, value_text_size, content_width, label_height);
+            steps.push(IdentityStep::Label("spark public key".to_string(), None));
+            steps.push(IdentityStep::Value(
+                spark_pubkey.to_string(),
+                theme::text::PRIMARY,
+                spark_height,
+            ));
+            steps.push(IdentityStep::Spacer(row_gap));
+        }
+
+        if let Some(seed_phrase) = root.seed_phrase.as_deref() {
+            let seed_display = format_seed_phrase(seed_phrase);
+            let seed_height =
+                text_height(&seed_display, value_text_size, content_width, label_height);
+            steps.push(IdentityStep::Label("seed phrase".to_string(), None));
+            steps.push(IdentityStep::Value(
+                seed_display,
+                theme::text::PRIMARY,
+                seed_height,
+            ));
+        } else {
+            let note = "seed phrase unavailable for imported private keys";
+            let note_height = text_height(note, text_size, content_width, label_height);
+            steps.push(IdentityStep::Value(
+                note.to_string(),
+                theme::text::MUTED,
+                note_height,
+            ));
+        }
+    } else if root.nostr_error.is_none() {
+        let empty = "No identity loaded yet.";
+        let empty_height = text_height(empty, text_size, content_width, label_height);
+        steps.push(IdentityStep::Value(
+            empty.to_string(),
             theme::text::MUTED,
-            label_height,
+            empty_height,
         ));
     }
 
     let heights: Vec<ColumnItem> = steps
         .iter()
         .map(|step| match step {
-            IdentityStep::Button => ColumnItem::Fixed(button_height),
-            IdentityStep::Label(_) => ColumnItem::Fixed(label_height),
+            IdentityStep::Intro(_, height) => ColumnItem::Fixed(*height),
+            IdentityStep::InputLabel => ColumnItem::Fixed(label_height),
+            IdentityStep::Input => ColumnItem::Fixed(input_height),
+            IdentityStep::ActionRow => ColumnItem::Fixed(button_height),
+            IdentityStep::Label(_, _) => ColumnItem::Fixed(button_height),
             IdentityStep::Value(_, _, height) => ColumnItem::Fixed(*height),
             IdentityStep::Spacer(height) => ColumnItem::Fixed(*height),
         })
         .collect();
-    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+    let bounds_list = column_bounds(content_bounds, &heights, 6.0);
 
     for (step, bounds) in steps.into_iter().zip(bounds_list) {
         match step {
-            IdentityStep::Button => {
-                let button_bounds = aligned_row_bounds(
-                    bounds,
-                    button_height,
-                    &[wgpui::RowItem::fixed(button_width)],
-                    0.0,
-                    JustifyContent::Center,
-                    AlignItems::Center,
-                )
-                .into_iter()
-                .next()
-                .unwrap_or(bounds);
-                root.keygen_bounds = button_bounds;
-                root.keygen_button.paint(button_bounds, cx);
-            }
-            IdentityStep::Label(label) => {
-                Text::new(label)
-                    .font_size(nostr_font)
+            IdentityStep::Intro(text, _) => {
+                Text::new(text)
+                    .font_size(text_size)
                     .color(theme::text::MUTED)
                     .paint(bounds, cx);
             }
+            IdentityStep::InputLabel => {
+                Text::new("Private key (nsec or 64-char hex)")
+                    .font_size(text_size)
+                    .color(theme::text::MUTED)
+                    .paint(bounds, cx);
+            }
+            IdentityStep::Input => {
+                root.identity_private_key_bounds = bounds;
+                root.identity_private_key_input.paint(bounds, cx);
+            }
+            IdentityStep::ActionRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(150.0), wgpui::RowItem::fixed(110.0)],
+                    8.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                let generate_bounds = *row_bounds.get(0).unwrap_or(&bounds);
+                let load_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+                root.keygen_bounds = generate_bounds;
+                root.identity_load_bounds = load_bounds;
+                root.keygen_button.paint(generate_bounds, cx);
+                root.identity_load_button.paint(load_bounds, cx);
+            }
+            IdentityStep::Label(label, copy_field) => {
+                if let Some(copy_field) = copy_field {
+                    let row_bounds = aligned_row_bounds(
+                        bounds,
+                        button_height,
+                        &[
+                            wgpui::RowItem::flex(1.0),
+                            wgpui::RowItem::fixed(copy_button_width),
+                        ],
+                        8.0,
+                        JustifyContent::FlexStart,
+                        AlignItems::Center,
+                    );
+                    let label_bounds = *row_bounds.first().unwrap_or(&bounds);
+                    let copy_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+                    Text::new(label)
+                        .font_size(value_text_size)
+                        .color(theme::text::MUTED)
+                        .paint(label_bounds, cx);
+                    match copy_field {
+                        IdentityCopyField::Npub => {
+                            root.identity_copy_npub_bounds = copy_bounds;
+                            root.identity_copy_npub_button.paint(copy_bounds, cx);
+                        }
+                        IdentityCopyField::Nsec => {
+                            root.identity_copy_nsec_bounds = copy_bounds;
+                            root.identity_copy_nsec_button.paint(copy_bounds, cx);
+                        }
+                    }
+                } else {
+                    Text::new(label)
+                        .font_size(value_text_size)
+                        .color(theme::text::MUTED)
+                        .paint(bounds, cx);
+                }
+            }
             IdentityStep::Value(text, color, _) => {
-                let mut value = Text::new(text).font_size(nostr_font).color(color);
+                let mut value = Text::new(text).font_size(value_text_size).color(color);
                 value.paint(bounds, cx);
             }
             IdentityStep::Spacer(_) => {}
@@ -2716,7 +2773,11 @@ pub(super) fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: 
 
         let indent = row.depth as f32 * FILE_TREE_INDENT;
         let icon = if row.is_dir {
-            if row.expanded { "v" } else { ">" }
+            if row.expanded {
+                "v"
+            } else {
+                ">"
+            }
         } else {
             "-"
         };
