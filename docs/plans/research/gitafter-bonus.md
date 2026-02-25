@@ -18,7 +18,7 @@ This is not required to bootstrap compute marketplace liquidity.
 ## Dependencies (Non-Exhaustive)
 
 - Nostr protocol and required NIPs are available (see `OA-ECON-025` to `OA-ECON-039`).
-- Wallet, payments, and receipt canonicalization are available (see `OA-ECON-100`+, `ADR-0006`).
+- Wallet, payments, and receipt canonicalization are available (see `OA-ECON-100`+, `ADR-0005`).
 - Canonical replay artifacts exist for verification and dispute evidence (`OA-ECON-179`).
 
 ## Sequencing (Timeline-Free)

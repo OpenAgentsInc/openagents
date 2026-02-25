@@ -27,8 +27,8 @@ This directory is the Rust-era protocol system-of-record.
 ## Archived (Historical)
 
 - `docs/protocol/archived/onyx-integration-contract-v1.md`
-- `docs/protocol/archived/oa-sync-ws-spacetime-mapping-v1.md`
-- `docs/protocol/archived/codex-spacetime-vercel-sse-mapping-v1.md`
+- `docs/protocol/archived/oa-sync-ws-legacy-mapping-v1.md`
+- `docs/protocol/archived/codex-legacy-vercel-sse-mapping-v1.md`
 
 ## Proto Authority
 

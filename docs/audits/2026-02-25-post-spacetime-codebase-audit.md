@@ -1,7 +1,7 @@
 # 2026-02-25 Post-Spacetime Full Codebase Audit
 
-Status: comprehensive post-refactor snapshot (updated after issue `#2020` full eradication + openagents.com residue cleanup)  
-Date: 2026-02-25  
+Status: comprehensive post-refactor snapshot (updated after issues `#2020` and `#2295`)  
+Date: 2026-02-26  
 Owner: repo audit (Codex)
 
 ## Scope
@@ -48,6 +48,15 @@ Action executed in this change:
 5. Fixed broken deploy build input by adding `apps/openagents.com/Dockerfile` and updating `apps/openagents.com/deploy/cloudbuild.yaml` to use it.
 6. Updated `apps/openagents.com/README.md` and `apps/openagents.com/docs/STREAM_COMPAT_STEADY_STATE_RUNBOOK.md` to remove broken references to deleted paths/scripts.
 
+## Execution Update (Issue #2295)
+
+Action executed in this change:
+
+1. Deleted outdated ADR documents from active authority set and retained only `ADR-0001` through `ADR-0007`.
+2. Renumbered retained ADR files to contiguous active numbering and removed references to deleted ADR filenames.
+3. Updated ADR governance docs (`docs/adr/INDEX.md`, `docs/adr/README.md`, `docs/adr/TEMPLATE.md`) to active lifecycle statuses only.
+4. Updated canonical docs/plans/runbooks to reference `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`.
+
 ## Mandatory Preflight Authority Check
 
 Reviewed before analysis and before edits:
@@ -60,7 +69,7 @@ Reviewed before analysis and before edits:
 
 Constraints applied:
 
-1. Spacetime-only retained live sync transport is mandatory (`ADR-0010`, `INV-03`).
+1. Spacetime-only retained live sync transport is mandatory (`ADR-0007`, `INV-03`).
 2. Proto-first, authority isolation, replay/idempotency invariants remain hard gates (`INV-01`, `INV-04..INV-07`).
 3. `.github/workflows` automation is prohibited in-repo (`INV-12`).
 4. Compatibility lanes are migration debt and sunset-scoped, not growth surfaces.
@@ -122,14 +131,9 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 
 ## Critical
 
-1. Active docs still cite superseded sync ADRs in canonical/active files.
-   - Active references found to `ADR-0009` and `ADR-0003` in:
-     - `docs/core/ARCHITECTURE.md`
-     - `docs/plans/spacetimedb-full-integration.md`
-     - `docs/sync/SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`
-     - `docs/plans/ep212-autopilot-bitcoin-100pct.md`
-     - `docs/plans/2026-02-23-open-agent-economy-execution-plan.md`
-   - This conflicts with current authority index where `ADR-0010` is accepted and supersedes prior sync transport ADR posture.
+1. [Closed in `#2295`] ADR authority drift in canonical/active docs is reconciled.
+   - Active references now target `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`.
+   - Deleted ADR docs are removed from active index and no longer referenced by retained docs.
 
 2. Issue `#2020` language-lane eradication is now fully complete in tracked repo content.
    - `apps/openagents.com/vendor` removed.
@@ -200,7 +204,7 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 
 ## Phase 0 (immediate, highest leverage)
 
-1. Reconcile active doc authority to `ADR-0010` in canonical/active docs.
+1. [Done in `#2295`] Reconcile active doc authority to `ADR-0007` in canonical/active docs.
 2. Add/keep a repository gate to prevent `.php/.ts/.tsx` reintroduction in retained surfaces.
 3. Seed a new issue backlog for post-Spacetime cleanup (no open issues currently).
 
@@ -218,4 +222,4 @@ Interpretation: the Spacetime migration/refactor train closed aggressively and r
 
 ## Bottom line
 
-Spacetime refactor closure is real and test-backed on retained runtime/desktop/control transport behavior. The biggest remaining risks are no longer sync transport correctness; they are repository hygiene, documentation authority drift, control-surface dead code/monolith complexity, and missing follow-on execution backlog.
+Spacetime refactor closure is real and test-backed on retained runtime/desktop/control transport behavior. The biggest remaining risks are repository hygiene, control-surface dead code/monolith complexity, and missing follow-on execution backlog.

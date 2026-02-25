@@ -1,4 +1,4 @@
-# ADR-0008: Bounded Vercel SSE Compatibility Lane
+# ADR-0006: Bounded Vercel SSE Compatibility Lane
 
 ## Status
 
@@ -122,12 +122,12 @@ Required checks:
 2. Reintroduce Laravel AI/Vercel backend lane.
    - Rejected: violates Rust-only active runtime policy and reopens authority split.
 3. Allow Spacetime to expose SSE directly.
-   - Rejected: violates WS-only replay/live transport doctrine in `ADR-0003`.
+   - Rejected: violates WS-only replay/live transport doctrine in `ADR-0007`.
 
 ## References
 
 - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 - `docs/adr/ADR-0002-proto-first-contract-governance.md`
-- `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
-- `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+- `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
+- `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
 - Related issue: `OA-WEBPARITY-069` / `#2039`

@@ -27,14 +27,14 @@ Checked authorities:
 
 1. `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 2. `docs/adr/ADR-0002-proto-first-contract-governance.md`
-3. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
+3. `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
 4. `docs/plans/rust-migration-invariant-gates.md`
 
 Implication:
 
 1. Current ADR/invariant language still names Spacetime as the WS sync lane.
-2. Full replacement requires a superseding ADR and invariant updates before production cutover.
-3. Until supersession lands, Spacetime remains implemented reality and Spacetime work is replacement program execution.
+2. Full replacement requires an explicit ADR update and invariant updates before production cutover.
+3. Until that ADR update lands, `ADR-0007` remains implemented doctrine and SpacetimeDB work is replacement program execution.
 
 ## 4) SpacetimeDB Mechanics We Must Design Around
 
@@ -121,7 +121,7 @@ Spacetime semantics to preserve in Spacetime replacement:
 
 ### A) Governance and contracts
 
-1. Add superseding ADR: SpacetimeDB sync authority replacing Spacetime transport ADR scope.
+1. Add ADR update: SpacetimeDB sync authority replacing Spacetime transport ADR scope.
 2. Update `docs/plans/rust-migration-invariant-gates.md` to replace Spacetime-specific transport gates with Spacetime sync gates.
 3. Add/extend proto contracts for sync envelopes, checkpoints, errors, and compatibility negotiation.
 
@@ -152,7 +152,7 @@ Spacetime semantics to preserve in Spacetime replacement:
 
 ### Phase 0: Governance unblocking
 
-1. Land ADR supersession for sync transport ownership.
+1. Land ADR update for sync transport ownership.
 2. Update invariant gates for Spacetime sync semantics.
 3. Approve cutover acceptance criteria and rollback runbook (`docs/sync/SPACETIME_CUTOVER_ACCEPTANCE_AND_ROLLBACK.md`).
 

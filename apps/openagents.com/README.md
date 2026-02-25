@@ -239,7 +239,7 @@ Runbook:
 ## Compatibility negotiation policy
 
 - Canonical policy and failure-code matrix:
-  - `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+  - `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
   - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
 - Spacetime sync mapping reference:
   - `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`

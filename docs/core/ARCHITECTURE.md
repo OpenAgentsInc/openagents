@@ -21,11 +21,11 @@ Primary authorities for this document:
 
 1. `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
 2. `docs/adr/ADR-0002-proto-first-contract-governance.md`
-3. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
-4. `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`
-5. `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
-6. `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
-7. `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+3. `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
+4. `docs/adr/ADR-0003-rivet-harvest-posture-and-adoption-boundaries.md`
+5. `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
+6. `docs/adr/ADR-0005-wallet-executor-auth-custody-receipts.md`
+7. `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`
 8. `docs/plans/rust-migration-invariant-gates.md`
 
 Active plan set reflected in this architecture:
@@ -275,7 +275,7 @@ Implemented responsibilities:
 Owns:
 
 1. Wallet execution and signing APIs (`/wallets/*`, `/pay-bolt11`).
-2. Canonical receipt emission aligned to `ADR-0006` + proto contracts.
+2. Canonical receipt emission aligned to `ADR-0005` + proto contracts.
 
 ### `apps/lightning-ops` (ops/reconcile and paywall operations)
 

@@ -11,7 +11,7 @@ This document defines the canonical compatibility negotiation contract across:
 3. retained-client support windows,
 4. compatibility stream aliases (`/api/chat/stream`, `/api/chats/{conversationId}/stream`).
 
-Authoritative decision record: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`.
+Authoritative decision record: `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`.
 
 ## Inputs
 

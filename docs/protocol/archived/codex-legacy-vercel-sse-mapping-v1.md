@@ -10,7 +10,7 @@ Authority boundaries:
 
 1. Codex worker control remains mutation authority.
 2. Spacetime WS remains live/replay authority transport.
-3. SSE is serialization compatibility only (ADR-0008), not an authority lane.
+3. SSE is serialization compatibility only (ADR-0006), not an authority lane.
 
 ## Scope
 
@@ -111,7 +111,7 @@ Retired alias headers are not part of this contract.
 
 ## References
 
-- `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
-- `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+- `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
+- `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`
 - `docs/protocol/codex-worker-events-v1.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`

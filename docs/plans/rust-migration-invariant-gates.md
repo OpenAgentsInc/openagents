@@ -7,9 +7,9 @@ These invariants gate Rust migration work and release decisions.
 
 Transport enforcement note (2026-02-26):
 
-1. `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md` is the active sync doctrine.
+1. `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md` is the active sync doctrine.
 2. Retained runtime/client sync paths must be Spacetime-only; no legacy websocket/topic lanes.
-3. Any temporary legacy exception requires explicit owner + expiry + deletion issue per ADR-0010.
+3. Any temporary legacy exception requires explicit owner + expiry + deletion issue per ADR-0007.
 
 ## INV-01: Proto-first contracts
 
@@ -26,9 +26,9 @@ delivery.
 
 Hard rules:
 - Legacy websocket pathing, Phoenix frame semantics, and topic poll/fanout compatibility lanes are prohibited in retained paths.
-- SSE is allowed only as an HTTP presentation adapter over existing authority outputs (see `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`).
+- SSE is allowed only as an HTTP presentation adapter over existing authority outputs (see `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`).
 - SSE is prohibited as an alternate live-sync authority transport.
-- No new compatibility alias may be introduced for sync transport without an approved ADR-0010 exception.
+- No new compatibility alias may be introduced for sync transport without an approved ADR-0007 exception.
 
 Exception gate:
 - Must include owner, expiry, blast radius, rollback path, and linked deletion issue.

@@ -30,7 +30,7 @@ Note:
 
 Join/subscribe uses:
 
-- `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+- `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
 
 Deterministic reject codes include:

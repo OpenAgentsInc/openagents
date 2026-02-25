@@ -6,7 +6,7 @@ Status: Active canonical mapping
 This document defines the canonical retained-client sync transport contract for OpenAgents.
 
 Archived historical mapping:
-- `docs/protocol/archived/oa-sync-ws-spacetime-mapping-v1.md`
+- `docs/protocol/archived/oa-sync-ws-legacy-mapping-v1.md`
 
 ## Transport Contract
 
@@ -72,7 +72,7 @@ Exact wire envelopes are governed by proto contracts and runtime implementations
 
 ## References
 
-- `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`
+- `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - `docs/sync/SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`
 - `docs/sync/SPACETIME_TOPIC_STREAM_CURSOR_CONTINUITY.md`

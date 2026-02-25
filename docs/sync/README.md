@@ -42,6 +42,6 @@ Token issuance notes:
 
 Archived/superseded sync docs:
 
-- `docs/sync/archived/2026-02-25-spacetime-shadow-parity-harness.md`
+- `docs/sync/archived/2026-02-25-legacy-shadow-parity-harness.md`
 
 Historical Elixir-era runtime sync docs remain under `apps/runtime/docs/archived/` and are not canonical retained-surface guidance.

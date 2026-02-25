@@ -8,17 +8,14 @@ Last updated: 2026-02-26
 1. Rust-era ADR numbering restarts at `ADR-0001`.
 2. Numbers are monotonic and never reused once published.
 3. Active ADR records live only in `docs/adr/`.
-4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0011**
+Next available ADR: **ADR-0008**
 
 ## Lifecycle Statuses
 
 - `Proposed`
 - `Accepted`
-- `Superseded`
 - `Deprecated`
-- `Archived`
 
 ## Active ADRs
 
@@ -32,50 +29,31 @@ Next available ADR: **ADR-0011**
    - Date: 2026-02-21
    - File: `docs/adr/ADR-0002-proto-first-contract-governance.md`
    - Source issue: `OA-RUST-075` (`#1890`)
-3. `ADR-0003` — Spacetime WS-only replay transport
-   - Status: `Superseded`
-   - Date: 2026-02-21
-   - File: `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
-   - Source issue: `OA-RUST-076` (`#1891`)
-4. `ADR-0004` — Rivet harvest posture and adoption boundaries
+3. `ADR-0003` — Rivet harvest posture and adoption boundaries
    - Status: `Accepted`
    - Date: 2026-02-21
-   - File: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`
+   - File: `docs/adr/ADR-0003-rivet-harvest-posture-and-adoption-boundaries.md`
    - Source issue: `OA-RUST-077` (`#1892`)
-5. `ADR-0005` — Compatibility negotiation and support window policy
+4. `ADR-0004` — Compatibility negotiation and support window policy
    - Status: `Accepted`
    - Date: 2026-02-21
-   - File: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+   - File: `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
    - Source issue: `OA-RUST-083` (`#1918`)
-6. `ADR-0006` — Wallet executor auth, key custody, and receipt canonicalization
+5. `ADR-0005` — Wallet executor auth, key custody, and receipt canonicalization
    - Status: `Accepted`
    - Date: 2026-02-21
-   - File: `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
+   - File: `docs/adr/ADR-0005-wallet-executor-auth-custody-receipts.md`
    - Source issue: `OA-RUST-095` (`#1930`)
-7. `ADR-0008` — Bounded Vercel SSE compatibility lane
+6. `ADR-0006` — Bounded Vercel SSE compatibility lane
    - Status: `Accepted`
    - Date: 2026-02-22
-   - File: `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+   - File: `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`
    - Source issue: `OA-WEBPARITY-069` (`#2039`)
-8. `ADR-0009` — SpacetimeDB canonical sync transport
-   - Status: `Superseded`
-   - Date: 2026-02-25
-   - File: `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
-   - Source issue: `OA-SPACETIME-001` (`#2231`)
-9. `ADR-0010` — Spacetime-only sync transport hard mandate
+7. `ADR-0007` — Spacetime-only sync transport hard mandate
    - Status: `Accepted`
    - Date: 2026-02-26
-   - File: `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`
+   - File: `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
    - Source issue: `OA-SPACETIME-TOTAL-001` (`#2269`)
-
-## Archived ADRs
-
-1. `ADR-0007` — Onyx integration surface and non-goals
-   - Status: `Archived`
-   - Original date: 2026-02-21
-   - Archive date: 2026-02-25
-   - File: `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
-   - Source issue: `OA-RUST-096` (`#1931`)
 
 ## Legacy Archive
 

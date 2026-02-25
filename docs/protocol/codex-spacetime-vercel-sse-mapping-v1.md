@@ -7,13 +7,13 @@ Owner: `owner:openagents-web`
 This document defines the adapter-only mapping from Codex authority events delivered through Spacetime sync into Vercel-compatible SSE events.
 
 Archived historical mapping:
-- `docs/protocol/archived/codex-spacetime-vercel-sse-mapping-v1.md`
+- `docs/protocol/archived/codex-legacy-vercel-sse-mapping-v1.md`
 
 Authority boundaries:
 
 1. Codex worker control remains mutation authority.
 2. Spacetime sync is delivery/replay transport.
-3. SSE is serialization compatibility only (ADR-0008), not an authority lane.
+3. SSE is serialization compatibility only (ADR-0006), not an authority lane.
 
 ## Scope
 
@@ -65,7 +65,7 @@ Compatibility headers follow control compatibility policy.
 
 ## References
 
-- `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+- `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`
 - `docs/protocol/SPACETIME_SYNC_TRANSPORT_MAPPING.md`
 - `docs/protocol/codex-worker-events-v1.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`

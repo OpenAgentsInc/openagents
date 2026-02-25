@@ -1,4 +1,4 @@
-# ADR-0005: Compatibility Negotiation and Support Window Policy
+# ADR-0004: Compatibility Negotiation and Support Window Policy
 
 ## Status
 

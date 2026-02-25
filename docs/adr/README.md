@@ -14,9 +14,7 @@ Valid status values:
 
 1. `Proposed`
 2. `Accepted`
-3. `Superseded`
-4. `Deprecated`
-5. `Archived`
+3. `Deprecated`
 
 ## Authoring Workflow
 

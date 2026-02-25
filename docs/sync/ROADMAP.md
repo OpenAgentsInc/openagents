@@ -3,7 +3,7 @@
 Date: 2026-02-25
 Status: Active
 Owner lanes: Runtime, Desktop, Control, Protocol, Infra
-Authority ADRs: `docs/adr/ADR-0010-spacetime-only-sync-transport-hard-mandate.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
+Authority ADRs: `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
 ## Program Goal
 

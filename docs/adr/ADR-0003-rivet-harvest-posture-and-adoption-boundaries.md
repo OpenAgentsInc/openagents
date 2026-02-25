@@ -1,4 +1,4 @@
-# ADR-0004: Rivet Harvest Posture and Adoption Boundaries
+# ADR-0003: Rivet Harvest Posture and Adoption Boundaries
 
 ## Status
 

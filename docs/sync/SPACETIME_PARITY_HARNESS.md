@@ -6,7 +6,7 @@ Updated: 2026-02-25
 This is the active parity/replay harness reference for retained Spacetime sync lanes.
 
 Archived historical Spacetime shadow harness:
-- `docs/sync/archived/2026-02-25-spacetime-shadow-parity-harness.md`
+- `docs/sync/archived/2026-02-25-legacy-shadow-parity-harness.md`
 
 ## Objective
 

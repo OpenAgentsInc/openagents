@@ -14,16 +14,16 @@ Checked authorities (required by `AGENTS.md`):
 - ADRs:
   - `docs/adr/ADR-0001-rust-only-architecture-baseline.md`
   - `docs/adr/ADR-0002-proto-first-contract-governance.md`
-  - `docs/adr/ADR-0003-spacetime-ws-only-replay-transport.md`
-  - `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`
-  - `docs/adr/ADR-0008-bounded-vercel-sse-compatibility-lane.md`
+  - `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
+  - `docs/adr/ADR-0005-wallet-executor-auth-custody-receipts.md`
+  - `docs/adr/ADR-0006-bounded-vercel-sse-compatibility-lane.md`
 
 Normative constraints this plan must obey:
 
 - Proto-first for cross-boundary contracts (`INV-01`, `ADR-0002`). JSON is an *interop view*, not contract authority.
 - Authority mutations are authenticated HTTP only (`INV-02`).
-- Live delivery lanes are WS-only for Spacetime (`INV-03`, `ADR-0003`). SSE exists only as a bounded presentation adapter (`ADR-0008`).
-- Wallet executor is the payment signing authority. Control-plane must **not** store mnemonics or other seed material in plaintext (`ADR-0006`).
+- Live delivery lanes are WS-only for Spacetime (`INV-03`, `ADR-0007`). SSE exists only as a bounded presentation adapter (`ADR-0006`).
+- Wallet executor is the payment signing authority. Control-plane must **not** store mnemonics or other seed material in plaintext (`ADR-0005`).
 - Rust-only endstate (`ADR-0001`). Any PHP/TypeScript implementation of core product behavior is migration debt to delete once Rust parity lands.
 - `.github/` workflow automation is forbidden (`INV-12`).
 
@@ -90,7 +90,7 @@ This section is deliberately blunt: what exists today vs what is stubbed, legacy
 - `agent_payments_create_invoice` returns a fake BOLT11 string (`lnbc{amount}n1{uuid}`) in `apps/openagents.com/src/lib.rs` (`async fn agent_payments_create_invoice`).
 - `agent_payments_send_spark` is stubbed (returns `"completed"` with generated id) in `apps/openagents.com/src/lib.rs` (`async fn agent_payments_send_spark`).
 - Wallet upsert generates fake mnemonic and synthetic addresses in `apps/openagents.com/src/lib.rs` (`async fn upsert_agent_wallet_for_user`).
-- The control-plane stores the mnemonic as plaintext in `apps/openagents.com/src/domain_store.rs` (`UserSparkWalletRecord.mnemonic`) which violates the custody direction in `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`.
+- The control-plane stores the mnemonic as plaintext in `apps/openagents.com/src/domain_store.rs` (`UserSparkWalletRecord.mnemonic`) which violates the custody direction in `docs/adr/ADR-0005-wallet-executor-auth-custody-receipts.md`.
 
 **Wallet executor exists and can do real work**:
 
@@ -202,7 +202,7 @@ This plan is organized around “make the EP212 Parity Gate harness pass” with
 
 ### Phase 1: Make Wallet Operations Real And Custody-Compliant
 
-**Objective:** Claim #1 becomes true without violating `ADR-0006`.
+**Objective:** Claim #1 becomes true without violating `ADR-0005`.
 
 Work items:
 
@@ -234,7 +234,7 @@ Work items:
 
 6. **Persistence and rotation.**
    - Ensure wallet records and receipts persist across deploys (Cloud Run cold starts cannot erase state).
-   - For any secret references, implement rotation runbooks aligned with `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md` and `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`.
+   - For any secret references, implement rotation runbooks aligned with `docs/adr/ADR-0005-wallet-executor-auth-custody-receipts.md` and `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`.
 
 Acceptance criteria:
 

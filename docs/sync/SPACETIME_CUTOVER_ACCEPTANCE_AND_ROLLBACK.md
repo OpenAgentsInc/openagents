@@ -16,7 +16,7 @@ This runbook is mandatory evidence for:
 
 ## Preconditions
 
-1. `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md` is accepted.
+1. `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md` is accepted.
 2. `docs/plans/rust-migration-invariant-gates.md` reflects Spacetime canonical transport constraints.
 3. Sync v2 contract and compatibility fixtures are merged.
 4. Desktop/runtime/control builds are green with Spacetime lane enabled behind feature policy.

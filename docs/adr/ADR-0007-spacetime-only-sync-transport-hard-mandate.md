@@ -1,4 +1,4 @@
-# ADR-0010: Spacetime-Only Sync Transport Hard Mandate
+# ADR-0007: Spacetime-Only Sync Transport Hard Mandate
 
 ## Status
 
@@ -14,7 +14,7 @@ Accepted
 
 ## Context
 
-`ADR-0009` established Spacetime as canonical sync doctrine, but retained transitional wording
+Earlier migration ADRs established Spacetime as canonical sync doctrine, but retained transitional wording
 allowed legacy interpretation in implementation and docs. The active plan and issue program for
 final convergence now requires hard deletion semantics, not "default unless overridden" behavior.
 
@@ -54,13 +54,6 @@ A temporary exception is allowed only if all conditions are satisfied:
 4. Maximum age 14 days without explicit renewal evidence.
 
 Exceptions are non-compliant by default after expiry.
-
-## Supersession
-
-This ADR supersedes `ADR-0009` for transport enforcement strictness.
-
-`ADR-0009` remains valid historical context for migration framing, but `ADR-0010` is the
-authoritative closure doctrine for retained code paths.
 
 ## Invariant Gate Mapping
 

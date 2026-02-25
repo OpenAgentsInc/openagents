@@ -1,4 +1,4 @@
-# ADR-0006: Wallet Executor Auth, Key Custody, and Receipt Canonicalization
+# ADR-0005: Wallet Executor Auth, Key Custody, and Receipt Canonicalization
 
 ## Status
 

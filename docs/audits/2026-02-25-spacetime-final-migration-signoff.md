@@ -17,7 +17,7 @@ Final post-cutover audit for retained Spacetime sync lanes:
 
 Architecture/invariants:
 
-- `docs/adr/ADR-0009-spacetime-sync-canonical-transport.md`
+- `docs/adr/ADR-0007-spacetime-only-sync-transport-hard-mandate.md`
 - `docs/plans/rust-migration-invariant-gates.md`
 - `docs/core/ARCHITECTURE.md`
 
@@ -86,7 +86,7 @@ Result: all above passed.
 ## Residual Risk and Remaining Debt (Non-Blocking)
 
 1. Some code paths still carry legacy `spacetime_*` naming (primarily compatibility framing/config fields) while behavior is Spacetime-canonical.
-2. Superseded/historical ADR and plan docs intentionally retain Spacetime language for historical accuracy.
+2. Historical archived docs and plan snapshots intentionally retain legacy wording for historical accuracy.
 3. Generated/static artifacts (for example large OpenAPI snapshots and historical staging artifacts) still contain legacy wording and should be treated as non-canonical historical output unless regenerated.
 
 None of the above reintroduces authority-mutation drift or replay/idempotency regressions.

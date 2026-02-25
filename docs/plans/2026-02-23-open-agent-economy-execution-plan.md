@@ -33,13 +33,13 @@ Out of scope:
 
 - Proto-first contracts (`INV-01`, `ADR-0002`).
 - Authenticated HTTP mutation authority (`INV-02`).
-- Spacetime WS-only live sync transport (`INV-03`, `ADR-0003`).
+- Spacetime WS-only live sync transport (`INV-03`, `ADR-0007`).
 - Control/runtime authority isolation (`INV-04`, `INV-05`, `INV-06`).
 - Replay/idempotency guarantees (`INV-07`).
 - Service deploy isolation and migration discipline (`INV-08`, `INV-09`, `INV-10`).
 - Rust-first architecture (`ADR-0001`) and iOS WGPUI UI ownership (`INV-11`).
 - No `.github` workflow automation in repo (`INV-12`).
-- Wallet executor auth, custody, and receipt canonicalization (`ADR-0006`).
+- Wallet executor auth, custody, and receipt canonicalization (`ADR-0005`).
 
 ### 3.1) Authority And Drift Notes
 
@@ -562,7 +562,7 @@ Note: Marketplace abuse controls are pulled forward: `OA-ECON-163` is Phase 0 (b
 
 - `OA-ECON-240` - Keep protocol evolution governance ADR-first. - Use `docs/adr/` + `ADR-0002` for contract changes; avoid separate governance systems.
 - `OA-ECON-241` - Define the external NIP proposal workflow. - If we upstream Nostr protocol proposals, specify the review + versioning path without inventing new internal processes.
-- `OA-ECON-242` - Enforce compatibility/deprecation policy in code and docs. - Apply `ADR-0005` support windows via compatibility negotiation and explicit deprecation surfaces.
+- `OA-ECON-242` - Enforce compatibility/deprecation policy in code and docs. - Apply `ADR-0004` support windows via compatibility negotiation and explicit deprecation surfaces.
 
 - `OA-ECON-249` - Implement autopilot subscription revenue instrumentation. - Track wedge economics and conversion drivers.
 - `OA-ECON-250` - Implement marketplace fee revenue instrumentation. - Track transaction-fee economics across market lanes.

@@ -2,7 +2,7 @@
 
 ## Status
 
-`Proposed` | `Accepted` | `Superseded` | `Deprecated` | `Archived`
+`Proposed` | `Accepted` | `Deprecated`
 
 ## Date
 

@@ -12,7 +12,7 @@ This document defines the implemented internal control-plane contract between th
 
 Compatibility policy authority:
 
-- `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+- `docs/adr/ADR-0004-compatibility-negotiation-and-support-window-policy.md`
 - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
 
 ## Entity IDs
