@@ -5048,6 +5048,189 @@ async fn router_select_compute_normalizes_and_emits_signed_decision_when_configu
 }
 
 #[tokio::test]
+async fn hydra_routing_score_emits_receipt_and_is_idempotent() -> Result<()> {
+    let app = test_router();
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:hydra-router-worker",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+    let create_json = response_json(create_response).await?;
+    let run_id = create_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let body = serde_json::json!({
+        "schema": "openagents.hydra.routing_score_request.v1",
+        "idempotency_key": "hydra-routing:test",
+        "run_id": run_id,
+        "marketplace_id": "openagents",
+        "capability": "oa.sandbox_run.v1",
+        "policy": "lowest_total_cost_v1",
+        "objective_hash": "sha256:objective",
+        "decided_at_unix": 1_700_000_111,
+        "candidates": [
+            {
+                "marketplace_id": "market-a",
+                "provider_id": "provider-a",
+                "total_price_msats": 1200,
+                "latency_ms": 50,
+                "reliability_bps": 9100,
+                "constraints": {"region":"us-central1"},
+                "quote_id": "quote-a",
+                "quote_sha256": "sha256:quote-a"
+            },
+            {
+                "marketplace_id": "market-b",
+                "provider_id": "provider-b",
+                "total_price_msats": 900,
+                "latency_ms": 120,
+                "reliability_bps": 8700,
+                "constraints": {"region":"us-east1"},
+                "quote_id": "quote-b",
+                "quote_sha256": "sha256:quote-b"
+            }
+        ]
+    });
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first_json = response_json(first).await?;
+    assert_eq!(
+        first_json.pointer("/schema").and_then(Value::as_str),
+        Some("openagents.hydra.routing_score_response.v1")
+    );
+    assert_eq!(
+        first_json
+            .pointer("/selected/provider_id")
+            .and_then(Value::as_str),
+        Some("provider-b")
+    );
+    assert!(
+        first_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.len() == 64)
+    );
+
+    let retry = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(retry.status(), axum::http::StatusCode::OK);
+    let retry_json = response_json(retry).await?;
+    assert_eq!(
+        retry_json
+            .pointer("/decision_sha256")
+            .and_then(Value::as_str),
+        first_json
+            .pointer("/decision_sha256")
+            .and_then(Value::as_str)
+    );
+    assert_eq!(
+        retry_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str),
+        first_json
+            .pointer("/receipt/canonical_json_sha256")
+            .and_then(Value::as_str)
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn hydra_routing_score_rejects_non_object_constraints() -> Result<()> {
+    let app = test_router();
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "worker_id": "desktop:hydra-router-worker",
+                    "metadata": {"source": "test"}
+                }))?))?,
+        )
+        .await?;
+    assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+    let create_json = response_json(create_response).await?;
+    let run_id = create_json
+        .pointer("/run/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("missing run id"))?
+        .to_string();
+
+    let body = serde_json::json!({
+        "schema": "openagents.hydra.routing_score_request.v1",
+        "idempotency_key": "hydra-routing:invalid",
+        "run_id": run_id,
+        "marketplace_id": "openagents",
+        "capability": "oa.sandbox_run.v1",
+        "policy": "balanced_v1",
+        "decided_at_unix": 1_700_000_222,
+        "candidates": [
+            {
+                "marketplace_id": "market-a",
+                "provider_id": "provider-a",
+                "total_price_msats": 1200,
+                "latency_ms": 50,
+                "reliability_bps": 9000,
+                "constraints": "invalid"
+            }
+        ]
+    });
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/internal/v1/hydra/routing/score")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body)?))?,
+        )
+        .await?;
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let json = response_json(resp).await?;
+    assert!(
+        json.pointer("/message")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.contains("candidate.constraints"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn dispatch_failure_applies_strike_and_reroutes_owned_provider() -> Result<()> {
     let app = test_router();
     let (failing_base_url, failing_shutdown) = spawn_cancelled_compute_provider_stub().await?;

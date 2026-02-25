@@ -21,6 +21,13 @@ use axum::{
 use chrono::Utc;
 use futures::StreamExt;
 use openagents_l402::Bolt11;
+use openagents_proto::hydra_routing::{
+    ROUTING_SCORE_RESPONSE_SCHEMA_V1, RoutingCandidateQuoteV1 as HydraRoutingCandidateQuoteV1,
+    RoutingDecisionFactorsV1 as HydraRoutingDecisionFactorsV1,
+    RoutingDecisionReceiptLinkageV1 as HydraRoutingDecisionReceiptLinkageV1,
+    RoutingScoreRequestV1 as HydraRoutingScoreRequestV1,
+    RoutingScoreResponseV1 as HydraRoutingScoreResponseV1,
+};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use tokio::sync::Mutex;
@@ -672,6 +679,8 @@ struct NormalizedCandidateQuoteV1 {
 const ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS: u64 = 1;
 const ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS: u64 = 20;
 const ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS: u64 = 250;
+const HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1: &str =
+    "openagents.hydra.routing_decision_receipt.v1";
 
 #[derive(Debug, Deserialize)]
 struct RouterSelectComputeBody {
@@ -963,6 +972,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/marketplace/router/compute/select",
             post(router_select_compute),
+        )
+        .route(
+            "/internal/v1/hydra/routing/score",
+            post(hydra_routing_score),
         )
         .route(
             "/internal/v1/marketplace/dispatch/sandbox-run",
@@ -2338,6 +2351,422 @@ async fn router_select_compute(
         selected,
         candidates,
         nostr_event,
+    }))
+}
+
+async fn hydra_routing_score(
+    State(state): State<AppState>,
+    Json(body): Json<HydraRoutingScoreRequestV1>,
+) -> Result<Json<HydraRoutingScoreResponseV1>, ApiError> {
+    ensure_runtime_write_authority(&state)?;
+
+    let idempotency_key = body.idempotency_key.trim();
+    if idempotency_key.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
+    }
+
+    let run_id = Uuid::parse_str(body.run_id.trim())
+        .map_err(|_| ApiError::InvalidRequest("run_id must be a valid UUID".to_string()))?;
+    let run_id_string = run_id.to_string();
+
+    let capability = body.capability.trim();
+    if capability.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "capability must not be empty".to_string(),
+        ));
+    }
+    if body.candidates.is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "candidates must not be empty".to_string(),
+        ));
+    }
+
+    let policy = body.policy.trim();
+    let policy = if policy.is_empty() {
+        "lowest_total_cost_v1".to_string()
+    } else {
+        policy.to_string()
+    };
+    if !matches!(
+        policy.as_str(),
+        "lowest_total_cost_v1" | "balanced_v1" | "reliability_first_v1"
+    ) {
+        return Err(ApiError::InvalidRequest(format!(
+            "unsupported policy: {policy}"
+        )));
+    }
+
+    let objective_hash = body
+        .objective_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let decided_at_unix = if body.decided_at_unix > 0 {
+        body.decided_at_unix
+    } else {
+        Utc::now().timestamp().max(0) as u64
+    };
+
+    let marketplace_id = {
+        let trimmed = body.marketplace_id.trim();
+        if trimmed.is_empty() {
+            "openagents".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+
+    let mut candidates: Vec<NormalizedCandidateQuoteV1> = Vec::with_capacity(body.candidates.len());
+    for candidate in &body.candidates {
+        if candidate.marketplace_id.trim().is_empty() {
+            return Err(ApiError::InvalidRequest(
+                "candidate.marketplace_id must not be empty".to_string(),
+            ));
+        }
+        if candidate.provider_id.trim().is_empty() {
+            return Err(ApiError::InvalidRequest(
+                "candidate.provider_id must not be empty".to_string(),
+            ));
+        }
+        if candidate.total_price_msats == 0 {
+            return Err(ApiError::InvalidRequest(
+                "candidate.total_price_msats must be greater than zero".to_string(),
+            ));
+        }
+        let constraints = match candidate.constraints.clone() {
+            serde_json::Value::Null => serde_json::json!({}),
+            serde_json::Value::Object(_) => candidate.constraints.clone(),
+            _ => {
+                return Err(ApiError::InvalidRequest(
+                    "candidate.constraints must be an object".to_string(),
+                ));
+            }
+        };
+
+        candidates.push(NormalizedCandidateQuoteV1 {
+            marketplace_id: candidate.marketplace_id.trim().to_string(),
+            provider_id: candidate.provider_id.trim().to_string(),
+            provider_worker_id: candidate
+                .provider_worker_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            total_price_msats: candidate.total_price_msats,
+            latency_ms: candidate.latency_ms.filter(|value| *value > 0),
+            reliability_bps: candidate.reliability_bps.min(10_000),
+            constraints,
+            quote_id: candidate
+                .quote_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            quote_sha256: candidate
+                .quote_sha256
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        });
+    }
+
+    candidates.sort_by(|left, right| match policy.as_str() {
+        "reliability_first_v1" => {
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+            left_gap
+                .cmp(&right_gap)
+                .then_with(|| left.total_price_msats.cmp(&right.total_price_msats))
+                .then_with(|| {
+                    left.latency_ms
+                        .unwrap_or(u64::MAX)
+                        .cmp(&right.latency_ms.unwrap_or(u64::MAX))
+                })
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
+        "balanced_v1" => {
+            let left_latency = left
+                .latency_ms
+                .unwrap_or(ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS);
+            let right_latency = right
+                .latency_ms
+                .unwrap_or(ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS);
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+            let left_latency_penalty =
+                left_latency.saturating_mul(ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS);
+            let right_latency_penalty =
+                right_latency.saturating_mul(ROUTER_POLICY_BALANCED_LATENCY_PENALTY_MSATS_PER_MS);
+            let left_rel_penalty = left_gap
+                .saturating_div(100)
+                .saturating_mul(ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS);
+            let right_rel_penalty = right_gap
+                .saturating_div(100)
+                .saturating_mul(ROUTER_POLICY_BALANCED_RELIABILITY_PENALTY_MSATS_PER_100_BPS);
+            let left_score = left
+                .total_price_msats
+                .saturating_add(left_latency_penalty)
+                .saturating_add(left_rel_penalty);
+            let right_score = right
+                .total_price_msats
+                .saturating_add(right_latency_penalty)
+                .saturating_add(right_rel_penalty);
+
+            left_score
+                .cmp(&right_score)
+                .then_with(|| left.total_price_msats.cmp(&right.total_price_msats))
+                .then_with(|| left_latency.cmp(&right_latency))
+                .then_with(|| left_gap.cmp(&right_gap))
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
+        _ => {
+            let left_gap = 10_000u32.saturating_sub(left.reliability_bps) as u64;
+            let right_gap = 10_000u32.saturating_sub(right.reliability_bps) as u64;
+            left.total_price_msats
+                .cmp(&right.total_price_msats)
+                .then_with(|| {
+                    left.latency_ms
+                        .unwrap_or(u64::MAX)
+                        .cmp(&right.latency_ms.unwrap_or(u64::MAX))
+                })
+                .then_with(|| left_gap.cmp(&right_gap))
+                .then_with(|| left.marketplace_id.cmp(&right.marketplace_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        }
+    });
+
+    let selected = candidates
+        .first()
+        .cloned()
+        .ok_or_else(|| ApiError::InvalidRequest("candidates must not be empty".to_string()))?;
+
+    let min_price = candidates
+        .iter()
+        .map(|candidate| candidate.total_price_msats)
+        .min()
+        .unwrap_or(selected.total_price_msats);
+    let max_price = candidates
+        .iter()
+        .map(|candidate| candidate.total_price_msats)
+        .max()
+        .unwrap_or(selected.total_price_msats);
+    let price_span = max_price.saturating_sub(min_price);
+    let price_position = if price_span == 0 {
+        1.0
+    } else {
+        1.0 - ((selected.total_price_msats.saturating_sub(min_price)) as f64 / price_span as f64)
+    }
+    .clamp(0.0, 1.0);
+
+    let reliability_score = (selected.reliability_bps as f64 / 10_000.0).clamp(0.0, 1.0);
+    let latency_score = {
+        let latency = selected
+            .latency_ms
+            .unwrap_or(ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS) as f64;
+        let normalized =
+            1.0 - (latency / (ROUTER_POLICY_BALANCED_DEFAULT_LATENCY_MS.saturating_mul(4) as f64));
+        normalized.clamp(0.0, 1.0)
+    };
+    let breadth_score = ((candidates.len() as f64) / 8.0).clamp(0.15, 1.0);
+    let confidence =
+        ((reliability_score * 0.60) + (price_position * 0.20) + (latency_score * 0.20))
+            .clamp(0.0, 1.0);
+    let liquidity_score = ((reliability_score * 0.60) + (breadth_score * 0.40)).clamp(0.0, 1.0);
+
+    let factors = HydraRoutingDecisionFactorsV1 {
+        expected_fee_msats: selected.total_price_msats.saturating_div(50).max(1),
+        confidence,
+        liquidity_score,
+        policy_notes: vec![
+            format!("policy:{policy}"),
+            format!("candidate_count:{}", candidates.len()),
+            format!("selected_reliability_bps:{}", selected.reliability_bps),
+        ],
+    };
+
+    #[derive(Serialize)]
+    struct DecisionHashInput<'a> {
+        schema: &'a str,
+        policy: &'a str,
+        run_id: &'a str,
+        marketplace_id: &'a str,
+        capability: &'a str,
+        objective_hash: &'a Option<String>,
+        selected: &'a NormalizedCandidateQuoteV1,
+        candidates: &'a [NormalizedCandidateQuoteV1],
+        factors: &'a HydraRoutingDecisionFactorsV1,
+        decided_at_unix: u64,
+    }
+
+    let decision_hash_input = DecisionHashInput {
+        schema: ROUTING_SCORE_RESPONSE_SCHEMA_V1,
+        policy: policy.as_str(),
+        run_id: run_id_string.as_str(),
+        marketplace_id: marketplace_id.as_str(),
+        capability,
+        objective_hash: &objective_hash,
+        selected: &selected,
+        candidates: &candidates,
+        factors: &factors,
+        decided_at_unix,
+    };
+    let decision_sha256 = protocol::hash::canonical_hash(&decision_hash_input)
+        .map_err(|error| ApiError::Internal(format!("decision hash failed: {error}")))?;
+
+    let selected_wire = HydraRoutingCandidateQuoteV1 {
+        marketplace_id: selected.marketplace_id.clone(),
+        provider_id: selected.provider_id.clone(),
+        provider_worker_id: selected.provider_worker_id.clone(),
+        total_price_msats: selected.total_price_msats,
+        latency_ms: selected.latency_ms,
+        reliability_bps: selected.reliability_bps,
+        constraints: selected.constraints.clone(),
+        quote_id: selected.quote_id.clone(),
+        quote_sha256: selected.quote_sha256.clone(),
+    };
+    let candidates_wire: Vec<HydraRoutingCandidateQuoteV1> = candidates
+        .iter()
+        .map(|candidate| HydraRoutingCandidateQuoteV1 {
+            marketplace_id: candidate.marketplace_id.clone(),
+            provider_id: candidate.provider_id.clone(),
+            provider_worker_id: candidate.provider_worker_id.clone(),
+            total_price_msats: candidate.total_price_msats,
+            latency_ms: candidate.latency_ms,
+            reliability_bps: candidate.reliability_bps,
+            constraints: candidate.constraints.clone(),
+            quote_id: candidate.quote_id.clone(),
+            quote_sha256: candidate.quote_sha256.clone(),
+        })
+        .collect();
+
+    #[derive(Serialize)]
+    struct ReceiptHashInput<'a> {
+        schema: &'a str,
+        decision_sha256: &'a str,
+        run_id: &'a str,
+        marketplace_id: &'a str,
+        capability: &'a str,
+        policy: &'a str,
+        objective_hash: &'a Option<String>,
+        decided_at_unix: u64,
+        selected: &'a HydraRoutingCandidateQuoteV1,
+        factors: &'a HydraRoutingDecisionFactorsV1,
+    }
+
+    let receipt_sha256 = protocol::hash::canonical_hash(&ReceiptHashInput {
+        schema: HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1,
+        decision_sha256: decision_sha256.as_str(),
+        run_id: run_id_string.as_str(),
+        marketplace_id: marketplace_id.as_str(),
+        capability,
+        policy: policy.as_str(),
+        objective_hash: &objective_hash,
+        decided_at_unix,
+        selected: &selected_wire,
+        factors: &factors,
+    })
+    .map_err(|error| ApiError::Internal(format!("receipt hash failed: {error}")))?;
+    let receipt_id = format!("hydrart_{}", &receipt_sha256[..16]);
+    let receipt = serde_json::json!({
+        "schema": HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1,
+        "receipt_id": receipt_id.clone(),
+        "decision_sha256": decision_sha256.clone(),
+        "run_id": run_id_string.clone(),
+        "marketplace_id": marketplace_id.clone(),
+        "capability": capability.to_string(),
+        "policy": policy.clone(),
+        "objective_hash": objective_hash.clone(),
+        "decided_at_unix": decided_at_unix,
+        "selected": selected_wire.clone(),
+        "factors": factors.clone(),
+        "canonical_json_sha256": receipt_sha256.clone(),
+    });
+
+    let receipt_linkage = HydraRoutingDecisionReceiptLinkageV1 {
+        receipt_schema: HYDRA_ROUTING_DECISION_RECEIPT_SCHEMA_V1.to_string(),
+        receipt_id,
+        canonical_json_sha256: receipt_sha256,
+    };
+
+    let nostr_event = match state.config.bridge_nostr_secret_key {
+        Some(secret_key) => {
+            let message_id = format!("hydra_decision_{}", &decision_sha256[..16]);
+            let order_id = format!("hydra_order_{}", &decision_sha256[..16]);
+            let payload = CommerceMessageV1 {
+                message_id,
+                kind: CommerceMessageKindV1::Accept,
+                marketplace_id: marketplace_id.clone(),
+                actor_id: "hydra.runtime".to_string(),
+                created_at_unix: decided_at_unix,
+                rfq_id: None,
+                offer_id: None,
+                quote_id: selected.quote_id.clone(),
+                order_id: Some(order_id),
+                receipt_id: Some(receipt_linkage.receipt_id.clone()),
+                objective_hash: objective_hash.clone(),
+                run_id: Some(run_id_string.clone()),
+                body: serde_json::json!({
+                    "schema": "openagents.hydra.routing_decision_payload.v1",
+                    "decision_sha256": decision_sha256.clone(),
+                    "policy": policy.clone(),
+                    "marketplace_id": marketplace_id.clone(),
+                    "capability": capability.to_string(),
+                    "objective_hash": objective_hash.clone(),
+                    "selected": selected_wire.clone(),
+                    "factors": factors.clone(),
+                    "receipt": receipt_linkage.clone(),
+                }),
+            };
+            let event = build_commerce_message_event(&secret_key, Some(decided_at_unix), &payload)
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
+            Some(
+                serde_json::to_value(&event)
+                    .map_err(|error| ApiError::Internal(error.to_string()))?,
+            )
+        }
+        None => None,
+    };
+
+    state
+        .orchestrator
+        .append_run_event(
+            run_id,
+            AppendRunEventRequest {
+                event_type: "receipt".to_string(),
+                payload: serde_json::json!({
+                    "receipt_type": "HydraRoutingDecision",
+                    "payload": receipt
+                }),
+                idempotency_key: Some(idempotency_key.to_string()),
+                expected_previous_seq: None,
+            },
+        )
+        .await
+        .map_err(ApiError::from_orchestration)?;
+
+    verify_contract_critical_run_receipt(&state, run_id).await?;
+
+    Ok(Json(HydraRoutingScoreResponseV1 {
+        schema: ROUTING_SCORE_RESPONSE_SCHEMA_V1.to_string(),
+        decision_sha256,
+        policy,
+        run_id: run_id_string,
+        marketplace_id,
+        capability: capability.to_string(),
+        objective_hash,
+        selected: selected_wire,
+        candidates: candidates_wire,
+        factors,
+        receipt: Some(receipt_linkage),
+        nostr_event: nostr_event.unwrap_or_else(|| serde_json::json!({})),
+        decided_at_unix,
     }))
 }
 
