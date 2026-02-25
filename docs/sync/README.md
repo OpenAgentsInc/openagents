@@ -5,6 +5,7 @@ Current canonical Spacetime sync documentation and runbooks:
 - `ROADMAP.md`: active sync sequencing and closure checklist
 - `RUNTIME_CODEX_CUTOVER_RUNBOOK.md`: rollout/cutover/rollback procedure
 - `SPACETIME_ENVIRONMENT_MATRIX.md`: environment and ownership matrix
+- `SPACETIME_GCLOUD_DEPLOYMENT_CONSIDERATIONS.md`: GCP deployment state, gaps, and readiness checklist
 - `SPACETIME_TOKEN_SCOPE_AND_ROTATION.md`: control-issued claim scope and refresh policy
 - `SPACETIME_RUNTIME_PUBLISH_MIRROR.md`: runtime mirror and stream mapping rules
 - `SPACETIME_PARITY_HARNESS.md`: active replay/resume parity harness
