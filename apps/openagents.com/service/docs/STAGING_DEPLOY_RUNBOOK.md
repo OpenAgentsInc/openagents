@@ -24,7 +24,7 @@ Minimum required configuration for staging:
 1. Static host:
    - `OA_CONTROL_STATIC_DIR=/app/service/static`
 2. Desktop download redirect:
-   - `OA_DESKTOP_DOWNLOAD_URL=https://github.com/openagents/openagents/releases/latest` (or release bucket URL)
+   - `OA_DESKTOP_DOWNLOAD_URL=https://github.com/OpenAgentsInc/openagents/releases/latest` (or release bucket URL)
 3. Route split:
    - `OA_ROUTE_SPLIT_MODE=rust` (typical for staging)
 4. Auth provider mode:

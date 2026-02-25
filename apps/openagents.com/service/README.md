@@ -58,7 +58,7 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_CONTROL_LOG_FILTER` (default: `info`)
 - `OA_CONTROL_LOG_FORMAT` (`json|pretty`, default: `json`)
 - `OA_CONTROL_STATIC_DIR` (default: `apps/openagents.com/service/static`)
-- `OA_DESKTOP_DOWNLOAD_URL` (default: `https://github.com/openagents/openagents/releases/latest`)
+- `OA_DESKTOP_DOWNLOAD_URL` (default: `https://github.com/OpenAgentsInc/openagents/releases/latest`)
 - `OA_AUTH_PROVIDER_MODE` (`workos|mock`, default: `workos`; `mock` is local/testing only)
 - `WORKOS_CLIENT_ID` (required in `workos` mode)
 - `WORKOS_API_KEY` (required in `workos` mode)
