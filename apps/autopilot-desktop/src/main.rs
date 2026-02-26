@@ -100,6 +100,7 @@ struct RenderState {
     next_z_index: i32,
     pane_drag_mode: Option<PaneDragMode>,
     pane_resizer: ResizablePane,
+    hotbar_flash_was_active: bool,
 }
 
 impl ApplicationHandler for App {
@@ -251,6 +252,9 @@ impl ApplicationHandler for App {
                 if event.state != ElementState::Pressed {
                     return;
                 }
+                if event.repeat {
+                    return;
+                }
 
                 match event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => {
@@ -263,8 +267,7 @@ impl ApplicationHandler for App {
                         if let Some(slot) = hotbar_slot_for_key(key)
                             && slot == HOTBAR_SLOT_NEW_CHAT
                         {
-                            state.hotbar.flash_slot(slot);
-                            create_empty_pane(state);
+                            activate_hotbar_slot(state, slot);
                             state.window.request_redraw();
                         }
                     }
@@ -275,9 +278,11 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                     return;
                 }
-                if state.hotbar.is_flashing() {
+                let flashing_now = state.hotbar.is_flashing();
+                if flashing_now || state.hotbar_flash_was_active {
                     state.window.request_redraw();
                 }
+                state.hotbar_flash_was_active = flashing_now;
             }
             _ => {}
         }
@@ -375,6 +380,7 @@ fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             next_z_index: 1,
             pane_drag_mode: None,
             pane_resizer: ResizablePane::new().min_size(PANE_MIN_WIDTH, PANE_MIN_HEIGHT),
+            hotbar_flash_was_active: false,
         };
         create_empty_pane(&mut state);
         Ok(state)
@@ -506,12 +512,17 @@ fn process_hotbar_clicks(state: &mut RenderState) -> bool {
     let mut changed = false;
     for slot in state.hotbar.take_clicked_slots() {
         if slot == HOTBAR_SLOT_NEW_CHAT {
-            state.hotbar.flash_slot(slot);
-            create_empty_pane(state);
+            activate_hotbar_slot(state, slot);
             changed = true;
         }
     }
     changed
+}
+
+fn activate_hotbar_slot(state: &mut RenderState, slot: u8) {
+    state.hotbar.flash_slot(slot);
+    create_empty_pane(state);
+    state.hotbar_flash_was_active = true;
 }
 
 fn hotbar_display_order() -> [u8; 1] {
