@@ -60,105 +60,59 @@ pub mod theme;
 pub mod tools;
 pub mod window;
 
-pub use accessibility::{
-    AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode, Announcement,
-    LiveRegion, Role, State as AccessibleState,
-};
-pub use action::{
-    Action, ActionId, ActionListeners, ActionRegistry, AnyAction, DispatchPhase, DispatchResult,
-    KeyBinding, Keystroke, KeystrokeMatch, KeystrokeParseError, NoAction, PendingAction,
-};
-pub use animation::{
-    Animatable, Animation, AnimationController, AnimationState, AnimatorId, AnimatorManagerKind,
-    AnimatorMessage, AnimatorNode, AnimatorSettings, AnimatorSettingsUpdate, AnimatorState,
-    AnimatorTiming, AnimatorTimingUpdate, EaseAmong, EaseSteps, EaseStepsDirection, Easing,
-    Keyframe, KeyframeAnimation, SpringAnimation, Transition, TransitionAnimation, draw,
-    ease_among, ease_steps, fade, flicker, transition,
-};
-pub use app::{AnyEntity, AnyWeakEntity, App, Context, Entity, EntityId, Subscription, WeakEntity};
-pub use r#async::{BackgroundExecutor, ForegroundExecutor, Task};
-#[cfg(feature = "audio")]
-pub use bleeps::{
-    Bleep, BleepCategory, BleepGeneralProps, BleepMasterProps, BleepProps, BleepSource,
-    BleepUpdate, BleepsManager, BleepsManagerProps, BleepsManagerUpdate,
-};
-pub use clipboard::copy_to_clipboard;
+pub mod prelude {
+    pub mod core {
+        pub use crate::animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
+        pub use crate::color::Hsla;
+        pub use crate::components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
+        pub use crate::components::{
+            Button, ButtonVariant, Component, ComponentId, Div, EventContext, EventResult,
+            PaintContext, Text, TextDecipher, TextEffectTiming, TextInput, TextSequence,
+            VirtualList,
+        };
+        pub use crate::effects::Illuminator;
+        pub use crate::geometry::{Bounds, Point, Size};
+        pub use crate::input::{InputEvent, Key, Modifiers, MouseButton, NamedKey};
+        pub use crate::layout_helpers::{layout_header_nav_content, stack_bounds};
+        pub use crate::markdown::{MarkdownRenderer, StreamingMarkdown};
+        pub use crate::scene::{Quad, Scene, SvgQuad};
+        pub use crate::text::{FontStyle, TextSystem};
+        pub use crate::text_system::{
+            Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper,
+            ShapedGlyph, ShapedRun, TruncateFrom,
+        };
+        pub use crate::theme;
+    }
+
+    #[cfg(feature = "desktop")]
+    pub mod desktop {
+        pub use super::core::*;
+        pub use crate::platform::desktop::DesktopPlatform;
+        pub use crate::renderer::Renderer;
+    }
+}
+
+pub use animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
+pub use action::{Action, AnyAction};
 pub use color::Hsla;
-pub use components::hud::{
-    ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, Tooltip,
-    TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,
-};
+pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
 pub use components::{
-    AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption,
-    EventContext, EventResult, MarkdownView, Modal, PaintContext, ScrollView, Tab, Tabs, Text,
-    TextDecipher, TextDurationOptions, TextEffectAnimator, TextEffectFrame, TextEffectTiming,
-    TextInput, TextSequence, VirtualList, animation_text_duration,
+    Button, ButtonVariant, Component, ComponentId, Div, EventContext, EventResult, PaintContext,
+    Text, TextDecipher, TextEffectTiming, TextInput, TextSequence, VirtualList,
 };
-pub use curve::{CurvePrimitive, LineSegment};
-pub use effects::{Illuminator, IlluminatorSvg};
-pub use element::{
-    AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, FlexChild,
-    FlexElement, GridElement, IntoElement, LayoutContext, PrepaintContext, Render, RenderOnce,
-    StackElement,
-};
+pub use effects::Illuminator;
 pub use focus::{FocusChain, FocusHandle, FocusId};
-pub use geometry::{Bounds, Edges, Point, Size};
-pub use hit_test::{Hit, HitTestEntry, HitTestIndex, NodeId};
-pub use input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
-pub use interactive::{Interactive, WithAction, WithContext};
-pub use keymap::{KeyContext, Keymap, default_keymap};
-pub use layout::{
-    LayoutEngine, LayoutId, LayoutStyle, auto, length, length_auto, pct, px, relative, zero,
-};
-pub use layout_helpers::{
-    HeaderNavContentLayout, PanelLayout, RowItem, grid_bounds, layout_header_nav_content,
-    layout_panel, offset_bounds, row_bounds, stack_bounds,
-};
-pub use markdown::{
-    CodeBlockLayout, FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownLayout,
-    MarkdownParser, MarkdownRenderer, SUPPORTED_LANGUAGES, StreamingConfig, StreamingMarkdown,
-    StyledLine, StyledSpan, SyntaxHighlighter, TextStyle, render_markdown,
-};
+pub use geometry::{Bounds, Point, Size};
+pub use input::{Cursor, InputEvent, Key, Modifiers, MouseButton, NamedKey};
+pub use layout_helpers::{layout_header_nav_content, stack_bounds};
+pub use markdown::{MarkdownRenderer, StreamingMarkdown};
 pub use platform::Platform;
-pub use scene::{
-    GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun,
-};
-pub use scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
-pub use styled::{Style, StyleRefinement, Styled, button, div, text};
-pub use svg::{SvgRasterized, SvgRenderer};
+pub use scene::{Quad, Scene, SvgQuad};
 pub use text::{FontStyle, TextSystem};
 pub use text_system::{
-    BackgroundSegment,
-    Boundary,
-    CacheStats,
-    DecorationRun,
-    DecorationSegment,
-    FontId,
-    FontRun,
-    GlyphId,
-    GlyphPaintEntry,
-    LineFragment,
-    // Core layout types
-    LineLayout,
-    // Cache
-    LineLayoutCache,
-    LineLayoutIndex,
-    LinePaintInfo,
-    // Line wrapper
-    LineWrapper,
-    ShapedGlyph,
-    // Paintable lines
-    ShapedLine,
-    ShapedRun,
-    StrikethroughStyle,
-    TextAlign,
-    TruncateFrom,
-    UnderlineStyle,
-    WrapBoundary,
-    WrappedLine,
-    WrappedLineLayout,
+    Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,
+    ShapedRun, TruncateFrom,
 };
-pub use window::{DispatchTree, InvalidationFlags, Invalidator, Window, WindowHandle};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};

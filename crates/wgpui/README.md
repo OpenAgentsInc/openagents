@@ -26,10 +26,29 @@ with optional web/ios support kept behind feature gates.
 ## Module Map
 
 - Core rendering: `src/scene.rs`, `src/renderer.rs`, `src/text.rs`, `src/text_system/`
-- Platform: `src/platform.rs` (to be decomposed per audit backlog)
+- Platform: `src/platform/`
 - Components: `src/components/`
 - Input/action: `src/input.rs`, `src/action/`, `src/keymap/`, `src/interactive.rs`
 - Optional framework lane: `src/app/`, `src/element/`, `src/window/`
+
+## API Surface and Preludes
+
+`wgpui` now exposes explicit prelude lanes:
+
+- `wgpui::prelude::core`
+- `wgpui::prelude::desktop` (`desktop` feature only)
+
+Crate-root exports are intentionally narrower than before. For advanced or niche
+surfaces, use explicit module paths (for example `wgpui::components::...`,
+`wgpui::layout::...`, `wgpui::text_system::...`) instead of assuming broad
+root re-exports.
+
+Migration guidance:
+
+1. Prefer importing shared app primitives from `wgpui::prelude::core`.
+2. Use `wgpui::prelude::desktop` in desktop apps where `Renderer` and
+   `DesktopPlatform` are primary.
+3. For anything not in the prelude, import directly from its module path.
 
 ## Documentation
 
