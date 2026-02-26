@@ -9,12 +9,18 @@ use wgpui::{Bounds, Component, Easing, Hsla, PaintContext, Quad, Scene, Size, Te
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
 
-use crate::app_state::{RenderState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use crate::app_state::{PaneKind, RenderState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController};
+use crate::spark_wallet::SparkWalletCommand;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
+const STARTUP_PANE_SET: [PaneKind; 3] = [
+    PaneKind::AutopilotChat,
+    PaneKind::GoOnline,
+    PaneKind::SparkWallet,
+];
 
 pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
     let window_attrs = Window::default_attributes()
@@ -153,9 +159,25 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
-        PaneController::create_empty(&mut state);
+        open_startup_panes(&mut state);
         Ok(state)
     })
+}
+
+fn open_startup_panes(state: &mut RenderState) {
+    for pane_kind in STARTUP_PANE_SET {
+        match pane_kind {
+            PaneKind::AutopilotChat => PaneController::create_autopilot_chat(state),
+            PaneKind::GoOnline => PaneController::create_go_online(state),
+            PaneKind::SparkWallet => {
+                PaneController::create_spark_wallet(state);
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                    state.spark_wallet.last_error = Some(error);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub fn render_frame(state: &mut RenderState) -> Result<()> {
@@ -338,6 +360,7 @@ fn command_registry() -> Vec<Command> {
 #[cfg(test)]
 mod tests {
     use super::command_registry;
+    use crate::app_state::PaneKind;
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
@@ -396,5 +419,14 @@ mod tests {
                 command.id == "pane.job_history" && command.label == "Job History"
             })
         );
+    }
+
+    #[test]
+    fn startup_pane_set_matches_mvp_core_surfaces() {
+        let startup = super::STARTUP_PANE_SET;
+        assert!(startup.contains(&PaneKind::AutopilotChat));
+        assert!(startup.contains(&PaneKind::GoOnline));
+        assert!(startup.contains(&PaneKind::SparkWallet));
+        assert!(!startup.contains(&PaneKind::Empty));
     }
 }
