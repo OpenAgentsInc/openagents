@@ -9,6 +9,7 @@ The MVP centers on one irreducible outcome: a user can go online, receive paid N
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast WGPUI-native desktop experience.
 
 The product authority is [docs/MVP.md](docs/MVP.md).
+Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
 ## Current Repository Scope
 
@@ -22,5 +23,6 @@ The product authority is [docs/MVP.md](docs/MVP.md).
 - Sync and state continuity must remain deterministic and replay-safe.
 - Wallet and payout state must be explicit and truthful in UI and behavior.
 - Shared dependency hygiene is guarded by `scripts/lint/workspace-dependency-drift-check.sh`.
+- Architecture boundary hygiene is guarded by `scripts/lint/ownership-boundary-check.sh`.
 
 For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).

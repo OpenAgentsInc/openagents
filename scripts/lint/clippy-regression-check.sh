@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASELINE_FILE="${1:-$ROOT_DIR/scripts/lint/clippy-baseline.toml}"
 
+if ! "$ROOT_DIR/scripts/lint/ownership-boundary-check.sh"; then
+    printf 'Ownership boundary gate failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/workspace-dependency-drift-check.sh"; then
     printf 'Workspace dependency drift gate failed.\n' >&2
     exit 1
