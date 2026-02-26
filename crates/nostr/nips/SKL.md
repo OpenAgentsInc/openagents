@@ -1,14 +1,8 @@
-# NIP-SKL — Agent Skill Identity, Manifest, and Trust Registry
+# NIP-SKL
 
 `draft` `optional`
 
-`author: OV1-Kenobi (SatNam) & Christopher David (OpenAgents)`
-
-`created-at: 2026-02-19`
-
-`last-updated: 2026-02-23`
-
----
+## Agent Skill Identity, Manifest, and Trust Registry
 
 ## Abstract
 
