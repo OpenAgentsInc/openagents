@@ -36,6 +36,11 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Shows wallet connectivity, balances, addresses, invoice creation, payment sending, and recent payment status.
   - Explicit pane state machine: `loading` (awaiting first refresh), `ready`, `error`.
   - Actions: refresh wallet, generate receive addresses, copy Spark address, create invoice, send payment.
+- `Create Lightning Invoice`
+  - Dedicated pane for creating receive invoices separate from pay flow.
+  - Inputs: invoice sats (required), description (optional), expiry seconds (optional).
+  - Outputs: generated invoice text, copy action, and QR payload field.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Pay Lightning Invoice`
   - Dedicated payment pane for paying a Lightning invoice/payment request.
   - Inputs: payment request (required), send sats (optional).
@@ -58,10 +63,11 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Job History` -> opens `Job History`.
   - `Identity Keys` -> opens `Nostr Keys (NIP-06)`.
   - `Spark Wallet` -> opens `Spark Lightning Wallet`.
+  - `Create Lightning Invoice` -> opens `Create Lightning Invoice`.
   - `Pay Lightning Invoice` -> opens `Pay Lightning Invoice`.
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

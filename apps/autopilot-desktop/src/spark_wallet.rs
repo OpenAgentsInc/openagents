@@ -21,6 +21,8 @@ pub enum SparkWalletCommand {
     GenerateBitcoinAddress,
     CreateInvoice {
         amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u64>,
     },
     SendPayment {
         payment_request: String,
@@ -180,8 +182,12 @@ impl SparkPaneState {
             SparkWalletCommand::Refresh => self.refresh(runtime),
             SparkWalletCommand::GenerateSparkAddress => self.request_spark_address(runtime),
             SparkWalletCommand::GenerateBitcoinAddress => self.request_bitcoin_address(runtime),
-            SparkWalletCommand::CreateInvoice { amount_sats } => {
-                let _ = self.create_invoice(runtime, amount_sats);
+            SparkWalletCommand::CreateInvoice {
+                amount_sats,
+                description,
+                expiry_seconds,
+            } => {
+                let _ = self.create_invoice(runtime, amount_sats, description, expiry_seconds);
             }
             SparkWalletCommand::SendPayment {
                 payment_request,
@@ -287,7 +293,13 @@ impl SparkPaneState {
         }
     }
 
-    fn create_invoice(&mut self, runtime: &Runtime, amount_sats: u64) -> Option<String> {
+    fn create_invoice(
+        &mut self,
+        runtime: &Runtime,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u64>,
+    ) -> Option<String> {
         self.last_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
@@ -303,11 +315,7 @@ impl SparkPaneState {
             runtime,
             "Create Spark invoice",
             SPARK_ACTION_TIMEOUT,
-            wallet.create_invoice(
-                amount_sats,
-                Some("OpenAgents Spark receive".to_string()),
-                Some(3600),
-            ),
+            wallet.create_invoice(amount_sats, description, expiry_seconds),
         ) {
             Ok(value) => value,
             Err(error) => {
@@ -607,7 +615,11 @@ mod tests {
 
             state.apply_command(
                 &runtime,
-                SparkWalletCommand::CreateInvoice { amount_sats: 1000 },
+                SparkWalletCommand::CreateInvoice {
+                    amount_sats: 1000,
+                    description: None,
+                    expiry_seconds: Some(3600),
+                },
             );
 
             let error = state.last_error.expect("invoice should report error");

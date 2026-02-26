@@ -1,8 +1,8 @@
 use crate::app_state::{
     ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
-    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
+    CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -42,6 +42,7 @@ impl PaneRenderer {
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
+        create_invoice_inputs: &mut CreateInvoicePaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
@@ -121,6 +122,14 @@ impl PaneRenderer {
                 }
                 PaneKind::SparkWallet => {
                     paint_spark_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+                }
+                PaneKind::SparkCreateInvoice => {
+                    paint_create_invoice_pane(
+                        content_bounds,
+                        spark_wallet,
+                        create_invoice_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::SparkPayInvoice => {
                     paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
@@ -1359,6 +1368,140 @@ fn spark_wallet_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
     PaneLoadState::Ready
 }
 
+fn paint_create_invoice_pane(
+    content_bounds: Bounds,
+    spark_wallet: &SparkPaneState,
+    create_invoice_inputs: &mut CreateInvoicePaneInputs,
+    paint: &mut PaintContext,
+) {
+    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let state = create_invoice_view_state(spark_wallet);
+    let state_color = match state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+
+    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
+    paint_action_button(layout.copy_invoice_button, "Copy invoice", paint);
+
+    create_invoice_inputs
+        .amount_sats
+        .set_max_width(layout.amount_input.size.width);
+    create_invoice_inputs
+        .description
+        .set_max_width(layout.description_input.size.width);
+    create_invoice_inputs
+        .expiry_seconds
+        .set_max_width(layout.expiry_input.size.width);
+
+    create_invoice_inputs
+        .amount_sats
+        .paint(layout.amount_input, paint);
+    create_invoice_inputs
+        .description
+        .paint(layout.description_input, paint);
+    create_invoice_inputs
+        .expiry_seconds
+        .paint(layout.expiry_input, paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Invoice sats",
+        Point::new(layout.amount_input.origin.x, layout.amount_input.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Expiry (seconds)",
+        Point::new(layout.expiry_input.origin.x, layout.expiry_input.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Description (optional)",
+        Point::new(
+            layout.description_input.origin.x,
+            layout.description_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = layout.details_origin.y;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+    if state == PaneLoadState::Loading {
+        paint.scene.draw_text(paint.text.layout(
+            "No invoice generated yet. Submit amount/description/expiry to create one.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+
+    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Generated invoice",
+            invoice,
+        );
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "QR payload",
+            invoice,
+        );
+    }
+
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last action",
+            last_action,
+        );
+    }
+
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Error:",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(error, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(content_bounds.origin.x + 12.0, y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            y += 16.0;
+        }
+    }
+}
+
+fn create_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
+    if spark_wallet.last_error.is_some() {
+        return PaneLoadState::Error;
+    }
+    if spark_wallet.last_invoice.is_none() {
+        return PaneLoadState::Loading;
+    }
+    PaneLoadState::Ready
+}
+
 fn paint_pay_invoice_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
@@ -1619,7 +1762,10 @@ fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state};
+    use super::{
+        create_invoice_view_state, pay_invoice_view_state, payment_terminal_status,
+        spark_wallet_view_state,
+    };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
 
@@ -1656,5 +1802,17 @@ mod tests {
         state.last_error = Some("send failed".to_string());
         assert_eq!(pay_invoice_view_state(&state), PaneLoadState::Error);
         assert_eq!(payment_terminal_status(&state), "failed");
+    }
+
+    #[test]
+    fn create_invoice_view_state_transitions_loading_to_ready() {
+        let mut state = SparkPaneState::default();
+        assert_eq!(create_invoice_view_state(&state), PaneLoadState::Loading);
+
+        state.last_invoice = Some("lnbc1example".to_string());
+        assert_eq!(create_invoice_view_state(&state), PaneLoadState::Ready);
+
+        state.last_error = Some("invoice failed".to_string());
+        assert_eq!(create_invoice_view_state(&state), PaneLoadState::Error);
     }
 }

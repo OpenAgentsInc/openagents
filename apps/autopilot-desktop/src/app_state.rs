@@ -41,6 +41,7 @@ pub enum PaneKind {
     JobHistory,
     NostrIdentity,
     SparkWallet,
+    SparkCreateInvoice,
     SparkPayInvoice,
 }
 
@@ -98,6 +99,22 @@ impl Default for PayInvoicePaneInputs {
                 .placeholder("Lightning invoice / payment request")
                 .mono(true),
             amount_sats: TextInput::new().placeholder("Send sats (optional)"),
+        }
+    }
+}
+
+pub struct CreateInvoicePaneInputs {
+    pub amount_sats: TextInput,
+    pub description: TextInput,
+    pub expiry_seconds: TextInput,
+}
+
+impl Default for CreateInvoicePaneInputs {
+    fn default() -> Self {
+        Self {
+            amount_sats: TextInput::new().value("1000").placeholder("Invoice sats"),
+            description: TextInput::new().placeholder("Description (optional)"),
+            expiry_seconds: TextInput::new().value("3600").placeholder("Expiry seconds"),
         }
     }
 }
@@ -1252,6 +1269,7 @@ pub struct RenderState {
     pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
+    pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,

@@ -6,7 +6,8 @@ use crate::app_state::{DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
 use crate::spark_pane::{
-    self, PAY_INVOICE_PANE_HEIGHT, PAY_INVOICE_PANE_WIDTH, PayInvoicePaneAction, SPARK_PANE_HEIGHT,
+    self, CREATE_INVOICE_PANE_HEIGHT, CREATE_INVOICE_PANE_WIDTH, CreateInvoicePaneAction,
+    PAY_INVOICE_PANE_HEIGHT, PAY_INVOICE_PANE_WIDTH, PayInvoicePaneAction, SPARK_PANE_HEIGHT,
     SPARK_PANE_WIDTH, SparkPaneAction,
 };
 
@@ -174,6 +175,15 @@ impl PaneDescriptor {
         }
     }
 
+    pub const fn create_invoice() -> Self {
+        Self {
+            kind: PaneKind::SparkCreateInvoice,
+            width: CREATE_INVOICE_PANE_WIDTH,
+            height: CREATE_INVOICE_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
     pub const fn pay_invoice() -> Self {
         Self {
             kind: PaneKind::SparkPayInvoice,
@@ -270,6 +280,10 @@ impl PaneController {
 
     pub fn create_spark_wallet(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::spark_wallet());
+    }
+
+    pub fn create_create_invoice(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::create_invoice());
     }
 
     pub fn create_pay_invoice(state: &mut RenderState) {
@@ -569,6 +583,17 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 return CursorIcon::Pointer;
             }
             if spark_pane::hits_input(layout, point) {
+                return CursorIcon::Text;
+            }
+        }
+
+        if state.panes[pane_idx].kind == PaneKind::SparkCreateInvoice {
+            let content_bounds = pane_content_bounds(bounds);
+            let layout = spark_pane::create_invoice_layout(content_bounds);
+            if spark_pane::hit_create_invoice_action(layout, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if spark_pane::hits_create_invoice_input(layout, point) {
                 return CursorIcon::Text;
             }
         }
@@ -1004,6 +1029,26 @@ pub fn topmost_spark_action_hit(
     None
 }
 
+pub fn topmost_create_invoice_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, CreateInvoicePaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::SparkCreateInvoice {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let layout = spark_pane::create_invoice_layout(content_bounds);
+        if let Some(action) = spark_pane::hit_create_invoice_action(layout, point) {
+            return Some((pane.id, action));
+        }
+    }
+
+    None
+}
+
 pub fn topmost_pay_invoice_action_hit(
     state: &RenderState,
     point: Point,
@@ -1053,6 +1098,40 @@ pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -
         .spark_inputs
         .send_amount
         .event(event, layout.send_amount_input, &mut state.event_context)
+        .is_handled();
+
+    handled
+}
+
+pub fn dispatch_create_invoice_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_create_invoice = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::SparkCreateInvoice)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_create_invoice else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let mut handled = false;
+
+    handled |= state
+        .create_invoice_inputs
+        .amount_sats
+        .event(event, layout.amount_input, &mut state.event_context)
+        .is_handled();
+    handled |= state
+        .create_invoice_inputs
+        .description
+        .event(event, layout.description_input, &mut state.event_context)
+        .is_handled();
+    handled |= state
+        .create_invoice_inputs
+        .expiry_seconds
+        .event(event, layout.expiry_input, &mut state.event_context)
         .is_handled();
 
     handled
@@ -1166,6 +1245,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::JobHistory => "Job History".to_string(),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
+        PaneKind::SparkCreateInvoice => "Create Lightning Invoice".to_string(),
         PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
     }
 }

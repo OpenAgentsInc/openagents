@@ -123,6 +123,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
             pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
+            create_invoice_inputs: crate::app_state::CreateInvoicePaneInputs::default(),
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
@@ -184,6 +185,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
+            &mut state.create_invoice_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
@@ -284,6 +286,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.pay_invoice", "Pay Lightning Invoice")
             .description("Open dedicated pane for paying Lightning invoices")
             .category("Panes"),
+        Command::new("pane.create_invoice", "Create Lightning Invoice")
+            .description("Open dedicated pane for creating Lightning invoices")
+            .category("Panes"),
     ]
 }
 
@@ -314,6 +319,9 @@ mod tests {
         );
         assert!(commands.iter().any(|command| {
             command.id == "pane.pay_invoice" && command.label == "Pay Lightning Invoice"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.create_invoice" && command.label == "Create Lightning Invoice"
         }));
         assert!(
             commands.iter().any(|command| {
