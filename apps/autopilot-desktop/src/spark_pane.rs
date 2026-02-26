@@ -2,6 +2,8 @@ use wgpui::{Bounds, Point};
 
 pub const SPARK_PANE_WIDTH: f32 = 820.0;
 pub const SPARK_PANE_HEIGHT: f32 = 460.0;
+pub const PAY_INVOICE_PANE_WIDTH: f32 = 820.0;
+pub const PAY_INVOICE_PANE_HEIGHT: f32 = 240.0;
 
 const PAD: f32 = 12.0;
 const GAP: f32 = 8.0;
@@ -16,6 +18,11 @@ pub enum SparkPaneAction {
     SendPayment,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PayInvoicePaneAction {
+    SendPayment,
+}
+
 #[derive(Clone, Copy)]
 pub struct SparkPaneLayout {
     pub refresh_button: Bounds,
@@ -25,6 +32,14 @@ pub struct SparkPaneLayout {
     pub create_invoice_button: Bounds,
     pub send_request_input: Bounds,
     pub send_amount_input: Bounds,
+    pub send_payment_button: Bounds,
+    pub details_origin: Point,
+}
+
+#[derive(Clone, Copy)]
+pub struct PayInvoicePaneLayout {
+    pub payment_request_input: Bounds,
+    pub amount_input: Bounds,
     pub send_payment_button: Bounds,
     pub details_origin: Point,
 }
@@ -107,6 +122,47 @@ pub fn hit_action(layout: SparkPaneLayout, point: Point) -> Option<SparkPaneActi
     None
 }
 
+pub fn pay_invoice_layout(content_bounds: Bounds) -> PayInvoicePaneLayout {
+    let origin_x = content_bounds.origin.x + PAD;
+    let origin_y = content_bounds.origin.y + PAD;
+    let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+
+    let request_y = origin_y;
+    let payment_request_input = Bounds::new(origin_x, request_y, usable_width, CONTROL_HEIGHT);
+
+    let send_row_y = request_y + CONTROL_HEIGHT + 10.0;
+    let amount_width = (usable_width * 0.28).clamp(110.0, 180.0);
+    let amount_input = Bounds::new(origin_x, send_row_y, amount_width, CONTROL_HEIGHT);
+    let send_payment_button = Bounds::new(
+        amount_input.origin.x + amount_input.size.width + GAP,
+        send_row_y,
+        (usable_width - amount_width - GAP).max(120.0),
+        CONTROL_HEIGHT,
+    );
+    let details_origin = Point::new(origin_x, send_row_y + CONTROL_HEIGHT + 14.0);
+
+    PayInvoicePaneLayout {
+        payment_request_input,
+        amount_input,
+        send_payment_button,
+        details_origin,
+    }
+}
+
+pub fn hit_pay_invoice_action(
+    layout: PayInvoicePaneLayout,
+    point: Point,
+) -> Option<PayInvoicePaneAction> {
+    if layout.send_payment_button.contains(point) {
+        return Some(PayInvoicePaneAction::SendPayment);
+    }
+    None
+}
+
+pub fn hits_pay_invoice_input(layout: PayInvoicePaneLayout, point: Point) -> bool {
+    layout.payment_request_input.contains(point) || layout.amount_input.contains(point)
+}
+
 pub fn hits_input(layout: SparkPaneLayout, point: Point) -> bool {
     layout.invoice_amount_input.contains(point)
         || layout.send_request_input.contains(point)
@@ -115,7 +171,10 @@ pub fn hits_input(layout: SparkPaneLayout, point: Point) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{SparkPaneAction, hit_action, hits_input, layout};
+    use super::{
+        PayInvoicePaneAction, SparkPaneAction, hit_action, hit_pay_invoice_action, hits_input,
+        hits_pay_invoice_input, layout, pay_invoice_layout,
+    };
     use wgpui::{Bounds, Point};
 
     #[test]
@@ -163,5 +222,35 @@ mod tests {
             layout.refresh_button.origin.y + 2.0,
         );
         assert!(!hits_input(layout, button_point));
+    }
+
+    #[test]
+    fn pay_invoice_layout_rows_are_monotonic() {
+        let bounds = Bounds::new(0.0, 0.0, 820.0, 240.0);
+        let layout = pay_invoice_layout(bounds);
+
+        assert!(layout.payment_request_input.origin.y < layout.amount_input.origin.y);
+        assert!(layout.details_origin.y > layout.amount_input.origin.y);
+    }
+
+    #[test]
+    fn pay_invoice_hit_detection_matches_controls() {
+        let bounds = Bounds::new(0.0, 0.0, 820.0, 240.0);
+        let layout = pay_invoice_layout(bounds);
+
+        let send = Point::new(
+            layout.send_payment_button.origin.x + 3.0,
+            layout.send_payment_button.origin.y + 3.0,
+        );
+        assert_eq!(
+            hit_pay_invoice_action(layout, send),
+            Some(PayInvoicePaneAction::SendPayment)
+        );
+
+        let request_input = Point::new(
+            layout.payment_request_input.origin.x + 2.0,
+            layout.payment_request_input.origin.y + 2.0,
+        );
+        assert!(hits_pay_invoice_input(layout, request_input));
     }
 }

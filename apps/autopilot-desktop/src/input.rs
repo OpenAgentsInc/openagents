@@ -9,21 +9,21 @@ use winit::keyboard::{
 
 use crate::app_state::App;
 use crate::hotbar::{
-    HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET,
-    activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks,
+    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
+    hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    PaneController, PaneInput, dispatch_spark_input_event, topmost_nostr_copy_secret_hit,
-    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_spark_action_hit,
+    PaneController, PaneInput, dispatch_pay_invoice_input_event, dispatch_spark_input_event,
+    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
+    topmost_pay_invoice_action_hit, topmost_spark_action_hit,
 };
 use crate::render::{logical_size, render_frame};
-use crate::spark_pane::SparkPaneAction;
+use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
 
-const COMMAND_NEW_PANE: &str = "pane.new";
-const COMMAND_OPEN_NOSTR: &str = "pane.nostr";
-const COMMAND_OPEN_SPARK: &str = "pane.spark";
-const COMMAND_CANCEL_SPARK: &str = "spark.cancel";
+const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
+const COMMAND_OPEN_WALLET: &str = "pane.wallet";
+const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
@@ -92,6 +92,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 needs_redraw = true;
             }
             if dispatch_spark_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
+            if dispatch_pay_invoice_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
 
@@ -169,6 +172,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                             .is_handled();
                         handled |= process_hotbar_clicks(state);
                         handled |= dispatch_spark_input_event(state, &input);
+                        handled |= dispatch_pay_invoice_input_event(state, &input);
                         if !handled {
                             handled |=
                                 PaneInput::handle_mouse_down(state, app.cursor_position, button);
@@ -176,6 +180,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     } else {
                         handled |= PaneInput::handle_mouse_down(state, app.cursor_position, button);
                         handled |= dispatch_spark_input_event(state, &input);
+                        handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= state
                             .hotbar
                             .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -193,10 +198,12 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 ElementState::Released => {
                     let mut handled = PaneInput::handle_mouse_up(state, &input);
                     handled |= dispatch_spark_input_event(state, &input);
+                    handled |= dispatch_pay_invoice_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
                     handled |= handle_nostr_reveal_click(state, app.cursor_position);
                     handled |= handle_nostr_copy_click(state, app.cursor_position);
                     handled |= handle_spark_action_click(state, app.cursor_position);
+                    handled |= handle_pay_invoice_action_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -247,7 +254,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if handle_spark_keyboard_input(state, &event.logical_key) {
+            if handle_spark_wallet_keyboard_input(state, &event.logical_key)
+                || handle_pay_invoice_keyboard_input(state, &event.logical_key)
+            {
                 state.window.request_redraw();
                 return;
             }
@@ -340,7 +349,19 @@ fn handle_spark_action_click(state: &mut crate::app_state::RenderState, point: P
     run_spark_action(state, action)
 }
 
-fn handle_spark_keyboard_input(
+fn handle_pay_invoice_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_pay_invoice_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_pay_invoice_action(state, action)
+}
+
+fn handle_spark_wallet_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
@@ -378,12 +399,65 @@ fn handle_spark_keyboard_input(
     false
 }
 
+fn handle_pay_invoice_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+
+    let focused_before = pay_invoice_inputs_focused(state);
+    let handled_by_input = dispatch_pay_invoice_input_event(state, &key_event);
+    let focused_after = pay_invoice_inputs_focused(state);
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter))
+        && (state.pay_invoice_inputs.payment_request.is_focused()
+            || state.pay_invoice_inputs.amount_sats.is_focused())
+    {
+        let _ = run_pay_invoice_action(state, PayInvoicePaneAction::SendPayment);
+        return true;
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
+}
+
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
     let command = match build_spark_command_for_action(
         action,
         state.spark_inputs.invoice_amount.get_value(),
         state.spark_inputs.send_request.get_value(),
         state.spark_inputs.send_amount.get_value(),
+    ) {
+        Ok(command) => command,
+        Err(error) => {
+            state.spark_wallet.last_error = Some(error);
+            return true;
+        }
+    };
+
+    queue_spark_command(state, command);
+    true
+}
+
+fn run_pay_invoice_action(
+    state: &mut crate::app_state::RenderState,
+    action: PayInvoicePaneAction,
+) -> bool {
+    let command = match build_pay_invoice_command(
+        action,
+        state.pay_invoice_inputs.payment_request.get_value(),
+        state.pay_invoice_inputs.amount_sats.get_value(),
     ) {
         Ok(command) => command,
         Err(error) => {
@@ -429,6 +503,32 @@ fn build_spark_command_for_action(
     }
 }
 
+fn build_pay_invoice_command(
+    action: PayInvoicePaneAction,
+    payment_request: &str,
+    amount_sats: &str,
+) -> Result<SparkWalletCommand, String> {
+    match action {
+        PayInvoicePaneAction::SendPayment => {
+            let request = payment_request.trim().to_string();
+            if request.is_empty() {
+                return Err("Payment request cannot be empty".to_string());
+            }
+
+            let amount = if amount_sats.trim().is_empty() {
+                None
+            } else {
+                Some(parse_positive_amount_str(amount_sats, "Send amount")?)
+            };
+
+            Ok(SparkWalletCommand::SendPayment {
+                payment_request: request,
+                amount_sats: amount,
+            })
+        }
+    }
+}
+
 fn queue_spark_command(state: &mut crate::app_state::RenderState, command: SparkWalletCommand) {
     state.spark_wallet.last_error = None;
     if let Err(error) = state.spark_worker.enqueue(command) {
@@ -450,10 +550,9 @@ fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool
             .is_some_and(|action| action.starts_with("Created invoice"))
         && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
     {
-        state
-            .spark_inputs
-            .send_request
-            .set_value(invoice.to_string());
+        let invoice = invoice.to_string();
+        state.spark_inputs.send_request.set_value(invoice.clone());
+        state.pay_invoice_inputs.payment_request.set_value(invoice);
     }
 
     true
@@ -476,6 +575,11 @@ fn spark_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.spark_inputs.invoice_amount.is_focused()
         || state.spark_inputs.send_request.is_focused()
         || state.spark_inputs.send_amount.is_focused()
+}
+
+fn pay_invoice_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.pay_invoice_inputs.payment_request.is_focused()
+        || state.pay_invoice_inputs.amount_sats.is_focused()
 }
 
 fn map_modifiers(modifiers: ModifiersState) -> Modifiers {
@@ -549,21 +653,22 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
     let mut changed = false;
     for action in action_ids {
         match action.as_str() {
-            COMMAND_NEW_PANE => {
-                activate_hotbar_slot(state, HOTBAR_SLOT_NEW_CHAT);
-                changed = true;
-            }
-            COMMAND_OPEN_NOSTR => {
+            COMMAND_OPEN_IDENTITY_KEYS => {
                 activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
                 changed = true;
             }
-            COMMAND_OPEN_SPARK => {
+            COMMAND_OPEN_WALLET => {
                 activate_hotbar_slot(state, HOTBAR_SLOT_SPARK_WALLET);
                 changed = true;
             }
-            COMMAND_CANCEL_SPARK => {
-                if let Err(error) = state.spark_worker.cancel_pending() {
-                    state.spark_wallet.last_error = Some(error);
+            COMMAND_OPEN_PAY_INVOICE => {
+                let was_open = state
+                    .panes
+                    .iter()
+                    .any(|pane| pane.kind == crate::app_state::PaneKind::SparkPayInvoice);
+                PaneController::create_pay_invoice(state);
+                if !was_open {
+                    queue_spark_command(state, SparkWalletCommand::Refresh);
                 }
                 changed = true;
             }

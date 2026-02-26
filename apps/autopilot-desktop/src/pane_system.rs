@@ -5,7 +5,10 @@ use winit::window::CursorIcon;
 use crate::app_state::{DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
-use crate::spark_pane::{self, SPARK_PANE_HEIGHT, SPARK_PANE_WIDTH, SparkPaneAction};
+use crate::spark_pane::{
+    self, PAY_INVOICE_PANE_HEIGHT, PAY_INVOICE_PANE_WIDTH, PayInvoicePaneAction, SPARK_PANE_HEIGHT,
+    SPARK_PANE_WIDTH, SparkPaneAction,
+};
 
 const PANE_DEFAULT_WIDTH: f32 = 420.0;
 const PANE_DEFAULT_HEIGHT: f32 = 280.0;
@@ -55,6 +58,15 @@ impl PaneDescriptor {
             kind: PaneKind::SparkWallet,
             width: SPARK_PANE_WIDTH,
             height: SPARK_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn pay_invoice() -> Self {
+        Self {
+            kind: PaneKind::SparkPayInvoice,
+            width: PAY_INVOICE_PANE_WIDTH,
+            height: PAY_INVOICE_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -118,6 +130,10 @@ impl PaneController {
 
     pub fn create_spark_wallet(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::spark_wallet());
+    }
+
+    pub fn create_pay_invoice(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::pay_invoice());
     }
 
     pub fn close(state: &mut RenderState, pane_id: u64) {
@@ -369,6 +385,17 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::SparkPayInvoice {
+            let content_bounds = pane_content_bounds(bounds);
+            let layout = spark_pane::pay_invoice_layout(content_bounds);
+            if spark_pane::hit_pay_invoice_action(layout, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if spark_pane::hits_pay_invoice_input(layout, point) {
+                return CursorIcon::Text;
+            }
+        }
+
         return CursorIcon::Default;
     }
 
@@ -493,6 +520,26 @@ pub fn topmost_spark_action_hit(
     None
 }
 
+pub fn topmost_pay_invoice_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, PayInvoicePaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::SparkPayInvoice {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let layout = spark_pane::pay_invoice_layout(content_bounds);
+        if let Some(action) = spark_pane::hit_pay_invoice_action(layout, point) {
+            return Some((pane.id, action));
+        }
+    }
+
+    None
+}
+
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_spark = state
         .panes
@@ -527,6 +574,39 @@ pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -
     handled
 }
 
+pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_pay_invoice = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::SparkPayInvoice)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_pay_invoice else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let mut handled = false;
+
+    handled |= state
+        .pay_invoice_inputs
+        .payment_request
+        .event(
+            event,
+            layout.payment_request_input,
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .pay_invoice_inputs
+        .amount_sats
+        .event(event, layout.amount_input, &mut state.event_context)
+        .is_handled();
+
+    handled
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -549,6 +629,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::Empty => format!("Pane {pane_id}"),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
+        PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
     }
 }
 

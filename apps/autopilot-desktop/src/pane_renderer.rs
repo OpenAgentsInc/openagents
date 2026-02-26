@@ -1,4 +1,6 @@
-use crate::app_state::{DesktopPane, NostrSecretState, PaneKind, SparkPaneInputs};
+use crate::app_state::{
+    DesktopPane, NostrSecretState, PaneKind, PayInvoicePaneInputs, SparkPaneInputs,
+};
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
     nostr_reveal_button_bounds, pane_content_bounds,
@@ -22,6 +24,7 @@ impl PaneRenderer {
         nostr_secret_state: &NostrSecretState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
+        pay_invoice_inputs: &mut PayInvoicePaneInputs,
         paint: &mut PaintContext,
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -63,6 +66,9 @@ impl PaneRenderer {
                 }
                 PaneKind::SparkWallet => {
                     paint_spark_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+                }
+                PaneKind::SparkPayInvoice => {
+                    paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
                 }
             }
         }
@@ -422,6 +428,104 @@ fn paint_spark_wallet_pane(
                 theme::text::PRIMARY,
             ));
             y += 14.0;
+        }
+    }
+}
+
+fn paint_pay_invoice_pane(
+    content_bounds: Bounds,
+    spark_wallet: &SparkPaneState,
+    pay_invoice_inputs: &mut PayInvoicePaneInputs,
+    paint: &mut PaintContext,
+) {
+    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    paint_action_button(layout.send_payment_button, "Pay invoice", paint);
+
+    pay_invoice_inputs
+        .payment_request
+        .set_max_width(layout.payment_request_input.size.width);
+    pay_invoice_inputs
+        .amount_sats
+        .set_max_width(layout.amount_input.size.width);
+
+    pay_invoice_inputs
+        .payment_request
+        .paint(layout.payment_request_input, paint);
+    pay_invoice_inputs
+        .amount_sats
+        .paint(layout.amount_input, paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Lightning invoice / payment request",
+        Point::new(
+            layout.payment_request_input.origin.x,
+            layout.payment_request_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Send sats (optional)",
+        Point::new(
+            layout.amount_input.origin.x,
+            layout.amount_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = layout.details_origin.y;
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Network",
+        spark_wallet.network_name(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Connection",
+        spark_wallet.network_status_label(),
+    );
+
+    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last payment id",
+            payment_id,
+        );
+    }
+
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last action",
+            last_action,
+        );
+    }
+
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Error:",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(error, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(content_bounds.origin.x + 12.0, y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            y += 16.0;
         }
     }
 }

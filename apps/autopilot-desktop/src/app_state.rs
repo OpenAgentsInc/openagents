@@ -34,6 +34,7 @@ pub enum PaneKind {
     Empty,
     NostrIdentity,
     SparkWallet,
+    SparkPayInvoice,
 }
 
 #[derive(Clone, Copy)]
@@ -74,6 +75,22 @@ impl Default for SparkPaneInputs {
                 .placeholder("Spark payment request or invoice")
                 .mono(true),
             send_amount: TextInput::new().placeholder("Send sats (optional)"),
+        }
+    }
+}
+
+pub struct PayInvoicePaneInputs {
+    pub payment_request: TextInput,
+    pub amount_sats: TextInput,
+}
+
+impl Default for PayInvoicePaneInputs {
+    fn default() -> Self {
+        Self {
+            payment_request: TextInput::new()
+                .placeholder("Lightning invoice / payment request")
+                .mono(true),
+            amount_sats: TextInput::new().placeholder("Send sats (optional)"),
         }
     }
 }
@@ -152,6 +169,7 @@ pub struct RenderState {
     pub spark_wallet: SparkPaneState,
     pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
+    pub pay_invoice_inputs: PayInvoicePaneInputs,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,

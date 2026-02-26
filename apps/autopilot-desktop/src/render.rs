@@ -122,6 +122,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spark_wallet,
             spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
+            pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -167,6 +168,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.nostr_secret_state,
             &state.spark_wallet,
             &mut state.spark_inputs,
+            &mut state.pay_invoice_inputs,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);
@@ -233,20 +235,16 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
 
 fn command_registry() -> Vec<Command> {
     vec![
-        Command::new("pane.new", "New Empty Pane")
-            .description("Open a new empty pane")
-            .category("Panes")
-            .keybinding("1"),
-        Command::new("pane.nostr", "Open Nostr Identity Pane")
-            .description("Show Nostr keys and controls")
+        Command::new("pane.identity_keys", "Open Identity Keys Pane")
+            .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")
             .keybinding("2"),
-        Command::new("pane.spark", "Open Spark Wallet Pane")
+        Command::new("pane.wallet", "Open Spark Wallet Pane")
             .description("Show Spark wallet controls")
             .category("Panes")
             .keybinding("3"),
-        Command::new("spark.cancel", "Cancel Spark Pending Actions")
-            .description("Cancel queued Spark worker actions")
-            .category("Wallet"),
+        Command::new("pane.pay_invoice", "Open Pay Lightning Invoice Pane")
+            .description("Open dedicated pane for paying Lightning invoices")
+            .category("Panes"),
     ]
 }
