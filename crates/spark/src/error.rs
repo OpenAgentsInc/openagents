@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::wallet::Network;
+
 #[derive(Debug, Error)]
 pub enum SparkError {
     #[error("invalid mnemonic: {0}")]
@@ -16,4 +18,7 @@ pub enum SparkError {
 
     #[error("invalid payment request: {0}")]
     InvalidPaymentRequest(String),
+
+    #[error("unsupported Spark network: {0:?}")]
+    UnsupportedNetwork(Network),
 }

@@ -1,4 +1,8 @@
 //! Spark wallet wrapper for OpenAgents desktop.
+//!
+//! Network contract:
+//! - Supported: `mainnet`, `regtest`
+//! - Unsupported: `testnet`, `signet` (returns `SparkError::UnsupportedNetwork`)
 
 mod error;
 mod signer;

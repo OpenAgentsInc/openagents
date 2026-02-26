@@ -19,10 +19,11 @@ pub enum Network {
 }
 
 impl Network {
-    fn to_sdk_network(self) -> SdkNetwork {
+    fn to_sdk_network(self) -> Result<SdkNetwork, SparkError> {
         match self {
-            Network::Mainnet => SdkNetwork::Mainnet,
-            Network::Testnet | Network::Signet | Network::Regtest => SdkNetwork::Regtest,
+            Network::Mainnet => Ok(SdkNetwork::Mainnet),
+            Network::Regtest => Ok(SdkNetwork::Regtest),
+            Network::Testnet | Network::Signet => Err(SparkError::UnsupportedNetwork(self)),
         }
     }
 }
@@ -102,7 +103,7 @@ impl SparkWallet {
             },
         };
 
-        let mut sdk_config = default_config(config.network.to_sdk_network());
+        let mut sdk_config = default_config(config.network.to_sdk_network()?);
         if let Some(api_key) = &config.api_key {
             sdk_config.api_key = Some(api_key.clone());
         } else {
@@ -289,5 +290,45 @@ fn payment_direction_label(payment_type: PaymentType) -> &'static str {
     match payment_type {
         PaymentType::Send => "send",
         PaymentType::Receive => "receive",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Network, SdkNetwork};
+    use crate::SparkError;
+
+    #[test]
+    fn network_mapping_mainnet_is_explicit() {
+        assert!(matches!(
+            Network::Mainnet.to_sdk_network(),
+            Ok(SdkNetwork::Mainnet)
+        ));
+    }
+
+    #[test]
+    fn network_mapping_regtest_is_explicit() {
+        assert!(matches!(
+            Network::Regtest.to_sdk_network(),
+            Ok(SdkNetwork::Regtest)
+        ));
+    }
+
+    #[test]
+    fn network_mapping_testnet_is_rejected() {
+        let result = Network::Testnet.to_sdk_network();
+        assert!(matches!(
+            result,
+            Err(SparkError::UnsupportedNetwork(Network::Testnet))
+        ));
+    }
+
+    #[test]
+    fn network_mapping_signet_is_rejected() {
+        let result = Network::Signet.to_sdk_network();
+        assert!(matches!(
+            result,
+            Err(SparkError::UnsupportedNetwork(Network::Signet))
+        ));
     }
 }
