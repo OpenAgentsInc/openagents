@@ -39,7 +39,8 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Pay Lightning Invoice`
   - Dedicated payment pane for paying a Lightning invoice/payment request.
   - Inputs: payment request (required), send sats (optional).
-  - Action: pay invoice.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+  - Action: pay invoice (`Enter` submit and button submit are equivalent).
 
 ## Opening Panes
 

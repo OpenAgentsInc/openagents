@@ -13,10 +13,10 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController, PaneInput,
-    dispatch_chat_input_event, dispatch_job_history_input_event, dispatch_pay_invoice_input_event,
-    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
-    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
+    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController,
+    PaneInput, dispatch_chat_input_event, dispatch_job_history_input_event,
+    dispatch_pay_invoice_input_event, dispatch_spark_input_event, topmost_active_job_action_hit,
+    topmost_chat_send_hit, topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
     topmost_job_history_action_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
     topmost_spark_action_hit,
@@ -881,10 +881,7 @@ fn build_pay_invoice_command(
 ) -> Result<SparkWalletCommand, String> {
     match action {
         PayInvoicePaneAction::SendPayment => {
-            let request = payment_request.trim().to_string();
-            if request.is_empty() {
-                return Err("Payment request cannot be empty".to_string());
-            }
+            let request = validate_lightning_payment_request(payment_request)?;
 
             let amount = if amount_sats.trim().is_empty() {
                 None
@@ -898,6 +895,25 @@ fn build_pay_invoice_command(
             })
         }
     }
+}
+
+fn validate_lightning_payment_request(raw: &str) -> Result<String, String> {
+    let request = raw.trim();
+    if request.is_empty() {
+        return Err("Payment request cannot be empty".to_string());
+    }
+
+    let normalized = request.to_ascii_lowercase();
+    let is_invoice = normalized.starts_with("ln")
+        || normalized.starts_with("lightning:ln")
+        || normalized.starts_with("lightning://ln");
+    if !is_invoice {
+        return Err(
+            "Payment request must be a Lightning invoice (expected prefix ln...)".to_string(),
+        );
+    }
+
+    Ok(request.to_string())
 }
 
 fn queue_spark_command(state: &mut crate::app_state::RenderState, command: SparkWalletCommand) {
@@ -1083,9 +1099,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
 #[cfg(test)]
 mod tests {
     use super::{
-        build_spark_command_for_action, is_command_palette_shortcut, parse_positive_amount_str,
+        build_pay_invoice_command, build_spark_command_for_action, is_command_palette_shortcut,
+        parse_positive_amount_str, validate_lightning_payment_request,
     };
-    use crate::spark_pane::{SparkPaneAction, hit_action, layout};
+    use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction, hit_action, layout};
     use crate::spark_wallet::SparkWalletCommand;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
@@ -1187,5 +1204,29 @@ mod tests {
         assert!(!is_command_palette_shortcut(&key, cmd_mods));
         assert!(!is_command_palette_shortcut(&key, ctrl_mods));
         assert!(is_command_palette_shortcut(&key, none_mods));
+    }
+
+    #[test]
+    fn validate_lightning_payment_request_rejects_non_invoice_text() {
+        let error = validate_lightning_payment_request("not-an-invoice")
+            .expect_err("non-invoice requests should fail");
+        assert!(error.contains("expected prefix ln"));
+    }
+
+    #[test]
+    fn build_pay_invoice_command_accepts_lightning_invoice() {
+        let command = build_pay_invoice_command(
+            PayInvoicePaneAction::SendPayment,
+            "lnbc1exampleinvoice",
+            "250",
+        )
+        .expect("invoice command should be built");
+        assert!(matches!(
+            command,
+            SparkWalletCommand::SendPayment {
+                payment_request,
+                amount_sats: Some(250)
+            } if payment_request == "lnbc1exampleinvoice"
+        ));
     }
 }

@@ -312,6 +312,9 @@ mod tests {
                 .iter()
                 .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" })
         );
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.pay_invoice" && command.label == "Pay Lightning Invoice"
+        }));
         assert!(
             commands.iter().any(|command| {
                 command.id == "pane.job_history" && command.label == "Job History"

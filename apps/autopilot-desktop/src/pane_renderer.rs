@@ -1366,6 +1366,12 @@ fn paint_pay_invoice_pane(
     paint: &mut PaintContext,
 ) {
     let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let state = pay_invoice_view_state(spark_wallet);
+    let state_color = match state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
     paint_action_button(layout.send_payment_button, "Pay invoice", paint);
 
     pay_invoice_inputs
@@ -1402,6 +1408,22 @@ fn paint_pay_invoice_pane(
     ));
 
     let mut y = layout.details_origin.y;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+    if state == PaneLoadState::Loading {
+        paint.scene.draw_text(paint.text.layout(
+            "Waiting for wallet connection and first payment lifecycle update.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -1415,6 +1437,13 @@ fn paint_pay_invoice_pane(
         y,
         "Connection",
         spark_wallet.network_status_label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Payment status",
+        payment_terminal_status(spark_wallet),
     );
 
     if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
@@ -1455,6 +1484,32 @@ fn paint_pay_invoice_pane(
             y += 16.0;
         }
     }
+}
+
+fn pay_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
+    if spark_wallet.last_error.is_some() {
+        return PaneLoadState::Error;
+    }
+
+    if spark_wallet.network_status.is_none() {
+        return PaneLoadState::Loading;
+    }
+
+    PaneLoadState::Ready
+}
+
+fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
+    if spark_wallet.last_error.is_some() {
+        return "failed";
+    }
+    if spark_wallet
+        .last_action
+        .as_deref()
+        .is_some_and(|action| action.starts_with("Payment sent"))
+    {
+        return "sent";
+    }
+    "idle"
 }
 
 fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
@@ -1564,7 +1619,7 @@ fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::spark_wallet_view_state;
+    use super::{pay_invoice_view_state, payment_terminal_status, spark_wallet_view_state};
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
 
@@ -1587,5 +1642,19 @@ mod tests {
             onchain_sats: 3,
         });
         assert_eq!(spark_wallet_view_state(&state), PaneLoadState::Ready);
+    }
+
+    #[test]
+    fn pay_invoice_view_state_and_terminal_status_are_deterministic() {
+        let mut state = SparkPaneState::default();
+        assert_eq!(pay_invoice_view_state(&state), PaneLoadState::Loading);
+        assert_eq!(payment_terminal_status(&state), "idle");
+
+        state.last_action = Some("Payment sent (pay-123)".to_string());
+        assert_eq!(payment_terminal_status(&state), "sent");
+
+        state.last_error = Some("send failed".to_string());
+        assert_eq!(pay_invoice_view_state(&state), PaneLoadState::Error);
+        assert_eq!(payment_terminal_status(&state), "failed");
     }
 }
