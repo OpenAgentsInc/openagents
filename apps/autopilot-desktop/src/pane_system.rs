@@ -3,8 +3,9 @@ use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
 
 use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
-use crate::pane_registry::pane_spec;
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
+use crate::pane_registry::pane_spec;
+use crate::panes::{chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane};
 use crate::render::logical_size;
 use crate::spark_pane::{
     self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction,
@@ -1106,19 +1107,7 @@ pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Optio
 }
 
 pub fn topmost_chat_send_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::AutopilotChat {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if chat_send_button_bounds(content_bounds).contains(point) {
-            return Some(pane.id);
-        }
-    }
-
-    None
+    chat_pane::topmost_send_hit(state, point)
 }
 
 pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option<u64> {
@@ -1160,33 +1149,7 @@ pub fn topmost_relay_connections_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, RelayConnectionsPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::RelayConnections {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if relay_connections_add_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::AddRelay));
-        }
-        if relay_connections_remove_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::RemoveSelected));
-        }
-        if relay_connections_retry_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::RetrySelected));
-        }
-
-        let visible_rows =
-            relay_connections_visible_row_count(state.relay_connections.relays.len());
-        for row_index in 0..visible_rows {
-            if relay_connections_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, RelayConnectionsPaneAction::SelectRow(row_index)));
-            }
-        }
-    }
-
-    None
+    relay_connections_pane::topmost_action_hit(state, point)
 }
 
 pub fn topmost_sync_health_action_hit(
@@ -1426,180 +1389,37 @@ pub fn topmost_spark_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, SparkPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkWallet {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::layout(content_bounds);
-        if let Some(action) = spark_pane::hit_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
+    wallet_pane::topmost_spark_action_hit(state, point)
 }
 
 pub fn topmost_create_invoice_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, CreateInvoicePaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkCreateInvoice {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::create_invoice_layout(content_bounds);
-        if let Some(action) = spark_pane::hit_create_invoice_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
+    wallet_pane::topmost_create_invoice_action_hit(state, point)
 }
 
 pub fn topmost_pay_invoice_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, PayInvoicePaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkPayInvoice {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::pay_invoice_layout(content_bounds);
-        if let Some(action) = spark_pane::hit_pay_invoice_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
+    wallet_pane::topmost_pay_invoice_action_hit(state, point)
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_spark = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::SparkWallet)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane.bounds);
-    let Some(bounds) = top_spark else {
-        return false;
-    };
-
-    let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::layout(content_bounds);
-    let mut handled = false;
-
-    handled |= state
-        .spark_inputs
-        .invoice_amount
-        .event(event, layout.invoice_amount_input, &mut state.event_context)
-        .is_handled();
-    handled |= state
-        .spark_inputs
-        .send_request
-        .event(event, layout.send_request_input, &mut state.event_context)
-        .is_handled();
-    handled |= state
-        .spark_inputs
-        .send_amount
-        .event(event, layout.send_amount_input, &mut state.event_context)
-        .is_handled();
-
-    handled
+    wallet_pane::dispatch_spark_input_event(state, event)
 }
 
 pub fn dispatch_create_invoice_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_create_invoice = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::SparkCreateInvoice)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane.bounds);
-    let Some(bounds) = top_create_invoice else {
-        return false;
-    };
-
-    let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::create_invoice_layout(content_bounds);
-    let mut handled = false;
-
-    handled |= state
-        .create_invoice_inputs
-        .amount_sats
-        .event(event, layout.amount_input, &mut state.event_context)
-        .is_handled();
-    handled |= state
-        .create_invoice_inputs
-        .description
-        .event(event, layout.description_input, &mut state.event_context)
-        .is_handled();
-    handled |= state
-        .create_invoice_inputs
-        .expiry_seconds
-        .event(event, layout.expiry_input, &mut state.event_context)
-        .is_handled();
-
-    handled
+    wallet_pane::dispatch_create_invoice_input_event(state, event)
 }
 
 pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_pay_invoice = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::SparkPayInvoice)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane.bounds);
-    let Some(bounds) = top_pay_invoice else {
-        return false;
-    };
-
-    let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
-    let mut handled = false;
-
-    handled |= state
-        .pay_invoice_inputs
-        .payment_request
-        .event(
-            event,
-            layout.payment_request_input,
-            &mut state.event_context,
-        )
-        .is_handled();
-    handled |= state
-        .pay_invoice_inputs
-        .amount_sats
-        .event(event, layout.amount_input, &mut state.event_context)
-        .is_handled();
-
-    handled
+    wallet_pane::dispatch_pay_invoice_input_event(state, event)
 }
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_chat = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane.bounds);
-    let Some(bounds) = top_chat else {
-        return false;
-    };
-
-    let composer_bounds = chat_composer_input_bounds(pane_content_bounds(bounds));
-    state
-        .chat_inputs
-        .composer
-        .event(event, composer_bounds, &mut state.event_context)
-        .is_handled()
+    chat_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -1630,22 +1450,7 @@ pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEv
 }
 
 pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
-    let top_relay = state
-        .panes
-        .iter()
-        .filter(|pane| pane.kind == PaneKind::RelayConnections)
-        .max_by_key(|pane| pane.z_index)
-        .map(|pane| pane.bounds);
-    let Some(bounds) = top_relay else {
-        return false;
-    };
-
-    let input_bounds = relay_connections_url_input_bounds(pane_content_bounds(bounds));
-    state
-        .relay_connections_inputs
-        .relay_url
-        .event(event, input_bounds, &mut state.event_context)
-        .is_handled()
+    relay_connections_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

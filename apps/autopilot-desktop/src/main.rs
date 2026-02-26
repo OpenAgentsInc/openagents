@@ -6,6 +6,7 @@ mod input;
 mod pane_renderer;
 mod pane_registry;
 mod pane_system;
+mod panes;
 mod render;
 mod spark_pane;
 mod spark_wallet;

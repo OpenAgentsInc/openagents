@@ -1,20 +1,19 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AlertSeverity,
-    AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
+    AlertsRecoveryState, AutopilotChatState, ChatPaneInputs,
     CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
-    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, SettingsPaneInputs, SettingsState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
-    alerts_recovery_row_bounds, alerts_recovery_visible_row_count, chat_composer_input_bounds,
-    chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_bounds,
+    alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
     earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
     job_history_search_input_bounds, job_history_status_button_bounds,
@@ -23,16 +22,15 @@ use crate::pane_system::{
     network_requests_payload_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds, relay_connections_add_button_bounds,
-    relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-    relay_connections_row_bounds, relay_connections_url_input_bounds,
-    relay_connections_visible_row_count, settings_provider_queue_input_bounds,
-    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
-    settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
-    starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds, settings_wallet_default_input_bounds,
+    starter_jobs_complete_button_bounds, starter_jobs_row_bounds, starter_jobs_visible_row_count,
+    sync_health_rebootstrap_button_bounds,
 };
-use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
+use crate::panes::{
+    chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
+};
 use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
@@ -218,102 +216,7 @@ fn paint_autopilot_chat_pane(
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "local", paint);
-
-    let rail_bounds = chat_thread_rail_bounds(content_bounds);
-    let transcript_bounds = chat_transcript_bounds(content_bounds);
-    let composer_bounds = chat_composer_input_bounds(content_bounds);
-    let send_bounds = chat_send_button_bounds(content_bounds);
-
-    paint.scene.draw_quad(
-        Quad::new(rail_bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.72))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(transcript_bounds)
-            .with_background(theme::bg::APP.with_alpha(0.82))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
-    );
-
-    paint.scene.draw_text(paint.text.layout(
-        "Threads",
-        Point::new(rail_bounds.origin.x + 10.0, rail_bounds.origin.y + 14.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-    let mut thread_y = rail_bounds.origin.y + 30.0;
-    for (idx, thread) in autopilot_chat.threads.iter().enumerate() {
-        let color = if idx == autopilot_chat.active_thread {
-            theme::text::PRIMARY
-        } else {
-            theme::text::MUTED
-        };
-        paint.scene.draw_text(paint.text.layout(
-            thread,
-            Point::new(rail_bounds.origin.x + 10.0, thread_y),
-            11.0,
-            color,
-        ));
-        thread_y += 16.0;
-    }
-
-    let mut y = transcript_bounds.origin.y + 10.0;
-    for message in autopilot_chat.messages.iter().rev().take(12).rev() {
-        let status = match message.status {
-            AutopilotMessageStatus::Queued => "queued",
-            AutopilotMessageStatus::Running => "running",
-            AutopilotMessageStatus::Done => "done",
-            AutopilotMessageStatus::Error => "error",
-        };
-        let role = match message.role {
-            AutopilotRole::User => "you",
-            AutopilotRole::Autopilot => "autopilot",
-        };
-        let status_color = match message.status {
-            AutopilotMessageStatus::Queued => theme::text::MUTED,
-            AutopilotMessageStatus::Running => theme::accent::PRIMARY,
-            AutopilotMessageStatus::Done => theme::status::SUCCESS,
-            AutopilotMessageStatus::Error => theme::status::ERROR,
-        };
-
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("[#{:04}] [{role}] [{status}]", message.id),
-            Point::new(transcript_bounds.origin.x + 10.0, y),
-            10.0,
-            status_color,
-        ));
-        y += 14.0;
-        for line in split_text_for_display(&message.content, 78) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(transcript_bounds.origin.x + 10.0, y),
-                11.0,
-                theme::text::PRIMARY,
-            ));
-            y += 14.0;
-        }
-        y += 8.0;
-    }
-
-    if let Some(error) = autopilot_chat.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(
-                transcript_bounds.origin.x + 10.0,
-                transcript_bounds.max_y() - 14.0,
-            ),
-            11.0,
-            theme::status::ERROR,
-        ));
-    }
-
-    chat_inputs
-        .composer
-        .set_max_width(composer_bounds.size.width);
-    chat_inputs.composer.paint(composer_bounds, paint);
-    paint_action_button(send_bounds, "Send", paint);
+    chat_pane::paint(content_bounds, autopilot_chat, chat_inputs, paint);
 }
 
 fn paint_go_online_pane(
@@ -606,146 +509,7 @@ fn paint_relay_connections_pane(
     relay_connections_inputs: &mut RelayConnectionsPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
-
-    let input_bounds = relay_connections_url_input_bounds(content_bounds);
-    let add_bounds = relay_connections_add_button_bounds(content_bounds);
-    let remove_bounds = relay_connections_remove_button_bounds(content_bounds);
-    let retry_bounds = relay_connections_retry_button_bounds(content_bounds);
-
-    relay_connections_inputs
-        .relay_url
-        .set_max_width(input_bounds.size.width);
-    relay_connections_inputs
-        .relay_url
-        .paint(input_bounds, paint);
-    paint_action_button(add_bounds, "Add relay", paint);
-    paint_action_button(remove_bounds, "Remove selected", paint);
-    paint_action_button(retry_bounds, "Retry selected", paint);
-
-    paint.scene.draw_text(paint.text.layout(
-        "Relay URL",
-        Point::new(input_bounds.origin.x, input_bounds.origin.y - 12.0),
-        10.0,
-        theme::text::MUTED,
-    ));
-
-    let state_color = match relay_connections.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = input_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", relay_connections.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = relay_connections.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = relay_connections.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
-
-    let visible_rows = relay_connections_visible_row_count(relay_connections.relays.len());
-    if visible_rows == 0 {
-        paint.scene.draw_text(paint.text.layout(
-            "No relays configured.",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::text::MUTED,
-        ));
-        return;
-    }
-
-    for row_index in 0..visible_rows {
-        let relay = &relay_connections.relays[row_index];
-        let row_bounds = relay_connections_row_bounds(content_bounds, row_index);
-        let selected = relay_connections.selected_url.as_deref() == Some(relay.url.as_str());
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(if selected {
-                    theme::accent::PRIMARY.with_alpha(0.18)
-                } else {
-                    theme::bg::APP.with_alpha(0.78)
-                })
-                .with_border(
-                    if selected {
-                        theme::accent::PRIMARY
-                    } else {
-                        theme::border::DEFAULT
-                    },
-                    1.0,
-                )
-                .with_corner_radius(4.0),
-        );
-
-        let status_color = match relay.status {
-            RelayConnectionStatus::Connected => theme::status::SUCCESS,
-            RelayConnectionStatus::Connecting => theme::accent::PRIMARY,
-            RelayConnectionStatus::Disconnected => theme::text::MUTED,
-            RelayConnectionStatus::Error => theme::status::ERROR,
-        };
-        let latency = relay
-            .latency_ms
-            .map_or_else(|| "-".to_string(), |value| value.to_string());
-        let last_seen = relay
-            .last_seen_seconds_ago
-            .map_or_else(|| "-".to_string(), |value| value.to_string());
-        let last_error = relay.last_error.as_deref().unwrap_or("-");
-        let summary = format!(
-            "{} {} latency:{}ms seen:{}s err:{}",
-            relay.url,
-            relay.status.label(),
-            latency,
-            last_seen,
-            last_error
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &summary,
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
-            10.0,
-            if selected {
-                theme::text::PRIMARY
-            } else {
-                status_color
-            },
-        ));
-    }
-
-    if let Some(selected) = relay_connections.selected() {
-        let selected_y =
-            relay_connections_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
-                + 12.0;
-        let details = format!(
-            "Selected: {} [{}] last_error:{}",
-            selected.url,
-            selected.status.label(),
-            selected.last_error.as_deref().unwrap_or("-")
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &details,
-            Point::new(content_bounds.origin.x + 12.0, selected_y),
-            10.0,
-            theme::text::MUTED,
-        ));
-    }
+    relay_connections_pane::paint(content_bounds, relay_connections, relay_connections_inputs, paint);
 }
 
 fn paint_sync_health_pane(
@@ -2200,251 +1964,12 @@ fn paint_spark_wallet_pane(
     spark_inputs: &mut SparkPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
-
-    let layout = spark_pane::layout(content_bounds);
-    let state = spark_wallet_view_state(spark_wallet);
-    let state_color = match state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-
-    paint_action_button(layout.refresh_button, "Refresh wallet", paint);
-    paint_action_button(layout.spark_address_button, "Spark receive", paint);
-    paint_action_button(layout.bitcoin_address_button, "Bitcoin receive", paint);
-    paint_action_button(layout.copy_spark_address_button, "Copy Spark", paint);
-    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
-    paint_action_button(layout.send_payment_button, "Send payment", paint);
-
-    spark_inputs
-        .invoice_amount
-        .set_max_width(layout.invoice_amount_input.size.width);
-    spark_inputs
-        .send_request
-        .set_max_width(layout.send_request_input.size.width);
-    spark_inputs
-        .send_amount
-        .set_max_width(layout.send_amount_input.size.width);
-
-    spark_inputs
-        .invoice_amount
-        .paint(layout.invoice_amount_input, paint);
-    spark_inputs
-        .send_request
-        .paint(layout.send_request_input, paint);
-    spark_inputs
-        .send_amount
-        .paint(layout.send_amount_input, paint);
-
-    paint.scene.draw_text(paint.text.layout(
-        "Invoice sats",
-        Point::new(
-            layout.invoice_amount_input.origin.x,
-            layout.invoice_amount_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Send request / invoice",
-        Point::new(
-            layout.send_request_input.origin.x,
-            layout.send_request_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Send sats (optional)",
-        Point::new(
-            layout.send_amount_input.origin.x,
-            layout.send_amount_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-
-    let mut y = layout.details_origin.y;
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-    if state == PaneLoadState::Loading {
-        paint.scene.draw_text(paint.text.layout(
-            "Waiting for first refresh to hydrate balance and payment history.",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Network",
-        spark_wallet.network_name(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Connection",
-        spark_wallet.network_status_label(),
-    );
-
-    let (spark_sats, lightning_sats, onchain_sats, total_sats) =
-        if let Some(balance) = spark_wallet.balance.as_ref() {
-            (
-                balance.spark_sats,
-                balance.lightning_sats,
-                balance.onchain_sats,
-                balance.total_sats(),
-            )
-        } else {
-            (0, 0, 0, 0)
-        };
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Spark sats",
-        &spark_sats.to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Lightning sats",
-        &lightning_sats.to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Onchain sats",
-        &onchain_sats.to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Total sats",
-        &total_sats.to_string(),
-    );
-
-    if let Some(path) = spark_wallet.identity_path.as_ref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Identity path",
-            &path.display().to_string(),
-        );
-    }
-    if let Some(address) = spark_wallet.spark_address.as_deref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Spark address",
-            address,
-        );
-    }
-    if let Some(address) = spark_wallet.bitcoin_address.as_deref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Bitcoin address",
-            address,
-        );
-    }
-    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last invoice",
-            invoice,
-        );
-    }
-    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last payment id",
-            payment_id,
-        );
-    }
-    if let Some(last_action) = spark_wallet.last_action.as_deref() {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last action",
-            last_action,
-        );
-    }
-    if let Some(error) = spark_wallet.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            "Error:",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-        for line in split_text_for_display(error, 88) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(content_bounds.origin.x + 12.0, y),
-                11.0,
-                theme::status::ERROR,
-            ));
-            y += 16.0;
-        }
-    }
-
-    if !spark_wallet.recent_payments.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            "Recent payments",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-
-        for payment in spark_wallet.recent_payments.iter().take(6) {
-            let line = format!(
-                "{} {} {} sats [{}]",
-                payment.direction, payment.status, payment.amount_sats, payment.id
-            );
-            paint.scene.draw_text(paint.text.layout_mono(
-                &line,
-                Point::new(content_bounds.origin.x + 12.0, y),
-                10.0,
-                theme::text::PRIMARY,
-            ));
-            y += 14.0;
-        }
-    }
+    wallet_pane::paint_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
 }
 
+#[cfg(test)]
 fn spark_wallet_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
-    if spark_wallet.last_error.is_some() {
-        return PaneLoadState::Error;
-    }
-
-    if spark_wallet.network_status.is_none() || spark_wallet.balance.is_none() {
-        return PaneLoadState::Loading;
-    }
-
-    PaneLoadState::Ready
+    wallet_pane::spark_wallet_view_state(spark_wallet)
 }
 
 fn paint_create_invoice_pane(
@@ -2453,140 +1978,12 @@ fn paint_create_invoice_pane(
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
-
-    let layout = spark_pane::create_invoice_layout(content_bounds);
-    let state = create_invoice_view_state(spark_wallet);
-    let state_color = match state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-
-    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
-    paint_action_button(layout.copy_invoice_button, "Copy invoice", paint);
-
-    create_invoice_inputs
-        .amount_sats
-        .set_max_width(layout.amount_input.size.width);
-    create_invoice_inputs
-        .description
-        .set_max_width(layout.description_input.size.width);
-    create_invoice_inputs
-        .expiry_seconds
-        .set_max_width(layout.expiry_input.size.width);
-
-    create_invoice_inputs
-        .amount_sats
-        .paint(layout.amount_input, paint);
-    create_invoice_inputs
-        .description
-        .paint(layout.description_input, paint);
-    create_invoice_inputs
-        .expiry_seconds
-        .paint(layout.expiry_input, paint);
-
-    paint.scene.draw_text(paint.text.layout(
-        "Invoice sats",
-        Point::new(
-            layout.amount_input.origin.x,
-            layout.amount_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Expiry (seconds)",
-        Point::new(
-            layout.expiry_input.origin.x,
-            layout.expiry_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Description (optional)",
-        Point::new(
-            layout.description_input.origin.x,
-            layout.description_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-
-    let mut y = layout.details_origin.y;
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-    if state == PaneLoadState::Loading {
-        paint.scene.draw_text(paint.text.layout(
-            "No invoice generated yet. Submit amount/description/expiry to create one.",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-
-    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Generated invoice",
-            invoice,
-        );
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "QR payload",
-            invoice,
-        );
-    }
-
-    if let Some(last_action) = spark_wallet.last_action.as_deref() {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last action",
-            last_action,
-        );
-    }
-
-    if let Some(error) = spark_wallet.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            "Error:",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-        for line in split_text_for_display(error, 88) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(content_bounds.origin.x + 12.0, y),
-                11.0,
-                theme::status::ERROR,
-            ));
-            y += 16.0;
-        }
-    }
+    wallet_pane::paint_create_invoice_pane(content_bounds, spark_wallet, create_invoice_inputs, paint);
 }
 
+#[cfg(test)]
 fn create_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
-    if spark_wallet.last_error.is_some() {
-        return PaneLoadState::Error;
-    }
-    if spark_wallet.last_invoice.is_none() {
-        return PaneLoadState::Loading;
-    }
-    PaneLoadState::Ready
+    wallet_pane::create_invoice_view_state(spark_wallet)
 }
 
 fn paint_pay_invoice_pane(
@@ -2595,156 +1992,20 @@ fn paint_pay_invoice_pane(
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
-
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
-    let state = pay_invoice_view_state(spark_wallet);
-    let state_color = match state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    paint_action_button(layout.send_payment_button, "Pay invoice", paint);
-
-    pay_invoice_inputs
-        .payment_request
-        .set_max_width(layout.payment_request_input.size.width);
-    pay_invoice_inputs
-        .amount_sats
-        .set_max_width(layout.amount_input.size.width);
-
-    pay_invoice_inputs
-        .payment_request
-        .paint(layout.payment_request_input, paint);
-    pay_invoice_inputs
-        .amount_sats
-        .paint(layout.amount_input, paint);
-
-    paint.scene.draw_text(paint.text.layout(
-        "Lightning invoice / payment request",
-        Point::new(
-            layout.payment_request_input.origin.x,
-            layout.payment_request_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Send sats (optional)",
-        Point::new(
-            layout.amount_input.origin.x,
-            layout.amount_input.origin.y - 12.0,
-        ),
-        10.0,
-        theme::text::MUTED,
-    ));
-
-    let mut y = layout.details_origin.y;
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-    if state == PaneLoadState::Loading {
-        paint.scene.draw_text(paint.text.layout(
-            "Waiting for wallet connection and first payment lifecycle update.",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Network",
-        spark_wallet.network_name(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Connection",
-        spark_wallet.network_status_label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Payment status",
-        payment_terminal_status(spark_wallet),
-    );
-
-    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last payment id",
-            payment_id,
-        );
-    }
-
-    if let Some(last_action) = spark_wallet.last_action.as_deref() {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last action",
-            last_action,
-        );
-    }
-
-    if let Some(error) = spark_wallet.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            "Error:",
-            Point::new(content_bounds.origin.x + 12.0, y),
-            11.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-        for line in split_text_for_display(error, 88) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(content_bounds.origin.x + 12.0, y),
-                11.0,
-                theme::status::ERROR,
-            ));
-            y += 16.0;
-        }
-    }
+    wallet_pane::paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
 }
 
+#[cfg(test)]
 fn pay_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
-    if spark_wallet.last_error.is_some() {
-        return PaneLoadState::Error;
-    }
-
-    if spark_wallet.network_status.is_none() {
-        return PaneLoadState::Loading;
-    }
-
-    PaneLoadState::Ready
+    wallet_pane::pay_invoice_view_state(spark_wallet)
 }
 
+#[cfg(test)]
 fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
-    if spark_wallet.last_error.is_some() {
-        return "failed";
-    }
-    if spark_wallet
-        .last_action
-        .as_deref()
-        .is_some_and(|action| action.starts_with("Payment sent"))
-    {
-        return "sent";
-    }
-    "idle"
+    wallet_pane::payment_terminal_status(spark_wallet)
 }
 
-fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &mut PaintContext) {
+pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &mut PaintContext) {
     let label = format!("source: {source}");
     let max_width = (content_bounds.size.width - 20.0).max(84.0);
     let badge_width = (label.chars().count() as f32 * 6.4 + 12.0).min(max_width);
@@ -2769,7 +2030,7 @@ fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &mut PaintCon
     ));
 }
 
-fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::accent::PRIMARY.with_alpha(0.15))
@@ -2830,7 +2091,13 @@ fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) 
     ));
 }
 
-fn paint_label_line(paint: &mut PaintContext, x: f32, y: f32, label: &str, value: &str) -> f32 {
+pub(crate) fn paint_label_line(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+) -> f32 {
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
@@ -2846,7 +2113,7 @@ fn paint_label_line(paint: &mut PaintContext, x: f32, y: f32, label: &str, value
     y + 16.0
 }
 
-fn paint_multiline_phrase(
+pub(crate) fn paint_multiline_phrase(
     paint: &mut PaintContext,
     x: f32,
     y: f32,
@@ -2893,7 +2160,7 @@ fn mask_mnemonic(phrase: &str) -> String {
     words.iter().map(|_| "••••").collect::<Vec<_>>().join(" ")
 }
 
-fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
+pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
     if text.trim().is_empty() {
         return vec![String::new()];
     }
