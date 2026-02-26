@@ -713,38 +713,15 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
 
-    let state_color = match network_requests.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = submit_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        submit_bounds.max_y() + 12.0,
+        network_requests.load_state,
         &format!("State: {}", network_requests.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = network_requests.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = network_requests.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        network_requests.last_action.as_deref(),
+        network_requests.last_error.as_deref(),
+    );
 
     if network_requests.submitted.is_empty() {
         paint.scene.draw_text(paint.text.layout(
@@ -803,38 +780,15 @@ fn paint_starter_jobs_pane(
     let complete_bounds = starter_jobs_complete_button_bounds(content_bounds);
     paint_action_button(complete_bounds, "Complete selected", paint);
 
-    let state_color = match starter_jobs.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = complete_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        complete_bounds.max_y() + 12.0,
+        starter_jobs.load_state,
         &format!("State: {}", starter_jobs.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = starter_jobs.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = starter_jobs.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        starter_jobs.last_action.as_deref(),
+        starter_jobs.last_error.as_deref(),
+    );
 
     let visible_rows = starter_jobs_visible_row_count(starter_jobs.jobs.len());
     if visible_rows == 0 {
@@ -851,23 +805,7 @@ fn paint_starter_jobs_pane(
         let job = &starter_jobs.jobs[row_index];
         let row_bounds = starter_jobs_row_bounds(content_bounds, row_index);
         let selected = starter_jobs.selected_job_id.as_deref() == Some(job.job_id.as_str());
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(if selected {
-                    theme::accent::PRIMARY.with_alpha(0.18)
-                } else {
-                    theme::bg::APP.with_alpha(0.78)
-                })
-                .with_border(
-                    if selected {
-                        theme::accent::PRIMARY
-                    } else {
-                        theme::border::DEFAULT
-                    },
-                    1.0,
-                )
-                .with_corner_radius(4.0),
-        );
+        paint_selectable_row_background(paint, row_bounds, selected);
 
         let status_color = match job.status {
             StarterJobStatus::Queued => theme::text::MUTED,
@@ -943,42 +881,19 @@ fn paint_activity_feed_pane(
         );
     }
 
-    let state_color = match activity_feed.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 10.0;
-    paint.scene.draw_text(paint.text.layout(
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 10.0,
+        activity_feed.load_state,
         &format!(
             "State: {} | Filter: {}",
             activity_feed.load_state.label(),
             activity_feed.active_filter.label()
         ),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = activity_feed.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = activity_feed.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        activity_feed.last_action.as_deref(),
+        activity_feed.last_error.as_deref(),
+    );
 
     let visible = activity_feed.visible_rows();
     let visible_rows = activity_feed_visible_row_count(visible.len());
@@ -996,23 +911,7 @@ fn paint_activity_feed_pane(
         let row = visible[row_index];
         let row_bounds = activity_feed_row_bounds(content_bounds, row_index);
         let selected = activity_feed.selected_event_id.as_deref() == Some(row.event_id.as_str());
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(if selected {
-                    theme::accent::PRIMARY.with_alpha(0.18)
-                } else {
-                    theme::bg::APP.with_alpha(0.78)
-                })
-                .with_border(
-                    if selected {
-                        theme::accent::PRIMARY
-                    } else {
-                        theme::border::DEFAULT
-                    },
-                    1.0,
-                )
-                .with_corner_radius(4.0),
-        );
+        paint_selectable_row_background(paint, row_bounds, selected);
 
         let domain_color = match row.domain {
             ActivityEventDomain::Chat => theme::accent::PRIMARY,
@@ -1079,38 +978,15 @@ fn paint_alerts_recovery_pane(
     paint_action_button(ack_bounds, "Acknowledge", paint);
     paint_action_button(resolve_bounds, "Resolve", paint);
 
-    let state_color = match alerts_recovery.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = recover_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        recover_bounds.max_y() + 12.0,
+        alerts_recovery.load_state,
         &format!("State: {}", alerts_recovery.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = alerts_recovery.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-    if let Some(error) = alerts_recovery.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        alerts_recovery.last_action.as_deref(),
+        alerts_recovery.last_error.as_deref(),
+    );
 
     let visible_rows = alerts_recovery_visible_row_count(alerts_recovery.alerts.len());
     if visible_rows == 0 {
@@ -1127,23 +1003,7 @@ fn paint_alerts_recovery_pane(
         let row = &alerts_recovery.alerts[row_index];
         let row_bounds = alerts_recovery_row_bounds(content_bounds, row_index);
         let selected = alerts_recovery.selected_alert_id.as_deref() == Some(row.alert_id.as_str());
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(if selected {
-                    theme::accent::PRIMARY.with_alpha(0.18)
-                } else {
-                    theme::bg::APP.with_alpha(0.78)
-                })
-                .with_border(
-                    if selected {
-                        theme::accent::PRIMARY
-                    } else {
-                        theme::border::DEFAULT
-                    },
-                    1.0,
-                )
-                .with_corner_radius(4.0),
-        );
+        paint_selectable_row_background(paint, row_bounds, selected);
 
         let severity_color = match row.severity {
             AlertSeverity::Info => theme::text::MUTED,
@@ -1508,39 +1368,15 @@ fn paint_job_inbox_pane(
     paint_action_button(accept_bounds, "Accept selected", paint);
     paint_action_button(reject_bounds, "Reject selected", paint);
 
-    let state_color = match job_inbox.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
-    let mut y = accept_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        accept_bounds.max_y() + 12.0,
+        job_inbox.load_state,
         &format!("State: {}", job_inbox.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(message) = job_inbox.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            message,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-    }
-    y += 16.0;
-
-    if let Some(error) = job_inbox.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        job_inbox.last_action.as_deref(),
+        job_inbox.last_error.as_deref(),
+    );
 
     match job_inbox.load_state {
         PaneLoadState::Loading => {
@@ -1571,23 +1407,7 @@ fn paint_job_inbox_pane(
         let row_bounds = job_inbox_row_bounds(content_bounds, row_index);
         let selected =
             job_inbox.selected_request_id.as_deref() == Some(request.request_id.as_str());
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(if selected {
-                    theme::accent::PRIMARY.with_alpha(0.18)
-                } else {
-                    theme::bg::APP.with_alpha(0.78)
-                })
-                .with_border(
-                    if selected {
-                        theme::accent::PRIMARY
-                    } else {
-                        theme::border::DEFAULT
-                    },
-                    1.0,
-                )
-                .with_corner_radius(4.0),
-        );
+        paint_selectable_row_background(paint, row_bounds, selected);
 
         let status_color = match request.validation {
             crate::app_state::JobInboxValidation::Valid => theme::status::SUCCESS,
@@ -1655,44 +1475,21 @@ fn paint_active_job_pane(
         ));
     }
 
-    let state_color = match active_job.load_state {
-        PaneLoadState::Ready => theme::status::SUCCESS,
-        PaneLoadState::Loading => theme::accent::PRIMARY,
-        PaneLoadState::Error => theme::status::ERROR,
-    };
     let mut y = advance_bounds.max_y()
         + if active_job.runtime_supports_abort {
             12.0
         } else {
             24.0
         };
-    paint.scene.draw_text(paint.text.layout(
+    y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        active_job.load_state,
         &format!("State: {}", active_job.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        state_color,
-    ));
-    y += 16.0;
-
-    if let Some(action) = active_job.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
-    }
-
-    if let Some(error) = active_job.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
-    }
+        active_job.last_action.as_deref(),
+        active_job.last_error.as_deref(),
+    );
 
     if active_job.load_state == PaneLoadState::Loading {
         paint.scene.draw_text(paint.text.layout(
@@ -2003,6 +1800,76 @@ fn pay_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
 #[cfg(test)]
 fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
     wallet_pane::payment_terminal_status(spark_wallet)
+}
+
+pub(crate) fn paint_state_summary(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    load_state: PaneLoadState,
+    summary: &str,
+    last_action: Option<&str>,
+    last_error: Option<&str>,
+) -> f32 {
+    let state_color = match load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+
+    let mut line_y = y;
+    paint.scene.draw_text(paint.text.layout(
+        summary,
+        Point::new(x, line_y),
+        11.0,
+        state_color,
+    ));
+    line_y += 16.0;
+
+    if let Some(action) = last_action {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(x, line_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        line_y += 16.0;
+    }
+    if let Some(error) = last_error {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(x, line_y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        line_y += 16.0;
+    }
+
+    line_y
+}
+
+pub(crate) fn paint_selectable_row_background(
+    paint: &mut PaintContext,
+    row_bounds: Bounds,
+    selected: bool,
+) {
+    paint.scene.draw_quad(
+        Quad::new(row_bounds)
+            .with_background(if selected {
+                theme::accent::PRIMARY.with_alpha(0.18)
+            } else {
+                theme::bg::APP.with_alpha(0.78)
+            })
+            .with_border(
+                if selected {
+                    theme::accent::PRIMARY
+                } else {
+                    theme::border::DEFAULT
+                },
+                1.0,
+            )
+            .with_corner_radius(4.0),
+    );
 }
 
 pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &mut PaintContext) {
