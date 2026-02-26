@@ -123,11 +123,13 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
             pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
+            job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
+            job_history: crate::app_state::JobHistoryState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -176,9 +178,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             provider_blockers.as_slice(),
             &state.job_inbox,
             &state.active_job,
+            &state.job_history,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
+            &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
         );
@@ -261,6 +265,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.active_job", "Active Job")
             .description("Open in-flight job lifecycle timeline pane")
             .category("Panes"),
+        Command::new("pane.job_history", "Job History")
+            .description("Open deterministic completed/failed job receipts pane")
+            .category("Panes"),
         Command::new("pane.identity_keys", "Identity Keys")
             .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")
@@ -290,6 +297,11 @@ mod tests {
         assert!(
             commands.iter().any(|command| {
                 command.id == "pane.active_job" && command.label == "Active Job"
+            })
+        );
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.job_history" && command.label == "Job History"
             })
         );
     }

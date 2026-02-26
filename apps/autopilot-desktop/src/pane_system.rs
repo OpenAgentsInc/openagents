@@ -22,6 +22,8 @@ const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
 const ACTIVE_JOB_PANE_HEIGHT: f32 = 440.0;
+const JOB_HISTORY_PANE_WIDTH: f32 = 900.0;
+const JOB_HISTORY_PANE_HEIGHT: f32 = 460.0;
 const NOSTR_PANE_WIDTH: f32 = 760.0;
 const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
@@ -56,6 +58,14 @@ pub enum JobInboxPaneAction {
 pub enum ActiveJobPaneAction {
     AdvanceStage,
     AbortJob,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobHistoryPaneAction {
+    CycleStatusFilter,
+    CycleTimeRange,
+    PreviousPage,
+    NextPage,
 }
 
 #[derive(Clone, Copy)]
@@ -117,6 +127,15 @@ impl PaneDescriptor {
             kind: PaneKind::ActiveJob,
             width: ACTIVE_JOB_PANE_WIDTH,
             height: ACTIVE_JOB_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn job_history() -> Self {
+        Self {
+            kind: PaneKind::JobHistory,
+            width: JOB_HISTORY_PANE_WIDTH,
+            height: JOB_HISTORY_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -219,6 +238,10 @@ impl PaneController {
 
     pub fn create_active_job(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::active_job());
+    }
+
+    pub fn create_job_history(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::job_history());
     }
 
     pub fn create_nostr_identity(state: &mut RenderState) {
@@ -490,6 +513,16 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::JobHistory {
+            let content_bounds = pane_content_bounds(bounds);
+            if topmost_job_history_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if job_history_search_input_bounds(content_bounds).contains(point) {
+                return CursorIcon::Text;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
             let content_bounds = pane_content_bounds(bounds);
             let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
@@ -642,6 +675,55 @@ pub fn active_job_abort_button_bounds(content_bounds: Bounds) -> Bounds {
         advance.origin.y,
         advance.size.width,
         advance.size.height,
+    )
+}
+
+pub fn job_history_search_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.42).clamp(220.0, 360.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn job_history_status_button_bounds(content_bounds: Bounds) -> Bounds {
+    let search = job_history_search_input_bounds(content_bounds);
+    Bounds::new(
+        search.max_x() + JOB_INBOX_BUTTON_GAP,
+        search.origin.y,
+        132.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn job_history_time_button_bounds(content_bounds: Bounds) -> Bounds {
+    let status = job_history_status_button_bounds(content_bounds);
+    Bounds::new(
+        status.max_x() + JOB_INBOX_BUTTON_GAP,
+        status.origin.y,
+        116.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn job_history_prev_page_button_bounds(content_bounds: Bounds) -> Bounds {
+    let y = content_bounds.max_y() - CHAT_PAD - JOB_INBOX_BUTTON_HEIGHT;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        y,
+        64.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn job_history_next_page_button_bounds(content_bounds: Bounds) -> Bounds {
+    let prev = job_history_prev_page_button_bounds(content_bounds);
+    Bounds::new(
+        prev.max_x() + JOB_INBOX_BUTTON_GAP,
+        prev.origin.y,
+        64.0,
+        prev.size.height,
     )
 }
 
@@ -819,6 +901,34 @@ pub fn topmost_active_job_action_hit(
     None
 }
 
+pub fn topmost_job_history_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, JobHistoryPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::JobHistory {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if job_history_status_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobHistoryPaneAction::CycleStatusFilter));
+        }
+        if job_history_time_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobHistoryPaneAction::CycleTimeRange));
+        }
+        if job_history_prev_page_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobHistoryPaneAction::PreviousPage));
+        }
+        if job_history_next_page_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobHistoryPaneAction::NextPage));
+        }
+    }
+
+    None
+}
+
 pub fn topmost_spark_action_hit(
     state: &RenderState,
     point: Point,
@@ -945,6 +1055,33 @@ pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) ->
         .is_handled()
 }
 
+pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_history = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::JobHistory)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_history else {
+        return false;
+    };
+
+    let search_bounds = job_history_search_input_bounds(pane_content_bounds(bounds));
+    let handled = state
+        .job_history_inputs
+        .search_job_id
+        .event(event, search_bounds, &mut state.event_context)
+        .is_handled();
+    state.job_history.set_search_job_id(
+        state
+            .job_history_inputs
+            .search_job_id
+            .get_value()
+            .to_string(),
+    );
+    handled
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -970,6 +1107,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::ProviderStatus => "Provider Status".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
+        PaneKind::JobHistory => "Job History".to_string(),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
         PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
@@ -1016,7 +1154,10 @@ mod tests {
     use super::{
         active_job_abort_button_bounds, active_job_advance_button_bounds,
         chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-        chat_transcript_bounds, go_online_toggle_button_bounds, job_inbox_accept_button_bounds,
+        chat_transcript_bounds, go_online_toggle_button_bounds,
+        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+        job_history_search_input_bounds, job_history_status_button_bounds,
+        job_history_time_button_bounds, job_inbox_accept_button_bounds,
         job_inbox_reject_button_bounds, job_inbox_row_bounds, nostr_copy_secret_button_bounds,
         nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
     };
@@ -1090,5 +1231,20 @@ mod tests {
 
         assert!(advance.max_x() < abort.min_x());
         assert!((advance.origin.y - abort.origin.y).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn job_history_controls_have_stable_layout() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 460.0);
+        let search = job_history_search_input_bounds(content);
+        let status = job_history_status_button_bounds(content);
+        let time = job_history_time_button_bounds(content);
+        let prev = job_history_prev_page_button_bounds(content);
+        let next = job_history_next_page_button_bounds(content);
+
+        assert!(search.max_x() < status.min_x());
+        assert!(status.max_x() < time.min_x());
+        assert!(prev.max_x() < next.min_x());
+        assert!(prev.origin.y > search.origin.y);
     }
 }

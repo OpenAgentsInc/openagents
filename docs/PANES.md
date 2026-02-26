@@ -21,6 +21,10 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
   - Shows append-only execution log events, invoice/payment linkage, and failure reason when present.
   - Actions: advance stage, abort job (disabled when runtime lane does not support cancel).
+- `Job History`
+  - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
+  - Includes status/time filters, job-id search, and pagination.
+  - Row model includes `job_id`, `status`, `completed timestamp`, `result hash`, and `payment pointer`.
 - `Nostr Keys (NIP-06)`
   - Shows identity path, `npub`, masked `nsec`, masked mnemonic, and key controls.
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
@@ -44,12 +48,13 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Provider Status` -> opens `Provider Status`.
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
+  - `Job History` -> opens `Job History`.
   - `Identity Keys` -> opens `Nostr Keys (NIP-06)`.
   - `Spark Wallet` -> opens `Spark Lightning Wallet`.
   - `Pay Lightning Invoice` -> opens `Pay Lightning Invoice`.
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Job Inbox, Active Job, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Job Inbox, Active Job, Job History, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

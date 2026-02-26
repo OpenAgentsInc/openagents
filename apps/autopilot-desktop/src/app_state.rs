@@ -37,6 +37,7 @@ pub enum PaneKind {
     ProviderStatus,
     JobInbox,
     ActiveJob,
+    JobHistory,
     NostrIdentity,
     SparkWallet,
     SparkPayInvoice,
@@ -96,6 +97,18 @@ impl Default for PayInvoicePaneInputs {
                 .placeholder("Lightning invoice / payment request")
                 .mono(true),
             amount_sats: TextInput::new().placeholder("Send sats (optional)"),
+        }
+    }
+}
+
+pub struct JobHistoryPaneInputs {
+    pub search_job_id: TextInput,
+}
+
+impl Default for JobHistoryPaneInputs {
+    fn default() -> Self {
+        Self {
+            search_job_id: TextInput::new().placeholder("Search job id"),
         }
     }
 }
@@ -665,6 +678,253 @@ impl ActiveJobState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobHistoryStatus {
+    Succeeded,
+    Failed,
+}
+
+impl JobHistoryStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobHistoryStatusFilter {
+    All,
+    Succeeded,
+    Failed,
+}
+
+impl JobHistoryStatusFilter {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::All => Self::Succeeded,
+            Self::Succeeded => Self::Failed,
+            Self::Failed => Self::All,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobHistoryTimeRange {
+    All,
+    Last24h,
+    Last7d,
+}
+
+impl JobHistoryTimeRange {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "all-time",
+            Self::Last24h => "24h",
+            Self::Last7d => "7d",
+        }
+    }
+
+    pub const fn max_age_seconds(self) -> Option<u64> {
+        match self {
+            Self::All => None,
+            Self::Last24h => Some(86_400),
+            Self::Last7d => Some(604_800),
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::All => Self::Last24h,
+            Self::Last24h => Self::Last7d,
+            Self::Last7d => Self::All,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobHistoryReceiptRow {
+    pub job_id: String,
+    pub status: JobHistoryStatus,
+    pub completed_at_epoch_seconds: u64,
+    pub result_hash: String,
+    pub payment_pointer: String,
+    pub failure_reason: Option<String>,
+}
+
+pub struct JobHistoryState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub rows: Vec<JobHistoryReceiptRow>,
+    pub status_filter: JobHistoryStatusFilter,
+    pub time_range: JobHistoryTimeRange,
+    pub page: usize,
+    pub page_size: usize,
+    pub search_job_id: String,
+    pub reference_epoch_seconds: u64,
+}
+
+impl Default for JobHistoryState {
+    fn default() -> Self {
+        let mut state = Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("History loaded from deterministic receipt lane".to_string()),
+            rows: Vec::new(),
+            status_filter: JobHistoryStatusFilter::All,
+            time_range: JobHistoryTimeRange::All,
+            page: 0,
+            page_size: 6,
+            search_job_id: String::new(),
+            reference_epoch_seconds: 1_761_920_000,
+        };
+
+        state.upsert_row(JobHistoryReceiptRow {
+            job_id: "job-bootstrap-000".to_string(),
+            status: JobHistoryStatus::Succeeded,
+            completed_at_epoch_seconds: 1_761_919_780,
+            result_hash: "sha256:7f7d72a3e0f10933".to_string(),
+            payment_pointer: "pay:req-bootstrap-000".to_string(),
+            failure_reason: None,
+        });
+        state.upsert_row(JobHistoryReceiptRow {
+            job_id: "job-bootstrap-001".to_string(),
+            status: JobHistoryStatus::Failed,
+            completed_at_epoch_seconds: 1_761_915_200,
+            result_hash: "sha256:2ce0b2ff4ef9a010".to_string(),
+            payment_pointer: "pay:req-bootstrap-001".to_string(),
+            failure_reason: Some("invoice settlement timeout".to_string()),
+        });
+        state.load_state = PaneLoadState::Ready;
+        state
+    }
+}
+
+impl JobHistoryState {
+    pub fn set_search_job_id(&mut self, value: String) {
+        self.search_job_id = value;
+        self.page = 0;
+    }
+
+    pub fn cycle_status_filter(&mut self) {
+        self.status_filter = self.status_filter.cycle();
+        self.page = 0;
+        self.last_error = None;
+        self.last_action = Some(format!("Status filter -> {}", self.status_filter.label()));
+    }
+
+    pub fn cycle_time_range(&mut self) {
+        self.time_range = self.time_range.cycle();
+        self.page = 0;
+        self.last_error = None;
+        self.last_action = Some(format!("Time range -> {}", self.time_range.label()));
+    }
+
+    pub fn previous_page(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+        }
+    }
+
+    pub fn next_page(&mut self) {
+        let pages = self.total_pages();
+        if self.page + 1 < pages {
+            self.page += 1;
+        }
+    }
+
+    pub fn total_pages(&self) -> usize {
+        let filtered = self.filtered_rows();
+        ((filtered.len() + self.page_size.saturating_sub(1)) / self.page_size.max(1)).max(1)
+    }
+
+    pub fn paged_rows(&self) -> Vec<&JobHistoryReceiptRow> {
+        let filtered = self.filtered_rows();
+        let page = self.page.min(self.total_pages().saturating_sub(1));
+        let start = page.saturating_mul(self.page_size.max(1));
+        let end = (start + self.page_size.max(1)).min(filtered.len());
+        filtered[start..end].to_vec()
+    }
+
+    pub fn upsert_row(&mut self, row: JobHistoryReceiptRow) {
+        if let Some(existing) = self
+            .rows
+            .iter_mut()
+            .find(|existing| existing.job_id == row.job_id)
+        {
+            *existing = row;
+        } else {
+            self.rows.push(row);
+        }
+        self.rows.sort_by(|lhs, rhs| {
+            rhs.completed_at_epoch_seconds
+                .cmp(&lhs.completed_at_epoch_seconds)
+                .then_with(|| lhs.job_id.cmp(&rhs.job_id))
+        });
+    }
+
+    pub fn record_from_active_job(&mut self, job: &ActiveJobRecord, status: JobHistoryStatus) {
+        let completed = self
+            .reference_epoch_seconds
+            .saturating_add(self.rows.len() as u64 * 17);
+        self.upsert_row(JobHistoryReceiptRow {
+            job_id: job.job_id.clone(),
+            status,
+            completed_at_epoch_seconds: completed,
+            result_hash: format!("sha256:{}-{}", job.request_id, job.stage.label()),
+            payment_pointer: job
+                .payment_id
+                .clone()
+                .or_else(|| job.invoice_id.clone())
+                .unwrap_or_else(|| format!("pending:{}", job.request_id)),
+            failure_reason: job.failure_reason.clone(),
+        });
+        self.page = 0;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Recorded history receipt for {}", job.job_id));
+    }
+
+    fn filtered_rows(&self) -> Vec<&JobHistoryReceiptRow> {
+        let search = self.search_job_id.trim().to_lowercase();
+        self.rows
+            .iter()
+            .filter(|row| match self.status_filter {
+                JobHistoryStatusFilter::All => true,
+                JobHistoryStatusFilter::Succeeded => row.status == JobHistoryStatus::Succeeded,
+                JobHistoryStatusFilter::Failed => row.status == JobHistoryStatus::Failed,
+            })
+            .filter(|row| {
+                if let Some(max_age) = self.time_range.max_age_seconds() {
+                    let age = self
+                        .reference_epoch_seconds
+                        .saturating_sub(row.completed_at_epoch_seconds);
+                    age <= max_age
+                } else {
+                    true
+                }
+            })
+            .filter(|row| {
+                if search.is_empty() {
+                    true
+                } else {
+                    row.job_id.to_lowercase().contains(&search)
+                }
+            })
+            .collect()
+    }
+}
+
 impl ProviderBlocker {
     pub const fn code(self) -> &'static str {
         match self {
@@ -883,11 +1143,13 @@ pub struct RenderState {
     pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
+    pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
     pub provider_runtime: ProviderRuntimeState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
+    pub job_history: JobHistoryState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -913,7 +1175,8 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, JobInboxDecision,
+        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
         JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
         NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
     };
@@ -1054,5 +1317,40 @@ mod tests {
         let current = active.job.as_ref().expect("active job exists");
         assert_eq!(current.stage, JobLifecycleStage::Delivered);
         assert!(current.invoice_id.is_some());
+    }
+
+    #[test]
+    fn job_history_filters_search_status_and_time() {
+        let mut history = JobHistoryState::default();
+        history.status_filter = JobHistoryStatusFilter::Succeeded;
+        history.time_range = JobHistoryTimeRange::All;
+        history.set_search_job_id("bootstrap-000".to_string());
+
+        let rows = history.paged_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, JobHistoryStatus::Succeeded);
+        assert!(rows[0].job_id.contains("bootstrap-000"));
+    }
+
+    #[test]
+    fn job_history_upsert_keeps_single_row_per_job_id() {
+        let mut history = JobHistoryState::default();
+        let before = history.rows.len();
+        history.upsert_row(super::JobHistoryReceiptRow {
+            job_id: "job-bootstrap-000".to_string(),
+            status: JobHistoryStatus::Failed,
+            completed_at_epoch_seconds: history.reference_epoch_seconds + 10,
+            result_hash: "sha256:updated".to_string(),
+            payment_pointer: "pay:updated".to_string(),
+            failure_reason: Some("updated".to_string()),
+        });
+
+        assert_eq!(history.rows.len(), before);
+        let row = history
+            .rows
+            .iter()
+            .find(|row| row.job_id == "job-bootstrap-000")
+            .expect("row should exist");
+        assert_eq!(row.result_hash, "sha256:updated");
     }
 }

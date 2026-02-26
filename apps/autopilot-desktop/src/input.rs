@@ -14,10 +14,11 @@ use crate::hotbar::{
 };
 use crate::pane_system::{
     ActiveJobPaneAction, JobInboxPaneAction, PaneController, PaneInput, dispatch_chat_input_event,
-    dispatch_pay_invoice_input_event, dispatch_spark_input_event, topmost_active_job_action_hit,
-    topmost_chat_send_hit, topmost_go_online_toggle_hit, topmost_job_inbox_action_hit,
-    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
-    topmost_pay_invoice_action_hit, topmost_spark_action_hit,
+    dispatch_job_history_input_event, dispatch_pay_invoice_input_event, dispatch_spark_input_event,
+    topmost_active_job_action_hit, topmost_chat_send_hit, topmost_go_online_toggle_hit,
+    topmost_job_history_action_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
+    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
+    topmost_spark_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
@@ -28,6 +29,7 @@ const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
+const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
 const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
 const COMMAND_OPEN_WALLET: &str = "pane.wallet";
 const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
@@ -115,6 +117,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             if dispatch_chat_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
+            if dispatch_job_history_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
 
             if state
                 .hotbar
@@ -192,6 +197,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
+                        handled |= dispatch_job_history_input_event(state, &input);
                         if !handled {
                             handled |=
                                 PaneInput::handle_mouse_down(state, app.cursor_position, button);
@@ -201,6 +207,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
+                        handled |= dispatch_job_history_input_event(state, &input);
                         handled |= state
                             .hotbar
                             .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -220,6 +227,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= dispatch_spark_input_event(state, &input);
                     handled |= dispatch_pay_invoice_input_event(state, &input);
                     handled |= dispatch_chat_input_event(state, &input);
+                    handled |= dispatch_job_history_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
                     handled |= handle_nostr_reveal_click(state, app.cursor_position);
                     handled |= handle_nostr_copy_click(state, app.cursor_position);
@@ -229,6 +237,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_job_inbox_action_click(state, app.cursor_position);
                     handled |= handle_active_job_action_click(state, app.cursor_position);
+                    handled |= handle_job_history_action_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -282,6 +291,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             if handle_chat_keyboard_input(state, &event.logical_key)
                 || handle_spark_wallet_keyboard_input(state, &event.logical_key)
                 || handle_pay_invoice_keyboard_input(state, &event.logical_key)
+                || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
                 return;
@@ -438,6 +448,18 @@ fn handle_active_job_action_click(state: &mut crate::app_state::RenderState, poi
     run_active_job_action(state, action)
 }
 
+fn handle_job_history_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_job_history_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_job_history_action(state, action)
+}
+
 fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -527,6 +549,39 @@ fn handle_pay_invoice_keyboard_input(
             || state.pay_invoice_inputs.amount_sats.is_focused())
     {
         let _ = run_pay_invoice_action(state, PayInvoicePaneAction::SendPayment);
+        return true;
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
+}
+
+fn handle_job_history_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+
+    let focused_before = state.job_history_inputs.search_job_id.is_focused();
+    let handled_by_input = dispatch_job_history_input_event(state, &key_event);
+    let focused_after = state.job_history_inputs.search_job_id.is_focused();
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter))
+        && state.job_history_inputs.search_job_id.is_focused()
+    {
+        state.job_history.last_error = None;
+        state.job_history.last_action = Some("Applied job-id search filter".to_string());
         return true;
     }
 
@@ -628,6 +683,12 @@ fn run_active_job_action(
                     state.provider_runtime.queue_depth =
                         state.provider_runtime.queue_depth.saturating_sub(1);
                     state.provider_runtime.last_completed_job_at = Some(now);
+                    if let Some(job) = state.active_job.job.as_ref() {
+                        state.job_history.record_from_active_job(
+                            job,
+                            crate::app_state::JobHistoryStatus::Succeeded,
+                        );
+                    }
                 }
             }
             true
@@ -642,7 +703,36 @@ fn run_active_job_action(
                 state.provider_runtime.queue_depth =
                     state.provider_runtime.queue_depth.saturating_sub(1);
                 state.provider_runtime.last_completed_job_at = Some(now);
+                if let Some(job) = state.active_job.job.as_ref() {
+                    state
+                        .job_history
+                        .record_from_active_job(job, crate::app_state::JobHistoryStatus::Failed);
+                }
             }
+            true
+        }
+    }
+}
+
+fn run_job_history_action(
+    state: &mut crate::app_state::RenderState,
+    action: crate::pane_system::JobHistoryPaneAction,
+) -> bool {
+    match action {
+        crate::pane_system::JobHistoryPaneAction::CycleStatusFilter => {
+            state.job_history.cycle_status_filter();
+            true
+        }
+        crate::pane_system::JobHistoryPaneAction::CycleTimeRange => {
+            state.job_history.cycle_time_range();
+            true
+        }
+        crate::pane_system::JobHistoryPaneAction::PreviousPage => {
+            state.job_history.previous_page();
+            true
+        }
+        crate::pane_system::JobHistoryPaneAction::NextPage => {
+            state.job_history.next_page();
             true
         }
     }
@@ -908,6 +998,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_ACTIVE_JOB => {
                 PaneController::create_active_job(state);
+                changed = true;
+            }
+            COMMAND_OPEN_JOB_HISTORY => {
+                PaneController::create_job_history(state);
                 changed = true;
             }
             COMMAND_OPEN_IDENTITY_KEYS => {

@@ -1,15 +1,18 @@
 use crate::app_state::{
     ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
-    DesktopPane, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
+    DesktopPane, JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    ProviderRuntimeState, SparkPaneInputs,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_transcript_bounds, go_online_toggle_button_bounds, job_inbox_accept_button_bounds,
-    job_inbox_reject_button_bounds, job_inbox_row_bounds, job_inbox_visible_row_count,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds,
+    chat_transcript_bounds, go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+    job_history_prev_page_button_bounds, job_history_search_input_bounds,
+    job_history_status_button_bounds, job_history_time_button_bounds,
+    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+    job_inbox_visible_row_count, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+    nostr_reveal_button_bounds, pane_content_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -33,9 +36,11 @@ impl PaneRenderer {
         provider_blockers: &[ProviderBlocker],
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
+        job_history: &JobHistoryState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
+        job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
     ) -> u32 {
@@ -91,6 +96,9 @@ impl PaneRenderer {
                 }
                 PaneKind::ActiveJob => {
                     paint_active_job_pane(content_bounds, active_job, paint);
+                }
+                PaneKind::JobHistory => {
+                    paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
@@ -864,6 +872,143 @@ fn paint_active_job_pane(
             theme::text::PRIMARY,
         ));
         log_y += 14.0;
+    }
+}
+
+fn paint_job_history_pane(
+    content_bounds: Bounds,
+    job_history: &JobHistoryState,
+    job_history_inputs: &mut JobHistoryPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let search_bounds = job_history_search_input_bounds(content_bounds);
+    let status_bounds = job_history_status_button_bounds(content_bounds);
+    let time_bounds = job_history_time_button_bounds(content_bounds);
+    let prev_bounds = job_history_prev_page_button_bounds(content_bounds);
+    let next_bounds = job_history_next_page_button_bounds(content_bounds);
+
+    job_history_inputs
+        .search_job_id
+        .set_max_width(search_bounds.size.width);
+    job_history_inputs.search_job_id.paint(search_bounds, paint);
+    paint_action_button(
+        status_bounds,
+        &format!("Status: {}", job_history.status_filter.label()),
+        paint,
+    );
+    paint_action_button(
+        time_bounds,
+        &format!("Range: {}", job_history.time_range.label()),
+        paint,
+    );
+    paint_action_button(prev_bounds, "Prev", paint);
+    paint_action_button(next_bounds, "Next", paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Search job id",
+        Point::new(search_bounds.origin.x, search_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let state_color = match job_history.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = search_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", job_history.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    let page = job_history
+        .page
+        .min(job_history.total_pages().saturating_sub(1))
+        + 1;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("Page {page}/{}", job_history.total_pages()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        10.0,
+        theme::text::MUTED,
+    ));
+    y += 16.0;
+
+    if let Some(action) = job_history.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = job_history.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    if job_history.load_state == PaneLoadState::Loading {
+        paint.scene.draw_text(paint.text.layout(
+            "Loading deterministic history receipts...",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    let rows = job_history.paged_rows();
+    if rows.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No rows for the current filters.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for (idx, row) in rows.iter().enumerate() {
+        let row_top = y + idx as f32 * 34.0;
+        let row_bounds = Bounds::new(
+            content_bounds.origin.x + 12.0,
+            row_top,
+            (content_bounds.size.width - 24.0).max(200.0),
+            30.0,
+        );
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(theme::bg::APP.with_alpha(0.78))
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let row_line = format!(
+            "{} {} ts:{} {} {}",
+            row.job_id,
+            row.status.label(),
+            row.completed_at_epoch_seconds,
+            row.result_hash,
+            row.payment_pointer
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &row_line,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 8.0),
+            10.0,
+            if row.status == crate::app_state::JobHistoryStatus::Succeeded {
+                theme::status::SUCCESS
+            } else {
+                theme::status::ERROR
+            },
+        ));
     }
 }
 
