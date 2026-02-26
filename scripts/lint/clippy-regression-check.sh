@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASELINE_FILE="${1:-$ROOT_DIR/scripts/lint/clippy-baseline.toml}"
 
+if ! "$ROOT_DIR/scripts/lint/workspace-dependency-drift-check.sh"; then
+    printf 'Workspace dependency drift gate failed.\n' >&2
+    exit 1
+fi
+
 if [[ ! -f "$BASELINE_FILE" ]]; then
     printf 'Missing baseline file: %s\n' "$BASELINE_FILE" >&2
     printf 'Run scripts/lint/clippy-baseline.sh first.\n' >&2

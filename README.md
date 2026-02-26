@@ -21,5 +21,6 @@ The product authority is [docs/MVP.md](docs/MVP.md).
 - Retained implementation is Rust/WGPUI-first.
 - Sync and state continuity must remain deterministic and replay-safe.
 - Wallet and payout state must be explicit and truthful in UI and behavior.
+- Shared dependency hygiene is guarded by `scripts/lint/workspace-dependency-drift-check.sh`.
 
 For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).
