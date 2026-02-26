@@ -1,311 +1,324 @@
-# Desktop-First MVP Spec (WGPUI + NIP-90 + Spark + Spacetime)
+# OpenAgents Desktop MVP Spec — “Autopilot Money Printer”
 
-- `Status`: draft spec for immediate implementation alignment
-- `Date`: 2026-02-25
-- `Owner lanes`: `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:wallet`
+- **Status:** revised draft for implementation alignment
+- **Date:** 2026-02-25
+- **Owner lanes:** `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:wallet`
 
-## 1) Product Definition
+---
 
-This MVP is a desktop-first OpenAgents product where:
+## 1) Product promise
 
-1. The primary UI is the native desktop app built with WGPUI.
-2. A user can toggle "Go Online" so their Autopilot can accept NIP-90 compute requests.
-3. The user has an Autopilot agent with a Spark Bitcoin wallet that can send/receive/pay.
-4. The Autopilot can chat and interact with other agents over the retained Spacetime sync lane.
+OpenAgents Desktop is **Autopilot**, your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **help you** and **pay you**.
 
-This is the minimum useful product loop:
+The “why” is simple and visceral: **OpenAgents Desktop turns your machine into a money printer — it prints Bitcoin.** You run the app, you talk to Autopilot to get work done, and when you’re ready you flip **Go Online** and Autopilot becomes a provider on an open network. Other agents can send you work. You execute it locally (on your CPU/GPU and integrations), you get paid in sats into your built-in wallet, and you can withdraw that value instantly over Lightning.
 
-1. User opens desktop app.
-2. User authenticates and sees their Autopilot + wallet state.
-3. User toggles online provider mode.
-4. User receives/executes NIP-90 work and earns sats.
-5. User chats/interacts with other agents via Spacetime-backed sync.
+This is not “another chat app.” It is a **two-sided marketplace** collapsed into one product surface:
 
-## 2) Authority and Invariants
+* **Buy side:** you use Autopilot as a personal agent (a high-leverage wrapper around Codex + your computer) and can submit work requests out to the network when it makes sense.
+* **Sell side:** you provide compute (and, later, plugins/skills) to the network and **earn Bitcoin**.
 
-This MVP must obey active architecture constraints:
+The MVP is designed to make the core emotional beat unavoidable: *“holy shit, the numbers are ticking up.”* If that moment doesn’t happen, nothing else matters.
 
-1. Rust-only retained implementation (`ADR-0001`).
-2. Proto-first cross-boundary contract authority (`ADR-0002`, `INV-01`).
-3. Spacetime-only retained live sync transport (`ADR-0007`, `INV-03`).
-4. Sync transport is delivery/replay only, not authority mutation (`INV-06`).
-5. Authority mutations remain authenticated command boundaries (`INV-02`, `INV-04`, `INV-05`).
+---
 
-## 3) User Stories
+## 2) The MVP outcome: what must be true
 
-## 3.1 Operator / User
+This MVP is successful if a new user can install OpenAgents Desktop and, within minutes, complete the irreducible loop:
 
-1. I can open one desktop app and use chat, provider mode, and wallet in one surface.
-2. I can turn online mode on/off and clearly see whether I am accepting NIP-90 jobs.
-3. I can receive and pay BTC through Spark and see deterministic transaction history.
-4. I can see my agent conversations and cross-agent interactions update live.
+They click **Go Online** → they receive at least one paid job → their **wallet balance increases** → they **withdraw** by paying a Lightning invoice.
 
-## 3.2 Agent Provider
+Everything else is in service of making that loop real, repeatable, and not fake.
 
-1. When online, my Autopilot advertises provider capability on Nostr.
-2. My Autopilot can accept, execute, and return NIP-90 results.
-3. I can see job count, earnings, and failure reasons in desktop UI.
+This implies a hard product truth we accept up front: the main failure mode is not crashes or bugs. The main failure mode is **earning nothing**. The MVP must therefore include not just “provider mode,” but enough demand-path reality (or seeding) that users experience payment early and often.
 
-## 3.3 Safety / Operations
+---
 
-1. If sync disconnects, desktop reconnects with replay safety and no duplicate apply.
-2. If a cursor is stale, desktop deterministically rebootstrapes.
-3. If wallet/network fails, the UI shows explicit error states and no silent success.
+## 3) Who this is for on day one
 
-## 4) MVP Scope
+The first real users fall into two overlapping groups:
 
-## In Scope
+1. **Earners** — people who want to sell compute for Bitcoin. They want the simplest possible story: run this app, turn it on, earn sats, withdraw sats. They tolerate some rough edges if the sats are real.
 
-1. Desktop shell + chat thread UX in WGPUI.
-2. Online/offline provider toggle and provider runtime lifecycle.
-3. NIP-90 request submission and provider response path.
-4. Spark wallet status, address/invoice generation, and payment execution.
-5. Spacetime subscribe/replay/live chat/event synchronization.
-6. Basic provider telemetry in-app: running state, jobs completed, earnings msats.
+2. **Autopilot users** — people who want a real personal agent that can do practical work on their machine (code, design, organization, integrations), and they’re excited by the idea that the same system can also generate income.
 
-## Out of Scope (for this MVP)
+The MVP must satisfy both, but the *North Star emotion* is anchored on the earner experience. Autopilot is “cool” in a thousand ways; “it pays you Bitcoin” is singular.
 
-1. Web-first product UX parity.
-2. L402 paywall marketplace productization and ops workflows.
-3. Advanced Hydra/Aegis policy and underwriting UX.
-4. Multi-surface admin/reporting consoles.
-5. Historical compatibility-lane behavior beyond required retained APIs.
+---
 
-## 5) Functional Requirements
+## 4) Desktop-first rationale
 
-## FR-1 Desktop Shell (WGPUI)
+Desktop-first isn’t a style choice, it’s the substrate. Autopilot needs:
 
-1. Desktop process boots into WGPUI app shell and initializes workspace/session.
-2. Chat panel, provider controls, wallet panel, and activity feed are visible in one workflow.
-3. UI state transitions are deterministic and recoverable after restart.
+* Access to local files and local toolchains
+* A stable always-on process model when “Go Online” is enabled
+* GPU/CPU resources for local execution
+* A place to safely hold keys, wallet state, and job receipts
+* A fast, game-like UI with immediate feedback
 
-Acceptance:
+Web-first would make this feel like a dashboard. Desktop-first makes it feel like a machine you own and can upgrade.
 
-1. App starts without web dependency for local-first flows.
-2. User can create/select thread and submit a message.
-3. Provider and wallet panels render live status updates.
+---
 
-## FR-2 "Go Online" Provider Toggle
+## 5) The experience we are shipping
 
-1. User toggles provider online state from desktop UI.
-2. App initializes provider runtime and provider identity.
-3. App publishes provider presence/capability and starts heartbeat loop.
-4. App can stop provider cleanly and report offline state.
+### 5.1 First-run experience
 
-Acceptance:
+When the user opens the app for the first time, they should immediately understand two things without reading a doc:
 
-1. Toggle ON transitions to running provider status.
-2. Toggle OFF transitions to not-running provider status.
-3. Heartbeat failures are surfaced and do not fake running state.
+1. This is **your Autopilot**, a personal agent you can talk to.
+2. You can flip **Go Online** and start earning.
 
-## FR-3 NIP-90 Request Handling
+The first-run flow must get the user into a “ready to earn” state quickly, but without violating the basic safety requirements of keys and payments. The user needs a wallet identity (Spark), a network identity (for Nostr participation), and an authenticated session for sync/control tokens. The UI should treat this like booting a new character in a game: you’re setting up your “rig,” not filling out a form.
 
-1. Desktop can submit NIP-90 jobs to configured relays.
-2. Desktop provider can accept processable jobs and emit results.
-3. Job telemetry is tracked in desktop state (`jobs_completed`, `earnings_msats`, errors).
+The onboarding copy and structure should be centered around capability, not infrastructure. The user is not “creating a seed phrase,” they are “unlocking custody of your sats.” They are not “configuring relays,” they are “choosing how you connect to the open network.”
 
-Acceptance:
+### 5.2 Main screen and “game feel”
 
-1. Known-good relay set can receive submitted jobs.
-2. Provider can execute at least text-generation class jobs.
-3. End-to-end request/response path is observable in desktop logs and UI.
+The primary surface is a single desktop app built in WGPUI that always shows the user the three things that matter:
 
-## FR-4 Autopilot Agent Actions
+* **Autopilot**: a chat-first interaction surface where you can ask it to do work, see progress, and see results.
+* **Online / Provider**: a big, binary “Go Online” control with a clear state machine and visible outcomes.
+* **Wallet**: your sats balance, your recent earnings, and a dead-simple withdraw path.
 
-1. Agent can execute local-first actions (Codex/local runtime) with fallback policy.
-2. Runtime/shared execution is optional fallback, not replacement for local-first.
-3. Actions emit structured events suitable for replay/sync.
+The UI should feel like a control panel with a scoreboard. When the user is online, the app should show live counters that reinforce the core loop: sats earned today, jobs completed, uptime, last job outcome, and a “heartbeat” indicator. If the app cannot honestly show income, it must show *why* in plain language and what to do next.
 
-Acceptance:
+The user should never be in a state where they wonder “is this actually online?” or “did I actually get paid?” The product must be allergic to ambiguous success.
 
-1. Lane ordering remains local-first.
-2. Failures include lane-specific reason and fallback behavior.
+---
 
-## FR-5 Spark Wallet
+## 6) The minimum useful product loop (revised)
 
-1. Desktop loads Spark wallet from configured signer/mnemonic context.
-2. User can view balance, Spark address, and payment history.
-3. User can create invoice and pay request.
-4. Wallet errors are explicit and never reported as success.
+The MVP loop is intentionally narrow and absolute:
 
-Acceptance:
+1. The user opens OpenAgents Desktop and signs in.
+2. The user sees Autopilot and their wallet balance.
+3. The user clicks **Go Online**.
+4. The network sends the user at least one job they can execute.
+5. The job completes and triggers a Lightning payment into their Spark wallet.
+6. The user watches the wallet balance increase.
+7. The user withdraws by paying a Lightning invoice (or otherwise demonstrating “I can move this value out”).
 
-1. Wallet status shows network/connectivity and balance fields.
-2. Invoice creation returns usable payment request.
-3. Payment call returns canonical status update in UI.
+Everything in this spec exists because it supports one of those steps.
 
-## FR-6 Spacetime Chat and Agent Interaction
+---
 
-1. Desktop subscribes to retained Spacetime stream with authenticated token.
-2. Desktop applies replay/live events with `(stream_id, seq)` monotonic idempotency.
-3. Desktop can recover from disconnect and stale cursor deterministically.
-4. Agent-to-agent chat/event interaction flows through the same retained Spacetime lane.
+## 7) Scope boundaries: what we are and are not building
 
-Acceptance:
+This MVP is the smallest real version of “Autopilot prints Bitcoin.” It is not the full OpenAgents economy, and it is not the end state marketplace UI.
 
-1. Subscribe/bootstrap/live updates process without duplicate apply.
-2. Legacy websocket/Phoenix frames are not accepted.
-3. Stale cursor triggers deterministic rebootstrap path.
+We are shipping:
 
-## 6) Protocol and Interface Contracts
+* A desktop Autopilot experience that can do basic work and maintain conversation state.
+* A provider mode that can accept and execute NIP-90 compute requests.
+* A wallet that can receive earnings, generate invoices, send payments, and show deterministic history.
+* A retained sync lane so conversations and job/activity state remain consistent and replay-safe across reconnects and restarts.
 
-## 6.1 Control/Auth Contract (retained)
+We are intentionally *not* shipping:
 
-Required retained control endpoints for desktop MVP:
+* Full L402 marketplace productization and paywalls
+* Advanced underwriting/policy layers (Hydra/Aegis UX)
+* A comprehensive plugin store UI
+* Multi-surface parity across web/mobile
+* Operator-only consoles or complicated admin tooling
 
-1. Auth/session endpoints for desktop identity bootstrap.
-2. `POST /api/sync/token` for Spacetime claim issuance.
-3. Runtime worker control endpoints used by desktop execution lane.
+However, the MVP must not paint us into a corner. Even if we don’t ship plugin selling UI now, the system must be shaped so that “sell skills/plugins” is an obvious extension rather than a rewrite.
 
-## 6.2 Spacetime Contract (retained)
+---
 
-1. Subscribe target shape: `/v1/database/:name_or_identity/subscribe`.
-2. Protocol parsing supports retained Spacetime message forms only.
-3. Replay/apply key is `(stream_id, seq)`.
+## 8) The economy model for the MVP: how sats actually move
 
-## 6.3 NIP-90 Contract (interop)
+The MVP must encode a simple, defensible payment story that results in real earnings:
 
-1. Provider advertises supported kinds/capabilities.
-2. Request ingestion, execution, and response publishing are deterministic.
-3. Provider identity and relay set are explicit config inputs.
+* Jobs have a price (in msats/sats) that the provider can understand and the buyer can pay.
+* The provider uses the built-in Spark wallet to request or receive payment.
+* Wallet updates are reflected in UI as authoritative, not inferred.
 
-## 6.4 Wallet Contract (Spark)
+Because the killer failure is “user earns nothing,” the MVP must include a practical answer to: “Where do the first jobs come from?”
 
-1. Wallet signer and network config are explicit env/config inputs.
-2. Balance/address/invoice/pay operations expose typed outcomes.
-3. Receipt/payment status is retained in UI-visible history.
+There are two acceptable paths, and the MVP may implement both:
 
-## 7) State Model
+**Path A: Real open-network demand.** The app can submit NIP-90 jobs as a buyer and other buyers can discover providers naturally. This is the “pure” story, but it risks a cold start.
 
-## Local desktop state (minimum)
+**Path B: Seed demand (recommended for MVP success).** OpenAgents runs a simple buyer that periodically dispatches small paid jobs to online providers (a faucet / quest system). This is not fake money; it’s a subsidy designed to guarantee the first-run experience. The product should present this honestly as “starter jobs” or “network quests.” The user should not need to understand any of this, but the network must ensure the first “wallet tick up” moment happens reliably.
 
-1. Auth/session state.
-2. Thread/chat state and current worker context.
-3. Provider online/running status + counters.
-4. Wallet status snapshot and recent operations.
-5. Sync checkpoint/watermark state.
+In both paths, the provider should have an explicit, visible “job lifecycle” in the UI: received → accepted → running → delivered → paid. If payment fails, the UI must say so plainly.
 
-## Remote authority state (minimum)
+---
 
-1. Runtime/control command authority (authenticated API).
-2. Spacetime replay/live stream state for sync delivery.
-3. Nostr relay event state for NIP-90 provider participation.
+## 9) Functional behavior: what the system must do
 
-## 8) UX Requirements
+### 9.1 Autopilot as a personal agent (Codex wrapper on your machine)
 
-1. Online toggle is prominent, binary, and always shows current effective state.
-2. Wallet panel exposes: balance, receive invoice, send payment, history.
-3. Chat panel remains first-class (not hidden behind provider/wallet workflows).
-4. Error UX is actionable: disconnected, stale cursor, relay unavailable, wallet failure.
-5. Status badges for `offline`, `connecting`, `online`, `degraded`.
+Autopilot is not just a chat box. It is an agent that can do work locally, using Codex as the primary engine for “ask → plan → execute → report.”
 
-## 9) Observability and Test Gates
+For MVP purposes, Autopilot must at least support:
 
-Required evidence lanes:
+* Creating and maintaining chat threads
+* Executing at least one meaningful class of local actions (e.g., code-related tasks) via the local-first execution lane
+* Emitting structured events for every action so the UI can show a coherent activity feed and so state can be recovered after restart
 
-1. Desktop sync reconnect/resume tests.
-2. Spacetime parse/apply tests (reject legacy frame formats).
-3. Provider online/offline lifecycle tests.
-4. Wallet create-invoice/pay/status tests.
-5. Desktop-to-runtime control request tests for local-first fallback behavior.
+The key here is not breadth of capability; it is **reliability and legibility**. Even if Autopilot only does a narrow slice at first, it must feel solid and honest.
 
-## 10) Crates and Code Required for This MVP
+### 9.2 Go Online provider mode: turning the machine into an earner
 
-## 10.1 Required apps/services
+“Go Online” is a mode switch with a real lifecycle. When the user flips it on, the app must:
 
-1. `apps/autopilot-desktop` (primary product surface).
-2. `apps/openagents.com` (retained auth/session + sync-token/control APIs used by desktop).
-3. `apps/runtime` (retained execution authority + sync projection publishing).
+* Initialize the provider runtime (Pylon) and provider identity
+* Connect to configured Nostr relays
+* Advertise capability in a way that buyers can discover
+* Enter a heartbeat loop that makes online presence real (and detectable)
+* Surface failures immediately (relay issues, auth issues, wallet issues, execution issues)
 
-Optional for MVP hardening (not required for first ship):
+When the user flips it off, the provider must stop cleanly. There must be no zombie “online” state.
 
-1. `apps/lightning-wallet-executor` (custody-externalized signing mode).
+### 9.3 NIP-90 job handling (buy + sell)
 
-## 10.2 Required core crates
+As a provider, the app must be able to:
 
-1. `crates/wgpui` (desktop UI runtime).
-2. `crates/autopilot_ui` (desktop views/components).
-3. `crates/autopilot_app` (desktop app state/events).
-4. `crates/autopilot-core` (execution/session logic).
-5. `crates/openagents-client-core` (lane ordering and runtime endpoint resolution).
-6. `crates/openagents-codex-control` (typed desktop control request handling).
-7. `crates/codex-client` (Codex app-server client path).
-8. `crates/autopilot-spacetime` (Spacetime reducer/client integration).
-9. `crates/pylon` (provider runtime for online NIP-90 operation).
-10. `crates/runtime` (runtime execution abstractions used by desktop).
-11. `crates/openagents-spark` (Spark wallet integration).
-12. `crates/nostr/core` and `crates/nostr/client` (NIP-90/relay participation).
-13. `crates/openagents-proto` and `crates/protocol` (typed contract surfaces).
-14. `crates/autopilot-inbox-domain` (inbox interaction domain support).
+* Receive NIP-90 requests for at least one supported job class (text generation is the baseline)
+* Decide whether it can accept a job based on configuration and current health
+* Execute deterministically enough that failures are attributable and recoverable
+* Publish results back to the network in the correct response format
+* Track job telemetry locally in a way the UI can display: job count, sats earned, failures with reasons
 
-## 10.3 Required code paths (minimum)
+As a buyer, the app should be able to submit a job out to the network from within the Autopilot experience. This enables both real usage (“ask the network for something”) and internal testing (“does the network loop work end-to-end?”).
 
-Desktop:
+### 9.4 Spark wallet: the money is the product
 
-1. `apps/autopilot-desktop/src/main.rs`
-2. `apps/autopilot-desktop/src/provider_domain.rs`
-3. `apps/autopilot-desktop/src/wallet_domain.rs`
-4. `apps/autopilot-desktop/src/sync_lifecycle.rs`
-5. `apps/autopilot-desktop/src/runtime_codex_proto.rs`
-6. `apps/autopilot-desktop/src/sync_apply_engine.rs`
+The wallet panel is not a “nice to have.” It is the proof that the product works.
 
-Client/sync/wallet:
+The MVP wallet must:
 
-1. `crates/openagents-client-core/src/execution.rs`
-2. `crates/autopilot-spacetime/src/client.rs`
-3. `crates/spark/src/*`
-4. `crates/nostr/core/src/nip90*` and `crates/nostr/client/src/*`
+* Load from explicit signer/mnemonic context (no magical hidden keys)
+* Show balance and connectivity in a way that is obviously true
+* Generate a receive invoice (or equivalent receive primitive)
+* Send payments
+* Show transaction history that is deterministic and replays correctly after restart
+* Never display success unless the underlying wallet operation succeeded
 
-Control/runtime retained boundaries:
+The withdraw experience must be one of the most polished moments in the MVP, because it’s the user’s proof that the sats are real.
 
-1. `apps/openagents.com/src/lib.rs` and `apps/openagents.com/src/openapi.rs` (retained desktop-facing API boundaries)
-2. `apps/runtime/src/server.rs` and runtime internal route ownership/docs
+### 9.5 Sync: Spacetime-backed continuity that never lies
 
-## 11) Not Needed for This MVP (Defer / Exclude)
+Chat threads, job history, activity feeds, and key state must be robust against:
 
-These are explicitly not required to ship the desktop-first MVP loop above.
+* App restart
+* Network disconnect
+* Cursor staleness
+* Partial failures
 
-## 11.1 Product surfaces not required
+Spacetime is the retained live sync lane. The desktop app must subscribe, bootstrap, and apply events with replay safety and strict idempotency. This is not a “maybe later” correctness feature; it is how we prevent phantom jobs, double-counted earnings, and confusing state resets that destroy trust.
 
-1. Web shell parity and HTMX/Maud product UX under `apps/openagents.com` web pages/fragments.
-2. Compatibility lane UX and route-split admin controls for legacy web migrations.
-3. Full operator/finance web dashboards beyond minimal retained APIs desktop needs.
+---
 
-## 11.2 Services not required for first MVP loop
+## 10) Authority model and non-negotiable invariants (in plain language)
 
-1. `apps/lightning-ops` (ops/reconcile tooling).
-2. `apps/lightning-wallet-executor` for first local-wallet MVP path (only needed for custody-externalized mode).
+This MVP is a money-moving, network-participating desktop app. That means the system’s guarantees matter. There are a few invariants we will not violate because they protect determinism, safety, and our ability to evolve without breaking users:
 
-## 11.3 Workspace crates not required for this MVP behavior
+* The retained implementation is Rust-only. We do not ship a split-brain authority system.
+* Cross-boundary contracts are proto-first. The desktop app and services talk in typed, versioned contracts.
+* Spacetime is the retained live sync transport. Desktop sync must not depend on legacy websocket/Phoenix frames.
+* Sync is delivery and replay, not authority. The sync lane cannot silently mutate truth; authority mutations happen through authenticated commands.
+* Commands are explicit, authenticated, and receipt-able. If something changes state (especially money state), we know exactly why and we can replay or prove it.
 
-1. `crates/openagents-l402` (L402 platform/productization is not required for this MVP loop).
-2. `crates/neobank` (treasury/economics service paths are outside first desktop MVP).
-3. `crates/openagents-registry` and `crates/openagents-cli` (operator/CLI tooling, not core desktop loop).
-4. `crates/ws-test` (local WebSocket test utility, not product runtime requirement).
-5. `crates/arrow` (test utility crate, not runtime requirement).
+The product framing of this is simple: **the app must never “feel like it paid you” unless it actually did.** The architecture exists to enforce that honesty.
 
-## 11.4 Capability areas deferred
+---
 
-1. Advanced Hydra/Aegis economics and underwriting UX.
-2. Marketplace/L402 paywall creator product flows.
-3. Multi-team/project/admin APIs beyond what desktop needs for auth/sync/control.
+## 11) Reliability and failure UX: how we avoid “it feels fake”
 
-## 12) MVP Acceptance Checklist
+The MVP must treat failure as a first-class UX surface. Users will tolerate downtime if the app is transparent; they will not tolerate ambiguity.
 
-Ship-ready means all are true:
+Every major subsystem must have an explicit state displayed in the UI:
 
-1. Desktop launches and signs in with retained auth flow.
-2. User can toggle online provider mode and see accurate state.
-3. At least one NIP-90 request lifecycle succeeds end-to-end while online.
-4. Wallet can create invoice and pay request with visible status/historical record.
-5. Chat/inter-agent sync over Spacetime is live with replay-safe reconnect behavior.
-6. No retained legacy websocket/Phoenix transport dependency exists in desktop sync path.
+* Provider: offline / connecting / online / degraded
+* Wallet: connected / syncing / degraded / error
+* Network: relay connectivity and last heartbeat
+* Sync: connected / reconnecting / stale cursor rebootstrap
 
-## 13) Post-MVP Expansion (Explicit)
+When something breaks, the app must say:
 
-After this MVP is stable:
+1. what is broken,
+2. what the user can do (if anything),
+3. whether earnings are currently possible.
 
-1. Add custody-externalized wallet mode via wallet executor with receipt guarantees.
-2. Add L402 service buying/selling loops in-product.
-3. Add richer marketplace economics UX and policy controls.
-4. Add stronger operator analytics surfaces after desktop loop is stable.
+If the user is online but there are no jobs, the UI must not look dead. It should communicate “online and waiting,” show uptime, show network health, and (if seed demand exists) show “starter jobs queued” or “quests available.”
+
+The MVP must also include replay-safe reconnect behavior. If the user disconnects and reconnects, they should not see duplicate jobs, duplicate earnings, or confusing resets. If the cursor is stale, the app must rebootstrap deterministically and visibly.
+
+---
+
+## 12) Observability: what we measure, what we show
+
+The top product metric is **daily sats earned**. That is the scoreboard. It is the single number that determines whether this product is alive.
+
+The UI must surface:
+
+* sats earned today
+* lifetime sats earned
+* jobs completed today
+* last job result (success/failure and reason)
+* online uptime
+* wallet balance and last payment received
+
+Internally, logs and telemetry must make the end-to-end job/payment loop debuggable. When something fails, we should be able to answer “did we receive the job?”, “did we execute?”, “did we publish result?”, “did we issue invoice?”, “did we get paid?”, “did wallet reflect payment?” without guesswork.
+
+---
+
+## 13) Acceptance: what “ship-ready” means
+
+This MVP is ship-ready when it can reliably demonstrate the money-printing loop to a fresh machine:
+
+* The desktop app launches, signs in, and shows Autopilot + wallet state.
+* The user can toggle Go Online and see an unambiguous online state.
+* At least one NIP-90 job lifecycle succeeds end-to-end while online, resulting in real sats received.
+* The wallet balance increases and the user can withdraw by paying a Lightning invoice.
+* Chat and activity state remain coherent through disconnect/reconnect and app restart, with replay-safe behavior and no duplicates.
+* Desktop sync path rejects legacy websocket/Phoenix frames and uses retained Spacetime forms only.
+
+If any one of these fails in a first-run flow, we treat it as a product failure, not a “later improvement.”
+
+---
+
+## 14) Implementation mapping (retained structure, aligned to the new story)
+
+The implementation remains grounded in the same lanes as the original draft, but the emphasis shifts: we are building a “money printer” experience, not a pile of subsystems.
+
+The primary app surface is `apps/autopilot-desktop` (WGPUI). It owns the moment-to-moment experience: Go Online, job lifecycle visibility, Autopilot chat, wallet tick up.
+
+`apps/openagents.com` remains retained for desktop-facing auth/session flows and sync token issuance (`POST /api/sync/token`) and any minimal control endpoints the desktop needs.
+
+`apps/runtime` remains the retained authority for execution boundaries and any projection publishing necessary for sync.
+
+Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, client-core, codex control, spacetime client, pylon provider runtime, spark wallet integration, nostr client/core, proto/protocol). The key requirement is that these crates expose outcomes in a way that the UI can render as legible state transitions, not just logs.
+
+---
+
+## 15) Post-MVP (kept explicit, but not allowed to pollute MVP)
+
+After the MVP loop is stable and users can reliably earn and withdraw, the next expansions are obvious:
+
+* richer provider capability (more job types, better scheduling, GPU specialization)
+* plugin/skill selling as a first-class “upgrade your rig” mechanic
+* richer buy-side flows (spend sats to delegate work to the network)
+* policy/underwriting layers and marketplace productization (Hydra/Aegis)
+* broader dashboards and admin surfaces
+
+But none of those matter until the wallet ticks up for real users, every day.
+
+---
+
+## Final product mantra (for every implementation decision)
+
+If a proposed feature does not make it easier for a user to:
+
+1. go online,
+2. earn sats,
+3. trust the earnings are real,
+4. withdraw instantly,
+
+…it is not MVP.
+
+OpenAgents Desktop turns your machine into a money printer.
+
+It prints Bitcoin.
