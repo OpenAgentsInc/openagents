@@ -125,6 +125,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
             create_invoice_inputs: crate::app_state::CreateInvoicePaneInputs::default(),
             relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
+            network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
@@ -132,6 +133,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
             sync_health: crate::app_state::SyncHealthState::default(),
+            network_requests: crate::app_state::NetworkRequestsState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -184,6 +186,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.earnings_scoreboard,
             &state.relay_connections,
             &state.sync_health,
+            &state.network_requests,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -192,6 +195,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.pay_invoice_inputs,
             &mut state.create_invoice_inputs,
             &mut state.relay_connections_inputs,
+            &mut state.network_requests_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
@@ -278,6 +282,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.sync_health", "Sync Health")
             .description("Open spacetime subscription and stale-cursor diagnostics pane")
             .category("Panes"),
+        Command::new("pane.network_requests", "Network Requests")
+            .description("Open buyer-side request composer for network submission")
+            .category("Panes"),
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
@@ -332,6 +339,9 @@ mod tests {
                 command.id == "pane.sync_health" && command.label == "Sync Health"
             })
         );
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.network_requests" && command.label == "Network Requests"
+        }));
         assert!(
             commands
                 .iter()

@@ -25,6 +25,8 @@ const RELAY_CONNECTIONS_PANE_WIDTH: f32 = 900.0;
 const RELAY_CONNECTIONS_PANE_HEIGHT: f32 = 420.0;
 const SYNC_HEALTH_PANE_WIDTH: f32 = 760.0;
 const SYNC_HEALTH_PANE_HEIGHT: f32 = 360.0;
+const NETWORK_REQUESTS_PANE_WIDTH: f32 = 900.0;
+const NETWORK_REQUESTS_PANE_HEIGHT: f32 = 420.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -96,6 +98,11 @@ pub enum SyncHealthPaneAction {
     Rebootstrap,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkRequestsPaneAction {
+    SubmitRequest,
+}
+
 #[derive(Clone, Copy)]
 pub struct PaneDescriptor {
     pub kind: PaneKind,
@@ -164,6 +171,15 @@ impl PaneDescriptor {
             kind: PaneKind::SyncHealth,
             width: SYNC_HEALTH_PANE_WIDTH,
             height: SYNC_HEALTH_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn network_requests() -> Self {
+        Self {
+            kind: PaneKind::NetworkRequests,
+            width: NETWORK_REQUESTS_PANE_WIDTH,
+            height: NETWORK_REQUESTS_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -306,6 +322,10 @@ impl PaneController {
 
     pub fn create_sync_health(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::sync_health());
+    }
+
+    pub fn create_network_requests(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::network_requests());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -603,6 +623,20 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::NetworkRequests {
+            let content_bounds = pane_content_bounds(bounds);
+            if topmost_network_requests_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if network_requests_type_input_bounds(content_bounds).contains(point)
+                || network_requests_payload_input_bounds(content_bounds).contains(point)
+                || network_requests_budget_input_bounds(content_bounds).contains(point)
+                || network_requests_timeout_input_bounds(content_bounds).contains(point)
+            {
+                return CursorIcon::Text;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -806,6 +840,55 @@ pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_type_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.45).clamp(220.0, 420.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_payload_input_bounds(content_bounds: Bounds) -> Bounds {
+    let type_input = network_requests_type_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        type_input.max_y() + 10.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(260.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_budget_input_bounds(content_bounds: Bounds) -> Bounds {
+    let payload = network_requests_payload_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        payload.max_y() + 10.0,
+        (content_bounds.size.width * 0.2).clamp(120.0, 180.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn network_requests_timeout_input_bounds(content_bounds: Bounds) -> Bounds {
+    let budget = network_requests_budget_input_bounds(content_bounds);
+    Bounds::new(
+        budget.max_x() + JOB_INBOX_BUTTON_GAP,
+        budget.origin.y,
+        budget.size.width,
+        budget.size.height,
+    )
+}
+
+pub fn network_requests_submit_button_bounds(content_bounds: Bounds) -> Bounds {
+    let timeout = network_requests_timeout_input_bounds(content_bounds);
+    Bounds::new(
+        timeout.max_x() + JOB_INBOX_BUTTON_GAP,
+        timeout.origin.y,
+        (content_bounds.max_x() - timeout.max_x() - CHAT_PAD - JOB_INBOX_BUTTON_GAP).max(140.0),
+        timeout.size.height,
     )
 }
 
@@ -1099,6 +1182,25 @@ pub fn topmost_sync_health_action_hit(
         let content_bounds = pane_content_bounds(pane.bounds);
         if sync_health_rebootstrap_button_bounds(content_bounds).contains(point) {
             return Some((pane.id, SyncHealthPaneAction::Rebootstrap));
+        }
+    }
+
+    None
+}
+
+pub fn topmost_network_requests_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, NetworkRequestsPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::NetworkRequests {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if network_requests_submit_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, NetworkRequestsPaneAction::SubmitRequest));
         }
     }
 
@@ -1412,6 +1514,58 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
         .is_handled()
 }
 
+pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_network = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::NetworkRequests)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_network else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let mut handled = false;
+    handled |= state
+        .network_requests_inputs
+        .request_type
+        .event(
+            event,
+            network_requests_type_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
+        .payload
+        .event(
+            event,
+            network_requests_payload_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
+        .budget_sats
+        .event(
+            event,
+            network_requests_budget_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
+        .timeout_seconds
+        .event(
+            event,
+            network_requests_timeout_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -1438,6 +1592,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::EarningsScoreboard => "Earnings Scoreboard".to_string(),
         PaneKind::RelayConnections => "Relay Connections".to_string(),
         PaneKind::SyncHealth => "Sync Health".to_string(),
+        PaneKind::NetworkRequests => "Network Requests".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1493,11 +1648,13 @@ mod tests {
         job_history_prev_page_button_bounds, job_history_search_input_bounds,
         job_history_status_button_bounds, job_history_time_button_bounds,
         job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
-        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-        relay_connections_row_bounds, relay_connections_url_input_bounds,
-        sync_health_rebootstrap_button_bounds,
+        network_requests_budget_input_bounds, network_requests_payload_input_bounds,
+        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
+        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
+        relay_connections_retry_button_bounds, relay_connections_row_bounds,
+        relay_connections_url_input_bounds, sync_health_rebootstrap_button_bounds,
     };
     use wgpui::Bounds;
 
@@ -1570,6 +1727,21 @@ mod tests {
         assert!(add.max_x() < remove.min_x());
         assert!(remove.max_x() < retry.min_x());
         assert!(retry.max_y() < row0.min_y());
+    }
+
+    #[test]
+    fn network_requests_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 420.0);
+        let request_type = network_requests_type_input_bounds(content);
+        let payload = network_requests_payload_input_bounds(content);
+        let budget = network_requests_budget_input_bounds(content);
+        let timeout = network_requests_timeout_input_bounds(content);
+        let submit = network_requests_submit_button_bounds(content);
+
+        assert!(request_type.max_y() < payload.min_y());
+        assert!(payload.max_y() < budget.min_y());
+        assert!(budget.max_x() < timeout.min_x());
+        assert!(timeout.max_x() < submit.min_x());
     }
 
     #[test]

@@ -13,16 +13,17 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController,
-    PaneInput, RelayConnectionsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
-    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
+    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
+    NetworkRequestsPaneAction, PaneController, PaneInput, RelayConnectionsPaneAction,
+    SyncHealthPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
     topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
     topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
-    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
-    topmost_pay_invoice_action_hit, topmost_relay_connections_action_hit, topmost_spark_action_hit,
-    topmost_sync_health_action_hit,
+    topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
+    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
+    topmost_relay_connections_action_hit, topmost_spark_action_hit, topmost_sync_health_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -34,6 +35,7 @@ const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
 const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
 const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
+const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -130,6 +132,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             if dispatch_relay_connections_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
+            if dispatch_network_requests_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
             if dispatch_chat_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
@@ -214,6 +219,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_create_invoice_input_event(state, &input);
                         handled |= dispatch_relay_connections_input_event(state, &input);
+                        handled |= dispatch_network_requests_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         if !handled {
@@ -226,6 +232,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_create_invoice_input_event(state, &input);
                         handled |= dispatch_relay_connections_input_event(state, &input);
+                        handled |= dispatch_network_requests_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         handled |= state
@@ -248,6 +255,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= dispatch_pay_invoice_input_event(state, &input);
                     handled |= dispatch_create_invoice_input_event(state, &input);
                     handled |= dispatch_relay_connections_input_event(state, &input);
+                    handled |= dispatch_network_requests_input_event(state, &input);
                     handled |= dispatch_chat_input_event(state, &input);
                     handled |= dispatch_job_history_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
@@ -258,6 +266,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_create_invoice_action_click(state, app.cursor_position);
                     handled |= handle_relay_connections_action_click(state, app.cursor_position);
                     handled |= handle_sync_health_action_click(state, app.cursor_position);
+                    handled |= handle_network_requests_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -319,6 +328,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 || handle_pay_invoice_keyboard_input(state, &event.logical_key)
                 || handle_create_invoice_keyboard_input(state, &event.logical_key)
                 || handle_relay_connections_keyboard_input(state, &event.logical_key)
+                || handle_network_requests_keyboard_input(state, &event.logical_key)
                 || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -473,6 +483,18 @@ fn handle_sync_health_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_sync_health_action(state, action)
+}
+
+fn handle_network_requests_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_network_requests_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_network_requests_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -696,6 +718,34 @@ fn handle_relay_connections_keyboard_input(
         && state.relay_connections_inputs.relay_url.is_focused()
     {
         return run_relay_connections_action(state, RelayConnectionsPaneAction::AddRelay);
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
+}
+
+fn handle_network_requests_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+    let focused_before = network_requests_inputs_focused(state);
+    let handled_by_input = dispatch_network_requests_input_event(state, &key_event);
+    let focused_after = network_requests_inputs_focused(state);
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter)) && network_requests_inputs_focused(state) {
+        return run_network_requests_action(state, NetworkRequestsPaneAction::SubmitRequest);
     }
 
     if focus_active {
@@ -966,6 +1016,36 @@ fn run_sync_health_action(
             state.sync_health.rebootstrap();
             state.provider_runtime.last_result = state.sync_health.last_action.clone();
             refresh_sync_health(state);
+            true
+        }
+    }
+}
+
+fn run_network_requests_action(
+    state: &mut crate::app_state::RenderState,
+    action: NetworkRequestsPaneAction,
+) -> bool {
+    match action {
+        NetworkRequestsPaneAction::SubmitRequest => {
+            let request_id = state.network_requests.submit_request(
+                state.network_requests_inputs.request_type.get_value(),
+                state.network_requests_inputs.payload.get_value(),
+                state.network_requests_inputs.budget_sats.get_value(),
+                state.network_requests_inputs.timeout_seconds.get_value(),
+            );
+            match request_id {
+                Ok(request_id) => {
+                    state.provider_runtime.last_result =
+                        Some(format!("submitted network request {request_id}"));
+                    state.sync_health.last_applied_event_seq =
+                        state.sync_health.last_applied_event_seq.saturating_add(1);
+                    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+                    refresh_sync_health(state);
+                }
+                Err(error) => {
+                    state.network_requests.last_error = Some(error);
+                }
+            }
             true
         }
     }
@@ -1258,6 +1338,13 @@ fn create_invoice_inputs_focused(state: &crate::app_state::RenderState) -> bool 
         || state.create_invoice_inputs.expiry_seconds.is_focused()
 }
 
+fn network_requests_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.network_requests_inputs.request_type.is_focused()
+        || state.network_requests_inputs.payload.is_focused()
+        || state.network_requests_inputs.budget_sats.is_focused()
+        || state.network_requests_inputs.timeout_seconds.is_focused()
+}
+
 fn map_modifiers(modifiers: ModifiersState) -> Modifiers {
     Modifiers {
         shift: modifiers.shift_key(),
@@ -1353,6 +1440,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             COMMAND_OPEN_SYNC_HEALTH => {
                 PaneController::create_sync_health(state);
                 refresh_sync_health(state);
+                changed = true;
+            }
+            COMMAND_OPEN_NETWORK_REQUESTS => {
+                PaneController::create_network_requests(state);
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

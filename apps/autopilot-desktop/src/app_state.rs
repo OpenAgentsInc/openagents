@@ -38,6 +38,7 @@ pub enum PaneKind {
     EarningsScoreboard,
     RelayConnections,
     SyncHealth,
+    NetworkRequests,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -131,6 +132,26 @@ impl Default for RelayConnectionsPaneInputs {
             relay_url: TextInput::new()
                 .value("wss://relay.example.com")
                 .placeholder("wss://relay.example.com"),
+        }
+    }
+}
+
+pub struct NetworkRequestsPaneInputs {
+    pub request_type: TextInput,
+    pub payload: TextInput,
+    pub budget_sats: TextInput,
+    pub timeout_seconds: TextInput,
+}
+
+impl Default for NetworkRequestsPaneInputs {
+    fn default() -> Self {
+        Self {
+            request_type: TextInput::new()
+                .value("summarize.text")
+                .placeholder("Request type"),
+            payload: TextInput::new().placeholder("Request payload"),
+            budget_sats: TextInput::new().value("1500").placeholder("Budget sats"),
+            timeout_seconds: TextInput::new().value("60").placeholder("Timeout seconds"),
         }
     }
 }
@@ -602,6 +623,148 @@ impl SyncHealthState {
             self.recovery_phase = SyncRecoveryPhase::Ready;
             self.last_error = None;
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkRequestStatus {
+    Submitted,
+    Streaming,
+    Completed,
+    Failed,
+}
+
+impl NetworkRequestStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Submitted => "submitted",
+            Self::Streaming => "streaming",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubmittedNetworkRequest {
+    pub request_id: String,
+    pub request_type: String,
+    pub payload: String,
+    pub budget_sats: u64,
+    pub timeout_seconds: u64,
+    pub response_stream_id: String,
+    pub status: NetworkRequestStatus,
+}
+
+pub struct NetworkRequestsState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub submitted: Vec<SubmittedNetworkRequest>,
+    next_request_seq: u64,
+}
+
+impl Default for NetworkRequestsState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Network request lane ready".to_string()),
+            submitted: vec![
+                SubmittedNetworkRequest {
+                    request_id: "req-buy-0001".to_string(),
+                    request_type: "summarize.text".to_string(),
+                    payload: "{\"text\":\"hello world\"}".to_string(),
+                    budget_sats: 900,
+                    timeout_seconds: 45,
+                    response_stream_id: "stream:req-buy-0001".to_string(),
+                    status: NetworkRequestStatus::Streaming,
+                },
+                SubmittedNetworkRequest {
+                    request_id: "req-buy-0000".to_string(),
+                    request_type: "classify.image".to_string(),
+                    payload: "{\"cid\":\"bafy...\"}".to_string(),
+                    budget_sats: 1400,
+                    timeout_seconds: 120,
+                    response_stream_id: "stream:req-buy-0000".to_string(),
+                    status: NetworkRequestStatus::Completed,
+                },
+                SubmittedNetworkRequest {
+                    request_id: "req-buy-zz99".to_string(),
+                    request_type: "invoice.parse".to_string(),
+                    payload: "{\"invoice\":\"lnbc...\"}".to_string(),
+                    budget_sats: 600,
+                    timeout_seconds: 30,
+                    response_stream_id: "stream:req-buy-zz99".to_string(),
+                    status: NetworkRequestStatus::Failed,
+                },
+            ],
+            next_request_seq: 2,
+        }
+    }
+}
+
+impl NetworkRequestsState {
+    pub fn submit_request(
+        &mut self,
+        request_type: &str,
+        payload: &str,
+        budget_sats: &str,
+        timeout_seconds: &str,
+    ) -> Result<String, String> {
+        let request_type = request_type.trim();
+        if request_type.is_empty() {
+            self.last_error = Some("Request type is required".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Request type is required".to_string());
+        }
+
+        let payload = payload.trim();
+        if payload.is_empty() {
+            self.last_error = Some("Request payload is required".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Request payload is required".to_string());
+        }
+
+        let budget_sats = budget_sats
+            .trim()
+            .parse::<u64>()
+            .map_err(|error| format!("Budget sats must be an integer: {error}"))?;
+        if budget_sats == 0 {
+            self.last_error = Some("Budget sats must be greater than 0".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Budget sats must be greater than 0".to_string());
+        }
+
+        let timeout_seconds = timeout_seconds
+            .trim()
+            .parse::<u64>()
+            .map_err(|error| format!("Timeout seconds must be an integer: {error}"))?;
+        if timeout_seconds == 0 {
+            self.last_error = Some("Timeout seconds must be greater than 0".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Timeout seconds must be greater than 0".to_string());
+        }
+
+        let request_id = format!("req-buy-{:04}", self.next_request_seq);
+        self.next_request_seq = self.next_request_seq.saturating_add(1);
+        let stream_id = format!("stream:{request_id}");
+        self.submitted.insert(
+            0,
+            SubmittedNetworkRequest {
+                request_id: request_id.clone(),
+                request_type: request_type.to_string(),
+                payload: payload.to_string(),
+                budget_sats,
+                timeout_seconds,
+                response_stream_id: stream_id,
+                status: NetworkRequestStatus::Submitted,
+            },
+        );
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Submitted buyer request {request_id}"));
+        Ok(request_id)
     }
 }
 
@@ -1563,6 +1726,7 @@ pub struct RenderState {
     pub pay_invoice_inputs: PayInvoicePaneInputs,
     pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
+    pub network_requests_inputs: NetworkRequestsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
@@ -1570,6 +1734,7 @@ pub struct RenderState {
     pub earnings_scoreboard: EarningsScoreboardState,
     pub relay_connections: RelayConnectionsState,
     pub sync_health: SyncHealthState,
+    pub network_requests: NetworkRequestsState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1601,9 +1766,9 @@ mod tests {
         ActiveJobState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
         JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
-        JobLifecycleStage, NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
-        RelayConnectionStatus, RelayConnectionsState, SparkPaneState, SyncHealthState,
-        SyncRecoveryPhase,
+        JobLifecycleStage, NetworkRequestStatus, NetworkRequestsState, NostrSecretState,
+        ProviderBlocker, ProviderMode, ProviderRuntimeState, RelayConnectionStatus,
+        RelayConnectionsState, SparkPaneState, SyncHealthState, SyncRecoveryPhase,
     };
 
     #[test]
@@ -1819,6 +1984,21 @@ mod tests {
         assert_eq!(sync.load_state, super::PaneLoadState::Ready);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Replaying);
         assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
+    }
+
+    #[test]
+    fn network_requests_submit_validates_and_records_stream_link() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .submit_request("translate.text", "{\"text\":\"hola\"}", "1200", "90")
+            .expect("request should be accepted");
+        let first = requests
+            .submitted
+            .first()
+            .expect("new request should be inserted at head");
+        assert_eq!(first.request_id, request_id);
+        assert_eq!(first.response_stream_id, format!("stream:{request_id}"));
+        assert_eq!(first.status, NetworkRequestStatus::Submitted);
     }
 
     #[test]

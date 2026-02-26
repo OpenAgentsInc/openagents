@@ -1,7 +1,8 @@
 use crate::app_state::{
     ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
     CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
+    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
     RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, SyncHealthState,
 };
@@ -13,8 +14,11 @@ use crate::pane_system::{
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-    nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
+    job_inbox_visible_row_count, network_requests_budget_input_bounds,
+    network_requests_payload_input_bounds, network_requests_submit_button_bounds,
+    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds, relay_connections_add_button_bounds,
     relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
     relay_connections_row_bounds, relay_connections_url_input_bounds,
     relay_connections_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -42,6 +46,7 @@ impl PaneRenderer {
         earnings_scoreboard: &EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
         sync_health: &SyncHealthState,
+        network_requests: &NetworkRequestsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -50,6 +55,7 @@ impl PaneRenderer {
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
         relay_connections_inputs: &mut RelayConnectionsPaneInputs,
+        network_requests_inputs: &mut NetworkRequestsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
@@ -119,6 +125,14 @@ impl PaneRenderer {
                 }
                 PaneKind::SyncHealth => {
                     paint_sync_health_pane(content_bounds, sync_health, paint);
+                }
+                PaneKind::NetworkRequests => {
+                    paint_network_requests_pane(
+                        content_bounds,
+                        network_requests,
+                        network_requests_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -829,6 +843,151 @@ fn paint_sync_health_pane(
         10.0,
         theme::text::MUTED,
     ));
+}
+
+fn paint_network_requests_pane(
+    content_bounds: Bounds,
+    network_requests: &NetworkRequestsState,
+    network_requests_inputs: &mut NetworkRequestsPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let request_type_bounds = network_requests_type_input_bounds(content_bounds);
+    let payload_bounds = network_requests_payload_input_bounds(content_bounds);
+    let budget_bounds = network_requests_budget_input_bounds(content_bounds);
+    let timeout_bounds = network_requests_timeout_input_bounds(content_bounds);
+    let submit_bounds = network_requests_submit_button_bounds(content_bounds);
+
+    network_requests_inputs
+        .request_type
+        .set_max_width(request_type_bounds.size.width);
+    network_requests_inputs
+        .payload
+        .set_max_width(payload_bounds.size.width);
+    network_requests_inputs
+        .budget_sats
+        .set_max_width(budget_bounds.size.width);
+    network_requests_inputs
+        .timeout_seconds
+        .set_max_width(timeout_bounds.size.width);
+
+    network_requests_inputs
+        .request_type
+        .paint(request_type_bounds, paint);
+    network_requests_inputs.payload.paint(payload_bounds, paint);
+    network_requests_inputs
+        .budget_sats
+        .paint(budget_bounds, paint);
+    network_requests_inputs
+        .timeout_seconds
+        .paint(timeout_bounds, paint);
+    paint_action_button(submit_bounds, "Submit request", paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Request type",
+        Point::new(
+            request_type_bounds.origin.x,
+            request_type_bounds.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Payload",
+        Point::new(payload_bounds.origin.x, payload_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Budget sats",
+        Point::new(budget_bounds.origin.x, budget_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Timeout (s)",
+        Point::new(timeout_bounds.origin.x, timeout_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let state_color = match network_requests.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = submit_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", network_requests.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = network_requests.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = network_requests.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    if network_requests.submitted.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No network requests submitted yet.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for (idx, request) in network_requests.submitted.iter().take(6).enumerate() {
+        let row_bounds = Bounds::new(
+            content_bounds.origin.x + 12.0,
+            y + idx as f32 * 34.0,
+            (content_bounds.size.width - 24.0).max(220.0),
+            30.0,
+        );
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(theme::bg::APP.with_alpha(0.78))
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let status_color = match request.status {
+            NetworkRequestStatus::Submitted => theme::accent::PRIMARY,
+            NetworkRequestStatus::Streaming => theme::status::SUCCESS,
+            NetworkRequestStatus::Completed => theme::status::SUCCESS,
+            NetworkRequestStatus::Failed => theme::status::ERROR,
+        };
+        let summary = format!(
+            "{} {} budget:{} timeout:{}s stream:{} [{}]",
+            request.request_id,
+            request.request_type,
+            request.budget_sats,
+            request.timeout_seconds,
+            request.response_stream_id,
+            request.status.label()
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &summary,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            status_color,
+        ));
+    }
 }
 
 fn paint_nostr_identity_pane(
