@@ -10,10 +10,8 @@ use winit::keyboard::{
 use crate::app_state::App;
 use crate::hotbar::{activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks};
 use crate::pane_system::{
-    active_pane_id, bring_pane_to_front_by_id, close_pane, cursor_icon_for_pointer,
-    dispatch_pane_frame_event, dispatch_spark_input_event, handle_pane_mouse_down,
-    handle_pane_mouse_up, topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit,
-    topmost_nostr_reveal_hit, topmost_spark_action_hit, update_drag,
+    PaneController, PaneInput, dispatch_spark_input_event, topmost_nostr_copy_secret_hit,
+    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_spark_action_hit,
 };
 use crate::render::render_frame;
 use crate::spark_pane::SparkPaneAction;
@@ -55,7 +53,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
 
             let mut needs_redraw = false;
-            if update_drag(state, app.cursor_position) {
+            if PaneController::update_drag(state, app.cursor_position) {
                 needs_redraw = true;
             }
 
@@ -63,7 +61,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 x: app.cursor_position.x,
                 y: app.cursor_position.y,
             };
-            if dispatch_pane_frame_event(state, &pane_move_event) {
+            if PaneInput::dispatch_frame_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
             if dispatch_spark_input_event(state, &pane_move_event) {
@@ -84,7 +82,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
             state
                 .window
-                .set_cursor(cursor_icon_for_pointer(state, app.cursor_position));
+                .set_cursor(PaneInput::cursor_icon(state, app.cursor_position));
 
             if needs_redraw {
                 state.window.request_redraw();
@@ -127,10 +125,11 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= process_hotbar_clicks(state);
                         handled |= dispatch_spark_input_event(state, &input);
                         if !handled {
-                            handled |= handle_pane_mouse_down(state, app.cursor_position, button);
+                            handled |=
+                                PaneInput::handle_mouse_down(state, app.cursor_position, button);
                         }
                     } else {
-                        handled |= handle_pane_mouse_down(state, app.cursor_position, button);
+                        handled |= PaneInput::handle_mouse_down(state, app.cursor_position, button);
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= state
                             .hotbar
@@ -141,13 +140,13 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
                     state
                         .window
-                        .set_cursor(cursor_icon_for_pointer(state, app.cursor_position));
+                        .set_cursor(PaneInput::cursor_icon(state, app.cursor_position));
                     if handled {
                         state.window.request_redraw();
                     }
                 }
                 ElementState::Released => {
-                    let mut handled = handle_pane_mouse_up(state, &input);
+                    let mut handled = PaneInput::handle_mouse_up(state, &input);
                     handled |= dispatch_spark_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
                     handled |= handle_nostr_reveal_click(state, app.cursor_position);
@@ -161,7 +160,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
                     state
                         .window
-                        .set_cursor(cursor_icon_for_pointer(state, app.cursor_position));
+                        .set_cursor(PaneInput::cursor_icon(state, app.cursor_position));
                     if handled {
                         state.window.request_redraw();
                     }
@@ -180,8 +179,8 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
             match event.physical_key {
                 PhysicalKey::Code(KeyCode::Escape) => {
-                    if let Some(pane_id) = active_pane_id(state) {
-                        close_pane(state, pane_id);
+                    if let Some(pane_id) = PaneController::active(state) {
+                        PaneController::close(state, pane_id);
                         state.window.request_redraw();
                     }
                 }
@@ -213,7 +212,7 @@ fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, poin
         return false;
     };
 
-    bring_pane_to_front_by_id(state, pane_id);
+    PaneController::bring_to_front(state, pane_id);
     match regenerate_identity() {
         Ok(identity) => {
             state.nostr_identity = Some(identity);
@@ -231,7 +230,7 @@ fn handle_nostr_reveal_click(state: &mut crate::app_state::RenderState, point: P
         return false;
     };
 
-    bring_pane_to_front_by_id(state, pane_id);
+    PaneController::bring_to_front(state, pane_id);
     state
         .nostr_secret_state
         .toggle_reveal(std::time::Instant::now());
@@ -243,7 +242,7 @@ fn handle_nostr_copy_click(state: &mut crate::app_state::RenderState, point: Poi
         return false;
     };
 
-    bring_pane_to_front_by_id(state, pane_id);
+    PaneController::bring_to_front(state, pane_id);
     let now = std::time::Instant::now();
     let notice = if let Some(identity) = state.nostr_identity.as_ref() {
         match copy_to_clipboard(&identity.nsec) {
@@ -262,7 +261,7 @@ fn handle_spark_action_click(state: &mut crate::app_state::RenderState, point: P
         return false;
     };
 
-    bring_pane_to_front_by_id(state, pane_id);
+    PaneController::bring_to_front(state, pane_id);
     run_spark_action(state, action)
 }
 
@@ -318,7 +317,9 @@ fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPane
             let Some(amount) = amount else {
                 return true;
             };
-            SparkWalletCommand::CreateInvoice { amount_sats: amount }
+            SparkWalletCommand::CreateInvoice {
+                amount_sats: amount,
+            }
         }
         SparkPaneAction::SendPayment => {
             let request = state
@@ -379,7 +380,10 @@ fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool
             .is_some_and(|action| action.starts_with("Created invoice"))
         && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
     {
-        state.spark_inputs.send_request.set_value(invoice.to_string());
+        state
+            .spark_inputs
+            .send_request
+            .set_value(invoice.to_string());
     }
 
     true

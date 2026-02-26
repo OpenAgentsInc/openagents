@@ -19,46 +19,57 @@ const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
 const PANE_BOTTOM_RESERVED: f32 = HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN;
 
-pub fn create_empty_pane(state: &mut RenderState) {
-    let id = state.next_pane_id;
-    state.next_pane_id = state.next_pane_id.saturating_add(1);
+pub struct PaneController;
 
-    let logical = logical_size(&state.config, state.scale_factor);
-    let tier = (id as usize - 1) % 10;
-    let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
-    let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
+pub struct PaneInput;
 
-    let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, PANE_DEFAULT_WIDTH, PANE_DEFAULT_HEIGHT),
-        logical,
-    );
-
-    let pane = DesktopPane {
-        id,
-        title: format!("Pane {id}"),
-        kind: PaneKind::Empty,
-        bounds,
-        z_index: state.next_z_index,
-        frame: PaneFrame::new()
-            .title(format!("Pane {id}"))
-            .active(true)
-            .dismissable(true)
-            .title_height(PANE_TITLE_HEIGHT),
-    };
-
-    state.next_z_index = state.next_z_index.saturating_add(1);
-    state.panes.push(pane);
+#[derive(Clone, Copy)]
+pub struct PaneDescriptor {
+    pub kind: PaneKind,
+    pub width: f32,
+    pub height: f32,
+    pub singleton: bool,
 }
 
-pub fn create_nostr_identity_pane(state: &mut RenderState) {
-    if let Some(existing_id) = state
-        .panes
-        .iter()
-        .find(|pane| pane.kind == PaneKind::NostrIdentity)
-        .map(|pane| pane.id)
+impl PaneDescriptor {
+    pub const fn empty() -> Self {
+        Self {
+            kind: PaneKind::Empty,
+            width: PANE_DEFAULT_WIDTH,
+            height: PANE_DEFAULT_HEIGHT,
+            singleton: false,
+        }
+    }
+
+    pub const fn nostr_identity() -> Self {
+        Self {
+            kind: PaneKind::NostrIdentity,
+            width: NOSTR_PANE_WIDTH,
+            height: NOSTR_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn spark_wallet() -> Self {
+        Self {
+            kind: PaneKind::SparkWallet,
+            width: SPARK_PANE_WIDTH,
+            height: SPARK_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+}
+
+pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
+    if descriptor.singleton
+        && let Some(existing_id) = state
+            .panes
+            .iter()
+            .find(|pane| pane.kind == descriptor.kind)
+            .map(|pane| pane.id)
     {
         bring_pane_to_front(state, existing_id);
-        return;
+        return existing_id;
     }
 
     let id = state.next_pane_id;
@@ -69,18 +80,19 @@ pub fn create_nostr_identity_pane(state: &mut RenderState) {
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
     let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, NOSTR_PANE_WIDTH, NOSTR_PANE_HEIGHT),
+        Bounds::new(x, y, descriptor.width, descriptor.height),
         logical,
     );
 
+    let title = pane_title(descriptor.kind, id);
     let pane = DesktopPane {
         id,
-        title: "Nostr Keys (NIP-06)".to_string(),
-        kind: PaneKind::NostrIdentity,
+        title: title.clone(),
+        kind: descriptor.kind,
         bounds,
         z_index: state.next_z_index,
         frame: PaneFrame::new()
-            .title("Nostr Keys (NIP-06)")
+            .title(title)
             .active(true)
             .dismissable(true)
             .title_height(PANE_TITLE_HEIGHT),
@@ -88,46 +100,59 @@ pub fn create_nostr_identity_pane(state: &mut RenderState) {
 
     state.next_z_index = state.next_z_index.saturating_add(1);
     state.panes.push(pane);
+    id
 }
 
-pub fn create_spark_wallet_pane(state: &mut RenderState) {
-    if let Some(existing_id) = state
-        .panes
-        .iter()
-        .find(|pane| pane.kind == PaneKind::SparkWallet)
-        .map(|pane| pane.id)
-    {
-        bring_pane_to_front(state, existing_id);
-        return;
+impl PaneController {
+    pub fn create(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
+        create_pane(state, descriptor)
     }
 
-    let id = state.next_pane_id;
-    state.next_pane_id = state.next_pane_id.saturating_add(1);
+    pub fn create_empty(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::empty());
+    }
 
-    let logical = logical_size(&state.config, state.scale_factor);
-    let tier = (id as usize - 1) % 10;
-    let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
-    let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
-    let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, SPARK_PANE_WIDTH, SPARK_PANE_HEIGHT),
-        logical,
-    );
+    pub fn create_nostr_identity(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::nostr_identity());
+    }
 
-    let pane = DesktopPane {
-        id,
-        title: "Spark Lightning Wallet".to_string(),
-        kind: PaneKind::SparkWallet,
-        bounds,
-        z_index: state.next_z_index,
-        frame: PaneFrame::new()
-            .title("Spark Lightning Wallet")
-            .active(true)
-            .dismissable(true)
-            .title_height(PANE_TITLE_HEIGHT),
-    };
+    pub fn create_spark_wallet(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::spark_wallet());
+    }
 
-    state.next_z_index = state.next_z_index.saturating_add(1);
-    state.panes.push(pane);
+    pub fn close(state: &mut RenderState, pane_id: u64) {
+        close_pane(state, pane_id);
+    }
+
+    pub fn active(state: &RenderState) -> Option<u64> {
+        active_pane_id(state)
+    }
+
+    pub fn bring_to_front(state: &mut RenderState, pane_id: u64) {
+        bring_pane_to_front_by_id(state, pane_id);
+    }
+
+    pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
+        self::update_drag(state, current_mouse)
+    }
+}
+
+impl PaneInput {
+    pub fn handle_mouse_down(state: &mut RenderState, point: Point, button: MouseButton) -> bool {
+        handle_pane_mouse_down(state, point, button)
+    }
+
+    pub fn handle_mouse_up(state: &mut RenderState, event: &InputEvent) -> bool {
+        handle_pane_mouse_up(state, event)
+    }
+
+    pub fn dispatch_frame_event(state: &mut RenderState, event: &InputEvent) -> bool {
+        dispatch_pane_frame_event(state, event)
+    }
+
+    pub fn cursor_icon(state: &RenderState, point: Point) -> CursorIcon {
+        cursor_icon_for_pointer(state, point)
+    }
 }
 
 pub fn handle_pane_mouse_down(state: &mut RenderState, point: Point, button: MouseButton) -> bool {
@@ -516,6 +541,14 @@ fn bring_pane_to_front(state: &mut RenderState, pane_id: u64) {
     if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
         pane.z_index = state.next_z_index;
         state.next_z_index = state.next_z_index.saturating_add(1);
+    }
+}
+
+fn pane_title(kind: PaneKind, pane_id: u64) -> String {
+    match kind {
+        PaneKind::Empty => format!("Pane {pane_id}"),
+        PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
+        PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
     }
 }
 

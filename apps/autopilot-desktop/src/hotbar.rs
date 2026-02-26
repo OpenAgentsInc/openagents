@@ -3,7 +3,7 @@ use wgpui::{Bounds, Size};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::RenderState;
-use crate::pane_system::{create_empty_pane, create_nostr_identity_pane, create_spark_wallet_pane};
+use crate::pane_system::PaneController;
 use crate::spark_wallet::SparkWalletCommand;
 
 pub const HOTBAR_HEIGHT: f32 = 52.0;
@@ -61,16 +61,15 @@ pub fn process_hotbar_clicks(state: &mut RenderState) -> bool {
 pub fn activate_hotbar_slot(state: &mut RenderState, slot: u8) {
     state.hotbar.flash_slot(slot);
     match slot {
-        HOTBAR_SLOT_NEW_CHAT => create_empty_pane(state),
-        HOTBAR_SLOT_NOSTR_IDENTITY => create_nostr_identity_pane(state),
+        HOTBAR_SLOT_NEW_CHAT => PaneController::create_empty(state),
+        HOTBAR_SLOT_NOSTR_IDENTITY => PaneController::create_nostr_identity(state),
         HOTBAR_SLOT_SPARK_WALLET => {
             let was_open = state
                 .panes
                 .iter()
                 .any(|pane| pane.kind == crate::app_state::PaneKind::SparkWallet);
-            create_spark_wallet_pane(state);
-            if !was_open
-                && let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh)
+            PaneController::create_spark_wallet(state);
+            if !was_open && let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh)
             {
                 state.spark_wallet.last_error = Some(error);
             }

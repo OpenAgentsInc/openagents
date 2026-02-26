@@ -1,6 +1,7 @@
 mod app_state;
 mod hotbar;
 mod input;
+mod pane_renderer;
 mod pane_system;
 mod render;
 mod spark_pane;
