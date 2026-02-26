@@ -1,3 +1,4 @@
+use nostr::regenerate_identity;
 use wgpui::{Component, InputEvent, Modifiers, MouseButton, Point};
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -5,7 +6,6 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::App;
 use crate::hotbar::{activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks};
-use crate::nostr_identity::regenerate_identity;
 use crate::pane_system::{
     active_pane_id, bring_pane_to_front_by_id, close_pane, cursor_icon_for_pointer,
     dispatch_pane_frame_event, handle_pane_mouse_down, handle_pane_mouse_up,

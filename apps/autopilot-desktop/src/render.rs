@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use nostr::load_or_create_identity;
 use wgpui::components::hud::{DotShape, DotsGrid, DotsOrigin};
 use wgpui::renderer::Renderer;
 use wgpui::{
@@ -10,11 +11,9 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
 
 use crate::app_state::{
-    DesktopPane, NostrIdentityView, PaneKind, RenderState, WINDOW_HEIGHT, WINDOW_TITLE,
-    WINDOW_WIDTH,
+    DesktopPane, PaneKind, RenderState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
-use crate::nostr_identity::load_or_create_identity;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PANE_TITLE_HEIGHT, active_pane_id, create_empty_pane,
     nostr_regenerate_button_bounds, pane_content_bounds,
@@ -208,7 +207,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 fn paint_panes(
     panes: &mut [DesktopPane],
     active_id: Option<u64>,
-    nostr_identity: Option<&NostrIdentityView>,
+    nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
     paint: &mut PaintContext,
 ) -> u32 {
@@ -269,7 +268,7 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
 
 fn paint_nostr_identity_pane(
     content_bounds: Bounds,
-    nostr_identity: Option<&NostrIdentityView>,
+    nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
     paint: &mut PaintContext,
 ) {
@@ -296,7 +295,11 @@ fn paint_nostr_identity_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Identity path",
-        nostr_identity.map_or("Unavailable", |identity| identity.identity_path.as_str()),
+        &nostr_identity
+            .map_or_else(
+                || "Unavailable".to_string(),
+                |identity| identity.identity_path.display().to_string(),
+            ),
     );
 
     if let Some(identity) = nostr_identity {

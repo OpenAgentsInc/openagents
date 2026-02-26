@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use nostr::NostrIdentity;
 use wgpui::components::hud::{Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Point, TextSystem};
@@ -21,16 +22,6 @@ impl Default for App {
             cursor_position: Point::ZERO,
         }
     }
-}
-
-#[derive(Clone)]
-pub struct NostrIdentityView {
-    pub identity_path: String,
-    pub mnemonic: String,
-    pub npub: String,
-    pub nsec: String,
-    pub public_key_hex: String,
-    pub private_key_hex: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,7 +67,7 @@ pub struct RenderState {
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
     pub panes: Vec<DesktopPane>,
-    pub nostr_identity: Option<NostrIdentityView>,
+    pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
     pub next_pane_id: u64,
     pub next_z_index: i32,

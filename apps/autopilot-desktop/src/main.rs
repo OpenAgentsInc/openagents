@@ -1,7 +1,6 @@
 mod app_state;
 mod hotbar;
 mod input;
-mod nostr_identity;
 mod pane_system;
 mod render;
 
