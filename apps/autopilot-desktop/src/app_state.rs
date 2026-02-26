@@ -23,6 +23,22 @@ impl Default for App {
     }
 }
 
+#[derive(Clone)]
+pub struct NostrIdentityView {
+    pub identity_path: String,
+    pub mnemonic: String,
+    pub npub: String,
+    pub nsec: String,
+    pub public_key_hex: String,
+    pub private_key_hex: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneKind {
+    Empty,
+    NostrIdentity,
+}
+
 #[derive(Clone, Copy)]
 pub enum PaneDragMode {
     Moving {
@@ -41,6 +57,7 @@ pub enum PaneDragMode {
 pub struct DesktopPane {
     pub id: u64,
     pub title: String,
+    pub kind: PaneKind,
     pub bounds: Bounds,
     pub z_index: i32,
     pub frame: PaneFrame,
@@ -59,6 +76,8 @@ pub struct RenderState {
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
     pub panes: Vec<DesktopPane>,
+    pub nostr_identity: Option<NostrIdentityView>,
+    pub nostr_identity_error: Option<String>,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,

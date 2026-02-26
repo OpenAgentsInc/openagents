@@ -2,12 +2,14 @@ use wgpui::components::hud::{PaneFrame, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
 
-use crate::app_state::{DesktopPane, PaneDragMode, RenderState};
+use crate::app_state::{DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
 
 const PANE_DEFAULT_WIDTH: f32 = 420.0;
 const PANE_DEFAULT_HEIGHT: f32 = 280.0;
+const NOSTR_PANE_WIDTH: f32 = 760.0;
+const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
@@ -33,10 +35,51 @@ pub fn create_empty_pane(state: &mut RenderState) {
     let pane = DesktopPane {
         id,
         title: format!("Pane {id}"),
+        kind: PaneKind::Empty,
         bounds,
         z_index: state.next_z_index,
         frame: PaneFrame::new()
             .title(format!("Pane {id}"))
+            .active(true)
+            .dismissable(true)
+            .title_height(PANE_TITLE_HEIGHT),
+    };
+
+    state.next_z_index = state.next_z_index.saturating_add(1);
+    state.panes.push(pane);
+}
+
+pub fn create_nostr_identity_pane(state: &mut RenderState) {
+    if let Some(existing_id) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::NostrIdentity)
+        .map(|pane| pane.id)
+    {
+        bring_pane_to_front(state, existing_id);
+        return;
+    }
+
+    let id = state.next_pane_id;
+    state.next_pane_id = state.next_pane_id.saturating_add(1);
+
+    let logical = logical_size(&state.config, state.scale_factor);
+    let tier = (id as usize - 1) % 10;
+    let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
+    let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
+    let bounds = clamp_bounds_to_window(
+        Bounds::new(x, y, NOSTR_PANE_WIDTH, NOSTR_PANE_HEIGHT),
+        logical,
+    );
+
+    let pane = DesktopPane {
+        id,
+        title: "Nostr Keys (NIP-06)".to_string(),
+        kind: PaneKind::NostrIdentity,
+        bounds,
+        z_index: state.next_z_index,
+        frame: PaneFrame::new()
+            .title("Nostr Keys (NIP-06)")
             .active(true)
             .dismissable(true)
             .title_height(PANE_TITLE_HEIGHT),
@@ -182,9 +225,12 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             start_bounds,
         } => {
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
-                let next = state
-                    .pane_resizer
-                    .resize_bounds(edge, start_bounds, start_mouse, current_mouse);
+                let next = state.pane_resizer.resize_bounds(
+                    edge,
+                    start_bounds,
+                    start_mouse,
+                    current_mouse,
+                );
                 pane.bounds = clamp_bounds_to_window(next, logical);
                 return true;
             }
@@ -233,10 +279,58 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             return CursorIcon::Move;
         }
 
+        if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
+            let content_bounds = pane_content_bounds(bounds);
+            let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
+            if regenerate_bounds.contains(point) {
+                return CursorIcon::Pointer;
+            }
+        }
+
         return CursorIcon::Default;
     }
 
     CursorIcon::Default
+}
+
+pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x,
+        bounds.origin.y + PANE_TITLE_HEIGHT,
+        bounds.size.width,
+        (bounds.size.height - PANE_TITLE_HEIGHT).max(0.0),
+    )
+}
+
+pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
+    let width = (content_bounds.size.width - 24.0).clamp(120.0, 160.0);
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 12.0,
+        width,
+        30.0,
+    )
+}
+
+pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option<u64> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::NostrIdentity {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
+        if regenerate_bounds.contains(point) {
+            return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
+    bring_pane_to_front(state, pane_id);
 }
 
 fn pane_indices_by_z_desc(state: &RenderState) -> Vec<usize> {

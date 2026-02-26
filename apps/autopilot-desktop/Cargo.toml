@@ -16,6 +16,11 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+bech32 = "0.11"
+bip39 = "2.2.0"
+bitcoin = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
 wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }
 winit = { workspace = true }

@@ -4,10 +4,12 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::App;
-use crate::hotbar::{HOTBAR_SLOT_NEW_CHAT, activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks};
+use crate::hotbar::{activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks};
+use crate::nostr_identity::regenerate_identity;
 use crate::pane_system::{
-    active_pane_id, close_pane, cursor_icon_for_pointer, dispatch_pane_frame_event,
-    handle_pane_mouse_down, handle_pane_mouse_up, update_drag,
+    active_pane_id, bring_pane_to_front_by_id, close_pane, cursor_icon_for_pointer,
+    dispatch_pane_frame_event, handle_pane_mouse_down, handle_pane_mouse_up,
+    topmost_nostr_regenerate_hit, update_drag,
 };
 use crate::render::render_frame;
 
@@ -48,7 +50,11 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
             if state
                 .hotbar
-                .event(&pane_move_event, state.hotbar_bounds, &mut state.event_context)
+                .event(
+                    &pane_move_event,
+                    state.hotbar_bounds,
+                    &mut state.event_context,
+                )
                 .is_handled()
             {
                 needs_redraw = true;
@@ -118,6 +124,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 }
                 ElementState::Released => {
                     let mut handled = handle_pane_mouse_up(state, &input);
+                    handled |= handle_nostr_regenerate_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -146,9 +153,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     }
                 }
                 key => {
-                    if let Some(slot) = hotbar_slot_for_key(key)
-                        && slot == HOTBAR_SLOT_NEW_CHAT
-                    {
+                    if let Some(slot) = hotbar_slot_for_key(key) {
                         activate_hotbar_slot(state, slot);
                         state.window.request_redraw();
                     }
@@ -168,4 +173,22 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         }
         _ => {}
     }
+}
+
+fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(pane_id) = topmost_nostr_regenerate_hit(state, point) else {
+        return false;
+    };
+
+    bring_pane_to_front_by_id(state, pane_id);
+    match regenerate_identity() {
+        Ok(identity) => {
+            state.nostr_identity = Some(identity);
+            state.nostr_identity_error = None;
+        }
+        Err(err) => {
+            state.nostr_identity_error = Some(err.to_string());
+        }
+    }
+    true
 }
