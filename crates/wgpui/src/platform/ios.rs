@@ -4130,7 +4130,7 @@ mod mission_density_tests {
             true,
         );
         let elapsed = start.elapsed();
-        eprintln!(
+        log::info!(
             "mission_fold_bench events={} folded={} elapsed_ms={}",
             events.len(),
             folded.len(),
@@ -4204,23 +4204,23 @@ pub extern "C" fn wgpui_ios_background_create(
     height: u32,
     scale: f32,
 ) -> *mut IosBackgroundState {
-    eprintln!(
+    log::debug!(
         "[WGPUI Rust] wgpui_ios_background_create called width={} height={} scale={}",
         width, height, scale
     );
     if layer_ptr.is_null() {
-        eprintln!("[WGPUI Rust] create: layer_ptr is null");
+        log::error!("[WGPUI Rust] create: layer_ptr is null");
         return std::ptr::null_mut();
     }
     // SAFETY: `layer_ptr` is null-checked above and comes from host-provided
     // CAMetalLayer ownership for the lifetime of the renderer state.
     match unsafe { IosBackgroundState::new(layer_ptr, width, height, scale) } {
         Ok(state) => {
-            eprintln!("[WGPUI Rust] create: OK");
+            log::debug!("[WGPUI Rust] create: OK");
             Box::into_raw(state)
         }
         Err(e) => {
-            eprintln!("[WGPUI Rust] create FAILED: {}", e);
+            log::error!("[WGPUI Rust] create FAILED: {}", e);
             std::ptr::null_mut()
         }
     }
@@ -4236,7 +4236,7 @@ pub extern "C" fn wgpui_ios_background_render(state: *mut IosBackgroundState) ->
     match state.render() {
         Ok(()) => 1,
         Err(e) => {
-            eprintln!("[WGPUI Rust] render FAILED: {}", e);
+            log::error!("[WGPUI Rust] render FAILED: {}", e);
             0
         }
     }
