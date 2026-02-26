@@ -1690,10 +1690,7 @@ fn build_spark_command_for_action(
             expiry_seconds: Some(3600),
         }),
         SparkPaneAction::SendPayment => {
-            let request = send_request.trim().to_string();
-            if request.is_empty() {
-                return Err("Payment request cannot be empty".to_string());
-            }
+            let request = validate_lightning_payment_request(send_request)?;
 
             let amount = if send_amount.trim().is_empty() {
                 None
@@ -2120,6 +2117,16 @@ mod tests {
                 payment_request,
                 amount_sats: Some(250)
             }) if payment_request == "lnbc1example"
+        ));
+
+        assert!(matches!(
+            build_spark_command_for_action(
+                SparkPaneAction::SendPayment,
+                "",
+                "not-an-invoice",
+                ""
+            ),
+            Err(error) if error.contains("expected prefix ln")
         ));
     }
 
