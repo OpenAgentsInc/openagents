@@ -13,7 +13,7 @@ with optional web/ios support kept behind feature gates.
 - Input and interaction primitives (`input`, `action`, `keymap`, `interactive`)
 - Component library (`components/*`, including `hud` and `live_editor`)
 - Layout and styling (`layout`, `layout_helpers`, `styled`, `theme`)
-- Platform abstraction (`platform`) and optional framework lane (`app`, `element`, `window`)
+- Platform abstraction (`platform`)
 
 ## Feature Lanes
 
@@ -38,7 +38,6 @@ Dependency gating notes:
 - Platform: `src/platform/`
 - Components: `src/components/`
 - Input/action: `src/input.rs`, `src/action/`, `src/keymap/`, `src/interactive.rs`
-- Optional framework lane: `src/app/`, `src/element/`, `src/window/`
 
 ## API Surface and Preludes
 
@@ -66,7 +65,6 @@ Migration guidance:
 - Layering/z-order: `docs/layer-system.md`
 - Action/keymap system: `docs/action-keymap-system.md`
 - Theme system: `docs/THEME.md`
-- Framework lane internals: `docs/phase1-foundation.md`
 
 ## MVP Alignment
 

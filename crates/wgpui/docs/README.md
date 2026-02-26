@@ -18,13 +18,10 @@ this MVP-pruned repository.
   Action dispatch, keybindings, and context resolution.
 - [Theme System](THEME.md)
   Theme token usage and extension guidance.
-- [Phase 1 Foundation](phase1-foundation.md)
-  `app` / `element` / `window` framework lane internals.
 - [Tool Call Card Progress](tool-call-card-progress.md)
   Targeted component progress notes.
 
 ## Scope Note
 
-The desktop MVP app currently uses `wgpui` primarily through component + scene
-surfaces. The framework lane (`app`, `element`, `window`) remains available but
-is not yet the canonical default for `apps/autopilot-desktop`.
+The desktop MVP app uses `wgpui` through the retained component + scene lanes.
+Legacy framework-lane docs were removed with the unused lane retirement.

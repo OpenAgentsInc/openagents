@@ -25,7 +25,6 @@ pub mod accessibility;
 #[macro_use]
 pub mod action;
 pub mod animation;
-pub mod app;
 pub mod r#async;
 #[cfg(feature = "audio")]
 pub mod bleeps;
@@ -34,7 +33,6 @@ pub mod color;
 pub mod components;
 pub mod curve;
 pub mod effects;
-pub mod element;
 pub mod focus;
 pub mod geometry;
 pub mod hit_test;
@@ -58,7 +56,6 @@ pub mod text;
 pub mod text_system;
 pub mod theme;
 pub mod tools;
-pub mod window;
 
 pub mod prelude {
     pub mod core {
