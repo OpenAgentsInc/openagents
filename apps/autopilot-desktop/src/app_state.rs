@@ -1370,7 +1370,7 @@ impl Default for SettingsDocumentV1 {
         Self {
             schema_version: 1,
             relay_url: "wss://relay.damus.io".to_string(),
-            identity_path: "~/.openagents/nostr/identity.json".to_string(),
+            identity_path: settings_identity_path(),
             wallet_default_send_sats: 1000,
             provider_max_queue_depth: 4,
             reconnect_required: false,
@@ -1561,6 +1561,12 @@ fn settings_file_path() -> PathBuf {
         .join("autopilot-settings-v1.conf")
 }
 
+fn settings_identity_path() -> String {
+    nostr::identity_mnemonic_path()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "~/.openagents/pylon/identity.mnemonic".to_string())
+}
+
 fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
     format!(
         "schema_version={}\nrelay_url={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
@@ -1620,6 +1626,9 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
             document.schema_version
         ));
     }
+
+    // Identity path authority is the resolved mnemonic path.
+    document.identity_path = settings_identity_path();
 
     Ok(document)
 }
@@ -2942,6 +2951,20 @@ mod tests {
         let invalid = settings.apply_updates_internal("https://bad-relay", "0", "0", false);
         assert!(invalid.is_err());
         assert_eq!(settings.load_state, super::PaneLoadState::Error);
+    }
+
+    #[test]
+    fn settings_document_default_uses_identity_authority_path() {
+        let document = super::SettingsDocumentV1::default();
+        assert!(document.identity_path.contains("identity.mnemonic"));
+    }
+
+    #[test]
+    fn parse_settings_document_overrides_stale_identity_path() {
+        let raw = "schema_version=1\nrelay_url=wss://relay.example\nidentity_path=~/.openagents/nostr/identity.json\nwallet_default_send_sats=1000\nprovider_max_queue_depth=4\nreconnect_required=false\n";
+        let document = super::parse_settings_document(raw).expect("settings parse should succeed");
+        assert_ne!(document.identity_path, "~/.openagents/nostr/identity.json");
+        assert!(document.identity_path.contains("identity.mnemonic"));
     }
 
     #[test]
