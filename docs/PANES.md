@@ -29,6 +29,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - Hotbar:
   - `2` opens `Nostr Keys (NIP-06)`.
   - `3` opens `Spark Lightning Wallet`.
+  - `K` opens the command palette.
 - Command Palette (`Cmd/Ctrl+K`):
   - `Autopilot Chat` -> opens `Autopilot Chat`.
   - `Go Online` -> opens `Go Online`.
