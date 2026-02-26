@@ -40,6 +40,7 @@ pub enum PaneKind {
     SyncHealth,
     NetworkRequests,
     StarterJobs,
+    ActivityFeed,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -883,6 +884,231 @@ impl StarterJobsState {
             job.job_id, job.payout_sats
         ));
         Ok((job.job_id.clone(), job.payout_sats, payout_pointer))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityEventDomain {
+    Chat,
+    Job,
+    Wallet,
+    Network,
+    Sync,
+}
+
+impl ActivityEventDomain {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Job => "job",
+            Self::Wallet => "wallet",
+            Self::Network => "network",
+            Self::Sync => "sync",
+        }
+    }
+
+    pub const fn source_tag(self) -> &'static str {
+        match self {
+            Self::Chat => "chat.lane",
+            Self::Job => "provider.runtime",
+            Self::Wallet => "spark.wallet",
+            Self::Network => "nip90.network",
+            Self::Sync => "spacetime.sync",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityFeedFilter {
+    All,
+    Chat,
+    Job,
+    Wallet,
+    Network,
+    Sync,
+}
+
+impl ActivityFeedFilter {
+    pub const fn all() -> [Self; 6] {
+        [
+            Self::All,
+            Self::Chat,
+            Self::Job,
+            Self::Wallet,
+            Self::Network,
+            Self::Sync,
+        ]
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Chat => "chat",
+            Self::Job => "job",
+            Self::Wallet => "wallet",
+            Self::Network => "network",
+            Self::Sync => "sync",
+        }
+    }
+
+    pub fn matches(self, domain: ActivityEventDomain) -> bool {
+        match self {
+            Self::All => true,
+            Self::Chat => domain == ActivityEventDomain::Chat,
+            Self::Job => domain == ActivityEventDomain::Job,
+            Self::Wallet => domain == ActivityEventDomain::Wallet,
+            Self::Network => domain == ActivityEventDomain::Network,
+            Self::Sync => domain == ActivityEventDomain::Sync,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActivityEventRow {
+    pub event_id: String,
+    pub domain: ActivityEventDomain,
+    pub source_tag: String,
+    pub occurred_at_epoch_seconds: u64,
+    pub summary: String,
+    pub detail: String,
+}
+
+pub struct ActivityFeedState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub active_filter: ActivityFeedFilter,
+    pub rows: Vec<ActivityEventRow>,
+    pub selected_event_id: Option<String>,
+}
+
+impl Default for ActivityFeedState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Activity feed synced from deterministic replay lanes".to_string()),
+            active_filter: ActivityFeedFilter::All,
+            rows: vec![
+                ActivityEventRow {
+                    event_id: "sync:cursor:4312".to_string(),
+                    domain: ActivityEventDomain::Sync,
+                    source_tag: ActivityEventDomain::Sync.source_tag().to_string(),
+                    occurred_at_epoch_seconds: 1_761_920_120,
+                    summary: "Cursor advanced to seq=4312".to_string(),
+                    detail: "No duplicate replay detected".to_string(),
+                },
+                ActivityEventRow {
+                    event_id: "wallet:payment:latest".to_string(),
+                    domain: ActivityEventDomain::Wallet,
+                    source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
+                    occurred_at_epoch_seconds: 1_761_920_112,
+                    summary: "Payment settled into Spark wallet".to_string(),
+                    detail: "pay:req-bootstrap-000 (+2100 sats)".to_string(),
+                },
+                ActivityEventRow {
+                    event_id: "job:completed:bootstrap-000".to_string(),
+                    domain: ActivityEventDomain::Job,
+                    source_tag: ActivityEventDomain::Job.source_tag().to_string(),
+                    occurred_at_epoch_seconds: 1_761_920_108,
+                    summary: "Provider job completed".to_string(),
+                    detail: "job-bootstrap-000 -> succeeded".to_string(),
+                },
+                ActivityEventRow {
+                    event_id: "network:req-buy-0001".to_string(),
+                    domain: ActivityEventDomain::Network,
+                    source_tag: ActivityEventDomain::Network.source_tag().to_string(),
+                    occurred_at_epoch_seconds: 1_761_920_099,
+                    summary: "Buyer request submitted".to_string(),
+                    detail: "req-buy-0001 stream:req-buy-0001".to_string(),
+                },
+                ActivityEventRow {
+                    event_id: "chat:msg:1".to_string(),
+                    domain: ActivityEventDomain::Chat,
+                    source_tag: ActivityEventDomain::Chat.source_tag().to_string(),
+                    occurred_at_epoch_seconds: 1_761_920_090,
+                    summary: "Autopilot ready message".to_string(),
+                    detail: "Autopilot ready. Ask for a task to start.".to_string(),
+                },
+            ],
+            selected_event_id: Some("sync:cursor:4312".to_string()),
+        }
+    }
+}
+
+impl ActivityFeedState {
+    pub fn visible_rows(&self) -> Vec<&ActivityEventRow> {
+        self.rows
+            .iter()
+            .filter(|row| self.active_filter.matches(row.domain))
+            .collect()
+    }
+
+    pub fn selected(&self) -> Option<&ActivityEventRow> {
+        let selected = self.selected_event_id.as_deref()?;
+        self.rows.iter().find(|row| row.event_id == selected)
+    }
+
+    pub fn select_visible_row(&mut self, index: usize) -> bool {
+        let Some(event_id) = self
+            .visible_rows()
+            .get(index)
+            .map(|row| row.event_id.clone())
+        else {
+            return false;
+        };
+        self.selected_event_id = Some(event_id);
+        self.last_error = None;
+        true
+    }
+
+    pub fn set_filter(&mut self, filter: ActivityFeedFilter) {
+        self.active_filter = filter;
+        if self
+            .selected()
+            .is_none_or(|row| !filter.matches(row.domain))
+        {
+            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
+        }
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Activity filter -> {}", filter.label()));
+    }
+
+    pub fn upsert_event(&mut self, row: ActivityEventRow) {
+        if let Some(existing) = self
+            .rows
+            .iter_mut()
+            .find(|existing| existing.event_id == row.event_id)
+        {
+            *existing = row;
+        } else {
+            self.rows.push(row);
+        }
+
+        self.rows.sort_by(|lhs, rhs| {
+            rhs.occurred_at_epoch_seconds
+                .cmp(&lhs.occurred_at_epoch_seconds)
+                .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+        });
+        self.rows.truncate(96);
+    }
+
+    pub fn record_refresh(&mut self, rows: Vec<ActivityEventRow>) {
+        for row in rows {
+            self.upsert_event(row);
+        }
+
+        if self.selected().is_none() {
+            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
+        }
+
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!(
+            "Activity feed refreshed ({} events)",
+            self.rows.len()
+        ));
     }
 }
 
@@ -1854,6 +2080,7 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
+    pub activity_feed: ActivityFeedState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1882,7 +2109,8 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
+        ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
+        ActivityFeedState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
         JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
         JobLifecycleStage, NetworkRequestStatus, NetworkRequestsState, NostrSecretState,
@@ -2135,6 +2363,28 @@ mod tests {
             .expect("job should remain present");
         assert_eq!(job.status, StarterJobStatus::Completed);
         assert_eq!(job.payout_pointer.as_deref(), Some(pointer.as_str()));
+    }
+
+    #[test]
+    fn activity_feed_upsert_deduplicates_stable_event_ids() {
+        let mut feed = ActivityFeedState::default();
+        let baseline_count = feed.rows.len();
+        feed.upsert_event(ActivityEventRow {
+            event_id: "wallet:payment:latest".to_string(),
+            domain: ActivityEventDomain::Wallet,
+            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
+            occurred_at_epoch_seconds: 1_761_920_200,
+            summary: "Payment settled into Spark wallet".to_string(),
+            detail: "pay:req-bootstrap-000 (+2200 sats)".to_string(),
+        });
+        assert_eq!(feed.rows.len(), baseline_count);
+
+        feed.set_filter(ActivityFeedFilter::Wallet);
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Wallet)
+        );
     }
 
     #[test]

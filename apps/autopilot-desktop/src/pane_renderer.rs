@@ -1,21 +1,22 @@
 use crate::app_state::{
-    ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
-    CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState,
+    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AutopilotChatState,
+    AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, CreateInvoicePaneInputs, DesktopPane,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsPaneInputs, RelayConnectionsState,
+    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
-    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-    job_history_prev_page_button_bounds, job_history_search_input_bounds,
-    job_history_status_button_bounds, job_history_time_button_bounds,
-    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, network_requests_budget_input_bounds,
+    activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
+    activity_feed_row_bounds, activity_feed_visible_row_count, chat_composer_input_bounds,
+    chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_bounds,
+    earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+    job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+    job_history_search_input_bounds, job_history_status_button_bounds,
+    job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, network_requests_budget_input_bounds,
     network_requests_payload_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
@@ -50,6 +51,7 @@ impl PaneRenderer {
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
         starter_jobs: &StarterJobsState,
+        activity_feed: &ActivityFeedState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -139,6 +141,9 @@ impl PaneRenderer {
                 }
                 PaneKind::StarterJobs => {
                     paint_starter_jobs_pane(content_bounds, starter_jobs, paint);
+                }
+                PaneKind::ActivityFeed => {
+                    paint_activity_feed_pane(content_bounds, activity_feed, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -1121,6 +1126,146 @@ fn paint_starter_jobs_pane(
             "Payout pointer",
             selected.payout_pointer.as_deref().unwrap_or("pending"),
         );
+    }
+}
+
+fn paint_activity_feed_pane(
+    content_bounds: Bounds,
+    activity_feed: &ActivityFeedState,
+    paint: &mut PaintContext,
+) {
+    let refresh_bounds = activity_feed_refresh_button_bounds(content_bounds);
+    paint_action_button(refresh_bounds, "Refresh feed", paint);
+
+    let filters = ActivityFeedFilter::all();
+    for (index, filter) in filters.into_iter().enumerate() {
+        paint_filter_button(
+            activity_feed_filter_button_bounds(content_bounds, index),
+            filter.label(),
+            activity_feed.active_filter == filter,
+            paint,
+        );
+    }
+
+    let state_color = match activity_feed.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 10.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!(
+            "State: {} | Filter: {}",
+            activity_feed.load_state.label(),
+            activity_feed.active_filter.label()
+        ),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = activity_feed.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = activity_feed.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    let visible = activity_feed.visible_rows();
+    let visible_rows = activity_feed_visible_row_count(visible.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No activity events for this filter.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let row = visible[row_index];
+        let row_bounds = activity_feed_row_bounds(content_bounds, row_index);
+        let selected = activity_feed.selected_event_id.as_deref() == Some(row.event_id.as_str());
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::accent::PRIMARY.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(4.0),
+        );
+
+        let domain_color = match row.domain {
+            ActivityEventDomain::Chat => theme::accent::PRIMARY,
+            ActivityEventDomain::Job => theme::status::SUCCESS,
+            ActivityEventDomain::Wallet => theme::status::SUCCESS,
+            ActivityEventDomain::Network => theme::text::PRIMARY,
+            ActivityEventDomain::Sync => theme::text::MUTED,
+        };
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "[{}] {} {}",
+                row.domain.label(),
+                row.occurred_at_epoch_seconds,
+                row.summary
+            ),
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            domain_color,
+        ));
+    }
+
+    if let Some(selected) = activity_feed.selected() {
+        if activity_feed.active_filter.matches(selected.domain) {
+            let details_top =
+                activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
+                    + 10.0;
+            let mut details_y = details_top;
+            details_y = paint_label_line(
+                paint,
+                content_bounds.origin.x + 12.0,
+                details_y,
+                "Event ID",
+                &selected.event_id,
+            );
+            details_y = paint_label_line(
+                paint,
+                content_bounds.origin.x + 12.0,
+                details_y,
+                "Source",
+                &selected.source_tag,
+            );
+            let _ = paint_multiline_phrase(
+                paint,
+                content_bounds.origin.x + 12.0,
+                details_y,
+                "Detail",
+                &selected.detail,
+            );
+        }
     }
 }
 
@@ -2296,6 +2441,37 @@ fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
         Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
         11.0,
         theme::text::PRIMARY,
+    ));
+}
+
+fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
+    let background = if active {
+        theme::accent::PRIMARY.with_alpha(0.22)
+    } else {
+        theme::bg::APP.with_alpha(0.68)
+    };
+    let border = if active {
+        theme::accent::PRIMARY
+    } else {
+        theme::border::DEFAULT
+    };
+    let text = if active {
+        theme::text::PRIMARY
+    } else {
+        theme::text::MUTED
+    };
+
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(background)
+            .with_border(border, 1.0)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 9.0),
+        10.0,
+        text,
     ));
 }
 

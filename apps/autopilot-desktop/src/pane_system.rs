@@ -2,7 +2,7 @@ use wgpui::components::hud::{PaneFrame, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
 
-use crate::app_state::{DesktopPane, PaneDragMode, PaneKind, RenderState};
+use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
 use crate::spark_pane::{
@@ -29,6 +29,8 @@ const NETWORK_REQUESTS_PANE_WIDTH: f32 = 900.0;
 const NETWORK_REQUESTS_PANE_HEIGHT: f32 = 420.0;
 const STARTER_JOBS_PANE_WIDTH: f32 = 860.0;
 const STARTER_JOBS_PANE_HEIGHT: f32 = 420.0;
+const ACTIVITY_FEED_PANE_WIDTH: f32 = 940.0;
+const ACTIVITY_FEED_PANE_HEIGHT: f32 = 460.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -56,6 +58,11 @@ const JOB_INBOX_MAX_ROWS: usize = 8;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
+const ACTIVITY_FEED_FILTER_BUTTON_HEIGHT: f32 = 28.0;
+const ACTIVITY_FEED_FILTER_GAP: f32 = 8.0;
+const ACTIVITY_FEED_ROW_HEIGHT: f32 = 30.0;
+const ACTIVITY_FEED_ROW_GAP: f32 = 6.0;
+const ACTIVITY_FEED_MAX_ROWS: usize = 8;
 
 pub struct PaneController;
 
@@ -108,6 +115,13 @@ pub enum NetworkRequestsPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobsPaneAction {
     CompleteSelected,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivityFeedPaneAction {
+    Refresh,
+    SetFilter(ActivityFeedFilter),
     SelectRow(usize),
 }
 
@@ -197,6 +211,15 @@ impl PaneDescriptor {
             kind: PaneKind::StarterJobs,
             width: STARTER_JOBS_PANE_WIDTH,
             height: STARTER_JOBS_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn activity_feed() -> Self {
+        Self {
+            kind: PaneKind::ActivityFeed,
+            width: ACTIVITY_FEED_PANE_WIDTH,
+            height: ACTIVITY_FEED_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -347,6 +370,10 @@ impl PaneController {
 
     pub fn create_starter_jobs(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::starter_jobs());
+    }
+
+    pub fn create_activity_feed(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::activity_feed());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -664,6 +691,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             return CursorIcon::Pointer;
         }
 
+        if state.panes[pane_idx].kind == PaneKind::ActivityFeed
+            && topmost_activity_feed_action_hit(state, point).is_some()
+        {
+            return CursorIcon::Pointer;
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -941,6 +974,49 @@ pub fn starter_jobs_row_bounds(content_bounds: Bounds, row_index: usize) -> Boun
 
 pub fn starter_jobs_visible_row_count(row_count: usize) -> usize {
     row_count.min(JOB_INBOX_MAX_ROWS)
+}
+
+pub fn activity_feed_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.24).clamp(148.0, 220.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn activity_feed_filter_button_bounds(content_bounds: Bounds, filter_index: usize) -> Bounds {
+    let filters = ActivityFeedFilter::all();
+    let max_index = filters.len().saturating_sub(1);
+    let safe_index = filter_index.min(max_index);
+    let top = activity_feed_refresh_button_bounds(content_bounds).max_y() + 10.0;
+    let count = filters.len() as f32;
+    let gap_total = ACTIVITY_FEED_FILTER_GAP * (count - 1.0);
+    let usable_width = (content_bounds.size.width - CHAT_PAD * 2.0 - gap_total).max(300.0);
+    let button_width = (usable_width / count).clamp(72.0, 142.0);
+    Bounds::new(
+        content_bounds.origin.x
+            + CHAT_PAD
+            + safe_index as f32 * (button_width + ACTIVITY_FEED_FILTER_GAP),
+        top,
+        button_width,
+        ACTIVITY_FEED_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn activity_feed_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(ACTIVITY_FEED_MAX_ROWS.saturating_sub(1));
+    let top = activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (ACTIVITY_FEED_ROW_HEIGHT + ACTIVITY_FEED_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        ACTIVITY_FEED_ROW_HEIGHT,
+    )
+}
+
+pub fn activity_feed_visible_row_count(row_count: usize) -> usize {
+    row_count.min(ACTIVITY_FEED_MAX_ROWS)
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1277,6 +1353,40 @@ pub fn topmost_starter_jobs_action_hit(
         for row_index in 0..visible_rows {
             if starter_jobs_row_bounds(content_bounds, row_index).contains(point) {
                 return Some((pane.id, StarterJobsPaneAction::SelectRow(row_index)));
+            }
+        }
+    }
+
+    None
+}
+
+pub fn topmost_activity_feed_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, ActivityFeedPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::ActivityFeed {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if activity_feed_refresh_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, ActivityFeedPaneAction::Refresh));
+        }
+
+        let filters = ActivityFeedFilter::all();
+        for (filter_index, filter) in filters.into_iter().enumerate() {
+            if activity_feed_filter_button_bounds(content_bounds, filter_index).contains(point) {
+                return Some((pane.id, ActivityFeedPaneAction::SetFilter(filter)));
+            }
+        }
+
+        let visible_rows =
+            activity_feed_visible_row_count(state.activity_feed.visible_rows().len());
+        for row_index in 0..visible_rows {
+            if activity_feed_row_bounds(content_bounds, row_index).contains(point) {
+                return Some((pane.id, ActivityFeedPaneAction::SelectRow(row_index)));
             }
         }
     }
@@ -1671,6 +1781,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::SyncHealth => "Sync Health".to_string(),
         PaneKind::NetworkRequests => "Network Requests".to_string(),
         PaneKind::StarterJobs => "Starter Jobs".to_string(),
+        PaneKind::ActivityFeed => "Activity Feed".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1720,8 +1831,9 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 mod tests {
     use super::{
         active_job_abort_button_bounds, active_job_advance_button_bounds,
-        chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-        chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
+        activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
+        activity_feed_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
+        chat_thread_rail_bounds, chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
         go_online_toggle_button_bounds, job_history_next_page_button_bounds,
         job_history_prev_page_button_bounds, job_history_search_input_bounds,
         job_history_status_button_bounds, job_history_time_button_bounds,
@@ -1832,6 +1944,19 @@ mod tests {
 
         assert!(complete.max_y() < row0.min_y());
         assert!(row0.max_y() < row1.min_y());
+    }
+
+    #[test]
+    fn activity_feed_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 940.0, 460.0);
+        let refresh = activity_feed_refresh_button_bounds(content);
+        let filter0 = activity_feed_filter_button_bounds(content, 0);
+        let filter1 = activity_feed_filter_button_bounds(content, 1);
+        let row0 = activity_feed_row_bounds(content, 0);
+
+        assert!(refresh.max_y() < filter0.min_y());
+        assert!(filter0.max_x() < filter1.max_x());
+        assert!(filter0.max_y() < row0.min_y());
     }
 
     #[test]

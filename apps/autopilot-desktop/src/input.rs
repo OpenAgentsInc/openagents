@@ -7,21 +7,21 @@ use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
 
-use crate::app_state::{App, ProviderMode};
+use crate::app_state::{ActivityEventDomain, ActivityEventRow, App, ProviderMode};
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
+    ActiveJobPaneAction, ActivityFeedPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
     NetworkRequestsPaneAction, PaneController, PaneInput, RelayConnectionsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
     dispatch_create_invoice_input_event, dispatch_job_history_input_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
     dispatch_relay_connections_input_event, dispatch_spark_input_event,
-    topmost_active_job_action_hit, topmost_chat_send_hit, topmost_create_invoice_action_hit,
-    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
-    topmost_job_history_action_hit, topmost_job_inbox_action_hit,
+    topmost_active_job_action_hit, topmost_activity_feed_action_hit, topmost_chat_send_hit,
+    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
+    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
     topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
     topmost_relay_connections_action_hit, topmost_spark_action_hit,
@@ -39,6 +39,7 @@ const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
 const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
 const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
 const COMMAND_OPEN_STARTER_JOBS: &str = "pane.starter_jobs";
+const COMMAND_OPEN_ACTIVITY_FEED: &str = "pane.activity_feed";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -271,6 +272,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_sync_health_action_click(state, app.cursor_position);
                     handled |= handle_network_requests_action_click(state, app.cursor_position);
                     handled |= handle_starter_jobs_action_click(state, app.cursor_position);
+                    handled |= handle_activity_feed_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -333,6 +335,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 || handle_create_invoice_keyboard_input(state, &event.logical_key)
                 || handle_relay_connections_keyboard_input(state, &event.logical_key)
                 || handle_network_requests_keyboard_input(state, &event.logical_key)
+                || handle_activity_feed_keyboard_input(state, &event.logical_key)
                 || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -511,6 +514,18 @@ fn handle_starter_jobs_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_starter_jobs_action(state, action)
+}
+
+fn handle_activity_feed_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_activity_feed_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_activity_feed_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -769,6 +784,32 @@ fn handle_network_requests_keyboard_input(
     }
 
     false
+}
+
+fn handle_activity_feed_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    if !matches!(key, Key::Named(NamedKey::Enter)) {
+        return false;
+    }
+
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_activity_feed_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::ActivityFeed);
+    if !is_activity_feed_active {
+        return false;
+    }
+
+    run_activity_feed_action(state, ActivityFeedPaneAction::Refresh)
 }
 
 fn handle_job_history_keyboard_input(
@@ -1113,6 +1154,130 @@ fn run_starter_jobs_action(
             true
         }
     }
+}
+
+fn run_activity_feed_action(
+    state: &mut crate::app_state::RenderState,
+    action: ActivityFeedPaneAction,
+) -> bool {
+    match action {
+        ActivityFeedPaneAction::Refresh => {
+            let rows = build_activity_feed_snapshot_events(state);
+            state.activity_feed.record_refresh(rows);
+            true
+        }
+        ActivityFeedPaneAction::SetFilter(filter) => {
+            state.activity_feed.set_filter(filter);
+            true
+        }
+        ActivityFeedPaneAction::SelectRow(index) => {
+            if !state.activity_feed.select_visible_row(index) {
+                state.activity_feed.last_error = Some("Activity row out of range".to_string());
+                state.activity_feed.load_state = crate::app_state::PaneLoadState::Error;
+            } else {
+                state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+            }
+            true
+        }
+    }
+}
+
+fn build_activity_feed_snapshot_events(
+    state: &crate::app_state::RenderState,
+) -> Vec<ActivityEventRow> {
+    let now_epoch = state
+        .job_history
+        .reference_epoch_seconds
+        .saturating_add(state.job_history.rows.len() as u64 * 23);
+    let mut rows = Vec::new();
+
+    for message in state.autopilot_chat.messages.iter().rev().take(6) {
+        let role = match message.role {
+            crate::app_state::AutopilotRole::User => "user",
+            crate::app_state::AutopilotRole::Autopilot => "autopilot",
+        };
+        let status = match message.status {
+            crate::app_state::AutopilotMessageStatus::Queued => "queued",
+            crate::app_state::AutopilotMessageStatus::Running => "running",
+            crate::app_state::AutopilotMessageStatus::Done => "done",
+            crate::app_state::AutopilotMessageStatus::Error => "error",
+        };
+        rows.push(ActivityEventRow {
+            event_id: format!("chat:msg:{}", message.id),
+            domain: ActivityEventDomain::Chat,
+            source_tag: ActivityEventDomain::Chat.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(message.id),
+            summary: format!("{role} message {status}"),
+            detail: message.content.clone(),
+        });
+    }
+
+    for receipt in state.job_history.rows.iter().take(6) {
+        rows.push(ActivityEventRow {
+            event_id: format!("job:receipt:{}", receipt.job_id),
+            domain: ActivityEventDomain::Job,
+            source_tag: ActivityEventDomain::Job.source_tag().to_string(),
+            occurred_at_epoch_seconds: receipt.completed_at_epoch_seconds,
+            summary: format!(
+                "{} {} sats {}",
+                receipt.job_id,
+                receipt.payout_sats,
+                receipt.status.label()
+            ),
+            detail: receipt.payment_pointer.clone(),
+        });
+    }
+
+    if let Some(last_payment_id) = state.spark_wallet.last_payment_id.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: format!("wallet:payment:{last_payment_id}"),
+            domain: ActivityEventDomain::Wallet,
+            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch,
+            summary: "Spark payment pointer updated".to_string(),
+            detail: last_payment_id.to_string(),
+        });
+    }
+    if let Some(wallet_action) = state.spark_wallet.last_action.as_deref() {
+        rows.push(ActivityEventRow {
+            event_id: "wallet:last_action".to_string(),
+            domain: ActivityEventDomain::Wallet,
+            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(1),
+            summary: "Wallet activity".to_string(),
+            detail: wallet_action.to_string(),
+        });
+    }
+
+    for (idx, request) in state.network_requests.submitted.iter().take(6).enumerate() {
+        rows.push(ActivityEventRow {
+            event_id: format!("network:request:{}", request.request_id),
+            domain: ActivityEventDomain::Network,
+            source_tag: ActivityEventDomain::Network.source_tag().to_string(),
+            occurred_at_epoch_seconds: now_epoch.saturating_sub(20 + idx as u64 * 2),
+            summary: format!("{} {}", request.request_id, request.status.label()),
+            detail: format!("{} -> {}", request.request_type, request.response_stream_id),
+        });
+    }
+
+    rows.push(ActivityEventRow {
+        event_id: format!("sync:cursor:{}", state.sync_health.last_applied_event_seq),
+        domain: ActivityEventDomain::Sync,
+        source_tag: ActivityEventDomain::Sync.source_tag().to_string(),
+        occurred_at_epoch_seconds: now_epoch.saturating_sub(2),
+        summary: format!(
+            "cursor={} phase={}",
+            state.sync_health.last_applied_event_seq,
+            state.sync_health.recovery_phase.label()
+        ),
+        detail: format!(
+            "stale_age={}s duplicate_drops={}",
+            state.sync_health.cursor_last_advanced_seconds_ago,
+            state.sync_health.duplicate_drop_count
+        ),
+    });
+
+    rows
 }
 
 fn refresh_earnings_scoreboard(state: &mut crate::app_state::RenderState, now: std::time::Instant) {
@@ -1512,6 +1677,19 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_STARTER_JOBS => {
                 PaneController::create_starter_jobs(state);
+                changed = true;
+            }
+            COMMAND_OPEN_ACTIVITY_FEED => {
+                let was_open = state
+                    .panes
+                    .iter()
+                    .any(|pane| pane.kind == crate::app_state::PaneKind::ActivityFeed);
+                PaneController::create_activity_feed(state);
+                if !was_open {
+                    state
+                        .activity_feed
+                        .record_refresh(build_activity_feed_snapshot_events(state));
+                }
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {
