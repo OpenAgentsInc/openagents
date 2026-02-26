@@ -377,6 +377,49 @@ impl PaneLoadState {
     }
 }
 
+pub trait PaneStatusAccess {
+    fn pane_load_state_mut(&mut self) -> &mut PaneLoadState;
+    fn pane_last_error_mut(&mut self) -> &mut Option<String>;
+    fn pane_last_action_mut(&mut self) -> &mut Option<String>;
+
+    fn pane_set_ready(&mut self, action: impl Into<String>) {
+        *self.pane_load_state_mut() = PaneLoadState::Ready;
+        *self.pane_last_error_mut() = None;
+        *self.pane_last_action_mut() = Some(action.into());
+    }
+
+    fn pane_set_error(&mut self, error: impl Into<String>) -> String {
+        let error = error.into();
+        *self.pane_load_state_mut() = PaneLoadState::Error;
+        *self.pane_last_error_mut() = Some(error.clone());
+        error
+    }
+
+    fn pane_clear_error(&mut self) {
+        *self.pane_last_error_mut() = None;
+    }
+}
+
+macro_rules! impl_pane_status_access {
+    ($($state:ty),+ $(,)?) => {
+        $(
+            impl PaneStatusAccess for $state {
+                fn pane_load_state_mut(&mut self) -> &mut PaneLoadState {
+                    &mut self.load_state
+                }
+
+                fn pane_last_error_mut(&mut self) -> &mut Option<String> {
+                    &mut self.last_error
+                }
+
+                fn pane_last_action_mut(&mut self) -> &mut Option<String> {
+                    &mut self.last_action
+                }
+            }
+        )+
+    };
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
@@ -432,7 +475,7 @@ impl RelayConnectionsState {
             return false;
         };
         self.selected_url = Some(url);
-        self.last_error = None;
+        self.pane_clear_error();
         true
     }
 
@@ -444,19 +487,13 @@ impl RelayConnectionsState {
     pub fn add_relay(&mut self, relay_url: &str) -> Result<(), String> {
         let relay = relay_url.trim();
         if relay.is_empty() {
-            self.last_error = Some("Relay URL cannot be empty".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Relay URL cannot be empty".to_string());
+            return Err(self.pane_set_error("Relay URL cannot be empty"));
         }
         if !relay.starts_with("wss://") {
-            self.last_error = Some("Relay URL must start with wss://".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Relay URL must start with wss://".to_string());
+            return Err(self.pane_set_error("Relay URL must start with wss://"));
         }
         if self.relays.iter().any(|row| row.url == relay) {
-            self.last_error = Some("Relay already configured".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Relay already configured".to_string());
+            return Err(self.pane_set_error("Relay already configured"));
         }
 
         let relay_url = relay.to_string();
@@ -468,9 +505,7 @@ impl RelayConnectionsState {
             last_error: None,
         });
         self.selected_url = Some(relay_url.clone());
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Added relay {relay_url}"));
+        self.pane_set_ready(format!("Added relay {relay_url}"));
         Ok(())
     }
 
@@ -483,15 +518,11 @@ impl RelayConnectionsState {
         let before = self.relays.len();
         self.relays.retain(|row| row.url != selected);
         if self.relays.len() == before {
-            self.last_error = Some("Selected relay no longer exists".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Selected relay no longer exists".to_string());
+            return Err(self.pane_set_error("Selected relay no longer exists"));
         }
 
         self.selected_url = self.relays.first().map(|row| row.url.clone());
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Removed relay {selected}"));
+        self.pane_set_ready(format!("Removed relay {selected}"));
         Ok(selected)
     }
 
@@ -502,18 +533,14 @@ impl RelayConnectionsState {
             .ok_or_else(|| "Select a relay first".to_string())?
             .to_string();
         let Some(relay) = self.relays.iter_mut().find(|row| row.url == selected) else {
-            self.last_error = Some("Selected relay no longer exists".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Selected relay no longer exists".to_string());
+            return Err(self.pane_set_error("Selected relay no longer exists"));
         };
 
         relay.status = RelayConnectionStatus::Connected;
         relay.latency_ms = Some(96);
         relay.last_seen_seconds_ago = Some(0);
         relay.last_error = None;
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Retried relay {selected}"));
+        self.pane_set_ready(format!("Retried relay {selected}"));
         Ok(selected)
     }
 }
@@ -581,9 +608,7 @@ impl SyncHealthState {
         self.recovery_phase = SyncRecoveryPhase::Replaying;
         self.cursor_position = self.last_applied_event_seq;
         self.cursor_last_advanced_seconds_ago = 0;
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!(
+        self.pane_set_ready(format!(
             "Rebootstrapped sync stream (attempt #{})",
             self.replay_count
         ));
@@ -614,13 +639,12 @@ impl SyncHealthState {
         }
 
         if self.cursor_is_stale() {
-            self.load_state = PaneLoadState::Error;
             self.recovery_phase = SyncRecoveryPhase::Reconnecting;
-            self.last_error = Some("Cursor stalled beyond stale threshold".to_string());
+            let _ = self.pane_set_error("Cursor stalled beyond stale threshold");
         } else if self.recovery_phase != SyncRecoveryPhase::Replaying {
-            self.load_state = PaneLoadState::Ready;
             self.recovery_phase = SyncRecoveryPhase::Ready;
-            self.last_error = None;
+            *self.pane_load_state_mut() = PaneLoadState::Ready;
+            self.pane_clear_error();
         }
     }
 }
@@ -686,16 +710,12 @@ impl NetworkRequestsState {
     ) -> Result<String, String> {
         let request_type = request_type.trim();
         if request_type.is_empty() {
-            self.last_error = Some("Request type is required".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Request type is required".to_string());
+            return Err(self.pane_set_error("Request type is required"));
         }
 
         let payload = payload.trim();
         if payload.is_empty() {
-            self.last_error = Some("Request payload is required".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Request payload is required".to_string());
+            return Err(self.pane_set_error("Request payload is required"));
         }
 
         let budget_sats = budget_sats
@@ -703,9 +723,7 @@ impl NetworkRequestsState {
             .parse::<u64>()
             .map_err(|error| format!("Budget sats must be an integer: {error}"))?;
         if budget_sats == 0 {
-            self.last_error = Some("Budget sats must be greater than 0".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Budget sats must be greater than 0".to_string());
+            return Err(self.pane_set_error("Budget sats must be greater than 0"));
         }
 
         let timeout_seconds = timeout_seconds
@@ -713,9 +731,7 @@ impl NetworkRequestsState {
             .parse::<u64>()
             .map_err(|error| format!("Timeout seconds must be an integer: {error}"))?;
         if timeout_seconds == 0 {
-            self.last_error = Some("Timeout seconds must be greater than 0".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Timeout seconds must be greater than 0".to_string());
+            return Err(self.pane_set_error("Timeout seconds must be greater than 0"));
         }
 
         let request_id = format!("req-buy-{:04}", self.next_request_seq);
@@ -733,9 +749,7 @@ impl NetworkRequestsState {
                 status: NetworkRequestStatus::Submitted,
             },
         );
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Submitted buyer request {request_id}"));
+        self.pane_set_ready(format!("Submitted buyer request {request_id}"));
         Ok(request_id)
     }
 }
@@ -794,7 +808,7 @@ impl StarterJobsState {
             return false;
         };
         self.selected_job_id = Some(job_id);
-        self.last_error = None;
+        self.pane_clear_error();
         true
     }
 
@@ -809,27 +823,25 @@ impl StarterJobsState {
             .as_deref()
             .ok_or_else(|| "Select a starter job first".to_string())?
             .to_string();
-        let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
-            self.last_error = Some("Selected starter job no longer exists".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Selected starter job no longer exists".to_string());
-        };
-        if !job.eligible {
-            self.last_error = Some("Starter job is not eligible yet".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Starter job is not eligible yet".to_string());
-        }
+        let (job_id, payout_sats, payout_pointer) = {
+            let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
+                return Err(self.pane_set_error("Selected starter job no longer exists"));
+            };
+            if !job.eligible {
+                return Err(self.pane_set_error("Starter job is not eligible yet"));
+            }
 
-        let payout_pointer = format!("pay:{}", job.job_id);
-        job.status = StarterJobStatus::Completed;
-        job.payout_pointer = Some(payout_pointer.clone());
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!(
+            let payout_pointer = format!("pay:{}", job.job_id);
+            job.status = StarterJobStatus::Completed;
+            job.payout_pointer = Some(payout_pointer.clone());
+            (job.job_id.clone(), job.payout_sats, payout_pointer)
+        };
+
+        self.pane_set_ready(format!(
             "Completed starter job {} ({} sats)",
-            job.job_id, job.payout_sats
+            job_id, payout_sats
         ));
-        Ok((job.job_id.clone(), job.payout_sats, payout_pointer))
+        Ok((job_id, payout_sats, payout_pointer))
     }
 }
 
@@ -963,7 +975,7 @@ impl ActivityFeedState {
             return false;
         };
         self.selected_event_id = Some(event_id);
-        self.last_error = None;
+        self.pane_clear_error();
         true
     }
 
@@ -975,9 +987,7 @@ impl ActivityFeedState {
         {
             self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
         }
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Activity filter -> {}", filter.label()));
+        self.pane_set_ready(format!("Activity filter -> {}", filter.label()));
     }
 
     pub fn upsert_event(&mut self, row: ActivityEventRow) {
@@ -1008,9 +1018,7 @@ impl ActivityFeedState {
             self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
         }
 
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!(
+        self.pane_set_ready(format!(
             "Activity feed refreshed ({} events)",
             self.rows.len()
         ));
@@ -1114,7 +1122,7 @@ impl AlertsRecoveryState {
             return false;
         };
         self.selected_alert_id = Some(alert_id);
-        self.last_error = None;
+        self.pane_clear_error();
         true
     }
 
@@ -1139,23 +1147,18 @@ impl AlertsRecoveryState {
             .iter_mut()
             .find(|alert| alert.alert_id == selected)
         else {
-            self.last_error = Some("Selected alert no longer exists".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Selected alert no longer exists".to_string());
+            return Err(self.pane_set_error("Selected alert no longer exists"));
         };
 
         if alert.lifecycle == AlertLifecycle::Resolved {
-            self.last_error = Some("Resolved alert cannot be acknowledged".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Resolved alert cannot be acknowledged".to_string());
+            return Err(self.pane_set_error("Resolved alert cannot be acknowledged"));
         }
 
         alert.lifecycle = AlertLifecycle::Acknowledged;
         alert.last_transition_epoch_seconds = transition_epoch;
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Acknowledged {}", alert.alert_id));
-        Ok(alert.alert_id.clone())
+        let alert_id = alert.alert_id.clone();
+        self.pane_set_ready(format!("Acknowledged {alert_id}"));
+        Ok(alert_id)
     }
 
     pub fn resolve_selected(&mut self) -> Result<String, String> {
@@ -1170,17 +1173,14 @@ impl AlertsRecoveryState {
             .iter_mut()
             .find(|alert| alert.alert_id == selected)
         else {
-            self.last_error = Some("Selected alert no longer exists".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Selected alert no longer exists".to_string());
+            return Err(self.pane_set_error("Selected alert no longer exists"));
         };
 
         alert.lifecycle = AlertLifecycle::Resolved;
         alert.last_transition_epoch_seconds = transition_epoch;
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(format!("Resolved {}", alert.alert_id));
-        Ok(alert.alert_id.clone())
+        let alert_id = alert.alert_id.clone();
+        self.pane_set_ready(format!("Resolved {alert_id}"));
+        Ok(alert_id)
     }
 
     fn next_transition_epoch(&mut self) -> u64 {
@@ -1239,20 +1239,17 @@ impl SettingsState {
             Ok(raw) => match parse_settings_document(&raw) {
                 Ok(document) => {
                     state.document = document;
-                    state.last_error = None;
-                    state.load_state = PaneLoadState::Ready;
-                    state.last_action = Some(format!("Settings loaded from {}", path.display()));
+                    state.pane_set_ready(format!("Settings loaded from {}", path.display()));
                 }
                 Err(error) => {
-                    state.load_state = PaneLoadState::Error;
-                    state.last_error = Some(format!("Settings parse error: {error}"));
-                    state.last_action = Some("Using migration-safe defaults".to_string());
+                    let _ = state.pane_set_error(format!("Settings parse error: {error}"));
+                    *state.pane_last_action_mut() =
+                        Some("Using migration-safe defaults".to_string());
                 }
             },
             Err(error) => {
                 if error.kind() != std::io::ErrorKind::NotFound {
-                    state.load_state = PaneLoadState::Error;
-                    state.last_error = Some(format!("Settings read error: {error}"));
+                    let _ = state.pane_set_error(format!("Settings read error: {error}"));
                 }
             }
         }
@@ -1283,14 +1280,10 @@ impl SettingsState {
     ) -> Result<(), String> {
         let relay_url = relay_url.trim();
         if relay_url.is_empty() {
-            self.last_error = Some("Relay URL is required".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Relay URL is required".to_string());
+            return Err(self.pane_set_error("Relay URL is required"));
         }
         if !relay_url.starts_with("wss://") {
-            self.last_error = Some("Relay URL must start with wss://".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Relay URL must start with wss://".to_string());
+            return Err(self.pane_set_error("Relay URL must start with wss://"));
         }
 
         let wallet_default_send_sats = wallet_default_send_sats
@@ -1298,10 +1291,9 @@ impl SettingsState {
             .parse::<u64>()
             .map_err(|error| format!("Wallet default send sats must be an integer: {error}"))?;
         if wallet_default_send_sats == 0 || wallet_default_send_sats > 10_000_000 {
-            self.last_error =
-                Some("Wallet default send sats must be between 1 and 10,000,000".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Wallet default send sats must be between 1 and 10,000,000".to_string());
+            return Err(
+                self.pane_set_error("Wallet default send sats must be between 1 and 10,000,000")
+            );
         }
 
         let provider_max_queue_depth = provider_max_queue_depth
@@ -1309,10 +1301,7 @@ impl SettingsState {
             .parse::<u32>()
             .map_err(|error| format!("Provider max queue depth must be an integer: {error}"))?;
         if provider_max_queue_depth == 0 || provider_max_queue_depth > 512 {
-            self.last_error =
-                Some("Provider max queue depth must be between 1 and 512".to_string());
-            self.load_state = PaneLoadState::Error;
-            return Err("Provider max queue depth must be between 1 and 512".to_string());
+            return Err(self.pane_set_error("Provider max queue depth must be between 1 and 512"));
         }
 
         let reconnect_required = relay_url != self.document.relay_url
@@ -1326,9 +1315,7 @@ impl SettingsState {
             self.persist_to_disk()?;
         }
 
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some(if reconnect_required {
+        self.pane_set_ready(if reconnect_required {
             "Saved settings. Relay/provider changes require reconnect.".to_string()
         } else {
             "Saved settings.".to_string()
@@ -1345,9 +1332,7 @@ impl SettingsState {
         if persist {
             self.persist_to_disk()?;
         }
-        self.last_error = None;
-        self.load_state = PaneLoadState::Ready;
-        self.last_action = Some("Reset settings to schema defaults.".to_string());
+        self.pane_set_ready("Reset settings to schema defaults.");
         Ok(())
     }
 
@@ -2319,6 +2304,19 @@ impl NostrSecretState {
     }
 }
 
+impl_pane_status_access!(
+    RelayConnectionsState,
+    SyncHealthState,
+    NetworkRequestsState,
+    StarterJobsState,
+    ActivityFeedState,
+    AlertsRecoveryState,
+    SettingsState,
+    JobInboxState,
+    ActiveJobState,
+    JobHistoryState,
+);
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -2637,7 +2635,9 @@ mod tests {
         active.start_from_request(&request);
         let stage = active.advance_stage().expect("advance should succeed");
         assert_eq!(stage, JobLifecycleStage::Running);
-        let stage = active.advance_stage().expect("second advance should succeed");
+        let stage = active
+            .advance_stage()
+            .expect("second advance should succeed");
         assert_eq!(stage, JobLifecycleStage::Delivered);
         let current = active.job.as_ref().expect("active job exists");
         assert_eq!(current.stage, JobLifecycleStage::Delivered);
@@ -2647,8 +2647,18 @@ mod tests {
     #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = seed_job_history(vec![
-            fixture_history_row("job-bootstrap-000", JobHistoryStatus::Succeeded, 1_761_919_970, 2100),
-            fixture_history_row("job-bootstrap-001", JobHistoryStatus::Failed, 1_761_919_940, 0),
+            fixture_history_row(
+                "job-bootstrap-000",
+                JobHistoryStatus::Succeeded,
+                1_761_919_970,
+                2100,
+            ),
+            fixture_history_row(
+                "job-bootstrap-001",
+                JobHistoryStatus::Failed,
+                1_761_919_940,
+                0,
+            ),
         ]);
         history.status_filter = JobHistoryStatusFilter::Succeeded;
         history.time_range = JobHistoryTimeRange::All;
