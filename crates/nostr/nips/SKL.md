@@ -2,7 +2,7 @@
 
 `draft` `optional`
 
-## Skill Registry
+## Agent Skill Registry
 
 ## Abstract
 
