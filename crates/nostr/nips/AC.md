@@ -78,6 +78,8 @@ This NIP defines these tags:
     * `nip90` (job_request_id or canonical job hash)
     * `l402` (resource id + constraints hash)
     * `skill` (canonical SKL skill_scope_id + invocation constraints hash)
+* `["a", "33400:<skill_npub>:<d-tag>"]` — recommended when `scope_type=skill`, points at SKL skill address
+* `["e", "<skill_manifest_event_id>"]` — recommended version pin when `scope_type=skill`
 * `["max", "<sats>"]` — max spend in sats
 * `["fee", "<sats_or_bps>"]` — issuer fee
 * `["exp", "<unix_ts>"]` — expiry timestamp
@@ -315,6 +317,13 @@ Where `skill_scope_id` SHOULD follow NIP-SKL canonical form:
 
 `33400:<skill_npub>:<d-tag>:<version>`
 
+Credit events for skill scopes SHOULD also include:
+
+- `["a", "33400:<skill_npub>:<d-tag>"]`
+- `["e", "<skill_manifest_event_id>"]`
+
+This keeps underwriting and settlement tied to a concrete SKL identity/version pair.
+
 Issuer MAY require the skill provider to also publish a settlement acknowledgement (either 39244 from provider, or a NIP-32 label referencing the receipt).
 
 ## Security Considerations
@@ -381,6 +390,8 @@ When `scope_type=skill`, implementations SHOULD use NIP-SKL canonical manifest i
 
 - `skill_scope_id = 33400:<skill_npub>:<d-tag>:<version>`
 - `scope tag = ["scope","skill","<skill_scope_id>:<constraints_hash>"]`
+- `a tag = ["a","33400:<skill_npub>:<d-tag>"]`
+- `e tag = ["e","<skill_manifest_event_id>"]` (recommended version pin)
 
 This keeps AC envelopes aligned to a specific SKL manifest version and prevents ambiguous credit authorization across upgraded skill versions.
 

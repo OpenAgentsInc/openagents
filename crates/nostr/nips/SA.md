@@ -27,6 +27,7 @@ This NIP builds on several existing NIPs:
 - [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift wrap (private skill delivery)
 - [NIP-78](https://github.com/nostr-protocol/nips/blob/master/78.md): Application-specific data (agent state storage)
 - [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data vending machines (compute/inference)
+- NIP-SKL (this repo): Skill registry and trust gating
 - NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 
 Additionally, this NIP recommends integration with:
@@ -505,9 +506,11 @@ When an agent purchases a skill, a license event is created:
   "pubkey": "<marketplace-pubkey>",
   "content": "",
   "tags": [
-    ["d", "<skill-id>:<agent-pubkey>"],
+    ["d", "<license-id>:<agent-pubkey>"],
     ["p", "<agent-pubkey>"],
-    ["skill", "<skill-id>"],
+    ["a", "33400:<skill-pubkey>:<skill-d-tag>"], // SKL canonical skill address
+    ["e", "<skill-manifest-event-id>", "<relay-hint>"], // pinned manifest version
+    ["version", "<skill-semver>"], // optional but recommended
     ["skill_provider", "<provider-pubkey>"],
     ["licensed_at", "<timestamp>"],
     ["expires_at", "<timestamp>"],  // optional
@@ -527,7 +530,10 @@ Skills are delivered as ephemeral gift-wrapped events:
   "pubkey": "<ephemeral-pubkey>",
   "content": "<NIP-59 gift-wrapped skill>",
   "tags": [
-    ["p", "<agent-pubkey>"]
+    ["p", "<agent-pubkey>"],
+    ["a", "33400:<skill-pubkey>:<skill-d-tag>"],
+    ["e", "<skill-manifest-event-id>", "<relay-hint>"],
+    ["e", "<skill-license-event-id>", "<relay-hint>"]
   ]
 }
 ```
@@ -536,7 +542,8 @@ The inner content (after unwrapping) contains:
 
 ```json
 {
-  "skill_id": "research-assistant-v2",
+  "skill_address": "33400:<skill-pubkey>:research-assistant",
+  "manifest_event_id": "<skill-manifest-event-id>",
   "version": "2.1.0",
   "content": "<NIP-44 encrypted skill content>",
   "signature": "<skill-provider-signature>"
@@ -639,11 +646,11 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 ### Skill Purchase Flow
 
 ```
-1. Agent discovers skill (NIP-89 or marketplace)
+1. Agent discovers skill manifest (NIP-SKL kind:33400 directly or via listing/index)
 2. Agent requests purchase (payment)
 3. Agent signs payment using threshold signature
 4. Payment confirmed
-5. Marketplace creates license (kind:39220)
+5. Marketplace creates license (kind:39220) referencing SKL `a` and pinned manifest `e`
 6. Skill provider delivers skill (kind:39221)
 7. Agent stores encrypted skill locally
 8. For each use: threshold ECDH with marketplace to decrypt
@@ -710,7 +717,7 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 ### Metadata Leakage
 
 - Tick events (kind:39210, 39211) reveal agent activity patterns
-- Skill license events (kind:39220) reveal what skills an agent has
+- Skill license events (kind:39220) reveal what skill addresses an agent has licensed
 - Mitigation: Use ephemeral relays for tick events
 - Mitigation: Gift-wrap license events for privacy
 
@@ -764,7 +771,8 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
   },
   "skills_cached": [
     {
-      "skill_id": "research-assistant",
+      "skill_scope_id": "33400:<skill-pubkey>:research-assistant:2.1.0",
+      "manifest_event_id": "<skill-manifest-event-id>",
       "cached_at": 1703000000,
       "ecdh_secret": "<cached-shared-secret>"
     }
@@ -789,7 +797,8 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 
 ```json
 {
-  "skill_id": "research-assistant",
+  "skill_address": "33400:<skill-pubkey>:research-assistant",
+  "manifest_event_id": "<skill-manifest-event-id>",
   "version": "2.1.0",
   "name": "Research Assistant",
   "description": "Helps agents research topics and summarize findings",
@@ -870,9 +879,9 @@ The marketplace signer implements middleware to enforce policies:
 marketplaceNode.use(async (request, next) => {
   if (request.type === 'ecdh') {
     const agentPubkey = request.from;
-    const skillId = deriveSkillId(request.target);
+    const skillAddress = deriveSkillAddress(request.target);
 
-    const license = await db.getLicense(agentPubkey, skillId);
+    const license = await db.getLicense(agentPubkey, skillAddress);
     if (!license || license.expired) {
       throw new Error('No valid license');
     }
@@ -936,7 +945,7 @@ class AgentRunner {
 - [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md): Lightning zaps
 - [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift wrap
 - [NIP-78](https://github.com/nostr-protocol/nips/blob/master/78.md): Application-specific data
-- [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md): Recommended application handlers
 - [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data vending machines
+- NIP-SKL (this repo): Agent Skill Registry
 - NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for Nostr
