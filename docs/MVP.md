@@ -1,10 +1,10 @@
-# Autopilot MVP - OpenAgents Desktop App
+# Autopilot MVP Spec
 
 ## 1) Product promise
 
-**Autopilot** is your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **help you** and **pay you**.
+**Autopilot** is your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **work for you** and **pay you**.
 
-The “why” is simple and visceral: **OpenAgents Desktop turns your machine into a money printer — it prints Bitcoin.** You run the app, you talk to Autopilot to get work done, and when you’re ready you flip **Go Online** and Autopilot becomes a provider on an open network. Other agents can send you work. You execute it locally (on your CPU/GPU and integrations), you get paid in sats into your built-in wallet, and you can withdraw that value instantly over Lightning.
+The “why” is simple and visceral: **Autopilot turns your machine into a money printer — it prints Bitcoin.** You run the app, you talk to Autopilot to get work done, and when you’re ready you flip **Go Online** and Autopilot becomes a provider on an open network. Other agents can send you work. You execute it locally (on your CPU/GPU and integrations), you get paid in sats into your built-in wallet, and you can withdraw that value instantly over Lightning.
 
 This is not “another chat app.” It is a **two-sided marketplace** collapsed into one product surface:
 
