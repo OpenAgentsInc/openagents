@@ -97,54 +97,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            let mut needs_redraw = false;
-            if PaneController::update_drag(state, app.cursor_position) {
-                needs_redraw = true;
-            }
-
-            let pane_move_event = InputEvent::MouseMove {
-                x: app.cursor_position.x,
-                y: app.cursor_position.y,
-            };
-            if PaneInput::dispatch_frame_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_spark_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_pay_invoice_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_create_invoice_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_relay_connections_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_network_requests_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_settings_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_chat_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-            if dispatch_job_history_input_event(state, &pane_move_event) {
-                needs_redraw = true;
-            }
-
-            if state
-                .hotbar
-                .event(
-                    &pane_move_event,
-                    state.hotbar_bounds,
-                    &mut state.event_context,
-                )
-                .is_handled()
-            {
-                needs_redraw = true;
-            }
+            let needs_redraw = dispatch_mouse_move(state, app.cursor_position);
 
             state
                 .window
@@ -200,41 +153,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
             match mouse_state {
                 ElementState::Pressed => {
-                    let mut handled = false;
-                    if state.hotbar_bounds.contains(app.cursor_position) {
-                        handled |= state
-                            .hotbar
-                            .event(&input, state.hotbar_bounds, &mut state.event_context)
-                            .is_handled();
-                        handled |= process_hotbar_clicks(state);
-                        handled |= dispatch_spark_input_event(state, &input);
-                        handled |= dispatch_pay_invoice_input_event(state, &input);
-                        handled |= dispatch_create_invoice_input_event(state, &input);
-                        handled |= dispatch_relay_connections_input_event(state, &input);
-                        handled |= dispatch_network_requests_input_event(state, &input);
-                        handled |= dispatch_settings_input_event(state, &input);
-                        handled |= dispatch_chat_input_event(state, &input);
-                        handled |= dispatch_job_history_input_event(state, &input);
-                        if !handled {
-                            handled |=
-                                PaneInput::handle_mouse_down(state, app.cursor_position, button);
-                        }
-                    } else {
-                        handled |= PaneInput::handle_mouse_down(state, app.cursor_position, button);
-                        handled |= dispatch_spark_input_event(state, &input);
-                        handled |= dispatch_pay_invoice_input_event(state, &input);
-                        handled |= dispatch_create_invoice_input_event(state, &input);
-                        handled |= dispatch_relay_connections_input_event(state, &input);
-                        handled |= dispatch_network_requests_input_event(state, &input);
-                        handled |= dispatch_settings_input_event(state, &input);
-                        handled |= dispatch_chat_input_event(state, &input);
-                        handled |= dispatch_job_history_input_event(state, &input);
-                        handled |= state
-                            .hotbar
-                            .event(&input, state.hotbar_bounds, &mut state.event_context)
-                            .is_handled();
-                        handled |= process_hotbar_clicks(state);
-                    }
+                    let handled = dispatch_mouse_down(state, app.cursor_position, button, &input);
 
                     state
                         .window
@@ -244,39 +163,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     }
                 }
                 ElementState::Released => {
-                    let mut handled = PaneInput::handle_mouse_up(state, &input);
-                    handled |= dispatch_spark_input_event(state, &input);
-                    handled |= dispatch_pay_invoice_input_event(state, &input);
-                    handled |= dispatch_create_invoice_input_event(state, &input);
-                    handled |= dispatch_relay_connections_input_event(state, &input);
-                    handled |= dispatch_network_requests_input_event(state, &input);
-                    handled |= dispatch_settings_input_event(state, &input);
-                    handled |= dispatch_chat_input_event(state, &input);
-                    handled |= dispatch_job_history_input_event(state, &input);
-                    handled |= handle_nostr_regenerate_click(state, app.cursor_position);
-                    handled |= handle_nostr_reveal_click(state, app.cursor_position);
-                    handled |= handle_nostr_copy_click(state, app.cursor_position);
-                    handled |= handle_spark_action_click(state, app.cursor_position);
-                    handled |= handle_pay_invoice_action_click(state, app.cursor_position);
-                    handled |= handle_create_invoice_action_click(state, app.cursor_position);
-                    handled |= handle_relay_connections_action_click(state, app.cursor_position);
-                    handled |= handle_sync_health_action_click(state, app.cursor_position);
-                    handled |= handle_network_requests_action_click(state, app.cursor_position);
-                    handled |= handle_starter_jobs_action_click(state, app.cursor_position);
-                    handled |= handle_activity_feed_action_click(state, app.cursor_position);
-                    handled |= handle_alerts_recovery_action_click(state, app.cursor_position);
-                    handled |= handle_settings_action_click(state, app.cursor_position);
-                    handled |= handle_chat_send_click(state, app.cursor_position);
-                    handled |= handle_go_online_toggle_click(state, app.cursor_position);
-                    handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
-                    handled |= handle_job_inbox_action_click(state, app.cursor_position);
-                    handled |= handle_active_job_action_click(state, app.cursor_position);
-                    handled |= handle_job_history_action_click(state, app.cursor_position);
-                    handled |= state
-                        .hotbar
-                        .event(&input, state.hotbar_bounds, &mut state.event_context)
-                        .is_handled();
-                    handled |= process_hotbar_clicks(state);
+                    let handled = dispatch_mouse_up(state, app.cursor_position, &input);
 
                     state
                         .window
@@ -322,16 +209,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if handle_chat_keyboard_input(state, &event.logical_key)
-                || handle_spark_wallet_keyboard_input(state, &event.logical_key)
-                || handle_pay_invoice_keyboard_input(state, &event.logical_key)
-                || handle_create_invoice_keyboard_input(state, &event.logical_key)
-                || handle_relay_connections_keyboard_input(state, &event.logical_key)
-                || handle_network_requests_keyboard_input(state, &event.logical_key)
+            if dispatch_keyboard_submit_actions(state, &event.logical_key)
                 || handle_activity_feed_keyboard_input(state, &event.logical_key)
                 || handle_alerts_recovery_keyboard_input(state, &event.logical_key)
-                || handle_settings_keyboard_input(state, &event.logical_key)
-                || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
                 return;
@@ -373,6 +253,117 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         }
         _ => {}
     }
+}
+
+fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let mut handled = PaneController::update_drag(state, point);
+    let event = InputEvent::MouseMove {
+        x: point.x,
+        y: point.y,
+    };
+
+    handled |= PaneInput::dispatch_frame_event(state, &event);
+    handled |= dispatch_text_inputs(state, &event);
+    handled |= state
+        .hotbar
+        .event(&event, state.hotbar_bounds, &mut state.event_context)
+        .is_handled();
+    handled
+}
+
+fn dispatch_mouse_down(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    button: MouseButton,
+    event: &InputEvent,
+) -> bool {
+    let mut handled = false;
+    if state.hotbar_bounds.contains(point) {
+        handled |= state
+            .hotbar
+            .event(event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+        handled |= process_hotbar_clicks(state);
+        handled |= dispatch_text_inputs(state, event);
+        if !handled {
+            handled |= PaneInput::handle_mouse_down(state, point, button);
+        }
+    } else {
+        handled |= PaneInput::handle_mouse_down(state, point, button);
+        handled |= dispatch_text_inputs(state, event);
+        handled |= state
+            .hotbar
+            .event(event, state.hotbar_bounds, &mut state.event_context)
+            .is_handled();
+        handled |= process_hotbar_clicks(state);
+    }
+
+    handled
+}
+
+fn dispatch_mouse_up(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    event: &InputEvent,
+) -> bool {
+    let mut handled = PaneInput::handle_mouse_up(state, event);
+    handled |= dispatch_text_inputs(state, event);
+    handled |= dispatch_pane_actions(state, point);
+    handled |= state
+        .hotbar
+        .event(event, state.hotbar_bounds, &mut state.event_context)
+        .is_handled();
+    handled |= process_hotbar_clicks(state);
+    handled
+}
+
+fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
+    let mut handled = dispatch_spark_input_event(state, event);
+    handled |= dispatch_pay_invoice_input_event(state, event);
+    handled |= dispatch_create_invoice_input_event(state, event);
+    handled |= dispatch_relay_connections_input_event(state, event);
+    handled |= dispatch_network_requests_input_event(state, event);
+    handled |= dispatch_settings_input_event(state, event);
+    handled |= dispatch_chat_input_event(state, event);
+    handled |= dispatch_job_history_input_event(state, event);
+    handled
+}
+
+fn dispatch_pane_actions(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let mut handled = handle_nostr_regenerate_click(state, point);
+    handled |= handle_nostr_reveal_click(state, point);
+    handled |= handle_nostr_copy_click(state, point);
+    handled |= handle_spark_action_click(state, point);
+    handled |= handle_pay_invoice_action_click(state, point);
+    handled |= handle_create_invoice_action_click(state, point);
+    handled |= handle_relay_connections_action_click(state, point);
+    handled |= handle_sync_health_action_click(state, point);
+    handled |= handle_network_requests_action_click(state, point);
+    handled |= handle_starter_jobs_action_click(state, point);
+    handled |= handle_activity_feed_action_click(state, point);
+    handled |= handle_alerts_recovery_action_click(state, point);
+    handled |= handle_settings_action_click(state, point);
+    handled |= handle_chat_send_click(state, point);
+    handled |= handle_go_online_toggle_click(state, point);
+    handled |= handle_earnings_scoreboard_action_click(state, point);
+    handled |= handle_job_inbox_action_click(state, point);
+    handled |= handle_active_job_action_click(state, point);
+    handled |= handle_job_history_action_click(state, point);
+    handled
+}
+
+fn dispatch_keyboard_submit_actions(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_chat_keyboard_input(state, logical_key)
+        || handle_spark_wallet_keyboard_input(state, logical_key)
+        || handle_pay_invoice_keyboard_input(state, logical_key)
+        || handle_create_invoice_keyboard_input(state, logical_key)
+        || handle_relay_connections_keyboard_input(state, logical_key)
+        || handle_network_requests_keyboard_input(state, logical_key)
+        || handle_settings_keyboard_input(state, logical_key)
+        || handle_job_history_keyboard_input(state, logical_key)
 }
 
 fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -615,191 +606,120 @@ fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-    let focused_before = state.chat_inputs.composer.is_focused();
-    let handled_by_input = dispatch_chat_input_event(state, &key_event);
-    let focused_after = state.chat_inputs.composer.is_focused();
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter)) && state.chat_inputs.composer.is_focused() {
-        return run_chat_submit_action(state);
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        |s| s.chat_inputs.composer.is_focused(),
+        dispatch_chat_input_event,
+        |s| {
+            if s.chat_inputs.composer.is_focused() {
+                return run_chat_submit_action(s);
+            }
+            false
+        },
+    )
 }
 
 fn handle_spark_wallet_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-
-    let focused_before = spark_inputs_focused(state);
-    let handled_by_input = dispatch_spark_input_event(state, &key_event);
-    let focused_after = spark_inputs_focused(state);
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter))
-        && (state.spark_inputs.invoice_amount.is_focused()
-            || state.spark_inputs.send_request.is_focused()
-            || state.spark_inputs.send_amount.is_focused())
-    {
-        if state.spark_inputs.invoice_amount.is_focused() {
-            let _ = run_spark_action(state, SparkPaneAction::CreateInvoice);
-        } else {
-            let _ = run_spark_action(state, SparkPaneAction::SendPayment);
-        }
-        return true;
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        spark_inputs_focused,
+        dispatch_spark_input_event,
+        |s| {
+            if s.spark_inputs.invoice_amount.is_focused() {
+                let _ = run_spark_action(s, SparkPaneAction::CreateInvoice);
+                return true;
+            }
+            if s.spark_inputs.send_request.is_focused() || s.spark_inputs.send_amount.is_focused() {
+                let _ = run_spark_action(s, SparkPaneAction::SendPayment);
+                return true;
+            }
+            false
+        },
+    )
 }
 
 fn handle_pay_invoice_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-
-    let focused_before = pay_invoice_inputs_focused(state);
-    let handled_by_input = dispatch_pay_invoice_input_event(state, &key_event);
-    let focused_after = pay_invoice_inputs_focused(state);
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter))
-        && (state.pay_invoice_inputs.payment_request.is_focused()
-            || state.pay_invoice_inputs.amount_sats.is_focused())
-    {
-        let _ = run_pay_invoice_action(state, PayInvoicePaneAction::SendPayment);
-        return true;
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        pay_invoice_inputs_focused,
+        dispatch_pay_invoice_input_event,
+        |s| {
+            if s.pay_invoice_inputs.payment_request.is_focused()
+                || s.pay_invoice_inputs.amount_sats.is_focused()
+            {
+                let _ = run_pay_invoice_action(s, PayInvoicePaneAction::SendPayment);
+                return true;
+            }
+            false
+        },
+    )
 }
 
 fn handle_create_invoice_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-
-    let focused_before = create_invoice_inputs_focused(state);
-    let handled_by_input = dispatch_create_invoice_input_event(state, &key_event);
-    let focused_after = create_invoice_inputs_focused(state);
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter))
-        && (state.create_invoice_inputs.amount_sats.is_focused()
-            || state.create_invoice_inputs.description.is_focused()
-            || state.create_invoice_inputs.expiry_seconds.is_focused())
-    {
-        let _ = run_create_invoice_action(state, CreateInvoicePaneAction::CreateInvoice);
-        return true;
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        create_invoice_inputs_focused,
+        dispatch_create_invoice_input_event,
+        |s| {
+            if s.create_invoice_inputs.amount_sats.is_focused()
+                || s.create_invoice_inputs.description.is_focused()
+                || s.create_invoice_inputs.expiry_seconds.is_focused()
+            {
+                let _ = run_create_invoice_action(s, CreateInvoicePaneAction::CreateInvoice);
+                return true;
+            }
+            false
+        },
+    )
 }
 
 fn handle_relay_connections_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-    let focused_before = state.relay_connections_inputs.relay_url.is_focused();
-    let handled_by_input = dispatch_relay_connections_input_event(state, &key_event);
-    let focused_after = state.relay_connections_inputs.relay_url.is_focused();
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter))
-        && state.relay_connections_inputs.relay_url.is_focused()
-    {
-        return run_relay_connections_action(state, RelayConnectionsPaneAction::AddRelay);
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        |s| s.relay_connections_inputs.relay_url.is_focused(),
+        dispatch_relay_connections_input_event,
+        |s| {
+            if s.relay_connections_inputs.relay_url.is_focused() {
+                return run_relay_connections_action(s, RelayConnectionsPaneAction::AddRelay);
+            }
+            false
+        },
+    )
 }
 
 fn handle_network_requests_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-    let focused_before = network_requests_inputs_focused(state);
-    let handled_by_input = dispatch_network_requests_input_event(state, &key_event);
-    let focused_after = network_requests_inputs_focused(state);
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter)) && network_requests_inputs_focused(state) {
-        return run_network_requests_action(state, NetworkRequestsPaneAction::SubmitRequest);
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        network_requests_inputs_focused,
+        dispatch_network_requests_input_event,
+        |s| {
+            if network_requests_inputs_focused(s) {
+                return run_network_requests_action(s, NetworkRequestsPaneAction::SubmitRequest);
+            }
+            false
+        },
+    )
 }
 
 fn handle_activity_feed_keyboard_input(
@@ -858,34 +778,52 @@ fn handle_settings_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
-    let Some(key) = map_winit_key(logical_key) else {
-        return false;
-    };
-
-    let key_event = InputEvent::KeyDown {
-        key: key.clone(),
-        modifiers: state.input_modifiers,
-    };
-    let focused_before = settings_inputs_focused(state);
-    let handled_by_input = dispatch_settings_input_event(state, &key_event);
-    let focused_after = settings_inputs_focused(state);
-    let focus_active = focused_before || focused_after;
-
-    if matches!(key, Key::Named(NamedKey::Enter)) && settings_inputs_focused(state) {
-        return run_settings_action(state, SettingsPaneAction::Save);
-    }
-
-    if focus_active {
-        return handled_by_input;
-    }
-
-    false
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        settings_inputs_focused,
+        dispatch_settings_input_event,
+        |s| {
+            if settings_inputs_focused(s) {
+                return run_settings_action(s, SettingsPaneAction::Save);
+            }
+            false
+        },
+    )
 }
 
 fn handle_job_history_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        |s| s.job_history_inputs.search_job_id.is_focused(),
+        dispatch_job_history_input_event,
+        |s| {
+            if s.job_history_inputs.search_job_id.is_focused() {
+                s.job_history.last_error = None;
+                s.job_history.last_action = Some("Applied job-id search filter".to_string());
+                return true;
+            }
+            false
+        },
+    )
+}
+
+fn handle_focused_keyboard_submit<FHasFocus, FDispatch, FEnter>(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+    has_focus: FHasFocus,
+    dispatch_input: FDispatch,
+    on_enter: FEnter,
+) -> bool
+where
+    FHasFocus: Fn(&crate::app_state::RenderState) -> bool,
+    FDispatch: Fn(&mut crate::app_state::RenderState, &InputEvent) -> bool,
+    FEnter: Fn(&mut crate::app_state::RenderState) -> bool,
+{
     let Some(key) = map_winit_key(logical_key) else {
         return false;
     };
@@ -894,17 +832,12 @@ fn handle_job_history_keyboard_input(
         key: key.clone(),
         modifiers: state.input_modifiers,
     };
-
-    let focused_before = state.job_history_inputs.search_job_id.is_focused();
-    let handled_by_input = dispatch_job_history_input_event(state, &key_event);
-    let focused_after = state.job_history_inputs.search_job_id.is_focused();
+    let focused_before = has_focus(state);
+    let handled_by_input = dispatch_input(state, &key_event);
+    let focused_after = has_focus(state);
     let focus_active = focused_before || focused_after;
 
-    if matches!(key, Key::Named(NamedKey::Enter))
-        && state.job_history_inputs.search_job_id.is_focused()
-    {
-        state.job_history.last_error = None;
-        state.job_history.last_action = Some("Applied job-id search filter".to_string());
+    if matches!(key, Key::Named(NamedKey::Enter)) && on_enter(state) {
         return true;
     }
 
