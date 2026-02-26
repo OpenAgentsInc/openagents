@@ -31,6 +31,8 @@ const STARTER_JOBS_PANE_WIDTH: f32 = 860.0;
 const STARTER_JOBS_PANE_HEIGHT: f32 = 420.0;
 const ACTIVITY_FEED_PANE_WIDTH: f32 = 940.0;
 const ACTIVITY_FEED_PANE_HEIGHT: f32 = 460.0;
+const ALERTS_RECOVERY_PANE_WIDTH: f32 = 900.0;
+const ALERTS_RECOVERY_PANE_HEIGHT: f32 = 460.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -63,6 +65,9 @@ const ACTIVITY_FEED_FILTER_GAP: f32 = 8.0;
 const ACTIVITY_FEED_ROW_HEIGHT: f32 = 30.0;
 const ACTIVITY_FEED_ROW_GAP: f32 = 6.0;
 const ACTIVITY_FEED_MAX_ROWS: usize = 8;
+const ALERTS_RECOVERY_ROW_HEIGHT: f32 = 30.0;
+const ALERTS_RECOVERY_ROW_GAP: f32 = 6.0;
+const ALERTS_RECOVERY_MAX_ROWS: usize = 8;
 
 pub struct PaneController;
 
@@ -122,6 +127,14 @@ pub enum StarterJobsPaneAction {
 pub enum ActivityFeedPaneAction {
     Refresh,
     SetFilter(ActivityFeedFilter),
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AlertsRecoveryPaneAction {
+    RecoverSelected,
+    AcknowledgeSelected,
+    ResolveSelected,
     SelectRow(usize),
 }
 
@@ -220,6 +233,15 @@ impl PaneDescriptor {
             kind: PaneKind::ActivityFeed,
             width: ACTIVITY_FEED_PANE_WIDTH,
             height: ACTIVITY_FEED_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn alerts_recovery() -> Self {
+        Self {
+            kind: PaneKind::AlertsRecovery,
+            width: ALERTS_RECOVERY_PANE_WIDTH,
+            height: ALERTS_RECOVERY_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -374,6 +396,10 @@ impl PaneController {
 
     pub fn create_activity_feed(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::activity_feed());
+    }
+
+    pub fn create_alerts_recovery(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::alerts_recovery());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -693,6 +719,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
         if state.panes[pane_idx].kind == PaneKind::ActivityFeed
             && topmost_activity_feed_action_hit(state, point).is_some()
+        {
+            return CursorIcon::Pointer;
+        }
+
+        if state.panes[pane_idx].kind == PaneKind::AlertsRecovery
+            && topmost_alerts_recovery_action_hit(state, point).is_some()
         {
             return CursorIcon::Pointer;
         }
@@ -1017,6 +1049,50 @@ pub fn activity_feed_row_bounds(content_bounds: Bounds, row_index: usize) -> Bou
 
 pub fn activity_feed_visible_row_count(row_count: usize) -> usize {
     row_count.min(ACTIVITY_FEED_MAX_ROWS)
+}
+
+pub fn alerts_recovery_recover_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.2).clamp(132.0, 200.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn alerts_recovery_ack_button_bounds(content_bounds: Bounds) -> Bounds {
+    let recover = alerts_recovery_recover_button_bounds(content_bounds);
+    Bounds::new(
+        recover.max_x() + JOB_INBOX_BUTTON_GAP,
+        recover.origin.y,
+        recover.size.width,
+        recover.size.height,
+    )
+}
+
+pub fn alerts_recovery_resolve_button_bounds(content_bounds: Bounds) -> Bounds {
+    let ack = alerts_recovery_ack_button_bounds(content_bounds);
+    Bounds::new(
+        ack.max_x() + JOB_INBOX_BUTTON_GAP,
+        ack.origin.y,
+        ack.size.width,
+        ack.size.height,
+    )
+}
+
+pub fn alerts_recovery_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(ALERTS_RECOVERY_MAX_ROWS.saturating_sub(1));
+    let top = content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (ALERTS_RECOVERY_ROW_HEIGHT + ALERTS_RECOVERY_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        ALERTS_RECOVERY_ROW_HEIGHT,
+    )
+}
+
+pub fn alerts_recovery_visible_row_count(row_count: usize) -> usize {
+    row_count.min(ALERTS_RECOVERY_MAX_ROWS)
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1387,6 +1463,38 @@ pub fn topmost_activity_feed_action_hit(
         for row_index in 0..visible_rows {
             if activity_feed_row_bounds(content_bounds, row_index).contains(point) {
                 return Some((pane.id, ActivityFeedPaneAction::SelectRow(row_index)));
+            }
+        }
+    }
+
+    None
+}
+
+pub fn topmost_alerts_recovery_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, AlertsRecoveryPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::AlertsRecovery {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if alerts_recovery_recover_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, AlertsRecoveryPaneAction::RecoverSelected));
+        }
+        if alerts_recovery_ack_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, AlertsRecoveryPaneAction::AcknowledgeSelected));
+        }
+        if alerts_recovery_resolve_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, AlertsRecoveryPaneAction::ResolveSelected));
+        }
+
+        let visible_rows = alerts_recovery_visible_row_count(state.alerts_recovery.alerts.len());
+        for row_index in 0..visible_rows {
+            if alerts_recovery_row_bounds(content_bounds, row_index).contains(point) {
+                return Some((pane.id, AlertsRecoveryPaneAction::SelectRow(row_index)));
             }
         }
     }
@@ -1782,6 +1890,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::NetworkRequests => "Network Requests".to_string(),
         PaneKind::StarterJobs => "Starter Jobs".to_string(),
         PaneKind::ActivityFeed => "Activity Feed".to_string(),
+        PaneKind::AlertsRecovery => "Alerts and Recovery".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1832,7 +1941,9 @@ mod tests {
     use super::{
         active_job_abort_button_bounds, active_job_advance_button_bounds,
         activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
-        activity_feed_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
+        activity_feed_row_bounds, alerts_recovery_ack_button_bounds,
+        alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
+        alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
         chat_thread_rail_bounds, chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
         go_online_toggle_button_bounds, job_history_next_page_button_bounds,
         job_history_prev_page_button_bounds, job_history_search_input_bounds,
@@ -1957,6 +2068,19 @@ mod tests {
         assert!(refresh.max_y() < filter0.min_y());
         assert!(filter0.max_x() < filter1.max_x());
         assert!(filter0.max_y() < row0.min_y());
+    }
+
+    #[test]
+    fn alerts_recovery_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 460.0);
+        let recover = alerts_recovery_recover_button_bounds(content);
+        let ack = alerts_recovery_ack_button_bounds(content);
+        let resolve = alerts_recovery_resolve_button_bounds(content);
+        let row0 = alerts_recovery_row_bounds(content, 0);
+
+        assert!(recover.max_x() < ack.max_x());
+        assert!(ack.max_x() < resolve.max_x());
+        assert!(recover.max_y() < row0.min_y());
     }
 
     #[test]

@@ -41,6 +41,7 @@ pub enum PaneKind {
     NetworkRequests,
     StarterJobs,
     ActivityFeed,
+    AlertsRecovery,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -1112,6 +1113,224 @@ impl ActivityFeedState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AlertSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+impl AlertSeverity {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AlertLifecycle {
+    Active,
+    Acknowledged,
+    Resolved,
+}
+
+impl AlertLifecycle {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Acknowledged => "acknowledged",
+            Self::Resolved => "resolved",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AlertDomain {
+    Identity,
+    Wallet,
+    Relays,
+    ProviderRuntime,
+    Sync,
+}
+
+impl AlertDomain {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::Wallet => "wallet",
+            Self::Relays => "relays",
+            Self::ProviderRuntime => "provider",
+            Self::Sync => "sync",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryAlertRow {
+    pub alert_id: String,
+    pub domain: AlertDomain,
+    pub severity: AlertSeverity,
+    pub lifecycle: AlertLifecycle,
+    pub summary: String,
+    pub remediation: String,
+    pub last_transition_epoch_seconds: u64,
+}
+
+pub struct AlertsRecoveryState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub alerts: Vec<RecoveryAlertRow>,
+    pub selected_alert_id: Option<String>,
+    next_transition_seq: u64,
+}
+
+impl Default for AlertsRecoveryState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Alerts hydrated from deterministic incident lane".to_string()),
+            alerts: vec![
+                RecoveryAlertRow {
+                    alert_id: "alert:identity:missing".to_string(),
+                    domain: AlertDomain::Identity,
+                    severity: AlertSeverity::Critical,
+                    lifecycle: AlertLifecycle::Active,
+                    summary: "Identity not loaded for provider runtime".to_string(),
+                    remediation: "Regenerate keys and refresh dependent wallet state.".to_string(),
+                    last_transition_epoch_seconds: 1_761_920_080,
+                },
+                RecoveryAlertRow {
+                    alert_id: "alert:wallet:degraded".to_string(),
+                    domain: AlertDomain::Wallet,
+                    severity: AlertSeverity::Warning,
+                    lifecycle: AlertLifecycle::Active,
+                    summary: "Spark wallet connection is degraded".to_string(),
+                    remediation: "Run wallet refresh and confirm latest payment pointer."
+                        .to_string(),
+                    last_transition_epoch_seconds: 1_761_920_090,
+                },
+                RecoveryAlertRow {
+                    alert_id: "alert:relays:offline".to_string(),
+                    domain: AlertDomain::Relays,
+                    severity: AlertSeverity::Warning,
+                    lifecycle: AlertLifecycle::Acknowledged,
+                    summary: "One or more configured relays are disconnected".to_string(),
+                    remediation: "Retry relay reconnect for selected relay row.".to_string(),
+                    last_transition_epoch_seconds: 1_761_920_095,
+                },
+                RecoveryAlertRow {
+                    alert_id: "alert:provider:queue".to_string(),
+                    domain: AlertDomain::ProviderRuntime,
+                    severity: AlertSeverity::Info,
+                    lifecycle: AlertLifecycle::Active,
+                    summary: "Provider runtime queue depth increased".to_string(),
+                    remediation: "Cycle provider mode to clear transient runtime blockers."
+                        .to_string(),
+                    last_transition_epoch_seconds: 1_761_920_100,
+                },
+                RecoveryAlertRow {
+                    alert_id: "alert:sync:stale".to_string(),
+                    domain: AlertDomain::Sync,
+                    severity: AlertSeverity::Critical,
+                    lifecycle: AlertLifecycle::Active,
+                    summary: "Spacetime cursor stale threshold breached".to_string(),
+                    remediation: "Run sync rebootstrap and verify replay counters.".to_string(),
+                    last_transition_epoch_seconds: 1_761_920_105,
+                },
+            ],
+            selected_alert_id: Some("alert:identity:missing".to_string()),
+            next_transition_seq: 1,
+        }
+    }
+}
+
+impl AlertsRecoveryState {
+    pub fn select_by_index(&mut self, index: usize) -> bool {
+        let Some(alert_id) = self.alerts.get(index).map(|alert| alert.alert_id.clone()) else {
+            return false;
+        };
+        self.selected_alert_id = Some(alert_id);
+        self.last_error = None;
+        true
+    }
+
+    pub fn selected(&self) -> Option<&RecoveryAlertRow> {
+        let selected = self.selected_alert_id.as_deref()?;
+        self.alerts.iter().find(|alert| alert.alert_id == selected)
+    }
+
+    pub fn selected_domain(&self) -> Option<AlertDomain> {
+        self.selected().map(|alert| alert.domain)
+    }
+
+    pub fn acknowledge_selected(&mut self) -> Result<String, String> {
+        let selected = self
+            .selected_alert_id
+            .as_deref()
+            .ok_or_else(|| "Select an alert first".to_string())?
+            .to_string();
+        let transition_epoch = self.next_transition_epoch();
+        let Some(alert) = self
+            .alerts
+            .iter_mut()
+            .find(|alert| alert.alert_id == selected)
+        else {
+            self.last_error = Some("Selected alert no longer exists".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Selected alert no longer exists".to_string());
+        };
+
+        if alert.lifecycle == AlertLifecycle::Resolved {
+            self.last_error = Some("Resolved alert cannot be acknowledged".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Resolved alert cannot be acknowledged".to_string());
+        }
+
+        alert.lifecycle = AlertLifecycle::Acknowledged;
+        alert.last_transition_epoch_seconds = transition_epoch;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Acknowledged {}", alert.alert_id));
+        Ok(alert.alert_id.clone())
+    }
+
+    pub fn resolve_selected(&mut self) -> Result<String, String> {
+        let selected = self
+            .selected_alert_id
+            .as_deref()
+            .ok_or_else(|| "Select an alert first".to_string())?
+            .to_string();
+        let transition_epoch = self.next_transition_epoch();
+        let Some(alert) = self
+            .alerts
+            .iter_mut()
+            .find(|alert| alert.alert_id == selected)
+        else {
+            self.last_error = Some("Selected alert no longer exists".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Selected alert no longer exists".to_string());
+        };
+
+        alert.lifecycle = AlertLifecycle::Resolved;
+        alert.last_transition_epoch_seconds = transition_epoch;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Resolved {}", alert.alert_id));
+        Ok(alert.alert_id.clone())
+    }
+
+    fn next_transition_epoch(&mut self) -> u64 {
+        let epoch = 1_761_920_000u64.saturating_add(self.next_transition_seq * 17);
+        self.next_transition_seq = self.next_transition_seq.saturating_add(1);
+        epoch
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxValidation {
     Valid,
@@ -2081,6 +2300,7 @@ pub struct RenderState {
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
     pub activity_feed: ActivityFeedState,
+    pub alerts_recovery: AlertsRecoveryState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -2110,13 +2330,13 @@ impl RenderState {
 mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
-        ActivityFeedState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
-        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
-        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestsState, NostrSecretState,
-        ProviderBlocker, ProviderMode, ProviderRuntimeState, RelayConnectionStatus,
-        RelayConnectionsState, SparkPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
-        SyncRecoveryPhase,
+        ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
+        AutopilotMessageStatus, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
+        NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
+        ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsState, SparkPaneState,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
     };
 
     #[test]
@@ -2385,6 +2605,32 @@ mod tests {
                 .into_iter()
                 .all(|row| row.domain == ActivityEventDomain::Wallet)
         );
+    }
+
+    #[test]
+    fn alerts_recovery_lifecycle_transitions_are_deterministic() {
+        let mut alerts = AlertsRecoveryState::default();
+        alerts.select_by_index(0);
+        let alert_id = alerts
+            .acknowledge_selected()
+            .expect("active alert should acknowledge");
+        let alert = alerts
+            .alerts
+            .iter()
+            .find(|alert| alert.alert_id == alert_id)
+            .expect("alert should exist after ack");
+        assert_eq!(alert.lifecycle, AlertLifecycle::Acknowledged);
+        assert_eq!(alerts.selected_domain(), Some(AlertDomain::Identity));
+
+        let resolved_id = alerts
+            .resolve_selected()
+            .expect("acknowledged alert should resolve");
+        let resolved = alerts
+            .alerts
+            .iter()
+            .find(|alert| alert.alert_id == resolved_id)
+            .expect("alert should exist after resolve");
+        assert_eq!(resolved.lifecycle, AlertLifecycle::Resolved);
     }
 
     #[test]

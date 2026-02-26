@@ -7,21 +7,22 @@ use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
 
-use crate::app_state::{ActivityEventDomain, ActivityEventRow, App, ProviderMode};
+use crate::app_state::{ActivityEventDomain, ActivityEventRow, AlertDomain, App, ProviderMode};
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    ActiveJobPaneAction, ActivityFeedPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneInput, RelayConnectionsPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
-    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_spark_input_event,
-    topmost_active_job_action_hit, topmost_activity_feed_action_hit, topmost_chat_send_hit,
-    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
-    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
+    ActiveJobPaneAction, ActivityFeedPaneAction, AlertsRecoveryPaneAction,
+    EarningsScoreboardPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction, PaneController,
+    PaneInput, RelayConnectionsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    dispatch_chat_input_event, dispatch_create_invoice_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_activity_feed_action_hit,
+    topmost_alerts_recovery_action_hit, topmost_chat_send_hit, topmost_create_invoice_action_hit,
+    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
+    topmost_job_history_action_hit, topmost_job_inbox_action_hit,
     topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
     topmost_relay_connections_action_hit, topmost_spark_action_hit,
@@ -40,6 +41,7 @@ const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
 const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
 const COMMAND_OPEN_STARTER_JOBS: &str = "pane.starter_jobs";
 const COMMAND_OPEN_ACTIVITY_FEED: &str = "pane.activity_feed";
+const COMMAND_OPEN_ALERTS_RECOVERY: &str = "pane.alerts_recovery";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -273,6 +275,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_network_requests_action_click(state, app.cursor_position);
                     handled |= handle_starter_jobs_action_click(state, app.cursor_position);
                     handled |= handle_activity_feed_action_click(state, app.cursor_position);
+                    handled |= handle_alerts_recovery_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -336,6 +339,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 || handle_relay_connections_keyboard_input(state, &event.logical_key)
                 || handle_network_requests_keyboard_input(state, &event.logical_key)
                 || handle_activity_feed_keyboard_input(state, &event.logical_key)
+                || handle_alerts_recovery_keyboard_input(state, &event.logical_key)
                 || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -526,6 +530,18 @@ fn handle_activity_feed_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_activity_feed_action(state, action)
+}
+
+fn handle_alerts_recovery_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_alerts_recovery_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_alerts_recovery_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -810,6 +826,32 @@ fn handle_activity_feed_keyboard_input(
     }
 
     run_activity_feed_action(state, ActivityFeedPaneAction::Refresh)
+}
+
+fn handle_alerts_recovery_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    if !matches!(key, Key::Named(NamedKey::Enter)) {
+        return false;
+    }
+
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_alerts_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::AlertsRecovery);
+    if !is_alerts_active {
+        return false;
+    }
+
+    run_alerts_recovery_action(state, AlertsRecoveryPaneAction::RecoverSelected)
 }
 
 fn handle_job_history_keyboard_input(
@@ -1177,6 +1219,120 @@ fn run_activity_feed_action(
             } else {
                 state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
             }
+            true
+        }
+    }
+}
+
+fn run_alerts_recovery_action(
+    state: &mut crate::app_state::RenderState,
+    action: AlertsRecoveryPaneAction,
+) -> bool {
+    match action {
+        AlertsRecoveryPaneAction::SelectRow(index) => {
+            if !state.alerts_recovery.select_by_index(index) {
+                state.alerts_recovery.last_error = Some("Alert row out of range".to_string());
+                state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Error;
+            } else {
+                state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+            }
+            true
+        }
+        AlertsRecoveryPaneAction::AcknowledgeSelected => {
+            match state.alerts_recovery.acknowledge_selected() {
+                Ok(alert_id) => {
+                    state.provider_runtime.last_result = Some(format!("acknowledged {alert_id}"));
+                }
+                Err(error) => {
+                    state.alerts_recovery.last_error = Some(error);
+                }
+            }
+            true
+        }
+        AlertsRecoveryPaneAction::ResolveSelected => {
+            match state.alerts_recovery.resolve_selected() {
+                Ok(alert_id) => {
+                    state.provider_runtime.last_result = Some(format!("resolved {alert_id}"));
+                }
+                Err(error) => {
+                    state.alerts_recovery.last_error = Some(error);
+                }
+            }
+            true
+        }
+        AlertsRecoveryPaneAction::RecoverSelected => {
+            let Some(domain) = state.alerts_recovery.selected_domain() else {
+                state.alerts_recovery.last_error = Some("Select an alert first".to_string());
+                state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+
+            let recovery = match domain {
+                AlertDomain::Identity => match regenerate_identity() {
+                    Ok(identity) => {
+                        state.nostr_identity = Some(identity);
+                        state.nostr_identity_error = None;
+                        state.nostr_secret_state.revealed_until = None;
+                        state.nostr_secret_state.set_copy_notice(
+                            std::time::Instant::now(),
+                            "Identity regenerated. Secrets are hidden by default.".to_string(),
+                        );
+                        queue_spark_command(state, SparkWalletCommand::Refresh);
+                        Ok("Identity lane recovered".to_string())
+                    }
+                    Err(error) => Err(format!("Identity recovery failed: {error}")),
+                },
+                AlertDomain::Wallet => {
+                    queue_spark_command(state, SparkWalletCommand::Refresh);
+                    Ok("Wallet refresh queued".to_string())
+                }
+                AlertDomain::Relays => {
+                    if state.relay_connections.selected_url.is_none() {
+                        state.relay_connections.selected_url = state
+                            .relay_connections
+                            .relays
+                            .first()
+                            .map(|row| row.url.clone());
+                    }
+                    match state.relay_connections.retry_selected() {
+                        Ok(url) => Ok(format!("Relay reconnect attempted for {url}")),
+                        Err(error) => Err(error),
+                    }
+                }
+                AlertDomain::ProviderRuntime => {
+                    let blockers = state.provider_blockers();
+                    state
+                        .provider_runtime
+                        .toggle_online(std::time::Instant::now(), blockers.as_slice());
+                    Ok(format!(
+                        "Provider mode toggled to {}",
+                        state.provider_runtime.mode.label()
+                    ))
+                }
+                AlertDomain::Sync => {
+                    state.sync_health.rebootstrap();
+                    Ok("Sync rebootstrap started".to_string())
+                }
+            };
+
+            match recovery {
+                Ok(result) => {
+                    if let Err(error) = state.alerts_recovery.resolve_selected() {
+                        state.alerts_recovery.last_error = Some(error);
+                        state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Error;
+                    } else {
+                        state.alerts_recovery.last_action = Some(result.clone());
+                        state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+                        state.provider_runtime.last_result = Some(result);
+                    }
+                }
+                Err(error) => {
+                    state.alerts_recovery.last_error = Some(error);
+                    state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+
+            refresh_sync_health(state);
             true
         }
     }
@@ -1689,6 +1845,20 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
                     state
                         .activity_feed
                         .record_refresh(build_activity_feed_snapshot_events(state));
+                }
+                changed = true;
+            }
+            COMMAND_OPEN_ALERTS_RECOVERY => {
+                let was_open = state
+                    .panes
+                    .iter()
+                    .any(|pane| pane.kind == crate::app_state::PaneKind::AlertsRecovery);
+                PaneController::create_alerts_recovery(state);
+                if !was_open {
+                    state.alerts_recovery.last_error = None;
+                    state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.alerts_recovery.last_action =
+                        Some("Alerts lane opened for active incident triage".to_string());
                 }
                 changed = true;
             }

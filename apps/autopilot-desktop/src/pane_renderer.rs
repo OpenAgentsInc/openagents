@@ -1,16 +1,19 @@
 use crate::app_state::{
-    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AutopilotChatState,
-    AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, CreateInvoicePaneInputs, DesktopPane,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsPaneInputs, RelayConnectionsState,
-    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
+    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AlertSeverity,
+    AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
+    CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
-    activity_feed_row_bounds, activity_feed_visible_row_count, chat_composer_input_bounds,
+    activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
+    alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
+    alerts_recovery_row_bounds, alerts_recovery_visible_row_count, chat_composer_input_bounds,
     chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_bounds,
     earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
@@ -52,6 +55,7 @@ impl PaneRenderer {
         network_requests: &NetworkRequestsState,
         starter_jobs: &StarterJobsState,
         activity_feed: &ActivityFeedState,
+        alerts_recovery: &AlertsRecoveryState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -144,6 +148,9 @@ impl PaneRenderer {
                 }
                 PaneKind::ActivityFeed => {
                     paint_activity_feed_pane(content_bounds, activity_feed, paint);
+                }
+                PaneKind::AlertsRecovery => {
+                    paint_alerts_recovery_pane(content_bounds, alerts_recovery, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -1266,6 +1273,146 @@ fn paint_activity_feed_pane(
                 &selected.detail,
             );
         }
+    }
+}
+
+fn paint_alerts_recovery_pane(
+    content_bounds: Bounds,
+    alerts_recovery: &AlertsRecoveryState,
+    paint: &mut PaintContext,
+) {
+    let recover_bounds = alerts_recovery_recover_button_bounds(content_bounds);
+    let ack_bounds = alerts_recovery_ack_button_bounds(content_bounds);
+    let resolve_bounds = alerts_recovery_resolve_button_bounds(content_bounds);
+    paint_action_button(recover_bounds, "Run recovery", paint);
+    paint_action_button(ack_bounds, "Acknowledge", paint);
+    paint_action_button(resolve_bounds, "Resolve", paint);
+
+    let state_color = match alerts_recovery.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = recover_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", alerts_recovery.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = alerts_recovery.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = alerts_recovery.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    let visible_rows = alerts_recovery_visible_row_count(alerts_recovery.alerts.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No alerts active.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let row = &alerts_recovery.alerts[row_index];
+        let row_bounds = alerts_recovery_row_bounds(content_bounds, row_index);
+        let selected = alerts_recovery.selected_alert_id.as_deref() == Some(row.alert_id.as_str());
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::accent::PRIMARY.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(4.0),
+        );
+
+        let severity_color = match row.severity {
+            AlertSeverity::Info => theme::text::MUTED,
+            AlertSeverity::Warning => theme::accent::PRIMARY,
+            AlertSeverity::Critical => theme::status::ERROR,
+        };
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "[{} {} {}] {}",
+                row.domain.label(),
+                row.severity.label(),
+                row.lifecycle.label(),
+                row.summary
+            ),
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            severity_color,
+        ));
+    }
+
+    if let Some(selected) = alerts_recovery.selected() {
+        let details_top =
+            alerts_recovery_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
+                + 10.0;
+        let mut details_y = details_top;
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Alert ID",
+            &selected.alert_id,
+        );
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Domain",
+            selected.domain.label(),
+        );
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Severity",
+            selected.severity.label(),
+        );
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Lifecycle",
+            selected.lifecycle.label(),
+        );
+        let _ = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Remediation",
+            &selected.remediation,
+        );
     }
 }
 
