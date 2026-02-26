@@ -1,3 +1,4 @@
+use std::time::{Duration, Instant};
 use std::sync::Arc;
 
 use nostr::NostrIdentity;
@@ -76,6 +77,60 @@ impl Default for SparkPaneInputs {
     }
 }
 
+pub struct NostrSecretState {
+    pub reveal_duration: Duration,
+    pub revealed_until: Option<Instant>,
+    pub copy_notice: Option<String>,
+    pub copy_notice_until: Option<Instant>,
+}
+
+impl Default for NostrSecretState {
+    fn default() -> Self {
+        Self {
+            reveal_duration: Duration::from_secs(12),
+            revealed_until: None,
+            copy_notice: None,
+            copy_notice_until: None,
+        }
+    }
+}
+
+impl NostrSecretState {
+    pub fn is_revealed(&self, now: Instant) -> bool {
+        self.revealed_until.is_some_and(|until| until > now)
+    }
+
+    pub fn toggle_reveal(&mut self, now: Instant) {
+        if self.is_revealed(now) {
+            self.revealed_until = None;
+        } else {
+            self.revealed_until = Some(now + self.reveal_duration);
+        }
+    }
+
+    pub fn set_copy_notice(&mut self, now: Instant, message: String) {
+        self.copy_notice = Some(message);
+        self.copy_notice_until = Some(now + Duration::from_secs(4));
+    }
+
+    pub fn expire(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+
+        if self.revealed_until.is_some_and(|until| until <= now) {
+            self.revealed_until = None;
+            changed = true;
+        }
+
+        if self.copy_notice_until.is_some_and(|until| until <= now) {
+            self.copy_notice = None;
+            self.copy_notice_until = None;
+            changed = true;
+        }
+
+        changed
+    }
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -92,6 +147,7 @@ pub struct RenderState {
     pub panes: Vec<DesktopPane>,
     pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
+    pub nostr_secret_state: NostrSecretState,
     pub spark_wallet: SparkPaneState,
     pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
@@ -100,4 +156,33 @@ pub struct RenderState {
     pub pane_drag_mode: Option<PaneDragMode>,
     pub pane_resizer: ResizablePane,
     pub hotbar_flash_was_active: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NostrSecretState;
+
+    #[test]
+    fn nostr_reveal_state_expires() {
+        let mut state = NostrSecretState::default();
+        let now = std::time::Instant::now();
+        state.toggle_reveal(now);
+        assert!(state.is_revealed(now));
+
+        let expired_at = now + state.reveal_duration + std::time::Duration::from_millis(1);
+        assert!(state.expire(expired_at));
+        assert!(!state.is_revealed(expired_at));
+    }
+
+    #[test]
+    fn nostr_copy_notice_expires() {
+        let mut state = NostrSecretState::default();
+        let now = std::time::Instant::now();
+        state.set_copy_notice(now, "Copied".to_string());
+        assert_eq!(state.copy_notice.as_deref(), Some("Copied"));
+
+        let expired_at = now + std::time::Duration::from_secs(5);
+        assert!(state.expire(expired_at));
+        assert!(state.copy_notice.is_none());
+    }
 }

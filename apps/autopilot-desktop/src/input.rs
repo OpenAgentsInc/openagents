@@ -1,4 +1,5 @@
 use nostr::regenerate_identity;
+use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -11,7 +12,8 @@ use crate::hotbar::{activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_cl
 use crate::pane_system::{
     active_pane_id, bring_pane_to_front_by_id, close_pane, cursor_icon_for_pointer,
     dispatch_pane_frame_event, dispatch_spark_input_event, handle_pane_mouse_down,
-    handle_pane_mouse_up, topmost_nostr_regenerate_hit, topmost_spark_action_hit, update_drag,
+    handle_pane_mouse_up, topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit,
+    topmost_nostr_reveal_hit, topmost_spark_action_hit, update_drag,
 };
 use crate::render::render_frame;
 use crate::spark_pane::SparkPaneAction;
@@ -23,6 +25,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     };
 
     if drain_spark_worker_updates(state) {
+        state.window.request_redraw();
+    }
+    if state.nostr_secret_state.expire(std::time::Instant::now()) {
         state.window.request_redraw();
     }
 
@@ -145,6 +150,8 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     let mut handled = handle_pane_mouse_up(state, &input);
                     handled |= dispatch_spark_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
+                    handled |= handle_nostr_reveal_click(state, app.cursor_position);
+                    handled |= handle_nostr_copy_click(state, app.cursor_position);
                     handled |= handle_spark_action_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
@@ -216,6 +223,37 @@ fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, poin
             state.nostr_identity_error = Some(err.to_string());
         }
     }
+    true
+}
+
+fn handle_nostr_reveal_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(pane_id) = topmost_nostr_reveal_hit(state, point) else {
+        return false;
+    };
+
+    bring_pane_to_front_by_id(state, pane_id);
+    state
+        .nostr_secret_state
+        .toggle_reveal(std::time::Instant::now());
+    true
+}
+
+fn handle_nostr_copy_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(pane_id) = topmost_nostr_copy_secret_hit(state, point) else {
+        return false;
+    };
+
+    bring_pane_to_front_by_id(state, pane_id);
+    let now = std::time::Instant::now();
+    let notice = if let Some(identity) = state.nostr_identity.as_ref() {
+        match copy_to_clipboard(&identity.nsec) {
+            Ok(()) => "Copied nsec to clipboard. Treat it like a password.".to_string(),
+            Err(error) => format!("Failed to copy nsec: {error}"),
+        }
+    } else {
+        "No Nostr identity loaded. Regenerate keys first.".to_string()
+    };
+    state.nostr_secret_state.set_copy_notice(now, notice);
     true
 }
 

@@ -16,7 +16,8 @@ use crate::app_state::{
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PANE_TITLE_HEIGHT, active_pane_id, create_empty_pane,
-    nostr_regenerate_button_bounds, pane_content_bounds,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds,
 };
 use crate::spark_pane;
 
@@ -114,6 +115,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             panes: Vec::new(),
             nostr_identity,
             nostr_identity_error,
+            nostr_secret_state: crate::app_state::NostrSecretState::default(),
             spark_wallet,
             spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
@@ -157,6 +159,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             active_pane,
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
+            &state.nostr_secret_state,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut paint,
@@ -214,11 +217,16 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Pane rendering orchestrates all per-pane state until pane modules are split."
+)]
 fn paint_panes(
     panes: &mut [DesktopPane],
     active_id: Option<u64>,
     nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
+    nostr_secret_state: &crate::app_state::NostrSecretState,
     spark_wallet: &crate::spark_wallet::SparkPaneState,
     spark_inputs: &mut crate::app_state::SparkPaneInputs,
     paint: &mut PaintContext,
@@ -256,6 +264,7 @@ fn paint_panes(
                     content_bounds,
                     nostr_identity,
                     nostr_identity_error,
+                    nostr_secret_state,
                     paint,
                 );
             }
@@ -285,24 +294,26 @@ fn paint_nostr_identity_pane(
     content_bounds: Bounds,
     nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
+    nostr_secret_state: &crate::app_state::NostrSecretState,
     paint: &mut PaintContext,
 ) {
+    let now = std::time::Instant::now();
+    let secrets_revealed = nostr_secret_state.is_revealed(now);
+
     let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
-    paint.scene.draw_quad(
-        Quad::new(regenerate_bounds)
-            .with_background(theme::accent::PRIMARY.with_alpha(0.15))
-            .with_border(theme::accent::PRIMARY, 1.0)
-            .with_corner_radius(4.0),
+    let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
+    let copy_secret_bounds = nostr_copy_secret_button_bounds(content_bounds);
+    paint_action_button(regenerate_bounds, "Regenerate keys", paint);
+    paint_action_button(
+        reveal_bounds,
+        if secrets_revealed {
+            "Hide secrets"
+        } else {
+            "Reveal 12s"
+        },
+        paint,
     );
-    paint.scene.draw_text(paint.text.layout(
-        "Regenerate keys",
-        Point::new(
-            regenerate_bounds.origin.x + 10.0,
-            regenerate_bounds.origin.y + 10.0,
-        ),
-        11.0,
-        theme::text::PRIMARY,
-    ));
+    paint_action_button(copy_secret_bounds, "Copy nsec", paint);
 
     let mut y = regenerate_bounds.origin.y + regenerate_bounds.size.height + 14.0;
     y = paint_label_line(
@@ -316,7 +327,49 @@ fn paint_nostr_identity_pane(
         ),
     );
 
+    if let Some(remaining) = nostr_secret_state
+        .revealed_until
+        .and_then(|until| until.checked_duration_since(now))
+    {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Security",
+            &format!(
+                "Secrets visible for {:.0}s more. Values auto-hide for safety.",
+                remaining.as_secs_f32().ceil()
+            ),
+        );
+    }
+
+    if let Some(copy_notice) = nostr_secret_state.copy_notice.as_deref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Clipboard",
+            copy_notice,
+        );
+    }
+
     if let Some(identity) = nostr_identity {
+        let nsec_display = if secrets_revealed {
+            identity.nsec.clone()
+        } else {
+            mask_secret(&identity.nsec)
+        };
+        let private_hex_display = if secrets_revealed {
+            identity.private_key_hex.clone()
+        } else {
+            mask_secret(&identity.private_key_hex)
+        };
+        let mnemonic_display = if secrets_revealed {
+            identity.mnemonic.clone()
+        } else {
+            mask_mnemonic(&identity.mnemonic)
+        };
+
         y = paint_label_line(
             paint,
             content_bounds.origin.x + 12.0,
@@ -329,7 +382,7 @@ fn paint_nostr_identity_pane(
             content_bounds.origin.x + 12.0,
             y,
             "nsec",
-            &identity.nsec,
+            &nsec_display,
         );
         y = paint_label_line(
             paint,
@@ -343,14 +396,14 @@ fn paint_nostr_identity_pane(
             content_bounds.origin.x + 12.0,
             y,
             "Private key (hex)",
-            &identity.private_key_hex,
+            &private_hex_display,
         );
         let _ = paint_multiline_phrase(
             paint,
             content_bounds.origin.x + 12.0,
             y,
             "Mnemonic",
-            &identity.mnemonic,
+            &mnemonic_display,
         );
     } else if let Some(error) = nostr_identity_error {
         let _ = paint_multiline_phrase(
@@ -635,6 +688,26 @@ fn paint_multiline_phrase(
         line_y += 16.0;
     }
     line_y
+}
+
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "<hidden>".to_string();
+    }
+    if trimmed.len() <= 8 {
+        return "••••••••".to_string();
+    }
+
+    format!("{}••••••••{}", &trimmed[..4], &trimmed[trimmed.len() - 4..])
+}
+
+fn mask_mnemonic(phrase: &str) -> String {
+    let words: Vec<&str> = phrase.split_whitespace().collect();
+    if words.is_empty() {
+        return "<hidden>".to_string();
+    }
+    words.iter().map(|_| "••••").collect::<Vec<_>>().join(" ")
 }
 
 fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {

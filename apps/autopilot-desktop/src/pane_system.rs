@@ -323,7 +323,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
             let content_bounds = pane_content_bounds(bounds);
             let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
-            if regenerate_bounds.contains(point) {
+            let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
+            let copy_bounds = nostr_copy_secret_button_bounds(content_bounds);
+            if regenerate_bounds.contains(point)
+                || reveal_bounds.contains(point)
+                || copy_bounds.contains(point)
+            {
                 return CursorIcon::Pointer;
             }
         }
@@ -355,13 +360,41 @@ pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
 }
 
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = (content_bounds.size.width - 24.0).clamp(120.0, 160.0);
-    Bounds::new(
-        content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 12.0,
-        width,
+    let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
+    regenerate_bounds
+}
+
+pub fn nostr_reveal_button_bounds(content_bounds: Bounds) -> Bounds {
+    let (_, reveal_bounds, _) = nostr_button_bounds(content_bounds);
+    reveal_bounds
+}
+
+pub fn nostr_copy_secret_button_bounds(content_bounds: Bounds) -> Bounds {
+    let (_, _, copy_bounds) = nostr_button_bounds(content_bounds);
+    copy_bounds
+}
+
+fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
+    let gap = 8.0;
+    let button_width = ((content_bounds.size.width - 24.0 - gap * 2.0) / 3.0).clamp(92.0, 156.0);
+    let start_x = content_bounds.origin.x + 12.0;
+    let y = content_bounds.origin.y + 12.0;
+
+    let regenerate_bounds = Bounds::new(start_x, y, button_width, 30.0);
+    let reveal_bounds = Bounds::new(
+        regenerate_bounds.origin.x + button_width + gap,
+        y,
+        button_width,
         30.0,
-    )
+    );
+    let copy_bounds = Bounds::new(
+        reveal_bounds.origin.x + button_width + gap,
+        y,
+        button_width,
+        30.0,
+    );
+
+    (regenerate_bounds, reveal_bounds, copy_bounds)
 }
 
 pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option<u64> {
@@ -374,6 +407,40 @@ pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option
         let content_bounds = pane_content_bounds(pane.bounds);
         let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
         if regenerate_bounds.contains(point) {
+            return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_nostr_reveal_hit(state: &RenderState, point: Point) -> Option<u64> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::NostrIdentity {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
+        if reveal_bounds.contains(point) {
+            return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Option<u64> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::NostrIdentity {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let copy_bounds = nostr_copy_secret_button_bounds(content_bounds);
+        if copy_bounds.contains(point) {
             return Some(pane.id);
         }
     }
