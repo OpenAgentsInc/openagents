@@ -15,17 +15,17 @@ use crate::hotbar::{
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AlertsRecoveryPaneAction,
     EarningsScoreboardPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction, PaneController,
-    PaneInput, RelayConnectionsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    dispatch_chat_input_event, dispatch_create_invoice_input_event,
+    PaneInput, RelayConnectionsPaneAction, SettingsPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_activity_feed_action_hit,
-    topmost_alerts_recovery_action_hit, topmost_chat_send_hit, topmost_create_invoice_action_hit,
-    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
-    topmost_job_history_action_hit, topmost_job_inbox_action_hit,
+    dispatch_settings_input_event, dispatch_spark_input_event, topmost_active_job_action_hit,
+    topmost_activity_feed_action_hit, topmost_alerts_recovery_action_hit, topmost_chat_send_hit,
+    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
+    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
     topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
-    topmost_relay_connections_action_hit, topmost_spark_action_hit,
+    topmost_relay_connections_action_hit, topmost_settings_action_hit, topmost_spark_action_hit,
     topmost_starter_jobs_action_hit, topmost_sync_health_action_hit,
 };
 use crate::render::{logical_size, render_frame};
@@ -42,6 +42,7 @@ const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
 const COMMAND_OPEN_STARTER_JOBS: &str = "pane.starter_jobs";
 const COMMAND_OPEN_ACTIVITY_FEED: &str = "pane.activity_feed";
 const COMMAND_OPEN_ALERTS_RECOVERY: &str = "pane.alerts_recovery";
+const COMMAND_OPEN_SETTINGS: &str = "pane.settings";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -141,6 +142,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             if dispatch_network_requests_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
+            if dispatch_settings_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
             if dispatch_chat_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
@@ -226,6 +230,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_create_invoice_input_event(state, &input);
                         handled |= dispatch_relay_connections_input_event(state, &input);
                         handled |= dispatch_network_requests_input_event(state, &input);
+                        handled |= dispatch_settings_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         if !handled {
@@ -239,6 +244,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_create_invoice_input_event(state, &input);
                         handled |= dispatch_relay_connections_input_event(state, &input);
                         handled |= dispatch_network_requests_input_event(state, &input);
+                        handled |= dispatch_settings_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         handled |= state
@@ -262,6 +268,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= dispatch_create_invoice_input_event(state, &input);
                     handled |= dispatch_relay_connections_input_event(state, &input);
                     handled |= dispatch_network_requests_input_event(state, &input);
+                    handled |= dispatch_settings_input_event(state, &input);
                     handled |= dispatch_chat_input_event(state, &input);
                     handled |= dispatch_job_history_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
@@ -276,6 +283,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_starter_jobs_action_click(state, app.cursor_position);
                     handled |= handle_activity_feed_action_click(state, app.cursor_position);
                     handled |= handle_alerts_recovery_action_click(state, app.cursor_position);
+                    handled |= handle_settings_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -340,6 +348,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 || handle_network_requests_keyboard_input(state, &event.logical_key)
                 || handle_activity_feed_keyboard_input(state, &event.logical_key)
                 || handle_alerts_recovery_keyboard_input(state, &event.logical_key)
+                || handle_settings_keyboard_input(state, &event.logical_key)
                 || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -542,6 +551,15 @@ fn handle_alerts_recovery_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_alerts_recovery_action(state, action)
+}
+
+fn handle_settings_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some((pane_id, action)) = topmost_settings_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_settings_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -852,6 +870,34 @@ fn handle_alerts_recovery_keyboard_input(
     }
 
     run_alerts_recovery_action(state, AlertsRecoveryPaneAction::RecoverSelected)
+}
+
+fn handle_settings_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+    let focused_before = settings_inputs_focused(state);
+    let handled_by_input = dispatch_settings_input_event(state, &key_event);
+    let focused_after = settings_inputs_focused(state);
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter)) && settings_inputs_focused(state) {
+        return run_settings_action(state, SettingsPaneAction::Save);
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
 }
 
 fn handle_job_history_keyboard_input(
@@ -1338,6 +1384,83 @@ fn run_alerts_recovery_action(
     }
 }
 
+fn run_settings_action(
+    state: &mut crate::app_state::RenderState,
+    action: SettingsPaneAction,
+) -> bool {
+    match action {
+        SettingsPaneAction::Save => {
+            let relay_url = state.settings_inputs.relay_url.get_value().to_string();
+            let wallet_default_send_sats = state
+                .settings_inputs
+                .wallet_default_send_sats
+                .get_value()
+                .to_string();
+            let provider_max_queue_depth = state
+                .settings_inputs
+                .provider_max_queue_depth
+                .get_value()
+                .to_string();
+            match state.settings.apply_updates(
+                &relay_url,
+                &wallet_default_send_sats,
+                &provider_max_queue_depth,
+            ) {
+                Ok(()) => {
+                    state.settings_inputs.sync_from_state(&state.settings);
+                    state
+                        .relay_connections_inputs
+                        .relay_url
+                        .set_value(state.settings.document.relay_url.clone());
+                    state
+                        .spark_inputs
+                        .send_amount
+                        .set_value(state.settings.document.wallet_default_send_sats.to_string());
+                    state
+                        .pay_invoice_inputs
+                        .amount_sats
+                        .set_value(state.settings.document.wallet_default_send_sats.to_string());
+                    state.provider_runtime.last_result = state.settings.last_action.clone();
+                    if state.settings.document.reconnect_required {
+                        state.sync_health.subscription_state = "resubscribing".to_string();
+                        state.sync_health.last_action = Some(
+                            "Settings changed connectivity lanes; reconnect required".to_string(),
+                        );
+                    }
+                }
+                Err(error) => {
+                    state.settings.last_error = Some(error);
+                }
+            }
+            true
+        }
+        SettingsPaneAction::ResetDefaults => {
+            match state.settings.reset_defaults() {
+                Ok(()) => {
+                    state.settings_inputs.sync_from_state(&state.settings);
+                    state
+                        .relay_connections_inputs
+                        .relay_url
+                        .set_value(state.settings.document.relay_url.clone());
+                    state
+                        .spark_inputs
+                        .send_amount
+                        .set_value(state.settings.document.wallet_default_send_sats.to_string());
+                    state
+                        .pay_invoice_inputs
+                        .amount_sats
+                        .set_value(state.settings.document.wallet_default_send_sats.to_string());
+                    state.provider_runtime.last_result = state.settings.last_action.clone();
+                }
+                Err(error) => {
+                    state.settings.last_error = Some(error);
+                }
+            }
+            true
+        }
+    }
+}
+
 fn build_activity_feed_snapshot_events(
     state: &crate::app_state::RenderState,
 ) -> Vec<ActivityEventRow> {
@@ -1730,6 +1853,12 @@ fn network_requests_inputs_focused(state: &crate::app_state::RenderState) -> boo
         || state.network_requests_inputs.timeout_seconds.is_focused()
 }
 
+fn settings_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.settings_inputs.relay_url.is_focused()
+        || state.settings_inputs.wallet_default_send_sats.is_focused()
+        || state.settings_inputs.provider_max_queue_depth.is_focused()
+}
+
 fn map_modifiers(modifiers: ModifiersState) -> Modifiers {
     Modifiers {
         shift: modifiers.shift_key(),
@@ -1860,6 +1989,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
                     state.alerts_recovery.last_action =
                         Some("Alerts lane opened for active incident triage".to_string());
                 }
+                changed = true;
+            }
+            COMMAND_OPEN_SETTINGS => {
+                PaneController::create_settings(state);
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

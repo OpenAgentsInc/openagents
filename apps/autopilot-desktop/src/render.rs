@@ -91,6 +91,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 
         let spark_wallet = crate::spark_wallet::SparkPaneState::default();
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
+        let settings = crate::app_state::SettingsState::load_from_disk();
+        let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
@@ -126,6 +128,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             create_invoice_inputs: crate::app_state::CreateInvoicePaneInputs::default(),
             relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
             network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
+            settings_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
@@ -137,6 +140,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             starter_jobs: crate::app_state::StarterJobsState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
+            settings,
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -193,6 +197,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.starter_jobs,
             &state.activity_feed,
             &state.alerts_recovery,
+            &state.settings,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -202,6 +207,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.create_invoice_inputs,
             &mut state.relay_connections_inputs,
             &mut state.network_requests_inputs,
+            &mut state.settings_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
@@ -300,6 +306,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.alerts_recovery", "Alerts and Recovery")
             .description("Open incident alerts, remediation steps, and recovery actions")
             .category("Panes"),
+        Command::new("pane.settings", "Settings")
+            .description("Open network, wallet, and provider defaults with validation")
+            .category("Panes"),
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
@@ -366,6 +375,11 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.alerts_recovery" && command.label == "Alerts and Recovery"
         }));
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.settings" && command.label == "Settings" })
+        );
         assert!(
             commands
                 .iter()

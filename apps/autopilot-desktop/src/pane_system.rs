@@ -33,6 +33,8 @@ const ACTIVITY_FEED_PANE_WIDTH: f32 = 940.0;
 const ACTIVITY_FEED_PANE_HEIGHT: f32 = 460.0;
 const ALERTS_RECOVERY_PANE_WIDTH: f32 = 900.0;
 const ALERTS_RECOVERY_PANE_HEIGHT: f32 = 460.0;
+const SETTINGS_PANE_WIDTH: f32 = 860.0;
+const SETTINGS_PANE_HEIGHT: f32 = 420.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -136,6 +138,12 @@ pub enum AlertsRecoveryPaneAction {
     AcknowledgeSelected,
     ResolveSelected,
     SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsPaneAction {
+    Save,
+    ResetDefaults,
 }
 
 #[derive(Clone, Copy)]
@@ -242,6 +250,15 @@ impl PaneDescriptor {
             kind: PaneKind::AlertsRecovery,
             width: ALERTS_RECOVERY_PANE_WIDTH,
             height: ALERTS_RECOVERY_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn settings() -> Self {
+        Self {
+            kind: PaneKind::Settings,
+            width: SETTINGS_PANE_WIDTH,
+            height: SETTINGS_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -400,6 +417,10 @@ impl PaneController {
 
     pub fn create_alerts_recovery(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::alerts_recovery());
+    }
+
+    pub fn create_settings(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::settings());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -727,6 +748,19 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             && topmost_alerts_recovery_action_hit(state, point).is_some()
         {
             return CursorIcon::Pointer;
+        }
+
+        if state.panes[pane_idx].kind == PaneKind::Settings {
+            let content_bounds = pane_content_bounds(bounds);
+            if topmost_settings_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if settings_relay_input_bounds(content_bounds).contains(point)
+                || settings_wallet_default_input_bounds(content_bounds).contains(point)
+                || settings_provider_queue_input_bounds(content_bounds).contains(point)
+            {
+                return CursorIcon::Text;
+            }
         }
 
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
@@ -1093,6 +1127,55 @@ pub fn alerts_recovery_row_bounds(content_bounds: Bounds, row_index: usize) -> B
 
 pub fn alerts_recovery_visible_row_count(row_count: usize) -> usize {
     row_count.min(ALERTS_RECOVERY_MAX_ROWS)
+}
+
+pub fn settings_relay_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.6).clamp(260.0, 560.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn settings_wallet_default_input_bounds(content_bounds: Bounds) -> Bounds {
+    let relay = settings_relay_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        relay.max_y() + 10.0,
+        (content_bounds.size.width * 0.24).clamp(150.0, 220.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn settings_provider_queue_input_bounds(content_bounds: Bounds) -> Bounds {
+    let wallet = settings_wallet_default_input_bounds(content_bounds);
+    Bounds::new(
+        wallet.max_x() + JOB_INBOX_BUTTON_GAP,
+        wallet.origin.y,
+        wallet.size.width,
+        wallet.size.height,
+    )
+}
+
+pub fn settings_save_button_bounds(content_bounds: Bounds) -> Bounds {
+    let provider = settings_provider_queue_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        provider.max_y() + 10.0,
+        140.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn settings_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let save = settings_save_button_bounds(content_bounds);
+    Bounds::new(
+        save.max_x() + JOB_INBOX_BUTTON_GAP,
+        save.origin.y,
+        168.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1502,6 +1585,28 @@ pub fn topmost_alerts_recovery_action_hit(
     None
 }
 
+pub fn topmost_settings_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, SettingsPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::Settings {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if settings_save_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, SettingsPaneAction::Save));
+        }
+        if settings_reset_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, SettingsPaneAction::ResetDefaults));
+        }
+    }
+
+    None
+}
+
 pub fn topmost_job_inbox_action_hit(
     state: &RenderState,
     point: Point,
@@ -1861,6 +1966,49 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
     handled
 }
 
+pub fn dispatch_settings_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_settings = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::Settings)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_settings else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let mut handled = false;
+    handled |= state
+        .settings_inputs
+        .relay_url
+        .event(
+            event,
+            settings_relay_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .settings_inputs
+        .wallet_default_send_sats
+        .event(
+            event,
+            settings_wallet_default_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .settings_inputs
+        .provider_max_queue_depth
+        .event(
+            event,
+            settings_provider_queue_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -1891,6 +2039,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::StarterJobs => "Starter Jobs".to_string(),
         PaneKind::ActivityFeed => "Activity Feed".to_string(),
         PaneKind::AlertsRecovery => "Alerts and Recovery".to_string(),
+        PaneKind::Settings => "Settings".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1955,7 +2104,9 @@ mod tests {
         nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
         relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
         relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, starter_jobs_complete_button_bounds,
+        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
+        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+        settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
     };
     use wgpui::Bounds;
@@ -2081,6 +2232,21 @@ mod tests {
         assert!(recover.max_x() < ack.max_x());
         assert!(ack.max_x() < resolve.max_x());
         assert!(recover.max_y() < row0.min_y());
+    }
+
+    #[test]
+    fn settings_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let relay = settings_relay_input_bounds(content);
+        let wallet = settings_wallet_default_input_bounds(content);
+        let provider = settings_provider_queue_input_bounds(content);
+        let save = settings_save_button_bounds(content);
+        let reset = settings_reset_button_bounds(content);
+
+        assert!(relay.max_y() < wallet.min_y());
+        assert!(wallet.max_x() < provider.min_x());
+        assert!(wallet.max_y() < save.min_y());
+        assert!(save.max_x() < reset.min_x());
     }
 
     #[test]

@@ -41,6 +41,12 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Rows track severity (`info`, `warning`, `critical`) and lifecycle (`active`, `acknowledged`, `resolved`).
   - Actions: run selected recovery, acknowledge selected alert, resolve selected alert.
   - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Settings`
+  - MVP settings for relay URL, wallet send-default sats, and provider queue-depth default.
+  - Includes schema/version and identity path visibility.
+  - Validation blocks invalid relay URL prefixes and impossible numeric ranges before save.
+  - Save flow persists schema-backed settings and explicitly flags reconnect-required changes.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Earnings Scoreboard`
   - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
   - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
@@ -95,6 +101,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Starter Jobs` -> opens `Starter Jobs`.
   - `Activity Feed` -> opens `Activity Feed`.
   - `Alerts and Recovery` -> opens `Alerts and Recovery`.
+  - `Settings` -> opens `Settings`.
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
@@ -105,6 +112,6 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

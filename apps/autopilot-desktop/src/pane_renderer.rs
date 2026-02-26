@@ -5,8 +5,8 @@ use crate::app_state::{
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs, SettingsState,
+    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -26,7 +26,9 @@ use crate::pane_system::{
     pane_content_bounds, relay_connections_add_button_bounds,
     relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
     relay_connections_row_bounds, relay_connections_url_input_bounds,
-    relay_connections_visible_row_count, starter_jobs_complete_button_bounds,
+    relay_connections_visible_row_count, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+    settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::spark_pane;
@@ -56,6 +58,7 @@ impl PaneRenderer {
         starter_jobs: &StarterJobsState,
         activity_feed: &ActivityFeedState,
         alerts_recovery: &AlertsRecoveryState,
+        settings: &SettingsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -65,6 +68,7 @@ impl PaneRenderer {
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
         relay_connections_inputs: &mut RelayConnectionsPaneInputs,
         network_requests_inputs: &mut NetworkRequestsPaneInputs,
+        settings_inputs: &mut SettingsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
@@ -151,6 +155,9 @@ impl PaneRenderer {
                 }
                 PaneKind::AlertsRecovery => {
                     paint_alerts_recovery_pane(content_bounds, alerts_recovery, paint);
+                }
+                PaneKind::Settings => {
+                    paint_settings_pane(content_bounds, settings, settings_inputs, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -1413,6 +1420,131 @@ fn paint_alerts_recovery_pane(
             "Remediation",
             &selected.remediation,
         );
+    }
+}
+
+fn paint_settings_pane(
+    content_bounds: Bounds,
+    settings: &SettingsState,
+    settings_inputs: &mut SettingsPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let relay_input_bounds = settings_relay_input_bounds(content_bounds);
+    let wallet_input_bounds = settings_wallet_default_input_bounds(content_bounds);
+    let provider_input_bounds = settings_provider_queue_input_bounds(content_bounds);
+    let save_bounds = settings_save_button_bounds(content_bounds);
+    let reset_bounds = settings_reset_button_bounds(content_bounds);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Relay URL",
+        Point::new(
+            relay_input_bounds.origin.x,
+            relay_input_bounds.origin.y - 8.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Wallet Default Send (sats)",
+        Point::new(
+            wallet_input_bounds.origin.x,
+            wallet_input_bounds.origin.y - 8.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Provider Max Queue Depth",
+        Point::new(
+            provider_input_bounds.origin.x,
+            provider_input_bounds.origin.y - 8.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    settings_inputs
+        .relay_url
+        .set_max_width(relay_input_bounds.size.width);
+    settings_inputs
+        .wallet_default_send_sats
+        .set_max_width(wallet_input_bounds.size.width);
+    settings_inputs
+        .provider_max_queue_depth
+        .set_max_width(provider_input_bounds.size.width);
+    settings_inputs.relay_url.paint(relay_input_bounds, paint);
+    settings_inputs
+        .wallet_default_send_sats
+        .paint(wallet_input_bounds, paint);
+    settings_inputs
+        .provider_max_queue_depth
+        .paint(provider_input_bounds, paint);
+
+    paint_action_button(save_bounds, "Save settings", paint);
+    paint_action_button(reset_bounds, "Reset defaults", paint);
+
+    let state_color = match settings.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = save_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", settings.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Identity path",
+        &settings.document.identity_path,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Schema version",
+        &settings.document.schema_version.to_string(),
+    );
+
+    let reconnect_note = if settings.document.reconnect_required {
+        "Reconnect required for relay/provider changes."
+    } else {
+        "No reconnect required."
+    };
+    paint.scene.draw_text(paint.text.layout(
+        reconnect_note,
+        Point::new(content_bounds.origin.x + 12.0, y),
+        10.0,
+        if settings.document.reconnect_required {
+            theme::accent::PRIMARY
+        } else {
+            theme::text::MUTED
+        },
+    ));
+    y += 16.0;
+
+    if let Some(action) = settings.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = settings.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
     }
 }
 

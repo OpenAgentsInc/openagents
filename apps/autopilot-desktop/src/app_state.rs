@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
@@ -42,6 +43,7 @@ pub enum PaneKind {
     StarterJobs,
     ActivityFeed,
     AlertsRecovery,
+    Settings,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -155,6 +157,28 @@ impl Default for NetworkRequestsPaneInputs {
             payload: TextInput::new().placeholder("Request payload"),
             budget_sats: TextInput::new().value("1500").placeholder("Budget sats"),
             timeout_seconds: TextInput::new().value("60").placeholder("Timeout seconds"),
+        }
+    }
+}
+
+pub struct SettingsPaneInputs {
+    pub relay_url: TextInput,
+    pub wallet_default_send_sats: TextInput,
+    pub provider_max_queue_depth: TextInput,
+}
+
+impl Default for SettingsPaneInputs {
+    fn default() -> Self {
+        Self {
+            relay_url: TextInput::new()
+                .value("wss://relay.damus.io")
+                .placeholder("wss://relay.example.com"),
+            wallet_default_send_sats: TextInput::new()
+                .value("1000")
+                .placeholder("Default send sats"),
+            provider_max_queue_depth: TextInput::new()
+                .value("4")
+                .placeholder("Provider max queue depth"),
         }
     }
 }
@@ -1332,6 +1356,275 @@ impl AlertsRecoveryState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsDocumentV1 {
+    pub schema_version: u16,
+    pub relay_url: String,
+    pub identity_path: String,
+    pub wallet_default_send_sats: u64,
+    pub provider_max_queue_depth: u32,
+    pub reconnect_required: bool,
+}
+
+impl Default for SettingsDocumentV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            relay_url: "wss://relay.damus.io".to_string(),
+            identity_path: "~/.openagents/nostr/identity.json".to_string(),
+            wallet_default_send_sats: 1000,
+            provider_max_queue_depth: 4,
+            reconnect_required: false,
+        }
+    }
+}
+
+pub struct SettingsState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub document: SettingsDocumentV1,
+}
+
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Settings loaded from migration-safe defaults".to_string()),
+            document: SettingsDocumentV1::default(),
+        }
+    }
+}
+
+impl SettingsState {
+    pub fn load_from_disk() -> Self {
+        let path = settings_file_path();
+        let mut state = Self::default();
+        match std::fs::read_to_string(&path) {
+            Ok(raw) => match parse_settings_document(&raw) {
+                Ok(document) => {
+                    state.document = document;
+                    state.last_error = None;
+                    state.load_state = PaneLoadState::Ready;
+                    state.last_action = Some(format!("Settings loaded from {}", path.display()));
+                }
+                Err(error) => {
+                    state.load_state = PaneLoadState::Error;
+                    state.last_error = Some(format!("Settings parse error: {error}"));
+                    state.last_action = Some("Using migration-safe defaults".to_string());
+                }
+            },
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    state.load_state = PaneLoadState::Error;
+                    state.last_error = Some(format!("Settings read error: {error}"));
+                }
+            }
+        }
+
+        state
+    }
+
+    pub fn apply_updates(
+        &mut self,
+        relay_url: &str,
+        wallet_default_send_sats: &str,
+        provider_max_queue_depth: &str,
+    ) -> Result<(), String> {
+        self.apply_updates_internal(
+            relay_url,
+            wallet_default_send_sats,
+            provider_max_queue_depth,
+            true,
+        )
+    }
+
+    fn apply_updates_internal(
+        &mut self,
+        relay_url: &str,
+        wallet_default_send_sats: &str,
+        provider_max_queue_depth: &str,
+        persist: bool,
+    ) -> Result<(), String> {
+        let relay_url = relay_url.trim();
+        if relay_url.is_empty() {
+            self.last_error = Some("Relay URL is required".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Relay URL is required".to_string());
+        }
+        if !relay_url.starts_with("wss://") {
+            self.last_error = Some("Relay URL must start with wss://".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Relay URL must start with wss://".to_string());
+        }
+
+        let wallet_default_send_sats = wallet_default_send_sats
+            .trim()
+            .parse::<u64>()
+            .map_err(|error| format!("Wallet default send sats must be an integer: {error}"))?;
+        if wallet_default_send_sats == 0 || wallet_default_send_sats > 10_000_000 {
+            self.last_error =
+                Some("Wallet default send sats must be between 1 and 10,000,000".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Wallet default send sats must be between 1 and 10,000,000".to_string());
+        }
+
+        let provider_max_queue_depth = provider_max_queue_depth
+            .trim()
+            .parse::<u32>()
+            .map_err(|error| format!("Provider max queue depth must be an integer: {error}"))?;
+        if provider_max_queue_depth == 0 || provider_max_queue_depth > 512 {
+            self.last_error =
+                Some("Provider max queue depth must be between 1 and 512".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Provider max queue depth must be between 1 and 512".to_string());
+        }
+
+        let reconnect_required = relay_url != self.document.relay_url
+            || provider_max_queue_depth != self.document.provider_max_queue_depth;
+        self.document.relay_url = relay_url.to_string();
+        self.document.wallet_default_send_sats = wallet_default_send_sats;
+        self.document.provider_max_queue_depth = provider_max_queue_depth;
+        self.document.reconnect_required = reconnect_required;
+
+        if persist {
+            self.persist_to_disk()?;
+        }
+
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(if reconnect_required {
+            "Saved settings. Relay/provider changes require reconnect.".to_string()
+        } else {
+            "Saved settings.".to_string()
+        });
+        Ok(())
+    }
+
+    pub fn reset_defaults(&mut self) -> Result<(), String> {
+        self.reset_defaults_internal(true)
+    }
+
+    fn reset_defaults_internal(&mut self, persist: bool) -> Result<(), String> {
+        self.document = SettingsDocumentV1::default();
+        if persist {
+            self.persist_to_disk()?;
+        }
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some("Reset settings to schema defaults.".to_string());
+        Ok(())
+    }
+
+    fn persist_to_disk(&mut self) -> Result<(), String> {
+        let path = settings_file_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create settings dir: {error}"))?;
+        }
+        std::fs::write(&path, serialize_settings_document(&self.document))
+            .map_err(|error| format!("Failed to persist settings: {error}"))?;
+        Ok(())
+    }
+}
+
+impl SettingsPaneInputs {
+    pub fn from_state(settings: &SettingsState) -> Self {
+        Self {
+            relay_url: TextInput::new()
+                .value(settings.document.relay_url.clone())
+                .placeholder("wss://relay.example.com"),
+            wallet_default_send_sats: TextInput::new()
+                .value(settings.document.wallet_default_send_sats.to_string())
+                .placeholder("Default send sats"),
+            provider_max_queue_depth: TextInput::new()
+                .value(settings.document.provider_max_queue_depth.to_string())
+                .placeholder("Provider max queue depth"),
+        }
+    }
+
+    pub fn sync_from_state(&mut self, settings: &SettingsState) {
+        self.relay_url
+            .set_value(settings.document.relay_url.clone());
+        self.wallet_default_send_sats
+            .set_value(settings.document.wallet_default_send_sats.to_string());
+        self.provider_max_queue_depth
+            .set_value(settings.document.provider_max_queue_depth.to_string());
+    }
+}
+
+fn settings_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-settings-v1.conf")
+}
+
+fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
+    format!(
+        "schema_version={}\nrelay_url={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
+        document.schema_version,
+        document.relay_url,
+        document.identity_path,
+        document.wallet_default_send_sats,
+        document.provider_max_queue_depth,
+        document.reconnect_required,
+    )
+}
+
+fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
+    let mut document = SettingsDocumentV1::default();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            return Err(format!("Invalid settings line: {trimmed}"));
+        };
+        match key.trim() {
+            "schema_version" => {
+                document.schema_version = value
+                    .trim()
+                    .parse::<u16>()
+                    .map_err(|error| format!("Invalid schema version: {error}"))?;
+            }
+            "relay_url" => document.relay_url = value.trim().to_string(),
+            "identity_path" => document.identity_path = value.trim().to_string(),
+            "wallet_default_send_sats" => {
+                document.wallet_default_send_sats = value
+                    .trim()
+                    .parse::<u64>()
+                    .map_err(|error| format!("Invalid wallet_default_send_sats: {error}"))?;
+            }
+            "provider_max_queue_depth" => {
+                document.provider_max_queue_depth = value
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|error| format!("Invalid provider_max_queue_depth: {error}"))?;
+            }
+            "reconnect_required" => {
+                document.reconnect_required = value
+                    .trim()
+                    .parse::<bool>()
+                    .map_err(|error| format!("Invalid reconnect_required: {error}"))?;
+            }
+            _ => {}
+        }
+    }
+
+    if document.schema_version != 1 {
+        return Err(format!(
+            "Unsupported schema version {}, expected 1",
+            document.schema_version
+        ));
+    }
+
+    Ok(document)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxValidation {
     Valid,
     Pending,
@@ -2290,6 +2583,7 @@ pub struct RenderState {
     pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
+    pub settings_inputs: SettingsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
@@ -2301,6 +2595,7 @@ pub struct RenderState {
     pub starter_jobs: StarterJobsState,
     pub activity_feed: ActivityFeedState,
     pub alerts_recovery: AlertsRecoveryState,
+    pub settings: SettingsState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -2335,8 +2630,8 @@ mod tests {
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
         NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsState, SparkPaneState,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsState, SettingsState,
+        SparkPaneState, StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
     };
 
     #[test]
@@ -2631,6 +2926,22 @@ mod tests {
             .find(|alert| alert.alert_id == resolved_id)
             .expect("alert should exist after resolve");
         assert_eq!(resolved.lifecycle, AlertLifecycle::Resolved);
+    }
+
+    #[test]
+    fn settings_updates_validate_ranges_and_reconnect_notice() {
+        let mut settings = SettingsState::default();
+        settings
+            .apply_updates_internal("wss://relay.primal.net", "2500", "8", false)
+            .expect("valid settings update should apply");
+        assert_eq!(settings.document.relay_url, "wss://relay.primal.net");
+        assert_eq!(settings.document.wallet_default_send_sats, 2500);
+        assert_eq!(settings.document.provider_max_queue_depth, 8);
+        assert!(settings.document.reconnect_required);
+
+        let invalid = settings.apply_updates_internal("https://bad-relay", "0", "0", false);
+        assert!(invalid.is_err());
+        assert_eq!(settings.load_state, super::PaneLoadState::Error);
     }
 
     #[test]
