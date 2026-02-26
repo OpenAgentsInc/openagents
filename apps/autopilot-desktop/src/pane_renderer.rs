@@ -520,7 +520,9 @@ fn paint_earnings_scoreboard_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Online uptime (s)",
-        &provider_runtime.uptime_seconds(std::time::Instant::now()).to_string(),
+        &provider_runtime
+            .uptime_seconds(std::time::Instant::now())
+            .to_string(),
     );
 }
 
@@ -1113,6 +1115,12 @@ fn paint_spark_wallet_pane(
     paint: &mut PaintContext,
 ) {
     let layout = spark_pane::layout(content_bounds);
+    let state = spark_wallet_view_state(spark_wallet);
+    let state_color = match state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
 
     paint_action_button(layout.refresh_button, "Refresh wallet", paint);
     paint_action_button(layout.spark_address_button, "Spark receive", paint);
@@ -1170,6 +1178,22 @@ fn paint_spark_wallet_pane(
     ));
 
     let mut y = layout.details_origin.y;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+    if state == PaneLoadState::Loading {
+        paint.scene.draw_text(paint.text.layout(
+            "Waiting for first refresh to hydrate balance and payment history.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -1321,6 +1345,18 @@ fn paint_spark_wallet_pane(
             y += 14.0;
         }
     }
+}
+
+fn spark_wallet_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
+    if spark_wallet.last_error.is_some() {
+        return PaneLoadState::Error;
+    }
+
+    if spark_wallet.network_status.is_none() || spark_wallet.balance.is_none() {
+        return PaneLoadState::Loading;
+    }
+
+    PaneLoadState::Ready
 }
 
 fn paint_pay_invoice_pane(
@@ -1524,4 +1560,32 @@ fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
         .chunks(chunk_len.max(1))
         .map(|chunk| chunk.iter().collect())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::spark_wallet_view_state;
+    use crate::app_state::PaneLoadState;
+    use crate::spark_wallet::SparkPaneState;
+
+    #[test]
+    fn spark_wallet_view_state_prioritizes_error_then_loading_then_ready() {
+        let mut state = SparkPaneState::default();
+        state.last_error = Some("wallet lane failed".to_string());
+        assert_eq!(spark_wallet_view_state(&state), PaneLoadState::Error);
+
+        state.last_error = None;
+        assert_eq!(spark_wallet_view_state(&state), PaneLoadState::Loading);
+
+        state.network_status = Some(openagents_spark::NetworkStatusReport {
+            status: openagents_spark::NetworkStatus::Connected,
+            detail: None,
+        });
+        state.balance = Some(openagents_spark::Balance {
+            spark_sats: 1,
+            lightning_sats: 2,
+            onchain_sats: 3,
+        });
+        assert_eq!(spark_wallet_view_state(&state), PaneLoadState::Ready);
+    }
 }

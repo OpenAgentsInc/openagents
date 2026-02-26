@@ -308,6 +308,11 @@ mod tests {
             command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
         }));
         assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.wallet" && command.label == "Spark Wallet" })
+        );
+        assert!(
             commands.iter().any(|command| {
                 command.id == "pane.job_history" && command.label == "Job History"
             })
