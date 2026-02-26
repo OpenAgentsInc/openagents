@@ -11,7 +11,7 @@ description = "GPU-accelerated UI rendering library"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["web"]
+default = ["desktop"]
 web = [
     "wasm-bindgen",
     "wasm-bindgen-futures",
@@ -24,7 +24,8 @@ ios = ["pollster"]
 # Optional features - not included in production builds by default
 testing = []  # E2E testing framework (~6,850 lines)
 storybook = [] # Storybook demo lane
-audio = []    # Bleeps audio system (~1,163 lines)
+network = ["dep:reqwest"] # Network fetch helpers
+audio = ["dep:rodio", "network"] # Bleeps audio system (~1,163 lines)
 
 [dependencies]
 # GPU
@@ -108,8 +109,8 @@ derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
 web-time = "1.1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rodio = "0.20"
-reqwest = { workspace = true, features = ["blocking"] }
+rodio = { version = "0.20", optional = true }
+reqwest = { workspace = true, optional = true, features = ["blocking"] }
 # SVG rendering (desktop only - resvg doesn't support WASM)
 resvg = "0.44"
 usvg = "0.44"

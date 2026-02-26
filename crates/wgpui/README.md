@@ -17,12 +17,20 @@ with optional web/ios support kept behind feature gates.
 
 ## Feature Lanes
 
-- `desktop`: native window/event-loop lane used by the MVP app
-- `web`: wasm/websys lane (currently default feature)
+- `desktop`: native window/event-loop lane used by the MVP app (default)
+- `web`: wasm/websys lane
 - `ios`: iOS-specific platform lane
 - `testing`: testing harness/DSL lane (feature-gated)
 - `storybook`: visual storybook demo lane (feature-gated)
+- `network`: URL fetch/image loading lane (feature-gated)
 - `audio`: optional audio helpers
+
+Dependency gating notes:
+
+- `network` enables `reqwest` for desktop URL fetch helpers.
+- `audio` enables `rodio` and also enables `network` for URL-based audio sources.
+- `storybook` only affects the storybook example target.
+- `testing` only enables the `testing` module and testing viewer lane.
 
 ## Module Map
 

@@ -93,11 +93,16 @@ pub fn load_image_from_path(
     load_image_from_bytes(&bytes)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "network"))]
 pub fn load_image_from_url(url: &str) -> Result<ImageData, ImageLoadError> {
     let response = reqwest::blocking::get(url).map_err(|_| ImageLoadError::IoFailed)?;
     let bytes = response.bytes().map_err(|_| ImageLoadError::IoFailed)?;
     load_image_from_bytes(&bytes)
+}
+
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "network")))]
+pub fn load_image_from_url(_url: &str) -> Result<ImageData, ImageLoadError> {
+    Err(ImageLoadError::IoFailed)
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
