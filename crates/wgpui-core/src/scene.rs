@@ -18,17 +18,16 @@ impl GpuImageQuad {
     /// UV is full texture (0,0 to 1,1).
     pub fn new(position: [f32; 2], size: [f32; 2], tint: Option<Hsla>) -> Self {
         let tint_color = tint
-            .map(|c| {
+            .map_or([1.0, 1.0, 1.0, 1.0], |color| {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    c.to_linear_rgba()
+                    color.to_linear_rgba()
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    c.to_rgba()
+                    color.to_rgba()
                 }
-            })
-            .unwrap_or([1.0, 1.0, 1.0, 1.0]); // White = no tint
+            }); // White = no tint
 
         Self {
             position,
@@ -115,17 +114,16 @@ impl GpuQuad {
             ],
             background: quad
                 .background
-                .map(|c| {
+                .map_or([0.0, 0.0, 0.0, 0.0], |color| {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        c.to_linear_rgba()
+                        color.to_linear_rgba()
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        c.to_rgba()
+                        color.to_rgba()
                     }
-                })
-                .unwrap_or([0.0, 0.0, 0.0, 0.0]),
+                }),
             border_color: {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -151,7 +149,7 @@ pub struct GpuLine {
     pub start: [f32; 2],
     pub end: [f32; 2],
     pub width: f32,
-    pub _pad: f32,
+    pub pad: f32,
     pub color: [f32; 4],
 }
 
@@ -162,7 +160,7 @@ impl GpuLine {
             start: [start.x * scale_factor, start.y * scale_factor],
             end: [end.x * scale_factor, end.y * scale_factor],
             width: width * scale_factor,
-            _pad: 0.0,
+            pad: 0.0,
             color: {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -472,7 +470,7 @@ impl Scene {
             .chain(self.text_runs.iter().map(|(l, _, _)| *l))
             .chain(self.curves.iter().map(|(l, _)| *l))
             .collect();
-        layers.sort();
+        layers.sort_unstable();
         layers.dedup();
         layers
     }

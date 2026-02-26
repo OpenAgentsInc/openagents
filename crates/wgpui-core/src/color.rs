@@ -39,36 +39,36 @@ impl Hsla {
     }
 
     /// Create from RGB components (0.0-1.0)
-    pub fn from_rgb(r: f32, g: f32, b: f32) -> Self {
-        let max = r.max(g).max(b);
-        let min = r.min(g).min(b);
-        let l = (max + min) / 2.0;
+    pub fn from_rgb(red: f32, green: f32, blue: f32) -> Self {
+        let max_component = red.max(green).max(blue);
+        let min_component = red.min(green).min(blue);
+        let lightness = f32::midpoint(max_component, min_component);
 
-        if max == min {
-            return Self::new(0.0, 0.0, l, 1.0);
+        if (max_component - min_component).abs() <= f32::EPSILON {
+            return Self::new(0.0, 0.0, lightness, 1.0);
         }
 
-        let d = max - min;
-        let s = if l > 0.5 {
-            d / (2.0 - max - min)
+        let delta = max_component - min_component;
+        let saturation = if lightness > 0.5 {
+            delta / (2.0 - max_component - min_component)
         } else {
-            d / (max + min)
+            delta / (max_component + min_component)
         };
 
-        let h = if max == r {
-            ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0
-        } else if max == g {
-            ((b - r) / d + 2.0) / 6.0
+        let hue = if (max_component - red).abs() <= f32::EPSILON {
+            ((green - blue) / delta + if green < blue { 6.0 } else { 0.0 }) / 6.0
+        } else if (max_component - green).abs() <= f32::EPSILON {
+            ((blue - red) / delta + 2.0) / 6.0
         } else {
-            ((r - g) / d + 4.0) / 6.0
+            ((red - green) / delta + 4.0) / 6.0
         };
 
-        Self::new(h, s, l, 1.0)
+        Self::new(hue, saturation, lightness, 1.0)
     }
 
     /// Convert to RGBA (0.0-1.0)
     pub fn to_rgba(&self) -> [f32; 4] {
-        if self.s == 0.0 {
+        if self.s.abs() <= f32::EPSILON {
             return [self.l, self.l, self.l, self.a];
         }
 

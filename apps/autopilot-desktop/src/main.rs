@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::expect_used))]
+
 mod app_state;
 mod hotbar;
 mod input;

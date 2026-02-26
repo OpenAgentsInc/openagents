@@ -86,7 +86,7 @@ pub struct Renderer {
     // Layer-based rendering
     prepared_layers: Vec<PreparedLayer>,
     // SVG rendering
-    svg_renderer: SvgRenderer,
+    svg_rasterizer: SvgRenderer,
     svg_texture_cache: HashMap<SvgTextureKey, SvgGpuResources>,
     prepared_svgs: Vec<PreparedSvg>,
     image_sampler: wgpu::Sampler,
@@ -556,7 +556,7 @@ impl Renderer {
             quad_count: 0,
             text_count: 0,
             prepared_layers: Vec::new(),
-            svg_renderer: SvgRenderer::new(),
+            svg_rasterizer: SvgRenderer::new(),
             svg_texture_cache: HashMap::new(),
             prepared_svgs: Vec::new(),
             image_sampler,
@@ -624,7 +624,9 @@ impl Renderer {
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
             let lines = scene.curve_lines_for_layer(layer, scale_factor);
 
-            let quad_buffer = if !quads.is_empty() {
+            let quad_buffer = if quads.is_empty() {
+                None
+            } else {
                 Some(
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(&format!("Quad Instance Buffer Layer {}", layer)),
@@ -632,11 +634,11 @@ impl Renderer {
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                 )
-            } else {
-                None
             };
 
-            let text_buffer = if !text_quads.is_empty() {
+            let text_buffer = if text_quads.is_empty() {
+                None
+            } else {
                 Some(
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(&format!("Text Instance Buffer Layer {}", layer)),
@@ -644,11 +646,11 @@ impl Renderer {
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                 )
-            } else {
-                None
             };
 
-            let line_buffer = if !lines.is_empty() {
+            let line_buffer = if lines.is_empty() {
+                None
+            } else {
                 Some(
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some(&format!("Line Instance Buffer Layer {}", layer)),
@@ -656,8 +658,6 @@ impl Renderer {
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                 )
-            } else {
-                None
             };
 
             quad_instances += quads.len() as u32;
@@ -709,7 +709,7 @@ impl Renderer {
             // Check if we need to rasterize and upload
             if !self.svg_texture_cache.contains_key(&cache_key) {
                 // Rasterize the SVG
-                if let Some(rasterized) = self.svg_renderer.rasterize(
+                if let Some(rasterized) = self.svg_rasterizer.rasterize(
                     &svg_quad.svg_data,
                     svg_quad.bounds.size.width as u32,
                     svg_quad.bounds.size.height as u32,
@@ -784,8 +784,7 @@ impl Renderer {
                 // Create GPU quad data - convert HSLA to RGBA for GPU tinting
                 let tint = svg_quad
                     .tint
-                    .map(|c| c.to_rgba())
-                    .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+                    .map_or([1.0, 1.0, 1.0, 1.0], |color| color.to_rgba());
 
                 let gpu_quad = GpuImageQuad {
                     position: [
@@ -905,7 +904,7 @@ impl Renderer {
     /// Call this periodically to free unused textures.
     pub fn clear_svg_cache(&mut self) {
         self.svg_texture_cache.clear();
-        self.svg_renderer.clear_cache();
+        self.svg_rasterizer.clear_cache();
     }
 
     /// Get the number of cached SVG textures.

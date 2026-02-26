@@ -155,7 +155,7 @@ impl SparkWallet {
             .map_err(|error| SparkError::Wallet(error.to_string()))?;
 
         Ok(Balance {
-            spark_sats: u64::try_from(info.balance_sats).unwrap_or(u64::MAX),
+            spark_sats: info.balance_sats,
             lightning_sats: 0,
             onchain_sats: 0,
         })

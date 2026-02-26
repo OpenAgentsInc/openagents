@@ -129,9 +129,9 @@ impl CurvePrimitive {
 
         let p0 = self.evaluate(t0);
         let p1 = self.evaluate(t1);
-        let mid_t = (t0 + t1) / 2.0;
+        let mid_t = f32::midpoint(t0, t1);
         let mid_curve = self.evaluate(mid_t);
-        let mid_line = Point::new((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
+        let mid_line = Point::new(f32::midpoint(p0.x, p1.x), f32::midpoint(p0.y, p1.y));
 
         // Check if the curve midpoint is close enough to the line midpoint
         let dx = mid_curve.x - mid_line.x;
@@ -165,8 +165,8 @@ impl LineSegment {
     /// Get the midpoint of this segment.
     pub fn midpoint(&self) -> Point {
         Point::new(
-            (self.start.x + self.end.x) / 2.0,
-            (self.start.y + self.end.y) / 2.0,
+            f32::midpoint(self.start.x, self.end.x),
+            f32::midpoint(self.start.y, self.end.y),
         )
     }
 }
