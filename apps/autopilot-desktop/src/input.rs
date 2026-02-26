@@ -15,14 +15,22 @@ use crate::pane_system::{
 };
 use crate::render::render_frame;
 use crate::spark_pane::SparkPaneAction;
+use crate::spark_wallet::SparkWalletCommand;
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
         return;
     };
 
+    if drain_spark_worker_updates(state) {
+        state.window.request_redraw();
+    }
+
     match event {
-        WindowEvent::CloseRequested => event_loop.exit(),
+        WindowEvent::CloseRequested => {
+            let _ = state.spark_worker.cancel_pending();
+            event_loop.exit();
+        }
         WindowEvent::Resized(new_size) => {
             state.config.width = new_size.width.max(1);
             state.config.height = new_size.height.max(1);
@@ -259,20 +267,10 @@ fn handle_spark_keyboard_input(
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
-    match action {
-        SparkPaneAction::Refresh => {
-            state.spark_wallet.refresh(&state.async_runtime);
-        }
-        SparkPaneAction::GenerateSparkAddress => {
-            state
-                .spark_wallet
-                .request_spark_address(&state.async_runtime);
-        }
-        SparkPaneAction::GenerateBitcoinAddress => {
-            state
-                .spark_wallet
-                .request_bitcoin_address(&state.async_runtime);
-        }
+    let command = match action {
+        SparkPaneAction::Refresh => SparkWalletCommand::Refresh,
+        SparkPaneAction::GenerateSparkAddress => SparkWalletCommand::GenerateSparkAddress,
+        SparkPaneAction::GenerateBitcoinAddress => SparkWalletCommand::GenerateBitcoinAddress,
         SparkPaneAction::CreateInvoice => {
             let amount = parse_positive_amount(
                 state.spark_inputs.invoice_amount.get_value(),
@@ -282,12 +280,7 @@ fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPane
             let Some(amount) = amount else {
                 return true;
             };
-            if let Some(invoice) = state
-                .spark_wallet
-                .create_invoice(&state.async_runtime, amount)
-            {
-                state.spark_inputs.send_request.set_value(invoice);
-            }
+            SparkWalletCommand::CreateInvoice { amount_sats: amount }
         }
         SparkPaneAction::SendPayment => {
             let request = state
@@ -316,11 +309,41 @@ fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPane
                 Some(value)
             };
 
-            let _ = state
-                .spark_wallet
-                .send_payment(&state.async_runtime, &request, amount);
+            SparkWalletCommand::SendPayment {
+                payment_request: request,
+                amount_sats: amount,
+            }
         }
+    };
+
+    queue_spark_command(state, command);
+    true
+}
+
+fn queue_spark_command(state: &mut crate::app_state::RenderState, command: SparkWalletCommand) {
+    state.spark_wallet.last_error = None;
+    if let Err(error) = state.spark_worker.enqueue(command) {
+        state.spark_wallet.last_error = Some(error);
     }
+}
+
+fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool {
+    let previous_invoice = state.spark_wallet.last_invoice.clone();
+    if !state.spark_worker.drain_updates(&mut state.spark_wallet) {
+        return false;
+    }
+
+    if state.spark_wallet.last_invoice != previous_invoice
+        && state
+            .spark_wallet
+            .last_action
+            .as_deref()
+            .is_some_and(|action| action.starts_with("Created invoice"))
+        && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
+    {
+        state.spark_inputs.send_request.set_value(invoice.to_string());
+    }
+
     true
 }
 

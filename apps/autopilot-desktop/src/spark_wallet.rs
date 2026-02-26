@@ -1,4 +1,7 @@
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::time::Duration;
 
 use nostr::identity_mnemonic_path;
 use openagents_spark::{
@@ -9,6 +12,89 @@ use tokio::runtime::Runtime;
 
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
+const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+
+#[derive(Clone, Debug)]
+pub enum SparkWalletCommand {
+    Refresh,
+    GenerateSparkAddress,
+    GenerateBitcoinAddress,
+    CreateInvoice { amount_sats: u64 },
+    SendPayment {
+        payment_request: String,
+        amount_sats: Option<u64>,
+    },
+    CancelPending,
+}
+
+pub struct SparkWalletWorker {
+    command_tx: Sender<SparkWalletCommand>,
+    result_rx: Receiver<SparkPaneState>,
+}
+
+impl SparkWalletWorker {
+    pub fn spawn(initial_network: Network) -> Self {
+        let (command_tx, command_rx) = mpsc::channel::<SparkWalletCommand>();
+        let (result_tx, result_rx) = mpsc::channel::<SparkPaneState>();
+
+        std::thread::spawn(move || {
+            let mut state = SparkPaneState::with_network(initial_network);
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    state.last_error = Some(format!("Failed to initialize Spark worker runtime: {error}"));
+                    let _ = result_tx.send(state.clone());
+                    return;
+                }
+            };
+
+            while let Ok(command) = command_rx.recv() {
+                if matches!(command, SparkWalletCommand::CancelPending) {
+                    while let Ok(_pending) = command_rx.try_recv() {}
+                    state.last_error = None;
+                    state.last_action = Some("Cancelled pending Spark actions".to_string());
+                    let _ = result_tx.send(state.clone());
+                    continue;
+                }
+
+                state.apply_command(&runtime, command);
+                let _ = result_tx.send(state.clone());
+            }
+        });
+
+        Self {
+            command_tx,
+            result_rx,
+        }
+    }
+
+    pub fn enqueue(&self, command: SparkWalletCommand) -> Result<(), String> {
+        self.command_tx
+            .send(command)
+            .map_err(|error| format!("Spark worker offline: {error}"))
+    }
+
+    pub fn cancel_pending(&self) -> Result<(), String> {
+        self.enqueue(SparkWalletCommand::CancelPending)
+    }
+
+    pub fn drain_updates(&mut self, target: &mut SparkPaneState) -> bool {
+        let mut changed = false;
+        loop {
+            match self.result_rx.try_recv() {
+                Ok(next) => {
+                    *target = next;
+                    changed = true;
+                }
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+            }
+        }
+        changed
+    }
+}
 
 pub struct SparkPaneState {
     wallet: Option<SparkWallet>,
@@ -25,11 +111,36 @@ pub struct SparkPaneState {
     pub last_error: Option<String>,
 }
 
-impl Default for SparkPaneState {
-    fn default() -> Self {
+impl Clone for SparkPaneState {
+    fn clone(&self) -> Self {
         Self {
             wallet: None,
-            network: configured_network(),
+            network: self.network,
+            identity_path: self.identity_path.clone(),
+            network_status: self.network_status.clone(),
+            balance: self.balance.clone(),
+            spark_address: self.spark_address.clone(),
+            bitcoin_address: self.bitcoin_address.clone(),
+            recent_payments: self.recent_payments.clone(),
+            last_invoice: self.last_invoice.clone(),
+            last_payment_id: self.last_payment_id.clone(),
+            last_action: self.last_action.clone(),
+            last_error: self.last_error.clone(),
+        }
+    }
+}
+
+impl Default for SparkPaneState {
+    fn default() -> Self {
+        Self::with_network(configured_network())
+    }
+}
+
+impl SparkPaneState {
+    pub fn with_network(network: Network) -> Self {
+        Self {
+            wallet: None,
+            network,
             identity_path: None,
             network_status: None,
             balance: None,
@@ -42,9 +153,7 @@ impl Default for SparkPaneState {
             last_error: None,
         }
     }
-}
 
-impl SparkPaneState {
     pub fn network_name(&self) -> &'static str {
         match self.network {
             Network::Mainnet => "mainnet",
@@ -62,7 +171,28 @@ impl SparkPaneState {
         }
     }
 
-    pub fn refresh(&mut self, runtime: &Runtime) {
+    fn apply_command(&mut self, runtime: &Runtime, command: SparkWalletCommand) {
+        match command {
+            SparkWalletCommand::Refresh => self.refresh(runtime),
+            SparkWalletCommand::GenerateSparkAddress => self.request_spark_address(runtime),
+            SparkWalletCommand::GenerateBitcoinAddress => self.request_bitcoin_address(runtime),
+            SparkWalletCommand::CreateInvoice { amount_sats } => {
+                let _ = self.create_invoice(runtime, amount_sats);
+            }
+            SparkWalletCommand::SendPayment {
+                payment_request,
+                amount_sats,
+            } => {
+                let _ = self.send_payment(runtime, &payment_request, amount_sats);
+            }
+            SparkWalletCommand::CancelPending => {
+                self.last_error = None;
+                self.last_action = Some("Cancelled pending Spark actions".to_string());
+            }
+        }
+    }
+
+    fn refresh(&mut self, runtime: &Runtime) {
         self.last_error = None;
 
         if let Err(error) = self.ensure_wallet(runtime) {
@@ -75,7 +205,19 @@ impl SparkPaneState {
             return;
         };
 
-        let status = runtime.block_on(wallet.network_status());
+        let status = match run_with_timeout_value(
+            runtime,
+            "Spark network status",
+            SPARK_ACTION_TIMEOUT,
+            wallet.network_status(),
+        ) {
+            Ok(status) => status,
+            Err(error) => {
+                self.last_error = Some(error);
+                return;
+            }
+        };
+
         if let Some(detail) = status.detail.as_ref() {
             self.last_error = Some(format!("Spark connectivity: {detail}"));
         }
@@ -85,7 +227,7 @@ impl SparkPaneState {
         self.last_action = Some("Wallet refreshed".to_string());
     }
 
-    pub fn request_spark_address(&mut self, runtime: &Runtime) {
+    fn request_spark_address(&mut self, runtime: &Runtime) {
         self.last_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
@@ -97,7 +239,12 @@ impl SparkPaneState {
             return;
         };
 
-        match runtime.block_on(wallet.get_spark_address()) {
+        match run_with_timeout(
+            runtime,
+            "Generate Spark address",
+            SPARK_ACTION_TIMEOUT,
+            wallet.get_spark_address(),
+        ) {
             Ok(address) => {
                 self.spark_address = Some(address);
                 self.last_action = Some("Generated Spark receive address".to_string());
@@ -108,7 +255,7 @@ impl SparkPaneState {
         }
     }
 
-    pub fn request_bitcoin_address(&mut self, runtime: &Runtime) {
+    fn request_bitcoin_address(&mut self, runtime: &Runtime) {
         self.last_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
@@ -120,7 +267,12 @@ impl SparkPaneState {
             return;
         };
 
-        match runtime.block_on(wallet.get_bitcoin_address()) {
+        match run_with_timeout(
+            runtime,
+            "Generate Bitcoin address",
+            SPARK_ACTION_TIMEOUT,
+            wallet.get_bitcoin_address(),
+        ) {
             Ok(address) => {
                 self.bitcoin_address = Some(address);
                 self.last_action = Some("Generated Bitcoin receive address".to_string());
@@ -131,7 +283,7 @@ impl SparkPaneState {
         }
     }
 
-    pub fn create_invoice(&mut self, runtime: &Runtime, amount_sats: u64) -> Option<String> {
+    fn create_invoice(&mut self, runtime: &Runtime, amount_sats: u64) -> Option<String> {
         self.last_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
@@ -143,11 +295,16 @@ impl SparkPaneState {
             return None;
         };
 
-        let invoice = match runtime.block_on(wallet.create_invoice(
-            amount_sats,
-            Some("OpenAgents Spark receive".to_string()),
-            Some(3600),
-        )) {
+        let invoice = match run_with_timeout(
+            runtime,
+            "Create Spark invoice",
+            SPARK_ACTION_TIMEOUT,
+            wallet.create_invoice(
+                amount_sats,
+                Some("OpenAgents Spark receive".to_string()),
+                Some(3600),
+            ),
+        ) {
             Ok(value) => value,
             Err(error) => {
                 self.last_error = Some(format!("Failed to create invoice: {error}"));
@@ -161,7 +318,7 @@ impl SparkPaneState {
         Some(invoice)
     }
 
-    pub fn send_payment(
+    fn send_payment(
         &mut self,
         runtime: &Runtime,
         payment_request: &str,
@@ -184,7 +341,12 @@ impl SparkPaneState {
             return None;
         }
 
-        let payment_id = match runtime.block_on(wallet.send_payment_simple(request, amount_sats)) {
+        let payment_id = match run_with_timeout(
+            runtime,
+            "Send Spark payment",
+            SPARK_ACTION_TIMEOUT,
+            wallet.send_payment_simple(request, amount_sats),
+        ) {
             Ok(id) => id,
             Err(error) => {
                 self.last_error = Some(format!("Failed to send payment: {error}"));
@@ -236,9 +398,13 @@ impl SparkPaneState {
             api_key,
             storage_dir,
         };
-        let wallet = runtime
-            .block_on(SparkWallet::new(signer, config))
-            .map_err(|error| format!("Failed to initialize Spark wallet: {error}"))?;
+        let wallet = run_with_timeout(
+            runtime,
+            "Spark wallet initialization",
+            SPARK_ACTION_TIMEOUT,
+            SparkWallet::new(signer, config),
+        )
+        .map_err(|error| format!("Failed to initialize Spark wallet: {error}"))?;
 
         self.identity_path = Some(identity_path);
         self.wallet = Some(wallet);
@@ -251,7 +417,12 @@ impl SparkPaneState {
             return;
         };
 
-        match runtime.block_on(wallet.get_balance()) {
+        match run_with_timeout(
+            runtime,
+            "Fetch Spark balance",
+            SPARK_ACTION_TIMEOUT,
+            wallet.get_balance(),
+        ) {
             Ok(balance) => {
                 self.balance = Some(balance);
             }
@@ -260,7 +431,12 @@ impl SparkPaneState {
             }
         }
 
-        match runtime.block_on(wallet.list_payments(Some(25), None)) {
+        match run_with_timeout(
+            runtime,
+            "List Spark payments",
+            SPARK_ACTION_TIMEOUT,
+            wallet.list_payments(Some(25), None),
+        ) {
             Ok(payments) => {
                 self.recent_payments = payments.into_iter().take(10).collect();
             }
@@ -271,7 +447,43 @@ impl SparkPaneState {
     }
 }
 
-fn configured_network() -> Network {
+fn timeout_message(action: &str, timeout: Duration) -> String {
+    format!("{action} timed out after {timeout:?}")
+}
+
+fn run_with_timeout<R, E, F>(
+    runtime: &Runtime,
+    action: &str,
+    timeout: Duration,
+    future: F,
+) -> Result<R, String>
+where
+    E: std::fmt::Display,
+    F: Future<Output = Result<R, E>>,
+{
+    match runtime.block_on(async { tokio::time::timeout(timeout, future).await }) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(error.to_string()),
+        Err(_elapsed) => Err(timeout_message(action, timeout)),
+    }
+}
+
+fn run_with_timeout_value<R, F>(
+    runtime: &Runtime,
+    action: &str,
+    timeout: Duration,
+    future: F,
+) -> Result<R, String>
+where
+    F: Future<Output = R>,
+{
+    match runtime.block_on(async { tokio::time::timeout(timeout, future).await }) {
+        Ok(value) => Ok(value),
+        Err(_elapsed) => Err(timeout_message(action, timeout)),
+    }
+}
+
+pub fn configured_network() -> Network {
     let configured = std::env::var(ENV_SPARK_NETWORK)
         .unwrap_or_else(|_| "regtest".to_string())
         .to_ascii_lowercase();
@@ -300,4 +512,66 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
     }
 
     Ok(mnemonic)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Network, SPARK_ACTION_TIMEOUT, SparkPaneState, SparkWalletWorker, run_with_timeout,
+        timeout_message,
+    };
+
+    use std::time::Duration;
+
+    #[test]
+    fn timeout_message_contains_action_and_duration() {
+        let message = timeout_message("refresh", Duration::from_millis(250));
+        assert!(message.contains("refresh timed out"));
+        assert!(message.contains("250ms"));
+    }
+
+    #[test]
+    fn run_with_timeout_returns_timeout_error() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        let result = run_with_timeout(
+            &runtime,
+            "slow action",
+            Duration::from_millis(5),
+            async {
+                tokio::time::sleep(SPARK_ACTION_TIMEOUT).await;
+                Ok::<u8, &'static str>(1)
+            },
+        );
+
+        let error = result.expect_err("should timeout");
+        assert!(error.contains("slow action timed out"));
+    }
+
+    #[test]
+    fn worker_cancel_pending_emits_update() {
+        let mut worker = SparkWalletWorker::spawn(Network::Regtest);
+        worker.cancel_pending().expect("cancel command");
+
+        let mut snapshot = SparkPaneState::with_network(Network::Regtest);
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        let mut received_update = false;
+
+        while std::time::Instant::now() < deadline {
+            if worker.drain_updates(&mut snapshot) {
+                received_update = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        assert!(received_update, "expected cancellation update from worker");
+        assert_eq!(
+            snapshot.last_action.as_deref(),
+            Some("Cancelled pending Spark actions")
+        );
+    }
 }

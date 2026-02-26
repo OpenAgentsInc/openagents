@@ -4,6 +4,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::RenderState;
 use crate::pane_system::{create_empty_pane, create_nostr_identity_pane, create_spark_wallet_pane};
+use crate::spark_wallet::SparkWalletCommand;
 
 pub const HOTBAR_HEIGHT: f32 = 52.0;
 pub const HOTBAR_FLOAT_GAP: f32 = 18.0;
@@ -68,8 +69,10 @@ pub fn activate_hotbar_slot(state: &mut RenderState, slot: u8) {
                 .iter()
                 .any(|pane| pane.kind == crate::app_state::PaneKind::SparkWallet);
             create_spark_wallet_pane(state);
-            if !was_open {
-                state.spark_wallet.refresh(&state.async_runtime);
+            if !was_open
+                && let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh)
+            {
+                state.spark_wallet.last_error = Some(error);
             }
         }
         _ => {}

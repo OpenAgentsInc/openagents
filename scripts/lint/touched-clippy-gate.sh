@@ -106,7 +106,7 @@ for rel in sorted(changed):
 
 if violations:
     print("Touched-file clippy gate failed.", file=sys.stderr)
-    print("Add debt entries to scripts/lint/clippy-debt-allowlist.txt with owner/date, or remove warnings from touched files.", file=sys.stderr)
+    print("Add debt entries to scripts/lint/clippy-debt-allowlist.toml with owner/date, or remove warnings from touched files.", file=sys.stderr)
     for rel, count in violations:
         print(f" - {rel}: {count} warning(s), not allowlisted", file=sys.stderr)
     sys.exit(1)

@@ -7,7 +7,7 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
-use crate::spark_wallet::SparkPaneState;
+use crate::spark_wallet::{SparkPaneState, SparkWalletWorker};
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -89,11 +89,11 @@ pub struct RenderState {
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
     pub input_modifiers: Modifiers,
-    pub async_runtime: tokio::runtime::Runtime,
     pub panes: Vec<DesktopPane>,
     pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
     pub spark_wallet: SparkPaneState,
+    pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
     pub next_pane_id: u64,
     pub next_z_index: i32,

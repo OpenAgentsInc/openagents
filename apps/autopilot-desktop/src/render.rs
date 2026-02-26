@@ -95,10 +95,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             Err(err) => (None, Some(err.to_string())),
         };
 
-        let async_runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .context("failed to initialize async runtime")?;
+        let spark_wallet = crate::spark_wallet::SparkPaneState::default();
+        let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
 
         let mut state = RenderState {
             window,
@@ -113,11 +111,11 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             hotbar_bounds: initial_hotbar_bounds,
             event_context: wgpui::EventContext::new(),
             input_modifiers: wgpui::Modifiers::default(),
-            async_runtime,
             panes: Vec::new(),
             nostr_identity,
             nostr_identity_error,
-            spark_wallet: crate::spark_wallet::SparkPaneState::default(),
+            spark_wallet,
+            spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
             next_pane_id: 1,
             next_z_index: 1,
