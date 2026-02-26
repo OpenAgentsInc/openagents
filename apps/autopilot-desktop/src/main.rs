@@ -481,7 +481,7 @@ fn paint_panes(panes: &mut [DesktopPane], active_id: Option<u64>, paint: &mut Pa
         let content_bounds = pane.frame.content_bounds();
         paint.scene.draw_quad(
             Quad::new(content_bounds)
-                .with_background(theme::bg::SURFACE.with_alpha(0.48))
+                .with_background(Hsla::new(0.0, 0.0, 0.0, 1.0))
                 .with_corner_radius(4.0),
         );
 
