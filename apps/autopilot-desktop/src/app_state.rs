@@ -35,6 +35,7 @@ pub enum PaneKind {
     AutopilotChat,
     GoOnline,
     ProviderStatus,
+    EarningsScoreboard,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -531,6 +532,7 @@ pub struct ActiveJobRecord {
     pub request_id: String,
     pub requester: String,
     pub capability: String,
+    pub quoted_price_sats: u64,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
     pub payment_id: Option<String>,
@@ -563,6 +565,7 @@ impl Default for ActiveJobState {
             request_id: "req-bootstrap-001".to_string(),
             requester: "npub1seed...r8k".to_string(),
             capability: "demo.capability".to_string(),
+            quoted_price_sats: 1500,
             stage: JobLifecycleStage::Running,
             invoice_id: None,
             payment_id: None,
@@ -596,6 +599,7 @@ impl ActiveJobState {
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
             capability: request.capability.clone(),
+            quoted_price_sats: request.price_sats,
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
             payment_id: None,
@@ -756,6 +760,7 @@ pub struct JobHistoryReceiptRow {
     pub job_id: String,
     pub status: JobHistoryStatus,
     pub completed_at_epoch_seconds: u64,
+    pub payout_sats: u64,
     pub result_hash: String,
     pub payment_pointer: String,
     pub failure_reason: Option<String>,
@@ -793,6 +798,7 @@ impl Default for JobHistoryState {
             job_id: "job-bootstrap-000".to_string(),
             status: JobHistoryStatus::Succeeded,
             completed_at_epoch_seconds: 1_761_919_780,
+            payout_sats: 2100,
             result_hash: "sha256:7f7d72a3e0f10933".to_string(),
             payment_pointer: "pay:req-bootstrap-000".to_string(),
             failure_reason: None,
@@ -801,6 +807,7 @@ impl Default for JobHistoryState {
             job_id: "job-bootstrap-001".to_string(),
             status: JobHistoryStatus::Failed,
             completed_at_epoch_seconds: 1_761_915_200,
+            payout_sats: 0,
             result_hash: "sha256:2ce0b2ff4ef9a010".to_string(),
             payment_pointer: "pay:req-bootstrap-001".to_string(),
             failure_reason: Some("invoice settlement timeout".to_string()),
@@ -881,6 +888,11 @@ impl JobHistoryState {
             job_id: job.job_id.clone(),
             status,
             completed_at_epoch_seconds: completed,
+            payout_sats: if status == JobHistoryStatus::Succeeded {
+                job.quoted_price_sats
+            } else {
+                0
+            },
             result_hash: format!("sha256:{}-{}", job.request_id, job.stage.label()),
             payment_pointer: job
                 .payment_id
@@ -922,6 +934,103 @@ impl JobHistoryState {
                 }
             })
             .collect()
+    }
+}
+
+pub struct EarningsScoreboardState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub sats_today: u64,
+    pub lifetime_sats: u64,
+    pub jobs_today: u64,
+    pub last_job_result: String,
+    pub online_uptime_seconds: u64,
+    pub stale_after: Duration,
+    pub last_refreshed_at: Option<Instant>,
+}
+
+impl Default for EarningsScoreboardState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for wallet + job receipts".to_string()),
+            sats_today: 0,
+            lifetime_sats: 0,
+            jobs_today: 0,
+            last_job_result: "none".to_string(),
+            online_uptime_seconds: 0,
+            stale_after: Duration::from_secs(12),
+            last_refreshed_at: None,
+        }
+    }
+}
+
+impl EarningsScoreboardState {
+    pub fn refresh_from_sources(
+        &mut self,
+        now: Instant,
+        provider_runtime: &ProviderRuntimeState,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+    ) {
+        self.last_refreshed_at = Some(now);
+        self.online_uptime_seconds = provider_runtime.uptime_seconds(now);
+        self.last_error = None;
+
+        if let Some(error) = spark_wallet.last_error.as_deref() {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(format!("Wallet source error: {error}"));
+            self.last_action = Some("Scoreboard degraded due to wallet error".to_string());
+        } else if spark_wallet.balance.is_none() {
+            self.load_state = PaneLoadState::Loading;
+            self.last_action = Some("Scoreboard waiting for first wallet refresh".to_string());
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_action = Some("Scoreboard refreshed from authoritative sources".to_string());
+        }
+
+        self.lifetime_sats = spark_wallet
+            .balance
+            .as_ref()
+            .map_or(0, |balance| balance.total_sats());
+
+        let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
+        self.jobs_today = job_history
+            .rows
+            .iter()
+            .filter(|row| {
+                row.status == JobHistoryStatus::Succeeded
+                    && row.completed_at_epoch_seconds >= threshold
+            })
+            .count() as u64;
+        self.sats_today = job_history
+            .rows
+            .iter()
+            .filter(|row| {
+                row.status == JobHistoryStatus::Succeeded
+                    && row.completed_at_epoch_seconds >= threshold
+            })
+            .map(|row| row.payout_sats)
+            .sum();
+
+        self.last_job_result = job_history
+            .rows
+            .first()
+            .map(|row| {
+                if let Some(reason) = row.failure_reason.as_deref() {
+                    format!("{} ({reason})", row.status.label())
+                } else {
+                    row.status.label().to_string()
+                }
+            })
+            .unwrap_or_else(|| "none".to_string());
+    }
+
+    pub fn is_stale(&self, now: Instant) -> bool {
+        self.last_refreshed_at
+            .is_none_or(|refresh| now.duration_since(refresh) > self.stale_after)
     }
 }
 
@@ -1147,6 +1256,7 @@ pub struct RenderState {
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
     pub provider_runtime: ProviderRuntimeState,
+    pub earnings_scoreboard: EarningsScoreboardState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1175,10 +1285,11 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
+        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
+        SparkPaneState,
     };
 
     #[test]
@@ -1340,6 +1451,7 @@ mod tests {
             job_id: "job-bootstrap-000".to_string(),
             status: JobHistoryStatus::Failed,
             completed_at_epoch_seconds: history.reference_epoch_seconds + 10,
+            payout_sats: 0,
             result_hash: "sha256:updated".to_string(),
             payment_pointer: "pay:updated".to_string(),
             failure_reason: Some("updated".to_string()),
@@ -1352,5 +1464,27 @@ mod tests {
             .find(|row| row.job_id == "job-bootstrap-000")
             .expect("row should exist");
         assert_eq!(row.result_hash, "sha256:updated");
+    }
+
+    #[test]
+    fn earnings_scoreboard_refreshes_from_wallet_and_history() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 1000,
+            lightning_sats: 2000,
+            onchain_sats: 3000,
+        });
+
+        let now = std::time::Instant::now();
+        score.refresh_from_sources(now, &provider, &history, &spark);
+
+        assert_eq!(score.load_state, super::PaneLoadState::Ready);
+        assert_eq!(score.lifetime_sats, 6000);
+        assert!(score.jobs_today >= 1);
+        assert!(score.sats_today >= 1);
+        assert!(!score.is_stale(now));
     }
 }

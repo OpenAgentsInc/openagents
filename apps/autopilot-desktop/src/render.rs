@@ -127,6 +127,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
+            earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -176,6 +177,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.autopilot_chat,
             &state.provider_runtime,
             provider_blockers.as_slice(),
+            &state.earnings_scoreboard,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -259,6 +261,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.provider_status", "Provider Status")
             .description("Open runtime health and heartbeat visibility pane")
             .category("Panes"),
+        Command::new("pane.earnings_scoreboard", "Earnings Scoreboard")
+            .description("Open sats/day, lifetime, jobs/day and last-result metrics pane")
+            .category("Panes"),
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
@@ -299,6 +304,9 @@ mod tests {
                 command.id == "pane.active_job" && command.label == "Active Job"
             })
         );
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
+        }));
         assert!(
             commands.iter().any(|command| {
                 command.id == "pane.job_history" && command.label == "Job History"

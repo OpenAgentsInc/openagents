@@ -1,13 +1,14 @@
 use crate::app_state::{
     ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
-    DesktopPane, JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, SparkPaneInputs,
+    DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
+    ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-    chat_transcript_bounds, go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+    chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
+    go_online_toggle_button_bounds, job_history_next_page_button_bounds,
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
@@ -34,6 +35,7 @@ impl PaneRenderer {
         autopilot_chat: &AutopilotChatState,
         provider_runtime: &ProviderRuntimeState,
         provider_blockers: &[ProviderBlocker],
+        earnings_scoreboard: &EarningsScoreboardState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -88,6 +90,14 @@ impl PaneRenderer {
                         content_bounds,
                         provider_runtime,
                         provider_blockers,
+                        paint,
+                    );
+                }
+                PaneKind::EarningsScoreboard => {
+                    paint_earnings_scoreboard_pane(
+                        content_bounds,
+                        earnings_scoreboard,
+                        provider_runtime,
                         paint,
                     );
                 }
@@ -428,6 +438,90 @@ fn paint_provider_status_pane(
             error_y += 14.0;
         }
     }
+}
+
+fn paint_earnings_scoreboard_pane(
+    content_bounds: Bounds,
+    earnings_scoreboard: &EarningsScoreboardState,
+    provider_runtime: &ProviderRuntimeState,
+    paint: &mut PaintContext,
+) {
+    let refresh_bounds = earnings_scoreboard_refresh_button_bounds(content_bounds);
+    paint_action_button(refresh_bounds, "Refresh metrics", paint);
+
+    let state_color = match earnings_scoreboard.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let stale = earnings_scoreboard.is_stale(std::time::Instant::now());
+    let stale_suffix = if stale { " (stale)" } else { "" };
+    let mut y = refresh_bounds.max_y() + 14.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!(
+            "State: {}{stale_suffix}",
+            earnings_scoreboard.load_state.label()
+        ),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = earnings_scoreboard.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = earnings_scoreboard.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Sats today",
+        &earnings_scoreboard.sats_today.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Lifetime sats",
+        &earnings_scoreboard.lifetime_sats.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Jobs today",
+        &earnings_scoreboard.jobs_today.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last job result",
+        &earnings_scoreboard.last_job_result,
+    );
+    let _ = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Online uptime (s)",
+        &provider_runtime.uptime_seconds(std::time::Instant::now()).to_string(),
+    );
 }
 
 fn paint_nostr_identity_pane(

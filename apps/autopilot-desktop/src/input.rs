@@ -13,9 +13,10 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    ActiveJobPaneAction, JobInboxPaneAction, PaneController, PaneInput, dispatch_chat_input_event,
-    dispatch_job_history_input_event, dispatch_pay_invoice_input_event, dispatch_spark_input_event,
-    topmost_active_job_action_hit, topmost_chat_send_hit, topmost_go_online_toggle_hit,
+    ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController, PaneInput,
+    dispatch_chat_input_event, dispatch_job_history_input_event, dispatch_pay_invoice_input_event,
+    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
+    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
     topmost_job_history_action_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
     topmost_spark_action_hit,
@@ -27,6 +28,7 @@ use crate::spark_wallet::SparkWalletCommand;
 const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
 const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
+const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -53,6 +55,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     if state.autopilot_chat.tick(now) {
         state.window.request_redraw();
     }
+    refresh_earnings_scoreboard(state, now);
 
     match event {
         WindowEvent::CloseRequested => {
@@ -235,6 +238,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_pay_invoice_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
+                    handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
                     handled |= handle_job_inbox_action_click(state, app.cursor_position);
                     handled |= handle_active_job_action_click(state, app.cursor_position);
                     handled |= handle_job_history_action_click(state, app.cursor_position);
@@ -430,6 +434,18 @@ fn handle_go_online_toggle_click(state: &mut crate::app_state::RenderState, poin
     true
 }
 
+fn handle_earnings_scoreboard_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_earnings_scoreboard_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_earnings_scoreboard_action(state, action)
+}
+
 fn handle_job_inbox_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
     let Some((pane_id, action)) = topmost_job_inbox_action_hit(state, point) else {
         return false;
@@ -606,6 +622,18 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     true
 }
 
+fn run_earnings_scoreboard_action(
+    state: &mut crate::app_state::RenderState,
+    action: EarningsScoreboardPaneAction,
+) -> bool {
+    match action {
+        EarningsScoreboardPaneAction::Refresh => {
+            refresh_earnings_scoreboard(state, std::time::Instant::now());
+            true
+        }
+    }
+}
+
 fn run_job_inbox_action(
     state: &mut crate::app_state::RenderState,
     action: JobInboxPaneAction,
@@ -691,6 +719,7 @@ fn run_active_job_action(
                     }
                 }
             }
+            refresh_earnings_scoreboard(state, now);
             true
         }
         ActiveJobPaneAction::AbortJob => {
@@ -709,6 +738,7 @@ fn run_active_job_action(
                         .record_from_active_job(job, crate::app_state::JobHistoryStatus::Failed);
                 }
             }
+            refresh_earnings_scoreboard(state, now);
             true
         }
     }
@@ -718,24 +748,38 @@ fn run_job_history_action(
     state: &mut crate::app_state::RenderState,
     action: crate::pane_system::JobHistoryPaneAction,
 ) -> bool {
+    let now = std::time::Instant::now();
     match action {
         crate::pane_system::JobHistoryPaneAction::CycleStatusFilter => {
             state.job_history.cycle_status_filter();
+            refresh_earnings_scoreboard(state, now);
             true
         }
         crate::pane_system::JobHistoryPaneAction::CycleTimeRange => {
             state.job_history.cycle_time_range();
+            refresh_earnings_scoreboard(state, now);
             true
         }
         crate::pane_system::JobHistoryPaneAction::PreviousPage => {
             state.job_history.previous_page();
+            refresh_earnings_scoreboard(state, now);
             true
         }
         crate::pane_system::JobHistoryPaneAction::NextPage => {
             state.job_history.next_page();
+            refresh_earnings_scoreboard(state, now);
             true
         }
     }
+}
+
+fn refresh_earnings_scoreboard(state: &mut crate::app_state::RenderState, now: std::time::Instant) {
+    state.earnings_scoreboard.refresh_from_sources(
+        now,
+        &state.provider_runtime,
+        &state.job_history,
+        &state.spark_wallet,
+    );
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
@@ -882,6 +926,7 @@ fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool
         state.pay_invoice_inputs.payment_request.set_value(invoice);
     }
 
+    refresh_earnings_scoreboard(state, std::time::Instant::now());
     true
 }
 
@@ -990,6 +1035,11 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_PROVIDER_STATUS => {
                 PaneController::create_provider_status(state);
+                changed = true;
+            }
+            COMMAND_OPEN_EARNINGS_SCOREBOARD => {
+                PaneController::create_earnings_scoreboard(state);
+                refresh_earnings_scoreboard(state, std::time::Instant::now());
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

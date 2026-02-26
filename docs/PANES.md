@@ -13,6 +13,10 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Action: read-only operational visibility.
+- `Earnings Scoreboard`
+  - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
+  - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
+  - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
   - Shows requester, capability, price, ttl, validation state, and decision state per request.
@@ -46,6 +50,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Autopilot Chat` -> opens `Autopilot Chat`.
   - `Go Online` -> opens `Go Online`.
   - `Provider Status` -> opens `Provider Status`.
+  - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
@@ -55,6 +60,6 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Job Inbox, Active Job, Job History, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

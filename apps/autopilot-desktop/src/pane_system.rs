@@ -18,6 +18,8 @@ const GO_ONLINE_PANE_WIDTH: f32 = 560.0;
 const GO_ONLINE_PANE_HEIGHT: f32 = 300.0;
 const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
 const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
+const EARNINGS_SCOREBOARD_PANE_WIDTH: f32 = 640.0;
+const EARNINGS_SCOREBOARD_PANE_HEIGHT: f32 = 320.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -68,6 +70,11 @@ pub enum JobHistoryPaneAction {
     NextPage,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EarningsScoreboardPaneAction {
+    Refresh,
+}
+
 #[derive(Clone, Copy)]
 pub struct PaneDescriptor {
     pub kind: PaneKind,
@@ -109,6 +116,15 @@ impl PaneDescriptor {
             kind: PaneKind::ProviderStatus,
             width: PROVIDER_STATUS_PANE_WIDTH,
             height: PROVIDER_STATUS_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn earnings_scoreboard() -> Self {
+        Self {
+            kind: PaneKind::EarningsScoreboard,
+            width: EARNINGS_SCOREBOARD_PANE_WIDTH,
+            height: EARNINGS_SCOREBOARD_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -230,6 +246,10 @@ impl PaneController {
 
     pub fn create_provider_status(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::provider_status());
+    }
+
+    pub fn create_earnings_scoreboard(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::earnings_scoreboard());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -501,6 +521,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::EarningsScoreboard {
+            if topmost_earnings_scoreboard_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -614,6 +640,16 @@ pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let width = content_bounds.size.width.min(220.0).max(160.0);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        width,
+        34.0,
+    )
+}
+
+pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
     let width = content_bounds.size.width.min(220.0).max(160.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
@@ -842,6 +878,25 @@ pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option
         let content_bounds = pane_content_bounds(pane.bounds);
         if go_online_toggle_button_bounds(content_bounds).contains(point) {
             return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_earnings_scoreboard_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, EarningsScoreboardPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::EarningsScoreboard {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, EarningsScoreboardPaneAction::Refresh));
         }
     }
 
@@ -1105,6 +1160,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::AutopilotChat => "Autopilot Chat".to_string(),
         PaneKind::GoOnline => "Go Online".to_string(),
         PaneKind::ProviderStatus => "Provider Status".to_string(),
+        PaneKind::EarningsScoreboard => "Earnings Scoreboard".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1154,7 +1210,8 @@ mod tests {
     use super::{
         active_job_abort_button_bounds, active_job_advance_button_bounds,
         chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-        chat_transcript_bounds, go_online_toggle_button_bounds,
+        chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
+        go_online_toggle_button_bounds,
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
         job_history_search_input_bounds, job_history_status_button_bounds,
         job_history_time_button_bounds, job_inbox_accept_button_bounds,
@@ -1246,5 +1303,14 @@ mod tests {
         assert!(status.max_x() < time.min_x());
         assert!(prev.max_x() < next.min_x());
         assert!(prev.origin.y > search.origin.y);
+    }
+
+    #[test]
+    fn earnings_refresh_button_is_inside_content() {
+        let content = Bounds::new(0.0, 0.0, 640.0, 320.0);
+        let button = earnings_scoreboard_refresh_button_bounds(content);
+        assert!(content.contains(button.origin));
+        assert!(button.max_x() <= content.max_x());
+        assert!(button.max_y() <= content.max_y());
     }
 }
