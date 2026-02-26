@@ -410,7 +410,8 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
             .easing(Easing::EaseOut);
         dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
 
-        paint_panes(&mut state.panes, active_pane, &mut paint);
+        let hotbar_layer = paint_panes(&mut state.panes, active_pane, &mut paint);
+        paint.scene.set_layer(hotbar_layer);
 
         let bar_bounds = hotbar_bounds(logical);
         state.hotbar_bounds = bar_bounds;
@@ -467,12 +468,22 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
     Ok(())
 }
 
-fn paint_panes(panes: &mut [DesktopPane], active_id: Option<u64>, paint: &mut PaintContext) {
+fn paint_panes(panes: &mut [DesktopPane], active_id: Option<u64>, paint: &mut PaintContext) -> u32 {
     let mut indices: Vec<usize> = (0..panes.len()).collect();
     indices.sort_by_key(|idx| panes[*idx].z_index);
 
+    let mut next_layer: u32 = 1;
     for idx in indices {
+        paint.scene.set_layer(next_layer);
+        next_layer = next_layer.saturating_add(1);
+
         let pane = &mut panes[idx];
+
+        // Opaque underlay prevents lower pane text from bleeding through.
+        paint
+            .scene
+            .draw_quad(Quad::new(pane.bounds).with_background(theme::bg::APP));
+
         pane.frame.set_title(&pane.title);
         pane.frame.set_active(active_id == Some(pane.id));
         pane.frame.set_title_height(PANE_TITLE_HEIGHT);
@@ -481,8 +492,8 @@ fn paint_panes(panes: &mut [DesktopPane], active_id: Option<u64>, paint: &mut Pa
         let content_bounds = pane.frame.content_bounds();
         paint.scene.draw_quad(
             Quad::new(content_bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.0, 1.0))
-                .with_corner_radius(4.0),
+                .with_background(theme::bg::SURFACE)
+                .with_corner_radius(0.0),
         );
 
         let empty = paint.text.layout(
@@ -496,6 +507,8 @@ fn paint_panes(panes: &mut [DesktopPane], active_id: Option<u64>, paint: &mut Pa
         );
         paint.scene.draw_text(empty);
     }
+
+    next_layer
 }
 
 fn hotbar_bounds(size: Size) -> Bounds {
