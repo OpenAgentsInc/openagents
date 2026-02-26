@@ -20,14 +20,17 @@ use crate::pane_system::{
     SyncHealthPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, topmost_active_job_action_hit,
-    topmost_activity_feed_action_hit, topmost_alerts_recovery_action_hit, topmost_chat_send_hit,
-    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
-    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
-    topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
-    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
-    topmost_relay_connections_action_hit, topmost_settings_action_hit, topmost_spark_action_hit,
-    topmost_starter_jobs_action_hit, topmost_sync_health_action_hit,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_active_job_action_hit_in_order,
+    topmost_activity_feed_action_hit_in_order, topmost_alerts_recovery_action_hit_in_order,
+    topmost_chat_send_hit_in_order, topmost_create_invoice_action_hit_in_order,
+    topmost_earnings_scoreboard_action_hit_in_order, topmost_go_online_toggle_hit_in_order,
+    topmost_job_history_action_hit_in_order, topmost_job_inbox_action_hit_in_order,
+    topmost_network_requests_action_hit_in_order, topmost_nostr_copy_secret_hit_in_order,
+    topmost_nostr_regenerate_hit_in_order, topmost_nostr_reveal_hit_in_order,
+    topmost_pay_invoice_action_hit_in_order, topmost_relay_connections_action_hit_in_order,
+    topmost_settings_action_hit_in_order, topmost_spark_action_hit_in_order,
+    topmost_starter_jobs_action_hit_in_order, topmost_sync_health_action_hit_in_order,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -330,25 +333,35 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
 }
 
 fn dispatch_pane_actions(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let mut handled = handle_nostr_regenerate_click(state, point);
-    handled |= handle_nostr_reveal_click(state, point);
-    handled |= handle_nostr_copy_click(state, point);
-    handled |= handle_spark_action_click(state, point);
-    handled |= handle_pay_invoice_action_click(state, point);
-    handled |= handle_create_invoice_action_click(state, point);
-    handled |= handle_relay_connections_action_click(state, point);
-    handled |= handle_sync_health_action_click(state, point);
-    handled |= handle_network_requests_action_click(state, point);
-    handled |= handle_starter_jobs_action_click(state, point);
-    handled |= handle_activity_feed_action_click(state, point);
-    handled |= handle_alerts_recovery_action_click(state, point);
-    handled |= handle_settings_action_click(state, point);
-    handled |= handle_chat_send_click(state, point);
-    handled |= handle_go_online_toggle_click(state, point);
-    handled |= handle_earnings_scoreboard_action_click(state, point);
-    handled |= handle_job_inbox_action_click(state, point);
-    handled |= handle_active_job_action_click(state, point);
-    handled |= handle_job_history_action_click(state, point);
+    let sort_count_before = pane_z_sort_invocation_count();
+    let pane_order = pane_indices_by_z_desc(state);
+    let pane_order = pane_order.as_slice();
+
+    let mut handled = handle_nostr_regenerate_click(state, point, pane_order);
+    handled |= handle_nostr_reveal_click(state, point, pane_order);
+    handled |= handle_nostr_copy_click(state, point, pane_order);
+    handled |= handle_spark_action_click(state, point, pane_order);
+    handled |= handle_pay_invoice_action_click(state, point, pane_order);
+    handled |= handle_create_invoice_action_click(state, point, pane_order);
+    handled |= handle_relay_connections_action_click(state, point, pane_order);
+    handled |= handle_sync_health_action_click(state, point, pane_order);
+    handled |= handle_network_requests_action_click(state, point, pane_order);
+    handled |= handle_starter_jobs_action_click(state, point, pane_order);
+    handled |= handle_activity_feed_action_click(state, point, pane_order);
+    handled |= handle_alerts_recovery_action_click(state, point, pane_order);
+    handled |= handle_settings_action_click(state, point, pane_order);
+    handled |= handle_chat_send_click(state, point, pane_order);
+    handled |= handle_go_online_toggle_click(state, point, pane_order);
+    handled |= handle_earnings_scoreboard_action_click(state, point, pane_order);
+    handled |= handle_job_inbox_action_click(state, point, pane_order);
+    handled |= handle_active_job_action_click(state, point, pane_order);
+    handled |= handle_job_history_action_click(state, point, pane_order);
+
+    let sort_delta = pane_z_sort_invocation_count().saturating_sub(sort_count_before);
+    debug_assert!(
+        sort_delta <= 1,
+        "pane action dispatch sorted z-order {sort_delta} times"
+    );
     handled
 }
 
@@ -366,8 +379,12 @@ fn dispatch_keyboard_submit_actions(
         || handle_job_history_keyboard_input(state, logical_key)
 }
 
-fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some(pane_id) = topmost_nostr_regenerate_hit(state, point) else {
+fn handle_nostr_regenerate_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some(pane_id) = topmost_nostr_regenerate_hit_in_order(state, point, pane_order) else {
         return false;
     };
 
@@ -390,8 +407,12 @@ fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, poin
     true
 }
 
-fn handle_nostr_reveal_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some(pane_id) = topmost_nostr_reveal_hit(state, point) else {
+fn handle_nostr_reveal_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some(pane_id) = topmost_nostr_reveal_hit_in_order(state, point, pane_order) else {
         return false;
     };
 
@@ -402,8 +423,12 @@ fn handle_nostr_reveal_click(state: &mut crate::app_state::RenderState, point: P
     true
 }
 
-fn handle_nostr_copy_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some(pane_id) = topmost_nostr_copy_secret_hit(state, point) else {
+fn handle_nostr_copy_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some(pane_id) = topmost_nostr_copy_secret_hit_in_order(state, point, pane_order) else {
         return false;
     };
 
@@ -421,8 +446,13 @@ fn handle_nostr_copy_click(state: &mut crate::app_state::RenderState, point: Poi
     true
 }
 
-fn handle_spark_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some((pane_id, action)) = topmost_spark_action_hit(state, point) else {
+fn handle_spark_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some((pane_id, action)) = topmost_spark_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -433,8 +463,10 @@ fn handle_spark_action_click(state: &mut crate::app_state::RenderState, point: P
 fn handle_pay_invoice_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_pay_invoice_action_hit(state, point) else {
+    let Some((pane_id, action)) = topmost_pay_invoice_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -445,8 +477,11 @@ fn handle_pay_invoice_action_click(
 fn handle_create_invoice_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_create_invoice_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_create_invoice_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -457,8 +492,11 @@ fn handle_create_invoice_action_click(
 fn handle_relay_connections_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_relay_connections_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_relay_connections_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -469,8 +507,10 @@ fn handle_relay_connections_action_click(
 fn handle_sync_health_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_sync_health_action_hit(state, point) else {
+    let Some((pane_id, action)) = topmost_sync_health_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -481,8 +521,11 @@ fn handle_sync_health_action_click(
 fn handle_network_requests_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_network_requests_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_network_requests_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -493,8 +536,11 @@ fn handle_network_requests_action_click(
 fn handle_starter_jobs_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_starter_jobs_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_starter_jobs_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -505,8 +551,11 @@ fn handle_starter_jobs_action_click(
 fn handle_activity_feed_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_activity_feed_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_activity_feed_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -517,8 +566,11 @@ fn handle_activity_feed_action_click(
 fn handle_alerts_recovery_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_alerts_recovery_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_alerts_recovery_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -526,8 +578,13 @@ fn handle_alerts_recovery_action_click(
     run_alerts_recovery_action(state, action)
 }
 
-fn handle_settings_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some((pane_id, action)) = topmost_settings_action_hit(state, point) else {
+fn handle_settings_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some((pane_id, action)) = topmost_settings_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -535,8 +592,12 @@ fn handle_settings_action_click(state: &mut crate::app_state::RenderState, point
     run_settings_action(state, action)
 }
 
-fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some(pane_id) = topmost_chat_send_hit(state, point) else {
+fn handle_chat_send_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some(pane_id) = topmost_chat_send_hit_in_order(state, point, pane_order) else {
         return false;
     };
 
@@ -544,8 +605,12 @@ fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Poin
     run_chat_submit_action(state)
 }
 
-fn handle_go_online_toggle_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some(pane_id) = topmost_go_online_toggle_hit(state, point) else {
+fn handle_go_online_toggle_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some(pane_id) = topmost_go_online_toggle_hit_in_order(state, point, pane_order) else {
         return false;
     };
 
@@ -563,8 +628,11 @@ fn handle_go_online_toggle_click(state: &mut crate::app_state::RenderState, poin
 fn handle_earnings_scoreboard_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_earnings_scoreboard_action_hit(state, point) else {
+    let Some((pane_id, action)) =
+        topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -572,8 +640,13 @@ fn handle_earnings_scoreboard_action_click(
     run_earnings_scoreboard_action(state, action)
 }
 
-fn handle_job_inbox_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some((pane_id, action)) = topmost_job_inbox_action_hit(state, point) else {
+fn handle_job_inbox_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some((pane_id, action)) = topmost_job_inbox_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -581,8 +654,13 @@ fn handle_job_inbox_action_click(state: &mut crate::app_state::RenderState, poin
     run_job_inbox_action(state, action)
 }
 
-fn handle_active_job_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
-    let Some((pane_id, action)) = topmost_active_job_action_hit(state, point) else {
+fn handle_active_job_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> bool {
+    let Some((pane_id, action)) = topmost_active_job_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 
@@ -593,8 +671,10 @@ fn handle_active_job_action_click(state: &mut crate::app_state::RenderState, poi
 fn handle_job_history_action_click(
     state: &mut crate::app_state::RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> bool {
-    let Some((pane_id, action)) = topmost_job_history_action_hit(state, point) else {
+    let Some((pane_id, action)) = topmost_job_history_action_hit_in_order(state, point, pane_order)
+    else {
         return false;
     };
 

@@ -514,8 +514,13 @@ pub fn paint_pay_invoice_pane(
     }
 }
 
-pub fn topmost_spark_action_hit(state: &RenderState, point: Point) -> Option<(u64, SparkPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+pub fn topmost_spark_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, SparkPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::SparkWallet {
             continue;
@@ -531,11 +536,13 @@ pub fn topmost_spark_action_hit(state: &RenderState, point: Point) -> Option<(u6
     None
 }
 
-pub fn topmost_create_invoice_action_hit(
+pub fn topmost_create_invoice_action_hit_in_order(
     state: &RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> Option<(u64, CreateInvoicePaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::SparkCreateInvoice {
             continue;
@@ -551,11 +558,13 @@ pub fn topmost_create_invoice_action_hit(
     None
 }
 
-pub fn topmost_pay_invoice_action_hit(
+pub fn topmost_pay_invoice_action_hit_in_order(
     state: &RenderState,
     point: Point,
+    pane_order: &[usize],
 ) -> Option<(u64, PayInvoicePaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::SparkPayInvoice {
             continue;
@@ -657,7 +666,11 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
     handled |= state
         .pay_invoice_inputs
         .payment_request
-        .event(event, layout.payment_request_input, &mut state.event_context)
+        .event(
+            event,
+            layout.payment_request_input,
+            &mut state.event_context,
+        )
         .is_handled();
     handled |= state
         .pay_invoice_inputs
@@ -714,10 +727,4 @@ pub fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
         return "sent";
     }
     "idle"
-}
-
-fn pane_indices_by_z_desc(state: &RenderState) -> Vec<usize> {
-    let mut ordered: Vec<usize> = (0..state.panes.len()).collect();
-    ordered.sort_by(|lhs, rhs| state.panes[*rhs].z_index.cmp(&state.panes[*lhs].z_index));
-    ordered
 }

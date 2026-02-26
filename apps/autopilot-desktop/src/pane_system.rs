@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use wgpui::components::hud::{PaneFrame, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
@@ -5,11 +7,11 @@ use winit::window::CursorIcon;
 use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
-use crate::panes::{chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane};
-use crate::render::logical_size;
-use crate::spark_pane::{
-    self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction,
+use crate::panes::{
+    chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
+use crate::render::logical_size;
+use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
@@ -38,6 +40,7 @@ const ACTIVITY_FEED_MAX_ROWS: usize = 8;
 const ALERTS_RECOVERY_ROW_HEIGHT: f32 = 30.0;
 const ALERTS_RECOVERY_ROW_GAP: f32 = 6.0;
 const ALERTS_RECOVERY_MAX_ROWS: usize = 8;
+static PANE_Z_SORT_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
 
 pub struct PaneController;
 
@@ -396,7 +399,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         return CursorIcon::Pointer;
     }
 
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    for pane_idx in pane_order.iter().copied() {
         let bounds = state.panes[pane_idx].bounds;
         if !bounds.contains(point) {
             continue;
@@ -432,14 +436,18 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         }
 
         if state.panes[pane_idx].kind == PaneKind::EarningsScoreboard {
-            if topmost_earnings_scoreboard_action_hit(state, point).is_some() {
+            if topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
+            {
                 return CursorIcon::Pointer;
             }
         }
 
         if state.panes[pane_idx].kind == PaneKind::RelayConnections {
             let content_bounds = pane_content_bounds(bounds);
-            if topmost_relay_connections_action_hit(state, point).is_some() {
+            if topmost_relay_connections_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
+            {
                 return CursorIcon::Pointer;
             }
             if relay_connections_url_input_bounds(content_bounds).contains(point) {
@@ -448,14 +456,18 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         }
 
         if state.panes[pane_idx].kind == PaneKind::SyncHealth {
-            if topmost_sync_health_action_hit(state, point).is_some() {
+            if topmost_sync_health_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
+            {
                 return CursorIcon::Pointer;
             }
         }
 
         if state.panes[pane_idx].kind == PaneKind::NetworkRequests {
             let content_bounds = pane_content_bounds(bounds);
-            if topmost_network_requests_action_hit(state, point).is_some() {
+            if topmost_network_requests_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
+            {
                 return CursorIcon::Pointer;
             }
             if network_requests_type_input_bounds(content_bounds).contains(point)
@@ -468,26 +480,29 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         }
 
         if state.panes[pane_idx].kind == PaneKind::StarterJobs
-            && topmost_starter_jobs_action_hit(state, point).is_some()
+            && topmost_starter_jobs_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
         {
             return CursorIcon::Pointer;
         }
 
         if state.panes[pane_idx].kind == PaneKind::ActivityFeed
-            && topmost_activity_feed_action_hit(state, point).is_some()
+            && topmost_activity_feed_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
         {
             return CursorIcon::Pointer;
         }
 
         if state.panes[pane_idx].kind == PaneKind::AlertsRecovery
-            && topmost_alerts_recovery_action_hit(state, point).is_some()
+            && topmost_alerts_recovery_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
         {
             return CursorIcon::Pointer;
         }
 
         if state.panes[pane_idx].kind == PaneKind::Settings {
             let content_bounds = pane_content_bounds(bounds);
-            if topmost_settings_action_hit(state, point).is_some() {
+            if topmost_settings_action_hit_in_order(state, point, pane_order.as_slice()).is_some() {
                 return CursorIcon::Pointer;
             }
             if settings_relay_input_bounds(content_bounds).contains(point)
@@ -499,20 +514,24 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         }
 
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
-            if topmost_job_inbox_action_hit(state, point).is_some() {
+            if topmost_job_inbox_action_hit_in_order(state, point, pane_order.as_slice()).is_some()
+            {
                 return CursorIcon::Pointer;
             }
         }
 
         if state.panes[pane_idx].kind == PaneKind::ActiveJob {
-            if topmost_active_job_action_hit(state, point).is_some() {
+            if topmost_active_job_action_hit_in_order(state, point, pane_order.as_slice()).is_some()
+            {
                 return CursorIcon::Pointer;
             }
         }
 
         if state.panes[pane_idx].kind == PaneKind::JobHistory {
             let content_bounds = pane_content_bounds(bounds);
-            if topmost_job_history_action_hit(state, point).is_some() {
+            if topmost_job_history_action_hit_in_order(state, point, pane_order.as_slice())
+                .is_some()
+            {
                 return CursorIcon::Pointer;
             }
             if job_history_search_input_bounds(content_bounds).contains(point) {
@@ -1055,8 +1074,19 @@ fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
     (regenerate_bounds, reveal_bounds, copy_bounds)
 }
 
+#[allow(dead_code)]
 pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_nostr_regenerate_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_nostr_regenerate_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::NostrIdentity {
             continue;
@@ -1072,8 +1102,19 @@ pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_nostr_reveal_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_nostr_reveal_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_nostr_reveal_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::NostrIdentity {
             continue;
@@ -1089,8 +1130,19 @@ pub fn topmost_nostr_reveal_hit(state: &RenderState, point: Point) -> Option<u64
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_nostr_copy_secret_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_nostr_copy_secret_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::NostrIdentity {
             continue;
@@ -1106,12 +1158,33 @@ pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Optio
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_chat_send_hit(state: &RenderState, point: Point) -> Option<u64> {
-    chat_pane::topmost_send_hit(state, point)
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_chat_send_hit_in_order(state, point, pane_order.as_slice())
 }
 
+pub(crate) fn topmost_chat_send_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    chat_pane::topmost_send_hit_in_order(state, point, pane_order)
+}
+
+#[allow(dead_code)]
 pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_go_online_toggle_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_go_online_toggle_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::GoOnline {
             continue;
@@ -1126,11 +1199,22 @@ pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_earnings_scoreboard_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, EarningsScoreboardPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_earnings_scoreboard_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, EarningsScoreboardPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::EarningsScoreboard {
             continue;
@@ -1145,18 +1229,39 @@ pub fn topmost_earnings_scoreboard_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_relay_connections_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, RelayConnectionsPaneAction)> {
-    relay_connections_pane::topmost_action_hit(state, point)
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_relay_connections_action_hit_in_order(state, point, pane_order.as_slice())
 }
 
+pub(crate) fn topmost_relay_connections_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, RelayConnectionsPaneAction)> {
+    relay_connections_pane::topmost_action_hit_in_order(state, point, pane_order)
+}
+
+#[allow(dead_code)]
 pub fn topmost_sync_health_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, SyncHealthPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_sync_health_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_sync_health_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, SyncHealthPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::SyncHealth {
             continue;
@@ -1171,11 +1276,22 @@ pub fn topmost_sync_health_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_network_requests_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, NetworkRequestsPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_network_requests_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_network_requests_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, NetworkRequestsPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::NetworkRequests {
             continue;
@@ -1190,11 +1306,22 @@ pub fn topmost_network_requests_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_starter_jobs_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, StarterJobsPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_starter_jobs_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_starter_jobs_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, StarterJobsPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::StarterJobs {
             continue;
@@ -1216,11 +1343,22 @@ pub fn topmost_starter_jobs_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_activity_feed_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, ActivityFeedPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_activity_feed_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_activity_feed_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, ActivityFeedPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::ActivityFeed {
             continue;
@@ -1250,11 +1388,22 @@ pub fn topmost_activity_feed_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_alerts_recovery_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, AlertsRecoveryPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_alerts_recovery_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_alerts_recovery_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, AlertsRecoveryPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::AlertsRecovery {
             continue;
@@ -1282,11 +1431,22 @@ pub fn topmost_alerts_recovery_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_settings_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, SettingsPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_settings_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_settings_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, SettingsPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::Settings {
             continue;
@@ -1304,11 +1464,22 @@ pub fn topmost_settings_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_job_inbox_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, JobInboxPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_job_inbox_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_job_inbox_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, JobInboxPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::JobInbox {
             continue;
@@ -1333,11 +1504,22 @@ pub fn topmost_job_inbox_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_active_job_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, ActiveJobPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_active_job_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_active_job_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, ActiveJobPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::ActiveJob {
             continue;
@@ -1357,11 +1539,22 @@ pub fn topmost_active_job_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_job_history_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, JobHistoryPaneAction)> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_job_history_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_job_history_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, JobHistoryPaneAction)> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::JobHistory {
             continue;
@@ -1385,25 +1578,55 @@ pub fn topmost_job_history_action_hit(
     None
 }
 
+#[allow(dead_code)]
 pub fn topmost_spark_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, SparkPaneAction)> {
-    wallet_pane::topmost_spark_action_hit(state, point)
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_spark_action_hit_in_order(state, point, pane_order.as_slice())
 }
 
+pub(crate) fn topmost_spark_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, SparkPaneAction)> {
+    wallet_pane::topmost_spark_action_hit_in_order(state, point, pane_order)
+}
+
+#[allow(dead_code)]
 pub fn topmost_create_invoice_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, CreateInvoicePaneAction)> {
-    wallet_pane::topmost_create_invoice_action_hit(state, point)
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_create_invoice_action_hit_in_order(state, point, pane_order.as_slice())
 }
 
+pub(crate) fn topmost_create_invoice_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, CreateInvoicePaneAction)> {
+    wallet_pane::topmost_create_invoice_action_hit_in_order(state, point, pane_order)
+}
+
+#[allow(dead_code)]
 pub fn topmost_pay_invoice_action_hit(
     state: &RenderState,
     point: Point,
 ) -> Option<(u64, PayInvoicePaneAction)> {
-    wallet_pane::topmost_pay_invoice_action_hit(state, point)
+    let pane_order = pane_indices_by_z_desc(state);
+    topmost_pay_invoice_action_hit_in_order(state, point, pane_order.as_slice())
+}
+
+pub(crate) fn topmost_pay_invoice_action_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<(u64, PayInvoicePaneAction)> {
+    wallet_pane::topmost_pay_invoice_action_hit_in_order(state, point, pane_order)
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -1552,10 +1775,15 @@ pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
 
-fn pane_indices_by_z_desc(state: &RenderState) -> Vec<usize> {
+pub(crate) fn pane_indices_by_z_desc(state: &RenderState) -> Vec<usize> {
+    PANE_Z_SORT_INVOCATIONS.fetch_add(1, Ordering::Relaxed);
     let mut ordered: Vec<usize> = (0..state.panes.len()).collect();
     ordered.sort_by(|lhs, rhs| state.panes[*rhs].z_index.cmp(&state.panes[*lhs].z_index));
     ordered
+}
+
+pub(crate) fn pane_z_sort_invocation_count() -> u64 {
+    PANE_Z_SORT_INVOCATIONS.load(Ordering::Relaxed)
 }
 
 fn bring_pane_to_front(state: &mut RenderState, pane_id: u64) {

@@ -113,8 +113,13 @@ pub fn paint(
     paint_action_button(send_bounds, "Send", paint);
 }
 
-pub fn topmost_send_hit(state: &RenderState, point: Point) -> Option<u64> {
-    for pane_idx in pane_indices_by_z_desc(state) {
+pub fn topmost_send_hit_in_order(
+    state: &RenderState,
+    point: Point,
+    pane_order: &[usize],
+) -> Option<u64> {
+    for pane_idx in pane_order {
+        let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
         if pane.kind != PaneKind::AutopilotChat {
             continue;
@@ -146,10 +151,4 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         .composer
         .event(event, composer_bounds, &mut state.event_context)
         .is_handled()
-}
-
-fn pane_indices_by_z_desc(state: &RenderState) -> Vec<usize> {
-    let mut ordered: Vec<usize> = (0..state.panes.len()).collect();
-    ordered.sort_by(|lhs, rhs| state.panes[*rhs].z_index.cmp(&state.panes[*lhs].z_index));
-    ordered
 }
