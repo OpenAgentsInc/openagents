@@ -1,11 +1,5 @@
 # OpenAgents Desktop MVP Spec — “Autopilot Money Printer”
 
-- **Status:** revised draft for implementation alignment
-- **Date:** 2026-02-25
-- **Owner lanes:** `owner:autopilot`, `owner:runtime`, `owner:protocol`, `owner:wallet`
-
----
-
 ## 1) Product promise
 
 OpenAgents Desktop is **Autopilot**, your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **help you** and **pay you**.
