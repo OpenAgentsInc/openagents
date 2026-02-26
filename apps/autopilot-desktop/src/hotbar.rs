@@ -110,7 +110,9 @@ fn build_hotbar_items() -> Vec<HotbarSlot> {
             HOTBAR_SLOT_NEW_CHAT => HotbarSlot::new(slot, "+", "New pane"),
             HOTBAR_SLOT_NOSTR_IDENTITY => HotbarSlot::new(slot, "N", "Nostr keys"),
             HOTBAR_SLOT_SPARK_WALLET => HotbarSlot::new(slot, "S", "Spark wallet"),
-            HOTBAR_SLOT_COMMAND_PALETTE => HotbarSlot::new(slot, "K", "Command palette"),
+            HOTBAR_SLOT_COMMAND_PALETTE => {
+                HotbarSlot::new(slot, "K", "Command palette").shortcut("K")
+            }
             _ => HotbarSlot::new(slot, "?", "Unknown"),
         })
         .collect()

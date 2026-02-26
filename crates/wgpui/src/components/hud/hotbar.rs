@@ -12,6 +12,7 @@ pub struct HotbarSlot {
     pub slot: u8,
     pub icon: String,
     pub title: String,
+    pub shortcut: String,
     pub active: bool,
     pub ghost: bool,
 }
@@ -22,9 +23,15 @@ impl HotbarSlot {
             slot,
             icon: icon.into(),
             title: title.into(),
+            shortcut: slot.to_string(),
             active: false,
             ghost: false,
         }
+    }
+
+    pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
+        self.shortcut = shortcut.into();
+        self
     }
 
     pub fn active(mut self, active: bool) -> Self {
@@ -284,14 +291,18 @@ impl Component for Hotbar {
                         .with_background(theme::bg::APP.with_alpha(0.7))
                         .with_corner_radius(2.0),
                 );
-                let shortcut = format!("{}", item.slot);
-                let text_width = shortcut.len() as f32 * number_font * 0.55;
+                let shortcut_text = if item.shortcut.is_empty() {
+                    item.slot.to_string()
+                } else {
+                    item.shortcut.clone()
+                };
+                let text_width = shortcut_text.len() as f32 * number_font * 0.55;
                 let text_x =
                     overlay_bounds.origin.x + (overlay_bounds.size.width - text_width) * 0.5;
                 let text_y =
                     overlay_bounds.origin.y + overlay_bounds.size.height * 0.5 - number_font * 0.5;
                 let shortcut_run = cx.text.layout_styled_mono(
-                    &shortcut,
+                    &shortcut_text,
                     Point::new(text_x, text_y),
                     number_font,
                     theme::text::MUTED,
