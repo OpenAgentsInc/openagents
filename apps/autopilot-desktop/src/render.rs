@@ -11,16 +11,12 @@ use winit::window::Window;
 
 use crate::app_state::{PaneKind, RenderState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
+use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController};
 use crate::spark_wallet::SparkWalletCommand;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
-const STARTUP_PANE_SET: [PaneKind; 3] = [
-    PaneKind::AutopilotChat,
-    PaneKind::GoOnline,
-    PaneKind::SparkWallet,
-];
 
 pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
     let window_attrs = Window::default_attributes()
@@ -165,12 +161,13 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 }
 
 fn open_startup_panes(state: &mut RenderState) {
-    for pane_kind in STARTUP_PANE_SET {
+    for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat => PaneController::create_autopilot_chat(state),
-            PaneKind::GoOnline => PaneController::create_go_online(state),
+            PaneKind::AutopilotChat | PaneKind::GoOnline => {
+                let _ = PaneController::create_for_kind(state, pane_kind);
+            }
             PaneKind::SparkWallet => {
-                PaneController::create_spark_wallet(state);
+                let _ = PaneController::create_for_kind(state, pane_kind);
                 if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
                     state.spark_wallet.last_error = Some(error);
                 }
@@ -297,70 +294,26 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
 }
 
 fn command_registry() -> Vec<Command> {
-    vec![
-        Command::new("pane.autopilot_chat", "Autopilot Chat")
-            .description("Open chat thread and composer for Autopilot")
-            .category("Panes"),
-        Command::new("pane.go_online", "Go Online")
-            .description("Open provider mode toggle and lifecycle controls")
-            .category("Panes"),
-        Command::new("pane.provider_status", "Provider Status")
-            .description("Open runtime health and heartbeat visibility pane")
-            .category("Panes"),
-        Command::new("pane.earnings_scoreboard", "Earnings Scoreboard")
-            .description("Open sats/day, lifetime, jobs/day and last-result metrics pane")
-            .category("Panes"),
-        Command::new("pane.relay_connections", "Relay Connections")
-            .description("Open relay connectivity and retry controls")
-            .category("Panes"),
-        Command::new("pane.sync_health", "Sync Health")
-            .description("Open spacetime subscription and stale-cursor diagnostics pane")
-            .category("Panes"),
-        Command::new("pane.network_requests", "Network Requests")
-            .description("Open buyer-side request composer for network submission")
-            .category("Panes"),
-        Command::new("pane.starter_jobs", "Starter Jobs")
-            .description("Open starter-demand queue and completion payouts pane")
-            .category("Panes"),
-        Command::new("pane.activity_feed", "Activity Feed")
-            .description("Open unified stream for chat/job/wallet/network/sync events")
-            .category("Panes"),
-        Command::new("pane.alerts_recovery", "Alerts and Recovery")
-            .description("Open incident alerts, remediation steps, and recovery actions")
-            .category("Panes"),
-        Command::new("pane.settings", "Settings")
-            .description("Open network, wallet, and provider defaults with validation")
-            .category("Panes"),
-        Command::new("pane.job_inbox", "Job Inbox")
-            .description("Open incoming NIP-90 request intake pane")
-            .category("Panes"),
-        Command::new("pane.active_job", "Active Job")
-            .description("Open in-flight job lifecycle timeline pane")
-            .category("Panes"),
-        Command::new("pane.job_history", "Job History")
-            .description("Open deterministic completed/failed job receipts pane")
-            .category("Panes"),
-        Command::new("pane.identity_keys", "Identity Keys")
-            .description("Open Nostr keys (NIP-06) pane")
-            .category("Panes")
-            .keybinding("2"),
-        Command::new("pane.wallet", "Spark Wallet")
-            .description("Show Spark wallet controls")
-            .category("Panes")
-            .keybinding("3"),
-        Command::new("pane.pay_invoice", "Pay Lightning Invoice")
-            .description("Open dedicated pane for paying Lightning invoices")
-            .category("Panes"),
-        Command::new("pane.create_invoice", "Create Lightning Invoice")
-            .description("Open dedicated pane for creating Lightning invoices")
-            .category("Panes"),
-    ]
+    pane_specs()
+        .iter()
+        .filter_map(|spec| {
+            let command = spec.command?;
+            let mut entry = Command::new(command.id, command.label)
+                .description(command.description)
+                .category("Panes");
+            if let Some(keybinding) = command.keybinding {
+                entry = entry.keybinding(keybinding);
+            }
+            Some(entry)
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::command_registry;
     use crate::app_state::PaneKind;
+    use crate::pane_registry::startup_pane_kinds;
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
@@ -423,7 +376,7 @@ mod tests {
 
     #[test]
     fn startup_pane_set_matches_mvp_core_surfaces() {
-        let startup = super::STARTUP_PANE_SET;
+        let startup = startup_pane_kinds();
         assert!(startup.contains(&PaneKind::AutopilotChat));
         assert!(startup.contains(&PaneKind::GoOnline));
         assert!(startup.contains(&PaneKind::SparkWallet));

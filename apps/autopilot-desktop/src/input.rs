@@ -12,6 +12,7 @@ use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
+use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AlertsRecoveryPaneAction,
     EarningsScoreboardPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction, PaneController,
@@ -31,25 +32,6 @@ use crate::pane_system::{
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
-
-const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
-const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
-const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
-const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
-const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
-const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
-const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
-const COMMAND_OPEN_STARTER_JOBS: &str = "pane.starter_jobs";
-const COMMAND_OPEN_ACTIVITY_FEED: &str = "pane.activity_feed";
-const COMMAND_OPEN_ALERTS_RECOVERY: &str = "pane.alerts_recovery";
-const COMMAND_OPEN_SETTINGS: &str = "pane.settings";
-const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
-const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
-const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
-const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
-const COMMAND_OPEN_WALLET: &str = "pane.wallet";
-const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
-const COMMAND_OPEN_CREATE_INVOICE: &str = "pane.create_invoice";
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
@@ -992,7 +974,10 @@ fn run_job_inbox_action(
                         .cloned();
                     if let Some(request) = selected_request.as_ref() {
                         state.active_job.start_from_request(request);
-                        PaneController::create_active_job(state);
+                        let _ = PaneController::create_for_kind(
+                            state,
+                            crate::app_state::PaneKind::ActiveJob,
+                        );
                     }
                 }
                 Err(error) => {
@@ -1926,47 +1911,27 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
 
     let mut changed = false;
     for action in action_ids {
-        match action.as_str() {
-            COMMAND_OPEN_AUTOPILOT_CHAT => {
-                PaneController::create_autopilot_chat(state);
-                changed = true;
-            }
-            COMMAND_OPEN_GO_ONLINE => {
-                PaneController::create_go_online(state);
-                changed = true;
-            }
-            COMMAND_OPEN_PROVIDER_STATUS => {
-                PaneController::create_provider_status(state);
-                changed = true;
-            }
-            COMMAND_OPEN_EARNINGS_SCOREBOARD => {
-                PaneController::create_earnings_scoreboard(state);
+        let Some(spec) = pane_spec_by_command_id(&action) else {
+            continue;
+        };
+
+        match spec.kind {
+            crate::app_state::PaneKind::EarningsScoreboard => {
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 refresh_earnings_scoreboard(state, std::time::Instant::now());
                 changed = true;
             }
-            COMMAND_OPEN_RELAY_CONNECTIONS => {
-                PaneController::create_relay_connections(state);
-                changed = true;
-            }
-            COMMAND_OPEN_SYNC_HEALTH => {
-                PaneController::create_sync_health(state);
+            crate::app_state::PaneKind::SyncHealth => {
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 refresh_sync_health(state);
                 changed = true;
             }
-            COMMAND_OPEN_NETWORK_REQUESTS => {
-                PaneController::create_network_requests(state);
-                changed = true;
-            }
-            COMMAND_OPEN_STARTER_JOBS => {
-                PaneController::create_starter_jobs(state);
-                changed = true;
-            }
-            COMMAND_OPEN_ACTIVITY_FEED => {
+            crate::app_state::PaneKind::ActivityFeed => {
                 let was_open = state
                     .panes
                     .iter()
                     .any(|pane| pane.kind == crate::app_state::PaneKind::ActivityFeed);
-                PaneController::create_activity_feed(state);
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 if !was_open {
                     state
                         .activity_feed
@@ -1974,12 +1939,12 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
                 }
                 changed = true;
             }
-            COMMAND_OPEN_ALERTS_RECOVERY => {
+            crate::app_state::PaneKind::AlertsRecovery => {
                 let was_open = state
                     .panes
                     .iter()
                     .any(|pane| pane.kind == crate::app_state::PaneKind::AlertsRecovery);
-                PaneController::create_alerts_recovery(state);
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 if !was_open {
                     state.alerts_recovery.last_error = None;
                     state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
@@ -1988,53 +1953,40 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
                 }
                 changed = true;
             }
-            COMMAND_OPEN_SETTINGS => {
-                PaneController::create_settings(state);
-                changed = true;
-            }
-            COMMAND_OPEN_JOB_INBOX => {
-                PaneController::create_job_inbox(state);
-                changed = true;
-            }
-            COMMAND_OPEN_ACTIVE_JOB => {
-                PaneController::create_active_job(state);
-                changed = true;
-            }
-            COMMAND_OPEN_JOB_HISTORY => {
-                PaneController::create_job_history(state);
-                changed = true;
-            }
-            COMMAND_OPEN_IDENTITY_KEYS => {
+            crate::app_state::PaneKind::NostrIdentity => {
                 activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
                 changed = true;
             }
-            COMMAND_OPEN_WALLET => {
+            crate::app_state::PaneKind::SparkWallet => {
                 activate_hotbar_slot(state, HOTBAR_SLOT_SPARK_WALLET);
                 changed = true;
             }
-            COMMAND_OPEN_PAY_INVOICE => {
+            crate::app_state::PaneKind::SparkPayInvoice => {
                 let was_open = state
                     .panes
                     .iter()
                     .any(|pane| pane.kind == crate::app_state::PaneKind::SparkPayInvoice);
-                PaneController::create_pay_invoice(state);
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 if !was_open {
                     queue_spark_command(state, SparkWalletCommand::Refresh);
                 }
                 changed = true;
             }
-            COMMAND_OPEN_CREATE_INVOICE => {
+            crate::app_state::PaneKind::SparkCreateInvoice => {
                 let was_open = state
                     .panes
                     .iter()
                     .any(|pane| pane.kind == crate::app_state::PaneKind::SparkCreateInvoice);
-                PaneController::create_create_invoice(state);
+                let _ = PaneController::create_for_kind(state, spec.kind);
                 if !was_open {
                     queue_spark_command(state, SparkWalletCommand::Refresh);
                 }
                 changed = true;
             }
-            _ => {}
+            kind => {
+                let _ = PaneController::create_for_kind(state, kind);
+                changed = true;
+            }
         }
     }
 

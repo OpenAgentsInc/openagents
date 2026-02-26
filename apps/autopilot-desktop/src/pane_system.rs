@@ -3,46 +3,13 @@ use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
 use winit::window::CursorIcon;
 
 use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
+use crate::pane_registry::pane_spec;
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
 use crate::spark_pane::{
-    self, CREATE_INVOICE_PANE_HEIGHT, CREATE_INVOICE_PANE_WIDTH, CreateInvoicePaneAction,
-    PAY_INVOICE_PANE_HEIGHT, PAY_INVOICE_PANE_WIDTH, PayInvoicePaneAction, SPARK_PANE_HEIGHT,
-    SPARK_PANE_WIDTH, SparkPaneAction,
+    self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction,
 };
 
-const PANE_DEFAULT_WIDTH: f32 = 420.0;
-const PANE_DEFAULT_HEIGHT: f32 = 280.0;
-const CHAT_PANE_WIDTH: f32 = 940.0;
-const CHAT_PANE_HEIGHT: f32 = 540.0;
-const GO_ONLINE_PANE_WIDTH: f32 = 560.0;
-const GO_ONLINE_PANE_HEIGHT: f32 = 300.0;
-const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
-const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
-const EARNINGS_SCOREBOARD_PANE_WIDTH: f32 = 640.0;
-const EARNINGS_SCOREBOARD_PANE_HEIGHT: f32 = 320.0;
-const RELAY_CONNECTIONS_PANE_WIDTH: f32 = 900.0;
-const RELAY_CONNECTIONS_PANE_HEIGHT: f32 = 420.0;
-const SYNC_HEALTH_PANE_WIDTH: f32 = 760.0;
-const SYNC_HEALTH_PANE_HEIGHT: f32 = 360.0;
-const NETWORK_REQUESTS_PANE_WIDTH: f32 = 900.0;
-const NETWORK_REQUESTS_PANE_HEIGHT: f32 = 420.0;
-const STARTER_JOBS_PANE_WIDTH: f32 = 860.0;
-const STARTER_JOBS_PANE_HEIGHT: f32 = 420.0;
-const ACTIVITY_FEED_PANE_WIDTH: f32 = 940.0;
-const ACTIVITY_FEED_PANE_HEIGHT: f32 = 460.0;
-const ALERTS_RECOVERY_PANE_WIDTH: f32 = 900.0;
-const ALERTS_RECOVERY_PANE_HEIGHT: f32 = 460.0;
-const SETTINGS_PANE_WIDTH: f32 = 860.0;
-const SETTINGS_PANE_HEIGHT: f32 = 420.0;
-const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
-const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
-const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
-const ACTIVE_JOB_PANE_HEIGHT: f32 = 440.0;
-const JOB_HISTORY_PANE_WIDTH: f32 = 900.0;
-const JOB_HISTORY_PANE_HEIGHT: f32 = 460.0;
-const NOSTR_PANE_WIDTH: f32 = 760.0;
-const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
@@ -155,174 +122,13 @@ pub struct PaneDescriptor {
 }
 
 impl PaneDescriptor {
-    pub const fn empty() -> Self {
+    pub fn for_kind(kind: PaneKind) -> Self {
+        let spec = pane_spec(kind);
         Self {
-            kind: PaneKind::Empty,
-            width: PANE_DEFAULT_WIDTH,
-            height: PANE_DEFAULT_HEIGHT,
-            singleton: false,
-        }
-    }
-
-    pub const fn autopilot_chat() -> Self {
-        Self {
-            kind: PaneKind::AutopilotChat,
-            width: CHAT_PANE_WIDTH,
-            height: CHAT_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn go_online() -> Self {
-        Self {
-            kind: PaneKind::GoOnline,
-            width: GO_ONLINE_PANE_WIDTH,
-            height: GO_ONLINE_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn provider_status() -> Self {
-        Self {
-            kind: PaneKind::ProviderStatus,
-            width: PROVIDER_STATUS_PANE_WIDTH,
-            height: PROVIDER_STATUS_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn earnings_scoreboard() -> Self {
-        Self {
-            kind: PaneKind::EarningsScoreboard,
-            width: EARNINGS_SCOREBOARD_PANE_WIDTH,
-            height: EARNINGS_SCOREBOARD_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn relay_connections() -> Self {
-        Self {
-            kind: PaneKind::RelayConnections,
-            width: RELAY_CONNECTIONS_PANE_WIDTH,
-            height: RELAY_CONNECTIONS_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn sync_health() -> Self {
-        Self {
-            kind: PaneKind::SyncHealth,
-            width: SYNC_HEALTH_PANE_WIDTH,
-            height: SYNC_HEALTH_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn network_requests() -> Self {
-        Self {
-            kind: PaneKind::NetworkRequests,
-            width: NETWORK_REQUESTS_PANE_WIDTH,
-            height: NETWORK_REQUESTS_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn starter_jobs() -> Self {
-        Self {
-            kind: PaneKind::StarterJobs,
-            width: STARTER_JOBS_PANE_WIDTH,
-            height: STARTER_JOBS_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn activity_feed() -> Self {
-        Self {
-            kind: PaneKind::ActivityFeed,
-            width: ACTIVITY_FEED_PANE_WIDTH,
-            height: ACTIVITY_FEED_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn alerts_recovery() -> Self {
-        Self {
-            kind: PaneKind::AlertsRecovery,
-            width: ALERTS_RECOVERY_PANE_WIDTH,
-            height: ALERTS_RECOVERY_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn settings() -> Self {
-        Self {
-            kind: PaneKind::Settings,
-            width: SETTINGS_PANE_WIDTH,
-            height: SETTINGS_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn job_inbox() -> Self {
-        Self {
-            kind: PaneKind::JobInbox,
-            width: JOB_INBOX_PANE_WIDTH,
-            height: JOB_INBOX_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn active_job() -> Self {
-        Self {
-            kind: PaneKind::ActiveJob,
-            width: ACTIVE_JOB_PANE_WIDTH,
-            height: ACTIVE_JOB_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn job_history() -> Self {
-        Self {
-            kind: PaneKind::JobHistory,
-            width: JOB_HISTORY_PANE_WIDTH,
-            height: JOB_HISTORY_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn nostr_identity() -> Self {
-        Self {
-            kind: PaneKind::NostrIdentity,
-            width: NOSTR_PANE_WIDTH,
-            height: NOSTR_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn spark_wallet() -> Self {
-        Self {
-            kind: PaneKind::SparkWallet,
-            width: SPARK_PANE_WIDTH,
-            height: SPARK_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn create_invoice() -> Self {
-        Self {
-            kind: PaneKind::SparkCreateInvoice,
-            width: CREATE_INVOICE_PANE_WIDTH,
-            height: CREATE_INVOICE_PANE_HEIGHT,
-            singleton: true,
-        }
-    }
-
-    pub const fn pay_invoice() -> Self {
-        Self {
-            kind: PaneKind::SparkPayInvoice,
-            width: PAY_INVOICE_PANE_WIDTH,
-            height: PAY_INVOICE_PANE_HEIGHT,
-            singleton: true,
+            kind,
+            width: spec.default_width,
+            height: spec.default_height,
+            singleton: spec.singleton,
         }
     }
 }
@@ -375,80 +181,8 @@ impl PaneController {
         create_pane(state, descriptor)
     }
 
-    pub fn create_empty(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::empty());
-    }
-
-    pub fn create_autopilot_chat(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::autopilot_chat());
-    }
-
-    pub fn create_go_online(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::go_online());
-    }
-
-    pub fn create_provider_status(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::provider_status());
-    }
-
-    pub fn create_earnings_scoreboard(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::earnings_scoreboard());
-    }
-
-    pub fn create_relay_connections(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::relay_connections());
-    }
-
-    pub fn create_sync_health(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::sync_health());
-    }
-
-    pub fn create_network_requests(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::network_requests());
-    }
-
-    pub fn create_starter_jobs(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::starter_jobs());
-    }
-
-    pub fn create_activity_feed(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::activity_feed());
-    }
-
-    pub fn create_alerts_recovery(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::alerts_recovery());
-    }
-
-    pub fn create_settings(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::settings());
-    }
-
-    pub fn create_job_inbox(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::job_inbox());
-    }
-
-    pub fn create_active_job(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::active_job());
-    }
-
-    pub fn create_job_history(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::job_history());
-    }
-
-    pub fn create_nostr_identity(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::nostr_identity());
-    }
-
-    pub fn create_spark_wallet(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::spark_wallet());
-    }
-
-    pub fn create_create_invoice(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::create_invoice());
-    }
-
-    pub fn create_pay_invoice(state: &mut RenderState) {
-        let _ = Self::create(state, PaneDescriptor::pay_invoice());
+    pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
+        Self::create(state, PaneDescriptor::for_kind(kind))
     }
 
     pub fn close(state: &mut RenderState, pane_id: u64) {
@@ -2027,26 +1761,10 @@ fn bring_pane_to_front(state: &mut RenderState, pane_id: u64) {
 }
 
 fn pane_title(kind: PaneKind, pane_id: u64) -> String {
+    let title = pane_spec(kind).title;
     match kind {
-        PaneKind::Empty => format!("Pane {pane_id}"),
-        PaneKind::AutopilotChat => "Autopilot Chat".to_string(),
-        PaneKind::GoOnline => "Go Online".to_string(),
-        PaneKind::ProviderStatus => "Provider Status".to_string(),
-        PaneKind::EarningsScoreboard => "Earnings Scoreboard".to_string(),
-        PaneKind::RelayConnections => "Relay Connections".to_string(),
-        PaneKind::SyncHealth => "Sync Health".to_string(),
-        PaneKind::NetworkRequests => "Network Requests".to_string(),
-        PaneKind::StarterJobs => "Starter Jobs".to_string(),
-        PaneKind::ActivityFeed => "Activity Feed".to_string(),
-        PaneKind::AlertsRecovery => "Alerts and Recovery".to_string(),
-        PaneKind::Settings => "Settings".to_string(),
-        PaneKind::JobInbox => "Job Inbox".to_string(),
-        PaneKind::ActiveJob => "Active Job".to_string(),
-        PaneKind::JobHistory => "Job History".to_string(),
-        PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
-        PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
-        PaneKind::SparkCreateInvoice => "Create Lightning Invoice".to_string(),
-        PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
+        PaneKind::Empty => format!("{title} {pane_id}"),
+        _ => title.to_string(),
     }
 }
 
