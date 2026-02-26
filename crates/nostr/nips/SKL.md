@@ -2,7 +2,7 @@
 
 `draft` `optional`
 
-## Agent Skill Identity, Manifest, and Trust Registry
+## Skill Registry
 
 ## Abstract
 
