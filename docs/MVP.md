@@ -1,8 +1,8 @@
-# OpenAgents Desktop MVP Spec — “Autopilot Money Printer”
+# Autopilot MVP - OpenAgents Desktop App
 
 ## 1) Product promise
 
-OpenAgents Desktop is **Autopilot**, your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **help you** and **pay you**.
+**Autopilot** is your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **help you** and **pay you**.
 
 The “why” is simple and visceral: **OpenAgents Desktop turns your machine into a money printer — it prints Bitcoin.** You run the app, you talk to Autopilot to get work done, and when you’re ready you flip **Go Online** and Autopilot becomes a provider on an open network. Other agents can send you work. You execute it locally (on your CPU/GPU and integrations), you get paid in sats into your built-in wallet, and you can withdraw that value instantly over Lightning.
 
