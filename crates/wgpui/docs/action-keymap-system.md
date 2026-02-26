@@ -1,5 +1,8 @@
 # Action and Keymap System
 
+Last verified: 2026-02-26  
+Owner lane: `owner:runtime`
+
 This document is the comprehensive reference for the action and keymap system
 added to WGPUI. It covers action definition, keystroke parsing, keymap resolution,
 key contexts, dispatch integration, and the fluent Interactive API.
@@ -10,7 +13,7 @@ The action/keymap system spans these modules:
 
 **Action module** (`crates/wgpui/src/action/`):
 - `mod.rs` - Module exports and documentation
-- `action.rs` - Core `Action` trait and `AnyAction` type erasure
+- `core.rs` - Core `Action` trait and `AnyAction` type erasure
 - `keystroke.rs` - `Keystroke` parsing from strings like "cmd-shift-s"
 - `binding.rs` - `KeyBinding` connecting keystrokes to actions
 - `registry.rs` - `ActionRegistry` for name lookups and default bindings
@@ -21,7 +24,7 @@ The action/keymap system spans these modules:
 **Keymap module** (`crates/wgpui/src/keymap/`):
 - `mod.rs` - Module exports
 - `context.rs` - `KeyContext` stack for scoped bindings
-- `keymap.rs` - `Keymap` with precedence-based resolution
+- `core.rs` - `Keymap` with precedence-based resolution
 - `defaults.rs` - Default keybindings (cmd-s for Save, etc.)
 
 **Interactive module** (`crates/wgpui/src/interactive.rs`):

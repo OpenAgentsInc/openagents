@@ -1,9 +1,15 @@
 # Phase 1 foundation system
 
+Last verified: 2026-02-26  
+Owner lane: `owner:runtime`
+
 This document is the comprehensive reference for the Phase 1 foundation system
 added to WGPUI for directive d-025. It covers the entity system, element
 lifecycle, window abstraction, styled DSL, and async task support, plus how they
 fit together.
+
+Scope note: this describes the optional framework lane (`app`/`element`/`window`).
+The current desktop MVP app does not yet use this lane as its default UI model.
 
 ## Scope and source files
 
@@ -14,20 +20,20 @@ Phase 1 spans these modules:
 - `crates/wgpui/src/app/app_context.rs`
 - `crates/wgpui/src/app/subscription.rs`
 - `crates/wgpui/src/element/mod.rs`
-- `crates/wgpui/src/element/element.rs`
+- `crates/wgpui/src/element/core.rs`
 - `crates/wgpui/src/element/into_element.rs`
 - `crates/wgpui/src/element/render.rs`
 - `crates/wgpui/src/element/any_element.rs`
 - `crates/wgpui/src/element/drawable.rs`
 - `crates/wgpui/src/window/mod.rs`
-- `crates/wgpui/src/window/window.rs`
+- `crates/wgpui/src/window/core.rs`
 - `crates/wgpui/src/window/window_handle.rs`
 - `crates/wgpui/src/window/invalidator.rs`
 - `crates/wgpui/src/window/dispatch.rs`
 - `crates/wgpui/src/styled/mod.rs`
 - `crates/wgpui/src/styled/style.rs`
 - `crates/wgpui/src/styled/refinement.rs`
-- `crates/wgpui/src/styled/styled.rs`
+- `crates/wgpui/src/styled/core.rs`
 - `crates/wgpui/src/styled/helpers.rs`
 - `crates/wgpui/src/async/mod.rs`
 - `crates/wgpui/src/async/task.rs`

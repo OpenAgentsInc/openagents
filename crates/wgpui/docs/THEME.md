@@ -1,5 +1,8 @@
 # wgpui Theme System
 
+Last verified: 2026-02-26  
+Owner lane: `owner:runtime`
+
 The theme system provides centralized color management for the entire UI. All colors must go through the theme system to ensure consistency and enable future theme switching.
 
 ## Quick Start
@@ -91,14 +94,13 @@ If you need a color not in the theme, add it to the `ThemeColors` struct:
 3. Add the color value in `crates/wgpui/src/theme/themes/midnight.rs`
 4. Update backwards-compat aliases if needed
 
-## Pre-commit Hook
+## Enforcement Policy
 
-A pre-commit hook enforces that all colors go through the theme system:
+There is no mandatory pre-commit hook in this pruned MVP repo. Contributors are
+still expected to keep hardcoded colors out of normal component paths:
 
 - **Blocked**: `Hsla::new(0.0, 0.0, 0.5, 1.0)` (hardcoded)
 - **Allowed**: `theme().colors.text` (through theme)
-
-The hook will reject commits with hardcoded colors and show how to fix them.
 
 ### Allowed Locations
 

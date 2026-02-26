@@ -1,19 +1,30 @@
-# wgpui docs
+# wgpui Docs
 
-This folder holds detailed documentation for the WGPUI foundation and subsystems.
+Last verified: 2026-02-26  
+Owner lane: `owner:runtime`
+
+This folder contains subsystem documentation for the current `wgpui` crate in
+this MVP-pruned repository.
 
 ## Index
 
-### Core Architecture
-- [Phase 1 Foundation](phase1-foundation.md) - Core architecture, entities, elements, and windows
+- [Rendering Pipelines](rendering-pipelines.md)
+  GPU pipeline architecture for quads, lines, text, and images.
+- [Layer System](layer-system.md)
+  Scene layer ordering and overlay behavior.
+- [Text Rendering Coordinate System](text-rendering-coordinate-system.md)
+  Logical/physical pixel flow and scaling invariants.
+- [Action and Keymap System](action-keymap-system.md)
+  Action dispatch, keybindings, and context resolution.
+- [Theme System](THEME.md)
+  Theme token usage and extension guidance.
+- [Phase 1 Foundation](phase1-foundation.md)
+  `app` / `element` / `window` framework lane internals.
+- [Tool Call Card Progress](tool-call-card-progress.md)
+  Targeted component progress notes.
 
-### Rendering
-- [Rendering Pipelines](rendering-pipelines.md) - GPU pipelines for quads, lines, text, and images
-- [Layer System](layer-system.md) - Z-ordering for overlays and modals
-- [Text Rendering](text-rendering-coordinate-system.md) - Coordinate system for text
+## Scope Note
 
-### Input & Interaction
-- [Action and Keymap System](action-keymap-system.md) - Keyboard handling and actions
-
-### Styling
-- [Theme System](THEME.md) - Colors and theming
+The desktop MVP app currently uses `wgpui` primarily through component + scene
+surfaces. The framework lane (`app`, `element`, `window`) remains available but
+is not yet the canonical default for `apps/autopilot-desktop`.
