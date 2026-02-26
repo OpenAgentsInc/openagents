@@ -126,6 +126,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
+            job_inbox: crate::app_state::JobInboxState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -172,6 +173,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.autopilot_chat,
             &state.provider_runtime,
             provider_blockers.as_slice(),
+            &state.job_inbox,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -251,6 +253,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.provider_status", "Provider Status")
             .description("Open runtime health and heartbeat visibility pane")
             .category("Panes"),
+        Command::new("pane.job_inbox", "Job Inbox")
+            .description("Open incoming NIP-90 request intake pane")
+            .category("Panes"),
         Command::new("pane.identity_keys", "Identity Keys")
             .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")
@@ -263,4 +268,19 @@ fn command_registry() -> Vec<Command> {
             .description("Open dedicated pane for paying Lightning invoices")
             .category("Panes"),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command_registry;
+
+    #[test]
+    fn command_registry_includes_job_inbox_command() {
+        let commands = command_registry();
+        assert!(
+            commands
+                .iter()
+                .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" })
+        );
+    }
 }

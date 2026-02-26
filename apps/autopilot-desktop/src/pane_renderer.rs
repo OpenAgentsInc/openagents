@@ -1,13 +1,14 @@
 use crate::app_state::{
     AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, DesktopPane,
-    NostrSecretState, PaneKind, PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState,
-    SparkPaneInputs,
+    JobInboxState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
+    ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, chat_composer_input_bounds, chat_send_button_bounds,
     chat_thread_rail_bounds, chat_transcript_bounds, go_online_toggle_button_bounds,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds,
+    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+    job_inbox_visible_row_count, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+    nostr_reveal_button_bounds, pane_content_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -29,6 +30,7 @@ impl PaneRenderer {
         autopilot_chat: &AutopilotChatState,
         provider_runtime: &ProviderRuntimeState,
         provider_blockers: &[ProviderBlocker],
+        job_inbox: &JobInboxState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -81,6 +83,9 @@ impl PaneRenderer {
                         provider_blockers,
                         paint,
                     );
+                }
+                PaneKind::JobInbox => {
+                    paint_job_inbox_pane(content_bounds, job_inbox, paint);
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
@@ -534,6 +539,146 @@ fn paint_nostr_identity_pane(
             y,
             "Identity error",
             error,
+        );
+    }
+}
+
+fn paint_job_inbox_pane(
+    content_bounds: Bounds,
+    job_inbox: &JobInboxState,
+    paint: &mut PaintContext,
+) {
+    let accept_bounds = job_inbox_accept_button_bounds(content_bounds);
+    let reject_bounds = job_inbox_reject_button_bounds(content_bounds);
+    paint_action_button(accept_bounds, "Accept selected", paint);
+    paint_action_button(reject_bounds, "Reject selected", paint);
+
+    let state_color = match job_inbox.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = accept_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", job_inbox.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(message) = job_inbox.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            message,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
+    y += 16.0;
+
+    if let Some(error) = job_inbox.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    match job_inbox.load_state {
+        PaneLoadState::Loading => {
+            paint.scene.draw_text(paint.text.layout(
+                "Waiting for deterministic replay cursor...",
+                Point::new(content_bounds.origin.x + 12.0, y),
+                11.0,
+                theme::text::MUTED,
+            ));
+            return;
+        }
+        PaneLoadState::Error | PaneLoadState::Ready => {}
+    }
+
+    let visible_rows = job_inbox_visible_row_count(job_inbox.requests.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No requests in inbox.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let request = &job_inbox.requests[row_index];
+        let row_bounds = job_inbox_row_bounds(content_bounds, row_index);
+        let selected =
+            job_inbox.selected_request_id.as_deref() == Some(request.request_id.as_str());
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::accent::PRIMARY.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(4.0),
+        );
+
+        let status_color = match request.validation {
+            crate::app_state::JobInboxValidation::Valid => theme::status::SUCCESS,
+            crate::app_state::JobInboxValidation::Pending => theme::accent::PRIMARY,
+            crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
+        };
+        let summary = format!(
+            "#{} {} {} {} sats ttl:{}s {} {}",
+            request.arrival_seq,
+            request.request_id,
+            request.capability,
+            request.price_sats,
+            request.ttl_seconds,
+            request.validation.label(),
+            request.decision.label()
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &summary,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected {
+                theme::text::PRIMARY
+            } else {
+                status_color
+            },
+        ));
+    }
+
+    if let Some(selected) = job_inbox.selected_request() {
+        let details_y = job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
+        let x = content_bounds.origin.x + 12.0;
+        let mut line_y = details_y;
+        line_y = paint_label_line(paint, x, line_y, "Selected requester", &selected.requester);
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Selected request id",
+            &selected.request_id,
+        );
+        let _ = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Decision",
+            &selected.decision.label(),
         );
     }
 }

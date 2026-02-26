@@ -13,10 +13,11 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    PaneController, PaneInput, dispatch_chat_input_event, dispatch_pay_invoice_input_event,
-    dispatch_spark_input_event, topmost_chat_send_hit, topmost_go_online_toggle_hit,
-    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
-    topmost_pay_invoice_action_hit, topmost_spark_action_hit,
+    JobInboxPaneAction, PaneController, PaneInput, dispatch_chat_input_event,
+    dispatch_pay_invoice_input_event, dispatch_spark_input_event, topmost_chat_send_hit,
+    topmost_go_online_toggle_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
+    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
+    topmost_spark_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
@@ -25,6 +26,7 @@ use crate::spark_wallet::SparkWalletCommand;
 const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
 const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
+const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
 const COMMAND_OPEN_WALLET: &str = "pane.wallet";
 const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
@@ -224,6 +226,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_pay_invoice_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
+                    handled |= handle_job_inbox_action_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -415,6 +418,15 @@ fn handle_go_online_toggle_click(state: &mut crate::app_state::RenderState, poin
     true
 }
 
+fn handle_job_inbox_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some((pane_id, action)) = topmost_job_inbox_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_job_inbox_action(state, action)
+}
+
 fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -526,6 +538,59 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
         .autopilot_chat
         .submit_prompt(std::time::Instant::now(), prompt);
     true
+}
+
+fn run_job_inbox_action(
+    state: &mut crate::app_state::RenderState,
+    action: JobInboxPaneAction,
+) -> bool {
+    match action {
+        JobInboxPaneAction::SelectRow(index) => {
+            if !state.job_inbox.select_by_index(index) {
+                state.job_inbox.last_error = Some("Request row out of range".to_string());
+                state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
+            } else {
+                state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
+            }
+            true
+        }
+        JobInboxPaneAction::AcceptSelected => {
+            match state
+                .job_inbox
+                .decide_selected(true, "validated + queued for runtime")
+            {
+                Ok(request_id) => {
+                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.provider_runtime.queue_depth =
+                        state.provider_runtime.queue_depth.saturating_add(1);
+                    state.provider_runtime.last_result =
+                        Some(format!("runtime accepted request {request_id}"));
+                }
+                Err(error) => {
+                    state.job_inbox.last_error = Some(error);
+                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        JobInboxPaneAction::RejectSelected => {
+            match state
+                .job_inbox
+                .decide_selected(false, "failed policy preflight")
+            {
+                Ok(request_id) => {
+                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.provider_runtime.last_result =
+                        Some(format!("runtime rejected request {request_id}"));
+                }
+                Err(error) => {
+                    state.job_inbox.last_error = Some(error);
+                    state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+    }
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
@@ -780,6 +845,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_PROVIDER_STATUS => {
                 PaneController::create_provider_status(state);
+                changed = true;
+            }
+            COMMAND_OPEN_JOB_INBOX => {
+                PaneController::create_job_inbox(state);
                 changed = true;
             }
             COMMAND_OPEN_IDENTITY_KEYS => {

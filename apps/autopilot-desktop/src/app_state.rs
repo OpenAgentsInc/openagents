@@ -35,6 +35,7 @@ pub enum PaneKind {
     AutopilotChat,
     GoOnline,
     ProviderStatus,
+    JobInbox,
     NostrIdentity,
     SparkWallet,
     SparkPayInvoice,
@@ -263,6 +264,224 @@ pub enum ProviderBlocker {
     WalletError,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneLoadState {
+    Loading,
+    Ready,
+    Error,
+}
+
+impl PaneLoadState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Loading => "loading",
+            Self::Ready => "ready",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum JobInboxValidation {
+    Valid,
+    Pending,
+    Invalid(String),
+}
+
+impl JobInboxValidation {
+    pub fn label(&self) -> String {
+        match self {
+            Self::Valid => "valid".to_string(),
+            Self::Pending => "pending".to_string(),
+            Self::Invalid(reason) => format!("invalid ({reason})"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum JobInboxDecision {
+    Pending,
+    Accepted { reason: String },
+    Rejected { reason: String },
+}
+
+impl JobInboxDecision {
+    pub fn label(&self) -> String {
+        match self {
+            Self::Pending => "pending".to_string(),
+            Self::Accepted { reason } => format!("accepted ({reason})"),
+            Self::Rejected { reason } => format!("rejected ({reason})"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobInboxRequest {
+    pub request_id: String,
+    pub requester: String,
+    pub capability: String,
+    pub price_sats: u64,
+    pub ttl_seconds: u64,
+    pub validation: JobInboxValidation,
+    pub arrival_seq: u64,
+    pub decision: JobInboxDecision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobInboxNetworkRequest {
+    pub request_id: String,
+    pub requester: String,
+    pub capability: String,
+    pub price_sats: u64,
+    pub ttl_seconds: u64,
+    pub validation: JobInboxValidation,
+}
+
+pub struct JobInboxState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub requests: Vec<JobInboxRequest>,
+    pub selected_request_id: Option<String>,
+    next_arrival_seq: u64,
+}
+
+impl Default for JobInboxState {
+    fn default() -> Self {
+        let mut state = Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Inbox synced from deterministic replay lane".to_string()),
+            requests: Vec::new(),
+            selected_request_id: None,
+            next_arrival_seq: 1,
+        };
+
+        state.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-7f3d".to_string(),
+            requester: "npub1alpha...2kz".to_string(),
+            capability: "summarize.pdf".to_string(),
+            price_sats: 2400,
+            ttl_seconds: 900,
+            validation: JobInboxValidation::Valid,
+        });
+        state.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-a19c".to_string(),
+            requester: "npub1beta...m4r".to_string(),
+            capability: "classify.image".to_string(),
+            price_sats: 1300,
+            ttl_seconds: 600,
+            validation: JobInboxValidation::Pending,
+        });
+        state.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-c332".to_string(),
+            requester: "npub1gamma...9vt".to_string(),
+            capability: "invoice.parse".to_string(),
+            price_sats: 700,
+            ttl_seconds: 420,
+            validation: JobInboxValidation::Invalid("signature mismatch".to_string()),
+        });
+        state.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-7f3d".to_string(),
+            requester: "npub1alpha...2kz".to_string(),
+            capability: "summarize.pdf".to_string(),
+            price_sats: 2400,
+            ttl_seconds: 900,
+            validation: JobInboxValidation::Valid,
+        });
+        state.selected_request_id = state
+            .requests
+            .first()
+            .map(|request| request.request_id.clone());
+        state.load_state = PaneLoadState::Ready;
+        state
+    }
+}
+
+impl JobInboxState {
+    pub fn upsert_network_request(&mut self, request: JobInboxNetworkRequest) {
+        if let Some(existing) = self
+            .requests
+            .iter_mut()
+            .find(|existing| existing.request_id == request.request_id)
+        {
+            existing.requester = request.requester;
+            existing.capability = request.capability;
+            existing.price_sats = request.price_sats;
+            existing.ttl_seconds = request.ttl_seconds;
+            existing.validation = request.validation;
+            return;
+        }
+
+        let arrival_seq = self.next_arrival_seq;
+        self.next_arrival_seq = self.next_arrival_seq.saturating_add(1);
+        self.requests.push(JobInboxRequest {
+            request_id: request.request_id,
+            requester: request.requester,
+            capability: request.capability,
+            price_sats: request.price_sats,
+            ttl_seconds: request.ttl_seconds,
+            validation: request.validation,
+            arrival_seq,
+            decision: JobInboxDecision::Pending,
+        });
+        self.requests.sort_by_key(|request| request.arrival_seq);
+    }
+
+    pub fn select_by_index(&mut self, index: usize) -> bool {
+        let Some(request_id) = self
+            .requests
+            .get(index)
+            .map(|request| request.request_id.clone())
+        else {
+            return false;
+        };
+        self.selected_request_id = Some(request_id);
+        self.last_error = None;
+        true
+    }
+
+    pub fn selected_request(&self) -> Option<&JobInboxRequest> {
+        let selected_id = self.selected_request_id.as_deref()?;
+        self.requests
+            .iter()
+            .find(|request| request.request_id == selected_id)
+    }
+
+    pub fn decide_selected(&mut self, accepted: bool, reason: &str) -> Result<String, String> {
+        let selected_id = self
+            .selected_request_id
+            .as_deref()
+            .ok_or_else(|| "Select a request first".to_string())?
+            .to_string();
+        let Some(request) = self
+            .requests
+            .iter_mut()
+            .find(|request| request.request_id == selected_id)
+        else {
+            return Err("Selected request no longer exists".to_string());
+        };
+
+        let decision_reason = reason.trim().to_string();
+        request.decision = if accepted {
+            JobInboxDecision::Accepted {
+                reason: decision_reason.clone(),
+            }
+        } else {
+            JobInboxDecision::Rejected {
+                reason: decision_reason.clone(),
+            }
+        };
+        self.last_error = None;
+        self.last_action = Some(if accepted {
+            format!("Accepted {} ({decision_reason})", request.request_id)
+        } else {
+            format!("Rejected {} ({decision_reason})", request.request_id)
+        });
+        Ok(request.request_id.clone())
+    }
+}
+
 impl ProviderBlocker {
     pub const fn code(self) -> &'static str {
         match self {
@@ -484,6 +703,7 @@ pub struct RenderState {
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
     pub provider_runtime: ProviderRuntimeState,
+    pub job_inbox: JobInboxState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -509,8 +729,9 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AutopilotChatState, AutopilotMessageStatus, NostrSecretState, ProviderBlocker,
-        ProviderMode, ProviderRuntimeState,
+        AutopilotChatState, AutopilotMessageStatus, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, NostrSecretState, ProviderBlocker, ProviderMode,
+        ProviderRuntimeState,
     };
 
     #[test]
@@ -583,5 +804,61 @@ mod tests {
 
         assert!(chat.tick(now + std::time::Duration::from_secs(2)));
         assert!(!chat.has_pending_messages());
+    }
+
+    #[test]
+    fn job_inbox_upsert_collapses_duplicate_request_ids() {
+        let mut inbox = JobInboxState::default();
+        inbox.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-dup".to_string(),
+            requester: "npub1dup".to_string(),
+            capability: "cap.one".to_string(),
+            price_sats: 11,
+            ttl_seconds: 60,
+            validation: JobInboxValidation::Pending,
+        });
+        inbox.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-dup".to_string(),
+            requester: "npub1dup".to_string(),
+            capability: "cap.one".to_string(),
+            price_sats: 22,
+            ttl_seconds: 120,
+            validation: JobInboxValidation::Valid,
+        });
+
+        let duplicates = inbox
+            .requests
+            .iter()
+            .filter(|request| request.request_id == "req-dup")
+            .count();
+        assert_eq!(duplicates, 1);
+        let request = inbox
+            .requests
+            .iter()
+            .find(|request| request.request_id == "req-dup")
+            .expect("request should exist");
+        assert_eq!(request.price_sats, 22);
+        assert_eq!(request.ttl_seconds, 120);
+    }
+
+    #[test]
+    fn job_inbox_accept_updates_selected_request_decision() {
+        let mut inbox = JobInboxState::default();
+        assert!(inbox.select_by_index(0));
+        let request_id = inbox
+            .selected_request()
+            .expect("selection should exist")
+            .request_id
+            .clone();
+
+        let decided = inbox
+            .decide_selected(true, "valid + priced")
+            .expect("decision should succeed");
+        assert_eq!(decided, request_id);
+        let selected = inbox.selected_request().expect("selected request remains");
+        assert!(matches!(
+            selected.decision,
+            JobInboxDecision::Accepted { ref reason } if reason == "valid + priced"
+        ));
     }
 }

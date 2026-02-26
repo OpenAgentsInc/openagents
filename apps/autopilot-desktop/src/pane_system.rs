@@ -18,6 +18,8 @@ const GO_ONLINE_PANE_WIDTH: f32 = 560.0;
 const GO_ONLINE_PANE_HEIGHT: f32 = 300.0;
 const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
 const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
+const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
+const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const NOSTR_PANE_WIDTH: f32 = 760.0;
 const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
@@ -31,10 +33,22 @@ const CHAT_PAD: f32 = 12.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
 const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
 const CHAT_SEND_WIDTH: f32 = 92.0;
+const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
+const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
+const JOB_INBOX_ROW_GAP: f32 = 6.0;
+const JOB_INBOX_ROW_HEIGHT: f32 = 30.0;
+const JOB_INBOX_MAX_ROWS: usize = 8;
 
 pub struct PaneController;
 
 pub struct PaneInput;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobInboxPaneAction {
+    AcceptSelected,
+    RejectSelected,
+    SelectRow(usize),
+}
 
 #[derive(Clone, Copy)]
 pub struct PaneDescriptor {
@@ -77,6 +91,15 @@ impl PaneDescriptor {
             kind: PaneKind::ProviderStatus,
             width: PROVIDER_STATUS_PANE_WIDTH,
             height: PROVIDER_STATUS_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn job_inbox() -> Self {
+        Self {
+            kind: PaneKind::JobInbox,
+            width: JOB_INBOX_PANE_WIDTH,
+            height: JOB_INBOX_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -171,6 +194,10 @@ impl PaneController {
 
     pub fn create_provider_status(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::provider_status());
+    }
+
+    pub fn create_job_inbox(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::job_inbox());
     }
 
     pub fn create_nostr_identity(state: &mut RenderState) {
@@ -430,6 +457,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::JobInbox {
+            if topmost_job_inbox_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
             let content_bounds = pane_content_bounds(bounds);
             let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
@@ -528,6 +561,41 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
         width,
         34.0,
     )
+}
+
+pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let button_width = content_bounds.size.width.min(196.0).max(144.0);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        button_width,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn job_inbox_reject_button_bounds(content_bounds: Bounds) -> Bounds {
+    let accept = job_inbox_accept_button_bounds(content_bounds);
+    Bounds::new(
+        accept.max_x() + JOB_INBOX_BUTTON_GAP,
+        accept.origin.y,
+        accept.size.width,
+        accept.size.height,
+    )
+}
+
+pub fn job_inbox_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(JOB_INBOX_MAX_ROWS.saturating_sub(1));
+    let top = content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (JOB_INBOX_ROW_HEIGHT + JOB_INBOX_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        JOB_INBOX_ROW_HEIGHT,
+    )
+}
+
+pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
+    request_count.min(JOB_INBOX_MAX_ROWS)
 }
 
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -645,6 +713,35 @@ pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option
         let content_bounds = pane_content_bounds(pane.bounds);
         if go_online_toggle_button_bounds(content_bounds).contains(point) {
             return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_job_inbox_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, JobInboxPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::JobInbox {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if job_inbox_accept_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobInboxPaneAction::AcceptSelected));
+        }
+        if job_inbox_reject_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, JobInboxPaneAction::RejectSelected));
+        }
+
+        let visible_rows = job_inbox_visible_row_count(state.job_inbox.requests.len());
+        for row_index in 0..visible_rows {
+            if job_inbox_row_bounds(content_bounds, row_index).contains(point) {
+                return Some((pane.id, JobInboxPaneAction::SelectRow(row_index)));
+            }
         }
     }
 
@@ -800,6 +897,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::AutopilotChat => "Autopilot Chat".to_string(),
         PaneKind::GoOnline => "Go Online".to_string(),
         PaneKind::ProviderStatus => "Provider Status".to_string(),
+        PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
         PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
@@ -845,7 +943,8 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 mod tests {
     use super::{
         chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
-        chat_transcript_bounds, go_online_toggle_button_bounds, nostr_copy_secret_button_bounds,
+        chat_transcript_bounds, go_online_toggle_button_bounds, job_inbox_accept_button_bounds,
+        job_inbox_reject_button_bounds, job_inbox_row_bounds, nostr_copy_secret_button_bounds,
         nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
     };
     use wgpui::Bounds;
@@ -895,5 +994,18 @@ mod tests {
         assert!(content.contains(toggle.origin));
         assert!(toggle.max_x() <= content.max_x());
         assert!(toggle.max_y() <= content.max_y());
+    }
+
+    #[test]
+    fn job_inbox_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let accept = job_inbox_accept_button_bounds(content);
+        let reject = job_inbox_reject_button_bounds(content);
+        let row0 = job_inbox_row_bounds(content, 0);
+        let row1 = job_inbox_row_bounds(content, 1);
+
+        assert!(accept.max_x() < reject.min_x());
+        assert!(accept.max_y() < row0.min_y());
+        assert!(row0.max_y() < row1.min_y());
     }
 }
