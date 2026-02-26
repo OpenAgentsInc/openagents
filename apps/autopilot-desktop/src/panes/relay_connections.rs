@@ -5,7 +5,7 @@ use crate::pane_renderer::{
     paint_action_button, paint_selectable_row_background, paint_source_badge, paint_state_summary,
 };
 use crate::pane_system::{
-    RelayConnectionsPaneAction, pane_content_bounds, relay_connections_add_button_bounds,
+    pane_content_bounds, relay_connections_add_button_bounds,
     relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
     relay_connections_row_bounds, relay_connections_url_input_bounds,
     relay_connections_visible_row_count,
@@ -118,41 +118,6 @@ pub fn paint(
             theme::text::MUTED,
         ));
     }
-}
-
-pub fn topmost_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, RelayConnectionsPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::RelayConnections {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if relay_connections_add_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::AddRelay));
-        }
-        if relay_connections_remove_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::RemoveSelected));
-        }
-        if relay_connections_retry_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, RelayConnectionsPaneAction::RetrySelected));
-        }
-
-        let visible_rows =
-            relay_connections_visible_row_count(state.relay_connections.relays.len());
-        for row_index in 0..visible_rows {
-            if relay_connections_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, RelayConnectionsPaneAction::SelectRow(row_index)));
-            }
-        }
-    }
-
-    None
 }
 
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

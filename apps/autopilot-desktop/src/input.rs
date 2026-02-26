@@ -16,21 +16,13 @@ use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AlertsRecoveryPaneAction,
     EarningsScoreboardPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction, PaneController,
-    PaneInput, RelayConnectionsPaneAction, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_active_job_action_hit_in_order,
-    topmost_activity_feed_action_hit_in_order, topmost_alerts_recovery_action_hit_in_order,
-    topmost_chat_send_hit_in_order, topmost_create_invoice_action_hit_in_order,
-    topmost_earnings_scoreboard_action_hit_in_order, topmost_go_online_toggle_hit_in_order,
-    topmost_job_history_action_hit_in_order, topmost_job_inbox_action_hit_in_order,
-    topmost_network_requests_action_hit_in_order, topmost_nostr_copy_secret_hit_in_order,
-    topmost_nostr_regenerate_hit_in_order, topmost_nostr_reveal_hit_in_order,
-    topmost_pay_invoice_action_hit_in_order, topmost_relay_connections_action_hit_in_order,
-    topmost_settings_action_hit_in_order, topmost_spark_action_hit_in_order,
-    topmost_starter_jobs_action_hit_in_order, topmost_sync_health_action_hit_in_order,
+    PaneHitAction, PaneInput, RelayConnectionsPaneAction, SettingsPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
+    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_settings_input_event,
+    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
+    topmost_pane_hit_action_in_order,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -335,33 +327,21 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
 fn dispatch_pane_actions(state: &mut crate::app_state::RenderState, point: Point) -> bool {
     let sort_count_before = pane_z_sort_invocation_count();
     let pane_order = pane_indices_by_z_desc(state);
-    let pane_order = pane_order.as_slice();
+    let Some((pane_id, action)) =
+        topmost_pane_hit_action_in_order(state, point, pane_order.as_slice())
+    else {
+        return false;
+    };
 
-    let mut handled = handle_nostr_regenerate_click(state, point, pane_order);
-    handled |= handle_nostr_reveal_click(state, point, pane_order);
-    handled |= handle_nostr_copy_click(state, point, pane_order);
-    handled |= handle_spark_action_click(state, point, pane_order);
-    handled |= handle_pay_invoice_action_click(state, point, pane_order);
-    handled |= handle_create_invoice_action_click(state, point, pane_order);
-    handled |= handle_relay_connections_action_click(state, point, pane_order);
-    handled |= handle_sync_health_action_click(state, point, pane_order);
-    handled |= handle_network_requests_action_click(state, point, pane_order);
-    handled |= handle_starter_jobs_action_click(state, point, pane_order);
-    handled |= handle_activity_feed_action_click(state, point, pane_order);
-    handled |= handle_alerts_recovery_action_click(state, point, pane_order);
-    handled |= handle_settings_action_click(state, point, pane_order);
-    handled |= handle_chat_send_click(state, point, pane_order);
-    handled |= handle_go_online_toggle_click(state, point, pane_order);
-    handled |= handle_earnings_scoreboard_action_click(state, point, pane_order);
-    handled |= handle_job_inbox_action_click(state, point, pane_order);
-    handled |= handle_active_job_action_click(state, point, pane_order);
-    handled |= handle_job_history_action_click(state, point, pane_order);
+    PaneController::bring_to_front(state, pane_id);
+    let handled = run_pane_hit_action(state, action);
 
     let sort_delta = pane_z_sort_invocation_count().saturating_sub(sort_count_before);
     debug_assert!(
         sort_delta <= 1,
         "pane action dispatch sorted z-order {sort_delta} times"
     );
+
     handled
 }
 
@@ -379,307 +359,71 @@ fn dispatch_keyboard_submit_actions(
         || handle_job_history_keyboard_input(state, logical_key)
 }
 
-fn handle_nostr_regenerate_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some(pane_id) = topmost_nostr_regenerate_hit_in_order(state, point, pane_order) else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    match regenerate_identity() {
-        Ok(identity) => {
-            state.nostr_identity = Some(identity);
-            state.nostr_identity_error = None;
-            state.nostr_secret_state.revealed_until = None;
-            state.nostr_secret_state.set_copy_notice(
-                std::time::Instant::now(),
-                "Identity regenerated. Secrets are hidden by default.".to_string(),
-            );
-            queue_spark_command(state, SparkWalletCommand::Refresh);
+fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHitAction) -> bool {
+    match action {
+        PaneHitAction::NostrRegenerate => {
+            match regenerate_identity() {
+                Ok(identity) => {
+                    state.nostr_identity = Some(identity);
+                    state.nostr_identity_error = None;
+                    state.nostr_secret_state.revealed_until = None;
+                    state.nostr_secret_state.set_copy_notice(
+                        std::time::Instant::now(),
+                        "Identity regenerated. Secrets are hidden by default.".to_string(),
+                    );
+                    queue_spark_command(state, SparkWalletCommand::Refresh);
+                }
+                Err(err) => {
+                    state.nostr_identity_error = Some(err.to_string());
+                }
+            }
+            true
         }
-        Err(err) => {
-            state.nostr_identity_error = Some(err.to_string());
+        PaneHitAction::NostrReveal => {
+            state
+                .nostr_secret_state
+                .toggle_reveal(std::time::Instant::now());
+            true
         }
+        PaneHitAction::NostrCopySecret => {
+            let now = std::time::Instant::now();
+            let notice = if let Some(identity) = state.nostr_identity.as_ref() {
+                match copy_to_clipboard(&identity.nsec) {
+                    Ok(()) => "Copied nsec to clipboard. Treat it like a password.".to_string(),
+                    Err(error) => format!("Failed to copy nsec: {error}"),
+                }
+            } else {
+                "No Nostr identity loaded. Regenerate keys first.".to_string()
+            };
+            state.nostr_secret_state.set_copy_notice(now, notice);
+            true
+        }
+        PaneHitAction::ChatSend => run_chat_submit_action(state),
+        PaneHitAction::GoOnlineToggle => {
+            if state.provider_runtime.mode == ProviderMode::Offline {
+                queue_spark_command(state, SparkWalletCommand::Refresh);
+            }
+            let blockers = state.provider_blockers();
+            state
+                .provider_runtime
+                .toggle_online(std::time::Instant::now(), blockers.as_slice());
+            true
+        }
+        PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
+        PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
+        PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
+        PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
+        PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
+        PaneHitAction::ActivityFeed(action) => run_activity_feed_action(state, action),
+        PaneHitAction::AlertsRecovery(action) => run_alerts_recovery_action(state, action),
+        PaneHitAction::Settings(action) => run_settings_action(state, action),
+        PaneHitAction::JobInbox(action) => run_job_inbox_action(state, action),
+        PaneHitAction::ActiveJob(action) => run_active_job_action(state, action),
+        PaneHitAction::JobHistory(action) => run_job_history_action(state, action),
+        PaneHitAction::Spark(action) => run_spark_action(state, action),
+        PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
+        PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
     }
-    true
-}
-
-fn handle_nostr_reveal_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some(pane_id) = topmost_nostr_reveal_hit_in_order(state, point, pane_order) else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    state
-        .nostr_secret_state
-        .toggle_reveal(std::time::Instant::now());
-    true
-}
-
-fn handle_nostr_copy_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some(pane_id) = topmost_nostr_copy_secret_hit_in_order(state, point, pane_order) else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    let now = std::time::Instant::now();
-    let notice = if let Some(identity) = state.nostr_identity.as_ref() {
-        match copy_to_clipboard(&identity.nsec) {
-            Ok(()) => "Copied nsec to clipboard. Treat it like a password.".to_string(),
-            Err(error) => format!("Failed to copy nsec: {error}"),
-        }
-    } else {
-        "No Nostr identity loaded. Regenerate keys first.".to_string()
-    };
-    state.nostr_secret_state.set_copy_notice(now, notice);
-    true
-}
-
-fn handle_spark_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_spark_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_spark_action(state, action)
-}
-
-fn handle_pay_invoice_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_pay_invoice_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_pay_invoice_action(state, action)
-}
-
-fn handle_create_invoice_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_create_invoice_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_create_invoice_action(state, action)
-}
-
-fn handle_relay_connections_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_relay_connections_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_relay_connections_action(state, action)
-}
-
-fn handle_sync_health_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_sync_health_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_sync_health_action(state, action)
-}
-
-fn handle_network_requests_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_network_requests_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_network_requests_action(state, action)
-}
-
-fn handle_starter_jobs_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_starter_jobs_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_starter_jobs_action(state, action)
-}
-
-fn handle_activity_feed_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_activity_feed_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_activity_feed_action(state, action)
-}
-
-fn handle_alerts_recovery_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_alerts_recovery_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_alerts_recovery_action(state, action)
-}
-
-fn handle_settings_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_settings_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_settings_action(state, action)
-}
-
-fn handle_chat_send_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some(pane_id) = topmost_chat_send_hit_in_order(state, point, pane_order) else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_chat_submit_action(state)
-}
-
-fn handle_go_online_toggle_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some(pane_id) = topmost_go_online_toggle_hit_in_order(state, point, pane_order) else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    if state.provider_runtime.mode == ProviderMode::Offline {
-        queue_spark_command(state, SparkWalletCommand::Refresh);
-    }
-    let blockers = state.provider_blockers();
-    state
-        .provider_runtime
-        .toggle_online(std::time::Instant::now(), blockers.as_slice());
-    true
-}
-
-fn handle_earnings_scoreboard_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) =
-        topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_earnings_scoreboard_action(state, action)
-}
-
-fn handle_job_inbox_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_job_inbox_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_job_inbox_action(state, action)
-}
-
-fn handle_active_job_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_active_job_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_active_job_action(state, action)
-}
-
-fn handle_job_history_action_click(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> bool {
-    let Some((pane_id, action)) = topmost_job_history_action_hit_in_order(state, point, pane_order)
-    else {
-        return false;
-    };
-
-    PaneController::bring_to_front(state, pane_id);
-    run_job_history_action(state, action)
 }
 
 fn handle_chat_keyboard_input(

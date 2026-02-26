@@ -117,6 +117,29 @@ pub enum SettingsPaneAction {
     ResetDefaults,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneHitAction {
+    NostrRegenerate,
+    NostrReveal,
+    NostrCopySecret,
+    ChatSend,
+    GoOnlineToggle,
+    EarningsScoreboard(EarningsScoreboardPaneAction),
+    RelayConnections(RelayConnectionsPaneAction),
+    SyncHealth(SyncHealthPaneAction),
+    NetworkRequests(NetworkRequestsPaneAction),
+    StarterJobs(StarterJobsPaneAction),
+    ActivityFeed(ActivityFeedPaneAction),
+    AlertsRecovery(AlertsRecoveryPaneAction),
+    Settings(SettingsPaneAction),
+    JobInbox(JobInboxPaneAction),
+    ActiveJob(ActiveJobPaneAction),
+    JobHistory(JobHistoryPaneAction),
+    Spark(SparkPaneAction),
+    SparkCreateInvoice(CreateInvoicePaneAction),
+    SparkPayInvoice(PayInvoicePaneAction),
+}
+
 #[derive(Clone, Copy)]
 pub struct PaneDescriptor {
     pub kind: PaneKind,
@@ -415,174 +438,75 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             return CursorIcon::Move;
         }
 
-        if state.panes[pane_idx].kind == PaneKind::AutopilotChat {
-            let content_bounds = pane_content_bounds(bounds);
-            let send_bounds = chat_send_button_bounds(content_bounds);
-            let composer_bounds = chat_composer_input_bounds(content_bounds);
-            if send_bounds.contains(point) {
-                return CursorIcon::Pointer;
+        let pane = &state.panes[pane_idx];
+        let content_bounds = pane_content_bounds(bounds);
+
+        match pane.kind {
+            PaneKind::AutopilotChat => {
+                if chat_composer_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
             }
-            if composer_bounds.contains(point) {
-                return CursorIcon::Text;
+            PaneKind::RelayConnections => {
+                if relay_connections_url_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
             }
+            PaneKind::NetworkRequests => {
+                if network_requests_type_input_bounds(content_bounds).contains(point)
+                    || network_requests_payload_input_bounds(content_bounds).contains(point)
+                    || network_requests_budget_input_bounds(content_bounds).contains(point)
+                    || network_requests_timeout_input_bounds(content_bounds).contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::Settings => {
+                if settings_relay_input_bounds(content_bounds).contains(point)
+                    || settings_wallet_default_input_bounds(content_bounds).contains(point)
+                    || settings_provider_queue_input_bounds(content_bounds).contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::JobHistory => {
+                if job_history_search_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::SparkWallet => {
+                let layout = spark_pane::layout(content_bounds);
+                if spark_pane::hits_input(layout, point) {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::SparkCreateInvoice => {
+                let layout = spark_pane::create_invoice_layout(content_bounds);
+                if spark_pane::hits_create_invoice_input(layout, point) {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::SparkPayInvoice => {
+                let layout = spark_pane::pay_invoice_layout(content_bounds);
+                if spark_pane::hits_pay_invoice_input(layout, point) {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::Empty
+            | PaneKind::GoOnline
+            | PaneKind::ProviderStatus
+            | PaneKind::EarningsScoreboard
+            | PaneKind::SyncHealth
+            | PaneKind::StarterJobs
+            | PaneKind::ActivityFeed
+            | PaneKind::AlertsRecovery
+            | PaneKind::NostrIdentity
+            | PaneKind::JobInbox
+            | PaneKind::ActiveJob => {}
         }
 
-        if state.panes[pane_idx].kind == PaneKind::GoOnline {
-            let content_bounds = pane_content_bounds(bounds);
-            let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
-            if toggle_bounds.contains(point) {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::EarningsScoreboard {
-            if topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::RelayConnections {
-            let content_bounds = pane_content_bounds(bounds);
-            if topmost_relay_connections_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-            if relay_connections_url_input_bounds(content_bounds).contains(point) {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::SyncHealth {
-            if topmost_sync_health_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::NetworkRequests {
-            let content_bounds = pane_content_bounds(bounds);
-            if topmost_network_requests_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-            if network_requests_type_input_bounds(content_bounds).contains(point)
-                || network_requests_payload_input_bounds(content_bounds).contains(point)
-                || network_requests_budget_input_bounds(content_bounds).contains(point)
-                || network_requests_timeout_input_bounds(content_bounds).contains(point)
-            {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::StarterJobs
-            && topmost_starter_jobs_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-        {
+        if pane_hit_action_for_pane(state, pane, point).is_some() {
             return CursorIcon::Pointer;
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::ActivityFeed
-            && topmost_activity_feed_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-        {
-            return CursorIcon::Pointer;
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::AlertsRecovery
-            && topmost_alerts_recovery_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-        {
-            return CursorIcon::Pointer;
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::Settings {
-            let content_bounds = pane_content_bounds(bounds);
-            if topmost_settings_action_hit_in_order(state, point, pane_order.as_slice()).is_some() {
-                return CursorIcon::Pointer;
-            }
-            if settings_relay_input_bounds(content_bounds).contains(point)
-                || settings_wallet_default_input_bounds(content_bounds).contains(point)
-                || settings_provider_queue_input_bounds(content_bounds).contains(point)
-            {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::JobInbox {
-            if topmost_job_inbox_action_hit_in_order(state, point, pane_order.as_slice()).is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::ActiveJob {
-            if topmost_active_job_action_hit_in_order(state, point, pane_order.as_slice()).is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::JobHistory {
-            let content_bounds = pane_content_bounds(bounds);
-            if topmost_job_history_action_hit_in_order(state, point, pane_order.as_slice())
-                .is_some()
-            {
-                return CursorIcon::Pointer;
-            }
-            if job_history_search_input_bounds(content_bounds).contains(point) {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
-            let content_bounds = pane_content_bounds(bounds);
-            let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
-            let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
-            let copy_bounds = nostr_copy_secret_button_bounds(content_bounds);
-            if regenerate_bounds.contains(point)
-                || reveal_bounds.contains(point)
-                || copy_bounds.contains(point)
-            {
-                return CursorIcon::Pointer;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::SparkWallet {
-            let content_bounds = pane_content_bounds(bounds);
-            let layout = spark_pane::layout(content_bounds);
-            if spark_pane::hit_action(layout, point).is_some() {
-                return CursorIcon::Pointer;
-            }
-            if spark_pane::hits_input(layout, point) {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::SparkCreateInvoice {
-            let content_bounds = pane_content_bounds(bounds);
-            let layout = spark_pane::create_invoice_layout(content_bounds);
-            if spark_pane::hit_create_invoice_action(layout, point).is_some() {
-                return CursorIcon::Pointer;
-            }
-            if spark_pane::hits_create_invoice_input(layout, point) {
-                return CursorIcon::Text;
-            }
-        }
-
-        if state.panes[pane_idx].kind == PaneKind::SparkPayInvoice {
-            let content_bounds = pane_content_bounds(bounds);
-            let layout = spark_pane::pay_invoice_layout(content_bounds);
-            if spark_pane::hit_pay_invoice_action(layout, point).is_some() {
-                return CursorIcon::Pointer;
-            }
-            if spark_pane::hits_pay_invoice_input(layout, point) {
-                return CursorIcon::Text;
-            }
         }
 
         return CursorIcon::Default;
@@ -1074,559 +998,257 @@ fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
     (regenerate_bounds, reveal_bounds, copy_bounds)
 }
 
-#[allow(dead_code)]
-pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option<u64> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_nostr_regenerate_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_nostr_regenerate_hit_in_order(
+pub(crate) fn topmost_pane_hit_action_in_order(
     state: &RenderState,
     point: Point,
     pane_order: &[usize],
-) -> Option<u64> {
+) -> Option<(u64, PaneHitAction)> {
     for pane_idx in pane_order {
         let pane_idx = *pane_idx;
         let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::NostrIdentity {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
-        if regenerate_bounds.contains(point) {
-            return Some(pane.id);
+        if let Some(action) = pane_hit_action_for_pane(state, pane, point) {
+            return Some((pane.id, action));
         }
     }
 
     None
 }
 
-#[allow(dead_code)]
-pub fn topmost_nostr_reveal_hit(state: &RenderState, point: Point) -> Option<u64> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_nostr_reveal_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_nostr_reveal_hit_in_order(
+fn pane_hit_action_for_pane(
     state: &RenderState,
+    pane: &DesktopPane,
     point: Point,
-    pane_order: &[usize],
-) -> Option<u64> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::NostrIdentity {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
-        if reveal_bounds.contains(point) {
-            return Some(pane.id);
-        }
+) -> Option<PaneHitAction> {
+    if !pane.bounds.contains(point) {
+        return None;
     }
 
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Option<u64> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_nostr_copy_secret_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_nostr_copy_secret_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<u64> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::NostrIdentity {
-            continue;
+    let content_bounds = pane_content_bounds(pane.bounds);
+    match pane.kind {
+        PaneKind::NostrIdentity => {
+            if nostr_regenerate_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::NostrRegenerate);
+            }
+            if nostr_reveal_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::NostrReveal);
+            }
+            if nostr_copy_secret_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::NostrCopySecret);
+            }
+            None
         }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let copy_bounds = nostr_copy_secret_button_bounds(content_bounds);
-        if copy_bounds.contains(point) {
-            return Some(pane.id);
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_chat_send_hit(state: &RenderState, point: Point) -> Option<u64> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_chat_send_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_chat_send_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<u64> {
-    chat_pane::topmost_send_hit_in_order(state, point, pane_order)
-}
-
-#[allow(dead_code)]
-pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option<u64> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_go_online_toggle_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_go_online_toggle_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<u64> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::GoOnline {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if go_online_toggle_button_bounds(content_bounds).contains(point) {
-            return Some(pane.id);
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_earnings_scoreboard_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, EarningsScoreboardPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_earnings_scoreboard_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_earnings_scoreboard_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, EarningsScoreboardPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::EarningsScoreboard {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, EarningsScoreboardPaneAction::Refresh));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_relay_connections_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, RelayConnectionsPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_relay_connections_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_relay_connections_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, RelayConnectionsPaneAction)> {
-    relay_connections_pane::topmost_action_hit_in_order(state, point, pane_order)
-}
-
-#[allow(dead_code)]
-pub fn topmost_sync_health_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, SyncHealthPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_sync_health_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_sync_health_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, SyncHealthPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SyncHealth {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if sync_health_rebootstrap_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, SyncHealthPaneAction::Rebootstrap));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_network_requests_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, NetworkRequestsPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_network_requests_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_network_requests_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, NetworkRequestsPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::NetworkRequests {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if network_requests_submit_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, NetworkRequestsPaneAction::SubmitRequest));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_starter_jobs_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, StarterJobsPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_starter_jobs_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_starter_jobs_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, StarterJobsPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::StarterJobs {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if starter_jobs_complete_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, StarterJobsPaneAction::CompleteSelected));
-        }
-
-        let visible_rows = starter_jobs_visible_row_count(state.starter_jobs.jobs.len());
-        for row_index in 0..visible_rows {
-            if starter_jobs_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, StarterJobsPaneAction::SelectRow(row_index)));
+        PaneKind::AutopilotChat => {
+            if chat_send_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::ChatSend)
+            } else {
+                None
             }
         }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_activity_feed_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, ActivityFeedPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_activity_feed_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_activity_feed_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, ActivityFeedPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::ActivityFeed {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if activity_feed_refresh_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, ActivityFeedPaneAction::Refresh));
-        }
-
-        let filters = ActivityFeedFilter::all();
-        for (filter_index, filter) in filters.into_iter().enumerate() {
-            if activity_feed_filter_button_bounds(content_bounds, filter_index).contains(point) {
-                return Some((pane.id, ActivityFeedPaneAction::SetFilter(filter)));
+        PaneKind::GoOnline => {
+            if go_online_toggle_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::GoOnlineToggle)
+            } else {
+                None
             }
         }
-
-        let visible_rows =
-            activity_feed_visible_row_count(state.activity_feed.visible_rows().len());
-        for row_index in 0..visible_rows {
-            if activity_feed_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, ActivityFeedPaneAction::SelectRow(row_index)));
+        PaneKind::EarningsScoreboard => {
+            if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::EarningsScoreboard(
+                    EarningsScoreboardPaneAction::Refresh,
+                ))
+            } else {
+                None
             }
         }
-    }
+        PaneKind::RelayConnections => {
+            if relay_connections_add_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::RelayConnections(
+                    RelayConnectionsPaneAction::AddRelay,
+                ));
+            }
+            if relay_connections_remove_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::RelayConnections(
+                    RelayConnectionsPaneAction::RemoveSelected,
+                ));
+            }
+            if relay_connections_retry_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::RelayConnections(
+                    RelayConnectionsPaneAction::RetrySelected,
+                ));
+            }
 
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_alerts_recovery_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, AlertsRecoveryPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_alerts_recovery_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_alerts_recovery_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, AlertsRecoveryPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::AlertsRecovery {
-            continue;
+            let visible_rows =
+                relay_connections_visible_row_count(state.relay_connections.relays.len());
+            for row_index in 0..visible_rows {
+                if relay_connections_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::RelayConnections(
+                        RelayConnectionsPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
         }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if alerts_recovery_recover_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, AlertsRecoveryPaneAction::RecoverSelected));
-        }
-        if alerts_recovery_ack_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, AlertsRecoveryPaneAction::AcknowledgeSelected));
-        }
-        if alerts_recovery_resolve_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, AlertsRecoveryPaneAction::ResolveSelected));
-        }
-
-        let visible_rows = alerts_recovery_visible_row_count(state.alerts_recovery.alerts.len());
-        for row_index in 0..visible_rows {
-            if alerts_recovery_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, AlertsRecoveryPaneAction::SelectRow(row_index)));
+        PaneKind::SyncHealth => {
+            if sync_health_rebootstrap_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::SyncHealth(SyncHealthPaneAction::Rebootstrap))
+            } else {
+                None
             }
         }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_settings_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, SettingsPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_settings_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_settings_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, SettingsPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::Settings {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if settings_save_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, SettingsPaneAction::Save));
-        }
-        if settings_reset_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, SettingsPaneAction::ResetDefaults));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_job_inbox_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, JobInboxPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_job_inbox_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_job_inbox_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, JobInboxPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::JobInbox {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if job_inbox_accept_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobInboxPaneAction::AcceptSelected));
-        }
-        if job_inbox_reject_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobInboxPaneAction::RejectSelected));
-        }
-
-        let visible_rows = job_inbox_visible_row_count(state.job_inbox.requests.len());
-        for row_index in 0..visible_rows {
-            if job_inbox_row_bounds(content_bounds, row_index).contains(point) {
-                return Some((pane.id, JobInboxPaneAction::SelectRow(row_index)));
+        PaneKind::NetworkRequests => {
+            if network_requests_submit_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::NetworkRequests(
+                    NetworkRequestsPaneAction::SubmitRequest,
+                ))
+            } else {
+                None
             }
         }
+        PaneKind::StarterJobs => {
+            if starter_jobs_complete_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::StarterJobs(
+                    StarterJobsPaneAction::CompleteSelected,
+                ));
+            }
+
+            let visible_rows = starter_jobs_visible_row_count(state.starter_jobs.jobs.len());
+            for row_index in 0..visible_rows {
+                if starter_jobs_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::StarterJobs(
+                        StarterJobsPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::ActivityFeed => {
+            if activity_feed_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh));
+            }
+
+            let filters = ActivityFeedFilter::all();
+            for (filter_index, filter) in filters.into_iter().enumerate() {
+                if activity_feed_filter_button_bounds(content_bounds, filter_index).contains(point)
+                {
+                    return Some(PaneHitAction::ActivityFeed(
+                        ActivityFeedPaneAction::SetFilter(filter),
+                    ));
+                }
+            }
+
+            let visible_rows =
+                activity_feed_visible_row_count(state.activity_feed.visible_rows().len());
+            for row_index in 0..visible_rows {
+                if activity_feed_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::ActivityFeed(
+                        ActivityFeedPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::AlertsRecovery => {
+            if alerts_recovery_recover_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AlertsRecovery(
+                    AlertsRecoveryPaneAction::RecoverSelected,
+                ));
+            }
+            if alerts_recovery_ack_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AlertsRecovery(
+                    AlertsRecoveryPaneAction::AcknowledgeSelected,
+                ));
+            }
+            if alerts_recovery_resolve_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AlertsRecovery(
+                    AlertsRecoveryPaneAction::ResolveSelected,
+                ));
+            }
+
+            let visible_rows =
+                alerts_recovery_visible_row_count(state.alerts_recovery.alerts.len());
+            for row_index in 0..visible_rows {
+                if alerts_recovery_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::AlertsRecovery(
+                        AlertsRecoveryPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::Settings => {
+            if settings_save_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Settings(SettingsPaneAction::Save));
+            }
+            if settings_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::Settings(SettingsPaneAction::ResetDefaults));
+            }
+            None
+        }
+        PaneKind::JobInbox => {
+            if job_inbox_accept_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobInbox(JobInboxPaneAction::AcceptSelected));
+            }
+            if job_inbox_reject_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobInbox(JobInboxPaneAction::RejectSelected));
+            }
+
+            let visible_rows = job_inbox_visible_row_count(state.job_inbox.requests.len());
+            for row_index in 0..visible_rows {
+                if job_inbox_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::JobInbox(JobInboxPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::ActiveJob => {
+            if active_job_advance_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ActiveJob(ActiveJobPaneAction::AdvanceStage));
+            }
+            if state.active_job.runtime_supports_abort
+                && active_job_abort_button_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::ActiveJob(ActiveJobPaneAction::AbortJob));
+            }
+            None
+        }
+        PaneKind::JobHistory => {
+            if job_history_status_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobHistory(
+                    JobHistoryPaneAction::CycleStatusFilter,
+                ));
+            }
+            if job_history_time_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobHistory(
+                    JobHistoryPaneAction::CycleTimeRange,
+                ));
+            }
+            if job_history_prev_page_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobHistory(
+                    JobHistoryPaneAction::PreviousPage,
+                ));
+            }
+            if job_history_next_page_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::JobHistory(JobHistoryPaneAction::NextPage));
+            }
+            None
+        }
+        PaneKind::SparkWallet => {
+            let layout = spark_pane::layout(content_bounds);
+            spark_pane::hit_action(layout, point).map(PaneHitAction::Spark)
+        }
+        PaneKind::SparkCreateInvoice => {
+            let layout = spark_pane::create_invoice_layout(content_bounds);
+            spark_pane::hit_create_invoice_action(layout, point)
+                .map(PaneHitAction::SparkCreateInvoice)
+        }
+        PaneKind::SparkPayInvoice => {
+            let layout = spark_pane::pay_invoice_layout(content_bounds);
+            spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
+        }
+        PaneKind::Empty | PaneKind::ProviderStatus => None,
     }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_active_job_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, ActiveJobPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_active_job_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_active_job_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, ActiveJobPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::ActiveJob {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if active_job_advance_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, ActiveJobPaneAction::AdvanceStage));
-        }
-        if state.active_job.runtime_supports_abort
-            && active_job_abort_button_bounds(content_bounds).contains(point)
-        {
-            return Some((pane.id, ActiveJobPaneAction::AbortJob));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_job_history_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, JobHistoryPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_job_history_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_job_history_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, JobHistoryPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::JobHistory {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if job_history_status_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobHistoryPaneAction::CycleStatusFilter));
-        }
-        if job_history_time_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobHistoryPaneAction::CycleTimeRange));
-        }
-        if job_history_prev_page_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobHistoryPaneAction::PreviousPage));
-        }
-        if job_history_next_page_button_bounds(content_bounds).contains(point) {
-            return Some((pane.id, JobHistoryPaneAction::NextPage));
-        }
-    }
-
-    None
-}
-
-#[allow(dead_code)]
-pub fn topmost_spark_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, SparkPaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_spark_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_spark_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, SparkPaneAction)> {
-    wallet_pane::topmost_spark_action_hit_in_order(state, point, pane_order)
-}
-
-#[allow(dead_code)]
-pub fn topmost_create_invoice_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, CreateInvoicePaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_create_invoice_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_create_invoice_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, CreateInvoicePaneAction)> {
-    wallet_pane::topmost_create_invoice_action_hit_in_order(state, point, pane_order)
-}
-
-#[allow(dead_code)]
-pub fn topmost_pay_invoice_action_hit(
-    state: &RenderState,
-    point: Point,
-) -> Option<(u64, PayInvoicePaneAction)> {
-    let pane_order = pane_indices_by_z_desc(state);
-    topmost_pay_invoice_action_hit_in_order(state, point, pane_order.as_slice())
-}
-
-pub(crate) fn topmost_pay_invoice_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, PayInvoicePaneAction)> {
-    wallet_pane::topmost_pay_invoice_action_hit_in_order(state, point, pane_order)
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

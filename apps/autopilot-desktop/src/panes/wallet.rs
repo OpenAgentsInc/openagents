@@ -9,7 +9,7 @@ use crate::pane_renderer::{
     split_text_for_display,
 };
 use crate::pane_system::pane_content_bounds;
-use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
+use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
 
 pub fn paint_wallet_pane(
@@ -512,72 +512,6 @@ pub fn paint_pay_invoice_pane(
             y += 16.0;
         }
     }
-}
-
-pub fn topmost_spark_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, SparkPaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkWallet {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::layout(content_bounds);
-        if let Some(action) = spark_pane::hit_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
-}
-
-pub fn topmost_create_invoice_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, CreateInvoicePaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkCreateInvoice {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::create_invoice_layout(content_bounds);
-        if let Some(action) = spark_pane::hit_create_invoice_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
-}
-
-pub fn topmost_pay_invoice_action_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<(u64, PayInvoicePaneAction)> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::SparkPayInvoice {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        let layout = spark_pane::pay_invoice_layout(content_bounds);
-        if let Some(action) = spark_pane::hit_pay_invoice_action(layout, point) {
-            return Some((pane.id, action));
-        }
-    }
-
-    None
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

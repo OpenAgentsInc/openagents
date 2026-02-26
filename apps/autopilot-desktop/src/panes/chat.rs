@@ -113,27 +113,6 @@ pub fn paint(
     paint_action_button(send_bounds, "Send", paint);
 }
 
-pub fn topmost_send_hit_in_order(
-    state: &RenderState,
-    point: Point,
-    pane_order: &[usize],
-) -> Option<u64> {
-    for pane_idx in pane_order {
-        let pane_idx = *pane_idx;
-        let pane = &state.panes[pane_idx];
-        if pane.kind != PaneKind::AutopilotChat {
-            continue;
-        }
-
-        let content_bounds = pane_content_bounds(pane.bounds);
-        if chat_send_button_bounds(content_bounds).contains(point) {
-            return Some(pane.id);
-        }
-    }
-
-    None
-}
-
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_chat = state
         .panes
