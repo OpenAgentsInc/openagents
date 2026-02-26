@@ -97,7 +97,10 @@ static CURRENT_THEME: RwLock<&'static Theme> = RwLock::new(&MIDNIGHT);
 /// let bg = colors.background;
 /// ```
 pub fn theme() -> &'static Theme {
-    *CURRENT_THEME.read().unwrap()
+    let guard = CURRENT_THEME
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *guard
 }
 
 /// Set the current global theme.
@@ -110,7 +113,10 @@ pub fn theme() -> &'static Theme {
 /// set_theme(&MIDNIGHT);
 /// ```
 pub fn set_theme(theme: &'static Theme) {
-    *CURRENT_THEME.write().unwrap() = theme;
+    let mut guard = CURRENT_THEME
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *guard = theme;
 }
 
 // ============================================================================

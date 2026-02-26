@@ -53,6 +53,7 @@ struct DocumentBuilder<'a> {
     highlighter: Option<&'a SyntaxHighlighter>,
     blocks: Vec<MarkdownBlock>,
     current_spans: Vec<StyledSpan>,
+    base_style: TextStyle,
     style_stack: Vec<TextStyle>,
     list_stack: Vec<ListContext>,
     blockquote_stack: Vec<BlockquoteContext>,
@@ -86,6 +87,7 @@ impl<'a> DocumentBuilder<'a> {
             highlighter,
             blocks: Vec::new(),
             current_spans: Vec::new(),
+            base_style: base_style.clone(),
             style_stack: vec![base_style],
             list_stack: Vec::new(),
             blockquote_stack: Vec::new(),
@@ -454,7 +456,7 @@ impl<'a> DocumentBuilder<'a> {
     }
 
     fn current_style(&self) -> &TextStyle {
-        self.style_stack.last().unwrap()
+        self.style_stack.last().unwrap_or(&self.base_style)
     }
 }
 

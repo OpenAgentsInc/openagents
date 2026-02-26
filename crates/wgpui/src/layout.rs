@@ -309,6 +309,10 @@ impl LayoutEngine {
     }
 
     /// Request a layout node with the given style and children.
+    #[expect(
+        clippy::expect_used,
+        reason = "Taffy node allocation failures are unrecoverable for the current frame layout path."
+    )]
     pub fn request_layout(&mut self, style: &LayoutStyle, children: &[LayoutId]) -> LayoutId {
         let taffy_children: Vec<NodeId> = children
             .iter()
@@ -330,6 +334,10 @@ impl LayoutEngine {
     }
 
     /// Request a measured leaf node (size computed by callback).
+    #[expect(
+        clippy::expect_used,
+        reason = "Taffy measured-node allocation failures are unrecoverable for the current frame layout path."
+    )]
     pub fn request_measured<F>(&mut self, style: &LayoutStyle, measure: F) -> LayoutId
     where
         F: Fn(
@@ -354,6 +362,10 @@ impl LayoutEngine {
     }
 
     /// Compute layout for the tree rooted at the given node.
+    #[expect(
+        clippy::expect_used,
+        reason = "Layout computation failure means the frame tree is invalid; this path fails fast."
+    )]
     pub fn compute_layout(&mut self, root: LayoutId, available_space: Size) {
         let Some(&node_id) = self.nodes.get(root) else {
             return;

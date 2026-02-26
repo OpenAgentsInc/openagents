@@ -335,7 +335,9 @@ impl Platform for WebPlatform {
     }
 
     fn handle_resize(&mut self) {
-        let window = web_sys::window().unwrap();
+        let Some(window) = web_sys::window() else {
+            return;
+        };
         self.scale_factor = window.device_pixel_ratio() as f32;
 
         let rect = self.canvas.get_bounding_client_rect();
@@ -371,17 +373,20 @@ where
 
     *g.borrow_mut() = Some(Closure::new(move || {
         callback();
-        request_animation_frame(f.borrow().as_ref().unwrap());
+        if let Some(closure) = f.borrow().as_ref() {
+            request_animation_frame(closure);
+        }
     }));
 
-    request_animation_frame(g.borrow().as_ref().unwrap());
+    if let Some(closure) = g.borrow().as_ref() {
+        request_animation_frame(closure);
+    }
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-    web_sys::window()
-        .unwrap()
-        .request_animation_frame(f.as_ref().unchecked_ref())
-        .unwrap();
+    if let Some(window) = web_sys::window() {
+        let _ = window.request_animation_frame(f.as_ref().unchecked_ref());
+    }
 }
 
 pub fn setup_resize_observer<F>(canvas: &HtmlCanvasElement, mut callback: F)
@@ -392,8 +397,9 @@ where
         callback();
     });
 
-    let observer = web_sys::ResizeObserver::new(closure.as_ref().unchecked_ref()).unwrap();
-    observer.observe(canvas);
+    if let Ok(observer) = web_sys::ResizeObserver::new(closure.as_ref().unchecked_ref()) {
+        observer.observe(canvas);
+    }
 
     closure.forget();
 }

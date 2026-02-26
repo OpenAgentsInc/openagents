@@ -69,12 +69,10 @@ impl ForegroundExecutor {
     {
         let (sender, receiver) = oneshot::channel();
         let spawner = self.pool.borrow().spawner();
-        spawner
-            .spawn_local(async move {
-                let result = future.await;
-                let _ = sender.send(result);
-            })
-            .expect("foreground spawn failed");
+        let _ = spawner.spawn_local(async move {
+            let result = future.await;
+            let _ = sender.send(result);
+        });
         Task::from_receiver(receiver)
     }
 

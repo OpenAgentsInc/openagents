@@ -517,7 +517,9 @@ impl Component for AgentStateInspector {
 
         let tab_labels = ["Goals", "Actions", "Memory", "Resources"];
         for (i, label) in tab_labels.iter().enumerate() {
-            let tab = Self::tab_from_index(i).unwrap();
+            let Some(tab) = Self::tab_from_index(i) else {
+                continue;
+            };
             let tab_bounds = self.tab_bounds(&bounds, tab);
 
             let is_active = self.active_tab == tab;
@@ -570,7 +572,9 @@ impl Component for AgentStateInspector {
 
                 self.tab_hovered = None;
                 for i in 0..4 {
-                    let tab = Self::tab_from_index(i).unwrap();
+                    let Some(tab) = Self::tab_from_index(i) else {
+                        continue;
+                    };
                     if self.tab_bounds(&bounds, tab).contains(point) {
                         self.tab_hovered = Some(tab);
                         break;
@@ -586,7 +590,9 @@ impl Component for AgentStateInspector {
                     let point = Point::new(*x, *y);
 
                     for i in 0..4 {
-                        let tab = Self::tab_from_index(i).unwrap();
+                        let Some(tab) = Self::tab_from_index(i) else {
+                            continue;
+                        };
                         if self.tab_bounds(&bounds, tab).contains(point) {
                             self.active_tab = tab;
                             self.scroll_offset = 0.0;

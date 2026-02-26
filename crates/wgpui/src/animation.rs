@@ -504,7 +504,7 @@ impl<T: Animatable> KeyframeAnimation<T> {
     /// Create a new keyframe animation
     pub fn new(keyframes: Vec<Keyframe<T>>, duration: Duration) -> Self {
         let mut kf = keyframes;
-        kf.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
+        kf.sort_by(|a, b| a.offset.total_cmp(&b.offset));
 
         Self {
             keyframes: kf,
@@ -554,6 +554,10 @@ impl<T: Animatable> KeyframeAnimation<T> {
     }
 
     /// Advance animation and return current value
+    #[expect(
+        clippy::unwrap_used,
+        reason = "A keyframe animation requires at least one keyframe; unwraps are guarded by constructor invariants."
+    )]
     pub fn tick(&mut self, delta: Duration) -> T {
         if self.keyframes.is_empty() {
             return T::lerp(

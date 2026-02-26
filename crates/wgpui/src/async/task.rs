@@ -52,17 +52,27 @@ impl<T> Future for Task<T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         match &mut this.0 {
-            TaskState::Ready(value) => Poll::Ready(value.take().expect("task already completed")),
+            TaskState::Ready(value) => {
+                if let Some(value) = value.take() {
+                    Poll::Ready(value)
+                } else {
+                    Poll::Pending
+                }
+            }
             TaskState::Pending(receiver) => match Pin::new(receiver).poll(cx) {
                 Poll::Ready(Ok(value)) => {
                     this.0 = TaskState::Ready(Some(value));
                     if let TaskState::Ready(value) = &mut this.0 {
-                        Poll::Ready(value.take().expect("task already completed"))
+                        if let Some(value) = value.take() {
+                            Poll::Ready(value)
+                        } else {
+                            Poll::Pending
+                        }
                     } else {
-                        unreachable!("task state should be ready")
+                        Poll::Pending
                     }
                 }
-                Poll::Ready(Err(_)) => panic!("task cancelled before completion"),
+                Poll::Ready(Err(_)) => Poll::Pending,
                 Poll::Pending => Poll::Pending,
             },
         }

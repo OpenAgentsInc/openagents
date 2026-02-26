@@ -77,8 +77,9 @@ impl LiveEditor {
                 match c.as_str() {
                     // Count prefix
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
-                        let digit = c.chars().next().unwrap().to_digit(10).unwrap() as u8;
-                        self.vim.push_count_digit(digit);
+                        if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10)) {
+                            self.vim.push_count_digit(digit as u8);
+                        }
                     }
                     "0" => {
                         if self.vim.count.is_some() {

@@ -21,19 +21,6 @@
 //! - `platform` - Platform abstraction (web, native)
 //! - `theme` - Color and style tokens
 
-#![expect(
-    clippy::unwrap_used,
-    reason = "Temporary MVP debt while workspace lint inheritance is being rolled out."
-)]
-#![expect(
-    clippy::expect_used,
-    reason = "Temporary MVP debt while workspace lint inheritance is being rolled out."
-)]
-#![expect(
-    clippy::panic,
-    reason = "Temporary MVP debt while workspace lint inheritance is being rolled out."
-)]
-
 pub mod accessibility;
 #[macro_use]
 pub mod action;
