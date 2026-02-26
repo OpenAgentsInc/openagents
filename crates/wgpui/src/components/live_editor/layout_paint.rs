@@ -424,25 +424,7 @@ impl LiveEditor {
                 // Shift cursor up slightly to align with text
                 let cursor_offset_y = -2.0;
 
-                // Block cursor in vim normal/visual mode, line cursor otherwise
-                let (cursor_width, cursor_color) = if self.vim_enabled {
-                    match self.vim.mode {
-                        VimMode::Normal
-                        | VimMode::Visual
-                        | VimMode::VisualLine
-                        | VimMode::VisualBlock => {
-                            // Block cursor with semi-transparent background
-                            (cursor_char_width, self.style.cursor_color.with_alpha(0.7))
-                        }
-                        VimMode::Insert | VimMode::Replace => {
-                            // Line cursor
-                            (2.0, self.style.cursor_color)
-                        }
-                    }
-                } else {
-                    // Standard line cursor when vim disabled
-                    (2.0, self.style.cursor_color)
-                };
+                let (cursor_width, cursor_color) = (2.0, self.style.cursor_color);
 
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(
@@ -497,32 +479,9 @@ impl LiveEditor {
         let status_bar_y = bounds.origin.y + bounds.size.height - status_bar_height;
         let status_y = status_bar_y + 4.0;
 
-        // Vim mode indicator (left side)
-        if let Some(vim_mode) = self.vim_mode() {
-            let mode_text = vim_mode.label();
-            let mode_color = match vim_mode {
-                VimMode::Normal => Hsla::new(210.0, 0.7, 0.6, 1.0), // Blue
-                VimMode::Insert => Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
-                VimMode::Replace => Hsla::new(30.0, 0.7, 0.6, 1.0), // Orange
-                VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => {
-                    Hsla::new(280.0, 0.6, 0.6, 1.0)
-                } // Purple
-            };
-
-            let mode_x = bounds.origin.x + 12.0;
-            let mode_run = cx.text.layout_styled_mono(
-                mode_text,
-                Point::new(mode_x, status_y),
-                STATUS_BAR_FONT_SIZE,
-                mode_color,
-                FontStyle::default(),
-            );
-            cx.scene.draw_text(mode_run);
-        }
-
-        // Status message (center-left, after vim mode)
+        // Status message (left side)
         if let Some((message, color)) = &self.status_message {
-            let status_msg_x = bounds.origin.x + 100.0; // After vim mode indicator
+            let status_msg_x = bounds.origin.x + 12.0;
             let status_msg_run = cx.text.layout_styled_mono(
                 message,
                 Point::new(status_msg_x, status_y),

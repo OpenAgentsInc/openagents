@@ -2,7 +2,6 @@ mod block;
 mod cursor;
 
 include!("state.rs");
-include!("vim.rs");
 include!("editing.rs");
 include!("layout_paint.rs");
 include!("input_handlers.rs");

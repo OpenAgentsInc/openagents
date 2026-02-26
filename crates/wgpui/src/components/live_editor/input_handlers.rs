@@ -146,16 +146,6 @@ impl LiveEditor {
                     return EventResult::Ignored;
                 }
 
-                // Handle vim mode
-                if self.vim_enabled {
-                    let result = self.handle_vim_key(key, modifiers, &bounds, cx);
-                    if result != EventResult::Ignored {
-                        return result;
-                    }
-                    // If vim handler didn't consume the key, fall through to standard handling
-                    // (only happens for some keys in insert mode)
-                }
-
                 match key {
                     Key::Character(c) => {
                         if modifiers.ctrl || modifiers.meta {

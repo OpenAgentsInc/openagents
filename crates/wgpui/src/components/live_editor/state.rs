@@ -13,106 +13,9 @@ use block::{
 };
 pub use cursor::{Cursor, Selection};
 
-/// Local vim-mode enum used by LiveEditor.
-///
-/// This preserves the existing editing-mode behavior while decoupling
-/// `wgpui` from the archived standalone `vim` crate.
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
-pub enum VimMode {
-    #[default]
-    Normal,
-    Insert,
-    Replace,
-    Visual,
-    VisualLine,
-    VisualBlock,
-}
-
-impl VimMode {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "NORMAL",
-            Self::Insert => "INSERT",
-            Self::Replace => "REPLACE",
-            Self::Visual => "VISUAL",
-            Self::VisualLine => "V-LINE",
-            Self::VisualBlock => "V-BLOCK",
-        }
-    }
-}
-
-/// Pending operator waiting for a motion
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PendingOperator {
-    Delete,
-    Change,
-    Yank,
-}
-
-/// Vim state for the editor
-#[derive(Debug, Clone, Default)]
-pub struct VimState {
-    /// Current vim mode
-    pub mode: VimMode,
-    /// Count prefix (e.g., "3" in "3j")
-    pub count: Option<usize>,
-    /// Pending operator
-    pub pending_operator: Option<PendingOperator>,
-    /// Vim-specific register (for yanked text)
-    pub register: Option<String>,
-    /// Visual mode anchor
-    pub visual_anchor: Option<Cursor>,
-    /// Pending 'g' key for gg motion
-    pub pending_g: bool,
-}
-
-impl VimState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn reset_pending(&mut self) {
-        self.count = None;
-        self.pending_operator = None;
-        self.pending_g = false;
-    }
-
-    pub fn effective_count(&self) -> usize {
-        self.count.unwrap_or(1)
-    }
-
-    pub fn push_count_digit(&mut self, digit: u8) {
-        let current = self.count.unwrap_or(0);
-        self.count = Some(current * 10 + digit as usize);
-    }
-
-    pub fn enter_insert(&mut self) {
-        self.mode = VimMode::Insert;
-        self.reset_pending();
-    }
-
-    pub fn enter_normal(&mut self) {
-        self.mode = VimMode::Normal;
-        self.reset_pending();
-        self.visual_anchor = None;
-    }
-
-    pub fn enter_visual(&mut self, anchor: Cursor) {
-        self.mode = VimMode::Visual;
-        self.visual_anchor = Some(anchor);
-        self.reset_pending();
-    }
-
-    pub fn enter_visual_line(&mut self, anchor: Cursor) {
-        self.mode = VimMode::VisualLine;
-        self.visual_anchor = Some(anchor);
-        self.reset_pending();
-    }
-}
-
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::input::{Key, Modifiers, NamedKey};
+use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 use web_time::Instant;
@@ -164,10 +67,6 @@ pub struct LiveEditor {
 
     // Cached mono char width (computed during paint)
     mono_char_width: f32,
-
-    // Vim mode
-    vim_enabled: bool,
-    vim: VimState,
 
     // Callbacks
     on_change: Option<LiveEditorTextHandler>,
@@ -243,8 +142,6 @@ impl LiveEditor {
             redo_stack: Vec::new(),
             style,
             mono_char_width,
-            vim_enabled: true,
-            vim: VimState::new(),
             on_change: None,
             on_save: None,
             status_message: None,
@@ -338,42 +235,6 @@ impl LiveEditor {
     /// Get number of lines
     pub fn line_count(&self) -> usize {
         self.lines.len()
-    }
-
-    // === Vim Mode ===
-
-    /// Enable or disable vim mode
-    pub fn set_vim_mode(&mut self, enabled: bool) {
-        self.vim_enabled = enabled;
-        if enabled {
-            self.vim = VimState::new();
-        }
-    }
-
-    /// Toggle vim mode
-    pub fn toggle_vim_mode(&mut self) {
-        self.set_vim_mode(!self.vim_enabled);
-    }
-
-    /// Check if vim mode is enabled
-    pub fn vim_enabled(&self) -> bool {
-        self.vim_enabled
-    }
-
-    /// Get current vim mode (for status bar)
-    pub fn vim_mode(&self) -> Option<VimMode> {
-        if self.vim_enabled {
-            Some(self.vim.mode)
-        } else {
-            None
-        }
-    }
-
-    /// Enter vim insert mode (if vim is enabled)
-    pub fn enter_insert_mode(&mut self) {
-        if self.vim_enabled {
-            self.vim.enter_insert();
-        }
     }
 
     /// Set a status message to display in the status bar
