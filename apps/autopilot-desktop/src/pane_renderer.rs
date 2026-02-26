@@ -217,6 +217,8 @@ fn paint_autopilot_chat_pane(
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "local", paint);
+
     let rail_bounds = chat_thread_rail_bounds(content_bounds);
     let transcript_bounds = chat_transcript_bounds(content_bounds);
     let composer_bounds = chat_composer_input_bounds(content_bounds);
@@ -320,6 +322,8 @@ fn paint_go_online_pane(
     provider_blockers: &[ProviderBlocker],
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
         "Go Online"
@@ -387,6 +391,8 @@ fn paint_provider_status_pane(
     provider_blockers: &[ProviderBlocker],
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let now = std::time::Instant::now();
     let heartbeat_age = provider_runtime
         .heartbeat_age_seconds(now)
@@ -512,6 +518,8 @@ fn paint_earnings_scoreboard_pane(
     provider_runtime: &ProviderRuntimeState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime+wallet", paint);
+
     let refresh_bounds = earnings_scoreboard_refresh_button_bounds(content_bounds);
     paint_action_button(refresh_bounds, "Refresh metrics", paint);
 
@@ -598,6 +606,8 @@ fn paint_relay_connections_pane(
     relay_connections_inputs: &mut RelayConnectionsPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let input_bounds = relay_connections_url_input_bounds(content_bounds);
     let add_bounds = relay_connections_add_button_bounds(content_bounds);
     let remove_bounds = relay_connections_remove_button_bounds(content_bounds);
@@ -743,6 +753,8 @@ fn paint_sync_health_pane(
     sync_health: &SyncHealthState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let rebootstrap_bounds = sync_health_rebootstrap_button_bounds(content_bounds);
     paint_action_button(rebootstrap_bounds, "Rebootstrap sync", paint);
 
@@ -876,6 +888,8 @@ fn paint_network_requests_pane(
     network_requests_inputs: &mut NetworkRequestsPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let request_type_bounds = network_requests_type_input_bounds(content_bounds);
     let payload_bounds = network_requests_payload_input_bounds(content_bounds);
     let budget_bounds = network_requests_budget_input_bounds(content_bounds);
@@ -1020,6 +1034,8 @@ fn paint_starter_jobs_pane(
     starter_jobs: &StarterJobsState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let complete_bounds = starter_jobs_complete_button_bounds(content_bounds);
     paint_action_button(complete_bounds, "Complete selected", paint);
 
@@ -1148,6 +1164,8 @@ fn paint_activity_feed_pane(
     activity_feed: &ActivityFeedState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime+wallet+local", paint);
+
     let refresh_bounds = activity_feed_refresh_button_bounds(content_bounds);
     paint_action_button(refresh_bounds, "Refresh feed", paint);
 
@@ -1288,6 +1306,8 @@ fn paint_alerts_recovery_pane(
     alerts_recovery: &AlertsRecoveryState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let recover_bounds = alerts_recovery_recover_button_bounds(content_bounds);
     let ack_bounds = alerts_recovery_ack_button_bounds(content_bounds);
     let resolve_bounds = alerts_recovery_resolve_button_bounds(content_bounds);
@@ -1429,6 +1449,8 @@ fn paint_settings_pane(
     settings_inputs: &mut SettingsPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "local", paint);
+
     let relay_input_bounds = settings_relay_input_bounds(content_bounds);
     let wallet_input_bounds = settings_wallet_default_input_bounds(content_bounds);
     let provider_input_bounds = settings_provider_queue_input_bounds(content_bounds);
@@ -1555,6 +1577,8 @@ fn paint_nostr_identity_pane(
     nostr_secret_state: &NostrSecretState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "local", paint);
+
     let now = std::time::Instant::now();
     let secrets_revealed = nostr_secret_state.is_revealed(now);
     let identity_state = nostr_identity_view_state(nostr_identity, nostr_identity_error);
@@ -1713,6 +1737,8 @@ fn paint_job_inbox_pane(
     job_inbox: &JobInboxState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let accept_bounds = job_inbox_accept_button_bounds(content_bounds);
     let reject_bounds = job_inbox_reject_button_bounds(content_bounds);
     paint_action_button(accept_bounds, "Accept selected", paint);
@@ -1848,6 +1874,8 @@ fn paint_active_job_pane(
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let advance_bounds = active_job_advance_button_bounds(content_bounds);
     let abort_bounds = active_job_abort_button_bounds(content_bounds);
     paint_action_button(advance_bounds, "Advance stage", paint);
@@ -2033,6 +2061,8 @@ fn paint_job_history_pane(
     job_history_inputs: &mut JobHistoryPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
     let search_bounds = job_history_search_input_bounds(content_bounds);
     let status_bounds = job_history_status_button_bounds(content_bounds);
     let time_bounds = job_history_time_button_bounds(content_bounds);
@@ -2170,6 +2200,8 @@ fn paint_spark_wallet_pane(
     spark_inputs: &mut SparkPaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "wallet", paint);
+
     let layout = spark_pane::layout(content_bounds);
     let state = spark_wallet_view_state(spark_wallet);
     let state_color = match state {
@@ -2421,6 +2453,8 @@ fn paint_create_invoice_pane(
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "wallet", paint);
+
     let layout = spark_pane::create_invoice_layout(content_bounds);
     let state = create_invoice_view_state(spark_wallet);
     let state_color = match state {
@@ -2561,6 +2595,8 @@ fn paint_pay_invoice_pane(
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
     paint: &mut PaintContext,
 ) {
+    paint_source_badge(content_bounds, "wallet", paint);
+
     let layout = spark_pane::pay_invoice_layout(content_bounds);
     let state = pay_invoice_view_state(spark_wallet);
     let state_color = match state {
@@ -2706,6 +2742,31 @@ fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
         return "sent";
     }
     "idle"
+}
+
+fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &mut PaintContext) {
+    let label = format!("source: {source}");
+    let max_width = (content_bounds.size.width - 20.0).max(84.0);
+    let badge_width = (label.chars().count() as f32 * 6.4 + 12.0).min(max_width);
+    let badge_bounds = Bounds::new(
+        content_bounds.max_x() - badge_width - 10.0,
+        content_bounds.origin.y + 8.0,
+        badge_width,
+        18.0,
+    );
+
+    paint.scene.draw_quad(
+        Quad::new(badge_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.88))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(3.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        &label,
+        Point::new(badge_bounds.origin.x + 6.0, badge_bounds.origin.y + 6.0),
+        9.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {

@@ -84,6 +84,43 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Explicit pane state machine: `loading`, `ready`, `error`.
   - Action: pay invoice (`Enter` submit and button submit are equivalent).
 
+## Source Badges
+
+Panes with mutable status/state render a top-right badge in the form `source: ...`.
+Badge semantics:
+
+- `source: runtime`
+  - Values are expected from runtime/sync/network lanes.
+- `source: wallet`
+  - Values are expected from Spark wallet lane/API state.
+- `source: local`
+  - Values are local app/device state only.
+- `source: runtime+wallet`
+  - Values combine runtime telemetry and wallet totals.
+- `source: runtime+wallet+local`
+  - Values aggregate multiple lanes plus local app events.
+
+Current pane badge mapping:
+
+- `Autopilot Chat`: `source: local`
+- `Go Online`: `source: runtime`
+- `Provider Status`: `source: runtime`
+- `Earnings Scoreboard`: `source: runtime+wallet`
+- `Relay Connections`: `source: runtime`
+- `Sync Health`: `source: runtime`
+- `Network Requests`: `source: runtime`
+- `Starter Jobs`: `source: runtime`
+- `Activity Feed`: `source: runtime+wallet+local`
+- `Alerts and Recovery`: `source: runtime`
+- `Settings`: `source: local`
+- `Job Inbox`: `source: runtime`
+- `Active Job`: `source: runtime`
+- `Job History`: `source: runtime`
+- `Nostr Keys (NIP-06)`: `source: local`
+- `Spark Lightning Wallet`: `source: wallet`
+- `Create Lightning Invoice`: `source: wallet`
+- `Pay Lightning Invoice`: `source: wallet`
+
 ## Opening Panes
 
 - Hotbar:
