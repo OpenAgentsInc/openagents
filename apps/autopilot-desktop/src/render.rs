@@ -127,6 +127,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
+            active_job: crate::app_state::ActiveJobState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -174,6 +175,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.provider_runtime,
             provider_blockers.as_slice(),
             &state.job_inbox,
+            &state.active_job,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -256,6 +258,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
+        Command::new("pane.active_job", "Active Job")
+            .description("Open in-flight job lifecycle timeline pane")
+            .category("Panes"),
         Command::new("pane.identity_keys", "Identity Keys")
             .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")
@@ -281,6 +286,11 @@ mod tests {
             commands
                 .iter()
                 .any(|command| { command.id == "pane.job_inbox" && command.label == "Job Inbox" })
+        );
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.active_job" && command.label == "Active Job"
+            })
         );
     }
 }

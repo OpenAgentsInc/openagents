@@ -1,14 +1,15 @@
 use crate::app_state::{
-    AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, DesktopPane,
-    JobInboxState, NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs,
-    ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
+    ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
+    DesktopPane, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
 };
 use crate::pane_system::{
-    PANE_TITLE_HEIGHT, chat_composer_input_bounds, chat_send_button_bounds,
-    chat_thread_rail_bounds, chat_transcript_bounds, go_online_toggle_button_bounds,
-    job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-    nostr_reveal_button_bounds, pane_content_bounds,
+    PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
+    chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
+    chat_transcript_bounds, go_online_toggle_button_bounds, job_inbox_accept_button_bounds,
+    job_inbox_reject_button_bounds, job_inbox_row_bounds, job_inbox_visible_row_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -31,6 +32,7 @@ impl PaneRenderer {
         provider_runtime: &ProviderRuntimeState,
         provider_blockers: &[ProviderBlocker],
         job_inbox: &JobInboxState,
+        active_job: &ActiveJobState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -86,6 +88,9 @@ impl PaneRenderer {
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
+                }
+                PaneKind::ActiveJob => {
+                    paint_active_job_pane(content_bounds, active_job, paint);
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
@@ -662,7 +667,8 @@ fn paint_job_inbox_pane(
     }
 
     if let Some(selected) = job_inbox.selected_request() {
-        let details_y = job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
+        let details_y =
+            job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
         let x = content_bounds.origin.x + 12.0;
         let mut line_y = details_y;
         line_y = paint_label_line(paint, x, line_y, "Selected requester", &selected.requester);
@@ -673,13 +679,191 @@ fn paint_job_inbox_pane(
             "Selected request id",
             &selected.request_id,
         );
-        let _ = paint_label_line(
+        let _ = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+    }
+}
+
+fn paint_active_job_pane(
+    content_bounds: Bounds,
+    active_job: &ActiveJobState,
+    paint: &mut PaintContext,
+) {
+    let advance_bounds = active_job_advance_button_bounds(content_bounds);
+    let abort_bounds = active_job_abort_button_bounds(content_bounds);
+    paint_action_button(advance_bounds, "Advance stage", paint);
+    if active_job.runtime_supports_abort {
+        paint_action_button(abort_bounds, "Abort job", paint);
+    } else {
+        paint_disabled_button(abort_bounds, "Abort unsupported", paint);
+        paint.scene.draw_text(paint.text.layout(
+            "Abort disabled: runtime lane does not support cancel.",
+            Point::new(content_bounds.origin.x + 12.0, abort_bounds.max_y() + 8.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
+
+    let state_color = match active_job.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = advance_bounds.max_y()
+        + if active_job.runtime_supports_abort {
+            12.0
+        } else {
+            24.0
+        };
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", active_job.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = active_job.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+
+    if let Some(error) = active_job.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    if active_job.load_state == PaneLoadState::Loading {
+        paint.scene.draw_text(paint.text.layout(
+            "Waiting for active-job replay frame...",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    let Some(job) = active_job.job.as_ref() else {
+        paint.scene.draw_text(paint.text.layout(
+            "No active job selected.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    };
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Job ID",
+        &job.job_id,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Requester",
+        &job.requester,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Capability",
+        &job.capability,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Stage",
+        job.stage.label(),
+    );
+
+    let stage_flow = [
+        JobLifecycleStage::Received,
+        JobLifecycleStage::Accepted,
+        JobLifecycleStage::Running,
+        JobLifecycleStage::Delivered,
+        JobLifecycleStage::Paid,
+    ];
+    paint.scene.draw_text(paint.text.layout(
+        "Timeline",
+        Point::new(content_bounds.origin.x + 12.0, y + 4.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut timeline_y = y + 20.0;
+    let current_idx = stage_flow
+        .iter()
+        .position(|stage| *stage == job.stage)
+        .unwrap_or(stage_flow.len().saturating_sub(1));
+    for (idx, stage) in stage_flow.iter().enumerate() {
+        let marker = if idx <= current_idx { "x" } else { " " };
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("[{marker}] {}", stage.label()),
+            Point::new(content_bounds.origin.x + 12.0, timeline_y),
+            10.0,
+            if idx <= current_idx {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        ));
+        timeline_y += 14.0;
+    }
+
+    let mut metadata_y = timeline_y + 6.0;
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "Invoice ID",
+        job.invoice_id.as_deref().unwrap_or("n/a"),
+    );
+    metadata_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        metadata_y,
+        "Payment ID",
+        job.payment_id.as_deref().unwrap_or("n/a"),
+    );
+    if let Some(reason) = job.failure_reason.as_deref() {
+        metadata_y = paint_multiline_phrase(
             paint,
-            x,
-            line_y,
-            "Decision",
-            &selected.decision.label(),
+            content_bounds.origin.x + 12.0,
+            metadata_y,
+            "Failure reason",
+            reason,
         );
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        "Execution log",
+        Point::new(content_bounds.origin.x + 12.0, metadata_y + 4.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut log_y = metadata_y + 20.0;
+    for event in job.events.iter().take(10) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("[#{:03}] {}", event.seq, event.message),
+            Point::new(content_bounds.origin.x + 12.0, log_y),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        log_y += 14.0;
     }
 }
 
@@ -1010,6 +1194,21 @@ fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
         Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
         11.0,
         theme::text::PRIMARY,
+    ));
+}
+
+fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.72))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
+        11.0,
+        theme::text::MUTED,
     ));
 }
 

@@ -17,6 +17,10 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
   - Shows requester, capability, price, ttl, validation state, and decision state per request.
   - Actions: select request, accept selected (with reason), reject selected (with reason).
+- `Active Job`
+  - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
+  - Shows append-only execution log events, invoice/payment linkage, and failure reason when present.
+  - Actions: advance stage, abort job (disabled when runtime lane does not support cancel).
 - `Nostr Keys (NIP-06)`
   - Shows identity path, `npub`, masked `nsec`, masked mnemonic, and key controls.
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
@@ -39,12 +43,13 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Go Online` -> opens `Go Online`.
   - `Provider Status` -> opens `Provider Status`.
   - `Job Inbox` -> opens `Job Inbox`.
+  - `Active Job` -> opens `Active Job`.
   - `Identity Keys` -> opens `Nostr Keys (NIP-06)`.
   - `Spark Wallet` -> opens `Spark Lightning Wallet`.
   - `Pay Lightning Invoice` -> opens `Pay Lightning Invoice`.
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Job Inbox, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Job Inbox, Active Job, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

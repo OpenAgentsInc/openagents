@@ -36,6 +36,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderStatus,
     JobInbox,
+    ActiveJob,
     NostrIdentity,
     SparkWallet,
     SparkPayInvoice,
@@ -482,6 +483,188 @@ impl JobInboxState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobLifecycleStage {
+    Received,
+    Accepted,
+    Running,
+    Delivered,
+    Paid,
+    Failed,
+}
+
+impl JobLifecycleStage {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Received => "received",
+            Self::Accepted => "accepted",
+            Self::Running => "running",
+            Self::Delivered => "delivered",
+            Self::Paid => "paid",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActiveJobEvent {
+    pub seq: u64,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActiveJobRecord {
+    pub job_id: String,
+    pub request_id: String,
+    pub requester: String,
+    pub capability: String,
+    pub stage: JobLifecycleStage,
+    pub invoice_id: Option<String>,
+    pub payment_id: Option<String>,
+    pub failure_reason: Option<String>,
+    pub events: Vec<ActiveJobEvent>,
+}
+
+pub struct ActiveJobState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub runtime_supports_abort: bool,
+    pub job: Option<ActiveJobRecord>,
+    next_event_seq: u64,
+}
+
+impl Default for ActiveJobState {
+    fn default() -> Self {
+        let mut state = Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Recovered active job snapshot from replay lane".to_string()),
+            runtime_supports_abort: false,
+            job: None,
+            next_event_seq: 1,
+        };
+
+        state.job = Some(ActiveJobRecord {
+            job_id: "job-bootstrap-001".to_string(),
+            request_id: "req-bootstrap-001".to_string(),
+            requester: "npub1seed...r8k".to_string(),
+            capability: "demo.capability".to_string(),
+            stage: JobLifecycleStage::Running,
+            invoice_id: None,
+            payment_id: None,
+            failure_reason: None,
+            events: vec![
+                ActiveJobEvent {
+                    seq: 1,
+                    message: "received request from relay lane".to_string(),
+                },
+                ActiveJobEvent {
+                    seq: 2,
+                    message: "accepted request and queued runtime execution".to_string(),
+                },
+                ActiveJobEvent {
+                    seq: 3,
+                    message: "runtime execution started".to_string(),
+                },
+            ],
+        });
+        state.next_event_seq = 4;
+        state.load_state = PaneLoadState::Ready;
+        state
+    }
+}
+
+impl ActiveJobState {
+    pub fn start_from_request(&mut self, request: &JobInboxRequest) {
+        let job_id = format!("job-{}", request.request_id);
+        self.job = Some(ActiveJobRecord {
+            job_id,
+            request_id: request.request_id.clone(),
+            requester: request.requester.clone(),
+            capability: request.capability.clone(),
+            stage: JobLifecycleStage::Accepted,
+            invoice_id: None,
+            payment_id: None,
+            failure_reason: None,
+            events: Vec::new(),
+        });
+        self.next_event_seq = 1;
+        self.append_event("received request from inbox");
+        self.append_event("accepted request and queued runtime execution");
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!("Selected {} as active job", request.request_id));
+    }
+
+    pub fn append_event(&mut self, message: impl Into<String>) {
+        let Some(job) = self.job.as_mut() else {
+            return;
+        };
+        job.events.push(ActiveJobEvent {
+            seq: self.next_event_seq,
+            message: message.into(),
+        });
+        self.next_event_seq = self.next_event_seq.saturating_add(1);
+    }
+
+    pub fn advance_stage(&mut self) -> Result<JobLifecycleStage, String> {
+        let Some(job) = self.job.as_mut() else {
+            self.last_error = Some("No active job selected".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("No active job selected".to_string());
+        };
+
+        let next_stage = match job.stage {
+            JobLifecycleStage::Received => JobLifecycleStage::Accepted,
+            JobLifecycleStage::Accepted => JobLifecycleStage::Running,
+            JobLifecycleStage::Running => JobLifecycleStage::Delivered,
+            JobLifecycleStage::Delivered => JobLifecycleStage::Paid,
+            JobLifecycleStage::Paid | JobLifecycleStage::Failed => {
+                self.last_error = Some("Active job already terminal".to_string());
+                self.load_state = PaneLoadState::Error;
+                return Err("Active job already terminal".to_string());
+            }
+        };
+
+        job.stage = next_stage;
+        if next_stage == JobLifecycleStage::Delivered {
+            job.invoice_id = Some(format!("inv-{}", job.request_id));
+        }
+        if next_stage == JobLifecycleStage::Paid {
+            job.payment_id = Some(format!("pay-{}", job.request_id));
+        }
+        self.append_event(format!("stage advanced to {}", next_stage.label()));
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Advanced active job to {}", next_stage.label()));
+        Ok(next_stage)
+    }
+
+    pub fn abort_job(&mut self, reason: &str) -> Result<(), String> {
+        if !self.runtime_supports_abort {
+            self.last_error =
+                Some("Abort unavailable: runtime lane does not support cancel".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Abort unavailable".to_string());
+        }
+        let Some(job) = self.job.as_mut() else {
+            self.last_error = Some("No active job selected".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("No active job selected".to_string());
+        };
+
+        let reason_text = reason.trim().to_string();
+        job.stage = JobLifecycleStage::Failed;
+        job.failure_reason = Some(reason_text.clone());
+        self.append_event(format!("job aborted: {reason_text}"));
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some("Aborted active job".to_string());
+        Ok(())
+    }
+}
+
 impl ProviderBlocker {
     pub const fn code(self) -> &'static str {
         match self {
@@ -704,6 +887,7 @@ pub struct RenderState {
     pub autopilot_chat: AutopilotChatState,
     pub provider_runtime: ProviderRuntimeState,
     pub job_inbox: JobInboxState,
+    pub active_job: ActiveJobState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -729,9 +913,9 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AutopilotChatState, AutopilotMessageStatus, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState,
+        ActiveJobState, AutopilotChatState, AutopilotMessageStatus, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
     };
 
     #[test]
@@ -860,5 +1044,15 @@ mod tests {
             selected.decision,
             JobInboxDecision::Accepted { ref reason } if reason == "valid + priced"
         ));
+    }
+
+    #[test]
+    fn active_job_advance_stage_updates_lifecycle() {
+        let mut active = ActiveJobState::default();
+        let stage = active.advance_stage().expect("advance should succeed");
+        assert_eq!(stage, JobLifecycleStage::Delivered);
+        let current = active.job.as_ref().expect("active job exists");
+        assert_eq!(current.stage, JobLifecycleStage::Delivered);
+        assert!(current.invoice_id.is_some());
     }
 }

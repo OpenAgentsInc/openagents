@@ -13,11 +13,11 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    JobInboxPaneAction, PaneController, PaneInput, dispatch_chat_input_event,
-    dispatch_pay_invoice_input_event, dispatch_spark_input_event, topmost_chat_send_hit,
-    topmost_go_online_toggle_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
-    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
-    topmost_spark_action_hit,
+    ActiveJobPaneAction, JobInboxPaneAction, PaneController, PaneInput, dispatch_chat_input_event,
+    dispatch_pay_invoice_input_event, dispatch_spark_input_event, topmost_active_job_action_hit,
+    topmost_chat_send_hit, topmost_go_online_toggle_hit, topmost_job_inbox_action_hit,
+    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
+    topmost_pay_invoice_action_hit, topmost_spark_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
@@ -27,6 +27,7 @@ const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
 const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
+const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
 const COMMAND_OPEN_WALLET: &str = "pane.wallet";
 const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
@@ -227,6 +228,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_job_inbox_action_click(state, app.cursor_position);
+                    handled |= handle_active_job_action_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -427,6 +429,15 @@ fn handle_job_inbox_action_click(state: &mut crate::app_state::RenderState, poin
     run_job_inbox_action(state, action)
 }
 
+fn handle_active_job_action_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some((pane_id, action)) = topmost_active_job_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_active_job_action(state, action)
+}
+
 fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -565,6 +576,16 @@ fn run_job_inbox_action(
                         state.provider_runtime.queue_depth.saturating_add(1);
                     state.provider_runtime.last_result =
                         Some(format!("runtime accepted request {request_id}"));
+                    let selected_request = state
+                        .job_inbox
+                        .requests
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .cloned();
+                    if let Some(request) = selected_request.as_ref() {
+                        state.active_job.start_from_request(request);
+                        PaneController::create_active_job(state);
+                    }
                 }
                 Err(error) => {
                     state.job_inbox.last_error = Some(error);
@@ -587,6 +608,40 @@ fn run_job_inbox_action(
                     state.job_inbox.last_error = Some(error);
                     state.job_inbox.load_state = crate::app_state::PaneLoadState::Error;
                 }
+            }
+            true
+        }
+    }
+}
+
+fn run_active_job_action(
+    state: &mut crate::app_state::RenderState,
+    action: ActiveJobPaneAction,
+) -> bool {
+    let now = std::time::Instant::now();
+    match action {
+        ActiveJobPaneAction::AdvanceStage => {
+            if let Ok(stage) = state.active_job.advance_stage() {
+                state.provider_runtime.last_result =
+                    Some(format!("active job advanced to {}", stage.label()));
+                if stage == crate::app_state::JobLifecycleStage::Paid {
+                    state.provider_runtime.queue_depth =
+                        state.provider_runtime.queue_depth.saturating_sub(1);
+                    state.provider_runtime.last_completed_job_at = Some(now);
+                }
+            }
+            true
+        }
+        ActiveJobPaneAction::AbortJob => {
+            if state
+                .active_job
+                .abort_job("operator requested abort")
+                .is_ok()
+            {
+                state.provider_runtime.last_result = Some("active job aborted".to_string());
+                state.provider_runtime.queue_depth =
+                    state.provider_runtime.queue_depth.saturating_sub(1);
+                state.provider_runtime.last_completed_job_at = Some(now);
             }
             true
         }
@@ -849,6 +904,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_JOB_INBOX => {
                 PaneController::create_job_inbox(state);
+                changed = true;
+            }
+            COMMAND_OPEN_ACTIVE_JOB => {
+                PaneController::create_active_job(state);
                 changed = true;
             }
             COMMAND_OPEN_IDENTITY_KEYS => {

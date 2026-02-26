@@ -20,6 +20,8 @@ const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
 const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
+const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
+const ACTIVE_JOB_PANE_HEIGHT: f32 = 440.0;
 const NOSTR_PANE_WIDTH: f32 = 760.0;
 const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
@@ -48,6 +50,12 @@ pub enum JobInboxPaneAction {
     AcceptSelected,
     RejectSelected,
     SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActiveJobPaneAction {
+    AdvanceStage,
+    AbortJob,
 }
 
 #[derive(Clone, Copy)]
@@ -100,6 +108,15 @@ impl PaneDescriptor {
             kind: PaneKind::JobInbox,
             width: JOB_INBOX_PANE_WIDTH,
             height: JOB_INBOX_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn active_job() -> Self {
+        Self {
+            kind: PaneKind::ActiveJob,
+            width: ACTIVE_JOB_PANE_WIDTH,
+            height: ACTIVE_JOB_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -198,6 +215,10 @@ impl PaneController {
 
     pub fn create_job_inbox(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::job_inbox());
+    }
+
+    pub fn create_active_job(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::active_job());
     }
 
     pub fn create_nostr_identity(state: &mut RenderState) {
@@ -463,6 +484,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::ActiveJob {
+            if topmost_active_job_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
             let content_bounds = pane_content_bounds(bounds);
             let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
@@ -596,6 +623,26 @@ pub fn job_inbox_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds 
 
 pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
     request_count.min(JOB_INBOX_MAX_ROWS)
+}
+
+pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
+    let width = content_bounds.size.width.min(196.0).max(144.0);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        width,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn active_job_abort_button_bounds(content_bounds: Bounds) -> Bounds {
+    let advance = active_job_advance_button_bounds(content_bounds);
+    Bounds::new(
+        advance.max_x() + JOB_INBOX_BUTTON_GAP,
+        advance.origin.y,
+        advance.size.width,
+        advance.size.height,
+    )
 }
 
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -742,6 +789,30 @@ pub fn topmost_job_inbox_action_hit(
             if job_inbox_row_bounds(content_bounds, row_index).contains(point) {
                 return Some((pane.id, JobInboxPaneAction::SelectRow(row_index)));
             }
+        }
+    }
+
+    None
+}
+
+pub fn topmost_active_job_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, ActiveJobPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::ActiveJob {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if active_job_advance_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, ActiveJobPaneAction::AdvanceStage));
+        }
+        if state.active_job.runtime_supports_abort
+            && active_job_abort_button_bounds(content_bounds).contains(point)
+        {
+            return Some((pane.id, ActiveJobPaneAction::AbortJob));
         }
     }
 
@@ -898,6 +969,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::GoOnline => "Go Online".to_string(),
         PaneKind::ProviderStatus => "Provider Status".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
+        PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
         PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
@@ -942,6 +1014,7 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 #[cfg(test)]
 mod tests {
     use super::{
+        active_job_abort_button_bounds, active_job_advance_button_bounds,
         chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
         chat_transcript_bounds, go_online_toggle_button_bounds, job_inbox_accept_button_bounds,
         job_inbox_reject_button_bounds, job_inbox_row_bounds, nostr_copy_secret_button_bounds,
@@ -1007,5 +1080,15 @@ mod tests {
         assert!(accept.max_x() < reject.min_x());
         assert!(accept.max_y() < row0.min_y());
         assert!(row0.max_y() < row1.min_y());
+    }
+
+    #[test]
+    fn active_job_controls_are_non_overlapping() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let advance = active_job_advance_button_bounds(content);
+        let abort = active_job_abort_button_bounds(content);
+
+        assert!(advance.max_x() < abort.min_x());
+        assert!((advance.origin.y - abort.origin.y).abs() <= f32::EPSILON);
     }
 }
