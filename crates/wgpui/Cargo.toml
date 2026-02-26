@@ -105,7 +105,6 @@ pollster = { version = "0.4", optional = true }
 # iOS (optional) - WGPUI background uses create_surface_unsafe(CoreAnimationLayer)
 derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
 web-time = "1.1.0"
-vim = { path = "../vim" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rodio = "0.20"

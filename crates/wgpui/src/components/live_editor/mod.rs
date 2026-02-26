@@ -20,7 +20,34 @@ use block::{
     strip_blockquote_prefix, strip_header_prefix, strip_list_prefix,
 };
 pub use cursor::{Cursor, Selection};
-pub use vim::Mode as VimMode;
+
+/// Local vim-mode enum used by LiveEditor.
+///
+/// This preserves the existing editing-mode behavior while decoupling
+/// `wgpui` from the archived standalone `vim` crate.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
+pub enum VimMode {
+    #[default]
+    Normal,
+    Insert,
+    Replace,
+    Visual,
+    VisualLine,
+    VisualBlock,
+}
+
+impl VimMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "NORMAL",
+            Self::Insert => "INSERT",
+            Self::Replace => "REPLACE",
+            Self::Visual => "VISUAL",
+            Self::VisualLine => "V-LINE",
+            Self::VisualBlock => "V-BLOCK",
+        }
+    }
+}
 
 /// Pending operator waiting for a motion
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,11 +57,11 @@ pub enum PendingOperator {
     Yank,
 }
 
-/// Vim state for the editor (using vim crate's Mode)
+/// Vim state for the editor
 #[derive(Debug, Clone, Default)]
 pub struct VimState {
     /// Current vim mode
-    pub mode: vim::Mode,
+    pub mode: VimMode,
     /// Count prefix (e.g., "3" in "3j")
     pub count: Option<usize>,
     /// Pending operator
@@ -68,24 +95,24 @@ impl VimState {
     }
 
     pub fn enter_insert(&mut self) {
-        self.mode = vim::Mode::Insert;
+        self.mode = VimMode::Insert;
         self.reset_pending();
     }
 
     pub fn enter_normal(&mut self) {
-        self.mode = vim::Mode::Normal;
+        self.mode = VimMode::Normal;
         self.reset_pending();
         self.visual_anchor = None;
     }
 
     pub fn enter_visual(&mut self, anchor: Cursor) {
-        self.mode = vim::Mode::Visual;
+        self.mode = VimMode::Visual;
         self.visual_anchor = Some(anchor);
         self.reset_pending();
     }
 
     pub fn enter_visual_line(&mut self, anchor: Cursor) {
-        self.mode = vim::Mode::VisualLine;
+        self.mode = VimMode::VisualLine;
         self.visual_anchor = Some(anchor);
         self.reset_pending();
     }
@@ -841,19 +868,19 @@ impl LiveEditor {
 
                     // Mode switches
                     "v" => {
-                        if self.vim.mode == vim::Mode::Visual {
+                        if self.vim.mode == VimMode::Visual {
                             self.vim.enter_normal();
                             self.selection = None;
                         } else {
-                            self.vim.mode = vim::Mode::Visual;
+                            self.vim.mode = VimMode::Visual;
                         }
                     }
                     "V" => {
-                        if self.vim.mode == vim::Mode::VisualLine {
+                        if self.vim.mode == VimMode::VisualLine {
                             self.vim.enter_normal();
                             self.selection = None;
                         } else {
-                            self.vim.mode = vim::Mode::VisualLine;
+                            self.vim.mode = VimMode::VisualLine;
                             self.update_visual_line_selection();
                         }
                     }
@@ -872,7 +899,7 @@ impl LiveEditor {
 
     fn update_visual_selection(&mut self) {
         if let Some(anchor) = self.vim.visual_anchor {
-            if self.vim.mode == vim::Mode::VisualLine {
+            if self.vim.mode == VimMode::VisualLine {
                 self.update_visual_line_selection();
             } else {
                 self.selection = Some(Selection::new(anchor, self.cursor));

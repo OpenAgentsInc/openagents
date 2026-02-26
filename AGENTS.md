@@ -9,7 +9,6 @@
 ## Current Working Set
 
 - Active implementation focus is `crates/wgpui/`.
-- Keep `crates/vim/` because `wgpui` currently depends on it for editor mode typing.
 - Keep `docs/MVP.md` as the product/spec authority.
 
 ## Archived Backroom Code
