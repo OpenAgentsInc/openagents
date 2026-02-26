@@ -544,6 +544,12 @@ fn paint_nostr_identity_pane(
 ) {
     let now = std::time::Instant::now();
     let secrets_revealed = nostr_secret_state.is_revealed(now);
+    let identity_state = nostr_identity_view_state(nostr_identity, nostr_identity_error);
+    let identity_state_color = match identity_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
 
     let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
     let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
@@ -571,6 +577,13 @@ fn paint_nostr_identity_pane(
             |identity| identity.identity_path.display().to_string(),
         ),
     );
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", identity_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        identity_state_color,
+    ));
+    y += 16.0;
 
     if let Some(remaining) = nostr_secret_state
         .revealed_until
@@ -658,7 +671,28 @@ fn paint_nostr_identity_pane(
             "Identity error",
             error,
         );
+    } else {
+        let _ = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Identity",
+            "No identity loaded yet. Regenerate keys to initialize custody material.",
+        );
     }
+}
+
+fn nostr_identity_view_state(
+    nostr_identity: Option<&nostr::NostrIdentity>,
+    nostr_identity_error: Option<&str>,
+) -> PaneLoadState {
+    if nostr_identity_error.is_some() {
+        return PaneLoadState::Error;
+    }
+    if nostr_identity.is_some() {
+        return PaneLoadState::Ready;
+    }
+    PaneLoadState::Loading
 }
 
 fn paint_job_inbox_pane(
@@ -1407,13 +1441,19 @@ fn paint_create_invoice_pane(
 
     paint.scene.draw_text(paint.text.layout(
         "Invoice sats",
-        Point::new(layout.amount_input.origin.x, layout.amount_input.origin.y - 12.0),
+        Point::new(
+            layout.amount_input.origin.x,
+            layout.amount_input.origin.y - 12.0,
+        ),
         10.0,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
         "Expiry (seconds)",
-        Point::new(layout.expiry_input.origin.x, layout.expiry_input.origin.y - 12.0),
+        Point::new(
+            layout.expiry_input.origin.x,
+            layout.expiry_input.origin.y - 12.0,
+        ),
         10.0,
         theme::text::MUTED,
     ));
@@ -1763,8 +1803,8 @@ fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_invoice_view_state, pay_invoice_view_state, payment_terminal_status,
-        spark_wallet_view_state,
+        create_invoice_view_state, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, spark_wallet_view_state,
     };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
@@ -1814,5 +1854,30 @@ mod tests {
 
         state.last_error = Some("invoice failed".to_string());
         assert_eq!(create_invoice_view_state(&state), PaneLoadState::Error);
+    }
+
+    #[test]
+    fn nostr_identity_view_state_reports_loading_ready_error() {
+        assert_eq!(
+            nostr_identity_view_state(None, None),
+            PaneLoadState::Loading
+        );
+
+        let identity = nostr::NostrIdentity {
+            identity_path: std::path::PathBuf::from("/tmp/identity"),
+            mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string(),
+            npub: "npub1example".to_string(),
+            nsec: "nsec1example".to_string(),
+            public_key_hex: "11".to_string(),
+            private_key_hex: "22".to_string(),
+        };
+        assert_eq!(
+            nostr_identity_view_state(Some(&identity), None),
+            PaneLoadState::Ready
+        );
+        assert_eq!(
+            nostr_identity_view_state(Some(&identity), Some("corrupt mnemonic")),
+            PaneLoadState::Error
+        );
     }
 }

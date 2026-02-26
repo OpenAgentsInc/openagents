@@ -31,6 +31,9 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Row model includes `job_id`, `status`, `completed timestamp`, `result hash`, and `payment pointer`.
 - `Nostr Keys (NIP-06)`
   - Shows identity path, `npub`, masked `nsec`, masked mnemonic, and key controls.
+  - Secrets are masked by default, reveal is timed, and copy emits explicit custody warning copy.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+  - Regenerate immediately triggers dependent wallet refresh.
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
 - `Spark Lightning Wallet`
   - Shows wallet connectivity, balances, addresses, invoice creation, payment sending, and recent payment status.

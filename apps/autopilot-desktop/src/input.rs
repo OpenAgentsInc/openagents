@@ -359,6 +359,12 @@ fn handle_nostr_regenerate_click(state: &mut crate::app_state::RenderState, poin
         Ok(identity) => {
             state.nostr_identity = Some(identity);
             state.nostr_identity_error = None;
+            state.nostr_secret_state.revealed_until = None;
+            state.nostr_secret_state.set_copy_notice(
+                std::time::Instant::now(),
+                "Identity regenerated. Secrets are hidden by default.".to_string(),
+            );
+            queue_spark_command(state, SparkWalletCommand::Refresh);
         }
         Err(err) => {
             state.nostr_identity_error = Some(err.to_string());
