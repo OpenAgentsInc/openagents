@@ -1,6 +1,6 @@
 use nostr::regenerate_identity;
 use wgpui::clipboard::copy_to_clipboard;
-use wgpui::{Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
+use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{
@@ -8,14 +8,22 @@ use winit::keyboard::{
 };
 
 use crate::app_state::App;
-use crate::hotbar::{activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks};
+use crate::hotbar::{
+    HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET,
+    activate_hotbar_slot, hotbar_slot_for_key, process_hotbar_clicks,
+};
 use crate::pane_system::{
     PaneController, PaneInput, dispatch_spark_input_event, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_spark_action_hit,
 };
-use crate::render::render_frame;
+use crate::render::{logical_size, render_frame};
 use crate::spark_pane::SparkPaneAction;
 use crate::spark_wallet::SparkWalletCommand;
+
+const COMMAND_NEW_PANE: &str = "pane.new";
+const COMMAND_OPEN_NOSTR: &str = "pane.nostr";
+const COMMAND_OPEN_SPARK: &str = "pane.spark";
+const COMMAND_CANCEL_SPARK: &str = "spark.cancel";
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
@@ -51,6 +59,25 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         WindowEvent::CursorMoved { position, .. } => {
             let scale = state.scale_factor.max(0.1);
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
+
+            if state.command_palette.is_open() {
+                let event = InputEvent::MouseMove {
+                    x: app.cursor_position.x,
+                    y: app.cursor_position.y,
+                };
+                if state
+                    .command_palette
+                    .event(
+                        &event,
+                        command_palette_bounds(state),
+                        &mut state.event_context,
+                    )
+                    .is_handled()
+                {
+                    state.window.request_redraw();
+                }
+                return;
+            }
 
             let mut needs_redraw = false;
             if PaneController::update_drag(state, app.cursor_position) {
@@ -114,6 +141,24 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 },
             };
 
+            if state.command_palette.is_open() {
+                let mut handled = state
+                    .command_palette
+                    .event(
+                        &input,
+                        command_palette_bounds(state),
+                        &mut state.event_context,
+                    )
+                    .is_handled();
+                if matches!(mouse_state, ElementState::Released) {
+                    handled |= dispatch_command_palette_actions(state);
+                }
+                if handled {
+                    state.window.request_redraw();
+                }
+                return;
+            }
+
             match mouse_state {
                 ElementState::Pressed => {
                     let mut handled = false;
@@ -168,7 +213,37 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::KeyboardInput { event, .. } => {
+            if event.state == ElementState::Pressed
+                && is_command_palette_shortcut(&event.logical_key, state.input_modifiers)
+            {
+                toggle_command_palette(state);
+                state.window.request_redraw();
+                return;
+            }
+
             if event.state != ElementState::Pressed {
+                return;
+            }
+
+            if state.command_palette.is_open() {
+                if let Some(key) = map_winit_key(&event.logical_key) {
+                    let palette_event = InputEvent::KeyDown {
+                        key,
+                        modifiers: state.input_modifiers,
+                    };
+                    let mut handled = state
+                        .command_palette
+                        .event(
+                            &palette_event,
+                            command_palette_bounds(state),
+                            &mut state.event_context,
+                        )
+                        .is_handled();
+                    handled |= dispatch_command_palette_actions(state);
+                    if handled {
+                        state.window.request_redraw();
+                    }
+                }
                 return;
             }
 
@@ -440,12 +515,74 @@ fn map_named_key(named: WinitNamedKey) -> NamedKey {
     }
 }
 
+fn toggle_command_palette(state: &mut crate::app_state::RenderState) {
+    if state.command_palette.is_open() {
+        state.command_palette.close();
+    } else {
+        state.command_palette.open();
+    }
+}
+
+fn command_palette_bounds(state: &crate::app_state::RenderState) -> Bounds {
+    let logical = logical_size(&state.config, state.scale_factor);
+    Bounds::new(0.0, 0.0, logical.width, logical.height)
+}
+
+fn is_command_palette_shortcut(logical_key: &WinitLogicalKey, modifiers: Modifiers) -> bool {
+    let is_k = match logical_key {
+        WinitLogicalKey::Character(value) => value.eq_ignore_ascii_case("k"),
+        _ => false,
+    };
+
+    is_k && (modifiers.meta || modifiers.ctrl)
+}
+
+fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -> bool {
+    let action_ids: Vec<String> = {
+        let mut queue = state.command_palette_actions.borrow_mut();
+        queue.drain(..).collect()
+    };
+    if action_ids.is_empty() {
+        return false;
+    }
+
+    let mut changed = false;
+    for action in action_ids {
+        match action.as_str() {
+            COMMAND_NEW_PANE => {
+                activate_hotbar_slot(state, HOTBAR_SLOT_NEW_CHAT);
+                changed = true;
+            }
+            COMMAND_OPEN_NOSTR => {
+                activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
+                changed = true;
+            }
+            COMMAND_OPEN_SPARK => {
+                activate_hotbar_slot(state, HOTBAR_SLOT_SPARK_WALLET);
+                changed = true;
+            }
+            COMMAND_CANCEL_SPARK => {
+                if let Err(error) = state.spark_worker.cancel_pending() {
+                    state.spark_wallet.last_error = Some(error);
+                }
+                changed = true;
+            }
+            _ => {}
+        }
+    }
+
+    changed
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{build_spark_command_for_action, parse_positive_amount_str};
+    use super::{
+        build_spark_command_for_action, is_command_palette_shortcut, parse_positive_amount_str,
+    };
     use crate::spark_pane::{SparkPaneAction, hit_action, layout};
     use crate::spark_wallet::SparkWalletCommand;
-    use wgpui::{Bounds, Point};
+    use wgpui::{Bounds, Modifiers, Point};
+    use winit::keyboard::Key as WinitLogicalKey;
 
     #[test]
     fn parse_positive_amount_str_validates_inputs() {
@@ -522,5 +659,23 @@ mod tests {
             command,
             SparkWalletCommand::CreateInvoice { amount_sats: 2100 }
         ));
+    }
+
+    #[test]
+    fn command_palette_shortcut_detects_cmd_or_ctrl_k() {
+        let key = WinitLogicalKey::Character("k".into());
+        let cmd_mods = Modifiers {
+            meta: true,
+            ..Modifiers::default()
+        };
+        let ctrl_mods = Modifiers {
+            ctrl: true,
+            ..Modifiers::default()
+        };
+        let none_mods = Modifiers::default();
+
+        assert!(is_command_palette_shortcut(&key, cmd_mods));
+        assert!(is_command_palette_shortcut(&key, ctrl_mods));
+        assert!(!is_command_palette_shortcut(&key, none_mods));
     }
 }

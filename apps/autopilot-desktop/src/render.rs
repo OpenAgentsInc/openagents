@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 use nostr::load_or_create_identity;
-use wgpui::components::hud::{DotShape, DotsGrid, DotsOrigin};
+use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Component, Easing, Hsla, PaintContext, Quad, Scene, Size, TextSystem, theme};
 use winit::event_loop::ActiveEventLoop;
@@ -90,6 +91,16 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 
         let spark_wallet = crate::spark_wallet::SparkPaneState::default();
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
+        let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
+        let mut command_palette = CommandPalette::new()
+            .mono(true)
+            .commands(command_registry());
+        {
+            let action_queue = Rc::clone(&command_palette_actions);
+            command_palette = command_palette.on_select(move |command| {
+                action_queue.borrow_mut().push(command.id.clone());
+            });
+        }
 
         let mut state = RenderState {
             window,
@@ -117,6 +128,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             pane_resizer: wgpui::components::hud::ResizablePane::new()
                 .min_size(PANE_MIN_WIDTH, PANE_MIN_HEIGHT),
             hotbar_flash_was_active: false,
+            command_palette,
+            command_palette_actions,
         };
         PaneController::create_empty(&mut state);
         Ok(state)
@@ -162,6 +175,10 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         state.hotbar_bounds = bar_bounds;
         configure_hotbar(&mut state.hotbar);
         state.hotbar.paint(bar_bounds, &mut paint);
+
+        state
+            .command_palette
+            .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
     }
 
     state
@@ -212,4 +229,24 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> Size {
     let scale = scale_factor.max(0.1);
     Size::new(config.width as f32 / scale, config.height as f32 / scale)
+}
+
+fn command_registry() -> Vec<Command> {
+    vec![
+        Command::new("pane.new", "New Empty Pane")
+            .description("Open a new empty pane")
+            .category("Panes")
+            .keybinding("1"),
+        Command::new("pane.nostr", "Open Nostr Identity Pane")
+            .description("Show Nostr keys and controls")
+            .category("Panes")
+            .keybinding("2"),
+        Command::new("pane.spark", "Open Spark Wallet Pane")
+            .description("Show Spark wallet controls")
+            .category("Panes")
+            .keybinding("3"),
+        Command::new("spark.cancel", "Cancel Spark Pending Actions")
+            .description("Cancel queued Spark worker actions")
+            .category("Wallet"),
+    ]
 }

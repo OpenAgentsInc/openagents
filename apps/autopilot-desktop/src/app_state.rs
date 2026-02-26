@@ -1,9 +1,10 @@
-use std::time::{Duration, Instant};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
 use wgpui::components::TextInput;
-use wgpui::components::hud::{Hotbar, PaneFrame, ResizablePane, ResizeEdge};
+use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
@@ -156,6 +157,8 @@ pub struct RenderState {
     pub pane_drag_mode: Option<PaneDragMode>,
     pub pane_resizer: ResizablePane,
     pub hotbar_flash_was_active: bool,
+    pub command_palette: CommandPalette,
+    pub command_palette_actions: Rc<RefCell<Vec<String>>>,
 }
 
 #[cfg(test)]
