@@ -8,6 +8,18 @@
 //! - Position/index queries (click detection)
 //! - Layout cache statistics
 //! - Streaming markdown rendering
+#![expect(
+    clippy::expect_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::panic,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
 
 use std::collections::VecDeque;
 use std::sync::Arc;

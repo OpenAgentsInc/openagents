@@ -6,6 +6,18 @@
 //! - Molecules (MessageHeader, ModeSelector, ModelSelector)
 //! - HUD (StatusBar, Tooltip, ContextMenu)
 //! - Basic components (Text, Button, Div, VirtualList)
+#![expect(
+    clippy::expect_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::panic,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

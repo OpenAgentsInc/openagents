@@ -9,6 +9,18 @@
 //! - Message ordering and thread layout
 //!
 //! Run with: cargo run --example chat_streaming_test --features desktop
+#![expect(
+    clippy::expect_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::panic,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
 
 use std::collections::VecDeque;
 use std::sync::Arc;

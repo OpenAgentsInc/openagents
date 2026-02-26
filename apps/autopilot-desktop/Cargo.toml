@@ -11,6 +11,9 @@ description = "Native WGPUI desktop app for Autopilot (MVP shell)"
 name = "autopilot-desktop"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = { workspace = true }
 wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }

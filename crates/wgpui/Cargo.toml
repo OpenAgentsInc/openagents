@@ -10,6 +10,9 @@ description = "GPU-accelerated UI rendering library"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[lints]
+workspace = true
+
 [features]
 default = ["desktop"]
 web = [

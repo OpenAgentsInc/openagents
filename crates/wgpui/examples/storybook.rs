@@ -1,3 +1,16 @@
+#![expect(
+    clippy::expect_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+#![expect(
+    clippy::panic,
+    reason = "Example/demo lane accepts explicit fail-fast setup paths."
+)]
+
 #[path = "storybook/app.rs"]
 mod app;
 #[path = "storybook/constants.rs"]

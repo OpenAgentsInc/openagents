@@ -12,9 +12,9 @@ This repo now enforces a "no net-new clippy warnings" rule by lane. Existing war
 
 Current baseline:
 
-- `LIB_WARNINGS=9`
-- `TEST_WARNINGS=34`
-- `EXAMPLE_WARNINGS=72`
+- `LIB_WARNINGS=240`
+- `TEST_WARNINGS=434`
+- `EXAMPLE_WARNINGS=286`
 
 ## Lanes
 
