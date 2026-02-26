@@ -16,6 +16,12 @@ struct CodeBlockMetrics {
     border_width: f32,
 }
 
+struct RenderSurface<'a> {
+    text_system: &'a mut TextSystem,
+    scene: &'a mut Scene,
+    opacity: f32,
+}
+
 impl MarkdownRenderer {
     pub fn new() -> Self {
         Self::with_config(MarkdownConfig::default())
@@ -230,13 +236,16 @@ impl MarkdownRenderer {
         scene: &mut Scene,
     ) -> MarkdownLayout {
         let mut layout = MarkdownLayout::default();
+        let mut surface = RenderSurface {
+            text_system,
+            scene,
+            opacity: 1.0,
+        };
         layout.size = self.render_with_opacity_internal(
             document,
             origin,
             max_width,
-            text_system,
-            scene,
-            1.0,
+            &mut surface,
             Some(&mut layout.code_blocks),
         );
         layout
@@ -251,26 +260,20 @@ impl MarkdownRenderer {
         scene: &mut Scene,
         opacity: f32,
     ) -> Size {
-        self.render_with_opacity_internal(
-            document,
-            origin,
-            max_width,
+        let mut surface = RenderSurface {
             text_system,
             scene,
             opacity,
-            None,
-        )
+        };
+        self.render_with_opacity_internal(document, origin, max_width, &mut surface, None)
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_with_opacity_internal(
         &self,
         document: &MarkdownDocument,
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> Size {
         let mut y = origin.y;
@@ -285,9 +288,7 @@ impl MarkdownRenderer {
                 block,
                 Point::new(x, y),
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks.as_deref_mut(),
             );
         }
@@ -295,20 +296,17 @@ impl MarkdownRenderer {
         Size::new(max_width, y - origin.y)
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_block_with_opacity(
         &self,
         block: &MarkdownBlock,
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         match block {
             MarkdownBlock::Paragraph(lines) => {
-                self.render_lines(lines, origin, max_width, 0, text_system, scene, opacity)
+                self.render_lines(lines, origin, max_width, 0, surface)
             }
 
             MarkdownBlock::Header { level, lines } => {
@@ -323,9 +321,7 @@ impl MarkdownRenderer {
                         Point::new(origin.x, origin.y + margin_top),
                         max_width,
                         0,
-                        text_system,
-                        scene,
-                        opacity,
+                        surface,
                     )
             }
 
@@ -336,9 +332,7 @@ impl MarkdownRenderer {
                 language,
                 origin,
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks,
             ),
 
@@ -346,9 +340,7 @@ impl MarkdownRenderer {
                 blocks,
                 origin,
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks,
             ),
 
@@ -356,9 +348,7 @@ impl MarkdownRenderer {
                 items,
                 origin,
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks,
             ),
 
@@ -367,14 +357,12 @@ impl MarkdownRenderer {
                 items,
                 origin,
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks,
             ),
 
             MarkdownBlock::HorizontalRule => {
-                self.render_horizontal_rule(origin, max_width, scene, opacity)
+                self.render_horizontal_rule(origin, max_width, surface.scene, surface.opacity)
             }
 
             MarkdownBlock::Table { headers, rows } => self.render_table(
@@ -382,24 +370,22 @@ impl MarkdownRenderer {
                 rows,
                 origin,
                 max_width,
-                text_system,
-                scene,
-                opacity,
+                surface,
             ),
         }
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_lines(
         &self,
         lines: &[StyledLine],
         origin: Point,
         max_width: f32,
         base_indent: u32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
     ) -> f32 {
+        let text_system = &mut *surface.text_system;
+        let scene = &mut *surface.scene;
+        let opacity = surface.opacity;
         let mut y = origin.y;
 
         for line in lines {
@@ -559,18 +545,18 @@ impl MarkdownRenderer {
         y - origin.y
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_code_block(
         &self,
         lines: &[StyledLine],
         language: &Option<String>,
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
+        let text_system = &mut *surface.text_system;
+        let scene = &mut *surface.scene;
+        let opacity = surface.opacity;
         let metrics = self.code_block_metrics();
         let content_height =
             self.measure_lines(lines, max_width - metrics.padding * 2.0, 0, text_system);
@@ -632,9 +618,7 @@ impl MarkdownRenderer {
             content_origin,
             max_width - metrics.padding * 2.0,
             0,
-            text_system,
-            scene,
-            opacity,
+            surface,
         );
 
         if let Some(code_blocks) = code_blocks {
@@ -657,17 +641,15 @@ impl MarkdownRenderer {
         total_height + metrics.margin * 2.0
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_blockquote(
         &self,
         blocks: &[MarkdownBlock],
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
+        let opacity = surface.opacity;
         let bar_width = 4.0;
         let gap = theme::spacing::MD; // Gap between bar and text
         let indent = bar_width + gap;
@@ -684,9 +666,7 @@ impl MarkdownRenderer {
                 block,
                 Point::new(origin.x + indent, y),
                 max_width - indent,
-                text_system,
-                scene,
-                opacity,
+                surface,
                 code_blocks.as_deref_mut(),
             );
         }
@@ -696,7 +676,7 @@ impl MarkdownRenderer {
         // Draw bar aligned with text visual top (accounting for text ascent)
         let bar_color = theme::text::PRIMARY.with_alpha(opacity);
         let bar_top = start_y - text_ascent + 2.0; // Slight adjustment for visual centering
-        scene.draw_quad(Quad {
+        surface.scene.draw_quad(Quad {
             bounds: Bounds::new(origin.x, bar_top, bar_width, content_height + text_ascent),
             background: Some(bar_color),
             border_color: Hsla::transparent(),
@@ -707,17 +687,15 @@ impl MarkdownRenderer {
         content_height + margin * 2.0
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_unordered_list(
         &self,
         items: &[Vec<MarkdownBlock>],
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
+        let opacity = surface.opacity;
         let indent = theme::spacing::XL;
         let bullet_x = origin.x + theme::spacing::SM;
         let margin = theme::spacing::XS;
@@ -730,22 +708,22 @@ impl MarkdownRenderer {
                 .config
                 .text_color
                 .with_alpha(self.config.text_color.a * opacity);
-            let bullet_run = text_system.layout_styled_mono(
-                "\u{2022}",
-                Point::new(bullet_x, item_y),
-                self.config.base_font_size,
-                bullet_color,
-                FontStyle::normal(),
-            );
-            scene.draw_text(bullet_run);
+            {
+                let bullet_run = surface.text_system.layout_styled_mono(
+                    "\u{2022}",
+                    Point::new(bullet_x, item_y),
+                    self.config.base_font_size,
+                    bullet_color,
+                    FontStyle::normal(),
+                );
+                surface.scene.draw_text(bullet_run);
+            }
             for block in item {
                 y += self.render_block_with_opacity(
                     block,
                     Point::new(origin.x + indent, y),
                     max_width - indent,
-                    text_system,
-                    scene,
-                    opacity,
+                    surface,
                     code_blocks.as_deref_mut(),
                 );
             }
@@ -754,18 +732,16 @@ impl MarkdownRenderer {
         y - origin.y + margin
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_ordered_list(
         &self,
         start: u64,
         items: &[Vec<MarkdownBlock>],
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
         mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
+        let opacity = surface.opacity;
         let indent = theme::spacing::XL * 2.0;
         let number_x = origin.x;
         let margin = theme::spacing::XS;
@@ -780,23 +756,23 @@ impl MarkdownRenderer {
                 .config
                 .text_color
                 .with_alpha(self.config.text_color.a * opacity);
-            let number_run = text_system.layout_styled_mono(
-                &format!("{}.", number),
-                Point::new(number_x, item_y),
-                self.config.base_font_size,
-                number_color,
-                FontStyle::normal(),
-            );
-            scene.draw_text(number_run);
+            {
+                let number_run = surface.text_system.layout_styled_mono(
+                    &format!("{}.", number),
+                    Point::new(number_x, item_y),
+                    self.config.base_font_size,
+                    number_color,
+                    FontStyle::normal(),
+                );
+                surface.scene.draw_text(number_run);
+            }
 
             for block in item {
                 y += self.render_block_with_opacity(
                     block,
                     Point::new(origin.x + indent, y),
                     max_width - indent,
-                    text_system,
-                    scene,
-                    opacity,
+                    surface,
                     code_blocks.as_deref_mut(),
                 );
             }
@@ -826,17 +802,15 @@ impl MarkdownRenderer {
         margin * 2.0 + 1.0
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn render_table(
         &self,
         headers: &[Vec<StyledLine>],
         rows: &[Vec<Vec<StyledLine>>],
         origin: Point,
         max_width: f32,
-        text_system: &mut TextSystem,
-        scene: &mut Scene,
-        opacity: f32,
+        surface: &mut RenderSurface<'_>,
     ) -> f32 {
+        let opacity = surface.opacity;
         if headers.is_empty() {
             return 0.0;
         }
@@ -852,16 +826,14 @@ impl MarkdownRenderer {
                 Point::new(x + cell_padding, y + cell_padding),
                 col_width - cell_padding * 2.0,
                 0,
-                text_system,
-                scene,
-                opacity,
+                surface,
             );
             x += col_width;
         }
         y += 32.0;
 
         let border_color = theme::border::DEFAULT.with_alpha(opacity);
-        scene.draw_quad(Quad {
+        surface.scene.draw_quad(Quad {
             bounds: Bounds::new(origin.x, y, max_width, 1.0),
             background: Some(border_color),
             border_color: Hsla::transparent(),
@@ -878,9 +850,7 @@ impl MarkdownRenderer {
                     Point::new(x + cell_padding, y + cell_padding),
                     col_width - cell_padding * 2.0,
                     0,
-                    text_system,
-                    scene,
-                    opacity,
+                    surface,
                 );
                 x += col_width;
             }

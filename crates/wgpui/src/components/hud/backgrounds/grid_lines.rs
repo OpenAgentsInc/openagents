@@ -144,7 +144,18 @@ impl Component for GridLinesBackground {
             let dash = normalized_dash(&self.vertical_dash);
             for index in 0..x_length {
                 let line_x = x + x_margin / 2.0 + index as f32 * spacing;
-                draw_dashed(cx, line_x - w / 2.0, y, w, height, false, color, &dash);
+                draw_dashed(
+                    cx,
+                    DashedSegment {
+                        x: line_x - w / 2.0,
+                        y,
+                        width: w,
+                        height,
+                        horizontal: false,
+                        color,
+                        dash: &dash,
+                    },
+                );
             }
         }
 
@@ -152,7 +163,18 @@ impl Component for GridLinesBackground {
             let dash = normalized_dash(&self.horizontal_dash);
             for index in 0..y_length {
                 let line_y = y + y_margin / 2.0 + index as f32 * spacing;
-                draw_dashed(cx, x, line_y - w / 2.0, width, w, true, color, &dash);
+                draw_dashed(
+                    cx,
+                    DashedSegment {
+                        x,
+                        y: line_y - w / 2.0,
+                        width,
+                        height: w,
+                        horizontal: true,
+                        color,
+                        dash: &dash,
+                    },
+                );
             }
         }
     }
@@ -210,17 +232,27 @@ fn normalized_dash(dash: &[f32]) -> Vec<f32> {
     filtered
 }
 
-#[expect(clippy::too_many_arguments)]
-fn draw_dashed(
-    cx: &mut PaintContext,
+struct DashedSegment<'a> {
     x: f32,
     y: f32,
     width: f32,
     height: f32,
     horizontal: bool,
     color: Hsla,
-    dash: &[f32],
-) {
+    dash: &'a [f32],
+}
+
+fn draw_dashed(cx: &mut PaintContext, segment: DashedSegment<'_>) {
+    let DashedSegment {
+        x,
+        y,
+        width,
+        height,
+        horizontal,
+        color,
+        dash,
+    } = segment;
+
     if dash.is_empty() {
         cx.scene
             .draw_quad(Quad::new(Bounds::new(x, y, width, height)).with_background(color));

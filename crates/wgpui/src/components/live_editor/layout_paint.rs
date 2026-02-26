@@ -1,14 +1,12 @@
 impl LiveEditor {
     /// Render a line with markdown formatting
     /// `is_continuation` indicates this is a wrapped continuation (not the start of the line)
-    #[expect(clippy::too_many_arguments)]
     fn render_formatted_line(
         &self,
         line: &str,
         block_type: BlockType,
         x: f32,
         y: f32,
-        _line_height: f32,
         is_continuation: bool,
         cx: &mut PaintContext,
     ) {
@@ -340,7 +338,6 @@ impl LiveEditor {
                     block_type,
                     text_x,
                     y,
-                    line_height,
                     is_continuation,
                     cx,
                 );

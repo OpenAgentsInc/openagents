@@ -189,15 +189,17 @@ impl PuffsBackground {
         let mut rng = PseudoRng::new(self.seed ^ size.width.to_bits() as u64);
         self.puffs_sets = create_puffs_sets(
             &mut rng,
-            size,
-            self.quantity,
-            self.sets,
-            self.padding,
-            self.grid_distance,
-            self.x_offset,
-            self.y_offset,
-            self.radius_initial,
-            self.radius_offset,
+            PuffsSetConfig {
+                size,
+                quantity: self.quantity,
+                sets: self.sets,
+                padding: self.padding,
+                grid_distance: self.grid_distance,
+                x_offset: self.x_offset,
+                y_offset: self.y_offset,
+                radius_initial: self.radius_initial,
+                radius_offset: self.radius_offset,
+            },
         );
         self.last_size = Some(size);
     }
@@ -350,6 +352,18 @@ struct PseudoRng {
     state: u64,
 }
 
+struct PuffsSetConfig {
+    size: Size,
+    quantity: usize,
+    sets: usize,
+    padding: f32,
+    grid_distance: Option<f32>,
+    x_offset: (f32, f32),
+    y_offset: (f32, f32),
+    radius_initial: f32,
+    radius_offset: (f32, f32),
+}
+
 impl PseudoRng {
     fn new(seed: u64) -> Self {
         Self { state: seed.max(1) }
@@ -366,19 +380,19 @@ impl PseudoRng {
     }
 }
 
-#[expect(clippy::too_many_arguments)]
-fn create_puffs_sets(
-    rng: &mut PseudoRng,
-    size: Size,
-    quantity: usize,
-    sets: usize,
-    padding: f32,
-    grid_distance: Option<f32>,
-    x_offset: (f32, f32),
-    y_offset: (f32, f32),
-    radius_initial: f32,
-    radius_offset: (f32, f32),
-) -> Vec<Vec<Puff>> {
+fn create_puffs_sets(rng: &mut PseudoRng, config: PuffsSetConfig) -> Vec<Vec<Puff>> {
+    let PuffsSetConfig {
+        size,
+        quantity,
+        sets,
+        padding,
+        grid_distance,
+        x_offset,
+        y_offset,
+        radius_initial,
+        radius_offset,
+    } = config;
+
     let sets = sets.max(1);
     let per_set = ((quantity as f32) / sets as f32).round().max(1.0) as usize;
     let width = (size.width - padding * 2.0).max(1.0);
