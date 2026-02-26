@@ -55,7 +55,7 @@ NIP-SA's `kind:39220*`/`kind:39221*` provide the entitlement and delivery mechan
 │ Entitlement  kind:39220* Skill License                     │
 │ Delivery     kind:39221* Skill Delivery (NIP-44 encrypted) │
 │ Execution    Agent tick cycle (perceive → think → act)     │
-│ Audit        kind:39210* Trajectory events                 │
+│ Audit        kind:39230*/39231* Trajectory events         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -139,6 +139,18 @@ author root npub (cold)
 The skill's NIP-26 delegation MUST be scoped to `kind:33400` and `kind:33401` only, with an expiry matching the manifest's `expiry` tag.
 
 Agent runtimes MUST verify the full two-hop delegation chain: `skill_npub → agent_npub → author root npub`. A one-hop chain (skill directly to author, bypassing the agent) is valid only for author-operated single-agent deployments and MUST be explicitly flagged in the manifest with `["single_hop", "true"]`.
+
+#### 1.4.1 Delegation Verification Algorithm (normative)
+
+Given a candidate manifest event (`kind:33400`) signed by `skill_npub`, runtimes MUST:
+
+1. Verify the manifest signature against `skill_npub`.
+2. Resolve a valid NIP-26 delegation from `agent_npub` authorizing `skill_npub` for `kind:33400` and `kind:33401` only, with non-expired delegation window.
+3. Resolve a valid NIP-26 delegation from `author_npub` authorizing `agent_npub` for NIP-SA agent kinds.
+4. Verify both delegations are non-expired at manifest `created_at` and at current evaluation time.
+5. Reject the manifest if any hop is missing, expired, kind-overbroad, or signature-invalid.
+
+Implementations SHOULD cache positive delegation-chain checks by `(skill_npub, agent_npub, author_npub, expiry)` for efficient replay-safe validation.
 
 #### 1.5 Compatibility Mode (BreezClaw/ClaWHub Migration)
 
@@ -313,9 +325,11 @@ Full markdown documentation...
     ["expiry", "<unix_timestamp>"],
     ["manifest_hash", "<sha256 of SKILL.md content>"],
     ["skill_file", "<blossom URL or NIP-94 event id of SKILL.md>"],
-    ["license_kind", "39220", "<skill_provider_npub>", "<relay_url>"],
+    ["skill_scope_id", "33400:<skill_npub>:<d-tag>:<version>"],
+    ["license_kind", "39220", "<marketplace_npub>", "<relay_url>"],
     ["delivery_kind", "39221", "<skill_provider_npub>", "<relay_url>"],
-    ["trajectory_kind", "39210", "<relay_url>"],
+    ["trajectory_session_kind", "39230", "<relay_url>"],
+    ["trajectory_event_kind", "39231", "<relay_url>"],
     ["pre_revocation_cert", "<blossom URL or NIP-94 event id>"],
     ["l402_endpoint", "<macaroon_acquisition_url>"],  // NEW
     ["v", "<previous kind:33400 event id>"],
@@ -333,6 +347,7 @@ Full markdown documentation...
 
 - `["author_handle", "<github_username>"]` — Human-readable author identifier for BreezClaw migration
 - `["l402_endpoint", "<url>"]` — Direct L402 macaroon acquisition endpoint
+- `["skill_scope_id", "33400:<skill_npub>:<d-tag>:<version>"]` — Canonical skill scope id for NIP-AC interop
 - `["imported_from", "<url>"]` — Only for compatibility-mode imports (§1.5)
 - `["capabilities_inferred", "true"]` — Flags auto-inferred capabilities needing author verification
 
@@ -411,7 +426,14 @@ Skills with any `payment:cashu:*` capability MUST declare target mint(s):
 
 #### 2.3 Delivery Hash Verification
 
-The `manifest_hash` field is the SHA-256 of the SKILL.md file that will be delivered via NIP-SA `kind:39221*`. Agent runtimes MUST verify the hash of the received NIP-44-decrypted payload against this value before loading. Hash mismatch MUST result in skill rejection and a `kind:1985 delivery-hash-mismatch` attestation.
+The `manifest_hash` field is the SHA-256 of the canonical SKILL.md payload bytes that will be delivered via NIP-SA `kind:39221*`. Canonical bytes are:
+
+1. UTF-8 encoding
+2. no BOM
+3. LF (`\n`) line endings
+4. exact payload bytes post-NIP-44 decrypt
+
+Agent runtimes MUST verify `sha256(canonical_decrypted_payload) == manifest_hash` before loading. Hash mismatch MUST result in skill rejection and a `kind:1985 delivery-hash-mismatch` attestation.
 
 #### 2.4 Expiry and Renewal
 
@@ -423,94 +445,101 @@ The `manifest_hash` field is the SHA-256 of the SKILL.md file that will be deliv
 
 Renewal requires: new `kind:33400` with updated `expiry`, extended NIP-26 delegation, fresh `manifest_hash`, and new NIP-SA `license_kind` / `delivery_kind` references if relay locations changed.
 
+#### 2.4.1 Canonical Skill Scope ID (NIP-AC Interop)
+
+For NIP-AC `scope=skill` compatibility, SKL defines:
+
+```text
+skill_scope_id = "33400:<skill_npub>:<d-tag>:<version>"
+```
+
+When NIP-AC envelopes target a skill invocation, implementations SHOULD use:
+
+```text
+scope = "skill:<skill_scope_id>:<constraints_hash>"
+```
+
 #### 2.5 YAML-to-kind:33400 Derivation Algorithm (NEW)
 
-**Purpose**: Enable deterministic generation of `kind:33400` manifest events from SKILL.md frontmatter, reducing manual event construction and preventing divergence.
+**Purpose**: deterministic derivation of manifest payload/tags from SKILL.md frontmatter, reducing manual divergence.
+
+**Determinism scope**:
+
+- Deterministic: `kind`, `pubkey`, `tags`, `content`.
+- Caller-supplied (non-deterministic unless fixed by caller): `created_at`.
+- Signature depends on the finalized event and signer key.
 
 **Algorithm:**
 
 ```
-INPUT: SKILL.md file with YAML frontmatter
-OUTPUT: kind:33400 JSON event ready for signing
+INPUT:
+  - SKILL.md file with YAML frontmatter
+  - required skill_npub
+  - required created_at (unix timestamp)
+OUTPUT:
+  - unsigned kind:33400 event
 
-1. Parse YAML frontmatter into object `fm`
+1. Parse YAML frontmatter into object `fm`.
 
-2. Initialize event structure:
+2. Validate required fields:
+   slug, name, version, description, author_npub, capabilities (or empty list).
+   Fail closed on validation errors.
+
+3. Canonicalize SKILL.md payload bytes:
+   - UTF-8, no BOM, LF line endings.
+   - hash = sha256(canonical_payload_bytes).
+
+4. Initialize event:
    event = {
      kind: 33400,
-     pubkey: fm.agent_identity.nostr_pubkey || "<placeholder>",
-     created_at: current_unix_timestamp(),
+     pubkey: skill_npub,
+     created_at: created_at,
      tags: [],
      content: "",
      sig: null
    }
 
-3. Map required fields:
-   event.tags.push(["d", fm.slug])
-   event.tags.push(["name", fm.name])
-   event.tags.push(["version", fm.version])
-   event.tags.push(["description", fm.description])
+5. Map required tags:
+   ["d", fm.slug]
+   ["name", fm.name]
+   ["version", fm.version]
+   ["description", fm.description]
+   ["author_npub", fm.author_npub]
+   ["manifest_hash", hash]
 
-4. Map author fields:
-   if fm.author_npub:
-     event.tags.push(["author_npub", fm.author_npub])
-   if fm.author:
-     event.tags.push(["author_handle", fm.author])
+6. Map identity/ownership tags when available:
+   ["author_handle", fm.author] (optional)
+   ["agent_npub", configured_agent_npub] (if configured)
+   ["skill_scope_id", "33400:<skill_npub>:<d-tag>:<version>"]
 
-5. Map skill identity (if present):
-   if fm.agent_identity:
-     if fm.agent_identity.nostr_pubkey:
-       event.pubkey = fm.agent_identity.nostr_pubkey
-     // NIP-05 and lud16 go in kind:0, not kind:33400
+7. Map capabilities:
+   - emit one ["capability", value] per capability.
+   - emit ["capability", "none"] only when no capabilities declared.
 
-6. Map capabilities:
-   for each cap in fm.capabilities:
-     event.tags.push(["capability", cap])
-   if fm.capabilities is empty:
-     event.tags.push(["capability", "none"])
+8. Map gateway/requirements/tools:
+   - ["l402_endpoint", ...] when L402 is configured.
+   - ["env_required", ...] per required env var.
+   - ["env_optional", ...] per optional env var.
+   - ["tool", tool_name, canonical_json(tool_schema)] per tool.
 
-7. Map payment/gateway fields:
-   if fm.pricing:
-     // Pricing goes in kind:30402, not kind:33400
-     // But L402 endpoint is relevant here:
-     if fm.gateway.auth == "L402" and fm.gateway.macaroon_endpoint:
-       event.tags.push(["l402_endpoint", fm.gateway.macaroon_endpoint])
+9. Map indexing and expiry:
+   - ["t", "agent-skill"]
+   - ["t", keyword] for each keyword.
+   - ["expiry", explicit_or_default_expiry].
 
-8. Map requirements as env vars (NEW):
-   for each req in fm.requires:
-     event.tags.push(["env_required", req])
-   for each opt in fm.optional:
-     event.tags.push(["env_optional", opt])
+10. Map SA fulfillment references (if configured):
+    ["license_kind", "39220", "<marketplace_npub>", "<relay_url>"]
+    ["delivery_kind", "39221", "<skill_provider_npub>", "<relay_url>"]
+    ["trajectory_session_kind", "39230", "<relay_url>"]
+    ["trajectory_event_kind", "39231", "<relay_url>"]
 
-9. Map tools (NEW - see §2.6):
-   for each tool in fm.tools:
-     event.tags.push(["tool", tool.name, JSON.stringify(tool)])
+11. Canonicalize tag order:
+    sort by tag key, then full tuple value, preserving duplicate-key entries.
 
-10. Compute manifest hash:
-    full_file_content = read_entire_SKILL_md_file()
-    hash = sha256(full_file_content)
-    event.tags.push(["manifest_hash", hash])
+12. Set content:
+    deterministic changelog summary or explicit caller-provided summary.
 
-11. Add indexing tags:
-    event.tags.push(["t", "agent-skill"])
-    for each kw in fm.keywords:
-      event.tags.push(["t", kw])
-
-12. Set expiry (default 90 days if not specified):
-    expiry = current_timestamp + (90 * 86400)
-    event.tags.push(["expiry", expiry.toString()])
-
-13. Add NIP-SA fulfillment references (if known):
-    // These would be configured separately, not in SKILL.md
-    // Placeholder for now
-
-14. Generate changelog content:
-    if this is version > 1.0.0:
-      event.content = "Updated to version " + fm.version
-    else:
-      event.content = "Initial release"
-
-15. Return unsigned event for author to sign with skill_npub
+13. Return unsigned event for signing by skill_npub.
 ```
 
 **Reference implementation:** See `scripts/yaml-to-kind33400.js` in reference implementation repo.
@@ -621,7 +650,8 @@ Regular (non-replaceable) events forming an append-only changelog.
     ["prev_version", "<previous semver>"],
     ["manifest_event", "<kind:33400 event id this entry references>"],
     ["manifest_hash", "<sha256 of SKILL.md at this version>"],
-    ["license_event", "<kind:39220* event id of corresponding license>"],
+    ["license_kind", "39220"],
+    ["delivery_kind", "39221"],
     ["change_type", "<added|changed|fixed|deprecated|security>"]
   ],
   "content": "<human-readable changelog entry>",
@@ -665,11 +695,11 @@ Relays SHOULD retain all `kind:33401` events indefinitely. Clients MAY use this 
 | `payment-flows-verified` | Payment capability flows tested vs declared mint/federation | Required for payment caps |
 | `delivery-hash-verified` | NIP-44 delivery payload matches manifest_hash | Runtime verification |
 | `bond-active` | Cashu performance bond currently locked | Economic accountability |
-| `malicious-confirmed` | Confirmed malicious payload — **KILL FLAG** | Forces `none`, blocks loading |
-| `prompt-injection` | Prompt injection detected — **KILL FLAG** | Forces `none`, blocks loading |
-| `credential-exfil` | Credential exfiltration detected — **KILL FLAG** | Forces `none`, blocks loading |
-| `capability-violation` | Exercised undeclared capability at runtime — **KILL FLAG** | Forces `none`, blocks loading |
-| `delivery-hash-mismatch` | NIP-44 payload does not match manifest_hash — **KILL FLAG** | Forces `none`, blocks loading |
+| `malicious-confirmed` | Confirmed malicious payload — **KILL FLAG** | Forces `none` only when kill-authority quorum passes |
+| `prompt-injection` | Prompt injection detected — **KILL FLAG** | Forces `none` only when kill-authority quorum passes |
+| `credential-exfil` | Credential exfiltration detected — **KILL FLAG** | Forces `none` only when kill-authority quorum passes |
+| `capability-violation` | Exercised undeclared capability at runtime — **KILL FLAG** | Forces `none` only when kill-authority quorum passes |
+| `delivery-hash-mismatch` | NIP-44 payload does not match manifest_hash — **KILL FLAG** | Forces `none` only when kill-authority quorum passes |
 | `bond-slashed` | Performance bond burned after kill flag — **KILL FLAG** | Permanent reputation damage |
 | `abandoned` | Author unresponsive, skill unmaintained | Warning only |
 | `superseded` | Replaced; include `["e", "<new_skill_event_id>"]` | Redirect to new version |
@@ -688,6 +718,17 @@ Relays SHOULD retain all `kind:33401` events indefinitely. Clients MAY use this 
 NIP-57 zap receipts co-published with `kind:1985` marginal attestations carry weight proportional to their millisatoshi amount. The threshold for promoting a `marginal` attestation to functional `full` weight is intentionally left implementation-defined. Implementations MUST surface this threshold to operators for explicit configuration.
 
 **Recommended default:** 3 `community-vouched` attestations with combined zap weight ≥1000 sats = `marginal` tier.
+
+#### 4.5 Kill-Flag Authority and Quorum (normative)
+
+Kill-flag labels MUST NOT be treated as authoritative solely because they exist on relays.
+
+A runtime MUST apply a kill flag only if one of the following is true:
+
+1. label is issued by an `ultimate`-tier key in the operator trust root, or
+2. label is issued by a configured `full` security attester and corroborated by at least one additional configured `full` or two configured `marginal` attesters for the same `(skill_npub, version, label)`.
+
+Until quorum is met, runtimes SHOULD mark the skill as `under_review` rather than hard-blocking execution.
 
 ---
 
@@ -723,9 +764,10 @@ Required for all skills with any `payment:*`, `shell:exec`, or `memory:write` ca
 The pre-signed `kind:5` MUST:
 
 1. Be signed by the `ultimate`-tier root `npub`
-2. Reference both `kind:33400` AND the expected `kind:39220*` license
-3. Be encrypted (NIP-44) to the author's cold storage key
-4. Be stored out-of-band (e.g., Vaultwarden on Start9)
+2. Reference the manifest identity via `["a", "33400:<skill_npub>:<d-tag>"]`
+3. MAY include specific `kind:39220*` license event ids when already known, but MUST NOT require unknown future license ids
+4. Be encrypted (NIP-44) to the author's cold storage key
+5. Be stored out-of-band (e.g., Vaultwarden on Start9)
 
 ---
 
@@ -959,19 +1001,20 @@ DISCOVER
   Agent performs trust gate (§2.1)
 
 ACQUIRE (NIP-SA fulfillment, after NIP-SKL trust gate passes)
-  Agent triggers kind:39220* Skill License referencing kind:33400
-  Skill provider sends kind:39221* NIP-44 encrypted to agent npub
+  Agent requests license acquisition for kind:33400
+  Marketplace issues kind:39220* Skill License
+  Skill provider (or delegated delivery service) sends kind:39221* NIP-44 encrypted payload to agent npub
   Agent verifies: sha256(decrypted payload) == manifest_hash
   If mismatch: reject + publish kind:1985 delivery-hash-mismatch
 
 EXECUTE
   Skill loaded within declared capability sandbox
   Any undeclared capability → suspend + kind:1985 capability-violation
-  Agent publishes kind:39210* trajectory events (NIP-SA audit log)
+  Agent publishes kind:39230*/39231* trajectory events (NIP-SA audit log)
 
 RENEW (before expiry)
   New kind:33400 with updated expiry + manifest_hash
-  New kind:33401 version log entry with license_event reference
+  New kind:33401 version log entry with manifest_event + prev_version chain
   Extended NIP-26 delegation
   Update kind:31337 to point to new kind:33400
 
@@ -1006,7 +1049,7 @@ REVOKE
 | 5 | NIP-09 | Active and pre-generated revocation |
 | 39220* | NIP-SA | Skill License (fulfillment entitlement) |
 | 39221* | NIP-SA | Skill Delivery (NIP-44 encrypted content) |
-| 39210* | NIP-SA | Trajectory events (execution audit log) |
+| 39230*/39231* | NIP-SA | Trajectory session/events (execution audit log) |
 
 ---
 

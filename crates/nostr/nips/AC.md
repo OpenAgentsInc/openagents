@@ -77,7 +77,7 @@ This NIP defines these tags:
 
     * `nip90` (job_request_id or canonical job hash)
     * `l402` (resource id + constraints hash)
-    * `skill` (skill id + invocation constraints hash)
+    * `skill` (canonical SKL skill_scope_id + invocation constraints hash)
 * `["max", "<sats>"]` — max spend in sats
 * `["fee", "<sats_or_bps>"]` — issuer fee
 * `["exp", "<unix_ts>"]` — expiry timestamp
@@ -309,7 +309,11 @@ Same flow, but `scope=l402:<resource_hash>`, and the "outcome" is a bounded set 
 
 ### 3) Skill invocation
 
-`scope=skill:<skill_id>:<constraints_hash>`
+`scope=skill:<skill_scope_id>:<constraints_hash>`
+
+Where `skill_scope_id` SHOULD follow NIP-SKL canonical form:
+
+`33400:<skill_npub>:<d-tag>:<version>`
 
 Issuer MAY require the skill provider to also publish a settlement acknowledgement (either 39244 from provider, or a NIP-32 label referencing the receipt).
 
@@ -371,12 +375,21 @@ Recommended NIP-SA integration points:
 
   * references to settlement receipts (39244) and job results (NIP-90)
 
+## Compatibility with NIP-SKL
+
+When `scope_type=skill`, implementations SHOULD use NIP-SKL canonical manifest identity:
+
+- `skill_scope_id = 33400:<skill_npub>:<d-tag>:<version>`
+- `scope tag = ["scope","skill","<skill_scope_id>:<constraints_hash>"]`
+
+This keeps AC envelopes aligned to a specific SKL manifest version and prevents ambiguous credit authorization across upgraded skill versions.
+
 ## Appendix A: Canonical scope hashes
 
 For interop, implementations SHOULD define canonical hashes for scope ids:
 
 * `nip90` scope: hash of canonicalized job request payload (excluding signatures and relay hints)
-* `skill` scope: hash of `(skill_id, version, pricing mode, invocation params)`
+* `skill` scope: hash of `(skill_scope_id, pricing mode, invocation params)`
 * `l402` scope: hash of `(domain, route, quota, pricing, expiry)`
 
 Canonicalization SHOULD use deterministic JSON (stable key ordering, no whitespace), then SHA-256.
