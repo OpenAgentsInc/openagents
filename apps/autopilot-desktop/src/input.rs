@@ -14,13 +14,14 @@ use crate::hotbar::{
 };
 use crate::pane_system::{
     ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController,
-    PaneInput, dispatch_chat_input_event, dispatch_create_invoice_input_event,
-    dispatch_job_history_input_event, dispatch_pay_invoice_input_event, dispatch_spark_input_event,
-    topmost_active_job_action_hit, topmost_chat_send_hit, topmost_create_invoice_action_hit,
-    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
-    topmost_job_history_action_hit, topmost_job_inbox_action_hit, topmost_nostr_copy_secret_hit,
-    topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
-    topmost_spark_action_hit,
+    PaneInput, RelayConnectionsPaneAction, dispatch_chat_input_event,
+    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
+    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
+    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
+    topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
+    topmost_pay_invoice_action_hit, topmost_relay_connections_action_hit, topmost_spark_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -30,6 +31,7 @@ const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
 const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
+const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -122,6 +124,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             if dispatch_create_invoice_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
+            if dispatch_relay_connections_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
             if dispatch_chat_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
@@ -205,6 +210,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_create_invoice_input_event(state, &input);
+                        handled |= dispatch_relay_connections_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         if !handled {
@@ -216,6 +222,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
                         handled |= dispatch_create_invoice_input_event(state, &input);
+                        handled |= dispatch_relay_connections_input_event(state, &input);
                         handled |= dispatch_chat_input_event(state, &input);
                         handled |= dispatch_job_history_input_event(state, &input);
                         handled |= state
@@ -237,6 +244,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= dispatch_spark_input_event(state, &input);
                     handled |= dispatch_pay_invoice_input_event(state, &input);
                     handled |= dispatch_create_invoice_input_event(state, &input);
+                    handled |= dispatch_relay_connections_input_event(state, &input);
                     handled |= dispatch_chat_input_event(state, &input);
                     handled |= dispatch_job_history_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
@@ -245,6 +253,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_spark_action_click(state, app.cursor_position);
                     handled |= handle_pay_invoice_action_click(state, app.cursor_position);
                     handled |= handle_create_invoice_action_click(state, app.cursor_position);
+                    handled |= handle_relay_connections_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -305,6 +314,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 || handle_spark_wallet_keyboard_input(state, &event.logical_key)
                 || handle_pay_invoice_keyboard_input(state, &event.logical_key)
                 || handle_create_invoice_keyboard_input(state, &event.logical_key)
+                || handle_relay_connections_keyboard_input(state, &event.logical_key)
                 || handle_job_history_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -435,6 +445,18 @@ fn handle_create_invoice_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_create_invoice_action(state, action)
+}
+
+fn handle_relay_connections_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_relay_connections_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_relay_connections_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -637,6 +659,36 @@ fn handle_create_invoice_keyboard_input(
     false
 }
 
+fn handle_relay_connections_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+    let focused_before = state.relay_connections_inputs.relay_url.is_focused();
+    let handled_by_input = dispatch_relay_connections_input_event(state, &key_event);
+    let focused_after = state.relay_connections_inputs.relay_url.is_focused();
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter))
+        && state.relay_connections_inputs.relay_url.is_focused()
+    {
+        return run_relay_connections_action(state, RelayConnectionsPaneAction::AddRelay);
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
+}
+
 fn handle_job_history_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -830,6 +882,58 @@ fn run_job_history_action(
         crate::pane_system::JobHistoryPaneAction::NextPage => {
             state.job_history.next_page();
             refresh_earnings_scoreboard(state, now);
+            true
+        }
+    }
+}
+
+fn run_relay_connections_action(
+    state: &mut crate::app_state::RenderState,
+    action: RelayConnectionsPaneAction,
+) -> bool {
+    match action {
+        RelayConnectionsPaneAction::SelectRow(index) => {
+            if !state.relay_connections.select_by_index(index) {
+                state.relay_connections.last_error = Some("Relay row out of range".to_string());
+                state.relay_connections.load_state = crate::app_state::PaneLoadState::Error;
+            } else {
+                state.relay_connections.load_state = crate::app_state::PaneLoadState::Ready;
+            }
+            true
+        }
+        RelayConnectionsPaneAction::AddRelay => {
+            let relay_url = state.relay_connections_inputs.relay_url.get_value();
+            match state.relay_connections.add_relay(relay_url) {
+                Ok(()) => {
+                    state.provider_runtime.last_result =
+                        state.relay_connections.last_action.clone();
+                }
+                Err(error) => {
+                    state.relay_connections.last_error = Some(error);
+                }
+            }
+            true
+        }
+        RelayConnectionsPaneAction::RemoveSelected => {
+            match state.relay_connections.remove_selected() {
+                Ok(url) => {
+                    state.provider_runtime.last_result = Some(format!("removed relay {url}"));
+                }
+                Err(error) => {
+                    state.relay_connections.last_error = Some(error);
+                }
+            }
+            true
+        }
+        RelayConnectionsPaneAction::RetrySelected => {
+            match state.relay_connections.retry_selected() {
+                Ok(url) => {
+                    state.provider_runtime.last_result = Some(format!("retried relay {url}"));
+                }
+                Err(error) => {
+                    state.relay_connections.last_error = Some(error);
+                }
+            }
             true
         }
     }
@@ -1200,6 +1304,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             COMMAND_OPEN_EARNINGS_SCOREBOARD => {
                 PaneController::create_earnings_scoreboard(state);
                 refresh_earnings_scoreboard(state, std::time::Instant::now());
+                changed = true;
+            }
+            COMMAND_OPEN_RELAY_CONNECTIONS => {
+                PaneController::create_relay_connections(state);
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

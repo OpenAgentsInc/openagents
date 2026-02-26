@@ -21,6 +21,8 @@ const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
 const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
 const EARNINGS_SCOREBOARD_PANE_WIDTH: f32 = 640.0;
 const EARNINGS_SCOREBOARD_PANE_HEIGHT: f32 = 320.0;
+const RELAY_CONNECTIONS_PANE_WIDTH: f32 = 900.0;
+const RELAY_CONNECTIONS_PANE_HEIGHT: f32 = 420.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -45,6 +47,9 @@ const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
 const JOB_INBOX_ROW_HEIGHT: f32 = 30.0;
 const JOB_INBOX_MAX_ROWS: usize = 8;
+const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
+const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
+const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
 
 pub struct PaneController;
 
@@ -74,6 +79,14 @@ pub enum JobHistoryPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EarningsScoreboardPaneAction {
     Refresh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelayConnectionsPaneAction {
+    AddRelay,
+    RemoveSelected,
+    RetrySelected,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -126,6 +139,15 @@ impl PaneDescriptor {
             kind: PaneKind::EarningsScoreboard,
             width: EARNINGS_SCOREBOARD_PANE_WIDTH,
             height: EARNINGS_SCOREBOARD_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn relay_connections() -> Self {
+        Self {
+            kind: PaneKind::RelayConnections,
+            width: RELAY_CONNECTIONS_PANE_WIDTH,
+            height: RELAY_CONNECTIONS_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -260,6 +282,10 @@ impl PaneController {
 
     pub fn create_earnings_scoreboard(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::earnings_scoreboard());
+    }
+
+    pub fn create_relay_connections(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::relay_connections());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -541,6 +567,16 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::RelayConnections {
+            let content_bounds = pane_content_bounds(bounds);
+            if topmost_relay_connections_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if relay_connections_url_input_bounds(content_bounds).contains(point) {
+                return CursorIcon::Text;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -682,6 +718,60 @@ pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Boun
         width,
         34.0,
     )
+}
+
+pub fn relay_connections_url_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.48).clamp(220.0, 420.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn relay_connections_add_button_bounds(content_bounds: Bounds) -> Bounds {
+    let input = relay_connections_url_input_bounds(content_bounds);
+    Bounds::new(
+        input.max_x() + JOB_INBOX_BUTTON_GAP,
+        input.origin.y,
+        118.0,
+        input.size.height,
+    )
+}
+
+pub fn relay_connections_remove_button_bounds(content_bounds: Bounds) -> Bounds {
+    let add = relay_connections_add_button_bounds(content_bounds);
+    Bounds::new(
+        add.max_x() + JOB_INBOX_BUTTON_GAP,
+        add.origin.y,
+        154.0,
+        add.size.height,
+    )
+}
+
+pub fn relay_connections_retry_button_bounds(content_bounds: Bounds) -> Bounds {
+    let remove = relay_connections_remove_button_bounds(content_bounds);
+    Bounds::new(
+        remove.max_x() + JOB_INBOX_BUTTON_GAP,
+        remove.origin.y,
+        126.0,
+        remove.size.height,
+    )
+}
+
+pub fn relay_connections_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(RELAY_CONNECTIONS_MAX_ROWS.saturating_sub(1));
+    let top = content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (RELAY_CONNECTIONS_ROW_HEIGHT + RELAY_CONNECTIONS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        RELAY_CONNECTIONS_ROW_HEIGHT,
+    )
+}
+
+pub fn relay_connections_visible_row_count(row_count: usize) -> usize {
+    row_count.min(RELAY_CONNECTIONS_MAX_ROWS)
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -922,6 +1012,39 @@ pub fn topmost_earnings_scoreboard_action_hit(
         let content_bounds = pane_content_bounds(pane.bounds);
         if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
             return Some((pane.id, EarningsScoreboardPaneAction::Refresh));
+        }
+    }
+
+    None
+}
+
+pub fn topmost_relay_connections_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, RelayConnectionsPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::RelayConnections {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if relay_connections_add_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, RelayConnectionsPaneAction::AddRelay));
+        }
+        if relay_connections_remove_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, RelayConnectionsPaneAction::RemoveSelected));
+        }
+        if relay_connections_retry_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, RelayConnectionsPaneAction::RetrySelected));
+        }
+
+        let visible_rows =
+            relay_connections_visible_row_count(state.relay_connections.relays.len());
+        for row_index in 0..visible_rows {
+            if relay_connections_row_bounds(content_bounds, row_index).contains(point) {
+                return Some((pane.id, RelayConnectionsPaneAction::SelectRow(row_index)));
+            }
         }
     }
 
@@ -1216,6 +1339,25 @@ pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEv
     handled
 }
 
+pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_relay = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::RelayConnections)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_relay else {
+        return false;
+    };
+
+    let input_bounds = relay_connections_url_input_bounds(pane_content_bounds(bounds));
+    state
+        .relay_connections_inputs
+        .relay_url
+        .event(event, input_bounds, &mut state.event_context)
+        .is_handled()
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -1240,6 +1382,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::GoOnline => "Go Online".to_string(),
         PaneKind::ProviderStatus => "Provider Status".to_string(),
         PaneKind::EarningsScoreboard => "Earnings Scoreboard".to_string(),
+        PaneKind::RelayConnections => "Relay Connections".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1291,12 +1434,14 @@ mod tests {
         active_job_abort_button_bounds, active_job_advance_button_bounds,
         chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
         chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
-        go_online_toggle_button_bounds,
-        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-        job_history_search_input_bounds, job_history_status_button_bounds,
-        job_history_time_button_bounds, job_inbox_accept_button_bounds,
-        job_inbox_reject_button_bounds, job_inbox_row_bounds, nostr_copy_secret_button_bounds,
-        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+        go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+        job_history_prev_page_button_bounds, job_history_search_input_bounds,
+        job_history_status_button_bounds, job_history_time_button_bounds,
+        job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
     };
     use wgpui::Bounds;
 
@@ -1345,6 +1490,21 @@ mod tests {
         assert!(content.contains(toggle.origin));
         assert!(toggle.max_x() <= content.max_x());
         assert!(toggle.max_y() <= content.max_y());
+    }
+
+    #[test]
+    fn relay_connections_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 420.0);
+        let input = relay_connections_url_input_bounds(content);
+        let add = relay_connections_add_button_bounds(content);
+        let remove = relay_connections_remove_button_bounds(content);
+        let retry = relay_connections_retry_button_bounds(content);
+        let row0 = relay_connections_row_bounds(content, 0);
+
+        assert!(input.max_x() < add.min_x());
+        assert!(add.max_x() < remove.min_x());
+        assert!(remove.max_x() < retry.min_x());
+        assert!(retry.max_y() < row0.min_y());
     }
 
     #[test]

@@ -2,7 +2,8 @@ use crate::app_state::{
     ActiveJobState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs,
     CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, SparkPaneInputs,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -13,7 +14,10 @@ use crate::pane_system::{
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-    nostr_reveal_button_bounds, pane_content_bounds,
+    nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
+    relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+    relay_connections_row_bounds, relay_connections_url_input_bounds,
+    relay_connections_visible_row_count,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -36,6 +40,7 @@ impl PaneRenderer {
         provider_runtime: &ProviderRuntimeState,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
+        relay_connections: &RelayConnectionsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -43,6 +48,7 @@ impl PaneRenderer {
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
+        relay_connections_inputs: &mut RelayConnectionsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
@@ -99,6 +105,14 @@ impl PaneRenderer {
                         content_bounds,
                         earnings_scoreboard,
                         provider_runtime,
+                        paint,
+                    );
+                }
+                PaneKind::RelayConnections => {
+                    paint_relay_connections_pane(
+                        content_bounds,
+                        relay_connections,
+                        relay_connections_inputs,
                         paint,
                     );
                 }
@@ -533,6 +547,152 @@ fn paint_earnings_scoreboard_pane(
             .uptime_seconds(std::time::Instant::now())
             .to_string(),
     );
+}
+
+fn paint_relay_connections_pane(
+    content_bounds: Bounds,
+    relay_connections: &RelayConnectionsState,
+    relay_connections_inputs: &mut RelayConnectionsPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let input_bounds = relay_connections_url_input_bounds(content_bounds);
+    let add_bounds = relay_connections_add_button_bounds(content_bounds);
+    let remove_bounds = relay_connections_remove_button_bounds(content_bounds);
+    let retry_bounds = relay_connections_retry_button_bounds(content_bounds);
+
+    relay_connections_inputs
+        .relay_url
+        .set_max_width(input_bounds.size.width);
+    relay_connections_inputs
+        .relay_url
+        .paint(input_bounds, paint);
+    paint_action_button(add_bounds, "Add relay", paint);
+    paint_action_button(remove_bounds, "Remove selected", paint);
+    paint_action_button(retry_bounds, "Retry selected", paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Relay URL",
+        Point::new(input_bounds.origin.x, input_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let state_color = match relay_connections.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = input_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", relay_connections.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = relay_connections.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = relay_connections.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    let visible_rows = relay_connections_visible_row_count(relay_connections.relays.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No relays configured.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let relay = &relay_connections.relays[row_index];
+        let row_bounds = relay_connections_row_bounds(content_bounds, row_index);
+        let selected = relay_connections.selected_url.as_deref() == Some(relay.url.as_str());
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::accent::PRIMARY.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(4.0),
+        );
+
+        let status_color = match relay.status {
+            RelayConnectionStatus::Connected => theme::status::SUCCESS,
+            RelayConnectionStatus::Connecting => theme::accent::PRIMARY,
+            RelayConnectionStatus::Disconnected => theme::text::MUTED,
+            RelayConnectionStatus::Error => theme::status::ERROR,
+        };
+        let latency = relay
+            .latency_ms
+            .map_or_else(|| "-".to_string(), |value| value.to_string());
+        let last_seen = relay
+            .last_seen_seconds_ago
+            .map_or_else(|| "-".to_string(), |value| value.to_string());
+        let last_error = relay.last_error.as_deref().unwrap_or("-");
+        let summary = format!(
+            "{} {} latency:{}ms seen:{}s err:{}",
+            relay.url,
+            relay.status.label(),
+            latency,
+            last_seen,
+            last_error
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &summary,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected {
+                theme::text::PRIMARY
+            } else {
+                status_color
+            },
+        ));
+    }
+
+    if let Some(selected) = relay_connections.selected() {
+        let selected_y =
+            relay_connections_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
+                + 12.0;
+        let details = format!(
+            "Selected: {} [{}] last_error:{}",
+            selected.url,
+            selected.status.label(),
+            selected.last_error.as_deref().unwrap_or("-")
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &details,
+            Point::new(content_bounds.origin.x + 12.0, selected_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
 }
 
 fn paint_nostr_identity_pane(

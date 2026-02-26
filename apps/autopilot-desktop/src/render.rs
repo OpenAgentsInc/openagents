@@ -124,11 +124,13 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
             pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
             create_invoice_inputs: crate::app_state::CreateInvoicePaneInputs::default(),
+            relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
+            relay_connections: crate::app_state::RelayConnectionsState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -179,6 +181,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.provider_runtime,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
+            &state.relay_connections,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -186,6 +189,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
             &mut state.create_invoice_inputs,
+            &mut state.relay_connections_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut paint,
@@ -266,6 +270,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.earnings_scoreboard", "Earnings Scoreboard")
             .description("Open sats/day, lifetime, jobs/day and last-result metrics pane")
             .category("Panes"),
+        Command::new("pane.relay_connections", "Relay Connections")
+            .description("Open relay connectivity and retry controls")
+            .category("Panes"),
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
@@ -311,6 +318,9 @@ mod tests {
         );
         assert!(commands.iter().any(|command| {
             command.id == "pane.earnings_scoreboard" && command.label == "Earnings Scoreboard"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.relay_connections" && command.label == "Relay Connections"
         }));
         assert!(
             commands

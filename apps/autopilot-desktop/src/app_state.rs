@@ -36,6 +36,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
+    RelayConnections,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -115,6 +116,20 @@ impl Default for CreateInvoicePaneInputs {
             amount_sats: TextInput::new().value("1000").placeholder("Invoice sats"),
             description: TextInput::new().placeholder("Description (optional)"),
             expiry_seconds: TextInput::new().value("3600").placeholder("Expiry seconds"),
+        }
+    }
+}
+
+pub struct RelayConnectionsPaneInputs {
+    pub relay_url: TextInput,
+}
+
+impl Default for RelayConnectionsPaneInputs {
+    fn default() -> Self {
+        Self {
+            relay_url: TextInput::new()
+                .value("wss://relay.example.com")
+                .placeholder("wss://relay.example.com"),
         }
     }
 }
@@ -310,6 +325,175 @@ impl PaneLoadState {
             Self::Ready => "ready",
             Self::Error => "error",
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelayConnectionStatus {
+    Connected,
+    Connecting,
+    Disconnected,
+    Error,
+}
+
+impl RelayConnectionStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::Connecting => "connecting",
+            Self::Disconnected => "disconnected",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelayConnectionRow {
+    pub url: String,
+    pub status: RelayConnectionStatus,
+    pub latency_ms: Option<u32>,
+    pub last_seen_seconds_ago: Option<u64>,
+    pub last_error: Option<String>,
+}
+
+pub struct RelayConnectionsState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub relays: Vec<RelayConnectionRow>,
+    pub selected_url: Option<String>,
+}
+
+impl Default for RelayConnectionsState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Relay map loaded from deterministic cache".to_string()),
+            relays: vec![
+                RelayConnectionRow {
+                    url: "wss://relay.damus.io".to_string(),
+                    status: RelayConnectionStatus::Connected,
+                    latency_ms: Some(84),
+                    last_seen_seconds_ago: Some(1),
+                    last_error: None,
+                },
+                RelayConnectionRow {
+                    url: "wss://relay.primal.net".to_string(),
+                    status: RelayConnectionStatus::Connecting,
+                    latency_ms: None,
+                    last_seen_seconds_ago: None,
+                    last_error: None,
+                },
+                RelayConnectionRow {
+                    url: "wss://relay.example.invalid".to_string(),
+                    status: RelayConnectionStatus::Error,
+                    latency_ms: None,
+                    last_seen_seconds_ago: Some(45),
+                    last_error: Some("TLS handshake failed".to_string()),
+                },
+                RelayConnectionRow {
+                    url: "wss://relay.offline.example".to_string(),
+                    status: RelayConnectionStatus::Disconnected,
+                    latency_ms: None,
+                    last_seen_seconds_ago: Some(380),
+                    last_error: None,
+                },
+            ],
+            selected_url: Some("wss://relay.damus.io".to_string()),
+        }
+    }
+}
+
+impl RelayConnectionsState {
+    pub fn select_by_index(&mut self, index: usize) -> bool {
+        let Some(url) = self.relays.get(index).map(|row| row.url.clone()) else {
+            return false;
+        };
+        self.selected_url = Some(url);
+        self.last_error = None;
+        true
+    }
+
+    pub fn selected(&self) -> Option<&RelayConnectionRow> {
+        let selected = self.selected_url.as_deref()?;
+        self.relays.iter().find(|row| row.url == selected)
+    }
+
+    pub fn add_relay(&mut self, relay_url: &str) -> Result<(), String> {
+        let relay = relay_url.trim();
+        if relay.is_empty() {
+            self.last_error = Some("Relay URL cannot be empty".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Relay URL cannot be empty".to_string());
+        }
+        if !relay.starts_with("wss://") {
+            self.last_error = Some("Relay URL must start with wss://".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Relay URL must start with wss://".to_string());
+        }
+        if self.relays.iter().any(|row| row.url == relay) {
+            self.last_error = Some("Relay already configured".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Relay already configured".to_string());
+        }
+
+        let relay_url = relay.to_string();
+        self.relays.push(RelayConnectionRow {
+            url: relay_url.clone(),
+            status: RelayConnectionStatus::Connecting,
+            latency_ms: None,
+            last_seen_seconds_ago: None,
+            last_error: None,
+        });
+        self.selected_url = Some(relay_url.clone());
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Added relay {relay_url}"));
+        Ok(())
+    }
+
+    pub fn remove_selected(&mut self) -> Result<String, String> {
+        let selected = self
+            .selected_url
+            .as_deref()
+            .ok_or_else(|| "Select a relay first".to_string())?
+            .to_string();
+        let before = self.relays.len();
+        self.relays.retain(|row| row.url != selected);
+        if self.relays.len() == before {
+            self.last_error = Some("Selected relay no longer exists".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Selected relay no longer exists".to_string());
+        }
+
+        self.selected_url = self.relays.first().map(|row| row.url.clone());
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Removed relay {selected}"));
+        Ok(selected)
+    }
+
+    pub fn retry_selected(&mut self) -> Result<String, String> {
+        let selected = self
+            .selected_url
+            .as_deref()
+            .ok_or_else(|| "Select a relay first".to_string())?
+            .to_string();
+        let Some(relay) = self.relays.iter_mut().find(|row| row.url == selected) else {
+            self.last_error = Some("Selected relay no longer exists".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Selected relay no longer exists".to_string());
+        };
+
+        relay.status = RelayConnectionStatus::Connected;
+        relay.latency_ms = Some(96);
+        relay.last_seen_seconds_ago = Some(0);
+        relay.last_error = None;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!("Retried relay {selected}"));
+        Ok(selected)
     }
 }
 
@@ -1270,11 +1454,13 @@ pub struct RenderState {
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
     pub create_invoice_inputs: CreateInvoicePaneInputs,
+    pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
     pub provider_runtime: ProviderRuntimeState,
     pub earnings_scoreboard: EarningsScoreboardState,
+    pub relay_connections: RelayConnectionsState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1307,7 +1493,7 @@ mod tests {
         JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
         JobLifecycleStage, NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
-        SparkPaneState,
+        RelayConnectionStatus, RelayConnectionsState, SparkPaneState,
     };
 
     #[test]
@@ -1482,6 +1668,30 @@ mod tests {
             .find(|row| row.job_id == "job-bootstrap-000")
             .expect("row should exist");
         assert_eq!(row.result_hash, "sha256:updated");
+    }
+
+    #[test]
+    fn relay_connections_add_retry_remove_flow() {
+        let mut relays = RelayConnectionsState::default();
+        assert!(relays.add_relay("wss://relay.new.example").is_ok());
+        assert_eq!(
+            relays.selected().map(|row| row.url.as_str()),
+            Some("wss://relay.new.example")
+        );
+
+        assert!(relays.retry_selected().is_ok());
+        assert_eq!(
+            relays.selected().map(|row| row.status),
+            Some(RelayConnectionStatus::Connected)
+        );
+
+        assert!(relays.remove_selected().is_ok());
+        assert!(
+            relays
+                .relays
+                .iter()
+                .all(|row| row.url != "wss://relay.new.example")
+        );
     }
 
     #[test]
