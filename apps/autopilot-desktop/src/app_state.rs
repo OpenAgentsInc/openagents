@@ -377,6 +377,7 @@ impl PaneLoadState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
     Connected,
@@ -416,40 +417,11 @@ pub struct RelayConnectionsState {
 impl Default for RelayConnectionsState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Relay map loaded from deterministic cache".to_string()),
-            relays: vec![
-                RelayConnectionRow {
-                    url: "wss://relay.damus.io".to_string(),
-                    status: RelayConnectionStatus::Connected,
-                    latency_ms: Some(84),
-                    last_seen_seconds_ago: Some(1),
-                    last_error: None,
-                },
-                RelayConnectionRow {
-                    url: "wss://relay.primal.net".to_string(),
-                    status: RelayConnectionStatus::Connecting,
-                    latency_ms: None,
-                    last_seen_seconds_ago: None,
-                    last_error: None,
-                },
-                RelayConnectionRow {
-                    url: "wss://relay.example.invalid".to_string(),
-                    status: RelayConnectionStatus::Error,
-                    latency_ms: None,
-                    last_seen_seconds_ago: Some(45),
-                    last_error: Some("TLS handshake failed".to_string()),
-                },
-                RelayConnectionRow {
-                    url: "wss://relay.offline.example".to_string(),
-                    status: RelayConnectionStatus::Disconnected,
-                    latency_ms: None,
-                    last_seen_seconds_ago: Some(380),
-                    last_error: None,
-                },
-            ],
-            selected_url: Some("wss://relay.damus.io".to_string()),
+            last_action: Some("Waiting for relay lane snapshot".to_string()),
+            relays: Vec::new(),
+            selected_url: None,
         }
     }
 }
@@ -583,17 +555,17 @@ pub struct SyncHealthState {
 impl Default for SyncHealthState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Sync health hydrated from local spacetime cache".to_string()),
-            spacetime_connection: "connected".to_string(),
-            subscription_state: "subscribed".to_string(),
-            cursor_position: 4312,
+            last_action: Some("Waiting for sync lane telemetry".to_string()),
+            spacetime_connection: "unknown".to_string(),
+            subscription_state: "unsubscribed".to_string(),
+            cursor_position: 0,
             cursor_stale_after_seconds: 12,
-            cursor_last_advanced_seconds_ago: 2,
+            cursor_last_advanced_seconds_ago: 0,
             recovery_phase: SyncRecoveryPhase::Idle,
-            last_applied_event_seq: 4312,
-            duplicate_drop_count: 17,
+            last_applied_event_seq: 0,
+            duplicate_drop_count: 0,
             replay_count: 0,
         }
     }
@@ -653,6 +625,7 @@ impl SyncHealthState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestStatus {
     Submitted,
@@ -694,39 +667,11 @@ pub struct NetworkRequestsState {
 impl Default for NetworkRequestsState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Network request lane ready".to_string()),
-            submitted: vec![
-                SubmittedNetworkRequest {
-                    request_id: "req-buy-0001".to_string(),
-                    request_type: "summarize.text".to_string(),
-                    payload: "{\"text\":\"hello world\"}".to_string(),
-                    budget_sats: 900,
-                    timeout_seconds: 45,
-                    response_stream_id: "stream:req-buy-0001".to_string(),
-                    status: NetworkRequestStatus::Streaming,
-                },
-                SubmittedNetworkRequest {
-                    request_id: "req-buy-0000".to_string(),
-                    request_type: "classify.image".to_string(),
-                    payload: "{\"cid\":\"bafy...\"}".to_string(),
-                    budget_sats: 1400,
-                    timeout_seconds: 120,
-                    response_stream_id: "stream:req-buy-0000".to_string(),
-                    status: NetworkRequestStatus::Completed,
-                },
-                SubmittedNetworkRequest {
-                    request_id: "req-buy-zz99".to_string(),
-                    request_type: "invoice.parse".to_string(),
-                    payload: "{\"invoice\":\"lnbc...\"}".to_string(),
-                    budget_sats: 600,
-                    timeout_seconds: 30,
-                    response_stream_id: "stream:req-buy-zz99".to_string(),
-                    status: NetworkRequestStatus::Failed,
-                },
-            ],
-            next_request_seq: 2,
+            last_action: Some("Waiting for request lane snapshot".to_string()),
+            submitted: Vec::new(),
+            next_request_seq: 0,
         }
     }
 }
@@ -795,6 +740,7 @@ impl NetworkRequestsState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobStatus {
     Queued,
@@ -833,36 +779,11 @@ pub struct StarterJobsState {
 impl Default for StarterJobsState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Starter demand queue synced".to_string()),
-            jobs: vec![
-                StarterJobRow {
-                    job_id: "starter-0001".to_string(),
-                    summary: "Summarize onboarding README".to_string(),
-                    payout_sats: 700,
-                    eligible: true,
-                    status: StarterJobStatus::Queued,
-                    payout_pointer: None,
-                },
-                StarterJobRow {
-                    job_id: "starter-0002".to_string(),
-                    summary: "Classify 5 onboarding screenshots".to_string(),
-                    payout_sats: 1200,
-                    eligible: true,
-                    status: StarterJobStatus::Running,
-                    payout_pointer: None,
-                },
-                StarterJobRow {
-                    job_id: "starter-0003".to_string(),
-                    summary: "Parse first invoice sample".to_string(),
-                    payout_sats: 500,
-                    eligible: false,
-                    status: StarterJobStatus::Queued,
-                    payout_pointer: None,
-                },
-            ],
-            selected_job_id: Some("starter-0001".to_string()),
+            last_action: Some("Waiting for starter demand lane snapshot".to_string()),
+            jobs: Vec::new(),
+            selected_job_id: None,
         }
     }
 }
@@ -1010,53 +931,12 @@ pub struct ActivityFeedState {
 impl Default for ActivityFeedState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Activity feed synced from deterministic replay lanes".to_string()),
+            last_action: Some("Waiting for activity feed lane snapshot".to_string()),
             active_filter: ActivityFeedFilter::All,
-            rows: vec![
-                ActivityEventRow {
-                    event_id: "sync:cursor:4312".to_string(),
-                    domain: ActivityEventDomain::Sync,
-                    source_tag: ActivityEventDomain::Sync.source_tag().to_string(),
-                    occurred_at_epoch_seconds: 1_761_920_120,
-                    summary: "Cursor advanced to seq=4312".to_string(),
-                    detail: "No duplicate replay detected".to_string(),
-                },
-                ActivityEventRow {
-                    event_id: "wallet:payment:latest".to_string(),
-                    domain: ActivityEventDomain::Wallet,
-                    source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
-                    occurred_at_epoch_seconds: 1_761_920_112,
-                    summary: "Payment settled into Spark wallet".to_string(),
-                    detail: "pay:req-bootstrap-000 (+2100 sats)".to_string(),
-                },
-                ActivityEventRow {
-                    event_id: "job:completed:bootstrap-000".to_string(),
-                    domain: ActivityEventDomain::Job,
-                    source_tag: ActivityEventDomain::Job.source_tag().to_string(),
-                    occurred_at_epoch_seconds: 1_761_920_108,
-                    summary: "Provider job completed".to_string(),
-                    detail: "job-bootstrap-000 -> succeeded".to_string(),
-                },
-                ActivityEventRow {
-                    event_id: "network:req-buy-0001".to_string(),
-                    domain: ActivityEventDomain::Network,
-                    source_tag: ActivityEventDomain::Network.source_tag().to_string(),
-                    occurred_at_epoch_seconds: 1_761_920_099,
-                    summary: "Buyer request submitted".to_string(),
-                    detail: "req-buy-0001 stream:req-buy-0001".to_string(),
-                },
-                ActivityEventRow {
-                    event_id: "chat:msg:1".to_string(),
-                    domain: ActivityEventDomain::Chat,
-                    source_tag: ActivityEventDomain::Chat.source_tag().to_string(),
-                    occurred_at_epoch_seconds: 1_761_920_090,
-                    summary: "Autopilot ready message".to_string(),
-                    detail: "Autopilot ready. Ask for a task to start.".to_string(),
-                },
-            ],
-            selected_event_id: Some("sync:cursor:4312".to_string()),
+            rows: Vec::new(),
+            selected_event_id: None,
         }
     }
 }
@@ -1137,6 +1017,7 @@ impl ActivityFeedState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertSeverity {
     Info,
@@ -1154,6 +1035,7 @@ impl AlertSeverity {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertLifecycle {
     Active,
@@ -1171,6 +1053,7 @@ impl AlertLifecycle {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertDomain {
     Identity,
@@ -1215,59 +1098,11 @@ pub struct AlertsRecoveryState {
 impl Default for AlertsRecoveryState {
     fn default() -> Self {
         Self {
-            load_state: PaneLoadState::Ready,
+            load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Alerts hydrated from deterministic incident lane".to_string()),
-            alerts: vec![
-                RecoveryAlertRow {
-                    alert_id: "alert:identity:missing".to_string(),
-                    domain: AlertDomain::Identity,
-                    severity: AlertSeverity::Critical,
-                    lifecycle: AlertLifecycle::Active,
-                    summary: "Identity not loaded for provider runtime".to_string(),
-                    remediation: "Regenerate keys and refresh dependent wallet state.".to_string(),
-                    last_transition_epoch_seconds: 1_761_920_080,
-                },
-                RecoveryAlertRow {
-                    alert_id: "alert:wallet:degraded".to_string(),
-                    domain: AlertDomain::Wallet,
-                    severity: AlertSeverity::Warning,
-                    lifecycle: AlertLifecycle::Active,
-                    summary: "Spark wallet connection is degraded".to_string(),
-                    remediation: "Run wallet refresh and confirm latest payment pointer."
-                        .to_string(),
-                    last_transition_epoch_seconds: 1_761_920_090,
-                },
-                RecoveryAlertRow {
-                    alert_id: "alert:relays:offline".to_string(),
-                    domain: AlertDomain::Relays,
-                    severity: AlertSeverity::Warning,
-                    lifecycle: AlertLifecycle::Acknowledged,
-                    summary: "One or more configured relays are disconnected".to_string(),
-                    remediation: "Retry relay reconnect for selected relay row.".to_string(),
-                    last_transition_epoch_seconds: 1_761_920_095,
-                },
-                RecoveryAlertRow {
-                    alert_id: "alert:provider:queue".to_string(),
-                    domain: AlertDomain::ProviderRuntime,
-                    severity: AlertSeverity::Info,
-                    lifecycle: AlertLifecycle::Active,
-                    summary: "Provider runtime queue depth increased".to_string(),
-                    remediation: "Cycle provider mode to clear transient runtime blockers."
-                        .to_string(),
-                    last_transition_epoch_seconds: 1_761_920_100,
-                },
-                RecoveryAlertRow {
-                    alert_id: "alert:sync:stale".to_string(),
-                    domain: AlertDomain::Sync,
-                    severity: AlertSeverity::Critical,
-                    lifecycle: AlertLifecycle::Active,
-                    summary: "Spacetime cursor stale threshold breached".to_string(),
-                    remediation: "Run sync rebootstrap and verify replay counters.".to_string(),
-                    last_transition_epoch_seconds: 1_761_920_105,
-                },
-            ],
-            selected_alert_id: Some("alert:identity:missing".to_string()),
+            last_action: Some("Waiting for alert lane snapshot".to_string()),
+            alerts: Vec::new(),
+            selected_alert_id: None,
             next_transition_seq: 1,
         }
     }
@@ -1633,6 +1468,7 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
     Ok(document)
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxValidation {
     Valid,
@@ -1650,6 +1486,7 @@ impl JobInboxValidation {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobInboxDecision {
     Pending,
@@ -1679,6 +1516,7 @@ pub struct JobInboxRequest {
     pub decision: JobInboxDecision,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
@@ -1695,62 +1533,25 @@ pub struct JobInboxState {
     pub last_action: Option<String>,
     pub requests: Vec<JobInboxRequest>,
     pub selected_request_id: Option<String>,
+    #[allow(dead_code)]
     next_arrival_seq: u64,
 }
 
 impl Default for JobInboxState {
     fn default() -> Self {
-        let mut state = Self {
+        Self {
             load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Inbox synced from deterministic replay lane".to_string()),
+            last_action: Some("Waiting for inbox lane snapshot".to_string()),
             requests: Vec::new(),
             selected_request_id: None,
             next_arrival_seq: 1,
-        };
-
-        state.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-7f3d".to_string(),
-            requester: "npub1alpha...2kz".to_string(),
-            capability: "summarize.pdf".to_string(),
-            price_sats: 2400,
-            ttl_seconds: 900,
-            validation: JobInboxValidation::Valid,
-        });
-        state.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-a19c".to_string(),
-            requester: "npub1beta...m4r".to_string(),
-            capability: "classify.image".to_string(),
-            price_sats: 1300,
-            ttl_seconds: 600,
-            validation: JobInboxValidation::Pending,
-        });
-        state.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-c332".to_string(),
-            requester: "npub1gamma...9vt".to_string(),
-            capability: "invoice.parse".to_string(),
-            price_sats: 700,
-            ttl_seconds: 420,
-            validation: JobInboxValidation::Invalid("signature mismatch".to_string()),
-        });
-        state.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-7f3d".to_string(),
-            requester: "npub1alpha...2kz".to_string(),
-            capability: "summarize.pdf".to_string(),
-            price_sats: 2400,
-            ttl_seconds: 900,
-            validation: JobInboxValidation::Valid,
-        });
-        state.selected_request_id = state
-            .requests
-            .first()
-            .map(|request| request.request_id.clone());
-        state.load_state = PaneLoadState::Ready;
-        state
+        }
     }
 }
 
 impl JobInboxState {
+    #[allow(dead_code)]
     pub fn upsert_network_request(&mut self, request: JobInboxNetworkRequest) {
         if let Some(existing) = self
             .requests
@@ -1888,43 +1689,14 @@ pub struct ActiveJobState {
 
 impl Default for ActiveJobState {
     fn default() -> Self {
-        let mut state = Self {
+        Self {
             load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Recovered active job snapshot from replay lane".to_string()),
+            last_action: Some("Waiting for active job lane snapshot".to_string()),
             runtime_supports_abort: false,
             job: None,
             next_event_seq: 1,
-        };
-
-        state.job = Some(ActiveJobRecord {
-            job_id: "job-bootstrap-001".to_string(),
-            request_id: "req-bootstrap-001".to_string(),
-            requester: "npub1seed...r8k".to_string(),
-            capability: "demo.capability".to_string(),
-            quoted_price_sats: 1500,
-            stage: JobLifecycleStage::Running,
-            invoice_id: None,
-            payment_id: None,
-            failure_reason: None,
-            events: vec![
-                ActiveJobEvent {
-                    seq: 1,
-                    message: "received request from relay lane".to_string(),
-                },
-                ActiveJobEvent {
-                    seq: 2,
-                    message: "accepted request and queued runtime execution".to_string(),
-                },
-                ActiveJobEvent {
-                    seq: 3,
-                    message: "runtime execution started".to_string(),
-                },
-            ],
-        });
-        state.next_event_seq = 4;
-        state.load_state = PaneLoadState::Ready;
-        state
+        }
     }
 }
 
@@ -2118,10 +1890,10 @@ pub struct JobHistoryState {
 
 impl Default for JobHistoryState {
     fn default() -> Self {
-        let mut state = Self {
+        Self {
             load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("History loaded from deterministic receipt lane".to_string()),
+            last_action: Some("Waiting for receipt lane snapshot".to_string()),
             rows: Vec::new(),
             status_filter: JobHistoryStatusFilter::All,
             time_range: JobHistoryTimeRange::All,
@@ -2129,28 +1901,7 @@ impl Default for JobHistoryState {
             page_size: 6,
             search_job_id: String::new(),
             reference_epoch_seconds: 1_761_920_000,
-        };
-
-        state.upsert_row(JobHistoryReceiptRow {
-            job_id: "job-bootstrap-000".to_string(),
-            status: JobHistoryStatus::Succeeded,
-            completed_at_epoch_seconds: 1_761_919_780,
-            payout_sats: 2100,
-            result_hash: "sha256:7f7d72a3e0f10933".to_string(),
-            payment_pointer: "pay:req-bootstrap-000".to_string(),
-            failure_reason: None,
-        });
-        state.upsert_row(JobHistoryReceiptRow {
-            job_id: "job-bootstrap-001".to_string(),
-            status: JobHistoryStatus::Failed,
-            completed_at_epoch_seconds: 1_761_915_200,
-            payout_sats: 0,
-            result_hash: "sha256:2ce0b2ff4ef9a010".to_string(),
-            payment_pointer: "pay:req-bootstrap-001".to_string(),
-            failure_reason: Some("invoice settlement timeout".to_string()),
-        });
-        state.load_state = PaneLoadState::Ready;
-        state
+        }
     }
 }
 
@@ -2639,8 +2390,9 @@ mod tests {
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
         NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState, RelayConnectionStatus, RelayConnectionsState, SettingsState,
-        SparkPaneState, StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase,
     };
 
     #[test]
@@ -2753,6 +2505,14 @@ mod tests {
     #[test]
     fn job_inbox_accept_updates_selected_request_decision() {
         let mut inbox = JobInboxState::default();
+        inbox.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-accept".to_string(),
+            requester: "npub1accept".to_string(),
+            capability: "summarize.text".to_string(),
+            price_sats: 900,
+            ttl_seconds: 120,
+            validation: JobInboxValidation::Valid,
+        });
         assert!(inbox.select_by_index(0));
         let request_id = inbox
             .selected_request()
@@ -2773,8 +2533,26 @@ mod tests {
 
     #[test]
     fn active_job_advance_stage_updates_lifecycle() {
+        let mut inbox = JobInboxState::default();
+        inbox.upsert_network_request(JobInboxNetworkRequest {
+            request_id: "req-active".to_string(),
+            requester: "npub1active".to_string(),
+            capability: "summarize.text".to_string(),
+            price_sats: 1500,
+            ttl_seconds: 300,
+            validation: JobInboxValidation::Valid,
+        });
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+
         let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
         let stage = active.advance_stage().expect("advance should succeed");
+        assert_eq!(stage, JobLifecycleStage::Running);
+        let stage = active.advance_stage().expect("second advance should succeed");
         assert_eq!(stage, JobLifecycleStage::Delivered);
         let current = active.job.as_ref().expect("active job exists");
         assert_eq!(current.stage, JobLifecycleStage::Delivered);
@@ -2784,6 +2562,24 @@ mod tests {
     #[test]
     fn job_history_filters_search_status_and_time() {
         let mut history = JobHistoryState::default();
+        history.upsert_row(super::JobHistoryReceiptRow {
+            job_id: "job-bootstrap-000".to_string(),
+            status: JobHistoryStatus::Succeeded,
+            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(30),
+            payout_sats: 2100,
+            result_hash: "sha256:job-bootstrap-000".to_string(),
+            payment_pointer: "pay:req-bootstrap-000".to_string(),
+            failure_reason: None,
+        });
+        history.upsert_row(super::JobHistoryReceiptRow {
+            job_id: "job-bootstrap-001".to_string(),
+            status: JobHistoryStatus::Failed,
+            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(60),
+            payout_sats: 0,
+            result_hash: "sha256:job-bootstrap-001".to_string(),
+            payment_pointer: "pay:req-bootstrap-001".to_string(),
+            failure_reason: Some("invoice timeout".to_string()),
+        });
         history.status_filter = JobHistoryStatusFilter::Succeeded;
         history.time_range = JobHistoryTimeRange::All;
         history.set_search_job_id("bootstrap-000".to_string());
@@ -2797,6 +2593,15 @@ mod tests {
     #[test]
     fn job_history_upsert_keeps_single_row_per_job_id() {
         let mut history = JobHistoryState::default();
+        history.upsert_row(super::JobHistoryReceiptRow {
+            job_id: "job-bootstrap-000".to_string(),
+            status: JobHistoryStatus::Succeeded,
+            completed_at_epoch_seconds: history.reference_epoch_seconds,
+            payout_sats: 1200,
+            result_hash: "sha256:seed".to_string(),
+            payment_pointer: "pay:seed".to_string(),
+            failure_reason: None,
+        });
         let before = history.rows.len();
         history.upsert_row(super::JobHistoryReceiptRow {
             job_id: "job-bootstrap-000".to_string(),
@@ -2876,6 +2681,14 @@ mod tests {
     #[test]
     fn starter_jobs_complete_selected_sets_payout_pointer() {
         let mut starter_jobs = StarterJobsState::default();
+        starter_jobs.jobs.push(StarterJobRow {
+            job_id: "job-starter-001".to_string(),
+            summary: "Process starter job".to_string(),
+            payout_sats: 1200,
+            eligible: true,
+            status: StarterJobStatus::Queued,
+            payout_pointer: None,
+        });
         starter_jobs.select_by_index(0);
         let (job_id, _payout, pointer) = starter_jobs
             .complete_selected()
@@ -2892,6 +2705,14 @@ mod tests {
     #[test]
     fn activity_feed_upsert_deduplicates_stable_event_ids() {
         let mut feed = ActivityFeedState::default();
+        feed.upsert_event(ActivityEventRow {
+            event_id: "wallet:payment:latest".to_string(),
+            domain: ActivityEventDomain::Wallet,
+            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
+            occurred_at_epoch_seconds: 1_761_920_180,
+            summary: "Payment settled into Spark wallet".to_string(),
+            detail: "pay:req-bootstrap-000 (+2100 sats)".to_string(),
+        });
         let baseline_count = feed.rows.len();
         feed.upsert_event(ActivityEventRow {
             event_id: "wallet:payment:latest".to_string(),
@@ -2914,6 +2735,15 @@ mod tests {
     #[test]
     fn alerts_recovery_lifecycle_transitions_are_deterministic() {
         let mut alerts = AlertsRecoveryState::default();
+        alerts.alerts.push(RecoveryAlertRow {
+            alert_id: "alert:identity:missing".to_string(),
+            domain: AlertDomain::Identity,
+            severity: super::AlertSeverity::Critical,
+            lifecycle: AlertLifecycle::Active,
+            summary: "Identity missing".to_string(),
+            remediation: "Regenerate identity".to_string(),
+            last_transition_epoch_seconds: 1_761_920_080,
+        });
         alerts.select_by_index(0);
         let alert_id = alerts
             .acknowledge_selected()
@@ -2971,7 +2801,16 @@ mod tests {
     fn earnings_scoreboard_refreshes_from_wallet_and_history() {
         let mut score = EarningsScoreboardState::default();
         let provider = ProviderRuntimeState::default();
-        let history = JobHistoryState::default();
+        let mut history = JobHistoryState::default();
+        history.upsert_row(super::JobHistoryReceiptRow {
+            job_id: "job-earned-001".to_string(),
+            status: JobHistoryStatus::Succeeded,
+            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(30),
+            payout_sats: 2100,
+            result_hash: "sha256:job-earned-001".to_string(),
+            payment_pointer: "pay:req-earned-001".to_string(),
+            failure_reason: None,
+        });
         let mut spark = SparkPaneState::default();
         spark.balance = Some(openagents_spark::Balance {
             spark_sats: 1000,
