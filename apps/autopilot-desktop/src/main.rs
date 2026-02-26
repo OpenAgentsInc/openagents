@@ -23,16 +23,7 @@ const HOTBAR_ITEM_SIZE: f32 = 36.0;
 const HOTBAR_ITEM_GAP: f32 = 6.0;
 const HOTBAR_PADDING: f32 = 6.0;
 
-const HOTBAR_SLOT_EVENTS: u8 = 0;
 const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
-const HOTBAR_SLOT_IDENTITY: u8 = 2;
-const HOTBAR_SLOT_WALLET: u8 = 3;
-const HOTBAR_SLOT_THREADS: u8 = 4;
-const HOTBAR_SLOT_AUTH: u8 = 5;
-const HOTBAR_SLOT_INBOX: u8 = 6;
-const HOTBAR_SLOT_CHAT_A: u8 = 7;
-const HOTBAR_SLOT_CHAT_B: u8 = 8;
-const HOTBAR_SLOT_CHAT_C: u8 = 9;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
 
@@ -68,7 +59,6 @@ struct RenderState {
     renderer: Renderer,
     text_system: TextSystem,
     scale_factor: f32,
-    selected_hotbar_slot: u8,
     hotbar: Hotbar,
     hotbar_bounds: Bounds,
     event_context: EventContext,
@@ -167,7 +157,6 @@ impl ApplicationHandler for App {
                     key => {
                         if let Some(slot) = hotbar_slot_for_key(key) {
                             state.hotbar.flash_slot(slot);
-                            let _ = activate_hotbar_slot(state, slot);
                             state.window.request_redraw();
                         }
                     }
@@ -252,14 +241,13 @@ fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let scale_factor = window.scale_factor() as f32;
         let text_system = TextSystem::new(scale_factor);
 
-        let selected_hotbar_slot = HOTBAR_SLOT_NEW_CHAT;
         let mut hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
             .padding(HOTBAR_PADDING)
             .gap(HOTBAR_ITEM_GAP)
             .corner_radius(8.0)
             .font_scale(1.0);
-        hotbar.set_items(build_hotbar_items(selected_hotbar_slot));
+        hotbar.set_items(build_hotbar_items());
 
         Ok(RenderState {
             window,
@@ -270,7 +258,6 @@ fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             renderer,
             text_system,
             scale_factor,
-            selected_hotbar_slot,
             hotbar,
             hotbar_bounds: Bounds::ZERO,
             event_context: EventContext::new(),
@@ -307,22 +294,6 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
         state.hotbar.set_font_scale(1.0);
         state.hotbar.paint(bar_bounds, &mut paint);
     }
-
-    let title = state.text_system.layout(
-        "Autopilot Desktop",
-        Point::new(20.0, 18.0),
-        18.0,
-        theme::text::PRIMARY,
-    );
-    scene.draw_text(title);
-
-    let subtitle = state.text_system.layout(
-        "MVP shell: grid + hotbar (window panes removed)",
-        Point::new(20.0, 38.0),
-        12.0,
-        theme::text::MUTED,
-    );
-    scene.draw_text(subtitle);
 
     state
         .renderer
@@ -379,75 +350,22 @@ fn hotbar_bounds(size: Size) -> Bounds {
 fn process_hotbar_clicks(state: &mut RenderState) -> bool {
     let mut changed = false;
     for slot in state.hotbar.take_clicked_slots() {
-        state.hotbar.flash_slot(slot);
-        changed |= activate_hotbar_slot(state, slot);
+        if slot == HOTBAR_SLOT_NEW_CHAT {
+            state.hotbar.flash_slot(slot);
+            changed = true;
+        }
     }
     changed
 }
 
-fn activate_hotbar_slot(state: &mut RenderState, slot: u8) -> bool {
-    if !is_selectable_slot(slot) {
-        return false;
-    }
-    if state.selected_hotbar_slot == slot {
-        return false;
-    }
-
-    state.selected_hotbar_slot = slot;
-    state.hotbar.set_items(build_hotbar_items(slot));
-    true
+fn hotbar_display_order() -> [u8; 1] {
+    [HOTBAR_SLOT_NEW_CHAT]
 }
 
-fn is_selectable_slot(slot: u8) -> bool {
-    matches!(
-        slot,
-        HOTBAR_SLOT_NEW_CHAT
-            | HOTBAR_SLOT_IDENTITY
-            | HOTBAR_SLOT_WALLET
-            | HOTBAR_SLOT_THREADS
-            | HOTBAR_SLOT_AUTH
-            | HOTBAR_SLOT_INBOX
-            | HOTBAR_SLOT_EVENTS
-    )
-}
-
-fn hotbar_display_order() -> [u8; 10] {
-    [
-        HOTBAR_SLOT_NEW_CHAT,
-        HOTBAR_SLOT_IDENTITY,
-        HOTBAR_SLOT_WALLET,
-        HOTBAR_SLOT_THREADS,
-        HOTBAR_SLOT_AUTH,
-        HOTBAR_SLOT_INBOX,
-        HOTBAR_SLOT_CHAT_A,
-        HOTBAR_SLOT_CHAT_B,
-        HOTBAR_SLOT_CHAT_C,
-        HOTBAR_SLOT_EVENTS,
-    ]
-}
-
-fn build_hotbar_items(selected_slot: u8) -> Vec<HotbarSlot> {
+fn build_hotbar_items() -> Vec<HotbarSlot> {
     hotbar_display_order()
         .into_iter()
-        .map(|slot| {
-            let mut item = match slot {
-                HOTBAR_SLOT_NEW_CHAT => HotbarSlot::new(slot, "+", "New chat"),
-                HOTBAR_SLOT_IDENTITY => HotbarSlot::new(slot, "ID", "Identity"),
-                HOTBAR_SLOT_WALLET => HotbarSlot::new(slot, "WL", "Wallet"),
-                HOTBAR_SLOT_THREADS => HotbarSlot::new(slot, "TH", "Threads"),
-                HOTBAR_SLOT_AUTH => HotbarSlot::new(slot, "AU", "Auth"),
-                HOTBAR_SLOT_INBOX => HotbarSlot::new(slot, "IN", "Inbox"),
-                HOTBAR_SLOT_CHAT_A => HotbarSlot::new(slot, "", "Slot 7").ghost(true),
-                HOTBAR_SLOT_CHAT_B => HotbarSlot::new(slot, "", "Slot 8").ghost(true),
-                HOTBAR_SLOT_CHAT_C => HotbarSlot::new(slot, "", "Slot 9").ghost(true),
-                HOTBAR_SLOT_EVENTS => HotbarSlot::new(slot, "EV", "Events"),
-                _ => HotbarSlot::new(slot, "", format!("Slot {slot}")),
-            };
-            if is_selectable_slot(slot) && slot == selected_slot {
-                item = item.active(true);
-            }
-            item
-        })
+        .map(|slot| HotbarSlot::new(slot, "+", "New chat"))
         .collect()
 }
 
@@ -460,33 +378,6 @@ fn hotbar_slot_for_key(key: PhysicalKey) -> Option<u8> {
     match key {
         PhysicalKey::Code(KeyCode::Digit1) | PhysicalKey::Code(KeyCode::Numpad1) => {
             Some(HOTBAR_SLOT_NEW_CHAT)
-        }
-        PhysicalKey::Code(KeyCode::Digit2) | PhysicalKey::Code(KeyCode::Numpad2) => {
-            Some(HOTBAR_SLOT_IDENTITY)
-        }
-        PhysicalKey::Code(KeyCode::Digit3) | PhysicalKey::Code(KeyCode::Numpad3) => {
-            Some(HOTBAR_SLOT_WALLET)
-        }
-        PhysicalKey::Code(KeyCode::Digit4) | PhysicalKey::Code(KeyCode::Numpad4) => {
-            Some(HOTBAR_SLOT_THREADS)
-        }
-        PhysicalKey::Code(KeyCode::Digit5) | PhysicalKey::Code(KeyCode::Numpad5) => {
-            Some(HOTBAR_SLOT_AUTH)
-        }
-        PhysicalKey::Code(KeyCode::Digit6) | PhysicalKey::Code(KeyCode::Numpad6) => {
-            Some(HOTBAR_SLOT_INBOX)
-        }
-        PhysicalKey::Code(KeyCode::Digit7) | PhysicalKey::Code(KeyCode::Numpad7) => {
-            Some(HOTBAR_SLOT_CHAT_A)
-        }
-        PhysicalKey::Code(KeyCode::Digit8) | PhysicalKey::Code(KeyCode::Numpad8) => {
-            Some(HOTBAR_SLOT_CHAT_B)
-        }
-        PhysicalKey::Code(KeyCode::Digit9) | PhysicalKey::Code(KeyCode::Numpad9) => {
-            Some(HOTBAR_SLOT_CHAT_C)
-        }
-        PhysicalKey::Code(KeyCode::Digit0) | PhysicalKey::Code(KeyCode::Numpad0) => {
-            Some(HOTBAR_SLOT_EVENTS)
         }
         _ => None,
     }
