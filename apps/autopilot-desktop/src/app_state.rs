@@ -2395,6 +2395,108 @@ mod tests {
         SyncHealthState, SyncRecoveryPhase,
     };
 
+    fn fixture_inbox_request(
+        request_id: &str,
+        capability: &str,
+        price_sats: u64,
+        ttl_seconds: u64,
+        validation: JobInboxValidation,
+    ) -> JobInboxNetworkRequest {
+        JobInboxNetworkRequest {
+            request_id: request_id.to_string(),
+            requester: format!("npub1{request_id}"),
+            capability: capability.to_string(),
+            price_sats,
+            ttl_seconds,
+            validation,
+        }
+    }
+
+    fn seed_job_inbox(requests: Vec<JobInboxNetworkRequest>) -> JobInboxState {
+        let mut inbox = JobInboxState::default();
+        for request in requests {
+            inbox.upsert_network_request(request);
+        }
+        inbox
+    }
+
+    fn fixture_history_row(
+        job_id: &str,
+        status: JobHistoryStatus,
+        completed_at_epoch_seconds: u64,
+        payout_sats: u64,
+    ) -> super::JobHistoryReceiptRow {
+        super::JobHistoryReceiptRow {
+            job_id: job_id.to_string(),
+            status,
+            completed_at_epoch_seconds,
+            payout_sats,
+            result_hash: format!("sha256:{job_id}"),
+            payment_pointer: format!("pay:{job_id}"),
+            failure_reason: if status == JobHistoryStatus::Failed {
+                Some("failure".to_string())
+            } else {
+                None
+            },
+        }
+    }
+
+    fn seed_job_history(rows: Vec<super::JobHistoryReceiptRow>) -> JobHistoryState {
+        let mut history = JobHistoryState::default();
+        for row in rows {
+            history.upsert_row(row);
+        }
+        history
+    }
+
+    fn fixture_starter_job(
+        job_id: &str,
+        payout_sats: u64,
+        eligible: bool,
+        status: StarterJobStatus,
+    ) -> StarterJobRow {
+        StarterJobRow {
+            job_id: job_id.to_string(),
+            summary: "Process starter job".to_string(),
+            payout_sats,
+            eligible,
+            status,
+            payout_pointer: None,
+        }
+    }
+
+    fn fixture_activity_event(
+        event_id: &str,
+        domain: ActivityEventDomain,
+        occurred_at_epoch_seconds: u64,
+    ) -> ActivityEventRow {
+        ActivityEventRow {
+            event_id: event_id.to_string(),
+            domain,
+            source_tag: domain.source_tag().to_string(),
+            occurred_at_epoch_seconds,
+            summary: format!("summary {event_id}"),
+            detail: format!("detail {event_id}"),
+        }
+    }
+
+    fn fixture_alert(
+        alert_id: &str,
+        domain: AlertDomain,
+        severity: super::AlertSeverity,
+        lifecycle: AlertLifecycle,
+    ) -> RecoveryAlertRow {
+        RecoveryAlertRow {
+            alert_id: alert_id.to_string(),
+            domain,
+            severity,
+            lifecycle,
+            summary: format!("summary {alert_id}"),
+            remediation: format!("remediation {alert_id}"),
+            last_transition_epoch_seconds: 1_761_920_080,
+        }
+    }
+
     #[test]
     fn nostr_reveal_state_expires() {
         let mut state = NostrSecretState::default();
@@ -2469,23 +2571,10 @@ mod tests {
 
     #[test]
     fn job_inbox_upsert_collapses_duplicate_request_ids() {
-        let mut inbox = JobInboxState::default();
-        inbox.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-dup".to_string(),
-            requester: "npub1dup".to_string(),
-            capability: "cap.one".to_string(),
-            price_sats: 11,
-            ttl_seconds: 60,
-            validation: JobInboxValidation::Pending,
-        });
-        inbox.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-dup".to_string(),
-            requester: "npub1dup".to_string(),
-            capability: "cap.one".to_string(),
-            price_sats: 22,
-            ttl_seconds: 120,
-            validation: JobInboxValidation::Valid,
-        });
+        let inbox = seed_job_inbox(vec![
+            fixture_inbox_request("req-dup", "cap.one", 11, 60, JobInboxValidation::Pending),
+            fixture_inbox_request("req-dup", "cap.one", 22, 120, JobInboxValidation::Valid),
+        ]);
 
         let duplicates = inbox
             .requests
@@ -2504,15 +2593,13 @@ mod tests {
 
     #[test]
     fn job_inbox_accept_updates_selected_request_decision() {
-        let mut inbox = JobInboxState::default();
-        inbox.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-accept".to_string(),
-            requester: "npub1accept".to_string(),
-            capability: "summarize.text".to_string(),
-            price_sats: 900,
-            ttl_seconds: 120,
-            validation: JobInboxValidation::Valid,
-        });
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-accept",
+            "summarize.text",
+            900,
+            120,
+            JobInboxValidation::Valid,
+        )]);
         assert!(inbox.select_by_index(0));
         let request_id = inbox
             .selected_request()
@@ -2533,15 +2620,13 @@ mod tests {
 
     #[test]
     fn active_job_advance_stage_updates_lifecycle() {
-        let mut inbox = JobInboxState::default();
-        inbox.upsert_network_request(JobInboxNetworkRequest {
-            request_id: "req-active".to_string(),
-            requester: "npub1active".to_string(),
-            capability: "summarize.text".to_string(),
-            price_sats: 1500,
-            ttl_seconds: 300,
-            validation: JobInboxValidation::Valid,
-        });
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-active",
+            "summarize.text",
+            1500,
+            300,
+            JobInboxValidation::Valid,
+        )]);
         assert!(inbox.select_by_index(0));
         let request = inbox
             .selected_request()
@@ -2561,25 +2646,10 @@ mod tests {
 
     #[test]
     fn job_history_filters_search_status_and_time() {
-        let mut history = JobHistoryState::default();
-        history.upsert_row(super::JobHistoryReceiptRow {
-            job_id: "job-bootstrap-000".to_string(),
-            status: JobHistoryStatus::Succeeded,
-            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(30),
-            payout_sats: 2100,
-            result_hash: "sha256:job-bootstrap-000".to_string(),
-            payment_pointer: "pay:req-bootstrap-000".to_string(),
-            failure_reason: None,
-        });
-        history.upsert_row(super::JobHistoryReceiptRow {
-            job_id: "job-bootstrap-001".to_string(),
-            status: JobHistoryStatus::Failed,
-            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(60),
-            payout_sats: 0,
-            result_hash: "sha256:job-bootstrap-001".to_string(),
-            payment_pointer: "pay:req-bootstrap-001".to_string(),
-            failure_reason: Some("invoice timeout".to_string()),
-        });
+        let mut history = seed_job_history(vec![
+            fixture_history_row("job-bootstrap-000", JobHistoryStatus::Succeeded, 1_761_919_970, 2100),
+            fixture_history_row("job-bootstrap-001", JobHistoryStatus::Failed, 1_761_919_940, 0),
+        ]);
         history.status_filter = JobHistoryStatusFilter::Succeeded;
         history.time_range = JobHistoryTimeRange::All;
         history.set_search_job_id("bootstrap-000".to_string());
@@ -2592,16 +2662,12 @@ mod tests {
 
     #[test]
     fn job_history_upsert_keeps_single_row_per_job_id() {
-        let mut history = JobHistoryState::default();
-        history.upsert_row(super::JobHistoryReceiptRow {
-            job_id: "job-bootstrap-000".to_string(),
-            status: JobHistoryStatus::Succeeded,
-            completed_at_epoch_seconds: history.reference_epoch_seconds,
-            payout_sats: 1200,
-            result_hash: "sha256:seed".to_string(),
-            payment_pointer: "pay:seed".to_string(),
-            failure_reason: None,
-        });
+        let mut history = seed_job_history(vec![fixture_history_row(
+            "job-bootstrap-000",
+            JobHistoryStatus::Succeeded,
+            1_761_920_000,
+            1200,
+        )]);
         let before = history.rows.len();
         history.upsert_row(super::JobHistoryReceiptRow {
             job_id: "job-bootstrap-000".to_string(),
@@ -2681,14 +2747,12 @@ mod tests {
     #[test]
     fn starter_jobs_complete_selected_sets_payout_pointer() {
         let mut starter_jobs = StarterJobsState::default();
-        starter_jobs.jobs.push(StarterJobRow {
-            job_id: "job-starter-001".to_string(),
-            summary: "Process starter job".to_string(),
-            payout_sats: 1200,
-            eligible: true,
-            status: StarterJobStatus::Queued,
-            payout_pointer: None,
-        });
+        starter_jobs.jobs.push(fixture_starter_job(
+            "job-starter-001",
+            1200,
+            true,
+            StarterJobStatus::Queued,
+        ));
         starter_jobs.select_by_index(0);
         let (job_id, _payout, pointer) = starter_jobs
             .complete_selected()
@@ -2705,23 +2769,17 @@ mod tests {
     #[test]
     fn activity_feed_upsert_deduplicates_stable_event_ids() {
         let mut feed = ActivityFeedState::default();
-        feed.upsert_event(ActivityEventRow {
-            event_id: "wallet:payment:latest".to_string(),
-            domain: ActivityEventDomain::Wallet,
-            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
-            occurred_at_epoch_seconds: 1_761_920_180,
-            summary: "Payment settled into Spark wallet".to_string(),
-            detail: "pay:req-bootstrap-000 (+2100 sats)".to_string(),
-        });
+        feed.upsert_event(fixture_activity_event(
+            "wallet:payment:latest",
+            ActivityEventDomain::Wallet,
+            1_761_920_180,
+        ));
         let baseline_count = feed.rows.len();
-        feed.upsert_event(ActivityEventRow {
-            event_id: "wallet:payment:latest".to_string(),
-            domain: ActivityEventDomain::Wallet,
-            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
-            occurred_at_epoch_seconds: 1_761_920_200,
-            summary: "Payment settled into Spark wallet".to_string(),
-            detail: "pay:req-bootstrap-000 (+2200 sats)".to_string(),
-        });
+        feed.upsert_event(fixture_activity_event(
+            "wallet:payment:latest",
+            ActivityEventDomain::Wallet,
+            1_761_920_200,
+        ));
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
@@ -2735,15 +2793,12 @@ mod tests {
     #[test]
     fn alerts_recovery_lifecycle_transitions_are_deterministic() {
         let mut alerts = AlertsRecoveryState::default();
-        alerts.alerts.push(RecoveryAlertRow {
-            alert_id: "alert:identity:missing".to_string(),
-            domain: AlertDomain::Identity,
-            severity: super::AlertSeverity::Critical,
-            lifecycle: AlertLifecycle::Active,
-            summary: "Identity missing".to_string(),
-            remediation: "Regenerate identity".to_string(),
-            last_transition_epoch_seconds: 1_761_920_080,
-        });
+        alerts.alerts.push(fixture_alert(
+            "alert:identity:missing",
+            AlertDomain::Identity,
+            super::AlertSeverity::Critical,
+            AlertLifecycle::Active,
+        ));
         alerts.select_by_index(0);
         let alert_id = alerts
             .acknowledge_selected()
@@ -2801,16 +2856,12 @@ mod tests {
     fn earnings_scoreboard_refreshes_from_wallet_and_history() {
         let mut score = EarningsScoreboardState::default();
         let provider = ProviderRuntimeState::default();
-        let mut history = JobHistoryState::default();
-        history.upsert_row(super::JobHistoryReceiptRow {
-            job_id: "job-earned-001".to_string(),
-            status: JobHistoryStatus::Succeeded,
-            completed_at_epoch_seconds: history.reference_epoch_seconds.saturating_sub(30),
-            payout_sats: 2100,
-            result_hash: "sha256:job-earned-001".to_string(),
-            payment_pointer: "pay:req-earned-001".to_string(),
-            failure_reason: None,
-        });
+        let history = seed_job_history(vec![fixture_history_row(
+            "job-earned-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            2100,
+        )]);
         let mut spark = SparkPaneState::default();
         spark.balance = Some(openagents_spark::Balance {
             spark_sats: 1000,
