@@ -280,24 +280,24 @@ For MVP, every user-facing feature must be reachable by one command-palette comm
 
 | Pane name (user sees) | Command label (user sees) | Command ID | MVP feature covered |
 | --- | --- | --- | --- |
-| Autopilot Chat | Open Autopilot Chat Pane | `pane.autopilot_chat` | Personal agent chat thread + local execution UX |
-| Go Online | Open Go Online Pane | `pane.go_online` | Provider mode toggle and lifecycle state |
-| Provider Status | Open Provider Status Pane | `pane.provider_status` | Uptime, heartbeat, degraded/error visibility |
-| Job Inbox | Open Job Inbox Pane | `pane.job_inbox` | Incoming NIP-90 request intake |
-| Active Job | Open Active Job Pane | `pane.active_job` | In-flight job lifecycle (`received -> running -> delivered -> paid`) |
-| Job History | Open Job History Pane | `pane.job_history` | Deterministic job history and failure reasons |
-| Earnings Scoreboard | Open Earnings Scoreboard Pane | `pane.earnings_scoreboard` | sats/day, lifetime sats, jobs/day, last result |
-| Spark Lightning Wallet | Open Spark Wallet Pane | `pane.wallet` | Balance, connectivity, addresses, payment history |
-| Pay Lightning Invoice | Open Pay Lightning Invoice Pane | `pane.pay_invoice` | Withdraw/prove custody by paying invoices |
-| Create Lightning Invoice | Open Create Lightning Invoice Pane | `pane.create_invoice` | Receive/invoice generation flow |
-| Nostr Keys (NIP-06) | Open Identity Keys Pane | `pane.identity_keys` | Identity generation, reveal/copy, key custody |
-| Relay Connections | Open Relay Connections Pane | `pane.relay_connections` | Relay connectivity and failure diagnosis |
-| Sync Health | Open Sync Health Pane | `pane.sync_health` | Spacetime subscription, reconnect, stale cursor state |
-| Network Requests | Open Network Requests Pane | `pane.network_requests` | Buy-side request submission to network |
-| Starter Jobs | Open Starter Jobs Pane | `pane.starter_jobs` | Seed-demand/quest visibility for first earnings |
-| Activity Feed | Open Activity Feed Pane | `pane.activity_feed` | Unified event stream for chat/jobs/wallet actions |
-| Alerts and Recovery | Open Alerts and Recovery Pane | `pane.alerts_recovery` | Actionable incident/failure guidance |
-| Settings | Open Settings Pane | `pane.settings` | App config, network config, safety toggles |
+| Autopilot Chat | Autopilot Chat | `pane.autopilot_chat` | Personal agent chat thread + local execution UX |
+| Go Online | Go Online | `pane.go_online` | Provider mode toggle and lifecycle state |
+| Provider Status | Provider Status | `pane.provider_status` | Uptime, heartbeat, degraded/error visibility |
+| Job Inbox | Job Inbox | `pane.job_inbox` | Incoming NIP-90 request intake |
+| Active Job | Active Job | `pane.active_job` | In-flight job lifecycle (`received -> running -> delivered -> paid`) |
+| Job History | Job History | `pane.job_history` | Deterministic job history and failure reasons |
+| Earnings Scoreboard | Earnings Scoreboard | `pane.earnings_scoreboard` | sats/day, lifetime sats, jobs/day, last result |
+| Spark Lightning Wallet | Spark Wallet | `pane.wallet` | Balance, connectivity, addresses, payment history |
+| Pay Lightning Invoice | Pay Lightning Invoice | `pane.pay_invoice` | Withdraw/prove custody by paying invoices |
+| Create Lightning Invoice | Create Lightning Invoice | `pane.create_invoice` | Receive/invoice generation flow |
+| Nostr Keys (NIP-06) | Identity Keys | `pane.identity_keys` | Identity generation, reveal/copy, key custody |
+| Relay Connections | Relay Connections | `pane.relay_connections` | Relay connectivity and failure diagnosis |
+| Sync Health | Sync Health | `pane.sync_health` | Spacetime subscription, reconnect, stale cursor state |
+| Network Requests | Network Requests | `pane.network_requests` | Buy-side request submission to network |
+| Starter Jobs | Starter Jobs | `pane.starter_jobs` | Seed-demand/quest visibility for first earnings |
+| Activity Feed | Activity Feed | `pane.activity_feed` | Unified event stream for chat/jobs/wallet actions |
+| Alerts and Recovery | Alerts and Recovery | `pane.alerts_recovery` | Actionable incident/failure guidance |
+| Settings | Settings | `pane.settings` | App config, network config, safety toggles |
 
 Current implementation note:
 

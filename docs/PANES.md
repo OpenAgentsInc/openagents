@@ -30,12 +30,12 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `2` opens `Nostr Keys (NIP-06)`.
   - `3` opens `Spark Lightning Wallet`.
 - Command Palette (`Cmd/Ctrl+K`):
-  - `Open Autopilot Chat Pane` -> opens `Autopilot Chat`.
-  - `Open Go Online Pane` -> opens `Go Online`.
-  - `Open Provider Status Pane` -> opens `Provider Status`.
-  - `Open Identity Keys Pane` -> opens `Nostr Keys (NIP-06)`.
-  - `Open Spark Wallet Pane` -> opens `Spark Lightning Wallet`.
-  - `Open Pay Lightning Invoice Pane` -> opens `Pay Lightning Invoice`.
+  - `Autopilot Chat` -> opens `Autopilot Chat`.
+  - `Go Online` -> opens `Go Online`.
+  - `Provider Status` -> opens `Provider Status`.
+  - `Identity Keys` -> opens `Nostr Keys (NIP-06)`.
+  - `Spark Wallet` -> opens `Spark Lightning Wallet`.
+  - `Pay Lightning Invoice` -> opens `Pay Lightning Invoice`.
 
 ## Behavior Notes
 

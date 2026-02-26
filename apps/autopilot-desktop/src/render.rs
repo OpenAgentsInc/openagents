@@ -242,24 +242,24 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
 
 fn command_registry() -> Vec<Command> {
     vec![
-        Command::new("pane.autopilot_chat", "Open Autopilot Chat Pane")
+        Command::new("pane.autopilot_chat", "Autopilot Chat")
             .description("Open chat thread and composer for Autopilot")
             .category("Panes"),
-        Command::new("pane.go_online", "Open Go Online Pane")
+        Command::new("pane.go_online", "Go Online")
             .description("Open provider mode toggle and lifecycle controls")
             .category("Panes"),
-        Command::new("pane.provider_status", "Open Provider Status Pane")
+        Command::new("pane.provider_status", "Provider Status")
             .description("Open runtime health and heartbeat visibility pane")
             .category("Panes"),
-        Command::new("pane.identity_keys", "Open Identity Keys Pane")
+        Command::new("pane.identity_keys", "Identity Keys")
             .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")
             .keybinding("2"),
-        Command::new("pane.wallet", "Open Spark Wallet Pane")
+        Command::new("pane.wallet", "Spark Wallet")
             .description("Show Spark wallet controls")
             .category("Panes")
             .keybinding("3"),
-        Command::new("pane.pay_invoice", "Open Pay Lightning Invoice Pane")
+        Command::new("pane.pay_invoice", "Pay Lightning Invoice")
             .description("Open dedicated pane for paying Lightning invoices")
             .category("Panes"),
     ]
