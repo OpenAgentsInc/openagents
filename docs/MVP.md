@@ -274,7 +274,39 @@ If any one of these fails in a first-run flow, we treat it as a product failure,
 
 ---
 
-## 14) Implementation mapping (retained structure, aligned to the new story)
+## 14) MVP pane + command surface (required)
+
+For MVP, every user-facing feature must be reachable by one command-palette command that opens exactly one pane. Pane names and command labels below are canonical user-facing strings.
+
+| Pane name (user sees) | Command label (user sees) | Command ID | MVP feature covered |
+| --- | --- | --- | --- |
+| Autopilot Chat | Open Autopilot Chat Pane | `pane.autopilot_chat` | Personal agent chat thread + local execution UX |
+| Go Online | Open Go Online Pane | `pane.go_online` | Provider mode toggle and lifecycle state |
+| Provider Status | Open Provider Status Pane | `pane.provider_status` | Uptime, heartbeat, degraded/error visibility |
+| Job Inbox | Open Job Inbox Pane | `pane.job_inbox` | Incoming NIP-90 request intake |
+| Active Job | Open Active Job Pane | `pane.active_job` | In-flight job lifecycle (`received -> running -> delivered -> paid`) |
+| Job History | Open Job History Pane | `pane.job_history` | Deterministic job history and failure reasons |
+| Earnings Scoreboard | Open Earnings Scoreboard Pane | `pane.earnings_scoreboard` | sats/day, lifetime sats, jobs/day, last result |
+| Spark Lightning Wallet | Open Spark Wallet Pane | `pane.wallet` | Balance, connectivity, addresses, payment history |
+| Pay Lightning Invoice | Open Pay Lightning Invoice Pane | `pane.pay_invoice` | Withdraw/prove custody by paying invoices |
+| Create Lightning Invoice | Open Create Lightning Invoice Pane | `pane.create_invoice` | Receive/invoice generation flow |
+| Nostr Keys (NIP-06) | Open Identity Keys Pane | `pane.identity_keys` | Identity generation, reveal/copy, key custody |
+| Relay Connections | Open Relay Connections Pane | `pane.relay_connections` | Relay connectivity and failure diagnosis |
+| Sync Health | Open Sync Health Pane | `pane.sync_health` | Spacetime subscription, reconnect, stale cursor state |
+| Network Requests | Open Network Requests Pane | `pane.network_requests` | Buy-side request submission to network |
+| Starter Jobs | Open Starter Jobs Pane | `pane.starter_jobs` | Seed-demand/quest visibility for first earnings |
+| Activity Feed | Open Activity Feed Pane | `pane.activity_feed` | Unified event stream for chat/jobs/wallet actions |
+| Alerts and Recovery | Open Alerts and Recovery Pane | `pane.alerts_recovery` | Actionable incident/failure guidance |
+| Settings | Open Settings Pane | `pane.settings` | App config, network config, safety toggles |
+
+Current implementation note:
+
+* Already present in app: `Nostr Keys (NIP-06)`, `Spark Lightning Wallet`, `Pay Lightning Invoice`.
+* Remaining panes above are MVP backlog and should be implemented with the exact pane/command labels listed.
+
+---
+
+## 15) Implementation mapping (retained structure, aligned to the new story)
 
 The implementation remains grounded in the same lanes as the original draft, but the emphasis shifts: we are building a “money printer” experience, not a pile of subsystems.
 
@@ -288,7 +320,7 @@ Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, clien
 
 ---
 
-## 15) Post-MVP (kept explicit, but not allowed to pollute MVP)
+## 16) Post-MVP (kept explicit, but not allowed to pollute MVP)
 
 After the MVP loop is stable and users can reliably earn and withdraw, the next expansions are obvious:
 
