@@ -1,53 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/autopilot-desktop",
-    "apps/openagents.com",
-    "apps/runtime",
-    "apps/lightning-ops",
-    "apps/lightning-wallet-executor",
-    "crates/adjutant",
-    "crates/agent",
-    "crates/arrow",
-    "crates/autopilot_app",
-    "crates/autopilot-inbox-domain",
-    "crates/autopilot_ui",
-    "crates/autopilot",
-    "crates/autopilot-core",
-    "crates/autopilot-spacetime",
-    "crates/codex-client",
-    "crates/compute",
-    "crates/citrea",
-    "crates/dsrs",
-    "crates/dsrs-macros",
-    "crates/editor",
-    "crates/frlm",
-    "crates/gateway",
-    "crates/gpt-oss",
-    "crates/issues",
-    "crates/lm-router",
-    "crates/local-inference",
-    "crates/neobank",
-    "crates/nostr/core",
-    "crates/nostr/client",
-    "crates/openagents-cli",
-    "crates/openagents-codex-control",
-    "crates/openagents-client-core",
-    "crates/openagents-l402",
-    "crates/openagents-ui-core",
-    "crates/openagents-registry",
-    "crates/openagents-utils",
-    "crates/pylon",
-    "crates/relay",
-    "crates/runtime",
-    "crates/rlm",
-    "crates/spark",
     "crates/vim",
     "crates/wgpui",
-    "crates/protocol",
-    "crates/openagents-proto",
-    "crates/openagents-runtime-client",
-    "crates/ws-test",
 ]
 
 [workspace.lints.rust]
@@ -175,16 +130,6 @@ license = "CC-0"
 publish = false
 
 [workspace.dependencies]
-# OpenAgents workspace crates
-codex-client = { path = "crates/codex-client" }
-issues = { path = "crates/issues" }
-nostr = { path = "crates/nostr/core" }
-dsrs = { path = "crates/dsrs" }
-dsrs-macros = { path = "crates/dsrs-macros" }
-openagents-utils = { path = "crates/openagents-utils" }
-autopilot-inbox-domain = { path = "crates/autopilot-inbox-domain" }
-
-# External crates
 anyhow = "1.0.86"
 async-trait = "0.1"
 base64 = "0.22"
