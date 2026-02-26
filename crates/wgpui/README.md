@@ -20,7 +20,8 @@ with optional web/ios support kept behind feature gates.
 - `desktop`: native window/event-loop lane used by the MVP app
 - `web`: wasm/websys lane (currently default feature)
 - `ios`: iOS-specific platform lane
-- `testing`: extra testing harness and helpers
+- `testing`: testing harness/DSL lane (feature-gated)
+- `storybook`: visual storybook demo lane (feature-gated)
 - `audio`: optional audio helpers
 
 ## Module Map

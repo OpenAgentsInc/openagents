@@ -23,6 +23,7 @@ desktop = ["winit", "pollster"]
 ios = ["pollster"]
 # Optional features - not included in production builds by default
 testing = []  # E2E testing framework (~6,850 lines)
+storybook = [] # Storybook demo lane
 audio = []    # Bleeps audio system (~1,163 lines)
 
 [dependencies]
@@ -127,7 +128,7 @@ required-features = ["desktop"]
 
 [[example]]
 name = "storybook"
-required-features = ["desktop"]
+required-features = ["desktop", "storybook"]
 
 [[example]]
 name = "ui_pane_demo"

@@ -52,7 +52,7 @@ pub mod scroll;
 pub mod styled;
 pub mod styles;
 pub mod svg;
-#[cfg(any(test, feature = "testing"))]
+#[cfg(feature = "testing")]
 pub mod testing;
 pub mod text;
 pub mod text_system;
