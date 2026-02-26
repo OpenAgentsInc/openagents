@@ -252,9 +252,6 @@ impl ApplicationHandler for App {
                 if event.state != ElementState::Pressed {
                     return;
                 }
-                if event.repeat {
-                    return;
-                }
 
                 match event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => {
