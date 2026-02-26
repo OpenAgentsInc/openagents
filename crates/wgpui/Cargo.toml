@@ -157,3 +157,7 @@ required-features = ["desktop"]
 [[bench]]
 name = "performance"
 harness = false
+
+[[bench]]
+name = "text_scene_microbench"
+harness = false

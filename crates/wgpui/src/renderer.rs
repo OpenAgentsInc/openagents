@@ -2,7 +2,9 @@ use crate::geometry::Size;
 use crate::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Scene};
 use crate::svg::SvgRenderer;
 use bytemuck::{Pod, Zeroable};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use web_time::Instant;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -50,6 +52,18 @@ struct PreparedLayer {
     line_count: u32,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RenderMetrics {
+    pub layer_count: usize,
+    pub quad_instances: u32,
+    pub line_instances: u32,
+    pub text_instances: u32,
+    pub svg_instances: u32,
+    pub draw_calls: u32,
+    pub prepare_cpu_ms: f64,
+    pub render_cpu_ms: f64,
+}
+
 pub struct Renderer {
     quad_pipeline: wgpu::RenderPipeline,
     text_pipeline: wgpu::RenderPipeline,
@@ -76,6 +90,7 @@ pub struct Renderer {
     svg_texture_cache: HashMap<SvgTextureKey, SvgGpuResources>,
     prepared_svgs: Vec<PreparedSvg>,
     image_sampler: wgpu::Sampler,
+    metrics: RefCell<RenderMetrics>,
 }
 
 impl Renderer {
@@ -545,6 +560,7 @@ impl Renderer {
             svg_texture_cache: HashMap::new(),
             prepared_svgs: Vec::new(),
             image_sampler,
+            metrics: RefCell::new(RenderMetrics::default()),
         }
     }
 
@@ -593,6 +609,11 @@ impl Renderer {
         scene: &Scene,
         scale_factor: f32,
     ) {
+        let prepare_start = Instant::now();
+        let mut quad_instances: u32 = 0;
+        let mut text_instances: u32 = 0;
+        let mut line_instances: u32 = 0;
+
         // Prepare layers in order
         self.prepared_layers.clear();
         let layers = scene.layers();
@@ -638,6 +659,10 @@ impl Renderer {
             } else {
                 None
             };
+
+            quad_instances += quads.len() as u32;
+            text_instances += text_quads.len() as u32;
+            line_instances += lines.len() as u32;
 
             self.prepared_layers.push(PreparedLayer {
                 quad_buffer,
@@ -785,6 +810,14 @@ impl Renderer {
                 });
             }
         }
+
+        let mut metrics = self.metrics.borrow_mut();
+        metrics.layer_count = self.prepared_layers.len();
+        metrics.quad_instances = quad_instances;
+        metrics.text_instances = text_instances;
+        metrics.line_instances = line_instances;
+        metrics.svg_instances = self.prepared_svgs.len() as u32;
+        metrics.prepare_cpu_ms = prepare_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
     pub fn render(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
@@ -797,6 +830,9 @@ impl Renderer {
         view: &wgpu::TextureView,
         clear_color: wgpu::Color,
     ) {
+        let render_start = Instant::now();
+        let mut draw_calls: u32 = 0;
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -820,6 +856,7 @@ impl Renderer {
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, buffer.slice(..));
                 render_pass.draw(0..4, 0..layer.quad_count);
+                draw_calls += 1;
             }
 
             // Render lines on top of quads (connections between nodes)
@@ -828,6 +865,7 @@ impl Renderer {
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, buffer.slice(..));
                 render_pass.draw(0..4, 0..layer.line_count);
+                draw_calls += 1;
             }
 
             // Render text on top
@@ -837,6 +875,7 @@ impl Renderer {
                 render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, buffer.slice(..));
                 render_pass.draw(0..4, 0..layer.text_count);
+                draw_calls += 1;
             }
         }
 
@@ -850,9 +889,16 @@ impl Renderer {
                     render_pass.set_bind_group(1, &resources.bind_group, &[]);
                     render_pass.set_vertex_buffer(0, prepared.instance_buffer.slice(..));
                     render_pass.draw(0..4, 0..1);
+                    draw_calls += 1;
                 }
             }
         }
+
+        drop(render_pass);
+
+        let mut metrics = self.metrics.borrow_mut();
+        metrics.draw_calls = draw_calls;
+        metrics.render_cpu_ms = render_start.elapsed().as_secs_f64() * 1_000.0;
     }
 
     /// Clear the SVG texture cache.
@@ -865,5 +911,9 @@ impl Renderer {
     /// Get the number of cached SVG textures.
     pub fn svg_cache_size(&self) -> usize {
         self.svg_texture_cache.len()
+    }
+
+    pub fn render_metrics(&self) -> RenderMetrics {
+        self.metrics.borrow().clone()
     }
 }
