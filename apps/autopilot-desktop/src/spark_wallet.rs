@@ -19,7 +19,9 @@ pub enum SparkWalletCommand {
     Refresh,
     GenerateSparkAddress,
     GenerateBitcoinAddress,
-    CreateInvoice { amount_sats: u64 },
+    CreateInvoice {
+        amount_sats: u64,
+    },
     SendPayment {
         payment_request: String,
         amount_sats: Option<u64>,
@@ -45,7 +47,9 @@ impl SparkWalletWorker {
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    state.last_error = Some(format!("Failed to initialize Spark worker runtime: {error}"));
+                    state.last_error = Some(format!(
+                        "Failed to initialize Spark worker runtime: {error}"
+                    ));
                     let _ = result_tx.send(state.clone());
                     return;
                 }
@@ -517,11 +521,15 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Network, SPARK_ACTION_TIMEOUT, SparkPaneState, SparkWalletWorker, run_with_timeout,
-        timeout_message,
+        Network, SPARK_ACTION_TIMEOUT, SparkPaneState, SparkWalletCommand, SparkWalletWorker,
+        run_with_timeout, timeout_message,
     };
 
+    use nostr::ENV_IDENTITY_MNEMONIC_PATH;
+    use std::sync::Mutex;
     use std::time::Duration;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn timeout_message_contains_action_and_duration() {
@@ -537,15 +545,10 @@ mod tests {
             .build()
             .expect("runtime");
 
-        let result = run_with_timeout(
-            &runtime,
-            "slow action",
-            Duration::from_millis(5),
-            async {
-                tokio::time::sleep(SPARK_ACTION_TIMEOUT).await;
-                Ok::<u8, &'static str>(1)
-            },
-        );
+        let result = run_with_timeout(&runtime, "slow action", Duration::from_millis(5), async {
+            tokio::time::sleep(SPARK_ACTION_TIMEOUT).await;
+            Ok::<u8, &'static str>(1)
+        });
 
         let error = result.expect_err("should timeout");
         assert!(error.contains("slow action timed out"));
@@ -573,5 +576,93 @@ mod tests {
             snapshot.last_action.as_deref(),
             Some("Cancelled pending Spark actions")
         );
+    }
+
+    #[test]
+    fn refresh_without_identity_sets_error_state() {
+        with_missing_identity_env(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            let mut state = SparkPaneState::with_network(Network::Regtest);
+            state.last_error = Some("stale error".to_string());
+
+            state.apply_command(&runtime, SparkWalletCommand::Refresh);
+
+            let error = state.last_error.expect("refresh should report error");
+            assert!(error.contains("No identity mnemonic found"));
+            assert_eq!(state.last_action.as_deref(), None);
+        });
+    }
+
+    #[test]
+    fn create_invoice_without_identity_sets_error_state() {
+        with_missing_identity_env(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            let mut state = SparkPaneState::with_network(Network::Regtest);
+
+            state.apply_command(
+                &runtime,
+                SparkWalletCommand::CreateInvoice { amount_sats: 1000 },
+            );
+
+            let error = state.last_error.expect("invoice should report error");
+            assert!(error.contains("No identity mnemonic found"));
+            assert!(state.last_invoice.is_none());
+        });
+    }
+
+    #[test]
+    fn send_payment_without_identity_sets_error_state() {
+        with_missing_identity_env(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            let mut state = SparkPaneState::with_network(Network::Regtest);
+
+            state.apply_command(
+                &runtime,
+                SparkWalletCommand::SendPayment {
+                    payment_request: "lnbc1example".to_string(),
+                    amount_sats: Some(150),
+                },
+            );
+
+            let error = state.last_error.expect("send should report error");
+            assert!(error.contains("No identity mnemonic found"));
+            assert!(state.last_payment_id.is_none());
+        });
+    }
+
+    fn with_missing_identity_env(test: impl FnOnce()) {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let key = ENV_IDENTITY_MNEMONIC_PATH;
+        let previous = std::env::var(key).ok();
+
+        let marker = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time available")
+            .as_nanos();
+        let missing_path = std::env::temp_dir().join(format!(
+            "openagents-missing-identity-{}-{marker}.mnemonic",
+            std::process::id()
+        ));
+
+        let _ = std::fs::remove_file(&missing_path);
+        unsafe {
+            std::env::set_var(key, &missing_path);
+        }
+
+        test();
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(key, value) },
+            None => unsafe { std::env::remove_var(key) },
+        }
     }
 }

@@ -295,7 +295,7 @@ fn payment_direction_label(payment_type: PaymentType) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Network, SdkNetwork};
+    use super::{Balance, Network, PaymentType, SdkNetwork, payment_direction_label};
     use crate::SparkError;
 
     #[test]
@@ -330,5 +330,21 @@ mod tests {
             result,
             Err(SparkError::UnsupportedNetwork(Network::Signet))
         ));
+    }
+
+    #[test]
+    fn balance_total_sats_is_saturating() {
+        let balance = Balance {
+            spark_sats: u64::MAX,
+            lightning_sats: 1,
+            onchain_sats: 10,
+        };
+        assert_eq!(balance.total_sats(), u64::MAX);
+    }
+
+    #[test]
+    fn payment_direction_labels_match_payment_type() {
+        assert_eq!(payment_direction_label(PaymentType::Send), "send");
+        assert_eq!(payment_direction_label(PaymentType::Receive), "receive");
     }
 }

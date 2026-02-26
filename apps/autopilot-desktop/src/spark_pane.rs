@@ -112,3 +112,56 @@ pub fn hits_input(layout: SparkPaneLayout, point: Point) -> bool {
         || layout.send_request_input.contains(point)
         || layout.send_amount_input.contains(point)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SparkPaneAction, hit_action, hits_input, layout};
+    use wgpui::{Bounds, Point};
+
+    #[test]
+    fn layout_rows_are_monotonic() {
+        let bounds = Bounds::new(0.0, 0.0, 820.0, 460.0);
+        let layout = layout(bounds);
+
+        assert!(layout.refresh_button.origin.y < layout.invoice_amount_input.origin.y);
+        assert!(layout.invoice_amount_input.origin.y < layout.send_request_input.origin.y);
+        assert!(layout.send_request_input.origin.y < layout.send_amount_input.origin.y);
+        assert!(layout.details_origin.y > layout.send_amount_input.origin.y);
+    }
+
+    #[test]
+    fn hit_action_detects_buttons() {
+        let bounds = Bounds::new(0.0, 0.0, 820.0, 460.0);
+        let layout = layout(bounds);
+
+        let refresh = Point::new(
+            layout.refresh_button.origin.x + 3.0,
+            layout.refresh_button.origin.y + 3.0,
+        );
+        assert_eq!(hit_action(layout, refresh), Some(SparkPaneAction::Refresh));
+
+        let send = Point::new(
+            layout.send_payment_button.origin.x + 3.0,
+            layout.send_payment_button.origin.y + 3.0,
+        );
+        assert_eq!(hit_action(layout, send), Some(SparkPaneAction::SendPayment));
+    }
+
+    #[test]
+    fn hits_input_only_for_input_regions() {
+        let bounds = Bounds::new(0.0, 0.0, 820.0, 460.0);
+        let layout = layout(bounds);
+
+        let invoice_input = Point::new(
+            layout.invoice_amount_input.origin.x + 2.0,
+            layout.invoice_amount_input.origin.y + 2.0,
+        );
+        assert!(hits_input(layout, invoice_input));
+
+        let button_point = Point::new(
+            layout.refresh_button.origin.x + 2.0,
+            layout.refresh_button.origin.y + 2.0,
+        );
+        assert!(!hits_input(layout, button_point));
+    }
+}

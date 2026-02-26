@@ -586,3 +586,37 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 
     Bounds::new(x, y, width, height)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds,
+    };
+    use wgpui::Bounds;
+
+    #[test]
+    fn pane_content_bounds_reserve_title_space() {
+        let pane = Bounds::new(10.0, 20.0, 400.0, 300.0);
+        let content = pane_content_bounds(pane);
+
+        assert!((content.origin.x - pane.origin.x).abs() <= f32::EPSILON);
+        assert!(content.origin.y > pane.origin.y);
+        assert!((content.size.width - pane.size.width).abs() <= f32::EPSILON);
+        assert!(content.size.height < pane.size.height);
+    }
+
+    #[test]
+    fn nostr_buttons_are_non_overlapping_and_ordered() {
+        let content = Bounds::new(0.0, 0.0, 480.0, 220.0);
+        let regenerate = nostr_regenerate_button_bounds(content);
+        let reveal = nostr_reveal_button_bounds(content);
+        let copy = nostr_copy_secret_button_bounds(content);
+
+        assert!(regenerate.max_x() < reveal.min_x());
+        assert!(reveal.max_x() < copy.min_x());
+        assert!(regenerate.size.height > 0.0);
+        assert!(reveal.size.height > 0.0);
+        assert!(copy.size.height > 0.0);
+    }
+}

@@ -304,59 +304,54 @@ fn handle_spark_keyboard_input(
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
-    let command = match action {
-        SparkPaneAction::Refresh => SparkWalletCommand::Refresh,
-        SparkPaneAction::GenerateSparkAddress => SparkWalletCommand::GenerateSparkAddress,
-        SparkPaneAction::GenerateBitcoinAddress => SparkWalletCommand::GenerateBitcoinAddress,
-        SparkPaneAction::CreateInvoice => {
-            let amount = parse_positive_amount(
-                state.spark_inputs.invoice_amount.get_value(),
-                "Invoice amount",
-                &mut state.spark_wallet.last_error,
-            );
-            let Some(amount) = amount else {
-                return true;
-            };
-            SparkWalletCommand::CreateInvoice {
-                amount_sats: amount,
-            }
-        }
-        SparkPaneAction::SendPayment => {
-            let request = state
-                .spark_inputs
-                .send_request
-                .get_value()
-                .trim()
-                .to_string();
-            if request.is_empty() {
-                state.spark_wallet.last_error = Some("Payment request cannot be empty".to_string());
-                return true;
-            }
-
-            let amount_text = state.spark_inputs.send_amount.get_value().trim();
-            let amount = if amount_text.is_empty() {
-                None
-            } else {
-                let parsed = parse_positive_amount(
-                    amount_text,
-                    "Send amount",
-                    &mut state.spark_wallet.last_error,
-                );
-                let Some(value) = parsed else {
-                    return true;
-                };
-                Some(value)
-            };
-
-            SparkWalletCommand::SendPayment {
-                payment_request: request,
-                amount_sats: amount,
-            }
+    let command = match build_spark_command_for_action(
+        action,
+        state.spark_inputs.invoice_amount.get_value(),
+        state.spark_inputs.send_request.get_value(),
+        state.spark_inputs.send_amount.get_value(),
+    ) {
+        Ok(command) => command,
+        Err(error) => {
+            state.spark_wallet.last_error = Some(error);
+            return true;
         }
     };
 
     queue_spark_command(state, command);
     true
+}
+
+fn build_spark_command_for_action(
+    action: SparkPaneAction,
+    invoice_amount: &str,
+    send_request: &str,
+    send_amount: &str,
+) -> Result<SparkWalletCommand, String> {
+    match action {
+        SparkPaneAction::Refresh => Ok(SparkWalletCommand::Refresh),
+        SparkPaneAction::GenerateSparkAddress => Ok(SparkWalletCommand::GenerateSparkAddress),
+        SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
+        SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateInvoice {
+            amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
+        }),
+        SparkPaneAction::SendPayment => {
+            let request = send_request.trim().to_string();
+            if request.is_empty() {
+                return Err("Payment request cannot be empty".to_string());
+            }
+
+            let amount = if send_amount.trim().is_empty() {
+                None
+            } else {
+                Some(parse_positive_amount_str(send_amount, "Send amount")?)
+            };
+
+            Ok(SparkWalletCommand::SendPayment {
+                payment_request: request,
+                amount_sats: amount,
+            })
+        }
+    }
 }
 
 fn queue_spark_command(state: &mut crate::app_state::RenderState, command: SparkWalletCommand) {
@@ -389,23 +384,16 @@ fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool
     true
 }
 
-fn parse_positive_amount(raw: &str, label: &str, error_slot: &mut Option<String>) -> Option<u64> {
+fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        *error_slot = Some(format!("{label} is required"));
-        return None;
+        return Err(format!("{label} is required"));
     }
 
     match trimmed.parse::<u64>() {
-        Ok(value) if value > 0 => Some(value),
-        Ok(_) => {
-            *error_slot = Some(format!("{label} must be greater than 0"));
-            None
-        }
-        Err(error) => {
-            *error_slot = Some(format!("{label} must be a valid integer: {error}"));
-            None
-        }
+        Ok(value) if value > 0 => Ok(value),
+        Ok(_) => Err(format!("{label} must be greater than 0")),
+        Err(error) => Err(format!("{label} must be a valid integer: {error}")),
     }
 }
 
@@ -449,5 +437,90 @@ fn map_named_key(named: WinitNamedKey) -> NamedKey {
         WinitNamedKey::ArrowLeft => NamedKey::ArrowLeft,
         WinitNamedKey::ArrowRight => NamedKey::ArrowRight,
         _ => NamedKey::Unidentified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_spark_command_for_action, parse_positive_amount_str};
+    use crate::spark_pane::{SparkPaneAction, hit_action, layout};
+    use crate::spark_wallet::SparkWalletCommand;
+    use wgpui::{Bounds, Point};
+
+    #[test]
+    fn parse_positive_amount_str_validates_inputs() {
+        assert_eq!(parse_positive_amount_str("42", "Amount"), Ok(42));
+        assert!(
+            parse_positive_amount_str("0", "Amount")
+                .expect_err("zero rejected")
+                .contains("greater than 0")
+        );
+        assert!(
+            parse_positive_amount_str("abc", "Amount")
+                .expect_err("non-numeric rejected")
+                .contains("valid integer")
+        );
+    }
+
+    #[test]
+    fn parse_positive_amount_str_has_readable_errors() {
+        assert_eq!(
+            parse_positive_amount_str("", "Invoice amount")
+                .expect_err("empty amount should be rejected"),
+            "Invoice amount is required"
+        );
+    }
+
+    #[test]
+    fn spark_command_builder_routes_actions() {
+        assert!(matches!(
+            build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
+            Ok(SparkWalletCommand::Refresh)
+        ));
+        assert!(matches!(
+            build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),
+            Ok(SparkWalletCommand::GenerateSparkAddress)
+        ));
+        assert!(matches!(
+            build_spark_command_for_action(SparkPaneAction::GenerateBitcoinAddress, "", "", ""),
+            Ok(SparkWalletCommand::GenerateBitcoinAddress)
+        ));
+
+        assert!(matches!(
+            build_spark_command_for_action(SparkPaneAction::CreateInvoice, "1500", "", ""),
+            Ok(SparkWalletCommand::CreateInvoice { amount_sats: 1500 })
+        ));
+
+        assert!(matches!(
+            build_spark_command_for_action(
+                SparkPaneAction::SendPayment,
+                "",
+                "lnbc1example",
+                "250"
+            ),
+            Ok(SparkWalletCommand::SendPayment {
+                payment_request,
+                amount_sats: Some(250)
+            }) if payment_request == "lnbc1example"
+        ));
+    }
+
+    #[test]
+    fn spark_click_to_command_smoke_path() {
+        let content = Bounds::new(10.0, 10.0, 780.0, 420.0);
+        let pane_layout = layout(content);
+
+        let click = Point::new(
+            pane_layout.create_invoice_button.origin.x + 4.0,
+            pane_layout.create_invoice_button.origin.y + 4.0,
+        );
+        let action = hit_action(pane_layout, click).expect("create-invoice button should hit");
+
+        let command = build_spark_command_for_action(action, "2100", "", "")
+            .expect("command dispatch should succeed");
+        assert!(matches!(
+            command,
+            SparkWalletCommand::CreateInvoice { amount_sats: 2100 }
+        ));
     }
 }
