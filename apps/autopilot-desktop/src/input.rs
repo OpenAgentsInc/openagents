@@ -734,7 +734,7 @@ fn is_command_palette_shortcut(logical_key: &WinitLogicalKey, modifiers: Modifie
         _ => false,
     };
 
-    is_k && (modifiers.meta || modifiers.ctrl)
+    is_k && !modifiers.meta && !modifiers.ctrl && !modifiers.alt
 }
 
 fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -> bool {
@@ -875,7 +875,7 @@ mod tests {
     }
 
     #[test]
-    fn command_palette_shortcut_detects_cmd_or_ctrl_k() {
+    fn command_palette_shortcut_detects_plain_k_only() {
         let key = WinitLogicalKey::Character("k".into());
         let cmd_mods = Modifiers {
             meta: true,
@@ -887,8 +887,8 @@ mod tests {
         };
         let none_mods = Modifiers::default();
 
-        assert!(is_command_palette_shortcut(&key, cmd_mods));
-        assert!(is_command_palette_shortcut(&key, ctrl_mods));
-        assert!(!is_command_palette_shortcut(&key, none_mods));
+        assert!(!is_command_palette_shortcut(&key, cmd_mods));
+        assert!(!is_command_palette_shortcut(&key, ctrl_mods));
+        assert!(is_command_palette_shortcut(&key, none_mods));
     }
 }
