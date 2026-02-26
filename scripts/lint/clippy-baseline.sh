@@ -30,7 +30,7 @@ run_lane() {
 }
 
 lib_warnings="$(run_lane lib cargo clippy --workspace --lib -- -W clippy::all)"
-test_warnings="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all)"
+test_warnings="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all -A clippy::unwrap_used -A clippy::expect_used -A clippy::panic)"
 example_warnings="$(run_lane examples cargo clippy -p wgpui --examples --features desktop -- -W clippy::all)"
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"

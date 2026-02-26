@@ -24,5 +24,6 @@ Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 - Wallet and payout state must be explicit and truthful in UI and behavior.
 - Shared dependency hygiene is guarded by `scripts/lint/workspace-dependency-drift-check.sh`.
 - Architecture boundary hygiene is guarded by `scripts/lint/ownership-boundary-check.sh`.
+- Clean-on-touch clippy hygiene is guarded by `scripts/lint/touched-clippy-gate.sh` with tracked debt in `scripts/lint/clippy-debt-allowlist.toml`.
 
 For contributor guardrails and scope rules, see [AGENTS.md](AGENTS.md).

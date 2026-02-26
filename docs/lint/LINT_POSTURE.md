@@ -21,4 +21,5 @@ Temporary exceptions are allowed only when all of the following are true:
 
 - Run `scripts/lint/clippy-regression-check.sh` before commit.
 - Use `scripts/lint/touched-clippy-gate.sh` (clean-on-touch gate) for changed files.
-- Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.txt`.
+- Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.toml`.
+- Allowlist entries must include `path | owner:<lane> | added:<YYYY-MM-DD> | reason:<...>`.

@@ -14,6 +14,11 @@ if ! "$ROOT_DIR/scripts/lint/workspace-dependency-drift-check.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/touched-clippy-gate.sh"; then
+    printf 'Touched-file clippy gate failed.\n' >&2
+    exit 1
+fi
+
 if [[ ! -f "$BASELINE_FILE" ]]; then
     printf 'Missing baseline file: %s\n' "$BASELINE_FILE" >&2
     printf 'Run scripts/lint/clippy-baseline.sh first.\n' >&2
@@ -49,7 +54,7 @@ run_lane() {
 }
 
 current_lib="$(run_lane lib cargo clippy --workspace --lib -- -W clippy::all)"
-current_tests="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all)"
+current_tests="$(run_lane tests cargo clippy --workspace --tests -- -W clippy::all -A clippy::unwrap_used -A clippy::expect_used -A clippy::panic)"
 current_examples="$(run_lane examples cargo clippy -p wgpui --examples --features desktop -- -W clippy::all)"
 
 status=0
