@@ -3,6 +3,8 @@ mod hotbar;
 mod input;
 mod pane_system;
 mod render;
+mod spark_pane;
+mod spark_wallet;
 
 use anyhow::{Context, Result};
 use app_state::App;

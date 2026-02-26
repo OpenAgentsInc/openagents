@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/autopilot-desktop",
     "crates/nostr/core",
+    "crates/spark",
     "crates/wgpui",
 ]
 

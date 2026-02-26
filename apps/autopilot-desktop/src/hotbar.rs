@@ -3,7 +3,7 @@ use wgpui::{Bounds, Size};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::RenderState;
-use crate::pane_system::{create_empty_pane, create_nostr_identity_pane};
+use crate::pane_system::{create_empty_pane, create_nostr_identity_pane, create_spark_wallet_pane};
 
 pub const HOTBAR_HEIGHT: f32 = 52.0;
 pub const HOTBAR_FLOAT_GAP: f32 = 18.0;
@@ -12,6 +12,7 @@ const HOTBAR_ITEM_GAP: f32 = 6.0;
 const HOTBAR_PADDING: f32 = 6.0;
 pub const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 pub const HOTBAR_SLOT_NOSTR_IDENTITY: u8 = 2;
+pub const HOTBAR_SLOT_SPARK_WALLET: u8 = 3;
 
 pub fn configure_hotbar(hotbar: &mut Hotbar) {
     hotbar.set_item_size(HOTBAR_ITEM_SIZE);
@@ -45,7 +46,10 @@ pub fn hotbar_bounds(size: Size) -> Bounds {
 pub fn process_hotbar_clicks(state: &mut RenderState) -> bool {
     let mut changed = false;
     for slot in state.hotbar.take_clicked_slots() {
-        if slot == HOTBAR_SLOT_NEW_CHAT || slot == HOTBAR_SLOT_NOSTR_IDENTITY {
+        if slot == HOTBAR_SLOT_NEW_CHAT
+            || slot == HOTBAR_SLOT_NOSTR_IDENTITY
+            || slot == HOTBAR_SLOT_SPARK_WALLET
+        {
             activate_hotbar_slot(state, slot);
             changed = true;
         }
@@ -58,6 +62,16 @@ pub fn activate_hotbar_slot(state: &mut RenderState, slot: u8) {
     match slot {
         HOTBAR_SLOT_NEW_CHAT => create_empty_pane(state),
         HOTBAR_SLOT_NOSTR_IDENTITY => create_nostr_identity_pane(state),
+        HOTBAR_SLOT_SPARK_WALLET => {
+            let was_open = state
+                .panes
+                .iter()
+                .any(|pane| pane.kind == crate::app_state::PaneKind::SparkWallet);
+            create_spark_wallet_pane(state);
+            if !was_open {
+                state.spark_wallet.refresh(&state.async_runtime);
+            }
+        }
         _ => {}
     }
     state.hotbar_flash_was_active = true;
@@ -67,12 +81,17 @@ pub fn hotbar_slot_for_key(key: PhysicalKey) -> Option<u8> {
     match key {
         PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Numpad1) => Some(HOTBAR_SLOT_NEW_CHAT),
         PhysicalKey::Code(KeyCode::Digit2 | KeyCode::Numpad2) => Some(HOTBAR_SLOT_NOSTR_IDENTITY),
+        PhysicalKey::Code(KeyCode::Digit3 | KeyCode::Numpad3) => Some(HOTBAR_SLOT_SPARK_WALLET),
         _ => None,
     }
 }
 
-fn hotbar_display_order() -> [u8; 2] {
-    [HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY]
+fn hotbar_display_order() -> [u8; 3] {
+    [
+        HOTBAR_SLOT_NEW_CHAT,
+        HOTBAR_SLOT_NOSTR_IDENTITY,
+        HOTBAR_SLOT_SPARK_WALLET,
+    ]
 }
 
 fn build_hotbar_items() -> Vec<HotbarSlot> {
@@ -81,6 +100,7 @@ fn build_hotbar_items() -> Vec<HotbarSlot> {
         .map(|slot| match slot {
             HOTBAR_SLOT_NEW_CHAT => HotbarSlot::new(slot, "+", "New pane"),
             HOTBAR_SLOT_NOSTR_IDENTITY => HotbarSlot::new(slot, "N", "Nostr keys"),
+            HOTBAR_SLOT_SPARK_WALLET => HotbarSlot::new(slot, "S", "Spark wallet"),
             _ => HotbarSlot::new(slot, "?", "Unknown"),
         })
         .collect()

@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use nostr::NostrIdentity;
+use wgpui::components::TextInput;
 use wgpui::components::hud::{Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, EventContext, Point, TextSystem};
+use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
+
+use crate::spark_wallet::SparkPaneState;
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -28,6 +31,7 @@ impl Default for App {
 pub enum PaneKind {
     Empty,
     NostrIdentity,
+    SparkWallet,
 }
 
 #[derive(Clone, Copy)]
@@ -54,6 +58,24 @@ pub struct DesktopPane {
     pub frame: PaneFrame,
 }
 
+pub struct SparkPaneInputs {
+    pub invoice_amount: TextInput,
+    pub send_request: TextInput,
+    pub send_amount: TextInput,
+}
+
+impl Default for SparkPaneInputs {
+    fn default() -> Self {
+        Self {
+            invoice_amount: TextInput::new().value("1000").placeholder("Invoice sats"),
+            send_request: TextInput::new()
+                .placeholder("Spark payment request or invoice")
+                .mono(true),
+            send_amount: TextInput::new().placeholder("Send sats (optional)"),
+        }
+    }
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -66,9 +88,13 @@ pub struct RenderState {
     pub hotbar: Hotbar,
     pub hotbar_bounds: Bounds,
     pub event_context: EventContext,
+    pub input_modifiers: Modifiers,
+    pub async_runtime: tokio::runtime::Runtime,
     pub panes: Vec<DesktopPane>,
     pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
+    pub spark_wallet: SparkPaneState,
+    pub spark_inputs: SparkPaneInputs,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,

@@ -1,0 +1,22 @@
+[package]
+name = "openagents-spark"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Spark Lightning wallet integration for OpenAgents"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bip39 = "2.2.0"
+bitcoin = { workspace = true, features = ["serde"] }
+thiserror = { workspace = true }
+hex = { workspace = true }
+dirs = "6.0.0"
+breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.6.6" }

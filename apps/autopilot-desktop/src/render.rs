@@ -18,6 +18,7 @@ use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PANE_TITLE_HEIGHT, active_pane_id, create_empty_pane,
     nostr_regenerate_button_bounds, pane_content_bounds,
 };
+use crate::spark_pane;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
 
@@ -94,6 +95,11 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             Err(err) => (None, Some(err.to_string())),
         };
 
+        let async_runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("failed to initialize async runtime")?;
+
         let mut state = RenderState {
             window,
             surface,
@@ -106,9 +112,13 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             hotbar,
             hotbar_bounds: initial_hotbar_bounds,
             event_context: wgpui::EventContext::new(),
+            input_modifiers: wgpui::Modifiers::default(),
+            async_runtime,
             panes: Vec::new(),
             nostr_identity,
             nostr_identity_error,
+            spark_wallet: crate::spark_wallet::SparkPaneState::default(),
+            spark_inputs: crate::app_state::SparkPaneInputs::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -149,6 +159,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             active_pane,
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
+            &state.spark_wallet,
+            &mut state.spark_inputs,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);
@@ -209,6 +221,8 @@ fn paint_panes(
     active_id: Option<u64>,
     nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
+    spark_wallet: &crate::spark_wallet::SparkPaneState,
+    spark_inputs: &mut crate::app_state::SparkPaneInputs,
     paint: &mut PaintContext,
 ) -> u32 {
     let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -246,6 +260,9 @@ fn paint_panes(
                     nostr_identity_error,
                     paint,
                 );
+            }
+            PaneKind::SparkWallet => {
+                paint_spark_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
             }
         }
     }
@@ -295,11 +312,10 @@ fn paint_nostr_identity_pane(
         content_bounds.origin.x + 12.0,
         y,
         "Identity path",
-        &nostr_identity
-            .map_or_else(
-                || "Unavailable".to_string(),
-                |identity| identity.identity_path.display().to_string(),
-            ),
+        &nostr_identity.map_or_else(
+            || "Unavailable".to_string(),
+            |identity| identity.identity_path.display().to_string(),
+        ),
     );
 
     if let Some(identity) = nostr_identity {
@@ -347,6 +363,237 @@ fn paint_nostr_identity_pane(
             error,
         );
     }
+}
+
+fn paint_spark_wallet_pane(
+    content_bounds: Bounds,
+    spark_wallet: &crate::spark_wallet::SparkPaneState,
+    spark_inputs: &mut crate::app_state::SparkPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let layout = spark_pane::layout(content_bounds);
+
+    paint_action_button(layout.refresh_button, "Refresh wallet", paint);
+    paint_action_button(layout.spark_address_button, "Spark receive", paint);
+    paint_action_button(layout.bitcoin_address_button, "Bitcoin receive", paint);
+    paint_action_button(layout.create_invoice_button, "Create invoice", paint);
+    paint_action_button(layout.send_payment_button, "Send payment", paint);
+
+    spark_inputs
+        .invoice_amount
+        .set_max_width(layout.invoice_amount_input.size.width);
+    spark_inputs
+        .send_request
+        .set_max_width(layout.send_request_input.size.width);
+    spark_inputs
+        .send_amount
+        .set_max_width(layout.send_amount_input.size.width);
+
+    spark_inputs
+        .invoice_amount
+        .paint(layout.invoice_amount_input, paint);
+    spark_inputs
+        .send_request
+        .paint(layout.send_request_input, paint);
+    spark_inputs
+        .send_amount
+        .paint(layout.send_amount_input, paint);
+
+    paint.scene.draw_text(paint.text.layout(
+        "Invoice sats",
+        Point::new(
+            layout.invoice_amount_input.origin.x,
+            layout.invoice_amount_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Send request / invoice",
+        Point::new(
+            layout.send_request_input.origin.x,
+            layout.send_request_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Send sats (optional)",
+        Point::new(
+            layout.send_amount_input.origin.x,
+            layout.send_amount_input.origin.y - 12.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = layout.details_origin.y;
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Network",
+        spark_wallet.network_name(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Connection",
+        spark_wallet.network_status_label(),
+    );
+
+    let (spark_sats, lightning_sats, onchain_sats, total_sats) =
+        if let Some(balance) = spark_wallet.balance.as_ref() {
+            (
+                balance.spark_sats,
+                balance.lightning_sats,
+                balance.onchain_sats,
+                balance.total_sats(),
+            )
+        } else {
+            (0, 0, 0, 0)
+        };
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Spark sats",
+        &spark_sats.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Lightning sats",
+        &lightning_sats.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Onchain sats",
+        &onchain_sats.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Total sats",
+        &total_sats.to_string(),
+    );
+
+    if let Some(path) = spark_wallet.identity_path.as_ref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Identity path",
+            &path.display().to_string(),
+        );
+    }
+    if let Some(address) = spark_wallet.spark_address.as_deref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Spark address",
+            address,
+        );
+    }
+    if let Some(address) = spark_wallet.bitcoin_address.as_deref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Bitcoin address",
+            address,
+        );
+    }
+    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last invoice",
+            invoice,
+        );
+    }
+    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last payment id",
+            payment_id,
+        );
+    }
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last action",
+            last_action,
+        );
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Error:",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(error, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(content_bounds.origin.x + 12.0, y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            y += 16.0;
+        }
+    }
+
+    if !spark_wallet.recent_payments.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "Recent payments",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+
+        for payment in spark_wallet.recent_payments.iter().take(6) {
+            let line = format!(
+                "{} {} {} sats [{}]",
+                payment.direction, payment.status, payment.amount_sats, payment.id
+            );
+            paint.scene.draw_text(paint.text.layout_mono(
+                &line,
+                Point::new(content_bounds.origin.x + 12.0, y),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            y += 14.0;
+        }
+    }
+}
+
+fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::accent::PRIMARY.with_alpha(0.15))
+            .with_border(theme::accent::PRIMARY, 1.0)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
+        11.0,
+        theme::text::PRIMARY,
+    ));
 }
 
 fn paint_label_line(paint: &mut PaintContext, x: f32, y: f32, label: &str, value: &str) -> f32 {

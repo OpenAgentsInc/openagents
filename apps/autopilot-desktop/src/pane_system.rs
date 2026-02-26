@@ -5,6 +5,7 @@ use winit::window::CursorIcon;
 use crate::app_state::{DesktopPane, PaneDragMode, PaneKind, RenderState};
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::render::logical_size;
+use crate::spark_pane::{self, SPARK_PANE_HEIGHT, SPARK_PANE_WIDTH, SparkPaneAction};
 
 const PANE_DEFAULT_WIDTH: f32 = 420.0;
 const PANE_DEFAULT_HEIGHT: f32 = 280.0;
@@ -80,6 +81,46 @@ pub fn create_nostr_identity_pane(state: &mut RenderState) {
         z_index: state.next_z_index,
         frame: PaneFrame::new()
             .title("Nostr Keys (NIP-06)")
+            .active(true)
+            .dismissable(true)
+            .title_height(PANE_TITLE_HEIGHT),
+    };
+
+    state.next_z_index = state.next_z_index.saturating_add(1);
+    state.panes.push(pane);
+}
+
+pub fn create_spark_wallet_pane(state: &mut RenderState) {
+    if let Some(existing_id) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::SparkWallet)
+        .map(|pane| pane.id)
+    {
+        bring_pane_to_front(state, existing_id);
+        return;
+    }
+
+    let id = state.next_pane_id;
+    state.next_pane_id = state.next_pane_id.saturating_add(1);
+
+    let logical = logical_size(&state.config, state.scale_factor);
+    let tier = (id as usize - 1) % 10;
+    let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
+    let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
+    let bounds = clamp_bounds_to_window(
+        Bounds::new(x, y, SPARK_PANE_WIDTH, SPARK_PANE_HEIGHT),
+        logical,
+    );
+
+    let pane = DesktopPane {
+        id,
+        title: "Spark Lightning Wallet".to_string(),
+        kind: PaneKind::SparkWallet,
+        bounds,
+        z_index: state.next_z_index,
+        frame: PaneFrame::new()
+            .title("Spark Lightning Wallet")
             .active(true)
             .dismissable(true)
             .title_height(PANE_TITLE_HEIGHT),
@@ -287,6 +328,17 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::SparkWallet {
+            let content_bounds = pane_content_bounds(bounds);
+            let layout = spark_pane::layout(content_bounds);
+            if spark_pane::hit_action(layout, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+            if spark_pane::hits_input(layout, point) {
+                return CursorIcon::Text;
+            }
+        }
+
         return CursorIcon::Default;
     }
 
@@ -327,6 +379,60 @@ pub fn topmost_nostr_regenerate_hit(state: &RenderState, point: Point) -> Option
     }
 
     None
+}
+
+pub fn topmost_spark_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, SparkPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::SparkWallet {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        let layout = spark_pane::layout(content_bounds);
+        if let Some(action) = spark_pane::hit_action(layout, point) {
+            return Some((pane.id, action));
+        }
+    }
+
+    None
+}
+
+pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_spark = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::SparkWallet)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_spark else {
+        return false;
+    };
+
+    let content_bounds = pane_content_bounds(bounds);
+    let layout = spark_pane::layout(content_bounds);
+    let mut handled = false;
+
+    handled |= state
+        .spark_inputs
+        .invoice_amount
+        .event(event, layout.invoice_amount_input, &mut state.event_context)
+        .is_handled();
+    handled |= state
+        .spark_inputs
+        .send_request
+        .event(event, layout.send_request_input, &mut state.event_context)
+        .is_handled();
+    handled |= state
+        .spark_inputs
+        .send_amount
+        .event(event, layout.send_amount_input, &mut state.event_context)
+        .is_handled();
+
+    handled
 }
 
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {

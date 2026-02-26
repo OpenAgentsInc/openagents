@@ -16,7 +16,9 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }
 winit = { workspace = true }
