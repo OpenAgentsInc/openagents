@@ -89,7 +89,6 @@ pub fn hotbar_slot_for_key(key: PhysicalKey) -> Option<u8> {
         PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Numpad1) => Some(HOTBAR_SLOT_NEW_CHAT),
         PhysicalKey::Code(KeyCode::Digit2 | KeyCode::Numpad2) => Some(HOTBAR_SLOT_NOSTR_IDENTITY),
         PhysicalKey::Code(KeyCode::Digit3 | KeyCode::Numpad3) => Some(HOTBAR_SLOT_SPARK_WALLET),
-        PhysicalKey::Code(KeyCode::Digit4 | KeyCode::Numpad4) => Some(HOTBAR_SLOT_COMMAND_PALETTE),
         _ => None,
     }
 }
@@ -116,4 +115,31 @@ fn build_hotbar_items() -> Vec<HotbarSlot> {
             _ => HotbarSlot::new(slot, "?", "Unknown"),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET,
+        hotbar_slot_for_key,
+    };
+    use winit::keyboard::{KeyCode, PhysicalKey};
+
+    #[test]
+    fn numeric_hotbar_shortcuts_only_cover_one_two_three() {
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit1)),
+            Some(HOTBAR_SLOT_NEW_CHAT)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit2)),
+            Some(HOTBAR_SLOT_NOSTR_IDENTITY)
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit3)),
+            Some(HOTBAR_SLOT_SPARK_WALLET)
+        );
+        assert_eq!(hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit4)), None);
+        assert_eq!(hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)), None);
+    }
 }
