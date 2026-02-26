@@ -32,6 +32,9 @@ impl Default for App {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneKind {
     Empty,
+    AutopilotChat,
+    GoOnline,
+    ProviderStatus,
     NostrIdentity,
     SparkWallet,
     SparkPayInvoice,
@@ -92,6 +95,314 @@ impl Default for PayInvoicePaneInputs {
                 .mono(true),
             amount_sats: TextInput::new().placeholder("Send sats (optional)"),
         }
+    }
+}
+
+pub struct ChatPaneInputs {
+    pub composer: TextInput,
+}
+
+impl Default for ChatPaneInputs {
+    fn default() -> Self {
+        Self {
+            composer: TextInput::new().placeholder("Ask Autopilot to do work..."),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotRole {
+    User,
+    Autopilot,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotMessageStatus {
+    Queued,
+    Running,
+    Done,
+    Error,
+}
+
+pub struct AutopilotMessage {
+    pub id: u64,
+    pub role: AutopilotRole,
+    pub status: AutopilotMessageStatus,
+    pub content: String,
+    pub status_due_at: Option<Instant>,
+}
+
+pub struct AutopilotChatState {
+    pub threads: Vec<String>,
+    pub active_thread: usize,
+    pub messages: Vec<AutopilotMessage>,
+    pub next_message_id: u64,
+    pub last_error: Option<String>,
+}
+
+impl Default for AutopilotChatState {
+    fn default() -> Self {
+        Self {
+            threads: vec!["Main".to_string()],
+            active_thread: 0,
+            messages: vec![AutopilotMessage {
+                id: 1,
+                role: AutopilotRole::Autopilot,
+                status: AutopilotMessageStatus::Done,
+                content: "Autopilot ready. Ask for a task to start.".to_string(),
+                status_due_at: None,
+            }],
+            next_message_id: 2,
+            last_error: None,
+        }
+    }
+}
+
+impl AutopilotChatState {
+    pub fn submit_prompt(&mut self, now: Instant, prompt: String) {
+        self.last_error = None;
+        let trimmed = prompt.trim();
+        if trimmed.is_empty() {
+            self.last_error = Some("Prompt cannot be empty".to_string());
+            self.messages.push(AutopilotMessage {
+                id: self.next_message_id,
+                role: AutopilotRole::Autopilot,
+                status: AutopilotMessageStatus::Error,
+                content: "Cannot run empty prompt".to_string(),
+                status_due_at: None,
+            });
+            self.next_message_id = self.next_message_id.saturating_add(1);
+            return;
+        }
+
+        self.messages.push(AutopilotMessage {
+            id: self.next_message_id,
+            role: AutopilotRole::User,
+            status: AutopilotMessageStatus::Done,
+            content: trimmed.to_string(),
+            status_due_at: None,
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+
+        self.messages.push(AutopilotMessage {
+            id: self.next_message_id,
+            role: AutopilotRole::Autopilot,
+            status: AutopilotMessageStatus::Queued,
+            content: format!("Queued local execution for: {trimmed}"),
+            status_due_at: Some(now + Duration::from_millis(280)),
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+    }
+
+    pub fn tick(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        for message in &mut self.messages {
+            match message.status {
+                AutopilotMessageStatus::Queued => {
+                    if message.status_due_at.is_some_and(|due| now >= due) {
+                        message.status = AutopilotMessageStatus::Running;
+                        message.status_due_at = Some(now + Duration::from_millis(620));
+                        message.content = message.content.replacen(
+                            "Queued local execution",
+                            "Running local execution",
+                            1,
+                        );
+                        changed = true;
+                    }
+                }
+                AutopilotMessageStatus::Running => {
+                    if message.status_due_at.is_some_and(|due| now >= due) {
+                        message.status = AutopilotMessageStatus::Done;
+                        message.status_due_at = None;
+                        message.content = message.content.replacen(
+                            "Running local execution",
+                            "Completed local execution",
+                            1,
+                        );
+                        changed = true;
+                    }
+                }
+                AutopilotMessageStatus::Done | AutopilotMessageStatus::Error => {}
+            }
+        }
+        changed
+    }
+
+    pub fn has_pending_messages(&self) -> bool {
+        self.messages.iter().any(|message| {
+            matches!(
+                message.status,
+                AutopilotMessageStatus::Queued | AutopilotMessageStatus::Running
+            )
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderMode {
+    Offline,
+    Connecting,
+    Online,
+    Degraded,
+}
+
+impl ProviderMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Offline => "offline",
+            Self::Connecting => "connecting",
+            Self::Online => "online",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderBlocker {
+    IdentityMissing,
+    WalletError,
+}
+
+impl ProviderBlocker {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::IdentityMissing => "IDENTITY_MISSING",
+            Self::WalletError => "WALLET_ERROR",
+        }
+    }
+
+    pub const fn detail(self) -> &'static str {
+        match self {
+            Self::IdentityMissing => "Nostr identity is not ready",
+            Self::WalletError => "Spark wallet reports an error",
+        }
+    }
+}
+
+pub struct ProviderRuntimeState {
+    pub mode: ProviderMode,
+    pub mode_changed_at: Instant,
+    pub connecting_until: Option<Instant>,
+    pub online_since: Option<Instant>,
+    pub last_heartbeat_at: Option<Instant>,
+    pub heartbeat_interval: Duration,
+    pub queue_depth: u32,
+    pub last_completed_job_at: Option<Instant>,
+    pub last_result: Option<String>,
+    pub degraded_reason_code: Option<String>,
+    pub last_error_detail: Option<String>,
+}
+
+impl Default for ProviderRuntimeState {
+    fn default() -> Self {
+        let now = Instant::now();
+        Self {
+            mode: ProviderMode::Offline,
+            mode_changed_at: now,
+            connecting_until: None,
+            online_since: None,
+            last_heartbeat_at: None,
+            heartbeat_interval: Duration::from_secs(1),
+            queue_depth: 0,
+            last_completed_job_at: None,
+            last_result: None,
+            degraded_reason_code: None,
+            last_error_detail: None,
+        }
+    }
+}
+
+impl ProviderRuntimeState {
+    pub fn toggle_online(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
+        if self.mode == ProviderMode::Offline {
+            self.start_online(now, blockers);
+        } else {
+            self.go_offline(now);
+        }
+    }
+
+    pub fn tick(&mut self, now: Instant, blockers: &[ProviderBlocker]) -> bool {
+        let mut changed = false;
+
+        if self.mode == ProviderMode::Connecting
+            && self.connecting_until.is_some_and(|until| now >= until)
+        {
+            if blockers.is_empty() {
+                self.mode = ProviderMode::Online;
+                self.mode_changed_at = now;
+                self.connecting_until = None;
+                self.online_since = Some(now);
+                self.last_heartbeat_at = Some(now);
+                self.degraded_reason_code = None;
+                self.last_error_detail = None;
+            } else {
+                self.move_degraded(now, blockers);
+            }
+            changed = true;
+        }
+
+        if self.mode == ProviderMode::Online {
+            let should_heartbeat = self
+                .last_heartbeat_at
+                .is_none_or(|last| now.duration_since(last) >= self.heartbeat_interval);
+            if should_heartbeat {
+                self.last_heartbeat_at = Some(now);
+                changed = true;
+            }
+        }
+
+        changed
+    }
+
+    pub fn uptime_seconds(&self, now: Instant) -> u64 {
+        self.online_since
+            .and_then(|started| now.checked_duration_since(started))
+            .map_or(0, |duration| duration.as_secs())
+    }
+
+    pub fn heartbeat_age_seconds(&self, now: Instant) -> Option<u64> {
+        self.last_heartbeat_at
+            .and_then(|last| now.checked_duration_since(last))
+            .map(|duration| duration.as_secs())
+    }
+
+    fn start_online(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
+        if blockers.is_empty() {
+            self.mode = ProviderMode::Connecting;
+            self.mode_changed_at = now;
+            self.connecting_until = Some(now + Duration::from_millis(900));
+            self.degraded_reason_code = None;
+            self.last_error_detail = None;
+        } else {
+            self.move_degraded(now, blockers);
+        }
+    }
+
+    fn go_offline(&mut self, now: Instant) {
+        self.mode = ProviderMode::Offline;
+        self.mode_changed_at = now;
+        self.connecting_until = None;
+        self.online_since = None;
+        self.last_heartbeat_at = None;
+        self.queue_depth = 0;
+        self.degraded_reason_code = None;
+        self.last_error_detail = None;
+    }
+
+    fn move_degraded(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
+        self.mode = ProviderMode::Degraded;
+        self.mode_changed_at = now;
+        self.connecting_until = None;
+        self.online_since = None;
+        self.last_heartbeat_at = None;
+        self.degraded_reason_code = blockers.first().map(|blocker| blocker.code().to_string());
+        self.last_error_detail = Some(
+            blockers
+                .iter()
+                .map(|blocker| blocker.detail())
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
     }
 }
 
@@ -170,6 +481,9 @@ pub struct RenderState {
     pub spark_worker: SparkWalletWorker,
     pub spark_inputs: SparkPaneInputs,
     pub pay_invoice_inputs: PayInvoicePaneInputs,
+    pub chat_inputs: ChatPaneInputs,
+    pub autopilot_chat: AutopilotChatState,
+    pub provider_runtime: ProviderRuntimeState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -179,9 +493,25 @@ pub struct RenderState {
     pub command_palette_actions: Rc<RefCell<Vec<String>>>,
 }
 
+impl RenderState {
+    pub fn provider_blockers(&self) -> Vec<ProviderBlocker> {
+        let mut blockers = Vec::new();
+        if self.nostr_identity.is_none() {
+            blockers.push(ProviderBlocker::IdentityMissing);
+        }
+        if self.spark_wallet.last_error.is_some() {
+            blockers.push(ProviderBlocker::WalletError);
+        }
+        blockers
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::NostrSecretState;
+    use super::{
+        AutopilotChatState, AutopilotMessageStatus, NostrSecretState, ProviderBlocker,
+        ProviderMode, ProviderRuntimeState,
+    };
 
     #[test]
     fn nostr_reveal_state_expires() {
@@ -205,5 +535,53 @@ mod tests {
         let expired_at = now + std::time::Duration::from_secs(5);
         assert!(state.expire(expired_at));
         assert!(state.copy_notice.is_none());
+    }
+
+    #[test]
+    fn provider_state_connects_then_becomes_online() {
+        let mut provider = ProviderRuntimeState::default();
+        let now = std::time::Instant::now();
+        provider.toggle_online(now, &[]);
+        assert_eq!(provider.mode, ProviderMode::Connecting);
+
+        let advanced = now + std::time::Duration::from_secs(1);
+        assert!(provider.tick(advanced, &[]));
+        assert_eq!(provider.mode, ProviderMode::Online);
+        assert!(provider.online_since.is_some());
+        assert!(provider.last_heartbeat_at.is_some());
+    }
+
+    #[test]
+    fn provider_state_enters_degraded_when_blocked() {
+        let mut provider = ProviderRuntimeState::default();
+        let now = std::time::Instant::now();
+        provider.toggle_online(now, &[ProviderBlocker::IdentityMissing]);
+        assert_eq!(provider.mode, ProviderMode::Degraded);
+        assert_eq!(
+            provider.degraded_reason_code.as_deref(),
+            Some(ProviderBlocker::IdentityMissing.code())
+        );
+    }
+
+    #[test]
+    fn chat_state_progresses_queued_to_done() {
+        let mut chat = AutopilotChatState::default();
+        let now = std::time::Instant::now();
+        chat.submit_prompt(now, "ping".to_string());
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Queued)
+        );
+
+        assert!(chat.tick(now + std::time::Duration::from_millis(300)));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Running)
+        );
+
+        assert!(chat.tick(now + std::time::Duration::from_secs(2)));
+        assert!(!chat.has_pending_messages());
     }
 }

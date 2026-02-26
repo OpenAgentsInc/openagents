@@ -12,6 +12,12 @@ use crate::spark_pane::{
 
 const PANE_DEFAULT_WIDTH: f32 = 420.0;
 const PANE_DEFAULT_HEIGHT: f32 = 280.0;
+const CHAT_PANE_WIDTH: f32 = 940.0;
+const CHAT_PANE_HEIGHT: f32 = 540.0;
+const GO_ONLINE_PANE_WIDTH: f32 = 560.0;
+const GO_ONLINE_PANE_HEIGHT: f32 = 300.0;
+const PROVIDER_STATUS_PANE_WIDTH: f32 = 700.0;
+const PROVIDER_STATUS_PANE_HEIGHT: f32 = 360.0;
 const NOSTR_PANE_WIDTH: f32 = 760.0;
 const NOSTR_PANE_HEIGHT: f32 = 380.0;
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
@@ -21,6 +27,10 @@ const PANE_MARGIN: f32 = 18.0;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
 const PANE_BOTTOM_RESERVED: f32 = HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN;
+const CHAT_PAD: f32 = 12.0;
+const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
+const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
+const CHAT_SEND_WIDTH: f32 = 92.0;
 
 pub struct PaneController;
 
@@ -41,6 +51,33 @@ impl PaneDescriptor {
             width: PANE_DEFAULT_WIDTH,
             height: PANE_DEFAULT_HEIGHT,
             singleton: false,
+        }
+    }
+
+    pub const fn autopilot_chat() -> Self {
+        Self {
+            kind: PaneKind::AutopilotChat,
+            width: CHAT_PANE_WIDTH,
+            height: CHAT_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn go_online() -> Self {
+        Self {
+            kind: PaneKind::GoOnline,
+            width: GO_ONLINE_PANE_WIDTH,
+            height: GO_ONLINE_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn provider_status() -> Self {
+        Self {
+            kind: PaneKind::ProviderStatus,
+            width: PROVIDER_STATUS_PANE_WIDTH,
+            height: PROVIDER_STATUS_PANE_HEIGHT,
+            singleton: true,
         }
     }
 
@@ -122,6 +159,18 @@ impl PaneController {
 
     pub fn create_empty(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::empty());
+    }
+
+    pub fn create_autopilot_chat(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::autopilot_chat());
+    }
+
+    pub fn create_go_online(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::go_online());
+    }
+
+    pub fn create_provider_status(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::provider_status());
     }
 
     pub fn create_nostr_identity(state: &mut RenderState) {
@@ -361,6 +410,26 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             return CursorIcon::Move;
         }
 
+        if state.panes[pane_idx].kind == PaneKind::AutopilotChat {
+            let content_bounds = pane_content_bounds(bounds);
+            let send_bounds = chat_send_button_bounds(content_bounds);
+            let composer_bounds = chat_composer_input_bounds(content_bounds);
+            if send_bounds.contains(point) {
+                return CursorIcon::Pointer;
+            }
+            if composer_bounds.contains(point) {
+                return CursorIcon::Text;
+            }
+        }
+
+        if state.panes[pane_idx].kind == PaneKind::GoOnline {
+            let content_bounds = pane_content_bounds(bounds);
+            let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
+            if toggle_bounds.contains(point) {
+                return CursorIcon::Pointer;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::NostrIdentity {
             let content_bounds = pane_content_bounds(bounds);
             let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
@@ -408,6 +477,56 @@ pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
         bounds.origin.y + PANE_TITLE_HEIGHT,
         bounds.size.width,
         (bounds.size.height - PANE_TITLE_HEIGHT).max(0.0),
+    )
+}
+
+pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        CHAT_THREAD_RAIL_WIDTH,
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
+    )
+}
+
+pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - CHAT_PAD - CHAT_SEND_WIDTH,
+        content_bounds.max_y() - CHAT_PAD - CHAT_COMPOSER_HEIGHT,
+        CHAT_SEND_WIDTH,
+        CHAT_COMPOSER_HEIGHT,
+    )
+}
+
+pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+    let rail_bounds = chat_thread_rail_bounds(content_bounds);
+    let send_bounds = chat_send_button_bounds(content_bounds);
+    Bounds::new(
+        rail_bounds.max_x() + CHAT_PAD,
+        send_bounds.origin.y,
+        (send_bounds.origin.x - (rail_bounds.max_x() + CHAT_PAD) - CHAT_PAD).max(120.0),
+        CHAT_COMPOSER_HEIGHT,
+    )
+}
+
+pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
+    let rail_bounds = chat_thread_rail_bounds(content_bounds);
+    let composer_bounds = chat_composer_input_bounds(content_bounds);
+    Bounds::new(
+        rail_bounds.max_x() + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.max_x() - (rail_bounds.max_x() + CHAT_PAD) - CHAT_PAD).max(220.0),
+        (composer_bounds.origin.y - (content_bounds.origin.y + CHAT_PAD) - CHAT_PAD).max(120.0),
+    )
+}
+
+pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let width = content_bounds.size.width.min(220.0).max(160.0);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        width,
+        34.0,
     )
 }
 
@@ -493,6 +612,38 @@ pub fn topmost_nostr_copy_secret_hit(state: &RenderState, point: Point) -> Optio
         let content_bounds = pane_content_bounds(pane.bounds);
         let copy_bounds = nostr_copy_secret_button_bounds(content_bounds);
         if copy_bounds.contains(point) {
+            return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_chat_send_hit(state: &RenderState, point: Point) -> Option<u64> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::AutopilotChat {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if chat_send_button_bounds(content_bounds).contains(point) {
+            return Some(pane.id);
+        }
+    }
+
+    None
+}
+
+pub fn topmost_go_online_toggle_hit(state: &RenderState, point: Point) -> Option<u64> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::GoOnline {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if go_online_toggle_button_bounds(content_bounds).contains(point) {
             return Some(pane.id);
         }
     }
@@ -607,6 +758,25 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
     handled
 }
 
+pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_chat = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_chat else {
+        return false;
+    };
+
+    let composer_bounds = chat_composer_input_bounds(pane_content_bounds(bounds));
+    state
+        .chat_inputs
+        .composer
+        .event(event, composer_bounds, &mut state.event_context)
+        .is_handled()
+}
+
 pub fn bring_pane_to_front_by_id(state: &mut RenderState, pane_id: u64) {
     bring_pane_to_front(state, pane_id);
 }
@@ -627,6 +797,9 @@ fn bring_pane_to_front(state: &mut RenderState, pane_id: u64) {
 fn pane_title(kind: PaneKind, pane_id: u64) -> String {
     match kind {
         PaneKind::Empty => format!("Pane {pane_id}"),
+        PaneKind::AutopilotChat => "Autopilot Chat".to_string(),
+        PaneKind::GoOnline => "Go Online".to_string(),
+        PaneKind::ProviderStatus => "Provider Status".to_string(),
         PaneKind::NostrIdentity => "Nostr Keys (NIP-06)".to_string(),
         PaneKind::SparkWallet => "Spark Lightning Wallet".to_string(),
         PaneKind::SparkPayInvoice => "Pay Lightning Invoice".to_string(),
@@ -671,8 +844,9 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 #[cfg(test)]
 mod tests {
     use super::{
-        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds,
+        chat_composer_input_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
+        chat_transcript_bounds, go_online_toggle_button_bounds, nostr_copy_secret_button_bounds,
+        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
     };
     use wgpui::Bounds;
 
@@ -699,5 +873,27 @@ mod tests {
         assert!(regenerate.size.height > 0.0);
         assert!(reveal.size.height > 0.0);
         assert!(copy.size.height > 0.0);
+    }
+
+    #[test]
+    fn chat_layout_has_non_overlapping_regions() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 500.0);
+        let rail = chat_thread_rail_bounds(content);
+        let transcript = chat_transcript_bounds(content);
+        let composer = chat_composer_input_bounds(content);
+        let send = chat_send_button_bounds(content);
+
+        assert!(rail.max_x() < transcript.min_x());
+        assert!(transcript.max_y() < composer.min_y());
+        assert!(composer.max_x() < send.min_x());
+    }
+
+    #[test]
+    fn go_online_toggle_bounds_are_inside_content() {
+        let content = Bounds::new(10.0, 20.0, 560.0, 300.0);
+        let toggle = go_online_toggle_button_bounds(content);
+        assert!(content.contains(toggle.origin));
+        assert!(toggle.max_x() <= content.max_x());
+        assert!(toggle.max_y() <= content.max_y());
     }
 }

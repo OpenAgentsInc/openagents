@@ -123,6 +123,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spark_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
             pay_invoice_inputs: crate::app_state::PayInvoicePaneInputs::default(),
+            chat_inputs: crate::app_state::ChatPaneInputs::default(),
+            autopilot_chat: crate::app_state::AutopilotChatState::default(),
+            provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -147,6 +150,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     scene
         .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
+    let provider_blockers = state.provider_blockers();
     {
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
 
@@ -159,16 +163,19 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             .origin(DotsOrigin::Center)
             .easing(Easing::EaseOut);
         dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
-
         let hotbar_layer = PaneRenderer::paint(
             &mut state.panes,
             active_pane,
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
             &state.nostr_secret_state,
+            &state.autopilot_chat,
+            &state.provider_runtime,
+            provider_blockers.as_slice(),
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
+            &mut state.chat_inputs,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);
@@ -235,6 +242,15 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
 
 fn command_registry() -> Vec<Command> {
     vec![
+        Command::new("pane.autopilot_chat", "Open Autopilot Chat Pane")
+            .description("Open chat thread and composer for Autopilot")
+            .category("Panes"),
+        Command::new("pane.go_online", "Open Go Online Pane")
+            .description("Open provider mode toggle and lifecycle controls")
+            .category("Panes"),
+        Command::new("pane.provider_status", "Open Provider Status Pane")
+            .description("Open runtime health and heartbeat visibility pane")
+            .category("Panes"),
         Command::new("pane.identity_keys", "Open Identity Keys Pane")
             .description("Open Nostr keys (NIP-06) pane")
             .category("Panes")

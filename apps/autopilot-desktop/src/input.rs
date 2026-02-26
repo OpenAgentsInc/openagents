@@ -7,13 +7,14 @@ use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
 
-use crate::app_state::App;
+use crate::app_state::{App, ProviderMode};
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::pane_system::{
-    PaneController, PaneInput, dispatch_pay_invoice_input_event, dispatch_spark_input_event,
+    PaneController, PaneInput, dispatch_chat_input_event, dispatch_pay_invoice_input_event,
+    dispatch_spark_input_event, topmost_chat_send_hit, topmost_go_online_toggle_hit,
     topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
     topmost_pay_invoice_action_hit, topmost_spark_action_hit,
 };
@@ -21,6 +22,9 @@ use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
 
+const COMMAND_OPEN_AUTOPILOT_CHAT: &str = "pane.autopilot_chat";
+const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
+const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_IDENTITY_KEYS: &str = "pane.identity_keys";
 const COMMAND_OPEN_WALLET: &str = "pane.wallet";
 const COMMAND_OPEN_PAY_INVOICE: &str = "pane.pay_invoice";
@@ -34,6 +38,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         state.window.request_redraw();
     }
     if state.nostr_secret_state.expire(std::time::Instant::now()) {
+        state.window.request_redraw();
+    }
+    let now = std::time::Instant::now();
+    let blockers = state.provider_blockers();
+    if state.provider_runtime.tick(now, blockers.as_slice()) {
+        state.window.request_redraw();
+    }
+    if state.autopilot_chat.tick(now) {
         state.window.request_redraw();
     }
 
@@ -95,6 +107,9 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 needs_redraw = true;
             }
             if dispatch_pay_invoice_input_event(state, &pane_move_event) {
+                needs_redraw = true;
+            }
+            if dispatch_chat_input_event(state, &pane_move_event) {
                 needs_redraw = true;
             }
 
@@ -173,6 +188,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= process_hotbar_clicks(state);
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
+                        handled |= dispatch_chat_input_event(state, &input);
                         if !handled {
                             handled |=
                                 PaneInput::handle_mouse_down(state, app.cursor_position, button);
@@ -181,6 +197,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                         handled |= PaneInput::handle_mouse_down(state, app.cursor_position, button);
                         handled |= dispatch_spark_input_event(state, &input);
                         handled |= dispatch_pay_invoice_input_event(state, &input);
+                        handled |= dispatch_chat_input_event(state, &input);
                         handled |= state
                             .hotbar
                             .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -199,11 +216,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     let mut handled = PaneInput::handle_mouse_up(state, &input);
                     handled |= dispatch_spark_input_event(state, &input);
                     handled |= dispatch_pay_invoice_input_event(state, &input);
+                    handled |= dispatch_chat_input_event(state, &input);
                     handled |= handle_nostr_regenerate_click(state, app.cursor_position);
                     handled |= handle_nostr_reveal_click(state, app.cursor_position);
                     handled |= handle_nostr_copy_click(state, app.cursor_position);
                     handled |= handle_spark_action_click(state, app.cursor_position);
                     handled |= handle_pay_invoice_action_click(state, app.cursor_position);
+                    handled |= handle_chat_send_click(state, app.cursor_position);
+                    handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= state
                         .hotbar
                         .event(&input, state.hotbar_bounds, &mut state.event_context)
@@ -254,7 +274,8 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if handle_spark_wallet_keyboard_input(state, &event.logical_key)
+            if handle_chat_keyboard_input(state, &event.logical_key)
+                || handle_spark_wallet_keyboard_input(state, &event.logical_key)
                 || handle_pay_invoice_keyboard_input(state, &event.logical_key)
             {
                 state.window.request_redraw();
@@ -282,7 +303,15 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
             let flashing_now = state.hotbar.is_flashing();
-            if flashing_now || state.hotbar_flash_was_active {
+            let provider_animating = matches!(
+                state.provider_runtime.mode,
+                ProviderMode::Connecting | ProviderMode::Online
+            );
+            if flashing_now
+                || state.hotbar_flash_was_active
+                || provider_animating
+                || state.autopilot_chat.has_pending_messages()
+            {
                 state.window.request_redraw();
             }
             state.hotbar_flash_was_active = flashing_now;
@@ -361,6 +390,59 @@ fn handle_pay_invoice_action_click(
     run_pay_invoice_action(state, action)
 }
 
+fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(pane_id) = topmost_chat_send_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_chat_submit_action(state)
+}
+
+fn handle_go_online_toggle_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    let Some(pane_id) = topmost_go_online_toggle_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    if state.provider_runtime.mode == ProviderMode::Offline {
+        queue_spark_command(state, SparkWalletCommand::Refresh);
+    }
+    let blockers = state.provider_blockers();
+    state
+        .provider_runtime
+        .toggle_online(std::time::Instant::now(), blockers.as_slice());
+    true
+}
+
+fn handle_chat_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+    let focused_before = state.chat_inputs.composer.is_focused();
+    let handled_by_input = dispatch_chat_input_event(state, &key_event);
+    let focused_after = state.chat_inputs.composer.is_focused();
+    let focus_active = focused_before || focused_after;
+
+    if matches!(key, Key::Named(NamedKey::Enter)) && state.chat_inputs.composer.is_focused() {
+        return run_chat_submit_action(state);
+    }
+
+    if focus_active {
+        return handled_by_input;
+    }
+
+    false
+}
+
 fn handle_spark_wallet_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -430,6 +512,20 @@ fn handle_pay_invoice_keyboard_input(
     }
 
     false
+}
+
+fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
+    let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    if prompt.is_empty() {
+        state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
+        return true;
+    }
+
+    state.chat_inputs.composer.set_value(String::new());
+    state
+        .autopilot_chat
+        .submit_prompt(std::time::Instant::now(), prompt);
+    true
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
@@ -653,6 +749,18 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
     let mut changed = false;
     for action in action_ids {
         match action.as_str() {
+            COMMAND_OPEN_AUTOPILOT_CHAT => {
+                PaneController::create_autopilot_chat(state);
+                changed = true;
+            }
+            COMMAND_OPEN_GO_ONLINE => {
+                PaneController::create_go_online(state);
+                changed = true;
+            }
+            COMMAND_OPEN_PROVIDER_STATUS => {
+                PaneController::create_provider_status(state);
+                changed = true;
+            }
             COMMAND_OPEN_IDENTITY_KEYS => {
                 activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
                 changed = true;

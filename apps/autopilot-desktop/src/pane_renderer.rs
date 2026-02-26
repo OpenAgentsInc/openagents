@@ -1,9 +1,13 @@
 use crate::app_state::{
-    DesktopPane, NostrSecretState, PaneKind, PayInvoicePaneInputs, SparkPaneInputs,
+    AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, DesktopPane,
+    NostrSecretState, PaneKind, PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState,
+    SparkPaneInputs,
 };
 use crate::pane_system::{
-    PANE_TITLE_HEIGHT, nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-    nostr_reveal_button_bounds, pane_content_bounds,
+    PANE_TITLE_HEIGHT, chat_composer_input_bounds, chat_send_button_bounds,
+    chat_thread_rail_bounds, chat_transcript_bounds, go_online_toggle_button_bounds,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -22,9 +26,13 @@ impl PaneRenderer {
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
+        autopilot_chat: &AutopilotChatState,
+        provider_runtime: &ProviderRuntimeState,
+        provider_blockers: &[ProviderBlocker],
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
+        chat_inputs: &mut ChatPaneInputs,
         paint: &mut PaintContext,
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -55,6 +63,25 @@ impl PaneRenderer {
 
             match pane.kind {
                 PaneKind::Empty => paint_empty_pane(content_bounds, paint),
+                PaneKind::AutopilotChat => {
+                    paint_autopilot_chat_pane(content_bounds, autopilot_chat, chat_inputs, paint);
+                }
+                PaneKind::GoOnline => {
+                    paint_go_online_pane(
+                        content_bounds,
+                        provider_runtime,
+                        provider_blockers,
+                        paint,
+                    );
+                }
+                PaneKind::ProviderStatus => {
+                    paint_provider_status_pane(
+                        content_bounds,
+                        provider_runtime,
+                        provider_blockers,
+                        paint,
+                    );
+                }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(
                         content_bounds,
@@ -88,6 +115,301 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
         theme::text::MUTED,
     );
     paint.scene.draw_text(empty);
+}
+
+fn paint_autopilot_chat_pane(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+    chat_inputs: &mut ChatPaneInputs,
+    paint: &mut PaintContext,
+) {
+    let rail_bounds = chat_thread_rail_bounds(content_bounds);
+    let transcript_bounds = chat_transcript_bounds(content_bounds);
+    let composer_bounds = chat_composer_input_bounds(content_bounds);
+    let send_bounds = chat_send_button_bounds(content_bounds);
+
+    paint.scene.draw_quad(
+        Quad::new(rail_bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.72))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(transcript_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.82))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(4.0),
+    );
+
+    paint.scene.draw_text(paint.text.layout(
+        "Threads",
+        Point::new(rail_bounds.origin.x + 10.0, rail_bounds.origin.y + 14.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut thread_y = rail_bounds.origin.y + 30.0;
+    for (idx, thread) in autopilot_chat.threads.iter().enumerate() {
+        let color = if idx == autopilot_chat.active_thread {
+            theme::text::PRIMARY
+        } else {
+            theme::text::MUTED
+        };
+        paint.scene.draw_text(paint.text.layout(
+            thread,
+            Point::new(rail_bounds.origin.x + 10.0, thread_y),
+            11.0,
+            color,
+        ));
+        thread_y += 16.0;
+    }
+
+    let mut y = transcript_bounds.origin.y + 10.0;
+    for message in autopilot_chat.messages.iter().rev().take(12).rev() {
+        let status = match message.status {
+            AutopilotMessageStatus::Queued => "queued",
+            AutopilotMessageStatus::Running => "running",
+            AutopilotMessageStatus::Done => "done",
+            AutopilotMessageStatus::Error => "error",
+        };
+        let role = match message.role {
+            AutopilotRole::User => "you",
+            AutopilotRole::Autopilot => "autopilot",
+        };
+        let status_color = match message.status {
+            AutopilotMessageStatus::Queued => theme::text::MUTED,
+            AutopilotMessageStatus::Running => theme::accent::PRIMARY,
+            AutopilotMessageStatus::Done => theme::status::SUCCESS,
+            AutopilotMessageStatus::Error => theme::status::ERROR,
+        };
+
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("[#{:04}] [{role}] [{status}]", message.id),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            status_color,
+        ));
+        y += 14.0;
+        for line in split_text_for_display(&message.content, 78) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(transcript_bounds.origin.x + 10.0, y),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+            y += 14.0;
+        }
+        y += 8.0;
+    }
+
+    if let Some(error) = autopilot_chat.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(
+                transcript_bounds.origin.x + 10.0,
+                transcript_bounds.max_y() - 14.0,
+            ),
+            11.0,
+            theme::status::ERROR,
+        ));
+    }
+
+    chat_inputs
+        .composer
+        .set_max_width(composer_bounds.size.width);
+    chat_inputs.composer.paint(composer_bounds, paint);
+    paint_action_button(send_bounds, "Send", paint);
+}
+
+fn paint_go_online_pane(
+    content_bounds: Bounds,
+    provider_runtime: &ProviderRuntimeState,
+    provider_blockers: &[ProviderBlocker],
+    paint: &mut PaintContext,
+) {
+    let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
+    let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+        "Go Online"
+    } else {
+        "Go Offline"
+    };
+    paint_action_button(toggle_bounds, toggle_label, paint);
+
+    let now = std::time::Instant::now();
+    let mut y = toggle_bounds.max_y() + 14.0;
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Provider mode",
+        provider_runtime.mode.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Uptime (s)",
+        &provider_runtime.uptime_seconds(now).to_string(),
+    );
+
+    if provider_blockers.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "Preflight: clear",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::status::SUCCESS,
+        ));
+    } else {
+        paint.scene.draw_text(paint.text.layout(
+            "Preflight blockers:",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+        for blocker in provider_blockers {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("{} - {}", blocker.code(), blocker.detail()),
+                Point::new(content_bounds.origin.x + 12.0, y),
+                10.0,
+                theme::status::ERROR,
+            ));
+            y += 14.0;
+        }
+    }
+
+    if let Some(code) = provider_runtime.degraded_reason_code.as_deref() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("Last reason code: {code}"),
+            Point::new(content_bounds.origin.x + 12.0, y + 12.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
+}
+
+fn paint_provider_status_pane(
+    content_bounds: Bounds,
+    provider_runtime: &ProviderRuntimeState,
+    provider_blockers: &[ProviderBlocker],
+    paint: &mut PaintContext,
+) {
+    let now = std::time::Instant::now();
+    let heartbeat_age = provider_runtime
+        .heartbeat_age_seconds(now)
+        .map_or_else(|| "n/a".to_string(), |age| age.to_string());
+    let mut y = content_bounds.origin.y + 12.0;
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Mode",
+        provider_runtime.mode.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Uptime (s)",
+        &provider_runtime.uptime_seconds(now).to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Heartbeat age (s)",
+        &heartbeat_age,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Queue depth",
+        &provider_runtime.queue_depth.to_string(),
+    );
+    if let Some(last_completed) = provider_runtime.last_completed_job_at {
+        let seconds = now
+            .checked_duration_since(last_completed)
+            .map_or(0, |duration| duration.as_secs());
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last completed job (s ago)",
+            &seconds.to_string(),
+        );
+    } else {
+        y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "Last completed job",
+            "none",
+        );
+    }
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last result",
+        provider_runtime.last_result.as_deref().unwrap_or("none"),
+    );
+
+    paint.scene.draw_text(paint.text.layout(
+        "Dependencies",
+        Point::new(content_bounds.origin.x + 12.0, y + 4.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut dep_y = y + 20.0;
+    let identity_status = if provider_blockers.contains(&ProviderBlocker::IdentityMissing) {
+        "degraded"
+    } else {
+        "ready"
+    };
+    let wallet_status = if provider_blockers.contains(&ProviderBlocker::WalletError) {
+        "degraded"
+    } else {
+        "ready"
+    };
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("identity: {identity_status}"),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("wallet: {wallet_status}"),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        "relay: unknown (lane pending)",
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+
+    if let Some(error) = provider_runtime.last_error_detail.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Last error",
+            Point::new(content_bounds.origin.x + 12.0, dep_y + 18.0),
+            11.0,
+            theme::status::ERROR,
+        ));
+        let mut error_y = dep_y + 34.0;
+        for line in split_text_for_display(error, 82) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(content_bounds.origin.x + 12.0, error_y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            error_y += 14.0;
+        }
+    }
 }
 
 fn paint_nostr_identity_pane(

@@ -4,6 +4,15 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 ## Pane Inventory
 
+- `Autopilot Chat`
+  - Chat-first pane with thread rail, transcript, composer input, and per-message status (`queued`, `running`, `done`, `error`).
+  - Action: send prompt to local Autopilot lane.
+- `Go Online`
+  - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
+  - Action: toggle online/offline.
+- `Provider Status`
+  - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
+  - Action: read-only operational visibility.
 - `Nostr Keys (NIP-06)`
   - Shows identity path, `npub`, masked `nsec`, masked mnemonic, and key controls.
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
@@ -21,12 +30,15 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `2` opens `Nostr Keys (NIP-06)`.
   - `3` opens `Spark Lightning Wallet`.
 - Command Palette (`Cmd/Ctrl+K`):
+  - `Open Autopilot Chat Pane` -> opens `Autopilot Chat`.
+  - `Open Go Online Pane` -> opens `Go Online`.
+  - `Open Provider Status Pane` -> opens `Provider Status`.
   - `Open Identity Keys Pane` -> opens `Nostr Keys (NIP-06)`.
   - `Open Spark Wallet Pane` -> opens `Spark Lightning Wallet`.
   - `Open Pay Lightning Invoice Pane` -> opens `Pay Lightning Invoice`.
 
 ## Behavior Notes
 
-- Identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, identity, wallet, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
