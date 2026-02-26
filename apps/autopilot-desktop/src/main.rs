@@ -253,7 +253,12 @@ impl ApplicationHandler for App {
                 }
 
                 match event.physical_key {
-                    PhysicalKey::Code(KeyCode::Escape) => event_loop.exit(),
+                    PhysicalKey::Code(KeyCode::Escape) => {
+                        if let Some(pane_id) = active_pane_id(state) {
+                            close_pane(state, pane_id);
+                            state.window.request_redraw();
+                        }
+                    }
                     key => {
                         if let Some(slot) = hotbar_slot_for_key(key)
                             && slot == HOTBAR_SLOT_NEW_CHAT
