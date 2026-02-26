@@ -139,7 +139,13 @@ mod tests {
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit3)),
             Some(HOTBAR_SLOT_SPARK_WALLET)
         );
-        assert_eq!(hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit4)), None);
-        assert_eq!(hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)), None);
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Digit4)),
+            None
+        );
+        assert_eq!(
+            hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)),
+            None
+        );
     }
 }

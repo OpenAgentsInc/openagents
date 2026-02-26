@@ -26,6 +26,11 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Inputs: request type, payload, budget sats, timeout seconds (validated before submit).
   - Output: submitted request rows with request id and response stream linkage.
   - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Starter Jobs`
+  - Seed-demand queue focused on first-earnings path, explicitly separated from open-network job intake.
+  - Shows eligibility and payout sats per starter job.
+  - Tracks completion with payout pointer linkage for wallet/history visibility.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Earnings Scoreboard`
   - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
   - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
@@ -77,6 +82,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
   - `Network Requests` -> opens `Network Requests`.
+  - `Starter Jobs` -> opens `Starter Jobs`.
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
@@ -87,6 +93,6 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

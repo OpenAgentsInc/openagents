@@ -27,6 +27,8 @@ const SYNC_HEALTH_PANE_WIDTH: f32 = 760.0;
 const SYNC_HEALTH_PANE_HEIGHT: f32 = 360.0;
 const NETWORK_REQUESTS_PANE_WIDTH: f32 = 900.0;
 const NETWORK_REQUESTS_PANE_HEIGHT: f32 = 420.0;
+const STARTER_JOBS_PANE_WIDTH: f32 = 860.0;
+const STARTER_JOBS_PANE_HEIGHT: f32 = 420.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -101,6 +103,12 @@ pub enum SyncHealthPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestsPaneAction {
     SubmitRequest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StarterJobsPaneAction {
+    CompleteSelected,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -180,6 +188,15 @@ impl PaneDescriptor {
             kind: PaneKind::NetworkRequests,
             width: NETWORK_REQUESTS_PANE_WIDTH,
             height: NETWORK_REQUESTS_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn starter_jobs() -> Self {
+        Self {
+            kind: PaneKind::StarterJobs,
+            width: STARTER_JOBS_PANE_WIDTH,
+            height: STARTER_JOBS_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -326,6 +343,10 @@ impl PaneController {
 
     pub fn create_network_requests(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::network_requests());
+    }
+
+    pub fn create_starter_jobs(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::starter_jobs());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -637,6 +658,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::StarterJobs
+            && topmost_starter_jobs_action_hit(state, point).is_some()
+        {
+            return CursorIcon::Pointer;
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -890,6 +917,30 @@ pub fn network_requests_submit_button_bounds(content_bounds: Bounds) -> Bounds {
         (content_bounds.max_x() - timeout.max_x() - CHAT_PAD - JOB_INBOX_BUTTON_GAP).max(140.0),
         timeout.size.height,
     )
+}
+
+pub fn starter_jobs_complete_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn starter_jobs_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(JOB_INBOX_MAX_ROWS.saturating_sub(1));
+    let top = content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (JOB_INBOX_ROW_HEIGHT + JOB_INBOX_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        JOB_INBOX_ROW_HEIGHT,
+    )
+}
+
+pub fn starter_jobs_visible_row_count(row_count: usize) -> usize {
+    row_count.min(JOB_INBOX_MAX_ROWS)
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1201,6 +1252,32 @@ pub fn topmost_network_requests_action_hit(
         let content_bounds = pane_content_bounds(pane.bounds);
         if network_requests_submit_button_bounds(content_bounds).contains(point) {
             return Some((pane.id, NetworkRequestsPaneAction::SubmitRequest));
+        }
+    }
+
+    None
+}
+
+pub fn topmost_starter_jobs_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, StarterJobsPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::StarterJobs {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if starter_jobs_complete_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, StarterJobsPaneAction::CompleteSelected));
+        }
+
+        let visible_rows = starter_jobs_visible_row_count(state.starter_jobs.jobs.len());
+        for row_index in 0..visible_rows {
+            if starter_jobs_row_bounds(content_bounds, row_index).contains(point) {
+                return Some((pane.id, StarterJobsPaneAction::SelectRow(row_index)));
+            }
         }
     }
 
@@ -1593,6 +1670,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::RelayConnections => "Relay Connections".to_string(),
         PaneKind::SyncHealth => "Sync Health".to_string(),
         PaneKind::NetworkRequests => "Network Requests".to_string(),
+        PaneKind::StarterJobs => "Starter Jobs".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1654,7 +1732,8 @@ mod tests {
         nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
         relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
         relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, sync_health_rebootstrap_button_bounds,
+        relay_connections_url_input_bounds, starter_jobs_complete_button_bounds,
+        starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
     };
     use wgpui::Bounds;
 
@@ -1742,6 +1821,17 @@ mod tests {
         assert!(payload.max_y() < budget.min_y());
         assert!(budget.max_x() < timeout.min_x());
         assert!(timeout.max_x() < submit.min_x());
+    }
+
+    #[test]
+    fn starter_jobs_controls_and_rows_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
+        let complete = starter_jobs_complete_button_bounds(content);
+        let row0 = starter_jobs_row_bounds(content, 0);
+        let row1 = starter_jobs_row_bounds(content, 1);
+
+        assert!(complete.max_y() < row0.min_y());
+        assert!(row0.max_y() < row1.min_y());
     }
 
     #[test]

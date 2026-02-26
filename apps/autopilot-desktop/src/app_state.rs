@@ -39,6 +39,7 @@ pub enum PaneKind {
     RelayConnections,
     SyncHealth,
     NetworkRequests,
+    StarterJobs,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -765,6 +766,123 @@ impl NetworkRequestsState {
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(format!("Submitted buyer request {request_id}"));
         Ok(request_id)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StarterJobStatus {
+    Queued,
+    Running,
+    Completed,
+}
+
+impl StarterJobStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Completed => "completed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StarterJobRow {
+    pub job_id: String,
+    pub summary: String,
+    pub payout_sats: u64,
+    pub eligible: bool,
+    pub status: StarterJobStatus,
+    pub payout_pointer: Option<String>,
+}
+
+pub struct StarterJobsState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub jobs: Vec<StarterJobRow>,
+    pub selected_job_id: Option<String>,
+}
+
+impl Default for StarterJobsState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Starter demand queue synced".to_string()),
+            jobs: vec![
+                StarterJobRow {
+                    job_id: "starter-0001".to_string(),
+                    summary: "Summarize onboarding README".to_string(),
+                    payout_sats: 700,
+                    eligible: true,
+                    status: StarterJobStatus::Queued,
+                    payout_pointer: None,
+                },
+                StarterJobRow {
+                    job_id: "starter-0002".to_string(),
+                    summary: "Classify 5 onboarding screenshots".to_string(),
+                    payout_sats: 1200,
+                    eligible: true,
+                    status: StarterJobStatus::Running,
+                    payout_pointer: None,
+                },
+                StarterJobRow {
+                    job_id: "starter-0003".to_string(),
+                    summary: "Parse first invoice sample".to_string(),
+                    payout_sats: 500,
+                    eligible: false,
+                    status: StarterJobStatus::Queued,
+                    payout_pointer: None,
+                },
+            ],
+            selected_job_id: Some("starter-0001".to_string()),
+        }
+    }
+}
+
+impl StarterJobsState {
+    pub fn select_by_index(&mut self, index: usize) -> bool {
+        let Some(job_id) = self.jobs.get(index).map(|job| job.job_id.clone()) else {
+            return false;
+        };
+        self.selected_job_id = Some(job_id);
+        self.last_error = None;
+        true
+    }
+
+    pub fn selected(&self) -> Option<&StarterJobRow> {
+        let selected = self.selected_job_id.as_deref()?;
+        self.jobs.iter().find(|job| job.job_id == selected)
+    }
+
+    pub fn complete_selected(&mut self) -> Result<(String, u64, String), String> {
+        let selected = self
+            .selected_job_id
+            .as_deref()
+            .ok_or_else(|| "Select a starter job first".to_string())?
+            .to_string();
+        let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
+            self.last_error = Some("Selected starter job no longer exists".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Selected starter job no longer exists".to_string());
+        };
+        if !job.eligible {
+            self.last_error = Some("Starter job is not eligible yet".to_string());
+            self.load_state = PaneLoadState::Error;
+            return Err("Starter job is not eligible yet".to_string());
+        }
+
+        let payout_pointer = format!("pay:{}", job.job_id);
+        job.status = StarterJobStatus::Completed;
+        job.payout_pointer = Some(payout_pointer.clone());
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!(
+            "Completed starter job {} ({} sats)",
+            job.job_id, job.payout_sats
+        ));
+        Ok((job.job_id.clone(), job.payout_sats, payout_pointer))
     }
 }
 
@@ -1735,6 +1853,7 @@ pub struct RenderState {
     pub relay_connections: RelayConnectionsState,
     pub sync_health: SyncHealthState,
     pub network_requests: NetworkRequestsState,
+    pub starter_jobs: StarterJobsState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1768,7 +1887,8 @@ mod tests {
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
         JobLifecycleStage, NetworkRequestStatus, NetworkRequestsState, NostrSecretState,
         ProviderBlocker, ProviderMode, ProviderRuntimeState, RelayConnectionStatus,
-        RelayConnectionsState, SparkPaneState, SyncHealthState, SyncRecoveryPhase,
+        RelayConnectionsState, SparkPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
+        SyncRecoveryPhase,
     };
 
     #[test]
@@ -1999,6 +2119,22 @@ mod tests {
         assert_eq!(first.request_id, request_id);
         assert_eq!(first.response_stream_id, format!("stream:{request_id}"));
         assert_eq!(first.status, NetworkRequestStatus::Submitted);
+    }
+
+    #[test]
+    fn starter_jobs_complete_selected_sets_payout_pointer() {
+        let mut starter_jobs = StarterJobsState::default();
+        starter_jobs.select_by_index(0);
+        let (job_id, _payout, pointer) = starter_jobs
+            .complete_selected()
+            .expect("eligible starter job should complete");
+        let job = starter_jobs
+            .jobs
+            .iter()
+            .find(|job| job.job_id == job_id)
+            .expect("job should remain present");
+        assert_eq!(job.status, StarterJobStatus::Completed);
+        assert_eq!(job.payout_pointer.as_deref(), Some(pointer.as_str()));
     }
 
     #[test]

@@ -15,15 +15,17 @@ use crate::hotbar::{
 use crate::pane_system::{
     ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
     NetworkRequestsPaneAction, PaneController, PaneInput, RelayConnectionsPaneAction,
-    SyncHealthPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
-    dispatch_job_history_input_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
-    dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
-    topmost_create_invoice_action_hit, topmost_earnings_scoreboard_action_hit,
-    topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
+    StarterJobsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
+    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
+    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
+    dispatch_relay_connections_input_event, dispatch_spark_input_event,
+    topmost_active_job_action_hit, topmost_chat_send_hit, topmost_create_invoice_action_hit,
+    topmost_earnings_scoreboard_action_hit, topmost_go_online_toggle_hit,
+    topmost_job_history_action_hit, topmost_job_inbox_action_hit,
     topmost_network_requests_action_hit, topmost_nostr_copy_secret_hit,
     topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit, topmost_pay_invoice_action_hit,
-    topmost_relay_connections_action_hit, topmost_spark_action_hit, topmost_sync_health_action_hit,
+    topmost_relay_connections_action_hit, topmost_spark_action_hit,
+    topmost_starter_jobs_action_hit, topmost_sync_health_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -36,6 +38,7 @@ const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
 const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
 const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
 const COMMAND_OPEN_NETWORK_REQUESTS: &str = "pane.network_requests";
+const COMMAND_OPEN_STARTER_JOBS: &str = "pane.starter_jobs";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -267,6 +270,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_relay_connections_action_click(state, app.cursor_position);
                     handled |= handle_sync_health_action_click(state, app.cursor_position);
                     handled |= handle_network_requests_action_click(state, app.cursor_position);
+                    handled |= handle_starter_jobs_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -495,6 +499,18 @@ fn handle_network_requests_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_network_requests_action(state, action)
+}
+
+fn handle_starter_jobs_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_starter_jobs_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_starter_jobs_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -1051,6 +1067,54 @@ fn run_network_requests_action(
     }
 }
 
+fn run_starter_jobs_action(
+    state: &mut crate::app_state::RenderState,
+    action: StarterJobsPaneAction,
+) -> bool {
+    match action {
+        StarterJobsPaneAction::SelectRow(index) => {
+            if !state.starter_jobs.select_by_index(index) {
+                state.starter_jobs.last_error = Some("Starter job row out of range".to_string());
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            } else {
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Ready;
+            }
+            true
+        }
+        StarterJobsPaneAction::CompleteSelected => {
+            match state.starter_jobs.complete_selected() {
+                Ok((job_id, payout_sats, payout_pointer)) => {
+                    state.spark_wallet.last_payment_id = Some(payout_pointer.clone());
+                    state.spark_wallet.last_action = Some(format!(
+                        "Starter payout settled for {job_id} ({payout_sats} sats)"
+                    ));
+                    state.provider_runtime.last_result =
+                        Some(format!("completed starter job {job_id}"));
+                    state
+                        .job_history
+                        .upsert_row(crate::app_state::JobHistoryReceiptRow {
+                            job_id,
+                            status: crate::app_state::JobHistoryStatus::Succeeded,
+                            completed_at_epoch_seconds: state
+                                .job_history
+                                .reference_epoch_seconds
+                                .saturating_add(state.job_history.rows.len() as u64 * 19),
+                            payout_sats,
+                            result_hash: "sha256:starter-job".to_string(),
+                            payment_pointer: payout_pointer,
+                            failure_reason: None,
+                        });
+                    refresh_earnings_scoreboard(state, std::time::Instant::now());
+                }
+                Err(error) => {
+                    state.starter_jobs.last_error = Some(error);
+                }
+            }
+            true
+        }
+    }
+}
+
 fn refresh_earnings_scoreboard(state: &mut crate::app_state::RenderState, now: std::time::Instant) {
     state.earnings_scoreboard.refresh_from_sources(
         now,
@@ -1444,6 +1508,10 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_NETWORK_REQUESTS => {
                 PaneController::create_network_requests(state);
+                changed = true;
+            }
+            COMMAND_OPEN_STARTER_JOBS => {
+                PaneController::create_starter_jobs(state);
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

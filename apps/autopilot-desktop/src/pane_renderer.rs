@@ -4,7 +4,8 @@ use crate::app_state::{
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, SyncHealthState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, StarterJobStatus,
+    StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -21,7 +22,8 @@ use crate::pane_system::{
     pane_content_bounds, relay_connections_add_button_bounds,
     relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
     relay_connections_row_bounds, relay_connections_url_input_bounds,
-    relay_connections_visible_row_count, sync_health_rebootstrap_button_bounds,
+    relay_connections_visible_row_count, starter_jobs_complete_button_bounds,
+    starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -47,6 +49,7 @@ impl PaneRenderer {
         relay_connections: &RelayConnectionsState,
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
+        starter_jobs: &StarterJobsState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -133,6 +136,9 @@ impl PaneRenderer {
                         network_requests_inputs,
                         paint,
                     );
+                }
+                PaneKind::StarterJobs => {
+                    paint_starter_jobs_pane(content_bounds, starter_jobs, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -987,6 +993,134 @@ fn paint_network_requests_pane(
             10.0,
             status_color,
         ));
+    }
+}
+
+fn paint_starter_jobs_pane(
+    content_bounds: Bounds,
+    starter_jobs: &StarterJobsState,
+    paint: &mut PaintContext,
+) {
+    let complete_bounds = starter_jobs_complete_button_bounds(content_bounds);
+    paint_action_button(complete_bounds, "Complete selected", paint);
+
+    let state_color = match starter_jobs.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = complete_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", starter_jobs.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = starter_jobs.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = starter_jobs.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    let visible_rows = starter_jobs_visible_row_count(starter_jobs.jobs.len());
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No starter jobs available.",
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for row_index in 0..visible_rows {
+        let job = &starter_jobs.jobs[row_index];
+        let row_bounds = starter_jobs_row_bounds(content_bounds, row_index);
+        let selected = starter_jobs.selected_job_id.as_deref() == Some(job.job_id.as_str());
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::accent::PRIMARY.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if selected {
+                        theme::accent::PRIMARY
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(4.0),
+        );
+
+        let status_color = match job.status {
+            StarterJobStatus::Queued => theme::text::MUTED,
+            StarterJobStatus::Running => theme::accent::PRIMARY,
+            StarterJobStatus::Completed => theme::status::SUCCESS,
+        };
+        let eligibility = if job.eligible {
+            "eligible"
+        } else {
+            "ineligible"
+        };
+        let summary = format!(
+            "starter {} {} {} sats {} {}",
+            job.job_id,
+            job.status.label(),
+            job.payout_sats,
+            eligibility,
+            job.summary
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &summary,
+            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            status_color,
+        ));
+    }
+
+    if let Some(selected) = starter_jobs.selected() {
+        let details_y =
+            starter_jobs_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
+        let mut line_y = details_y;
+        line_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            line_y,
+            "Selected job",
+            &selected.job_id,
+        );
+        line_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            line_y,
+            "Payout sats",
+            &selected.payout_sats.to_string(),
+        );
+        let _ = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            line_y,
+            "Payout pointer",
+            selected.payout_pointer.as_deref().unwrap_or("pending"),
+        );
     }
 }
 
