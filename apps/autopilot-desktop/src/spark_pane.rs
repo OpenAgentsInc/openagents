@@ -14,6 +14,7 @@ pub enum SparkPaneAction {
     Refresh,
     GenerateSparkAddress,
     GenerateBitcoinAddress,
+    CopySparkAddress,
     CreateInvoice,
     SendPayment,
 }
@@ -28,6 +29,7 @@ pub struct SparkPaneLayout {
     pub refresh_button: Bounds,
     pub spark_address_button: Bounds,
     pub bitcoin_address_button: Bounds,
+    pub copy_spark_address_button: Bounds,
     pub invoice_amount_input: Bounds,
     pub create_invoice_button: Bounds,
     pub send_request_input: Bounds,
@@ -49,7 +51,7 @@ pub fn layout(content_bounds: Bounds) -> SparkPaneLayout {
     let origin_y = content_bounds.origin.y + PAD;
     let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
 
-    let top_button_width = ((usable_width - GAP * 2.0) / 3.0).max(96.0);
+    let top_button_width = ((usable_width - GAP * 3.0) / 4.0).max(88.0);
     let refresh_button = Bounds::new(origin_x, origin_y, top_button_width, CONTROL_HEIGHT);
     let spark_address_button = Bounds::new(
         refresh_button.origin.x + refresh_button.size.width + GAP,
@@ -59,6 +61,12 @@ pub fn layout(content_bounds: Bounds) -> SparkPaneLayout {
     );
     let bitcoin_address_button = Bounds::new(
         spark_address_button.origin.x + spark_address_button.size.width + GAP,
+        origin_y,
+        top_button_width,
+        CONTROL_HEIGHT,
+    );
+    let copy_spark_address_button = Bounds::new(
+        bitcoin_address_button.origin.x + bitcoin_address_button.size.width + GAP,
         origin_y,
         top_button_width,
         CONTROL_HEIGHT,
@@ -94,6 +102,7 @@ pub fn layout(content_bounds: Bounds) -> SparkPaneLayout {
         refresh_button,
         spark_address_button,
         bitcoin_address_button,
+        copy_spark_address_button,
         invoice_amount_input,
         create_invoice_button,
         send_request_input,
@@ -112,6 +121,9 @@ pub fn hit_action(layout: SparkPaneLayout, point: Point) -> Option<SparkPaneActi
     }
     if layout.bitcoin_address_button.contains(point) {
         return Some(SparkPaneAction::GenerateBitcoinAddress);
+    }
+    if layout.copy_spark_address_button.contains(point) {
+        return Some(SparkPaneAction::CopySparkAddress);
     }
     if layout.create_invoice_button.contains(point) {
         return Some(SparkPaneAction::CreateInvoice);
@@ -204,6 +216,15 @@ mod tests {
             layout.send_payment_button.origin.y + 3.0,
         );
         assert_eq!(hit_action(layout, send), Some(SparkPaneAction::SendPayment));
+
+        let copy = Point::new(
+            layout.copy_spark_address_button.origin.x + 3.0,
+            layout.copy_spark_address_button.origin.y + 3.0,
+        );
+        assert_eq!(
+            hit_action(layout, copy),
+            Some(SparkPaneAction::CopySparkAddress)
+        );
     }
 
     #[test]

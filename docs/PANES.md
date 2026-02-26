@@ -18,7 +18,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
 - `Spark Lightning Wallet`
   - Shows wallet connectivity, balances, addresses, invoice creation, payment sending, and recent payment status.
-  - Actions: refresh wallet, generate receive addresses, create invoice, send payment.
+  - Actions: refresh wallet, generate receive addresses, copy Spark address, create invoice, send payment.
 - `Pay Lightning Invoice`
   - Dedicated payment pane for paying a Lightning invoice/payment request.
   - Inputs: payment request (required), send sats (optional).

@@ -529,6 +529,24 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {
+    if action == SparkPaneAction::CopySparkAddress {
+        state.spark_wallet.last_error = None;
+        let notice = match state.spark_wallet.spark_address.as_deref() {
+            Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
+                Ok(()) => "Copied Spark address to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Spark address: {error}"),
+            },
+            _ => "No Spark address available. Generate Spark receive first.".to_string(),
+        };
+
+        if notice.starts_with("Failed") || notice.starts_with("No Spark address") {
+            state.spark_wallet.last_error = Some(notice);
+        } else {
+            state.spark_wallet.last_action = Some(notice);
+        }
+        return true;
+    }
+
     let command = match build_spark_command_for_action(
         action,
         state.spark_inputs.invoice_amount.get_value(),
@@ -576,6 +594,9 @@ fn build_spark_command_for_action(
         SparkPaneAction::Refresh => Ok(SparkWalletCommand::Refresh),
         SparkPaneAction::GenerateSparkAddress => Ok(SparkWalletCommand::GenerateSparkAddress),
         SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
+        SparkPaneAction::CopySparkAddress => {
+            Err("Spark copy action is handled directly in UI".to_string())
+        }
         SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateInvoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
         }),
@@ -834,6 +855,10 @@ mod tests {
         assert!(matches!(
             build_spark_command_for_action(SparkPaneAction::GenerateBitcoinAddress, "", "", ""),
             Ok(SparkWalletCommand::GenerateBitcoinAddress)
+        ));
+        assert!(matches!(
+            build_spark_command_for_action(SparkPaneAction::CopySparkAddress, "", "", ""),
+            Err(error) if error.contains("handled directly")
         ));
 
         assert!(matches!(

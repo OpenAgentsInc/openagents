@@ -549,6 +549,7 @@ fn paint_spark_wallet_pane(
     paint_action_button(layout.refresh_button, "Refresh wallet", paint);
     paint_action_button(layout.spark_address_button, "Spark receive", paint);
     paint_action_button(layout.bitcoin_address_button, "Bitcoin receive", paint);
+    paint_action_button(layout.copy_spark_address_button, "Copy Spark", paint);
     paint_action_button(layout.create_invoice_button, "Create invoice", paint);
     paint_action_button(layout.send_payment_button, "Send payment", paint);
 
