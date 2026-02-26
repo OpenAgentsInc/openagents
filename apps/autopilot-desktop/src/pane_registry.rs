@@ -70,16 +70,17 @@ pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
 }
 
 pub fn pane_spec_by_command_id(command_id: &str) -> Option<&'static PaneSpec> {
-    pane_specs().iter().find(|spec| {
-        spec.command
-            .is_some_and(|command| command.id == command_id)
-    })
+    pane_specs()
+        .iter()
+        .find(|spec| spec.command.is_some_and(|command| command.id == command_id))
 }
 
 pub fn pane_kind_for_hotbar_slot(slot: u8) -> Option<PaneKind> {
-    pane_specs()
-        .iter()
-        .find_map(|spec| spec.hotbar.filter(|hotbar| hotbar.slot == slot).map(|_| spec.kind))
+    pane_specs().iter().find_map(|spec| {
+        spec.hotbar
+            .filter(|hotbar| hotbar.slot == slot)
+            .map(|_| spec.kind)
+    })
 }
 
 pub fn pane_spec_for_hotbar_slot(slot: u8) -> Option<&'static PaneSpec> {
@@ -396,7 +397,11 @@ const PANE_SPECS: [PaneSpec; 19] = [
 
 #[cfg(test)]
 mod tests {
-    use super::{pane_specs, pane_spec_by_command_id};
+    use super::{
+        pane_kind_for_hotbar_slot, pane_spec, pane_spec_by_command_id, pane_specs,
+        startup_pane_kinds,
+    };
+    use crate::app_state::PaneKind;
     use std::collections::BTreeSet;
 
     #[test]
@@ -417,6 +422,46 @@ mod tests {
                     hotbar_slots.insert(hotbar.slot),
                     "duplicate hotbar slot {}",
                     hotbar.slot
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hotbar_slots_resolve_back_to_registry_kind() {
+        for spec in pane_specs() {
+            let Some(hotbar) = spec.hotbar else {
+                continue;
+            };
+            assert_eq!(
+                pane_kind_for_hotbar_slot(hotbar.slot),
+                Some(spec.kind),
+                "hotbar slot {} should resolve to {:?}",
+                hotbar.slot,
+                spec.kind
+            );
+        }
+    }
+
+    #[test]
+    fn singleton_contract_covers_startup_and_hotbar_panes() {
+        for kind in startup_pane_kinds() {
+            assert!(
+                pane_spec(kind).singleton,
+                "startup pane {:?} must be singleton",
+                kind
+            );
+        }
+
+        for spec in pane_specs() {
+            if spec.kind == PaneKind::Empty {
+                continue;
+            }
+            if spec.hotbar.is_some() {
+                assert!(
+                    spec.singleton,
+                    "hotbar pane {:?} must be singleton",
+                    spec.kind
                 );
             }
         }

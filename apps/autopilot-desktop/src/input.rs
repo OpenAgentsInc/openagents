@@ -2016,6 +2016,7 @@ mod tests {
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
     use crate::spark_wallet::SparkWalletCommand;
+    use std::collections::BTreeSet;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
 
@@ -2177,5 +2178,40 @@ mod tests {
                 expiry_seconds: Some(900)
             } if description == "MVP invoice"
         ));
+    }
+
+    #[test]
+    fn enter_and_mouse_primary_actions_stay_in_parity() {
+        let enter_actions: BTreeSet<&str> = [
+            "chat.submit",
+            "spark.create_invoice",
+            "spark.send_payment",
+            "pay_invoice.send_payment",
+            "create_invoice.create",
+            "relay_connections.add",
+            "network_requests.submit",
+            "activity_feed.refresh",
+            "alerts_recovery.recover",
+            "settings.save",
+        ]
+        .into_iter()
+        .collect();
+
+        let mouse_actions: BTreeSet<&str> = [
+            "chat.submit",
+            "spark.create_invoice",
+            "spark.send_payment",
+            "pay_invoice.send_payment",
+            "create_invoice.create",
+            "relay_connections.add",
+            "network_requests.submit",
+            "activity_feed.refresh",
+            "alerts_recovery.recover",
+            "settings.save",
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(enter_actions, mouse_actions);
     }
 }

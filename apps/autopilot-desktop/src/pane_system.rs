@@ -1839,7 +1839,7 @@ fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_job_abort_button_bounds, active_job_advance_button_bounds,
+        PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
         activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
         activity_feed_row_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
@@ -1860,7 +1860,20 @@ mod tests {
         settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
     };
+    use crate::pane_registry::pane_specs;
     use wgpui::Bounds;
+
+    #[test]
+    fn pane_descriptor_singleton_matches_registry_specs() {
+        for spec in pane_specs() {
+            let descriptor = PaneDescriptor::for_kind(spec.kind);
+            assert_eq!(
+                descriptor.singleton, spec.singleton,
+                "singleton mismatch for {:?}",
+                spec.kind
+            );
+        }
+    }
 
     #[test]
     fn pane_content_bounds_reserve_title_space() {

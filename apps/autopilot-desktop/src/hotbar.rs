@@ -140,6 +140,7 @@ mod tests {
         HOTBAR_SLOT_NEW_CHAT, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET,
         hotbar_slot_for_key,
     };
+    use crate::pane_registry::{pane_kind_for_hotbar_slot, pane_specs};
     use winit::keyboard::{KeyCode, PhysicalKey};
 
     #[test]
@@ -164,5 +165,21 @@ mod tests {
             hotbar_slot_for_key(PhysicalKey::Code(KeyCode::Numpad4)),
             None
         );
+    }
+
+    #[test]
+    fn hotbar_registry_slots_resolve_to_pane_kinds() {
+        for spec in pane_specs() {
+            let Some(hotbar) = spec.hotbar else {
+                continue;
+            };
+            assert_eq!(
+                pane_kind_for_hotbar_slot(hotbar.slot),
+                Some(spec.kind),
+                "hotbar slot {} should map back to {:?}",
+                hotbar.slot,
+                spec.kind
+            );
+        }
     }
 }

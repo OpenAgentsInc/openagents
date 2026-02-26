@@ -313,7 +313,28 @@ fn command_registry() -> Vec<Command> {
 mod tests {
     use super::command_registry;
     use crate::app_state::PaneKind;
-    use crate::pane_registry::startup_pane_kinds;
+    use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn command_registry_matches_pane_specs() {
+        let commands = command_registry();
+        let command_ids: BTreeSet<&str> =
+            commands.iter().map(|command| command.id.as_str()).collect();
+
+        let expected_ids: BTreeSet<&str> = pane_specs()
+            .iter()
+            .filter_map(|spec| spec.command.map(|command| command.id))
+            .collect();
+        assert_eq!(command_ids, expected_ids);
+
+        for command in &commands {
+            let spec = pane_spec_by_command_id(&command.id)
+                .expect("command id from registry should resolve to pane spec");
+            let pane_command = spec.command.expect("resolved pane must define a command");
+            assert_eq!(command.label, pane_command.label);
+        }
+    }
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
