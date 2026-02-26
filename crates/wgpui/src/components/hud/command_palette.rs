@@ -242,8 +242,10 @@ impl Component for CommandPalette {
             return;
         }
 
-        // Render on layer 1 to be on top of all layer 0 content
-        cx.scene.set_layer(1);
+        // Render above the caller's current layer so the palette stays on top.
+        let base_layer = cx.scene.layer();
+        let overlay_layer = base_layer.saturating_add(1);
+        cx.scene.set_layer(overlay_layer);
 
         // Semi-transparent backdrop
         cx.scene
@@ -410,6 +412,9 @@ impl Component for CommandPalette {
             };
             cx.scene.draw_text(empty_run);
         }
+
+        // Restore caller layer to avoid leaking palette layering state.
+        cx.scene.set_layer(base_layer);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
