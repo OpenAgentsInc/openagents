@@ -1,0 +1,11 @@
+[package]
+name = "openagents-ios-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "App-domain mission/Codex models for iOS bridge consumers"
+
+[lints]
+workspace = true

@@ -15,6 +15,9 @@ Phase 1 decomposition.
   - Compatibility facade for existing callers.
   - Re-exports moved modules and continues to host remaining modules
     (`components`, `platform`, `text`, `layout`, etc.).
+- `crates/openagents-ios-domain`
+  - Owns iOS app-domain mission/Codex data models and filter semantics.
+  - Keeps product-domain concerns out of `wgpui` platform adapters.
 
 ## Phase 1 migration outcome
 

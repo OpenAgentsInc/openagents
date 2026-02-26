@@ -60,6 +60,18 @@ Must not own:
 - Product/app behavior.
 - Widget-level business workflows.
 
+## `crates/openagents-ios-domain`
+
+Owns:
+
+- iOS app-domain mission/Codex data models.
+- Filtering/severity semantics for mission event views.
+
+Must not own:
+
+- Rendering/GPU platform concerns.
+- Shared WGPUI primitives.
+
 ## `crates/nostr/core`
 
 Owns:
