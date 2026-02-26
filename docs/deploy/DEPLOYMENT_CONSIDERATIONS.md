@@ -1,5 +1,11 @@
 # OpenAgents Desktop Deployment Considerations (Modeled on Zed)
 
+Status:
+
+- This is a cross-platform background/reference document.
+- Current active runbook for our MVP release flow is `docs/deploy/MACOS_RELEASE_PLAN.md`.
+- macOS signing/notarization setup is in `docs/deploy/MACOS_SIGNING_NOTARIZATION.md`.
+
 ## Purpose
 
 This document captures how `~/code/zed` builds and ships desktop releases, then translates that into practical deployment considerations for OpenAgents MVP.
