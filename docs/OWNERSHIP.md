@@ -27,14 +27,38 @@ Must not own:
 
 Owns:
 
-- Generic UI primitives/components/rendering.
-- Platform adapters and rendering infrastructure.
+- Compatibility facade over split WGPUI crates.
+- Product-agnostic UI APIs consumed by apps.
 
 Must not own:
 
 - OpenAgents product workflows.
 - App-specific business logic from `apps/autopilot-desktop`.
 - Dependencies on app crates.
+
+## `crates/wgpui-core`
+
+Owns:
+
+- Core primitives (geometry/color/input/scene/curve).
+- Product-agnostic types that render/components build on.
+
+Must not own:
+
+- GPU pipeline orchestration.
+- Product/app behavior.
+
+## `crates/wgpui-render`
+
+Owns:
+
+- GPU renderer implementation and SVG rasterization pipeline.
+- Render metrics and texture preparation internals.
+
+Must not own:
+
+- Product/app behavior.
+- Widget-level business workflows.
 
 ## `crates/nostr/core`
 

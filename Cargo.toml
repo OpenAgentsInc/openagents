@@ -4,6 +4,8 @@ members = [
     "apps/autopilot-desktop",
     "crates/nostr/core",
     "crates/spark",
+    "crates/wgpui-core",
+    "crates/wgpui-render",
     "crates/wgpui",
 ]
 

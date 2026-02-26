@@ -31,6 +31,9 @@ network = ["dep:reqwest"] # Network fetch helpers
 audio = ["dep:rodio", "network"] # Bleeps audio system (~1,163 lines)
 
 [dependencies]
+wgpui-core = { path = "../wgpui-core" }
+wgpui-render = { path = "../wgpui-render" }
+
 # GPU
 wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
 
@@ -114,9 +117,6 @@ web-time = "1.1.0"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rodio = { version = "0.20", optional = true }
 reqwest = { workspace = true, optional = true, features = ["blocking"] }
-# SVG rendering (desktop only - resvg doesn't support WASM)
-resvg = "0.44"
-usvg = "0.44"
 
 [dev-dependencies]
 criterion = "0.5"

@@ -7111,20 +7111,40 @@ dependencies = [
  "pollster",
  "pulldown-cmark",
  "reqwest",
- "resvg",
  "rodio",
  "slotmap",
  "smallvec",
  "syntect",
  "taffy",
  "tokio",
- "usvg",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "web-time",
  "wgpu",
+ "wgpui-core",
+ "wgpui-render",
  "winit",
+]
+
+[[package]]
+name = "wgpui-core"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
+name = "wgpui-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "log",
+ "resvg",
+ "usvg",
+ "web-time",
+ "wgpu",
+ "wgpui-core",
 ]
 
 [[package]]

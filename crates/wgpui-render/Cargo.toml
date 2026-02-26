@@ -1,0 +1,22 @@
+[package]
+name = "wgpui-render"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "GPU renderer and SVG rasterization for WGPUI"
+
+[lints]
+workspace = true
+
+[dependencies]
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+wgpu = { workspace = true }
+web-time = "1.1.0"
+wgpui-core = { path = "../wgpui-core" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+resvg = "0.44"
+usvg = "0.44"
