@@ -3,7 +3,7 @@ use crate::app_state::{
     CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionStatus,
-    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs,
+    RelayConnectionsPaneInputs, RelayConnectionsState, SparkPaneInputs, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -17,7 +17,7 @@ use crate::pane_system::{
     nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
     relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
     relay_connections_row_bounds, relay_connections_url_input_bounds,
-    relay_connections_visible_row_count,
+    relay_connections_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
@@ -41,6 +41,7 @@ impl PaneRenderer {
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
+        sync_health: &SyncHealthState,
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
@@ -115,6 +116,9 @@ impl PaneRenderer {
                         relay_connections_inputs,
                         paint,
                     );
+                }
+                PaneKind::SyncHealth => {
+                    paint_sync_health_pane(content_bounds, sync_health, paint);
                 }
                 PaneKind::JobInbox => {
                     paint_job_inbox_pane(content_bounds, job_inbox, paint);
@@ -693,6 +697,138 @@ fn paint_relay_connections_pane(
             theme::text::MUTED,
         ));
     }
+}
+
+fn paint_sync_health_pane(
+    content_bounds: Bounds,
+    sync_health: &SyncHealthState,
+    paint: &mut PaintContext,
+) {
+    let rebootstrap_bounds = sync_health_rebootstrap_button_bounds(content_bounds);
+    paint_action_button(rebootstrap_bounds, "Rebootstrap sync", paint);
+
+    let state_color = match sync_health.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    };
+    let mut y = rebootstrap_bounds.max_y() + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        &format!("State: {}", sync_health.load_state.label()),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        state_color,
+    ));
+    y += 16.0;
+
+    if let Some(action) = sync_health.last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 16.0;
+    }
+    if let Some(error) = sync_health.last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        y += 16.0;
+    }
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Spacetime connection",
+        &sync_health.spacetime_connection,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Subscription",
+        &sync_health.subscription_state,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cursor position",
+        &sync_health.cursor_position.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Cursor age (s)",
+        &sync_health.cursor_last_advanced_seconds_ago.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Stale threshold (s)",
+        &sync_health.cursor_stale_after_seconds.to_string(),
+    );
+
+    let stale = if sync_health.cursor_is_stale() {
+        "yes"
+    } else {
+        "no"
+    };
+    let stale_color = if sync_health.cursor_is_stale() {
+        theme::status::ERROR
+    } else {
+        theme::status::SUCCESS
+    };
+    paint.scene.draw_text(paint.text.layout(
+        &format!("Cursor stale: {stale}"),
+        Point::new(content_bounds.origin.x + 12.0, y),
+        11.0,
+        stale_color,
+    ));
+    y += 16.0;
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Recovery phase",
+        sync_health.recovery_phase.label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last applied seq",
+        &sync_health.last_applied_event_seq.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Duplicate drops",
+        &sync_health.duplicate_drop_count.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Replay count",
+        &sync_health.replay_count.to_string(),
+    );
+
+    paint.scene.draw_text(paint.text.layout(
+        "Legacy websocket compatibility data: intentionally not shown.",
+        Point::new(content_bounds.origin.x + 12.0, y),
+        10.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_nostr_identity_pane(

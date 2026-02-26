@@ -23,6 +23,8 @@ const EARNINGS_SCOREBOARD_PANE_WIDTH: f32 = 640.0;
 const EARNINGS_SCOREBOARD_PANE_HEIGHT: f32 = 320.0;
 const RELAY_CONNECTIONS_PANE_WIDTH: f32 = 900.0;
 const RELAY_CONNECTIONS_PANE_HEIGHT: f32 = 420.0;
+const SYNC_HEALTH_PANE_WIDTH: f32 = 760.0;
+const SYNC_HEALTH_PANE_HEIGHT: f32 = 360.0;
 const JOB_INBOX_PANE_WIDTH: f32 = 860.0;
 const JOB_INBOX_PANE_HEIGHT: f32 = 420.0;
 const ACTIVE_JOB_PANE_WIDTH: f32 = 860.0;
@@ -89,6 +91,11 @@ pub enum RelayConnectionsPaneAction {
     SelectRow(usize),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SyncHealthPaneAction {
+    Rebootstrap,
+}
+
 #[derive(Clone, Copy)]
 pub struct PaneDescriptor {
     pub kind: PaneKind,
@@ -148,6 +155,15 @@ impl PaneDescriptor {
             kind: PaneKind::RelayConnections,
             width: RELAY_CONNECTIONS_PANE_WIDTH,
             height: RELAY_CONNECTIONS_PANE_HEIGHT,
+            singleton: true,
+        }
+    }
+
+    pub const fn sync_health() -> Self {
+        Self {
+            kind: PaneKind::SyncHealth,
+            width: SYNC_HEALTH_PANE_WIDTH,
+            height: SYNC_HEALTH_PANE_HEIGHT,
             singleton: true,
         }
     }
@@ -286,6 +302,10 @@ impl PaneController {
 
     pub fn create_relay_connections(state: &mut RenderState) {
         let _ = Self::create(state, PaneDescriptor::relay_connections());
+    }
+
+    pub fn create_sync_health(state: &mut RenderState) {
+        let _ = Self::create(state, PaneDescriptor::sync_health());
     }
 
     pub fn create_job_inbox(state: &mut RenderState) {
@@ -577,6 +597,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
         }
 
+        if state.panes[pane_idx].kind == PaneKind::SyncHealth {
+            if topmost_sync_health_action_hit(state, point).is_some() {
+                return CursorIcon::Pointer;
+            }
+        }
+
         if state.panes[pane_idx].kind == PaneKind::JobInbox {
             if topmost_job_inbox_action_hit(state, point).is_some() {
                 return CursorIcon::Pointer;
@@ -772,6 +798,15 @@ pub fn relay_connections_row_bounds(content_bounds: Bounds, row_index: usize) ->
 
 pub fn relay_connections_visible_row_count(row_count: usize) -> usize {
     row_count.min(RELAY_CONNECTIONS_MAX_ROWS)
+}
+
+pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1045,6 +1080,25 @@ pub fn topmost_relay_connections_action_hit(
             if relay_connections_row_bounds(content_bounds, row_index).contains(point) {
                 return Some((pane.id, RelayConnectionsPaneAction::SelectRow(row_index)));
             }
+        }
+    }
+
+    None
+}
+
+pub fn topmost_sync_health_action_hit(
+    state: &RenderState,
+    point: Point,
+) -> Option<(u64, SyncHealthPaneAction)> {
+    for pane_idx in pane_indices_by_z_desc(state) {
+        let pane = &state.panes[pane_idx];
+        if pane.kind != PaneKind::SyncHealth {
+            continue;
+        }
+
+        let content_bounds = pane_content_bounds(pane.bounds);
+        if sync_health_rebootstrap_button_bounds(content_bounds).contains(point) {
+            return Some((pane.id, SyncHealthPaneAction::Rebootstrap));
         }
     }
 
@@ -1383,6 +1437,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
         PaneKind::ProviderStatus => "Provider Status".to_string(),
         PaneKind::EarningsScoreboard => "Earnings Scoreboard".to_string(),
         PaneKind::RelayConnections => "Relay Connections".to_string(),
+        PaneKind::SyncHealth => "Sync Health".to_string(),
         PaneKind::JobInbox => "Job Inbox".to_string(),
         PaneKind::ActiveJob => "Active Job".to_string(),
         PaneKind::JobHistory => "Job History".to_string(),
@@ -1442,6 +1497,7 @@ mod tests {
         nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
         relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
         relay_connections_row_bounds, relay_connections_url_input_bounds,
+        sync_health_rebootstrap_button_bounds,
     };
     use wgpui::Bounds;
 
@@ -1490,6 +1546,15 @@ mod tests {
         assert!(content.contains(toggle.origin));
         assert!(toggle.max_x() <= content.max_x());
         assert!(toggle.max_y() <= content.max_y());
+    }
+
+    #[test]
+    fn sync_health_rebootstrap_button_is_inside_content() {
+        let content = Bounds::new(0.0, 0.0, 760.0, 360.0);
+        let button = sync_health_rebootstrap_button_bounds(content);
+        assert!(content.contains(button.origin));
+        assert!(button.max_x() <= content.max_x());
+        assert!(button.max_y() <= content.max_y());
     }
 
     #[test]

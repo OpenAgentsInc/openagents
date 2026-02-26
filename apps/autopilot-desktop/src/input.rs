@@ -14,7 +14,7 @@ use crate::hotbar::{
 };
 use crate::pane_system::{
     ActiveJobPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction, PaneController,
-    PaneInput, RelayConnectionsPaneAction, dispatch_chat_input_event,
+    PaneInput, RelayConnectionsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
     dispatch_create_invoice_input_event, dispatch_job_history_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_spark_input_event, topmost_active_job_action_hit, topmost_chat_send_hit,
@@ -22,6 +22,7 @@ use crate::pane_system::{
     topmost_go_online_toggle_hit, topmost_job_history_action_hit, topmost_job_inbox_action_hit,
     topmost_nostr_copy_secret_hit, topmost_nostr_regenerate_hit, topmost_nostr_reveal_hit,
     topmost_pay_invoice_action_hit, topmost_relay_connections_action_hit, topmost_spark_action_hit,
+    topmost_sync_health_action_hit,
 };
 use crate::render::{logical_size, render_frame};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -32,6 +33,7 @@ const COMMAND_OPEN_GO_ONLINE: &str = "pane.go_online";
 const COMMAND_OPEN_PROVIDER_STATUS: &str = "pane.provider_status";
 const COMMAND_OPEN_EARNINGS_SCOREBOARD: &str = "pane.earnings_scoreboard";
 const COMMAND_OPEN_RELAY_CONNECTIONS: &str = "pane.relay_connections";
+const COMMAND_OPEN_SYNC_HEALTH: &str = "pane.sync_health";
 const COMMAND_OPEN_JOB_INBOX: &str = "pane.job_inbox";
 const COMMAND_OPEN_ACTIVE_JOB: &str = "pane.active_job";
 const COMMAND_OPEN_JOB_HISTORY: &str = "pane.job_history";
@@ -60,6 +62,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
         state.window.request_redraw();
     }
     refresh_earnings_scoreboard(state, now);
+    refresh_sync_health(state);
 
     match event {
         WindowEvent::CloseRequested => {
@@ -254,6 +257,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     handled |= handle_pay_invoice_action_click(state, app.cursor_position);
                     handled |= handle_create_invoice_action_click(state, app.cursor_position);
                     handled |= handle_relay_connections_action_click(state, app.cursor_position);
+                    handled |= handle_sync_health_action_click(state, app.cursor_position);
                     handled |= handle_chat_send_click(state, app.cursor_position);
                     handled |= handle_go_online_toggle_click(state, app.cursor_position);
                     handled |= handle_earnings_scoreboard_action_click(state, app.cursor_position);
@@ -457,6 +461,18 @@ fn handle_relay_connections_action_click(
 
     PaneController::bring_to_front(state, pane_id);
     run_relay_connections_action(state, action)
+}
+
+fn handle_sync_health_action_click(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    let Some((pane_id, action)) = topmost_sync_health_action_hit(state, point) else {
+        return false;
+    };
+
+    PaneController::bring_to_front(state, pane_id);
+    run_sync_health_action(state, action)
 }
 
 fn handle_chat_send_click(state: &mut crate::app_state::RenderState, point: Point) -> bool {
@@ -899,7 +915,6 @@ fn run_relay_connections_action(
             } else {
                 state.relay_connections.load_state = crate::app_state::PaneLoadState::Ready;
             }
-            true
         }
         RelayConnectionsPaneAction::AddRelay => {
             let relay_url = state.relay_connections_inputs.relay_url.get_value();
@@ -912,7 +927,6 @@ fn run_relay_connections_action(
                     state.relay_connections.last_error = Some(error);
                 }
             }
-            true
         }
         RelayConnectionsPaneAction::RemoveSelected => {
             match state.relay_connections.remove_selected() {
@@ -923,7 +937,6 @@ fn run_relay_connections_action(
                     state.relay_connections.last_error = Some(error);
                 }
             }
-            true
         }
         RelayConnectionsPaneAction::RetrySelected => {
             match state.relay_connections.retry_selected() {
@@ -934,6 +947,25 @@ fn run_relay_connections_action(
                     state.relay_connections.last_error = Some(error);
                 }
             }
+        }
+    }
+
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    refresh_sync_health(state);
+    true
+}
+
+fn run_sync_health_action(
+    state: &mut crate::app_state::RenderState,
+    action: SyncHealthPaneAction,
+) -> bool {
+    match action {
+        SyncHealthPaneAction::Rebootstrap => {
+            state.sync_health.rebootstrap();
+            state.provider_runtime.last_result = state.sync_health.last_action.clone();
+            refresh_sync_health(state);
             true
         }
     }
@@ -945,6 +977,14 @@ fn refresh_earnings_scoreboard(state: &mut crate::app_state::RenderState, now: s
         &state.provider_runtime,
         &state.job_history,
         &state.spark_wallet,
+    );
+}
+
+fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
+    state.sync_health.refresh_from_runtime(
+        std::time::Instant::now(),
+        &state.provider_runtime,
+        &state.relay_connections,
     );
 }
 
@@ -1308,6 +1348,11 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
             }
             COMMAND_OPEN_RELAY_CONNECTIONS => {
                 PaneController::create_relay_connections(state);
+                changed = true;
+            }
+            COMMAND_OPEN_SYNC_HEALTH => {
+                PaneController::create_sync_health(state);
+                refresh_sync_health(state);
                 changed = true;
             }
             COMMAND_OPEN_JOB_INBOX => {

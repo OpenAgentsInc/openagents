@@ -17,6 +17,10 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields.
   - Inputs/actions: add relay (`wss://` validation), select row, retry selected, remove selected.
   - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Sync Health`
+  - Spacetime sync diagnostics for connection state, subscription state, cursor progress, stale detection, replay count, and duplicate-drop count.
+  - Action: `Rebootstrap sync` for deterministic recovery lifecycle reset.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Earnings Scoreboard`
   - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
   - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
@@ -66,6 +70,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - `Provider Status` -> opens `Provider Status`.
   - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
   - `Relay Connections` -> opens `Relay Connections`.
+  - `Sync Health` -> opens `Sync Health`.
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
@@ -76,6 +81,6 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Relay Connections, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

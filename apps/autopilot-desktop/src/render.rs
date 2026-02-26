@@ -131,6 +131,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
+            sync_health: crate::app_state::SyncHealthState::default(),
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
@@ -182,6 +183,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
             &state.relay_connections,
+            &state.sync_health,
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
@@ -273,6 +275,9 @@ fn command_registry() -> Vec<Command> {
         Command::new("pane.relay_connections", "Relay Connections")
             .description("Open relay connectivity and retry controls")
             .category("Panes"),
+        Command::new("pane.sync_health", "Sync Health")
+            .description("Open spacetime subscription and stale-cursor diagnostics pane")
+            .category("Panes"),
         Command::new("pane.job_inbox", "Job Inbox")
             .description("Open incoming NIP-90 request intake pane")
             .category("Panes"),
@@ -322,6 +327,11 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.relay_connections" && command.label == "Relay Connections"
         }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.sync_health" && command.label == "Sync Health"
+            })
+        );
         assert!(
             commands
                 .iter()

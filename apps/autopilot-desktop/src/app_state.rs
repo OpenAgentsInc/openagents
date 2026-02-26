@@ -37,6 +37,7 @@ pub enum PaneKind {
     ProviderStatus,
     EarningsScoreboard,
     RelayConnections,
+    SyncHealth,
     JobInbox,
     ActiveJob,
     JobHistory,
@@ -494,6 +495,113 @@ impl RelayConnectionsState {
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(format!("Retried relay {selected}"));
         Ok(selected)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SyncRecoveryPhase {
+    Idle,
+    Reconnecting,
+    Replaying,
+    Ready,
+}
+
+impl SyncRecoveryPhase {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Reconnecting => "reconnecting",
+            Self::Replaying => "replaying",
+            Self::Ready => "ready",
+        }
+    }
+}
+
+pub struct SyncHealthState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub spacetime_connection: String,
+    pub subscription_state: String,
+    pub cursor_position: u64,
+    pub cursor_stale_after_seconds: u64,
+    pub cursor_last_advanced_seconds_ago: u64,
+    pub recovery_phase: SyncRecoveryPhase,
+    pub last_applied_event_seq: u64,
+    pub duplicate_drop_count: u64,
+    pub replay_count: u32,
+}
+
+impl Default for SyncHealthState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Sync health hydrated from local spacetime cache".to_string()),
+            spacetime_connection: "connected".to_string(),
+            subscription_state: "subscribed".to_string(),
+            cursor_position: 4312,
+            cursor_stale_after_seconds: 12,
+            cursor_last_advanced_seconds_ago: 2,
+            recovery_phase: SyncRecoveryPhase::Idle,
+            last_applied_event_seq: 4312,
+            duplicate_drop_count: 17,
+            replay_count: 0,
+        }
+    }
+}
+
+impl SyncHealthState {
+    pub fn cursor_is_stale(&self) -> bool {
+        self.cursor_last_advanced_seconds_ago > self.cursor_stale_after_seconds
+    }
+
+    pub fn rebootstrap(&mut self) {
+        self.replay_count = self.replay_count.saturating_add(1);
+        self.recovery_phase = SyncRecoveryPhase::Replaying;
+        self.cursor_position = self.last_applied_event_seq;
+        self.cursor_last_advanced_seconds_ago = 0;
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(format!(
+            "Rebootstrapped sync stream (attempt #{})",
+            self.replay_count
+        ));
+    }
+
+    pub fn refresh_from_runtime(
+        &mut self,
+        now: Instant,
+        provider_runtime: &ProviderRuntimeState,
+        relay_connections: &RelayConnectionsState,
+    ) {
+        self.spacetime_connection = provider_runtime.mode.label().to_string();
+        let connected_relays = relay_connections
+            .relays
+            .iter()
+            .filter(|relay| relay.status == RelayConnectionStatus::Connected)
+            .count();
+        self.subscription_state = if connected_relays > 0 {
+            "subscribed".to_string()
+        } else {
+            "resubscribing".to_string()
+        };
+        if let Some(age) = provider_runtime.heartbeat_age_seconds(now) {
+            self.cursor_last_advanced_seconds_ago = age;
+        } else {
+            self.cursor_last_advanced_seconds_ago =
+                self.cursor_last_advanced_seconds_ago.saturating_add(1);
+        }
+
+        if self.cursor_is_stale() {
+            self.load_state = PaneLoadState::Error;
+            self.recovery_phase = SyncRecoveryPhase::Reconnecting;
+            self.last_error = Some("Cursor stalled beyond stale threshold".to_string());
+        } else if self.recovery_phase != SyncRecoveryPhase::Replaying {
+            self.load_state = PaneLoadState::Ready;
+            self.recovery_phase = SyncRecoveryPhase::Ready;
+            self.last_error = None;
+        }
     }
 }
 
@@ -1461,6 +1569,7 @@ pub struct RenderState {
     pub provider_runtime: ProviderRuntimeState,
     pub earnings_scoreboard: EarningsScoreboardState,
     pub relay_connections: RelayConnectionsState,
+    pub sync_health: SyncHealthState,
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
@@ -1493,7 +1602,8 @@ mod tests {
         JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
         JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
         JobLifecycleStage, NostrSecretState, ProviderBlocker, ProviderMode, ProviderRuntimeState,
-        RelayConnectionStatus, RelayConnectionsState, SparkPaneState,
+        RelayConnectionStatus, RelayConnectionsState, SparkPaneState, SyncHealthState,
+        SyncRecoveryPhase,
     };
 
     #[test]
@@ -1692,6 +1802,23 @@ mod tests {
                 .iter()
                 .all(|row| row.url != "wss://relay.new.example")
         );
+    }
+
+    #[test]
+    fn sync_health_detects_stale_cursor_and_rebootstrap() {
+        let provider = ProviderRuntimeState::default();
+        let relays = RelayConnectionsState::default();
+        let mut sync = SyncHealthState::default();
+
+        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
+        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        assert_eq!(sync.load_state, super::PaneLoadState::Error);
+        assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Reconnecting);
+
+        sync.rebootstrap();
+        assert_eq!(sync.load_state, super::PaneLoadState::Ready);
+        assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Replaying);
+        assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
     }
 
     #[test]
