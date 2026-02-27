@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 29] = [
+const PANE_SPECS: [PaneSpec; 32] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -107,6 +107,51 @@ const PANE_SPECS: [PaneSpec; 29] = [
             id: "pane.codex",
             label: "Codex",
             description: "Open Codex chat threads and model controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexAccount,
+        title: "Codex Account",
+        default_width: 720.0,
+        default_height: 360.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_account",
+            label: "Codex Account",
+            description: "Open Codex account auth and rate-limit controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexModels,
+        title: "Codex Models",
+        default_width: 860.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_models",
+            label: "Codex Models",
+            description: "Open Codex model catalog and reroute view",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexConfig,
+        title: "Codex Config",
+        default_width: 860.0,
+        default_height: 420.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_config",
+            label: "Codex Config",
+            description: "Open Codex config, requirements, and external import tools",
             keybinding: None,
         }),
         hotbar: None,

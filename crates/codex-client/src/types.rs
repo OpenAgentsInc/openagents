@@ -293,6 +293,8 @@ pub struct ModelInfo {
     pub display_name: String,
     pub description: String,
     #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
     pub supported_reasoning_efforts: Vec<ReasoningEffortOption>,
     pub default_reasoning_effort: ReasoningEffort,
     #[serde(default)]

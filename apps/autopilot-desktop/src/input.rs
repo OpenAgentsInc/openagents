@@ -1,10 +1,12 @@
 use codex_client::{
     ApprovalDecision, ChatgptAuthTokensRefreshResponse, CommandExecutionRequestApprovalResponse,
-    DynamicToolCallOutputContentItem, DynamicToolCallResponse, FileChangeRequestApprovalResponse,
-    ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
-    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
-    ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
-    TurnStartParams, UserInput,
+    ConfigBatchWriteParams, ConfigEdit, ConfigReadParams, ConfigValueWriteParams,
+    DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExternalAgentConfigDetectParams,
+    ExternalAgentConfigImportParams, FileChangeRequestApprovalResponse, GetAccountParams,
+    LoginAccountParams, MergeStrategy, ModelListParams, ThreadArchiveParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams, ThreadResumeParams,
+    ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
+    ToolRequestUserInputAnswer, ToolRequestUserInputResponse, TurnStartParams, UserInput,
 };
 use nostr::regenerate_identity;
 use std::collections::HashMap;
@@ -29,6 +31,7 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
+    CodexAccountPaneAction, CodexConfigPaneAction, CodexModelsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
     PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
@@ -480,6 +483,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
             }
             true
         }
+        PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
+        PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
+        PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
@@ -1247,6 +1253,242 @@ fn run_chat_auth_refresh_response_action(state: &mut crate::app_state::RenderSta
             .record_turn_timeline_event("auth refresh response submitted");
     }
     true
+}
+
+fn run_codex_account_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexAccountPaneAction,
+) -> bool {
+    match action {
+        CodexAccountPaneAction::Refresh => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/read".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AccountRead(GetAccountParams {
+                    refresh_token: true,
+                }),
+            ) {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::LoginChatgpt => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action =
+                Some("Queued account/login/start (chatgpt)".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AccountLoginStart(LoginAccountParams::Chatgpt),
+            ) {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::CancelLogin => {
+            let Some(login_id) = state.codex_account.pending_login_id.clone() else {
+                state.codex_account.last_error = Some("No pending login id to cancel".to_string());
+                return true;
+            };
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action =
+                Some(format!("Queued account/login/cancel for {login_id}"));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountLoginCancel(
+                    codex_client::CancelLoginAccountParams { login_id },
+                ))
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::Logout => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/logout".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountLogout)
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+        CodexAccountPaneAction::RateLimits => {
+            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_account.last_error = None;
+            state.codex_account.last_action = Some("Queued account/rateLimits/read".to_string());
+            if let Err(error) = state
+                .queue_codex_command(crate::codex_lane::CodexLaneCommand::AccountRateLimitsRead)
+            {
+                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_account.last_error = Some(error);
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_models_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexModelsPaneAction,
+) -> bool {
+    match action {
+        CodexModelsPaneAction::Refresh => {
+            state.codex_models.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_models.last_error = None;
+            state.codex_models.last_action = Some(format!(
+                "Queued model/list includeHidden={}",
+                state.codex_models.include_hidden
+            ));
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ModelList(ModelListParams {
+                    cursor: None,
+                    limit: Some(100),
+                    include_hidden: Some(state.codex_models.include_hidden),
+                }),
+            ) {
+                state.codex_models.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_models.last_error = Some(error);
+            }
+            true
+        }
+        CodexModelsPaneAction::ToggleHidden => {
+            state.codex_models.include_hidden = !state.codex_models.include_hidden;
+            run_codex_models_action(state, CodexModelsPaneAction::Refresh)
+        }
+    }
+}
+
+fn run_codex_config_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexConfigPaneAction,
+) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    match action {
+        CodexConfigPaneAction::Read => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/read".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigRead(ConfigReadParams {
+                    include_layers: true,
+                    cwd,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::Requirements => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued configRequirements/read".to_string());
+            if let Err(error) = state
+                .queue_codex_command(crate::codex_lane::CodexLaneCommand::ConfigRequirementsRead)
+            {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::WriteSample => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/value/write sample".to_string());
+            let value = serde_json::Value::String(state.autopilot_chat.current_model().to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigValueWrite(ConfigValueWriteParams {
+                    key_path: "model".to_string(),
+                    value,
+                    merge_strategy: MergeStrategy::Replace,
+                    file_path: None,
+                    expected_version: None,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::BatchWriteSample => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued config/batchWrite sample".to_string());
+            let reasoning = state
+                .autopilot_chat
+                .reasoning_effort
+                .clone()
+                .unwrap_or_else(|| "medium".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ConfigBatchWrite(ConfigBatchWriteParams {
+                    edits: vec![
+                        ConfigEdit {
+                            key_path: "model".to_string(),
+                            value: serde_json::Value::String(
+                                state.autopilot_chat.current_model().to_string(),
+                            ),
+                            merge_strategy: MergeStrategy::Replace,
+                        },
+                        ConfigEdit {
+                            key_path: "modelReasoningEffort".to_string(),
+                            value: serde_json::Value::String(reasoning),
+                            merge_strategy: MergeStrategy::Replace,
+                        },
+                    ],
+                    file_path: None,
+                    expected_version: None,
+                }),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::DetectExternal => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some("Queued externalAgentConfig/detect".to_string());
+            let cwds = std::env::current_dir().ok().map(|value| vec![value]);
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ExternalAgentConfigDetect(
+                    ExternalAgentConfigDetectParams {
+                        include_home: true,
+                        cwds,
+                    },
+                ),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+        CodexConfigPaneAction::ImportExternal => {
+            state.codex_config.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_config.last_error = None;
+            state.codex_config.last_action = Some(
+                "Queued externalAgentConfig/import (migrationItems empty placeholder)".to_string(),
+            );
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::ExternalAgentConfigImport(
+                    ExternalAgentConfigImportParams {
+                        migration_items: Vec::new(),
+                    },
+                ),
+            ) {
+                state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+    }
 }
 
 fn run_earnings_scoreboard_action(

@@ -7,12 +7,14 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AppServerRequestId, AskForApproval, ChatgptAuthTokensRefreshParams,
+    AppServerRequestId, AskForApproval, CancelLoginAccountParams, ChatgptAuthTokensRefreshParams,
     ChatgptAuthTokensRefreshResponse, ClientInfo, CommandExecutionRequestApprovalParams,
-    CommandExecutionRequestApprovalResponse, DynamicToolCallOutputContentItem,
-    DynamicToolCallParams, DynamicToolCallResponse, FileChangeRequestApprovalParams,
-    FileChangeRequestApprovalResponse, InitializeCapabilities, InitializeParams, ModelListParams,
-    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadArchiveParams,
+    CommandExecutionRequestApprovalResponse, ConfigBatchWriteParams, ConfigReadParams,
+    ConfigValueWriteParams, DynamicToolCallOutputContentItem, DynamicToolCallParams,
+    DynamicToolCallResponse, ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
+    FileChangeRequestApprovalParams, FileChangeRequestApprovalResponse, GetAccountParams,
+    InitializeCapabilities, InitializeParams, LoginAccountParams, ModelListParams, SkillScope,
+    SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadArchiveParams,
     ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
     ThreadReadParams, ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams,
     ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
@@ -114,6 +116,18 @@ pub enum CodexLaneCommandKind {
     ServerRequestToolCallRespond,
     ServerRequestToolUserInputRespond,
     ServerRequestAuthRefreshRespond,
+    AccountRead,
+    AccountLoginStart,
+    AccountLoginCancel,
+    AccountLogout,
+    AccountRateLimitsRead,
+    ModelList,
+    ConfigRead,
+    ConfigRequirementsRead,
+    ConfigValueWrite,
+    ConfigBatchWrite,
+    ExternalAgentConfigDetect,
+    ExternalAgentConfigImport,
     SkillsList,
     SkillsConfigWrite,
 }
@@ -142,6 +156,18 @@ impl CodexLaneCommandKind {
             Self::ServerRequestToolCallRespond => "item/tool/call:respond",
             Self::ServerRequestToolUserInputRespond => "item/tool/requestUserInput:respond",
             Self::ServerRequestAuthRefreshRespond => "account/chatgptAuthTokens/refresh:respond",
+            Self::AccountRead => "account/read",
+            Self::AccountLoginStart => "account/login/start",
+            Self::AccountLoginCancel => "account/login/cancel",
+            Self::AccountLogout => "account/logout",
+            Self::AccountRateLimitsRead => "account/rateLimits/read",
+            Self::ModelList => "model/list",
+            Self::ConfigRead => "config/read",
+            Self::ConfigRequirementsRead => "configRequirements/read",
+            Self::ConfigValueWrite => "config/value/write",
+            Self::ConfigBatchWrite => "config/batchWrite",
+            Self::ExternalAgentConfigDetect => "externalAgentConfig/detect",
+            Self::ExternalAgentConfigImport => "externalAgentConfig/import",
             Self::SkillsList => "skills/list",
             Self::SkillsConfigWrite => "skills/config/write",
         }
@@ -210,6 +236,18 @@ pub enum CodexLaneCommand {
         request_id: AppServerRequestId,
         response: ChatgptAuthTokensRefreshResponse,
     },
+    AccountRead(GetAccountParams),
+    AccountLoginStart(LoginAccountParams),
+    AccountLoginCancel(CancelLoginAccountParams),
+    AccountLogout,
+    AccountRateLimitsRead,
+    ModelList(ModelListParams),
+    ConfigRead(ConfigReadParams),
+    ConfigRequirementsRead,
+    ConfigValueWrite(ConfigValueWriteParams),
+    ConfigBatchWrite(ConfigBatchWriteParams),
+    ExternalAgentConfigDetect(ExternalAgentConfigDetectParams),
+    ExternalAgentConfigImport(ExternalAgentConfigImportParams),
     SkillsList(SkillsListParams),
     SkillsConfigWrite(SkillsConfigWriteParams),
 }
@@ -246,6 +284,18 @@ impl CodexLaneCommand {
             Self::ServerRequestAuthRefreshRespond { .. } => {
                 CodexLaneCommandKind::ServerRequestAuthRefreshRespond
             }
+            Self::AccountRead(_) => CodexLaneCommandKind::AccountRead,
+            Self::AccountLoginStart(_) => CodexLaneCommandKind::AccountLoginStart,
+            Self::AccountLoginCancel(_) => CodexLaneCommandKind::AccountLoginCancel,
+            Self::AccountLogout => CodexLaneCommandKind::AccountLogout,
+            Self::AccountRateLimitsRead => CodexLaneCommandKind::AccountRateLimitsRead,
+            Self::ModelList(_) => CodexLaneCommandKind::ModelList,
+            Self::ConfigRead(_) => CodexLaneCommandKind::ConfigRead,
+            Self::ConfigRequirementsRead => CodexLaneCommandKind::ConfigRequirementsRead,
+            Self::ConfigValueWrite(_) => CodexLaneCommandKind::ConfigValueWrite,
+            Self::ConfigBatchWrite(_) => CodexLaneCommandKind::ConfigBatchWrite,
+            Self::ExternalAgentConfigDetect(_) => CodexLaneCommandKind::ExternalAgentConfigDetect,
+            Self::ExternalAgentConfigImport(_) => CodexLaneCommandKind::ExternalAgentConfigImport,
             Self::SkillsList(_) => CodexLaneCommandKind::SkillsList,
             Self::SkillsConfigWrite(_) => CodexLaneCommandKind::SkillsConfigWrite,
         }
@@ -261,6 +311,51 @@ pub enum CodexLaneNotification {
         models: Vec<String>,
         default_model: Option<String>,
     },
+    ModelCatalogLoaded {
+        entries: Vec<CodexModelCatalogEntry>,
+        include_hidden: bool,
+        default_model: Option<String>,
+    },
+    ModelRerouted {
+        thread_id: String,
+        turn_id: String,
+        from_model: String,
+        to_model: String,
+        reason: String,
+    },
+    AccountLoaded {
+        summary: String,
+        requires_openai_auth: bool,
+    },
+    AccountRateLimitsLoaded {
+        summary: String,
+    },
+    AccountUpdated {
+        auth_mode: Option<String>,
+    },
+    AccountLoginStarted {
+        login_id: Option<String>,
+        auth_url: Option<String>,
+    },
+    AccountLoginCompleted {
+        login_id: Option<String>,
+        success: bool,
+        error: Option<String>,
+    },
+    ConfigLoaded {
+        config: String,
+    },
+    ConfigRequirementsLoaded {
+        requirements: String,
+    },
+    ConfigWriteApplied {
+        status: String,
+        version: String,
+    },
+    ExternalAgentConfigDetected {
+        count: usize,
+    },
+    ExternalAgentConfigImported,
     ThreadListLoaded {
         entries: Vec<CodexThreadListEntry>,
     },
@@ -394,6 +489,17 @@ pub struct CodexThreadListEntry {
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexModelCatalogEntry {
+    pub model: String,
+    pub display_name: String,
+    pub description: String,
+    pub hidden: bool,
+    pub is_default: bool,
+    pub default_reasoning_effort: String,
+    pub supported_reasoning_efforts: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1010,6 +1116,133 @@ impl CodexLaneState {
                     notification: None,
                 })
             }
+            CodexLaneCommand::AccountRead(params) => {
+                let response = runtime.block_on(client.account_read(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::AccountLoaded {
+                        summary: account_summary(&response),
+                        requires_openai_auth: response.requires_openai_auth,
+                    }),
+                })
+            }
+            CodexLaneCommand::AccountLoginStart(params) => {
+                let response = runtime.block_on(client.account_login_start(params))?;
+                let (login_id, auth_url) = match response {
+                    codex_client::LoginAccountResponse::ApiKey => (None, None),
+                    codex_client::LoginAccountResponse::Chatgpt { login_id, auth_url } => {
+                        (Some(login_id), Some(auth_url))
+                    }
+                };
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::AccountLoginStarted {
+                        login_id,
+                        auth_url,
+                    }),
+                })
+            }
+            CodexLaneCommand::AccountLoginCancel(params) => {
+                let _ = runtime.block_on(client.account_login_cancel(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::AccountLogout => {
+                let _ = runtime.block_on(client.account_logout())?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::AccountLoaded {
+                        summary: "logged out".to_string(),
+                        requires_openai_auth: true,
+                    }),
+                })
+            }
+            CodexLaneCommand::AccountRateLimitsRead => {
+                let response = runtime.block_on(client.account_rate_limits_read())?;
+                let summary = serde_json::to_value(&response.rate_limits)
+                    .map(|value| rate_limits_summary(&value))
+                    .unwrap_or_else(|_| "rate limits unavailable".to_string());
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::AccountRateLimitsLoaded { summary }),
+                })
+            }
+            CodexLaneCommand::ModelList(params) => {
+                let include_hidden = params.include_hidden.unwrap_or(false);
+                let (entries, default_model) =
+                    fetch_model_catalog_entries(runtime, client, params)?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ModelCatalogLoaded {
+                        entries,
+                        include_hidden,
+                        default_model,
+                    }),
+                })
+            }
+            CodexLaneCommand::ConfigRead(params) => {
+                let response = runtime.block_on(client.config_read(params))?;
+                let config = serde_json::to_string_pretty(&response.config)
+                    .unwrap_or_else(|_| "{}".to_string());
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ConfigLoaded { config }),
+                })
+            }
+            CodexLaneCommand::ConfigRequirementsRead => {
+                let response = runtime.block_on(client.config_requirements_read())?;
+                let requirements = response
+                    .requirements
+                    .as_ref()
+                    .map(|value| {
+                        serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+                    })
+                    .unwrap_or_else(|| "null".to_string());
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ConfigRequirementsLoaded {
+                        requirements,
+                    }),
+                })
+            }
+            CodexLaneCommand::ConfigValueWrite(params) => {
+                let response = runtime.block_on(client.config_value_write(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ConfigWriteApplied {
+                        status: response.status,
+                        version: response.version,
+                    }),
+                })
+            }
+            CodexLaneCommand::ConfigBatchWrite(params) => {
+                let response = runtime.block_on(client.config_batch_write(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ConfigWriteApplied {
+                        status: response.status,
+                        version: response.version,
+                    }),
+                })
+            }
+            CodexLaneCommand::ExternalAgentConfigDetect(params) => {
+                let response = runtime.block_on(client.external_agent_config_detect(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ExternalAgentConfigDetected {
+                        count: response.items.len(),
+                    }),
+                })
+            }
+            CodexLaneCommand::ExternalAgentConfigImport(params) => {
+                let _ = runtime.block_on(client.external_agent_config_import(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ExternalAgentConfigImported),
+                })
+            }
             CodexLaneCommand::SkillsList(params) => {
                 let response = runtime.block_on(client.skills_list(params))?;
                 let entries = summarize_skills_list_response(response);
@@ -1447,6 +1680,40 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                 thread_name: string_field(&params, "threadName"),
             })
         }
+        "account/updated" => {
+            let params = params?;
+            Some(CodexLaneNotification::AccountUpdated {
+                auth_mode: string_field(&params, "authMode"),
+            })
+        }
+        "account/login/completed" => {
+            let params = params?;
+            Some(CodexLaneNotification::AccountLoginCompleted {
+                login_id: string_field(&params, "loginId"),
+                success: params
+                    .get("success")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                error: string_field(&params, "error"),
+            })
+        }
+        "account/rateLimits/updated" => {
+            let params = params?;
+            let rate_limits = params.get("rateLimits")?;
+            Some(CodexLaneNotification::AccountRateLimitsLoaded {
+                summary: rate_limits_summary(rate_limits),
+            })
+        }
+        "model/rerouted" => {
+            let params = params?;
+            Some(CodexLaneNotification::ModelRerouted {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                from_model: string_field(&params, "fromModel")?,
+                to_model: string_field(&params, "toModel")?,
+                reason: string_field(&params, "reason").unwrap_or_else(|| "unknown".to_string()),
+            })
+        }
         "turn/started" => {
             let params = params?;
             let thread_id = string_field(&params, "threadId")?;
@@ -1699,18 +1966,51 @@ fn summarize_skills_list_response(response: SkillsListResponse) -> Vec<CodexSkil
         .collect()
 }
 
-fn fetch_model_catalog(
+fn account_summary(response: &codex_client::GetAccountResponse) -> String {
+    match response.account.as_ref() {
+        Some(codex_client::AccountInfo::ApiKey) => "apiKey".to_string(),
+        Some(codex_client::AccountInfo::Chatgpt { email, plan_type }) => {
+            format!("chatgpt:{}:{plan_type:?}", email)
+        }
+        None => "none".to_string(),
+    }
+}
+
+fn rate_limits_summary(rate_limits: &Value) -> String {
+    let plan = rate_limits
+        .get("planType")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let primary_used = rate_limits
+        .get("primary")
+        .and_then(|value| value.get("usedPercent"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let secondary_used = rate_limits
+        .get("secondary")
+        .and_then(|value| value.get("usedPercent"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    format!("plan={plan} primary={primary_used}% secondary={secondary_used}%")
+}
+
+fn fetch_model_catalog_entries(
     runtime: &Runtime,
     client: &AppServerClient,
-) -> Result<(Vec<String>, Option<String>)> {
-    let mut cursor = None;
-    let mut raw = Vec::<(String, bool)>::new();
+    params: ModelListParams,
+) -> Result<(Vec<CodexModelCatalogEntry>, Option<String>)> {
+    let mut cursor = params.cursor;
+    let limit = params.limit.or(Some(100));
+    let include_hidden = params.include_hidden;
+    let mut seen = HashSet::new();
+    let mut entries = Vec::new();
+    let mut default_model = None;
 
     loop {
         let response = runtime.block_on(client.model_list(ModelListParams {
             cursor: cursor.clone(),
-            limit: Some(100),
-            include_hidden: None,
+            limit,
+            include_hidden,
         }))?;
 
         for model in response.data {
@@ -1718,7 +2018,38 @@ fn fetch_model_catalog(
             if value.is_empty() {
                 continue;
             }
-            raw.push((value.to_string(), model.is_default));
+            if !seen.insert(value.to_string()) {
+                continue;
+            }
+
+            if model.is_default && default_model.is_none() {
+                default_model = Some(value.to_string());
+            }
+
+            let default_reasoning_effort = serde_json::to_string(&model.default_reasoning_effort)
+                .unwrap_or_else(|_| "\"unknown\"".to_string())
+                .trim_matches('"')
+                .to_string();
+            let supported_reasoning_efforts = model
+                .supported_reasoning_efforts
+                .iter()
+                .map(|effort| {
+                    serde_json::to_string(&effort.reasoning_effort)
+                        .unwrap_or_else(|_| "\"unknown\"".to_string())
+                        .trim_matches('"')
+                        .to_string()
+                })
+                .collect();
+
+            entries.push(CodexModelCatalogEntry {
+                model: value.to_string(),
+                display_name: model.display_name,
+                description: model.description,
+                hidden: model.hidden,
+                is_default: model.is_default,
+                default_reasoning_effort,
+                supported_reasoning_efforts,
+            });
         }
 
         match response.next_cursor {
@@ -1729,19 +2060,23 @@ fn fetch_model_catalog(
         }
     }
 
-    let mut seen = HashSet::new();
-    let mut models = Vec::new();
-    let mut default_model = None;
-    for (model, is_default) in raw {
-        if !seen.insert(model.clone()) {
-            continue;
-        }
-        if is_default && default_model.is_none() {
-            default_model = Some(model.clone());
-        }
-        models.push(model);
-    }
+    Ok((entries, default_model))
+}
 
+fn fetch_model_catalog(
+    runtime: &Runtime,
+    client: &AppServerClient,
+) -> Result<(Vec<String>, Option<String>)> {
+    let (entries, default_model) = fetch_model_catalog_entries(
+        runtime,
+        client,
+        ModelListParams {
+            cursor: None,
+            limit: Some(100),
+            include_hidden: None,
+        },
+    )?;
+    let models = entries.into_iter().map(|entry| entry.model).collect();
     Ok((models, default_model))
 }
 

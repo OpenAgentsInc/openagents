@@ -46,6 +46,9 @@ impl Default for App {
 pub enum PaneKind {
     Empty,
     AutopilotChat,
+    CodexAccount,
+    CodexModels,
+    CodexConfig,
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
@@ -1861,6 +1864,88 @@ impl JobHistoryState {
     }
 }
 
+pub struct CodexAccountPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub account_summary: String,
+    pub requires_openai_auth: bool,
+    pub auth_mode: Option<String>,
+    pub pending_login_id: Option<String>,
+    pub pending_login_url: Option<String>,
+    pub rate_limits_summary: Option<String>,
+}
+
+impl Default for CodexAccountPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for account/read".to_string()),
+            account_summary: "unknown".to_string(),
+            requires_openai_auth: true,
+            auth_mode: None,
+            pending_login_id: None,
+            pending_login_url: None,
+            rate_limits_summary: None,
+        }
+    }
+}
+
+pub struct CodexModelCatalogEntryState {
+    pub model: String,
+    pub display_name: String,
+    pub description: String,
+    pub hidden: bool,
+    pub is_default: bool,
+    pub default_reasoning_effort: String,
+    pub supported_reasoning_efforts: Vec<String>,
+}
+
+pub struct CodexModelsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub include_hidden: bool,
+    pub entries: Vec<CodexModelCatalogEntryState>,
+    pub last_reroute: Option<String>,
+}
+
+impl Default for CodexModelsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for model/list".to_string()),
+            include_hidden: false,
+            entries: Vec::new(),
+            last_reroute: None,
+        }
+    }
+}
+
+pub struct CodexConfigPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub config_json: String,
+    pub requirements_json: String,
+    pub detected_external_configs: usize,
+}
+
+impl Default for CodexConfigPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for config/read".to_string()),
+            config_json: "{}".to_string(),
+            requirements_json: "null".to_string(),
+            detected_external_configs: 0,
+        }
+    }
+}
+
 pub struct AgentProfileStatePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2889,6 +2974,9 @@ impl NostrSecretState {
 }
 
 impl_pane_status_access!(
+    CodexAccountPaneState,
+    CodexModelsPaneState,
+    CodexConfigPaneState,
     RelayConnectionsState,
     SyncHealthState,
     NetworkRequestsState,
@@ -2939,6 +3027,9 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub codex_account: CodexAccountPaneState,
+    pub codex_models: CodexModelsPaneState,
+    pub codex_config: CodexConfigPaneState,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_worker: CodexLaneWorker,
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,

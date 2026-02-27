@@ -23,6 +23,7 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
 }
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLaneCommandResponse) {
+    let response_error = response.error.clone();
     if response.status != CodexLaneCommandStatus::Accepted {
         state.sync_health.last_error = response
             .error
@@ -75,6 +76,62 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
             Some("skills/config/write applied; refreshing list".to_string());
         queue_skills_list_refresh(state);
     }
+
+    match response.command {
+        CodexLaneCommandKind::AccountRead
+        | CodexLaneCommandKind::AccountLoginStart
+        | CodexLaneCommandKind::AccountLoginCancel
+        | CodexLaneCommandKind::AccountLogout
+        | CodexLaneCommandKind::AccountRateLimitsRead => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_account.load_state = PaneLoadState::Ready;
+                state.codex_account.last_error = None;
+                state.codex_account.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+                if response.command == CodexLaneCommandKind::AccountLoginCancel {
+                    state.codex_account.pending_login_id = None;
+                    state.codex_account.pending_login_url = None;
+                }
+            } else {
+                state.codex_account.load_state = PaneLoadState::Error;
+                state.codex_account.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} rejected", response.command.label())));
+            }
+        }
+        CodexLaneCommandKind::ModelList => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_models.load_state = PaneLoadState::Ready;
+                state.codex_models.last_error = None;
+                state.codex_models.last_action = Some("model/list accepted".to_string());
+            } else {
+                state.codex_models.load_state = PaneLoadState::Error;
+                state.codex_models.last_error = response_error
+                    .clone()
+                    .or_else(|| Some("model/list failed".to_string()));
+            }
+        }
+        CodexLaneCommandKind::ConfigRead
+        | CodexLaneCommandKind::ConfigRequirementsRead
+        | CodexLaneCommandKind::ConfigValueWrite
+        | CodexLaneCommandKind::ConfigBatchWrite
+        | CodexLaneCommandKind::ExternalAgentConfigDetect
+        | CodexLaneCommandKind::ExternalAgentConfigImport => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_config.load_state = PaneLoadState::Ready;
+                state.codex_config.last_error = None;
+                state.codex_config.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.codex_config.load_state = PaneLoadState::Error;
+                state.codex_config.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
+            }
+        }
+        _ => {}
+    }
+
     state.sync_health.last_action = Some(format!(
         "codex {} {}",
         response.command.label(),
@@ -145,6 +202,136 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             default_model,
         } => {
             state.autopilot_chat.set_models(models, default_model);
+        }
+        CodexLaneNotification::ModelCatalogLoaded {
+            entries,
+            include_hidden,
+            default_model,
+        } => {
+            let models = entries
+                .iter()
+                .map(|entry| entry.model.clone())
+                .collect::<Vec<_>>();
+            state.autopilot_chat.set_models(models, default_model);
+            state.codex_models.load_state = PaneLoadState::Ready;
+            state.codex_models.include_hidden = include_hidden;
+            state.codex_models.entries = entries
+                .into_iter()
+                .map(|entry| crate::app_state::CodexModelCatalogEntryState {
+                    model: entry.model,
+                    display_name: entry.display_name,
+                    description: entry.description,
+                    hidden: entry.hidden,
+                    is_default: entry.is_default,
+                    default_reasoning_effort: entry.default_reasoning_effort,
+                    supported_reasoning_efforts: entry.supported_reasoning_efforts,
+                })
+                .collect();
+            state.codex_models.last_error = None;
+            state.codex_models.last_action = Some(format!(
+                "Loaded {} model catalog entries",
+                state.codex_models.entries.len()
+            ));
+        }
+        CodexLaneNotification::ModelRerouted {
+            thread_id,
+            turn_id,
+            from_model,
+            to_model,
+            reason,
+        } => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "model rerouted {} -> {} ({})",
+                from_model, to_model, reason
+            ));
+            state.codex_models.last_reroute = Some(format!(
+                "thread={} turn={} {} -> {} ({})",
+                thread_id, turn_id, from_model, to_model, reason
+            ));
+            state.codex_models.last_action =
+                Some("Received model/rerouted notification".to_string());
+        }
+        CodexLaneNotification::AccountLoaded {
+            summary,
+            requires_openai_auth,
+        } => {
+            state.codex_account.load_state = PaneLoadState::Ready;
+            state.codex_account.account_summary = summary;
+            state.codex_account.requires_openai_auth = requires_openai_auth;
+            state.codex_account.last_action = Some("Loaded account state".to_string());
+            state.codex_account.last_error = None;
+        }
+        CodexLaneNotification::AccountRateLimitsLoaded { summary } => {
+            state.codex_account.load_state = PaneLoadState::Ready;
+            state.codex_account.rate_limits_summary = Some(summary);
+            state.codex_account.last_action = Some("Loaded account rate limits".to_string());
+            state.codex_account.last_error = None;
+        }
+        CodexLaneNotification::AccountUpdated { auth_mode } => {
+            state.codex_account.load_state = PaneLoadState::Ready;
+            state.codex_account.auth_mode = auth_mode;
+            state.codex_account.last_action = Some("Received account/updated".to_string());
+            state.codex_account.last_error = None;
+        }
+        CodexLaneNotification::AccountLoginStarted { login_id, auth_url } => {
+            state.codex_account.load_state = PaneLoadState::Ready;
+            state.codex_account.pending_login_id = login_id;
+            state.codex_account.pending_login_url = auth_url;
+            state.codex_account.last_action =
+                Some("Login started; complete auth in browser".to_string());
+            state.codex_account.last_error = None;
+        }
+        CodexLaneNotification::AccountLoginCompleted {
+            login_id,
+            success,
+            error,
+        } => {
+            state.codex_account.load_state = if success {
+                PaneLoadState::Ready
+            } else {
+                PaneLoadState::Error
+            };
+            let completed_login = login_id.unwrap_or_else(|| "unknown".to_string());
+            state.codex_account.last_action = Some(format!(
+                "Login completed for {} (success={})",
+                completed_login, success
+            ));
+            state.codex_account.last_error = if success { None } else { error };
+            state.codex_account.pending_login_id = None;
+            state.codex_account.pending_login_url = None;
+        }
+        CodexLaneNotification::ConfigLoaded { config } => {
+            state.codex_config.load_state = PaneLoadState::Ready;
+            state.codex_config.config_json = config;
+            state.codex_config.last_action = Some("Loaded config/read".to_string());
+            state.codex_config.last_error = None;
+        }
+        CodexLaneNotification::ConfigRequirementsLoaded { requirements } => {
+            state.codex_config.load_state = PaneLoadState::Ready;
+            state.codex_config.requirements_json = requirements;
+            state.codex_config.last_action = Some("Loaded config requirements".to_string());
+            state.codex_config.last_error = None;
+        }
+        CodexLaneNotification::ConfigWriteApplied { status, version } => {
+            state.codex_config.load_state = PaneLoadState::Ready;
+            state.codex_config.last_action = Some(format!(
+                "Config write applied status={} version={}",
+                status, version
+            ));
+            state.codex_config.last_error = None;
+        }
+        CodexLaneNotification::ExternalAgentConfigDetected { count } => {
+            state.codex_config.load_state = PaneLoadState::Ready;
+            state.codex_config.detected_external_configs = count;
+            state.codex_config.last_action =
+                Some(format!("Detected {} external agent configs", count));
+            state.codex_config.last_error = None;
+        }
+        CodexLaneNotification::ExternalAgentConfigImported => {
+            state.codex_config.load_state = PaneLoadState::Ready;
+            state.codex_config.last_action =
+                Some("External agent config import completed".to_string());
+            state.codex_config.last_error = None;
         }
         CodexLaneNotification::SkillsListLoaded { entries } => {
             state.skill_registry.source = "codex".to_string();

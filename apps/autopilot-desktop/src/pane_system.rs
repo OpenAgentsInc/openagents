@@ -81,6 +81,31 @@ pub enum JobHistoryPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexAccountPaneAction {
+    Refresh,
+    LoginChatgpt,
+    CancelLogin,
+    Logout,
+    RateLimits,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexModelsPaneAction {
+    Refresh,
+    ToggleHidden,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexConfigPaneAction {
+    Read,
+    Requirements,
+    WriteSample,
+    BatchWriteSample,
+    DetectExternal,
+    ImportExternal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EarningsScoreboardPaneAction {
     Refresh,
 }
@@ -229,6 +254,9 @@ pub enum PaneHitAction {
     ChatRespondAuthRefresh,
     ChatSelectThread(usize),
     GoOnlineToggle,
+    CodexAccount(CodexAccountPaneAction),
+    CodexModels(CodexModelsPaneAction),
+    CodexConfig(CodexConfigPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
@@ -610,6 +638,9 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::Empty
+            | PaneKind::CodexAccount
+            | PaneKind::CodexModels
+            | PaneKind::CodexConfig
             | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
@@ -868,6 +899,74 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
         width,
         34.0,
     )
+}
+
+fn codex_action_button_bounds(
+    content_bounds: Bounds,
+    row: usize,
+    col: usize,
+    columns: usize,
+) -> Bounds {
+    let columns = columns.max(1);
+    let gap = JOB_INBOX_BUTTON_GAP;
+    let usable_width =
+        (content_bounds.size.width - CHAT_PAD * 2.0 - gap * (columns as f32 - 1.0)).max(220.0);
+    let width = (usable_width / columns as f32).clamp(120.0, 220.0);
+    let x = content_bounds.origin.x + CHAT_PAD + col as f32 * (width + gap);
+    let y = content_bounds.origin.y + CHAT_PAD + row as f32 * (JOB_INBOX_BUTTON_HEIGHT + gap);
+    Bounds::new(x, y, width, JOB_INBOX_BUTTON_HEIGHT)
+}
+
+pub fn codex_account_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_account_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_account_cancel_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_account_logout_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 0, 3)
+}
+
+pub fn codex_account_rate_limits_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 1, 3)
+}
+
+pub fn codex_models_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_models_toggle_hidden_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 2)
+}
+
+pub fn codex_config_read_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_config_requirements_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_config_write_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_config_batch_write_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 0, 3)
+}
+
+pub fn codex_config_detect_external_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 1, 3)
+}
+
+pub fn codex_config_import_external_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 1, 2, 3)
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1731,6 +1830,72 @@ fn pane_hit_action_for_pane(
                 None
             }
         }
+        PaneKind::CodexAccount => {
+            if codex_account_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(CodexAccountPaneAction::Refresh));
+            }
+            if codex_account_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::LoginChatgpt,
+                ));
+            }
+            if codex_account_cancel_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::CancelLogin,
+                ));
+            }
+            if codex_account_logout_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(CodexAccountPaneAction::Logout));
+            }
+            if codex_account_rate_limits_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexAccount(
+                    CodexAccountPaneAction::RateLimits,
+                ));
+            }
+            None
+        }
+        PaneKind::CodexModels => {
+            if codex_models_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexModels(CodexModelsPaneAction::Refresh));
+            }
+            if codex_models_toggle_hidden_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexModels(
+                    CodexModelsPaneAction::ToggleHidden,
+                ));
+            }
+            None
+        }
+        PaneKind::CodexConfig => {
+            if codex_config_read_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(CodexConfigPaneAction::Read));
+            }
+            if codex_config_requirements_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::Requirements,
+                ));
+            }
+            if codex_config_write_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::WriteSample,
+                ));
+            }
+            if codex_config_batch_write_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::BatchWriteSample,
+                ));
+            }
+            if codex_config_detect_external_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::DetectExternal,
+                ));
+            }
+            if codex_config_import_external_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexConfig(
+                    CodexConfigPaneAction::ImportExternal,
+                ));
+            }
+            None
+        }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::EarningsScoreboard(
@@ -2351,24 +2516,30 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
-        chat_thread_rail_bounds, chat_transcript_bounds, credit_desk_envelope_button_bounds,
-        credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
-        credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
-        credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
-        earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
-        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
-        job_history_search_input_bounds, job_history_status_button_bounds,
-        job_history_time_button_bounds, job_inbox_accept_button_bounds,
-        job_inbox_reject_button_bounds, job_inbox_row_bounds, network_requests_budget_input_bounds,
-        network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
-        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
-        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-        relay_connections_row_bounds, relay_connections_url_input_bounds,
-        settings_provider_queue_input_bounds, settings_relay_input_bounds,
-        settings_reset_button_bounds, settings_save_button_bounds,
+        chat_thread_rail_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
+        codex_account_login_button_bounds, codex_account_logout_button_bounds,
+        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
+        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
+        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
+        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
+        codex_models_refresh_button_bounds, codex_models_toggle_hidden_button_bounds,
+        credit_desk_envelope_button_bounds, credit_desk_intent_button_bounds,
+        credit_desk_offer_button_bounds, credit_desk_spend_button_bounds,
+        credit_settlement_default_button_bounds, credit_settlement_reputation_button_bounds,
+        credit_settlement_verify_button_bounds, earnings_scoreboard_refresh_button_bounds,
+        go_online_toggle_button_bounds, job_history_next_page_button_bounds,
+        job_history_prev_page_button_bounds, job_history_search_input_bounds,
+        job_history_status_button_bounds, job_history_time_button_bounds,
+        job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
+        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
+        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
+        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
+        relay_connections_retry_button_bounds, relay_connections_row_bounds,
+        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
+        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -2437,6 +2608,36 @@ mod tests {
         assert!(content.contains(toggle.origin));
         assert!(toggle.max_x() <= content.max_x());
         assert!(toggle.max_y() <= content.max_y());
+    }
+
+    #[test]
+    fn codex_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 920.0, 420.0);
+        let account_refresh = codex_account_refresh_button_bounds(content);
+        let account_login = codex_account_login_button_bounds(content);
+        let account_cancel = codex_account_cancel_login_button_bounds(content);
+        let account_logout = codex_account_logout_button_bounds(content);
+        let account_limits = codex_account_rate_limits_button_bounds(content);
+        assert!(account_refresh.max_x() < account_login.min_x());
+        assert!(account_login.max_x() < account_cancel.min_x());
+        assert!(account_refresh.max_y() < account_logout.min_y());
+        assert!(account_logout.max_x() < account_limits.min_x());
+
+        let models_refresh = codex_models_refresh_button_bounds(content);
+        let models_toggle = codex_models_toggle_hidden_button_bounds(content);
+        assert!(models_refresh.max_x() < models_toggle.min_x());
+
+        let config_read = codex_config_read_button_bounds(content);
+        let config_requirements = codex_config_requirements_button_bounds(content);
+        let config_write = codex_config_write_button_bounds(content);
+        let config_batch = codex_config_batch_write_button_bounds(content);
+        let config_detect = codex_config_detect_external_button_bounds(content);
+        let config_import = codex_config_import_external_button_bounds(content);
+        assert!(config_read.max_x() < config_requirements.min_x());
+        assert!(config_requirements.max_x() < config_write.min_x());
+        assert!(config_read.max_y() < config_batch.min_y());
+        assert!(config_batch.max_x() < config_detect.min_x());
+        assert!(config_detect.max_x() < config_import.min_x());
     }
 
     #[test]
