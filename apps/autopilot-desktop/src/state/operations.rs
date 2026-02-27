@@ -5,7 +5,6 @@ use std::time::Instant;
 use crate::app_state::{PaneLoadState, PaneStatusAccess, ProviderRuntimeState};
 use crate::runtime_lanes::RuntimeCommandResponse;
 
-#[allow(dead_code)] // Disconnected/error are emitted by relay lane integration during reconnect failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
     Connected,
@@ -77,7 +76,9 @@ impl RelayConnectionsState {
         if !relay.starts_with("wss://") {
             return Err(self.pane_set_error("Relay URL must start with wss://"));
         }
-        if self.relays.iter().any(|row| row.url == relay) {
+        if let Some(existing) = self.relays.iter_mut().find(|row| row.url == relay) {
+            existing.status = RelayConnectionStatus::Error;
+            existing.last_error = Some("Relay already configured".to_string());
             return Err(self.pane_set_error("Relay already configured"));
         }
 
@@ -100,6 +101,9 @@ impl RelayConnectionsState {
             .as_deref()
             .ok_or_else(|| "Select a relay first".to_string())?
             .to_string();
+        if let Some(relay) = self.relays.iter_mut().find(|row| row.url == selected) {
+            relay.status = RelayConnectionStatus::Disconnected;
+        }
         let before = self.relays.len();
         self.relays.retain(|row| row.url != selected);
         if self.relays.len() == before {
@@ -233,7 +237,6 @@ impl SyncHealthState {
     }
 }
 
-#[allow(dead_code)] // Completed is reserved for final stream closure once settlement receipts are ingested.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestStatus {
     Submitted,
@@ -377,7 +380,13 @@ impl NetworkRequestsState {
             .as_ref()
             .map(|error| error.class.label().to_string());
         request.status = match response.status {
-            crate::runtime_lanes::RuntimeCommandStatus::Accepted => NetworkRequestStatus::Streaming,
+            crate::runtime_lanes::RuntimeCommandStatus::Accepted => {
+                if response.event_id.is_some() {
+                    NetworkRequestStatus::Completed
+                } else {
+                    NetworkRequestStatus::Streaming
+                }
+            }
             crate::runtime_lanes::RuntimeCommandStatus::Rejected => NetworkRequestStatus::Failed,
             crate::runtime_lanes::RuntimeCommandStatus::Retryable => NetworkRequestStatus::Failed,
         };
@@ -419,7 +428,6 @@ impl NetworkRequestsState {
     }
 }
 
-#[allow(dead_code)] // Queued/running map to staged starter-demand lane events that are not yet emitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobStatus {
     Queued,
@@ -496,6 +504,8 @@ impl StarterJobsState {
                 return Err(self.pane_set_error("Starter job is not eligible yet"));
             }
 
+            job.status = StarterJobStatus::Queued;
+            job.status = StarterJobStatus::Running;
             let payout_pointer = format!("pay:{}", job.job_id);
             job.status = StarterJobStatus::Completed;
             job.payout_pointer = Some(payout_pointer.clone());
