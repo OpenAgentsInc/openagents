@@ -21,7 +21,7 @@ This plan is constrained by:
 
 - `crates/nostr/core` currently only provides identity/NIP-06 helpers (`identity.rs`, `nip06.rs`).
 - `crates/nostr/nips` contains draft specs for SA/SKL/AC but no corresponding runtime modules in `crates/nostr/core`.
-- No in-repo implementation currently exists for SKL kinds (`33400`, `33401`, `31337`, `5390`, `6390`) or AC kinds (`39240` to `39245`).
+- No in-repo implementation currently exists for SKL core kinds (`33400`, `33401`) or AC kinds (`39240` to `39245`).
 
 ### 2.2 Desktop status
 
@@ -63,9 +63,8 @@ Not available as ready-to-pull Nostr modules:
 
 - `33400` Skill Manifest
 - `33401` Skill Version Log
-- `31337` Lightweight Skill Advertisement
-- `5390` Skill Search DVM Request
-- `6390` Skill Search DVM Result
+- Optional profile: `5390` Skill Search DVM Request
+- Optional profile: `6390` Skill Search DVM Result
 - Reused kinds: `1985` (NIP-32 attestation), `5` (NIP-09 revocation), `30402` (NIP-99 listing), `39220/39221` (NIP-SA fulfillment), `39230/39231` (NIP-SA trajectory audit)
 - Canonical cross-NIP scope tag to emit: `skill_scope_id = 33400:<skill_npub>:<d-tag>:<version>`
 
@@ -87,7 +86,6 @@ Mandatory for MVP implementation:
 - NIP-01
 - NIP-06 (already present, needs SA/SKL derivation extension)
 - NIP-09
-- NIP-26
 - NIP-32
 - NIP-40
 - NIP-44
@@ -97,6 +95,7 @@ Mandatory for MVP implementation:
 
 Feature-gated/optional rails in first rollout:
 
+- NIP-26 (delegated signing profile)
 - NIP-57
 - NIP-60
 - NIP-61
@@ -203,9 +202,8 @@ Important adaptation note:
 - `mod.rs`
 - `manifest.rs` (33400)
 - `version_log.rs` (33401)
-- `advertisement.rs` (31337)
-- `discovery.rs` (5390/6390)
-- `trust.rs` (NIP-26 chain + NIP-32 attestation evaluation)
+- `discovery.rs` (optional 5390/6390 profile)
+- `trust.rs` (NIP-32 attestation evaluation + optional NIP-26 delegated-signing checks)
 - `trust.rs` must include kill-flag authority/quorum evaluation, not label-presence-only checks
 - `revocation.rs` (NIP-09 integration)
 - `revocation.rs` must support pre-signed manifest revocation by `a`/`d` identity without requiring unknown future license ids
@@ -235,7 +233,7 @@ Important adaptation note:
 
 ## Phase 0: Protocol lock and scaffolding (1-2 days)
 
-1. Create `docs/PROTOCOL_SURFACE.md` in this repo with canonical kind numbers used by runtime.
+1. Keep `docs/PROTOCOL_SURFACE.md` as the canonical kind/tag lock for runtime.
 2. Confirm SA kind numbers (`39200+`) and freeze SKL/AC ranges used by this implementation.
 3. Expand `crates/nostr/core/Cargo.toml` features:
    - `full`, `minimal`, `spark-integration`.
@@ -277,20 +275,21 @@ Exit criteria:
 
 ## Phase 3: NIP-SKL implementation (net-new) (5-8 days)
 
-1. Implement SKL data models and serializers for 33400/33401/31337/5390/6390.
-2. Implement SKILL.md YAML frontmatter parser and deterministic derivation helper:
+1. Implement SKL core data models and serializers for 33400/33401.
+2. Implement optional NIP-90 discovery profile types for 5390/6390.
+3. Implement SKILL.md YAML frontmatter parser and deterministic derivation helper:
    - deterministic tags/content
    - canonical payload hashing
    - caller-supplied `created_at` handling
-3. Implement trust gate engine:
-   - NIP-26 delegation chain checks.
+4. Implement trust gate engine:
    - NIP-32 attestation aggregation.
+   - optional NIP-26 delegation checks when delegated-signing profile is enabled.
    - kill-flag authority/quorum enforcement.
    - NIP-09 revocation handling.
-4. Implement fulfillment bridge to SA:
+5. Implement fulfillment bridge to SA:
    - SKL trust must pass before `39220`/`39221` flow can execute.
    - actor alignment: marketplace issues `39220`, skill provider/delegate emits `39221`.
-5. Add unit tests for manifest validation, delegation verification, and revocation.
+6. Add unit tests for manifest validation, trust evaluation, and revocation.
 
 Exit criteria:
 
@@ -370,7 +369,7 @@ Exit criteria:
    - Read `39230`, `39231`.
    - Actions: open session, filter by step type, verify trajectory hash.
 4. `Skill Registry` (NIP-SKL)
-   - Read `31337`, `33400`, `30402`, `5390/6390` results.
+   - Read `33400`, `30402`, optional `5390/6390` results.
    - Actions: discover skills, inspect manifests, install/select skill.
 5. `Skill Trust and Revocation` (NIP-SKL)
    - Read/write `1985`, `5`, delegation graph checks.
@@ -402,8 +401,7 @@ App command surface should be explicit and typed (not ad-hoc string commands), f
 - `PublishTickResult`
 - `PublishSkillManifest`
 - `PublishSkillVersionLog`
-- `PublishSkillAd`
-- `SubmitSkillSearch`
+- `SubmitSkillSearch` (optional profile path)
 - `PublishCreditIntent`
 - `PublishCreditOffer`
 - `PublishCreditEnvelope`
