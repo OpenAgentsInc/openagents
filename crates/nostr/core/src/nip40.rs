@@ -64,6 +64,14 @@ pub enum Nip40Error {
     ExpiredTimestamp,
 }
 
+fn unix_timestamp_now_i64() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .unwrap_or(i64::MAX)
+}
+
 /// Get the expiration timestamp from an event.
 ///
 /// Returns `None` if the event has no expiration tag.
@@ -117,12 +125,7 @@ pub fn get_expiration(event: &Event) -> Option<i64> {
 /// ```
 pub fn is_expired(event: &Event, current_time: Option<i64>) -> bool {
     if let Some(expiration) = get_expiration(event) {
-        let now = current_time.unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64
-        });
+        let now = current_time.unwrap_or_else(unix_timestamp_now_i64);
         expiration <= now
     } else {
         false
@@ -178,12 +181,7 @@ pub fn set_expiration(tags: &mut Vec<Vec<String>>, timestamp: i64) {
 /// assert!(validate_expiration(future_time, None).is_ok());
 /// ```
 pub fn validate_expiration(timestamp: i64, current_time: Option<i64>) -> Result<(), Nip40Error> {
-    let now = current_time.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
-    });
+    let now = current_time.unwrap_or_else(unix_timestamp_now_i64);
 
     if timestamp <= now {
         return Err(Nip40Error::ExpiredTimestamp);
@@ -239,12 +237,7 @@ pub fn has_expiration(event: &Event) -> bool {
 /// ```
 pub fn time_until_expiration(event: &Event, current_time: Option<i64>) -> Option<i64> {
     let expiration = get_expiration(event)?;
-    let now = current_time.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
-    });
+    let now = current_time.unwrap_or_else(unix_timestamp_now_i64);
     Some(expiration - now)
 }
 

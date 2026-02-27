@@ -377,7 +377,7 @@ pub fn decrypt(
         return Err(Nip44Error::UnsupportedVersion(version));
     }
 
-    let nonce = &decoded[1..1 + NONCE_SIZE];
+    let nonce = &decoded[1..=NONCE_SIZE];
     let ciphertext = &decoded[1 + NONCE_SIZE..decoded.len() - MAC_SIZE];
     let mac_received = &decoded[decoded.len() - MAC_SIZE..];
 
@@ -385,7 +385,7 @@ pub fn decrypt(
     let conversation_key = get_conversation_key(recipient_secret_key, sender_public_key)?;
 
     // Derive message keys
-    let nonce_array: [u8; 32] = nonce.try_into().unwrap();
+    let nonce_array: [u8; 32] = nonce.try_into().map_err(|_| Nip44Error::InvalidPayload)?;
     let (chacha_key, chacha_nonce, hmac_key) =
         derive_message_keys(&conversation_key, &nonce_array)?;
 

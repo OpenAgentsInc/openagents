@@ -408,17 +408,20 @@ static SECRET_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
 
 fn secret_patterns() -> &'static [Regex] {
     SECRET_PATTERNS.get_or_init(|| {
-        vec![
-            Regex::new(r"sk-ant-[a-zA-Z0-9_-]{20,}").unwrap(),
-            Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(),
-            Regex::new(r"gh[pousr]_[a-zA-Z0-9]{36,}").unwrap(),
-            Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
-            Regex::new(r"xox[baprs]-[0-9]+-[0-9]+-[a-zA-Z0-9]+").unwrap(),
-            Regex::new(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+").unwrap(),
-            Regex::new(r"nsec1[0-9a-z]{20,}").unwrap(),
-            Regex::new(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----").unwrap(),
-            Regex::new(r"(?i)bearer\s+[a-z0-9_.-]+").unwrap(),
+        [
+            r"sk-ant-[a-zA-Z0-9_-]{20,}",
+            r"sk-[a-zA-Z0-9]{20,}",
+            r"gh[pousr]_[a-zA-Z0-9]{36,}",
+            r"AKIA[0-9A-Z]{16}",
+            r"xox[baprs]-[0-9]+-[0-9]+-[a-zA-Z0-9]+",
+            r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+",
+            r"nsec1[0-9a-z]{20,}",
+            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----",
+            r"(?i)bearer\s+[a-z0-9_.-]+",
         ]
+        .iter()
+        .filter_map(|pattern| Regex::new(pattern).ok())
+        .collect()
     })
 }
 

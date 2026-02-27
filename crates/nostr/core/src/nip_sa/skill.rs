@@ -278,10 +278,11 @@ impl SkillLicense {
     pub fn validate(&self, current_time: u64) -> Result<(), SkillError> {
         self.validate_skl_references()?;
         if self.content.is_expired(current_time) {
+            let expires_at = self.content.expires_at.unwrap_or_default();
             return Err(SkillError::LicenseExpired(format!(
                 "license for {} expired at {}",
                 self.content.skill_id,
-                self.content.expires_at.unwrap()
+                expires_at
             )));
         }
         Ok(())

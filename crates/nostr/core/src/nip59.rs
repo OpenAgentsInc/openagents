@@ -112,12 +112,9 @@ impl Rumor {
 
 /// Generate a random timestamp up to 2 days in the past.
 pub fn random_timestamp() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
 
     // Random offset between 0 and 2 days
     let offset = rand::random::<u64>() % TWO_DAYS_SECS as u64;

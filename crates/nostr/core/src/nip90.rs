@@ -623,7 +623,7 @@ impl JobRequest {
         }
 
         let mut request = Self::new(event.kind)?;
-        request.content = event.content.clone();
+        request.content.clone_from(&event.content);
 
         for tag in &event.tags {
             if tag.is_empty() {
@@ -844,13 +844,13 @@ impl JobResult {
             }
             match tag[0].as_str() {
                 "e" if tag.len() >= 2 => {
-                    request_id = tag[1].clone();
+                    request_id.clone_from(&tag[1]);
                     if tag.len() >= 3 {
                         request_relay = Some(tag[2].clone());
                     }
                 }
                 "p" if tag.len() >= 2 => {
-                    customer_pubkey = tag[1].clone();
+                    customer_pubkey.clone_from(&tag[1]);
                 }
                 "i" if tag.len() >= 3 => {
                     let input_type = InputType::from_str(&tag[2])?;
@@ -1073,6 +1073,12 @@ pub fn get_request_kind(result_kind: u16) -> Option<u16> {
     }
 }
 
+fn event_timestamp_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 /// Create an EventTemplate for a job request.
 ///
 /// This is a convenience function that converts a JobRequest into an EventTemplate
@@ -1099,10 +1105,7 @@ pub fn create_job_request_event(request: &JobRequest) -> crate::nip01::EventTemp
         kind: request.kind,
         tags: request.to_tags(),
         content: request.content.clone(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
+        created_at: event_timestamp_now(),
     }
 }
 
@@ -1134,10 +1137,7 @@ pub fn create_job_result_event(result: &JobResult) -> crate::nip01::EventTemplat
         kind: result.kind,
         tags: result.to_tags(),
         content: result.content.clone(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
+        created_at: event_timestamp_now(),
     }
 }
 
@@ -1164,10 +1164,7 @@ pub fn create_job_feedback_event(feedback: &JobFeedback) -> crate::nip01::EventT
         kind: KIND_JOB_FEEDBACK,
         tags: feedback.to_tags(),
         content: feedback.content.clone(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
+        created_at: event_timestamp_now(),
     }
 }
 

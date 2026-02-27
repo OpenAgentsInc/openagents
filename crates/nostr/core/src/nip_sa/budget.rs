@@ -85,8 +85,7 @@ impl BudgetTracker {
     fn get_current_utc_date() -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |duration| duration.as_secs());
 
         // Convert to UTC date
         let days = now / 86400;
