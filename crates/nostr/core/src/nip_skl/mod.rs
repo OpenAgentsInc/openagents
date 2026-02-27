@@ -8,12 +8,14 @@
 //! - NIP-32 labels (`kind:1985`)
 //! - NIP-09 deletion requests (`kind:5`) with same-pubkey authority semantics
 
+pub mod discovery;
 pub mod manifest;
 pub mod revocation;
 pub mod trust;
 pub mod version_log;
 pub mod yaml_derivation;
 
+pub use discovery::*;
 pub use manifest::*;
 pub use revocation::*;
 pub use trust::*;
