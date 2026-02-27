@@ -6,6 +6,11 @@ mod skl;
 pub(super) mod wallet;
 
 use crate::app_state::RenderState;
+use crate::pane_system::{
+    AgentProfileStatePaneAction, AgentScheduleTickPaneAction, CreditDeskPaneAction,
+    CreditSettlementLedgerPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    TrajectoryAuditPaneAction,
+};
 use crate::runtime_lanes::{
     AcLaneUpdate, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLaneUpdate,
     SklLaneUpdate,
@@ -49,6 +54,55 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
 
 pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     wallet::drain_spark_worker_updates(state)
+}
+
+pub(super) fn run_agent_profile_state_action(
+    state: &mut RenderState,
+    action: AgentProfileStatePaneAction,
+) -> bool {
+    sa::run_agent_profile_state_action(state, action)
+}
+
+pub(super) fn run_agent_schedule_tick_action(
+    state: &mut RenderState,
+    action: AgentScheduleTickPaneAction,
+) -> bool {
+    sa::run_agent_schedule_tick_action(state, action)
+}
+
+pub(super) fn run_trajectory_audit_action(
+    state: &mut RenderState,
+    action: TrajectoryAuditPaneAction,
+) -> bool {
+    sa::run_trajectory_audit_action(state, action)
+}
+
+pub(super) fn run_skill_registry_action(
+    state: &mut RenderState,
+    action: SkillRegistryPaneAction,
+) -> bool {
+    skl::run_skill_registry_action(state, action)
+}
+
+pub(super) fn run_skill_trust_revocation_action(
+    state: &mut RenderState,
+    action: SkillTrustRevocationPaneAction,
+) -> bool {
+    skl::run_skill_trust_revocation_action(state, action)
+}
+
+pub(super) fn run_credit_desk_action(
+    state: &mut RenderState,
+    action: CreditDeskPaneAction,
+) -> bool {
+    ac::run_credit_desk_action(state, action)
+}
+
+pub(super) fn run_credit_settlement_ledger_action(
+    state: &mut RenderState,
+    action: CreditSettlementLedgerPaneAction,
+) -> bool {
+    ac::run_credit_settlement_ledger_action(state, action)
 }
 
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
