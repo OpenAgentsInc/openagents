@@ -20,7 +20,7 @@ Example:
 ```text
 skills/
   mezo/
-    mezo-integration/
+    integration/
       SKILL.md
       references/
       scripts/

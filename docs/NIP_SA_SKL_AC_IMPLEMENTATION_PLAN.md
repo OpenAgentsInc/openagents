@@ -70,8 +70,8 @@ Implemented:
 - validation script: `scripts/skills/validate_registry.sh`
 - lint gate integration via `scripts/lint/clippy-regression-check.sh`
 - first concrete skills:
-  - `skills/mezo/mezo-integration`
-  - `skills/moneydevkit/moneydevkit-integration`
+  - `skills/mezo/integration`
+  - `skills/moneydevkit/integration`
 
 ## 3. What Remains (MVP Hardening)
 

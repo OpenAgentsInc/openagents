@@ -1,5 +1,5 @@
 ---
-name: moneydevkit-integration
+name: integration
 description: Integrate Lightning payment workflows using Money Dev Kit. Use when tasks involve setting up @moneydevkit/agent-wallet for autonomous agents, wiring @moneydevkit/nextjs or @moneydevkit/replit checkout flows, bootstrapping credentials via @moneydevkit/create, validating MDK environment variables, or applying hybrid architecture constraints (hosted API plus self-custodial node).
 compatibility: Requires bash, curl, Node.js 20+, and internet access to npm and Money Dev Kit services.
 metadata:

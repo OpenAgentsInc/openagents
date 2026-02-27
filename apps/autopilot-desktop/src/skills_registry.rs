@@ -226,14 +226,14 @@ mod tests {
         write_skill(
             &root,
             "mezo",
-            "mezo-integration",
-            "---\nname: mezo-integration\ndescription: test\n---\nbody\n",
+            "integration",
+            "---\nname: integration\ndescription: test\n---\nbody\n",
         );
 
         let skills = discover_local_skills_in(&root).expect("discover skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].project, "mezo");
-        assert_eq!(skills[0].name, "mezo-integration");
+        assert_eq!(skills[0].name, "integration");
 
         let _ = fs::remove_dir_all(root);
     }
