@@ -7,6 +7,22 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Autopilot Chat`
   - Chat-first pane with thread rail, transcript, composer input, and per-message status (`queued`, `running`, `done`, `error`).
   - Action: send prompt to local Autopilot lane.
+- `Codex Account`
+  - Account auth and rate-limit controls (`account/read`, login start/cancel, logout, rate limits read).
+- `Codex Models`
+  - Model catalog visibility with default/hidden/reasoning capability details and reroute status.
+- `Codex Config`
+  - Config read/write/requirements and external agent config detect/import controls.
+- `Codex MCP`
+  - MCP server status listing, OAuth login for selected server, and config reload.
+- `Codex Apps`
+  - App connector list and update refresh flow.
+- `Codex Remote Skills`
+  - Remote skill list and export flow, complementary to repo-local `skills/`.
+- `Codex Labs`
+  - Review start, command exec, collaboration modes, experimental features, and gated experimental APIs.
+- `Codex Diagnostics`
+  - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
   - Action: toggle online/offline.
@@ -131,6 +147,14 @@ Badge semantics:
 Current pane badge mapping:
 
 - `Autopilot Chat`: `source: local`
+- `Codex Account`: `source: codex`
+- `Codex Models`: `source: codex`
+- `Codex Config`: `source: codex`
+- `Codex MCP`: `source: codex`
+- `Codex Apps`: `source: codex`
+- `Codex Remote Skills`: `source: codex`
+- `Codex Labs`: `source: codex`
+- `Codex Diagnostics`: `source: codex`
 - `Go Online`: `source: runtime`
 - `Provider Status`: `source: runtime`
 - `Earnings Scoreboard`: `source: runtime+wallet`
@@ -164,6 +188,14 @@ Current pane badge mapping:
   - `K` opens the command palette.
 - Command Palette (`K`):
   - `Autopilot Chat` -> opens `Autopilot Chat`.
+  - `Codex Account` -> opens `Codex Account`.
+  - `Codex Models` -> opens `Codex Models`.
+  - `Codex Config` -> opens `Codex Config`.
+  - `Codex MCP` -> opens `Codex MCP`.
+  - `Codex Apps` -> opens `Codex Apps`.
+  - `Codex Remote Skills` -> opens `Codex Remote Skills`.
+  - `Codex Labs` -> opens `Codex Labs`.
+  - `Codex Diagnostics` -> opens `Codex Diagnostics`.
   - `Go Online` -> opens `Go Online`.
   - `Provider Status` -> opens `Provider Status`.
   - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
@@ -191,6 +223,6 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Remote Skills, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

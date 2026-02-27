@@ -1,8 +1,8 @@
 use wgpui::PaintContext;
 
 use crate::app_state::{
-    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexLabsPaneState,
-    CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState,
+    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -15,7 +15,9 @@ use crate::pane_system::{
     codex_apps_visible_row_count, codex_config_batch_write_button_bounds,
     codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
     codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-    codex_config_write_button_bounds, codex_labs_collaboration_modes_button_bounds,
+    codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+    codex_diagnostics_disable_wire_log_button_bounds,
+    codex_diagnostics_enable_wire_log_button_bounds, codex_labs_collaboration_modes_button_bounds,
     codex_labs_command_exec_button_bounds, codex_labs_experimental_features_button_bounds,
     codex_labs_fuzzy_start_button_bounds, codex_labs_fuzzy_stop_button_bounds,
     codex_labs_fuzzy_update_button_bounds, codex_labs_realtime_append_text_button_bounds,
@@ -634,4 +636,111 @@ pub fn paint_labs_pane(
         "Windows setup",
         pane_state.windows_last_status.as_deref().unwrap_or("n/a"),
     );
+}
+
+pub fn paint_diagnostics_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &CodexDiagnosticsPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "codex", paint);
+
+    let enable_wire_log = codex_diagnostics_enable_wire_log_button_bounds(content_bounds);
+    let disable_wire_log = codex_diagnostics_disable_wire_log_button_bounds(content_bounds);
+    let clear_events = codex_diagnostics_clear_events_button_bounds(content_bounds);
+
+    paint_action_button(enable_wire_log, "Enable Wire Log", paint);
+    paint_action_button(disable_wire_log, "Disable Wire Log", paint);
+    paint_action_button(clear_events, "Clear Events", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        clear_events.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Wire log enabled",
+        if pane_state.wire_log_enabled {
+            "true"
+        } else {
+            "false"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Wire log path",
+        &pane_state.wire_log_path,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last command failure",
+        pane_state.last_command_failure.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last snapshot error",
+        pane_state.last_snapshot_error.as_deref().unwrap_or("n/a"),
+    );
+
+    let notification_summary = pane_state
+        .notification_counts
+        .iter()
+        .take(8)
+        .map(|entry| format!("{}={}", entry.method, entry.count))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Notification counts",
+        if notification_summary.is_empty() {
+            "n/a"
+        } else {
+            notification_summary.as_str()
+        },
+    );
+
+    let request_summary = pane_state
+        .server_request_counts
+        .iter()
+        .take(8)
+        .map(|entry| format!("{}={}", entry.method, entry.count))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Server request counts",
+        if request_summary.is_empty() {
+            "n/a"
+        } else {
+            request_summary.as_str()
+        },
+    );
+
+    for event in pane_state.raw_events.iter().rev().take(10) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            event,
+            wgpui::Point::new(content_bounds.origin.x + 12.0, y),
+            10.0,
+            wgpui::theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
 }

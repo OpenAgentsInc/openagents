@@ -37,6 +37,7 @@ pub struct CodexLaneConfig {
     pub cwd: Option<PathBuf>,
     pub bootstrap_thread: bool,
     pub bootstrap_model: Option<String>,
+    pub wire_log_path: Option<PathBuf>,
     pub client_info: ClientInfo,
     pub approval_policy: Option<AskForApproval>,
     pub experimental_api: bool,
@@ -49,6 +50,10 @@ impl Default for CodexLaneConfig {
             cwd: std::env::current_dir().ok(),
             bootstrap_thread: true,
             bootstrap_model: Some("gpt-5-codex".to_string()),
+            wire_log_path: std::env::var("OPENAGENTS_CODEX_WIRE_LOG_PATH")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from),
             client_info: ClientInfo {
                 name: "openagents-autopilot-desktop".to_string(),
                 title: Some("OpenAgents Autopilot Desktop".to_string()),
@@ -841,9 +846,15 @@ impl CodexLaneRuntime for ProcessCodexLaneRuntime {
         runtime: &Runtime,
         config: &CodexLaneConfig,
     ) -> Result<(AppServerClient, AppServerChannels)> {
+        let wire_log = config.wire_log_path.as_ref().map(|path| {
+            let wire_log = codex_client::AppServerWireLog::new();
+            wire_log.set_path(path.clone());
+            wire_log
+        });
         runtime
             .block_on(AppServerClient::spawn(AppServerConfig {
                 cwd: config.cwd.clone(),
+                wire_log,
                 ..Default::default()
             }))
             .context("failed to spawn codex app-server")
@@ -2559,6 +2570,7 @@ mod tests {
         CodexLaneUpdate, CodexLaneWorker, normalize_notification,
     };
 
+    use std::collections::HashSet;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -2567,8 +2579,12 @@ mod tests {
 
     use anyhow::Result;
     use codex_client::{
-        AppServerChannels, AppServerClient, AppsListParams, SkillsListExtraRootsForCwd,
-        SkillsListParams, SkillsRemoteWriteParams, ThreadListParams,
+        AppServerChannels, AppServerClient, AppsListParams, CollaborationModeListParams,
+        CommandExecParams, ExperimentalFeatureListParams, FuzzyFileSearchSessionStartParams,
+        FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, ReviewStartParams,
+        ReviewTarget, SkillsListExtraRootsForCwd, SkillsListParams, SkillsRemoteWriteParams,
+        ThreadListParams, ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams,
+        ThreadRealtimeStopParams, WindowsSandboxSetupStartParams,
     };
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -3800,6 +3816,382 @@ mod tests {
         worker.shutdown();
         let _ = server.join();
         let _ = fs::remove_dir_all(&fixture_root);
+    }
+
+    #[test]
+    fn labs_api_smoke_commands_emit_responses_and_notifications() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let expected = [
+                    "review/start",
+                    "command/exec",
+                    "collaborationMode/list",
+                    "experimentalFeature/list",
+                    "thread/realtime/start",
+                    "thread/realtime/appendText",
+                    "thread/realtime/stop",
+                    "windowsSandbox/setupStart",
+                    "fuzzyFileSearch/sessionStart",
+                    "fuzzyFileSearch/sessionUpdate",
+                    "fuzzyFileSearch/sessionStop",
+                ];
+                let mut seen = HashSet::<String>::new();
+
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    if expected.contains(&method) {
+                        seen.insert(method.to_string());
+                    }
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "thread/start" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "thread": {"id": "thread-bootstrap"},
+                                "model": "gpt-5-codex"
+                            }
+                        }),
+                        "model/list" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "data": [
+                                    {
+                                        "id": "default",
+                                        "model": "gpt-5-codex",
+                                        "displayName": "gpt-5-codex",
+                                        "description": "default",
+                                        "supportedReasoningEfforts": [],
+                                        "defaultReasoningEffort": "medium",
+                                        "isDefault": true
+                                    }
+                                ],
+                                "nextCursor": null
+                            }
+                        }),
+                        "review/start" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "turn": {"id": "turn-review"},
+                                "reviewThreadId": "review-thread-1"
+                            }
+                        }),
+                        "command/exec" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "exitCode": 0,
+                                "stdout": "ok",
+                                "stderr": ""
+                            }
+                        }),
+                        "collaborationMode/list" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"data": [{"id": "pair"}]}
+                        }),
+                        "experimentalFeature/list" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"data": [{"id": "feature"}], "nextCursor": null}
+                        }),
+                        "thread/realtime/start"
+                        | "thread/realtime/appendText"
+                        | "thread/realtime/stop"
+                        | "fuzzyFileSearch/sessionStart"
+                        | "fuzzyFileSearch/sessionUpdate"
+                        | "fuzzyFileSearch/sessionStop" => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                        "windowsSandbox/setupStart" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"started": true}
+                        }),
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+                    if seen.len() == expected.len() {
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+
+        let commands = [
+            (
+                1501,
+                CodexLaneCommand::ReviewStart(ReviewStartParams {
+                    thread_id: "thread-bootstrap".to_string(),
+                    target: ReviewTarget::UncommittedChanges,
+                    delivery: Some(codex_client::ReviewDelivery::Inline),
+                }),
+            ),
+            (
+                1502,
+                CodexLaneCommand::CommandExec(CommandExecParams {
+                    command: vec!["pwd".to_string()],
+                    timeout_ms: Some(5000),
+                    cwd: None,
+                    sandbox_policy: None,
+                }),
+            ),
+            (
+                1503,
+                CodexLaneCommand::CollaborationModeList(CollaborationModeListParams::default()),
+            ),
+            (
+                1504,
+                CodexLaneCommand::ExperimentalFeatureList(ExperimentalFeatureListParams {
+                    cursor: None,
+                    limit: Some(100),
+                }),
+            ),
+            (
+                1505,
+                CodexLaneCommand::ThreadRealtimeStart(ThreadRealtimeStartParams {
+                    thread_id: "thread-bootstrap".to_string(),
+                    prompt: "start".to_string(),
+                    session_id: Some("session-a".to_string()),
+                }),
+            ),
+            (
+                1506,
+                CodexLaneCommand::ThreadRealtimeAppendText(ThreadRealtimeAppendTextParams {
+                    thread_id: "thread-bootstrap".to_string(),
+                    text: "hello".to_string(),
+                }),
+            ),
+            (
+                1507,
+                CodexLaneCommand::ThreadRealtimeStop(ThreadRealtimeStopParams {
+                    thread_id: "thread-bootstrap".to_string(),
+                }),
+            ),
+            (
+                1508,
+                CodexLaneCommand::WindowsSandboxSetupStart(WindowsSandboxSetupStartParams {
+                    mode: "enable".to_string(),
+                }),
+            ),
+            (
+                1509,
+                CodexLaneCommand::FuzzyFileSearchSessionStart(FuzzyFileSearchSessionStartParams {
+                    session_id: "session-a".to_string(),
+                    roots: vec![".".to_string()],
+                }),
+            ),
+            (
+                1510,
+                CodexLaneCommand::FuzzyFileSearchSessionUpdate(
+                    FuzzyFileSearchSessionUpdateParams {
+                        session_id: "session-a".to_string(),
+                        query: "codex".to_string(),
+                    },
+                ),
+            ),
+            (
+                1511,
+                CodexLaneCommand::FuzzyFileSearchSessionStop(FuzzyFileSearchSessionStopParams {
+                    session_id: "session-a".to_string(),
+                }),
+            ),
+        ];
+        for (seq, command) in commands {
+            let enqueue = worker.enqueue(seq, command);
+            assert!(enqueue.is_ok(), "failed to enqueue command seq={seq}");
+        }
+
+        let mut saw_review = false;
+        let mut saw_exec = false;
+        let mut saw_collab = false;
+        let mut saw_features = false;
+        let mut saw_realtime_start = false;
+        let mut saw_realtime_append = false;
+        let mut saw_realtime_stop = false;
+        let mut saw_windows = false;
+        let mut saw_fuzzy_start = false;
+        let mut saw_fuzzy_update = false;
+        let mut saw_fuzzy_stop = false;
+        let mut accepted_responses = HashSet::new();
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() <= deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    CodexLaneUpdate::CommandResponse(response) => {
+                        if response.command_seq >= 1501 && response.command_seq <= 1511 {
+                            assert_eq!(
+                                response.status,
+                                CodexLaneCommandStatus::Accepted,
+                                "unexpected command rejection: {:?}",
+                                response
+                            );
+                            accepted_responses.insert(response.command_seq);
+                        }
+                    }
+                    CodexLaneUpdate::Notification(notification) => match notification {
+                        CodexLaneNotification::ReviewStarted { .. } => saw_review = true,
+                        CodexLaneNotification::CommandExecCompleted { .. } => saw_exec = true,
+                        CodexLaneNotification::CollaborationModesLoaded { .. } => saw_collab = true,
+                        CodexLaneNotification::ExperimentalFeaturesLoaded { .. } => {
+                            saw_features = true
+                        }
+                        CodexLaneNotification::RealtimeStarted { .. } => saw_realtime_start = true,
+                        CodexLaneNotification::RealtimeTextAppended { .. } => {
+                            saw_realtime_append = true
+                        }
+                        CodexLaneNotification::RealtimeStopped { .. } => saw_realtime_stop = true,
+                        CodexLaneNotification::WindowsSandboxSetupStarted { .. } => {
+                            saw_windows = true
+                        }
+                        CodexLaneNotification::FuzzySessionStarted { .. } => saw_fuzzy_start = true,
+                        CodexLaneNotification::FuzzySessionUpdated { .. } => {
+                            saw_fuzzy_update = true
+                        }
+                        CodexLaneNotification::FuzzySessionStopped { .. } => saw_fuzzy_stop = true,
+                        _ => {}
+                    },
+                    CodexLaneUpdate::Snapshot(_) => {}
+                }
+            }
+            if accepted_responses.len() == 11
+                && saw_review
+                && saw_exec
+                && saw_collab
+                && saw_features
+                && saw_realtime_start
+                && saw_realtime_append
+                && saw_realtime_stop
+                && saw_windows
+                && saw_fuzzy_start
+                && saw_fuzzy_update
+                && saw_fuzzy_stop
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        assert_eq!(
+            accepted_responses.len(),
+            11,
+            "missing accepted command responses"
+        );
+        assert!(saw_review, "missing review notification");
+        assert!(saw_exec, "missing command/exec notification");
+        assert!(saw_collab, "missing collaborationMode/list notification");
+        assert!(
+            saw_features,
+            "missing experimentalFeature/list notification"
+        );
+        assert!(saw_realtime_start, "missing realtime start notification");
+        assert!(saw_realtime_append, "missing realtime append notification");
+        assert!(saw_realtime_stop, "missing realtime stop notification");
+        assert!(saw_windows, "missing windows sandbox notification");
+        assert!(saw_fuzzy_start, "missing fuzzy start notification");
+        assert!(saw_fuzzy_update, "missing fuzzy update notification");
+        assert!(saw_fuzzy_stop, "missing fuzzy stop notification");
+
+        worker.shutdown();
+        let _ = server.join();
+    }
+
+    #[test]
+    fn wire_log_path_is_forwarded_to_lane_runtime() {
+        struct CaptureWireLogRuntime {
+            expected: PathBuf,
+            saw_expected: Arc<AtomicBool>,
+        }
+
+        impl CodexLaneRuntime for CaptureWireLogRuntime {
+            fn connect(
+                &mut self,
+                _runtime: &tokio::runtime::Runtime,
+                config: &CodexLaneConfig,
+            ) -> Result<(AppServerClient, AppServerChannels)> {
+                if config.wire_log_path.as_ref() == Some(&self.expected) {
+                    self.saw_expected.store(true, Ordering::SeqCst);
+                }
+                Err(anyhow::anyhow!("captured wire log config"))
+            }
+        }
+
+        let expected = unique_fixture_root("wire-log").join("codex-wire.log");
+        let saw_expected = Arc::new(AtomicBool::new(false));
+        let mut config = CodexLaneConfig::default();
+        config.wire_log_path = Some(expected.clone());
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            config,
+            Box::new(CaptureWireLogRuntime {
+                expected,
+                saw_expected: Arc::clone(&saw_expected),
+            }),
+        );
+
+        let snapshot = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Error
+        });
+        assert!(saw_expected.load(Ordering::SeqCst));
+        let has_error = snapshot
+            .last_error
+            .as_deref()
+            .is_some_and(|message| message.contains("captured wire log config"));
+        assert!(has_error, "expected captured wire log startup failure");
+
+        worker.shutdown();
     }
 
     fn wait_for_snapshot<F>(

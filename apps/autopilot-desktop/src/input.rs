@@ -38,8 +38,8 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexLabsPaneAction,
-    CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
+    CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
     PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
@@ -498,6 +498,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::CodexApps(action) => run_codex_apps_action(state, action),
         PaneHitAction::CodexRemoteSkills(action) => run_codex_remote_skills_action(state, action),
         PaneHitAction::CodexLabs(action) => run_codex_labs_action(state, action),
+        PaneHitAction::CodexDiagnostics(action) => run_codex_diagnostics_action(state, action),
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
@@ -1880,6 +1881,51 @@ fn run_codex_labs_action(
                     },
                 ),
             )
+        }
+    }
+}
+
+fn run_codex_diagnostics_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexDiagnosticsPaneAction,
+) -> bool {
+    match action {
+        CodexDiagnosticsPaneAction::EnableWireLog => {
+            let configured_path = if state.codex_diagnostics.wire_log_path.trim().is_empty() {
+                "/tmp/openagents-codex-wire.log".to_string()
+            } else {
+                state.codex_diagnostics.wire_log_path.trim().to_string()
+            };
+            state.codex_diagnostics.wire_log_path = configured_path.clone();
+            state.codex_diagnostics.wire_log_enabled = true;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action = Some(format!(
+                "Restarting Codex lane with wire log {}",
+                configured_path
+            ));
+            state.codex_lane_config.wire_log_path = Some(std::path::PathBuf::from(configured_path));
+            state.restart_codex_lane();
+            true
+        }
+        CodexDiagnosticsPaneAction::DisableWireLog => {
+            state.codex_diagnostics.wire_log_enabled = false;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action =
+                Some("Restarting Codex lane with wire log disabled".to_string());
+            state.codex_lane_config.wire_log_path = None;
+            state.restart_codex_lane();
+            true
+        }
+        CodexDiagnosticsPaneAction::ClearEvents => {
+            state.codex_diagnostics.notification_counts.clear();
+            state.codex_diagnostics.server_request_counts.clear();
+            state.codex_diagnostics.raw_events.clear();
+            state.codex_diagnostics.last_command_failure = None;
+            state.codex_diagnostics.last_snapshot_error = None;
+            state.codex_diagnostics.last_error = None;
+            state.codex_diagnostics.last_action =
+                Some("Cleared diagnostics event cache".to_string());
+            true
         }
     }
 }

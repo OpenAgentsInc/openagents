@@ -2,10 +2,10 @@ use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
-    CodexAppsPaneState, CodexConfigPaneState, CodexLabsPaneState, CodexMcpPaneState,
-    CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
+    CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs,
+    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
     RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
@@ -62,6 +62,7 @@ impl PaneRenderer {
         codex_apps: &CodexAppsPaneState,
         codex_remote_skills: &CodexRemoteSkillsPaneState,
         codex_labs: &CodexLabsPaneState,
+        codex_diagnostics: &CodexDiagnosticsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
         ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
@@ -154,6 +155,9 @@ impl PaneRenderer {
                 }
                 PaneKind::CodexLabs => {
                     codex_pane::paint_labs_pane(content_bounds, codex_labs, paint);
+                }
+                PaneKind::CodexDiagnostics => {
+                    codex_pane::paint_diagnostics_pane(content_bounds, codex_diagnostics, paint);
                 }
                 PaneKind::GoOnline => {
                     paint_go_online_pane(

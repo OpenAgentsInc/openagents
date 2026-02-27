@@ -34,6 +34,11 @@ if ! "$ROOT_DIR/scripts/lint/strict-production-hardening-check.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/codex-protocol-parity-gate.sh"; then
+    printf 'Codex protocol parity gate failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/clippy-warning-budget-check.sh"; then
     printf 'Clippy warning budget gate failed.\n' >&2
     exit 1

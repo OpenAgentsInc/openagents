@@ -15,7 +15,18 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
     }
     if let Some(error) = snapshot.last_error.as_ref() {
         state.autopilot_chat.last_error = Some(error.clone());
+        state.codex_diagnostics.last_snapshot_error = Some(error.clone());
+        state.codex_diagnostics.last_error = Some(error.clone());
+        push_diagnostics_event(
+            state,
+            format!("snapshot {} error={error}", snapshot.lifecycle.label()),
+        );
     }
+    state.codex_diagnostics.load_state = PaneLoadState::Ready;
+    state.codex_diagnostics.last_action = Some(format!(
+        "lane snapshot lifecycle={}",
+        snapshot.lifecycle.label()
+    ));
     state.codex_lane = snapshot;
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
@@ -24,7 +35,28 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLaneCommandResponse) {
     let response_error = response.error.clone();
+    increment_diagnostics_count(
+        &mut state.codex_diagnostics.notification_counts,
+        response.command.label(),
+    );
+    push_diagnostics_event(
+        state,
+        format!(
+            "command {} {}",
+            response.command.label(),
+            response.status.label()
+        ),
+    );
     if response.status != CodexLaneCommandStatus::Accepted {
+        state.codex_diagnostics.last_command_failure = Some(format!(
+            "{} {} {}",
+            response.command.label(),
+            response.status.label(),
+            response_error
+                .clone()
+                .unwrap_or_else(|| "unknown error".to_string())
+        ));
+        state.codex_diagnostics.last_error = response_error.clone();
         state.sync_health.last_error = response
             .error
             .as_ref()
@@ -68,13 +100,16 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
         state.autopilot_chat.last_error = None;
+        state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
         state.skill_registry.last_error = None;
+        state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsConfigWrite {
         state.skill_registry.last_error = None;
         state.skill_registry.last_action =
             Some("skills/config/write applied; refreshing list".to_string());
         queue_skills_list_refresh(state);
+        state.codex_diagnostics.last_error = None;
     }
 
     match response.command {
@@ -999,9 +1034,162 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         CodexLaneNotification::ServerRequest { .. } | CodexLaneNotification::Raw { .. } => {}
     }
 
+    let method_label = notification_method_label(&stored);
+    increment_diagnostics_count(
+        &mut state.codex_diagnostics.notification_counts,
+        method_label.as_str(),
+    );
+    if let CodexLaneNotification::ServerRequest { method } = &stored {
+        increment_diagnostics_count(
+            &mut state.codex_diagnostics.server_request_counts,
+            method.as_str(),
+        );
+    }
+    push_diagnostics_event(state, format!("notify {}", method_label));
+    state.codex_diagnostics.load_state = PaneLoadState::Ready;
+    state.codex_diagnostics.last_action = Some(format!("notification {}", method_label));
+
     state.sync_health.last_action = Some("codex notification received".to_string());
     state.record_codex_notification(stored);
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn increment_diagnostics_count(
+    entries: &mut Vec<crate::app_state::CodexDiagnosticsMethodCountState>,
+    method: &str,
+) {
+    if let Some(entry) = entries.iter_mut().find(|entry| entry.method == method) {
+        entry.count = entry.count.saturating_add(1);
+    } else {
+        entries.push(crate::app_state::CodexDiagnosticsMethodCountState {
+            method: method.to_string(),
+            count: 1,
+        });
+    }
+    entries.sort_by(|lhs, rhs| {
+        rhs.count
+            .cmp(&lhs.count)
+            .then_with(|| lhs.method.cmp(&rhs.method))
+    });
+}
+
+fn push_diagnostics_event(state: &mut RenderState, line: String) {
+    state.codex_diagnostics.raw_events.push(line);
+    if state.codex_diagnostics.raw_events.len() > 96 {
+        let overflow = state.codex_diagnostics.raw_events.len().saturating_sub(96);
+        state.codex_diagnostics.raw_events.drain(0..overflow);
+    }
+}
+
+fn notification_method_label(notification: &CodexLaneNotification) -> String {
+    match notification {
+        CodexLaneNotification::SkillsListLoaded { .. } => "skills/list".to_string(),
+        CodexLaneNotification::ModelsLoaded { .. } => "model/list".to_string(),
+        CodexLaneNotification::ModelCatalogLoaded { .. } => "model/list".to_string(),
+        CodexLaneNotification::ModelRerouted { .. } => "model/rerouted".to_string(),
+        CodexLaneNotification::AccountLoaded { .. } => "account/read".to_string(),
+        CodexLaneNotification::AccountRateLimitsLoaded { .. } => {
+            "account/rateLimits/read".to_string()
+        }
+        CodexLaneNotification::AccountUpdated { .. } => "account/updated".to_string(),
+        CodexLaneNotification::AccountLoginStarted { .. } => "account/login/start".to_string(),
+        CodexLaneNotification::AccountLoginCompleted { .. } => {
+            "account/login/completed".to_string()
+        }
+        CodexLaneNotification::ConfigLoaded { .. } => "config/read".to_string(),
+        CodexLaneNotification::ConfigRequirementsLoaded { .. } => {
+            "configRequirements/read".to_string()
+        }
+        CodexLaneNotification::ConfigWriteApplied { .. } => "config/value/write".to_string(),
+        CodexLaneNotification::ExternalAgentConfigDetected { .. } => {
+            "externalAgentConfig/detect".to_string()
+        }
+        CodexLaneNotification::ExternalAgentConfigImported => {
+            "externalAgentConfig/import".to_string()
+        }
+        CodexLaneNotification::McpServerStatusListLoaded { .. } => {
+            "mcpServerStatus/list".to_string()
+        }
+        CodexLaneNotification::McpServerOauthLoginStarted { .. } => {
+            "mcpServer/oauth/login".to_string()
+        }
+        CodexLaneNotification::McpServerOauthLoginCompleted { .. } => {
+            "mcpServer/oauthLogin/completed".to_string()
+        }
+        CodexLaneNotification::McpServerReloaded => "config/mcpServer/reload".to_string(),
+        CodexLaneNotification::AppsListLoaded { .. } => "app/list".to_string(),
+        CodexLaneNotification::AppsListUpdated => "app/list/updated".to_string(),
+        CodexLaneNotification::ReviewStarted { .. } => "review/start".to_string(),
+        CodexLaneNotification::CommandExecCompleted { .. } => "command/exec".to_string(),
+        CodexLaneNotification::CollaborationModesLoaded { .. } => {
+            "collaborationMode/list".to_string()
+        }
+        CodexLaneNotification::ExperimentalFeaturesLoaded { .. } => {
+            "experimentalFeature/list".to_string()
+        }
+        CodexLaneNotification::RealtimeStarted { .. } => "thread/realtime/started".to_string(),
+        CodexLaneNotification::RealtimeTextAppended { .. } => {
+            "thread/realtime/appendText".to_string()
+        }
+        CodexLaneNotification::RealtimeStopped { .. } => "thread/realtime/closed".to_string(),
+        CodexLaneNotification::RealtimeError { .. } => "thread/realtime/error".to_string(),
+        CodexLaneNotification::WindowsSandboxSetupStarted { .. } => {
+            "windowsSandbox/setupStart".to_string()
+        }
+        CodexLaneNotification::WindowsSandboxSetupCompleted { .. } => {
+            "windowsSandbox/setupCompleted".to_string()
+        }
+        CodexLaneNotification::FuzzySessionStarted { .. } => {
+            "fuzzyFileSearch/sessionStart".to_string()
+        }
+        CodexLaneNotification::FuzzySessionUpdated { .. } => {
+            "fuzzyFileSearch/sessionUpdated".to_string()
+        }
+        CodexLaneNotification::FuzzySessionCompleted { .. } => {
+            "fuzzyFileSearch/sessionCompleted".to_string()
+        }
+        CodexLaneNotification::FuzzySessionStopped { .. } => {
+            "fuzzyFileSearch/sessionStop".to_string()
+        }
+        CodexLaneNotification::SkillsRemoteListLoaded { .. } => "skills/remote/list".to_string(),
+        CodexLaneNotification::SkillsRemoteExported { .. } => "skills/remote/export".to_string(),
+        CodexLaneNotification::ThreadListLoaded { .. } => "thread/list".to_string(),
+        CodexLaneNotification::ThreadLoadedListLoaded { .. } => "thread/loaded/list".to_string(),
+        CodexLaneNotification::ThreadSelected { .. } => "thread/selected".to_string(),
+        CodexLaneNotification::ThreadStarted { .. } => "thread/started".to_string(),
+        CodexLaneNotification::ThreadStatusChanged { .. } => "thread/status/changed".to_string(),
+        CodexLaneNotification::ThreadArchived { .. } => "thread/archived".to_string(),
+        CodexLaneNotification::ThreadUnarchived { .. } => "thread/unarchived".to_string(),
+        CodexLaneNotification::ThreadClosed { .. } => "thread/closed".to_string(),
+        CodexLaneNotification::ThreadNameUpdated { .. } => "thread/name/updated".to_string(),
+        CodexLaneNotification::TurnStarted { .. } => "turn/started".to_string(),
+        CodexLaneNotification::ItemStarted { .. } => "item/started".to_string(),
+        CodexLaneNotification::ItemCompleted { .. } => "item/completed".to_string(),
+        CodexLaneNotification::AgentMessageDelta { .. } => "item/agentMessage/delta".to_string(),
+        CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
+        CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),
+        CodexLaneNotification::TurnPlanUpdated { .. } => "turn/plan/updated".to_string(),
+        CodexLaneNotification::ThreadTokenUsageUpdated { .. } => {
+            "thread/tokenUsage/updated".to_string()
+        }
+        CodexLaneNotification::TurnError { .. } => "error".to_string(),
+        CodexLaneNotification::CommandApprovalRequested { .. } => {
+            "item/commandExecution/requestApproval".to_string()
+        }
+        CodexLaneNotification::FileChangeApprovalRequested { .. } => {
+            "item/fileChange/requestApproval".to_string()
+        }
+        CodexLaneNotification::ToolCallRequested { .. } => "item/tool/call".to_string(),
+        CodexLaneNotification::ToolUserInputRequested { .. } => {
+            "item/tool/requestUserInput".to_string()
+        }
+        CodexLaneNotification::AuthTokensRefreshRequested { .. } => {
+            "account/chatgptAuthTokens/refresh".to_string()
+        }
+        CodexLaneNotification::ServerRequest { method } | CodexLaneNotification::Raw { method } => {
+            method.clone()
+        }
+    }
 }

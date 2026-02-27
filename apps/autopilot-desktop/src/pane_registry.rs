@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 36] = [
+const PANE_SPECS: [PaneSpec; 37] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -212,6 +212,21 @@ const PANE_SPECS: [PaneSpec; 36] = [
             id: "pane.codex_labs",
             label: "Codex Labs",
             description: "Open review, utility exec, and gated experimental Codex controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexDiagnostics,
+        title: "Codex Diagnostics",
+        default_width: 980.0,
+        default_height: 560.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_diagnostics",
+            label: "Codex Diagnostics",
+            description: "Open Codex protocol diagnostics, counters, and wire-log controls",
             keybinding: None,
         }),
         hotbar: None,
@@ -702,6 +717,28 @@ mod tests {
                     spec.kind
                 );
             }
+        }
+    }
+
+    #[test]
+    fn codex_feature_family_commands_are_registered() {
+        let required = [
+            "pane.codex",
+            "pane.codex_account",
+            "pane.codex_models",
+            "pane.codex_config",
+            "pane.codex_mcp",
+            "pane.codex_apps",
+            "pane.codex_remote_skills",
+            "pane.codex_labs",
+            "pane.codex_diagnostics",
+        ];
+
+        for command_id in required {
+            assert!(
+                pane_spec_by_command_id(command_id).is_some(),
+                "missing codex pane command registration for {command_id}"
+            );
         }
     }
 }

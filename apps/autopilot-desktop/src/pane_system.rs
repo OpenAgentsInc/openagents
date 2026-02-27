@@ -153,6 +153,13 @@ pub enum CodexLabsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexDiagnosticsPaneAction {
+    EnableWireLog,
+    DisableWireLog,
+    ClearEvents,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EarningsScoreboardPaneAction {
     Refresh,
 }
@@ -308,6 +315,7 @@ pub enum PaneHitAction {
     CodexApps(CodexAppsPaneAction),
     CodexRemoteSkills(CodexRemoteSkillsPaneAction),
     CodexLabs(CodexLabsPaneAction),
+    CodexDiagnostics(CodexDiagnosticsPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
@@ -696,6 +704,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexApps
             | PaneKind::CodexRemoteSkills
             | PaneKind::CodexLabs
+            | PaneKind::CodexDiagnostics
             | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
@@ -1147,6 +1156,22 @@ pub fn codex_labs_fuzzy_update_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn codex_labs_fuzzy_stop_button_bounds(content_bounds: Bounds) -> Bounds {
     codex_labs_button_bounds(content_bounds, 4, 0)
+}
+
+fn codex_diagnostics_button_bounds(content_bounds: Bounds, col: usize) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, col, 3)
+}
+
+pub fn codex_diagnostics_enable_wire_log_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 0)
+}
+
+pub fn codex_diagnostics_disable_wire_log_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 1)
+}
+
+pub fn codex_diagnostics_clear_events_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_diagnostics_button_bounds(content_bounds, 2)
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2186,6 +2211,24 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::CodexDiagnostics => {
+            if codex_diagnostics_enable_wire_log_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::EnableWireLog,
+                ));
+            }
+            if codex_diagnostics_disable_wire_log_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::DisableWireLog,
+                ));
+            }
+            if codex_diagnostics_clear_events_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexDiagnostics(
+                    CodexDiagnosticsPaneAction::ClearEvents,
+                ));
+            }
+            None
+        }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::EarningsScoreboard(
@@ -2812,30 +2855,33 @@ mod tests {
         codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
         codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
         codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-        codex_config_write_button_bounds, codex_labs_collaboration_modes_button_bounds,
-        codex_labs_command_exec_button_bounds, codex_labs_experimental_features_button_bounds,
-        codex_labs_review_detached_button_bounds, codex_labs_review_inline_button_bounds,
-        codex_labs_toggle_experimental_button_bounds, codex_mcp_login_button_bounds,
-        codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds,
-        codex_models_refresh_button_bounds, codex_models_toggle_hidden_button_bounds,
-        codex_remote_skills_export_button_bounds, codex_remote_skills_refresh_button_bounds,
-        credit_desk_envelope_button_bounds, credit_desk_intent_button_bounds,
-        credit_desk_offer_button_bounds, credit_desk_spend_button_bounds,
-        credit_settlement_default_button_bounds, credit_settlement_reputation_button_bounds,
-        credit_settlement_verify_button_bounds, earnings_scoreboard_refresh_button_bounds,
-        go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-        job_history_prev_page_button_bounds, job_history_search_input_bounds,
-        job_history_status_button_bounds, job_history_time_button_bounds,
-        job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
-        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
-        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
-        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
-        relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
-        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+        codex_diagnostics_disable_wire_log_button_bounds,
+        codex_diagnostics_enable_wire_log_button_bounds,
+        codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
+        codex_labs_experimental_features_button_bounds, codex_labs_review_detached_button_bounds,
+        codex_labs_review_inline_button_bounds, codex_labs_toggle_experimental_button_bounds,
+        codex_mcp_login_button_bounds, codex_mcp_refresh_button_bounds,
+        codex_mcp_reload_button_bounds, codex_models_refresh_button_bounds,
+        codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
+        codex_remote_skills_refresh_button_bounds, credit_desk_envelope_button_bounds,
+        credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
+        credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
+        credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
+        earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+        job_history_search_input_bounds, job_history_status_button_bounds,
+        job_history_time_button_bounds, job_inbox_accept_button_bounds,
+        job_inbox_reject_button_bounds, job_inbox_row_bounds, network_requests_budget_input_bounds,
+        network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
+        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
+        settings_provider_queue_input_bounds, settings_relay_input_bounds,
+        settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -2959,6 +3005,12 @@ mod tests {
         let toggle = codex_labs_toggle_experimental_button_bounds(content);
         assert!(collab.max_x() < features.min_x());
         assert!(features.max_x() < toggle.min_x());
+
+        let diagnostics_enable = codex_diagnostics_enable_wire_log_button_bounds(content);
+        let diagnostics_disable = codex_diagnostics_disable_wire_log_button_bounds(content);
+        let diagnostics_clear = codex_diagnostics_clear_events_button_bounds(content);
+        assert!(diagnostics_enable.max_x() < diagnostics_disable.min_x());
+        assert!(diagnostics_disable.max_x() < diagnostics_clear.min_x());
     }
 
     #[test]

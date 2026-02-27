@@ -53,6 +53,7 @@ pub enum PaneKind {
     CodexApps,
     CodexRemoteSkills,
     CodexLabs,
+    CodexDiagnostics,
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
@@ -2084,6 +2085,45 @@ impl Default for CodexLabsPaneState {
     }
 }
 
+pub struct CodexDiagnosticsMethodCountState {
+    pub method: String,
+    pub count: u64,
+}
+
+pub struct CodexDiagnosticsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub notification_counts: Vec<CodexDiagnosticsMethodCountState>,
+    pub server_request_counts: Vec<CodexDiagnosticsMethodCountState>,
+    pub raw_events: Vec<String>,
+    pub last_command_failure: Option<String>,
+    pub last_snapshot_error: Option<String>,
+    pub wire_log_path: String,
+    pub wire_log_enabled: bool,
+}
+
+impl Default for CodexDiagnosticsPaneState {
+    fn default() -> Self {
+        let env_wire_log_path = std::env::var("OPENAGENTS_CODEX_WIRE_LOG_PATH").ok();
+        let wire_log_path = env_wire_log_path
+            .clone()
+            .unwrap_or_else(|| "/tmp/openagents-codex-wire.log".to_string());
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Codex diagnostics idle".to_string()),
+            notification_counts: Vec::new(),
+            server_request_counts: Vec::new(),
+            raw_events: Vec::new(),
+            last_command_failure: None,
+            last_snapshot_error: None,
+            wire_log_path: wire_log_path.clone(),
+            wire_log_enabled: env_wire_log_path.is_some(),
+        }
+    }
+}
+
 pub struct AgentProfileStatePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -3119,6 +3159,7 @@ impl_pane_status_access!(
     CodexAppsPaneState,
     CodexRemoteSkillsPaneState,
     CodexLabsPaneState,
+    CodexDiagnosticsPaneState,
     RelayConnectionsState,
     SyncHealthState,
     NetworkRequestsState,
@@ -3176,7 +3217,9 @@ pub struct RenderState {
     pub codex_apps: CodexAppsPaneState,
     pub codex_remote_skills: CodexRemoteSkillsPaneState,
     pub codex_labs: CodexLabsPaneState,
+    pub codex_diagnostics: CodexDiagnosticsPaneState,
     pub codex_lane: CodexLaneSnapshot,
+    pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
     pub codex_lane_worker: CodexLaneWorker,
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,
     pub codex_notifications: Vec<CodexLaneNotification>,
@@ -3241,6 +3284,14 @@ impl RenderState {
     pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
         let seq = self.allocate_codex_command_seq();
         self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn restart_codex_lane(&mut self) {
+        let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
+        let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
+        previous.shutdown();
+        self.codex_lane = CodexLaneSnapshot::default();
+        self.autopilot_chat.set_connection_status("starting");
     }
 
     pub fn record_codex_command_response(&mut self, response: CodexLaneCommandResponse) {

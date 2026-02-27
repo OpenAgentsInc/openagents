@@ -100,7 +100,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let codex_lane_worker = CodexLaneWorker::spawn(CodexLaneConfig::default());
+        let codex_lane_config = CodexLaneConfig::default();
+        let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
@@ -150,7 +151,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             codex_apps: crate::app_state::CodexAppsPaneState::default(),
             codex_remote_skills: crate::app_state::CodexRemoteSkillsPaneState::default(),
             codex_labs: crate::app_state::CodexLabsPaneState::default(),
+            codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
             codex_lane: CodexLaneSnapshot::default(),
+            codex_lane_config,
             codex_lane_worker,
             codex_command_responses: Vec::new(),
             codex_notifications: Vec::new(),
@@ -290,6 +293,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.codex_apps,
             &state.codex_remote_skills,
             &state.codex_labs,
+            &state.codex_diagnostics,
             &state.sa_lane,
             &state.skl_lane,
             &state.ac_lane,
