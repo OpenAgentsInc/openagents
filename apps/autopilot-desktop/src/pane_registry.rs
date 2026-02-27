@@ -82,7 +82,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 26] = [
+const PANE_SPECS: [PaneSpec; 27] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -479,6 +479,21 @@ const PANE_SPECS: [PaneSpec; 26] = [
             id: "pane.credit_settlement_ledger",
             label: "Credit Settlement Ledger",
             description: "Open AC settlement/default audit pane with reputation labeling",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::AgentNetworkSimulation,
+        title: "Sovereign Agent Simulation",
+        default_width: 980.0,
+        default_height: 460.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.agent_network_simulation",
+            label: "Sovereign Agent Simulation",
+            description: "Open multi-agent simulation using NIP-28 chat with SA/SKL/AC flow",
             keybinding: None,
         }),
         hotbar: None,

@@ -18,10 +18,10 @@ use crate::hotbar::{
 };
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
-    ActiveJobPaneAction, ActivityFeedPaneAction, AgentProfileStatePaneAction,
-    AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CreditDeskPaneAction,
-    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
+    AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
+    CreditDeskPaneAction, CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction,
+    JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
     RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
     SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
     TrajectoryAuditPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
@@ -465,6 +465,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::CreditDesk(action) => run_credit_desk_action(state, action),
         PaneHitAction::CreditSettlementLedger(action) => {
             run_credit_settlement_ledger_action(state, action)
+        }
+        PaneHitAction::AgentNetworkSimulation(action) => {
+            run_agent_network_simulation_action(state, action)
         }
         PaneHitAction::Spark(action) => run_spark_action(state, action),
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
@@ -1459,6 +1462,54 @@ fn run_credit_settlement_ledger_action(
             state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Ready;
             state.credit_settlement_ledger.last_action =
                 Some(format!("Emitted NIP-32 label {label}"));
+            true
+        }
+    }
+}
+
+fn run_agent_network_simulation_action(
+    state: &mut crate::app_state::RenderState,
+    action: AgentNetworkSimulationPaneAction,
+) -> bool {
+    match action {
+        AgentNetworkSimulationPaneAction::RunRound => {
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs());
+            match state.agent_network_simulation.run_round(now_epoch_seconds) {
+                Ok(()) => {
+                    state.provider_runtime.last_result =
+                        state.agent_network_simulation.last_action.clone();
+                    let event_id =
+                        format!("sim:round:{}", state.agent_network_simulation.rounds_run);
+                    state
+                        .activity_feed
+                        .upsert_event(crate::app_state::ActivityEventRow {
+                            event_id,
+                            domain: crate::app_state::ActivityEventDomain::Sa,
+                            source_tag: "simulation.nip28".to_string(),
+                            summary: "Sovereign agents ran SA/SKL/AC simulation round".to_string(),
+                            detail: format!(
+                                "round={} transferred_sats={} learned_skills={}",
+                                state.agent_network_simulation.rounds_run,
+                                state.agent_network_simulation.total_transferred_sats,
+                                state.agent_network_simulation.learned_skills.join(", ")
+                            ),
+                            occurred_at_epoch_seconds: now_epoch_seconds,
+                        });
+                    state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+                }
+                Err(error) => {
+                    state.agent_network_simulation.last_error = Some(error);
+                    state.agent_network_simulation.load_state =
+                        crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        AgentNetworkSimulationPaneAction::Reset => {
+            state.agent_network_simulation.reset();
+            state.provider_runtime.last_result = state.agent_network_simulation.last_action.clone();
             true
         }
     }

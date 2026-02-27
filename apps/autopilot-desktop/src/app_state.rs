@@ -63,6 +63,7 @@ pub enum PaneKind {
     SkillTrustRevocation,
     CreditDesk,
     CreditSettlementLedger,
+    AgentNetworkSimulation,
 }
 
 #[derive(Clone, Copy)]
@@ -2374,6 +2375,185 @@ impl Default for CreditSettlementLedgerPaneState {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentNetworkSimulationEvent {
+    pub seq: u64,
+    pub protocol: String,
+    pub event_ref: String,
+    pub summary: String,
+}
+
+pub struct AgentNetworkSimulationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub channel_name: String,
+    pub channel_event_id: Option<String>,
+    pub rounds_run: u32,
+    pub total_transferred_sats: u64,
+    pub learned_skills: Vec<String>,
+    pub events: Vec<AgentNetworkSimulationEvent>,
+    next_seq: u64,
+}
+
+impl Default for AgentNetworkSimulationPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Run simulation to create NIP-28 coordination channel".to_string()),
+            channel_name: "sovereign-agents-lab".to_string(),
+            channel_event_id: None,
+            rounds_run: 0,
+            total_transferred_sats: 0,
+            learned_skills: Vec::new(),
+            events: Vec::new(),
+            next_seq: 1,
+        }
+    }
+}
+
+impl AgentNetworkSimulationPaneState {
+    pub fn run_round(&mut self, now_epoch_seconds: u64) -> Result<(), String> {
+        let channel_event_id = match self.channel_event_id.clone() {
+            Some(existing) => existing,
+            None => {
+                let metadata = nostr::ChannelMetadata::new(
+                    self.channel_name.clone(),
+                    "Public SA/SKL/AC negotiation channel",
+                    "https://openagents.com/channel.png",
+                )
+                .with_relays(vec!["wss://relay.openagents.dev".to_string()]);
+                let creation = nostr::ChannelCreateEvent::new(metadata, now_epoch_seconds);
+                if let Err(error) = creation.content() {
+                    self.load_state = PaneLoadState::Error;
+                    self.last_error = Some(error.to_string());
+                    return Err(error.to_string());
+                }
+                let id = format!(
+                    "sim:{}:{:08x}",
+                    nostr::KIND_CHANNEL_CREATION,
+                    self.rounds_run + 1
+                );
+                self.channel_event_id = Some(id.clone());
+                self.push_event(
+                    "NIP-28",
+                    &id,
+                    format!(
+                        "created channel #{} ({})",
+                        self.channel_name, creation.created_at
+                    ),
+                );
+                id
+            }
+        };
+
+        let round = self.rounds_run.saturating_add(1);
+        let relay = "wss://relay.openagents.dev";
+        let skill_version = format!("0.{}.0", round + 1);
+        let skill_ref = format!("33400:npub1beta:summarize-text:{skill_version}");
+        let base = u64::from(round) * 10;
+
+        let announce = nostr::ChannelMessageEvent::new(
+            channel_event_id.clone(),
+            relay,
+            format!(
+                "agent-alpha requests summarize-text@{skill_version} for client brief #{round}"
+            ),
+            now_epoch_seconds.saturating_add(base + 1),
+        );
+        let announce_id = format!("sim:{}:{:08x}:a", nostr::KIND_CHANNEL_MESSAGE, round);
+        self.push_event(
+            "NIP-28",
+            &announce_id,
+            format!(
+                "alpha broadcast in channel ({} tags)",
+                announce.to_tags().len()
+            ),
+        );
+
+        let negotiation = nostr::ChannelMessageEvent::reply(
+            channel_event_id,
+            announce_id.clone(),
+            relay,
+            format!("agent-beta offers {skill_ref} with AC escrow"),
+            now_epoch_seconds.saturating_add(base + 2),
+        )
+        .mention_pubkey("npub1alpha", Some(relay.to_string()));
+        let negotiation_id = format!("sim:{}:{:08x}:b", nostr::KIND_CHANNEL_MESSAGE, round);
+        self.push_event(
+            "NIP-28",
+            &negotiation_id,
+            format!(
+                "beta replied with terms ({} tags)",
+                negotiation.to_tags().len()
+            ),
+        );
+
+        self.push_event(
+            "NIP-SKL",
+            &format!("sim:{}:{:08x}", nostr::KIND_SKILL_MANIFEST, round),
+            format!("beta published manifest {skill_ref}"),
+        );
+        self.push_event(
+            "NIP-SA",
+            &format!("sim:{}:{:08x}", nostr::KIND_SKILL_LICENSE, round),
+            format!("alpha learned skill summarize-text@{skill_version}"),
+        );
+        self.push_event(
+            "NIP-AC",
+            &format!("sim:{}:{:08x}", nostr::KIND_CREDIT_INTENT, round),
+            "opened escrow intent for skill execution".to_string(),
+        );
+        self.push_event(
+            "NIP-AC",
+            &format!("sim:{}:{:08x}", nostr::KIND_CREDIT_SETTLEMENT, round),
+            "settled escrow after successful delivery".to_string(),
+        );
+
+        let transfer_sats = 250_u64.saturating_add(u64::from(round) * 35);
+        self.total_transferred_sats = self.total_transferred_sats.saturating_add(transfer_sats);
+        self.rounds_run = round;
+
+        if !self.learned_skills.iter().any(|skill| skill == &skill_ref) {
+            self.learned_skills.push(skill_ref);
+        }
+
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Round {round}: agents exchanged NIP-28 messages and settled {transfer_sats} sats"
+        ));
+        Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some("Simulation reset".to_string());
+        self.channel_event_id = None;
+        self.rounds_run = 0;
+        self.total_transferred_sats = 0;
+        self.learned_skills.clear();
+        self.events.clear();
+        self.next_seq = 1;
+    }
+
+    fn push_event(&mut self, protocol: &str, event_ref: &str, summary: String) {
+        self.events.push(AgentNetworkSimulationEvent {
+            seq: self.next_seq,
+            protocol: protocol.to_string(),
+            event_ref: event_ref.to_string(),
+            summary,
+        });
+        self.next_seq = self.next_seq.saturating_add(1);
+        if self.events.len() > 18 {
+            let overflow = self.events.len().saturating_sub(18);
+            self.events.drain(0..overflow);
+        }
+    }
+}
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2543,6 +2723,7 @@ impl_pane_status_access!(
     SkillTrustRevocationPaneState,
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
+    AgentNetworkSimulationPaneState,
 );
 
 pub struct RenderState {
@@ -2600,6 +2781,7 @@ pub struct RenderState {
     pub skill_trust_revocation: SkillTrustRevocationPaneState,
     pub credit_desk: CreditDeskPaneState,
     pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
+    pub agent_network_simulation: AgentNetworkSimulationPaneState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
@@ -2661,14 +2843,14 @@ impl RenderState {
 mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
-        ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
-        AutopilotMessageStatus, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
-        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
-        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SyncHealthState, SyncRecoveryPhase,
+        ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
+        AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, EarningsScoreboardState,
+        JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange,
+        JobInboxDecision, JobInboxNetworkRequest, JobInboxState, JobInboxValidation,
+        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
+        NostrSecretState, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SparkPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
     };
 
     fn fixture_inbox_request(
@@ -3057,6 +3239,26 @@ mod tests {
         assert_eq!(first.response_stream_id, format!("stream:{request_id}"));
         assert_eq!(first.status, NetworkRequestStatus::Submitted);
         assert_eq!(first.authority_command_seq, 44);
+    }
+
+    #[test]
+    fn agent_network_simulation_rounds_generate_channel_skill_and_credit_events() {
+        let mut state = AgentNetworkSimulationPaneState::default();
+        state
+            .run_round(1_761_920_800)
+            .expect("first simulation round should succeed");
+        assert_eq!(state.rounds_run, 1);
+        assert!(state.channel_event_id.is_some());
+        assert!(state.total_transferred_sats > 0);
+        assert!(!state.learned_skills.is_empty());
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-28"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-SKL"));
+        assert!(state.events.iter().any(|event| event.protocol == "NIP-AC"));
+
+        state.reset();
+        assert_eq!(state.rounds_run, 0);
+        assert!(state.channel_event_id.is_none());
+        assert!(state.events.is_empty());
     }
 
     #[test]

@@ -3,6 +3,7 @@ pub mod nip01;
 mod nip06;
 pub mod nip09;
 pub mod nip26;
+pub mod nip28;
 pub mod nip32;
 pub mod nip40;
 pub mod nip44;
@@ -30,3 +31,4 @@ pub use nip06::{
     Keypair, derive_agent_keypair, derive_keypair, derive_keypair_with_account,
     derive_skill_keypair,
 };
+pub use nip28::*;

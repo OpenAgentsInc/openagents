@@ -168,6 +168,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
+            agent_network_simulation: crate::app_state::AgentNetworkSimulationPaneState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -287,6 +288,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.skill_trust_revocation,
             &state.credit_desk,
             &state.credit_settlement_ledger,
+            &state.agent_network_simulation,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -484,6 +486,10 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.agent_network_simulation"
+                && command.label == "Sovereign Agent Simulation"
         }));
     }
 

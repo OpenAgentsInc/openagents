@@ -169,6 +169,12 @@ pub enum CreditSettlementLedgerPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentNetworkSimulationPaneAction {
+    RunRound,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -193,6 +199,7 @@ pub enum PaneHitAction {
     SkillTrustRevocation(SkillTrustRevocationPaneAction),
     CreditDesk(CreditDeskPaneAction),
     CreditSettlementLedger(CreditSettlementLedgerPaneAction),
+    AgentNetworkSimulation(AgentNetworkSimulationPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
     SparkPayInvoice(PayInvoicePaneAction),
@@ -569,7 +576,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::SkillRegistry
             | PaneKind::SkillTrustRevocation
             | PaneKind::CreditDesk
-            | PaneKind::CreditSettlementLedger => {}
+            | PaneKind::CreditSettlementLedger
+            | PaneKind::AgentNetworkSimulation => {}
         }
 
         if pane_hit_action_for_pane(state, pane, point).is_some() {
@@ -1270,6 +1278,25 @@ pub fn credit_settlement_reputation_button_bounds(content_bounds: Bounds) -> Bou
     )
 }
 
+pub fn agent_network_simulation_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.28).clamp(180.0, 280.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn agent_network_simulation_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let run = agent_network_simulation_run_button_bounds(content_bounds);
+    Bounds::new(
+        run.max_x() + JOB_INBOX_BUTTON_GAP,
+        run.origin.y,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        run.size.height,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -1676,6 +1703,19 @@ fn pane_hit_action_for_pane(
             if credit_settlement_reputation_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::CreditSettlementLedger(
                     CreditSettlementLedgerPaneAction::EmitReputationLabel,
+                ));
+            }
+            None
+        }
+        PaneKind::AgentNetworkSimulation => {
+            if agent_network_simulation_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentNetworkSimulation(
+                    AgentNetworkSimulationPaneAction::RunRound,
+                ));
+            }
+            if agent_network_simulation_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentNetworkSimulation(
+                    AgentNetworkSimulationPaneAction::Reset,
                 ));
             }
             None
