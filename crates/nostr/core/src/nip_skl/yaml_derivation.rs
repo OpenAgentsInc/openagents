@@ -1,4 +1,8 @@
 //! Deterministic SKILL payload hashing + SKL manifest derivation.
+//!
+//! Supports both:
+//! - Agent Skills-style frontmatter (`name`, `description`, `metadata.*`)
+//! - Legacy SKL-oriented frontmatter (`d`, `version`, `expiry`, `capabilities`)
 
 use super::manifest::{ManifestError, SkillManifest};
 use crate::nip01::EventTemplate;
@@ -67,17 +71,33 @@ pub fn derive_manifest_from_skill_payload(
     let (frontmatter, body) = split_frontmatter(&normalized_str)?;
     let map = parse_frontmatter(frontmatter)?;
 
-    let identifier = string_field(&map, "d")
-        .or_else(|| string_field(&map, "identifier"))
-        .ok_or(YamlDerivationError::MissingField("d"))?;
     let name = string_field(&map, "name").ok_or(YamlDerivationError::MissingField("name"))?;
-    let version =
-        string_field(&map, "version").ok_or(YamlDerivationError::MissingField("version"))?;
+    let identifier = string_field_path(&map, &["metadata", "oa", "nostr", "identifier"])
+        .or_else(|| string_field(&map, "d"))
+        .or_else(|| string_field(&map, "identifier"))
+        .unwrap_or_else(|| name.clone());
+    let version = string_field_path(&map, &["metadata", "oa", "nostr", "version"])
+        .or_else(|| string_field(&map, "version"))
+        .ok_or(YamlDerivationError::MissingField("version"))?;
     let description = string_field(&map, "description")
         .ok_or(YamlDerivationError::MissingField("description"))?;
-    let expiry = u64_field(&map, "expiry").ok_or(YamlDerivationError::MissingField("expiry"))?;
+    let expiry = u64_field_path(&map, &["metadata", "oa", "nostr", "expiry_unix"])
+        .or_else(|| u64_field(&map, "expiry"))
+        .ok_or(YamlDerivationError::MissingField("expiry"))?;
 
-    let capabilities = sequence_string_field(&map, "capabilities").unwrap_or_default();
+    let capabilities = sequence_string_field_path(&map, &["metadata", "oa", "nostr", "capabilities"])
+        .or_else(|| {
+            string_field_path(&map, &["metadata", "oa", "nostr", "capabilities_csv"]).map(
+                |raw| {
+                    raw.split(|character: char| character == ',' || character.is_whitespace())
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                },
+            )
+        })
+        .or_else(|| sequence_string_field(&map, "capabilities"))
+        .unwrap_or_default();
     let payload_hash = hash_bytes(&normalized);
 
     let mut manifest = SkillManifest::new(
@@ -91,11 +111,23 @@ pub fn derive_manifest_from_skill_payload(
     )
     .with_content(body.to_string());
 
-    if let Some(author_npub) = string_field(&map, "author_npub") {
+    if let Some(author_npub) = string_field_path(&map, &["metadata", "oa", "nostr", "author_npub"])
+        .or_else(|| string_field(&map, "author_npub"))
+    {
         manifest = manifest.with_author_npub(author_npub);
     }
-    if let Some(author_pubkey) = string_field(&map, "author_pubkey") {
+    if let Some(author_pubkey) =
+        string_field_path(&map, &["metadata", "oa", "nostr", "author_pubkey"])
+            .or_else(|| string_field(&map, "author_pubkey"))
+    {
         manifest = manifest.with_author_pubkey(author_pubkey);
+    }
+    if let Some(previous_event_id) =
+        string_field_path(&map, &["metadata", "oa", "nostr", "previous_manifest_event_id"])
+            .or_else(|| string_field(&map, "previous_manifest_event_id"))
+            .or_else(|| string_field(&map, "v"))
+    {
+        manifest = manifest.with_previous_manifest_event(previous_event_id);
     }
 
     let event_template = manifest.to_event_template(publisher_pubkey, created_at)?;
@@ -134,13 +166,47 @@ fn parse_frontmatter(frontmatter: &str) -> Result<serde_yaml::Mapping, YamlDeriv
     }
 }
 
-fn string_field(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
+fn value_field<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
     map.get(Value::String(key.to_string()))
+}
+
+fn value_field_path<'a>(map: &'a serde_yaml::Mapping, path: &[&str]) -> Option<&'a Value> {
+    if path.is_empty() {
+        return None;
+    }
+
+    let value = value_field(map, path[0])?;
+    if path.len() == 1 {
+        return Some(value);
+    }
+
+    match value {
+        Value::Mapping(next) => value_field_path(next, &path[1..]),
+        _ => None,
+    }
+}
+
+fn string_field(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
+    value_field(map, key)
         .and_then(|value| value.as_str().map(str::to_string))
 }
 
+fn string_field_path(map: &serde_yaml::Mapping, path: &[&str]) -> Option<String> {
+    value_field_path(map, path).and_then(|value| value.as_str().map(str::to_string))
+}
+
 fn u64_field(map: &serde_yaml::Mapping, key: &str) -> Option<u64> {
-    map.get(Value::String(key.to_string())).and_then(|value| {
+    value_field(map, key).and_then(|value| {
+        if let Some(number) = value.as_u64() {
+            Some(number)
+        } else {
+            value.as_str().and_then(|text| text.parse::<u64>().ok())
+        }
+    })
+}
+
+fn u64_field_path(map: &serde_yaml::Mapping, path: &[&str]) -> Option<u64> {
+    value_field_path(map, path).and_then(|value| {
         if let Some(number) = value.as_u64() {
             Some(number)
         } else {
@@ -150,7 +216,19 @@ fn u64_field(map: &serde_yaml::Mapping, key: &str) -> Option<u64> {
 }
 
 fn sequence_string_field(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
-    map.get(Value::String(key.to_string()))
+    value_field(map, key)
+        .and_then(Value::as_sequence)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+}
+
+fn sequence_string_field_path(map: &serde_yaml::Mapping, path: &[&str]) -> Option<Vec<String>> {
+    value_field_path(map, path)
         .and_then(Value::as_sequence)
         .map(|values| {
             values
@@ -252,5 +330,90 @@ Minor prompt hardening
         );
         assert_eq!(first.event_template.tags, second.event_template.tags);
         assert_eq!(first.event_template.content, second.event_template.content);
+    }
+
+    #[test]
+    fn test_derive_manifest_from_agent_skills_frontmatter_metadata_bridge() {
+        let payload = r#"---
+name: mezo-integration
+description: Integrate Mezo testnet and mainnet flows
+metadata:
+  oa:
+    project: mezo
+    nostr:
+      identifier: mezo-integration
+      version: "0.3.0"
+      expiry_unix: 1756000000
+      capabilities_csv: "http:outbound filesystem:read"
+      author_npub: npub1author
+---
+Skill instructions
+"#;
+
+        let derived =
+            derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_001).unwrap();
+
+        assert_eq!(derived.manifest.identifier, "mezo-integration");
+        assert_eq!(derived.manifest.name, "mezo-integration");
+        assert_eq!(derived.manifest.version, "0.3.0");
+        assert_eq!(
+            derived.manifest.description,
+            "Integrate Mezo testnet and mainnet flows"
+        );
+        assert_eq!(
+            derived.manifest.author_npub,
+            Some("npub1author".to_string())
+        );
+        assert!(
+            derived
+                .manifest
+                .capabilities
+                .contains(&"http:outbound".to_string())
+        );
+        assert!(
+            derived
+                .manifest
+                .capabilities
+                .contains(&"filesystem:read".to_string())
+        );
+    }
+
+    #[test]
+    fn test_derive_manifest_legacy_frontmatter_remains_supported() {
+        let payload = r#"---
+d: legacy-skill
+name: Legacy Skill
+version: 1.2.3
+description: Legacy frontmatter still works
+expiry: 1756000000
+capabilities:
+  - filesystem:read
+---
+Legacy body
+"#;
+
+        let derived =
+            derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_002).unwrap();
+        assert_eq!(derived.manifest.identifier, "legacy-skill");
+        assert_eq!(derived.manifest.version, "1.2.3");
+    }
+
+    #[test]
+    fn test_derive_manifest_missing_version_errors() {
+        let payload = r#"---
+name: invalid-skill
+description: missing required version mapping
+metadata:
+  oa:
+    nostr:
+      expiry_unix: 1756000000
+---
+Body
+"#;
+
+        let err =
+            derive_manifest_from_skill_payload(payload, "publisherpubkey", 1_740_400_003)
+                .unwrap_err();
+        assert!(matches!(err, YamlDerivationError::MissingField("version")));
     }
 }
