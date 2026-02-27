@@ -26,6 +26,11 @@ const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
 const CHAT_SEND_WIDTH: f32 = 92.0;
 const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
+const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
 const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_ROW_GAP: f32 = 4.0;
 const CHAT_MAX_THREAD_ROWS: usize = 10;
@@ -204,6 +209,17 @@ pub enum PaneHitAction {
     ChatRefreshThreads,
     ChatCycleModel,
     ChatInterruptTurn,
+    ChatToggleArchivedFilter,
+    ChatCycleSortFilter,
+    ChatCycleSourceFilter,
+    ChatCycleProviderFilter,
+    ChatForkThread,
+    ChatArchiveThread,
+    ChatUnarchiveThread,
+    ChatRenameThread,
+    ChatRollbackThread,
+    ChatCompactThread,
+    ChatUnsubscribeThread,
     ChatSelectThread(usize),
     GoOnlineToggle,
     EarningsScoreboard(EarningsScoreboardPaneAction),
@@ -669,8 +685,8 @@ pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let refresh = chat_refresh_threads_button_bounds(content_bounds);
-    let y = refresh.max_y() + 10.0 + index as f32 * (CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP);
+    let actions_bottom = chat_thread_action_unsubscribe_button_bounds(content_bounds).max_y();
+    let y = actions_bottom + 10.0 + index as f32 * (CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP);
     Bounds::new(
         rail.origin.x + 10.0,
         y,
@@ -681,6 +697,89 @@ pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
 
 pub fn chat_visible_thread_row_count(total_threads: usize) -> usize {
     total_threads.min(CHAT_MAX_THREAD_ROWS)
+}
+
+pub fn chat_thread_filter_archived_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = chat_refresh_threads_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.origin.x,
+        refresh.max_y() + 8.0,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_sort_button_bounds(content_bounds: Bounds) -> Bounds {
+    let archived = chat_thread_filter_archived_button_bounds(content_bounds);
+    Bounds::new(
+        archived.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        archived.origin.y,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_source_button_bounds(content_bounds: Bounds) -> Bounds {
+    let archived = chat_thread_filter_archived_button_bounds(content_bounds);
+    Bounds::new(
+        archived.origin.x,
+        archived.max_y() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_filter_provider_button_bounds(content_bounds: Bounds) -> Bounds {
+    let source = chat_thread_filter_source_button_bounds(content_bounds);
+    Bounds::new(
+        source.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        source.origin.y,
+        CHAT_THREAD_FILTER_BUTTON_WIDTH,
+        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+    )
+}
+
+fn chat_thread_action_grid_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let source = chat_thread_filter_source_button_bounds(content_bounds);
+    let row = index / 2;
+    let col = index % 2;
+    Bounds::new(
+        source.origin.x
+            + col as f32 * (CHAT_THREAD_ACTION_BUTTON_WIDTH + CHAT_THREAD_ACTION_BUTTON_GAP),
+        source.max_y()
+            + 8.0
+            + row as f32 * (CHAT_THREAD_ACTION_BUTTON_HEIGHT + CHAT_THREAD_ACTION_BUTTON_GAP),
+        CHAT_THREAD_ACTION_BUTTON_WIDTH,
+        CHAT_THREAD_ACTION_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_thread_action_fork_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 0)
+}
+
+pub fn chat_thread_action_archive_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 1)
+}
+
+pub fn chat_thread_action_unarchive_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 2)
+}
+
+pub fn chat_thread_action_rename_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 3)
+}
+
+pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 4)
+}
+
+pub fn chat_thread_action_compact_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 5)
+}
+
+pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 6)
 }
 
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1515,6 +1614,39 @@ fn pane_hit_action_for_pane(
             }
             if chat_interrupt_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatInterruptTurn);
+            }
+            if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatToggleArchivedFilter);
+            }
+            if chat_thread_filter_sort_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleSortFilter);
+            }
+            if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleSourceFilter);
+            }
+            if chat_thread_filter_provider_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCycleProviderFilter);
+            }
+            if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatForkThread);
+            }
+            if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatArchiveThread);
+            }
+            if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatUnarchiveThread);
+            }
+            if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRenameThread);
+            }
+            if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatRollbackThread);
+            }
+            if chat_thread_action_compact_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatCompactThread);
+            }
+            if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatUnsubscribeThread);
             }
             let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
             for row_index in 0..visible_threads {

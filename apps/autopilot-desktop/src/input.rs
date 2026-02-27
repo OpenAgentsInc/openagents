@@ -1,4 +1,8 @@
-use codex_client::{ThreadListParams, ThreadResumeParams, TurnStartParams, UserInput};
+use codex_client::{
+    ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
+    ThreadUnsubscribeParams, TurnStartParams, UserInput,
+};
 use nostr::regenerate_identity;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -411,6 +415,17 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
+        PaneHitAction::ChatToggleArchivedFilter => run_chat_toggle_archived_filter_action(state),
+        PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
+        PaneHitAction::ChatCycleSourceFilter => run_chat_cycle_source_filter_action(state),
+        PaneHitAction::ChatCycleProviderFilter => run_chat_cycle_provider_filter_action(state),
+        PaneHitAction::ChatForkThread => run_chat_fork_thread_action(state),
+        PaneHitAction::ChatArchiveThread => run_chat_archive_thread_action(state),
+        PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
+        PaneHitAction::ChatRenameThread => run_chat_rename_thread_action(state),
+        PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
+        PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
+        PaneHitAction::ChatUnsubscribeThread => run_chat_unsubscribe_thread_action(state),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(
@@ -812,14 +827,20 @@ fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) ->
     let cwd = std::env::current_dir()
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
-    let command = crate::codex_lane::CodexLaneCommand::ThreadList(ThreadListParams {
-        cwd,
-        ..ThreadListParams::default()
-    });
+    let params = state.autopilot_chat.build_thread_list_params(cwd);
+    let command = crate::codex_lane::CodexLaneCommand::ThreadList(params);
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
     } else {
         state.autopilot_chat.last_error = None;
+        if let Err(error) = state.queue_codex_command(
+            crate::codex_lane::CodexLaneCommand::ThreadLoadedList(ThreadLoadedListParams {
+                cursor: None,
+                limit: Some(200),
+            }),
+        ) {
+            state.autopilot_chat.last_error = Some(error);
+        }
     }
     true
 }
@@ -827,6 +848,26 @@ fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) ->
 fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
     state.autopilot_chat.cycle_model();
     true
+}
+
+fn run_chat_toggle_archived_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_archived();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_sort_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_sort_key();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_source_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_source_kind();
+    run_chat_refresh_threads_action(state)
+}
+
+fn run_chat_cycle_provider_filter_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.cycle_thread_filter_model_provider();
+    run_chat_refresh_threads_action(state)
 }
 
 fn run_chat_interrupt_turn_action(state: &mut crate::app_state::RenderState) -> bool {
@@ -857,6 +898,125 @@ fn run_chat_interrupt_turn_action(state: &mut crate::app_state::RenderState) -> 
         Err(error) => {
             state.autopilot_chat.last_error = Some(error);
         }
+    }
+    true
+}
+
+fn active_thread_id(state: &crate::app_state::RenderState) -> Option<String> {
+    state.autopilot_chat.active_thread_id.clone()
+}
+
+fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
+        return true;
+    };
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
+        thread_id,
+        path: None,
+        model: Some(state.autopilot_chat.current_model().to_string()),
+        model_provider: None,
+        cwd,
+        approval_policy: None,
+        sandbox: None,
+        config: None,
+        base_instructions: None,
+        developer_instructions: None,
+        persist_extended_history: false,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_archive_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to archive".to_string());
+        return true;
+    };
+    if let Err(error) = state.queue_codex_command(
+        crate::codex_lane::CodexLaneCommand::ThreadArchive(ThreadArchiveParams { thread_id }),
+    ) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_unarchive_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to unarchive".to_string());
+        return true;
+    };
+    if let Err(error) = state.queue_codex_command(
+        crate::codex_lane::CodexLaneCommand::ThreadUnarchive(ThreadUnarchiveParams { thread_id }),
+    ) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_rename_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to rename".to_string());
+        return true;
+    };
+    let name = state.autopilot_chat.next_thread_name();
+    let command = crate::codex_lane::CodexLaneCommand::ThreadNameSet(ThreadSetNameParams {
+        thread_id: thread_id.clone(),
+        name: name.clone(),
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.set_thread_name(&thread_id, Some(name));
+    }
+    true
+}
+
+fn run_chat_rollback_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to rollback".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ThreadRollback(ThreadRollbackParams {
+        thread_id,
+        num_turns: 1,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_compact_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
+        return true;
+    };
+    let command =
+        crate::codex_lane::CodexLaneCommand::ThreadCompactStart(ThreadCompactStartParams {
+            thread_id,
+        });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+    true
+}
+
+fn run_chat_unsubscribe_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to unsubscribe".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ThreadUnsubscribe(ThreadUnsubscribeParams {
+        thread_id,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
     }
     true
 }

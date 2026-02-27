@@ -269,6 +269,9 @@ pub struct AutopilotTurnPlanStep {
 
 #[derive(Clone)]
 pub struct AutopilotThreadMetadata {
+    pub thread_name: Option<String>,
+    pub status: Option<String>,
+    pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
 }
@@ -282,6 +285,9 @@ pub struct AutopilotThreadResumeTarget {
 #[derive(Clone)]
 pub struct AutopilotThreadListEntry {
     pub thread_id: String,
+    pub thread_name: Option<String>,
+    pub status: Option<String>,
+    pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
 }
@@ -304,6 +310,12 @@ pub struct AutopilotChatState {
     pub turn_plan: Vec<AutopilotTurnPlanStep>,
     pub turn_diff: Option<String>,
     pub turn_timeline: Vec<String>,
+    pub thread_filter_archived: Option<bool>,
+    pub thread_filter_sort_key: codex_client::ThreadSortKey,
+    pub thread_filter_source_kind: Option<codex_client::ThreadSourceKind>,
+    pub thread_filter_model_provider: Option<String>,
+    pub thread_filter_search_term: String,
+    pub thread_rename_counter: u64,
     pub last_error: Option<String>,
 }
 
@@ -336,6 +348,12 @@ impl Default for AutopilotChatState {
             turn_plan: Vec::new(),
             turn_diff: None,
             turn_timeline: Vec::new(),
+            thread_filter_archived: Some(false),
+            thread_filter_sort_key: codex_client::ThreadSortKey::UpdatedAt,
+            thread_filter_source_kind: None,
+            thread_filter_model_provider: None,
+            thread_filter_search_term: String::new(),
+            thread_rename_counter: 1,
             last_error: None,
         }
     }
@@ -399,6 +417,9 @@ impl AutopilotChatState {
             self.thread_metadata.insert(
                 entry.thread_id.clone(),
                 AutopilotThreadMetadata {
+                    thread_name: entry.thread_name,
+                    status: entry.status,
+                    loaded: entry.loaded,
                     cwd: entry.cwd,
                     path: entry.path,
                 },
@@ -429,6 +450,15 @@ impl AutopilotChatState {
         if !self.threads.iter().any(|existing| existing == &thread_id) {
             self.threads.insert(0, thread_id.clone());
         }
+        self.thread_metadata
+            .entry(thread_id.clone())
+            .or_insert_with(|| AutopilotThreadMetadata {
+                thread_name: None,
+                status: None,
+                loaded: false,
+                cwd: None,
+                path: None,
+            });
         self.active_thread_id = Some(thread_id);
     }
 
@@ -581,6 +611,137 @@ impl AutopilotChatState {
             let overflow = self.turn_timeline.len().saturating_sub(64);
             self.turn_timeline.drain(0..overflow);
         }
+    }
+
+    pub fn set_thread_loaded_ids(&mut self, loaded_thread_ids: &[String]) {
+        let loaded_set: std::collections::HashSet<&str> =
+            loaded_thread_ids.iter().map(String::as_str).collect();
+        for (thread_id, metadata) in &mut self.thread_metadata {
+            metadata.loaded = loaded_set.contains(thread_id.as_str());
+        }
+    }
+
+    pub fn set_thread_status(&mut self, thread_id: &str, status: Option<String>) {
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.status = status;
+            return;
+        }
+        self.thread_metadata.insert(
+            thread_id.to_string(),
+            AutopilotThreadMetadata {
+                thread_name: None,
+                status,
+                loaded: false,
+                cwd: None,
+                path: None,
+            },
+        );
+    }
+
+    pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.thread_name = thread_name;
+            return;
+        }
+        self.thread_metadata.insert(
+            thread_id.to_string(),
+            AutopilotThreadMetadata {
+                thread_name,
+                status: None,
+                loaded: false,
+                cwd: None,
+                path: None,
+            },
+        );
+    }
+
+    pub fn active_thread_status(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.status.as_deref())
+    }
+
+    pub fn active_thread_loaded(&self) -> Option<bool> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .map(|metadata| metadata.loaded)
+    }
+
+    pub fn thread_label(&self, thread_id: &str) -> String {
+        let short_id = if thread_id.len() > 16 {
+            &thread_id[..16]
+        } else {
+            thread_id
+        };
+        if let Some(metadata) = self.thread_metadata.get(thread_id)
+            && let Some(name) = metadata.thread_name.as_deref()
+            && !name.trim().is_empty()
+        {
+            return format!("{name} [{short_id}]");
+        }
+        short_id.to_string()
+    }
+
+    pub fn cycle_thread_filter_archived(&mut self) {
+        self.thread_filter_archived = match self.thread_filter_archived {
+            Some(false) => Some(true),
+            Some(true) => None,
+            None => Some(false),
+        };
+    }
+
+    pub fn cycle_thread_filter_sort_key(&mut self) {
+        self.thread_filter_sort_key = match self.thread_filter_sort_key {
+            codex_client::ThreadSortKey::CreatedAt => codex_client::ThreadSortKey::UpdatedAt,
+            codex_client::ThreadSortKey::UpdatedAt => codex_client::ThreadSortKey::CreatedAt,
+        };
+    }
+
+    pub fn cycle_thread_filter_source_kind(&mut self) {
+        self.thread_filter_source_kind = match self.thread_filter_source_kind {
+            None => Some(codex_client::ThreadSourceKind::AppServer),
+            Some(codex_client::ThreadSourceKind::AppServer) => {
+                Some(codex_client::ThreadSourceKind::Cli)
+            }
+            Some(codex_client::ThreadSourceKind::Cli) => Some(codex_client::ThreadSourceKind::Exec),
+            Some(codex_client::ThreadSourceKind::Exec) | Some(_) => None,
+        };
+    }
+
+    pub fn cycle_thread_filter_model_provider(&mut self) {
+        self.thread_filter_model_provider = match self.thread_filter_model_provider.as_deref() {
+            None => Some("openai".to_string()),
+            Some("openai") => Some("azure-openai".to_string()),
+            _ => None,
+        };
+    }
+
+    pub fn build_thread_list_params(&self, cwd: Option<String>) -> codex_client::ThreadListParams {
+        codex_client::ThreadListParams {
+            cwd,
+            cursor: None,
+            limit: Some(100),
+            sort_key: Some(self.thread_filter_sort_key),
+            model_providers: self
+                .thread_filter_model_provider
+                .as_ref()
+                .map(|provider| vec![provider.clone()]),
+            source_kinds: self.thread_filter_source_kind.map(|value| vec![value]),
+            archived: self.thread_filter_archived,
+            search_term: if self.thread_filter_search_term.trim().is_empty() {
+                None
+            } else {
+                Some(self.thread_filter_search_term.trim().to_string())
+            },
+        }
+    }
+
+    pub fn next_thread_name(&mut self) -> String {
+        let value = format!("Thread {}", self.thread_rename_counter);
+        self.thread_rename_counter = self.thread_rename_counter.saturating_add(1);
+        value
     }
 
     pub fn has_pending_messages(&self) -> bool {
@@ -2947,6 +3108,54 @@ mod tests {
                 .iter()
                 .any(|message| message.content.contains("pong"))
         );
+    }
+
+    #[test]
+    fn chat_state_tracks_thread_metadata_and_filters() {
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                status: Some("idle".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/a".to_string()),
+                path: Some("/tmp/a.jsonl".to_string()),
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: None,
+                status: Some("active:waitingOnApproval".to_string()),
+                loaded: false,
+                cwd: Some("/tmp/b".to_string()),
+                path: None,
+            },
+        ]);
+
+        chat.set_thread_loaded_ids(&["thread-b".to_string()]);
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-a"));
+        assert_eq!(chat.thread_label("thread-a"), "Alpha [thread-a]");
+        assert_eq!(chat.thread_metadata["thread-a"].loaded, false);
+        assert_eq!(chat.thread_metadata["thread-b"].loaded, true);
+
+        chat.cycle_thread_filter_archived();
+        chat.cycle_thread_filter_sort_key();
+        chat.cycle_thread_filter_source_kind();
+        chat.cycle_thread_filter_model_provider();
+        chat.thread_filter_search_term = "alpha".to_string();
+        let params = chat.build_thread_list_params(Some("/workspace".to_string()));
+        assert_eq!(params.archived, Some(true));
+        assert_eq!(
+            params.sort_key,
+            Some(codex_client::ThreadSortKey::CreatedAt)
+        );
+        assert_eq!(
+            params.source_kinds,
+            Some(vec![codex_client::ThreadSourceKind::AppServer])
+        );
+        assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
+        assert_eq!(params.search_term.as_deref(), Some("alpha"));
+        assert_eq!(params.cwd.as_deref(), Some("/workspace"));
     }
 
     #[test]

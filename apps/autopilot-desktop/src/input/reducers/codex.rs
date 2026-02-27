@@ -195,15 +195,54 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .into_iter()
                     .map(|entry| crate::app_state::AutopilotThreadListEntry {
                         thread_id: entry.thread_id,
+                        thread_name: entry.thread_name,
+                        status: entry.status,
+                        loaded: entry.loaded,
                         cwd: entry.cwd,
                         path: entry.path,
                     })
                     .collect(),
             );
         }
+        CodexLaneNotification::ThreadLoadedListLoaded { thread_ids } => {
+            state.autopilot_chat.set_thread_loaded_ids(&thread_ids);
+        }
         CodexLaneNotification::ThreadSelected { thread_id }
         | CodexLaneNotification::ThreadStarted { thread_id } => {
             state.autopilot_chat.ensure_thread(thread_id);
+        }
+        CodexLaneNotification::ThreadStatusChanged { thread_id, status } => {
+            state
+                .autopilot_chat
+                .set_thread_status(&thread_id, Some(status.clone()));
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("thread status: {thread_id} => {status}"));
+        }
+        CodexLaneNotification::ThreadArchived { thread_id } => {
+            state
+                .autopilot_chat
+                .set_thread_status(&thread_id, Some("archived".to_string()));
+            if state.autopilot_chat.thread_filter_archived == Some(false) {
+                state.autopilot_chat.remove_thread(&thread_id);
+            }
+        }
+        CodexLaneNotification::ThreadUnarchived { thread_id } => {
+            state
+                .autopilot_chat
+                .set_thread_status(&thread_id, Some("idle".to_string()));
+            state.autopilot_chat.ensure_thread(thread_id);
+        }
+        CodexLaneNotification::ThreadClosed { thread_id } => {
+            state.autopilot_chat.remove_thread(&thread_id);
+        }
+        CodexLaneNotification::ThreadNameUpdated {
+            thread_id,
+            thread_name,
+        } => {
+            state
+                .autopilot_chat
+                .set_thread_name(&thread_id, thread_name);
         }
         CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
             state.autopilot_chat.ensure_thread(thread_id);

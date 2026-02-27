@@ -244,6 +244,8 @@ pub struct ThreadSummary {
     #[serde(default)]
     pub preview: String,
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub model_provider: String,
     #[serde(default)]
     pub cwd: Option<PathBuf>,

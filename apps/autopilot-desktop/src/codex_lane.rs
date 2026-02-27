@@ -8,8 +8,11 @@ use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
     AskForApproval, ClientInfo, InitializeCapabilities, InitializeParams, ModelListParams,
-    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadListParams,
-    ThreadReadParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
+    SkillScope, SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadArchiveParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
+    ThreadReadParams, ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams,
+    ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams, TurnInterruptParams,
+    TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -90,8 +93,16 @@ impl Default for CodexLaneSnapshot {
 pub enum CodexLaneCommandKind {
     ThreadStart,
     ThreadResume,
+    ThreadFork,
+    ThreadArchive,
+    ThreadUnsubscribe,
+    ThreadNameSet,
+    ThreadUnarchive,
+    ThreadCompactStart,
+    ThreadRollback,
     ThreadRead,
     ThreadList,
+    ThreadLoadedList,
     TurnStart,
     TurnInterrupt,
     SkillsList,
@@ -103,8 +114,16 @@ impl CodexLaneCommandKind {
         match self {
             Self::ThreadStart => "thread/start",
             Self::ThreadResume => "thread/resume",
+            Self::ThreadFork => "thread/fork",
+            Self::ThreadArchive => "thread/archive",
+            Self::ThreadUnsubscribe => "thread/unsubscribe",
+            Self::ThreadNameSet => "thread/name/set",
+            Self::ThreadUnarchive => "thread/unarchive",
+            Self::ThreadCompactStart => "thread/compact/start",
+            Self::ThreadRollback => "thread/rollback",
             Self::ThreadRead => "thread/read",
             Self::ThreadList => "thread/list",
+            Self::ThreadLoadedList => "thread/loaded/list",
             Self::TurnStart => "turn/start",
             Self::TurnInterrupt => "turn/interrupt",
             Self::SkillsList => "skills/list",
@@ -143,8 +162,16 @@ pub struct CodexLaneCommandResponse {
 pub enum CodexLaneCommand {
     ThreadStart(ThreadStartParams),
     ThreadResume(ThreadResumeParams),
+    ThreadFork(ThreadForkParams),
+    ThreadArchive(ThreadArchiveParams),
+    ThreadUnsubscribe(ThreadUnsubscribeParams),
+    ThreadNameSet(ThreadSetNameParams),
+    ThreadUnarchive(ThreadUnarchiveParams),
+    ThreadCompactStart(ThreadCompactStartParams),
+    ThreadRollback(ThreadRollbackParams),
     ThreadRead(ThreadReadParams),
     ThreadList(ThreadListParams),
+    ThreadLoadedList(ThreadLoadedListParams),
     TurnStart(TurnStartParams),
     TurnInterrupt(TurnInterruptParams),
     SkillsList(SkillsListParams),
@@ -156,8 +183,16 @@ impl CodexLaneCommand {
         match self {
             Self::ThreadStart(_) => CodexLaneCommandKind::ThreadStart,
             Self::ThreadResume(_) => CodexLaneCommandKind::ThreadResume,
+            Self::ThreadFork(_) => CodexLaneCommandKind::ThreadFork,
+            Self::ThreadArchive(_) => CodexLaneCommandKind::ThreadArchive,
+            Self::ThreadUnsubscribe(_) => CodexLaneCommandKind::ThreadUnsubscribe,
+            Self::ThreadNameSet(_) => CodexLaneCommandKind::ThreadNameSet,
+            Self::ThreadUnarchive(_) => CodexLaneCommandKind::ThreadUnarchive,
+            Self::ThreadCompactStart(_) => CodexLaneCommandKind::ThreadCompactStart,
+            Self::ThreadRollback(_) => CodexLaneCommandKind::ThreadRollback,
             Self::ThreadRead(_) => CodexLaneCommandKind::ThreadRead,
             Self::ThreadList(_) => CodexLaneCommandKind::ThreadList,
+            Self::ThreadLoadedList(_) => CodexLaneCommandKind::ThreadLoadedList,
             Self::TurnStart(_) => CodexLaneCommandKind::TurnStart,
             Self::TurnInterrupt(_) => CodexLaneCommandKind::TurnInterrupt,
             Self::SkillsList(_) => CodexLaneCommandKind::SkillsList,
@@ -178,11 +213,31 @@ pub enum CodexLaneNotification {
     ThreadListLoaded {
         entries: Vec<CodexThreadListEntry>,
     },
+    ThreadLoadedListLoaded {
+        thread_ids: Vec<String>,
+    },
     ThreadSelected {
         thread_id: String,
     },
     ThreadStarted {
         thread_id: String,
+    },
+    ThreadStatusChanged {
+        thread_id: String,
+        status: String,
+    },
+    ThreadArchived {
+        thread_id: String,
+    },
+    ThreadUnarchived {
+        thread_id: String,
+    },
+    ThreadClosed {
+        thread_id: String,
+    },
+    ThreadNameUpdated {
+        thread_id: String,
+        thread_name: Option<String>,
     },
     TurnStarted {
         thread_id: String,
@@ -263,6 +318,9 @@ pub struct CodexSkillSummary {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexThreadListEntry {
     pub thread_id: String,
+    pub thread_name: Option<String>,
+    pub status: Option<String>,
+    pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
 }
@@ -503,6 +561,9 @@ impl CodexLaneState {
                             CodexLaneNotification::ThreadListLoaded {
                                 entries: vec![CodexThreadListEntry {
                                     thread_id,
+                                    thread_name: None,
+                                    status: Some("idle".to_string()),
+                                    loaded: true,
                                     cwd: config
                                         .cwd
                                         .as_ref()
@@ -634,6 +695,65 @@ impl CodexLaneState {
                     notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
                 })
             }
+            CodexLaneCommand::ThreadFork(params) => {
+                let response = runtime.block_on(client.thread_fork(params))?;
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: Some(thread_id.clone()),
+                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                })
+            }
+            CodexLaneCommand::ThreadArchive(params) => {
+                let thread_id = params.thread_id.clone();
+                let _ = runtime.block_on(client.thread_archive(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadArchived { thread_id }),
+                })
+            }
+            CodexLaneCommand::ThreadUnsubscribe(params) => {
+                let thread_id = params.thread_id.clone();
+                let _ = runtime.block_on(client.thread_unsubscribe(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadClosed { thread_id }),
+                })
+            }
+            CodexLaneCommand::ThreadNameSet(params) => {
+                let thread_id = params.thread_id.clone();
+                let thread_name = Some(params.name.clone());
+                let _ = runtime.block_on(client.thread_name_set(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadNameUpdated {
+                        thread_id,
+                        thread_name,
+                    }),
+                })
+            }
+            CodexLaneCommand::ThreadUnarchive(params) => {
+                let response = runtime.block_on(client.thread_unarchive(params))?;
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadUnarchived { thread_id }),
+                })
+            }
+            CodexLaneCommand::ThreadCompactStart(params) => {
+                let _ = runtime.block_on(client.thread_compact_start(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
+                })
+            }
+            CodexLaneCommand::ThreadRollback(params) => {
+                let response = runtime.block_on(client.thread_rollback(params))?;
+                let thread_id = response.thread.id;
+                Ok(CodexCommandEffect {
+                    active_thread_id: Some(thread_id.clone()),
+                    notification: Some(CodexLaneNotification::ThreadSelected { thread_id }),
+                })
+            }
             CodexLaneCommand::ThreadRead(params) => {
                 let response = runtime.block_on(client.thread_read(params))?;
                 let thread_id = response.thread.id;
@@ -649,6 +769,9 @@ impl CodexLaneState {
                     .into_iter()
                     .map(|thread| CodexThreadListEntry {
                         thread_id: thread.id,
+                        thread_name: thread.name,
+                        status: thread.status.as_ref().and_then(thread_status_label),
+                        loaded: false,
                         cwd: thread.cwd.map(|value| value.display().to_string()),
                         path: thread.path.map(|value| value.display().to_string()),
                     })
@@ -656,6 +779,15 @@ impl CodexLaneState {
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
                     notification: Some(CodexLaneNotification::ThreadListLoaded { entries }),
+                })
+            }
+            CodexLaneCommand::ThreadLoadedList(params) => {
+                let response = runtime.block_on(client.thread_loaded_list(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ThreadLoadedListLoaded {
+                        thread_ids: response.data,
+                    }),
                 })
             }
             CodexLaneCommand::TurnStart(params) => {
@@ -822,6 +954,40 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
         "thread/started" => {
             let thread_id = thread_id_from_params(params.as_ref())?;
             Some(CodexLaneNotification::ThreadStarted { thread_id })
+        }
+        "thread/status/changed" => {
+            let params = params?;
+            let thread_id = string_field(&params, "threadId")?;
+            let status = params
+                .get("status")
+                .and_then(thread_status_label)
+                .unwrap_or_else(|| "unknown".to_string());
+            Some(CodexLaneNotification::ThreadStatusChanged { thread_id, status })
+        }
+        "thread/archived" => {
+            let params = params?;
+            Some(CodexLaneNotification::ThreadArchived {
+                thread_id: string_field(&params, "threadId")?,
+            })
+        }
+        "thread/unarchived" => {
+            let params = params?;
+            Some(CodexLaneNotification::ThreadUnarchived {
+                thread_id: string_field(&params, "threadId")?,
+            })
+        }
+        "thread/closed" => {
+            let params = params?;
+            Some(CodexLaneNotification::ThreadClosed {
+                thread_id: string_field(&params, "threadId")?,
+            })
+        }
+        "thread/name/updated" => {
+            let params = params?;
+            Some(CodexLaneNotification::ThreadNameUpdated {
+                thread_id: string_field(&params, "threadId")?,
+                thread_name: string_field(&params, "threadName"),
+            })
         }
         "turn/started" => {
             let params = params?;
@@ -1001,6 +1167,37 @@ fn i64_field(value: &Value, field: &str) -> Option<i64> {
     value.get(field).and_then(Value::as_i64)
 }
 
+fn thread_status_label(status: &Value) -> Option<String> {
+    if let Some(value) = status.as_str() {
+        return Some(value.to_string());
+    }
+
+    let status_type = status
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::to_string)?;
+    if status_type != "active" {
+        return Some(status_type);
+    }
+
+    let flags = status
+        .get("activeFlags")
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("+")
+        })
+        .unwrap_or_default();
+    if flags.is_empty() {
+        Some("active".to_string())
+    } else {
+        Some(format!("active:{flags}"))
+    }
+}
+
 fn is_disconnect_error(error: &anyhow::Error) -> bool {
     let text = error.to_string().to_ascii_lowercase();
     text.contains("connection closed")
@@ -1104,7 +1301,7 @@ mod tests {
     use super::{
         CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
         CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime,
-        CodexLaneUpdate, CodexLaneWorker,
+        CodexLaneUpdate, CodexLaneWorker, normalize_notification,
     };
 
     use std::fs;
@@ -1623,6 +1820,52 @@ mod tests {
 
         worker.shutdown();
         let _ = server.join();
+    }
+
+    #[test]
+    fn thread_lifecycle_notifications_are_normalized() {
+        let status = normalize_notification(codex_client::AppServerNotification {
+            method: "thread/status/changed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "status": {"type": "active", "activeFlags": ["waitingOnApproval"]}
+            })),
+        });
+        assert_eq!(
+            status,
+            Some(CodexLaneNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: "active:waitingOnApproval".to_string(),
+            })
+        );
+
+        let archived = normalize_notification(codex_client::AppServerNotification {
+            method: "thread/archived".to_string(),
+            params: Some(json!({
+                "threadId": "thread-2"
+            })),
+        });
+        assert_eq!(
+            archived,
+            Some(CodexLaneNotification::ThreadArchived {
+                thread_id: "thread-2".to_string(),
+            })
+        );
+
+        let renamed = normalize_notification(codex_client::AppServerNotification {
+            method: "thread/name/updated".to_string(),
+            params: Some(json!({
+                "threadId": "thread-3",
+                "threadName": "Renamed Thread"
+            })),
+        });
+        assert_eq!(
+            renamed,
+            Some(CodexLaneNotification::ThreadNameUpdated {
+                thread_id: "thread-3".to_string(),
+                thread_name: Some("Renamed Thread".to_string()),
+            })
+        );
     }
 
     #[test]
