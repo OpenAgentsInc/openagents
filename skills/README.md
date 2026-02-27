@@ -2,6 +2,12 @@
 
 This directory is the project-owned Agent Skills registry.
 
+## Listing Policy
+
+- We generally welcome skills across domains.
+- We do not list crypto-related skills unless they are centered on Bitcoin.
+- Accepted crypto-adjacent examples include: using Bitcoin directly, wrapping Bitcoin, bridging to Bitcoin, or integrating with legitimate Bitcoin layers.
+
 ## Directory Contract
 
 - Root layout: `skills/<project>/<skill-name>/SKILL.md`
