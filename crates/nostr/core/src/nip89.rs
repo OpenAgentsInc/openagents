@@ -14,6 +14,7 @@
 //! - Two degrees separation: weight 0.25
 //! - Unknown: weight 0.1
 
+use crate::tag_parsing::{collect_tag_values, find_tag, find_tag_value, tag_field};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
@@ -237,38 +238,26 @@ impl HandlerInfo {
         }
 
         // Parse handler type from tags
-        let handler_type = event
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "handler")
-            .map(|t| HandlerType::from_str(&t[1]))
+        let handler_type = find_tag_value(&event.tags, "handler")
+            .map(HandlerType::from_str)
             .transpose()?
             .ok_or_else(|| Nip89Error::MissingTag("handler".to_string()))?;
 
         // Parse capabilities from tags
-        let capabilities: Vec<String> = event
-            .tags
-            .iter()
-            .filter(|t| t.len() >= 2 && t[0] == "capability")
-            .map(|t| t[1].clone())
-            .collect();
+        let capabilities = collect_tag_values(&event.tags, "capability");
 
         // Parse pricing from tags
-        let pricing = event
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "price")
-            .and_then(|tag| {
-                let amount = tag[1].parse::<u64>().ok()?;
-                let mut pricing = PricingInfo::new(amount);
-                if tag.len() >= 3 {
-                    pricing = pricing.with_model(tag[2].clone());
-                }
-                if tag.len() >= 4 {
-                    pricing = pricing.with_currency(tag[3].clone());
-                }
-                Some(pricing)
-            });
+        let pricing = find_tag(&event.tags, "price").and_then(|tag| {
+            let amount = tag_field(tag, 1)?.parse::<u64>().ok()?;
+            let mut pricing = PricingInfo::new(amount);
+            if let Some(model) = tag_field(tag, 2) {
+                pricing = pricing.with_model(model.to_string());
+            }
+            if let Some(currency) = tag_field(tag, 3) {
+                pricing = pricing.with_currency(currency.to_string());
+            }
+            Some(pricing)
+        });
 
         // Parse metadata from content (JSON)
         let metadata: HandlerMetadata = serde_json::from_str(&event.content)
@@ -288,8 +277,14 @@ impl HandlerInfo {
         let custom_tags: Vec<(String, String)> = event
             .tags
             .iter()
-            .filter(|t| t.len() >= 2 && !known_tags.contains(&t[0].as_str()))
-            .map(|t| (t[0].clone(), t[1].clone()))
+            .filter_map(|tag| {
+                let key = tag_field(tag, 0)?;
+                let value = tag_field(tag, 1)?;
+                if known_tags.contains(&key) {
+                    return None;
+                }
+                Some((key.to_string(), value.to_string()))
+            })
             .collect();
 
         Ok(Self {

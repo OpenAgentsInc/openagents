@@ -6,6 +6,7 @@
 //! See: <https://github.com/nostr-protocol/nips/blob/master/69.md>
 
 use crate::Event;
+use crate::tag_parsing::{parse_tag_field, tag_field, tag_name};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
@@ -203,69 +204,106 @@ impl P2POrder {
         let mut bond = None;
 
         for tag in &event.tags {
-            if tag.is_empty() {
-                continue;
-            }
-
-            match tag[0].as_str() {
-                "d" if tag.len() >= 2 => {
-                    order_id = Some(tag[1].clone());
-                }
-                "k" if tag.len() >= 2 => {
-                    order_type = Some(OrderType::from_str(&tag[1])?);
-                }
-                "f" if tag.len() >= 2 => {
-                    currency = Some(tag[1].clone());
-                }
-                "s" if tag.len() >= 2 => {
-                    status = Some(OrderStatus::from_str(&tag[1])?);
-                }
-                "amt" if tag.len() >= 2 => {
-                    amount_sats = Some(tag[1].parse().unwrap_or(0));
-                }
-                "fa" if tag.len() >= 2 => {
-                    // Can have 1 or 2 values (single amount or range)
-                    for value in &tag[1..] {
-                        if let Ok(amt) = value.parse::<u64>() {
-                            fiat_amount.push(amt);
-                        }
+            match tag_name(tag) {
+                Some("d") => {
+                    if let Some(id) = tag_field(tag, 1) {
+                        order_id = Some(id.to_string());
                     }
                 }
-                "pm" if tag.len() >= 2 => {
-                    payment_methods = tag[1..].to_vec();
+                Some("k") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        order_type = Some(OrderType::from_str(value)?);
+                    }
                 }
-                "premium" if tag.len() >= 2 => {
-                    premium = tag[1].parse().ok();
+                Some("f") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        currency = Some(value.to_string());
+                    }
                 }
-                "network" if tag.len() >= 2 => {
-                    network = Some(tag[1].clone());
+                Some("s") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        status = Some(OrderStatus::from_str(value)?);
+                    }
                 }
-                "layer" if tag.len() >= 2 => {
-                    layer = Some(BitcoinLayer::from_str(&tag[1])?);
+                Some("amt") => {
+                    let amount = parse_tag_field::<u64>(tag, 1)
+                        .ok_or_else(|| Nip69Error::Parse("invalid amt value".to_string()))?;
+                    amount_sats = Some(amount);
                 }
-                "expires_at" if tag.len() >= 2 => {
-                    expires_at = tag[1].parse().ok();
+                Some("fa") if tag.len() >= 2 => {
+                    // Can have 1 or 2 values (single amount or range)
+                    for value in &tag[1..] {
+                        let amount = value
+                            .parse::<u64>()
+                            .map_err(|_| Nip69Error::Parse("invalid fa value".to_string()))?;
+                        fiat_amount.push(amount);
+                    }
                 }
-                "expiration" if tag.len() >= 2 => {
-                    expiration = tag[1].parse().ok();
+                Some("pm") if tag.len() >= 2 => {
+                    payment_methods = tag[1..]
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<String>>();
                 }
-                "y" if tag.len() >= 2 => {
-                    platform = Some(tag[1].clone());
+                Some("premium") => {
+                    premium =
+                        Some(parse_tag_field::<f64>(tag, 1).ok_or_else(|| {
+                            Nip69Error::Parse("invalid premium value".to_string())
+                        })?);
                 }
-                "source" if tag.len() >= 2 => {
-                    source = Some(tag[1].clone());
+                Some("network") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        network = Some(value.to_string());
+                    }
                 }
-                "rating" if tag.len() >= 2 => {
-                    rating = serde_json::from_str(&tag[1]).ok();
+                Some("layer") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        layer = Some(BitcoinLayer::from_str(value)?);
+                    }
                 }
-                "name" if tag.len() >= 2 => {
-                    name = Some(tag[1].clone());
+                Some("expires_at") => {
+                    expires_at = Some(parse_tag_field::<u64>(tag, 1).ok_or_else(|| {
+                        Nip69Error::Parse("invalid expires_at value".to_string())
+                    })?);
                 }
-                "g" if tag.len() >= 2 => {
-                    geohash = Some(tag[1].clone());
+                Some("expiration") => {
+                    expiration = Some(parse_tag_field::<u64>(tag, 1).ok_or_else(|| {
+                        Nip69Error::Parse("invalid expiration value".to_string())
+                    })?);
                 }
-                "bond" if tag.len() >= 2 => {
-                    bond = tag[1].parse().ok();
+                Some("y") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        platform = Some(value.to_string());
+                    }
+                }
+                Some("source") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        source = Some(value.to_string());
+                    }
+                }
+                Some("rating") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        rating = Some(
+                            serde_json::from_str(value)
+                                .map_err(|error| Nip69Error::Parse(error.to_string()))?,
+                        );
+                    }
+                }
+                Some("name") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        name = Some(value.to_string());
+                    }
+                }
+                Some("g") => {
+                    if let Some(value) = tag_field(tag, 1) {
+                        geohash = Some(value.to_string());
+                    }
+                }
+                Some("bond") => {
+                    bond = Some(
+                        parse_tag_field::<u64>(tag, 1)
+                            .ok_or_else(|| Nip69Error::Parse("invalid bond value".to_string()))?,
+                    );
                 }
                 _ => {}
             }

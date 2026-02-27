@@ -6,6 +6,7 @@
 //! See: <https://github.com/nostr-protocol/nips/blob/master/60.md>
 
 use crate::Event;
+use crate::tag_parsing::{find_tag_value, is_tag, parse_tag_value, tag_field};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -231,11 +232,16 @@ impl WalletEvent {
         let mut config = HashMap::new();
 
         for tag in tags {
-            if tag.len() >= 2 {
-                let key = tag[0].clone();
-                let value = tag[1].clone();
-                config.entry(key).or_insert_with(Vec::new).push(value);
-            }
+            let Some(key) = tag_field(&tag, 0) else {
+                continue;
+            };
+            let Some(value) = tag_field(&tag, 1) else {
+                continue;
+            };
+            config
+                .entry(key.to_string())
+                .or_insert_with(Vec::new)
+                .push(value.to_string());
         }
 
         Ok(config)
@@ -271,11 +277,16 @@ impl SpendingHistoryEvent {
         let mut history = HashMap::new();
 
         for tag in tags {
-            if tag.len() >= 2 {
-                let key = tag[0].clone();
-                let value = tag[1].clone();
-                history.entry(key).or_insert_with(Vec::new).push(value);
-            }
+            let Some(key) = tag_field(&tag, 0) else {
+                continue;
+            };
+            let Some(value) = tag_field(&tag, 1) else {
+                continue;
+            };
+            history
+                .entry(key.to_string())
+                .or_insert_with(Vec::new)
+                .push(value.to_string());
         }
 
         Ok(history)
@@ -287,8 +298,8 @@ impl SpendingHistoryEvent {
             .tags
             .iter()
             .filter_map(|tag| {
-                if tag.len() >= 4 && tag[0] == "e" && tag[3] == "redeemed" {
-                    Some(tag[1].clone())
+                if is_tag(tag, "e") && tag_field(tag, 3) == Some("redeemed") {
+                    tag_field(tag, 1).map(str::to_string)
                 } else {
                     None
                 }
@@ -321,24 +332,12 @@ impl QuoteEvent {
 
     /// Get the mint URL from tags
     pub fn get_mint(&self) -> Option<&str> {
-        self.event.tags.iter().find_map(|tag| {
-            if tag.len() >= 2 && tag[0] == "mint" {
-                Some(tag[1].as_str())
-            } else {
-                None
-            }
-        })
+        find_tag_value(&self.event.tags, "mint")
     }
 
     /// Get the expiration timestamp from tags
     pub fn get_expiration(&self) -> Option<u64> {
-        self.event.tags.iter().find_map(|tag| {
-            if tag.len() >= 2 && tag[0] == "expiration" {
-                tag[1].parse().ok()
-            } else {
-                None
-            }
-        })
+        parse_tag_value::<u64>(&self.event.tags, "expiration")
     }
 }
 

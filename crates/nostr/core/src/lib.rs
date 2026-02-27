@@ -33,6 +33,7 @@ pub mod nip99;
 pub mod nip_ac;
 pub mod nip_sa;
 pub mod nip_skl;
+mod tag_parsing;
 
 pub use identity::{
     ENV_IDENTITY_MNEMONIC_PATH, NostrIdentity, identity_mnemonic_path, load_identity_from_path,

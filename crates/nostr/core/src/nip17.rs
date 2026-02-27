@@ -21,6 +21,9 @@
 
 use crate::nip01::{Event, UnsignedEvent};
 use crate::nip59::{Rumor, gift_wrap, unwrap_gift_wrap_full};
+use crate::tag_parsing::{
+    collect_tag_values, find_tag_value, parse_tag_field, tag_field, tag_name,
+};
 use thiserror::Error;
 
 /// Kind for chat messages
@@ -176,28 +179,33 @@ impl ChatMessage {
         let mut message = ChatMessage::new(&rumor.content);
 
         for tag in &rumor.tags {
-            if tag.is_empty() {
-                continue;
-            }
-
-            match tag[0].as_str() {
-                "p" if tag.len() >= 2 => {
-                    let pubkey = tag[1].clone();
-                    let relay = tag.get(2).cloned();
-                    message.recipients.push(pubkey);
+            match tag_name(tag) {
+                Some("p") => {
+                    let Some(pubkey) = tag_field(tag, 1) else {
+                        continue;
+                    };
+                    let relay = tag_field(tag, 2).map(str::to_owned);
+                    message.recipients.push(pubkey.to_string());
                     message.recipient_relays.push(relay);
                 }
-                "e" if tag.len() >= 2 => {
-                    message.reply_to = Some(tag[1].clone());
+                Some("e") => {
+                    if let Some(reply_to) = tag_field(tag, 1) {
+                        message.reply_to = Some(reply_to.to_string());
+                    }
                 }
-                "subject" if tag.len() >= 2 => {
-                    message.subject = Some(tag[1].clone());
+                Some("subject") => {
+                    if let Some(subject) = tag_field(tag, 1) {
+                        message.subject = Some(subject.to_string());
+                    }
                 }
-                "q" if tag.len() >= 2 => {
+                Some("q") => {
+                    let Some(id_or_address) = tag_field(tag, 1) else {
+                        continue;
+                    };
                     let quoted = QuotedEvent {
-                        id_or_address: tag[1].clone(),
-                        relay: tag.get(2).cloned(),
-                        pubkey: tag.get(3).cloned(),
+                        id_or_address: id_or_address.to_string(),
+                        relay: tag_field(tag, 2).map(str::to_owned),
+                        pubkey: tag_field(tag, 3).map(str::to_owned),
                     };
                     message.quoted_events.push(quoted);
                 }
@@ -417,40 +425,25 @@ impl FileMessage {
         }
 
         // Extract required tags
-        let file_type = rumor
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "file-type")
-            .ok_or_else(|| Nip17Error::MissingTag("file-type".to_string()))?[1]
-            .clone();
+        let file_type = find_tag_value(&rumor.tags, "file-type")
+            .ok_or_else(|| Nip17Error::MissingTag("file-type".to_string()))?
+            .to_string();
 
-        let encryption_algorithm = rumor
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "encryption-algorithm")
-            .ok_or_else(|| Nip17Error::MissingTag("encryption-algorithm".to_string()))?[1]
-            .clone();
+        let encryption_algorithm = find_tag_value(&rumor.tags, "encryption-algorithm")
+            .ok_or_else(|| Nip17Error::MissingTag("encryption-algorithm".to_string()))?
+            .to_string();
 
-        let decryption_key = rumor
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "decryption-key")
-            .ok_or_else(|| Nip17Error::MissingTag("decryption-key".to_string()))?[1]
-            .clone();
+        let decryption_key = find_tag_value(&rumor.tags, "decryption-key")
+            .ok_or_else(|| Nip17Error::MissingTag("decryption-key".to_string()))?
+            .to_string();
 
-        let decryption_nonce = rumor
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "decryption-nonce")
-            .ok_or_else(|| Nip17Error::MissingTag("decryption-nonce".to_string()))?[1]
-            .clone();
+        let decryption_nonce = find_tag_value(&rumor.tags, "decryption-nonce")
+            .ok_or_else(|| Nip17Error::MissingTag("decryption-nonce".to_string()))?
+            .to_string();
 
-        let hash = rumor
-            .tags
-            .iter()
-            .find(|t| t.len() >= 2 && t[0] == "x")
-            .ok_or_else(|| Nip17Error::MissingTag("x".to_string()))?[1]
-            .clone();
+        let hash = find_tag_value(&rumor.tags, "x")
+            .ok_or_else(|| Nip17Error::MissingTag("x".to_string()))?
+            .to_string();
 
         let mut message = FileMessage::new(
             &rumor.content,
@@ -463,40 +456,52 @@ impl FileMessage {
 
         // Extract optional tags
         for tag in &rumor.tags {
-            if tag.is_empty() {
-                continue;
-            }
-
-            match tag[0].as_str() {
-                "p" if tag.len() >= 2 => {
-                    let pubkey = tag[1].clone();
-                    let relay = tag.get(2).cloned();
-                    message.recipients.push(pubkey);
+            match tag_name(tag) {
+                Some("p") => {
+                    let Some(pubkey) = tag_field(tag, 1) else {
+                        continue;
+                    };
+                    let relay = tag_field(tag, 2).map(str::to_owned);
+                    message.recipients.push(pubkey.to_string());
                     message.recipient_relays.push(relay);
                 }
-                "e" if tag.len() >= 2 => {
-                    message.reply_to = Some(tag[1].clone());
+                Some("e") => {
+                    if let Some(reply_to) = tag_field(tag, 1) {
+                        message.reply_to = Some(reply_to.to_string());
+                    }
                 }
-                "subject" if tag.len() >= 2 => {
-                    message.subject = Some(tag[1].clone());
+                Some("subject") => {
+                    if let Some(subject) = tag_field(tag, 1) {
+                        message.subject = Some(subject.to_string());
+                    }
                 }
-                "ox" if tag.len() >= 2 => {
-                    message.original_hash = Some(tag[1].clone());
+                Some("ox") => {
+                    if let Some(original_hash) = tag_field(tag, 1) {
+                        message.original_hash = Some(original_hash.to_string());
+                    }
                 }
-                "size" if tag.len() >= 2 => {
-                    message.size = tag[1].parse().ok();
+                Some("size") => {
+                    message.size = parse_tag_field(tag, 1);
                 }
-                "dim" if tag.len() >= 2 => {
-                    message.dimensions = Some(tag[1].clone());
+                Some("dim") => {
+                    if let Some(dimensions) = tag_field(tag, 1) {
+                        message.dimensions = Some(dimensions.to_string());
+                    }
                 }
-                "blurhash" if tag.len() >= 2 => {
-                    message.blurhash = Some(tag[1].clone());
+                Some("blurhash") => {
+                    if let Some(blurhash) = tag_field(tag, 1) {
+                        message.blurhash = Some(blurhash.to_string());
+                    }
                 }
-                "thumb" if tag.len() >= 2 => {
-                    message.thumbnail_url = Some(tag[1].clone());
+                Some("thumb") => {
+                    if let Some(thumbnail_url) = tag_field(tag, 1) {
+                        message.thumbnail_url = Some(thumbnail_url.to_string());
+                    }
                 }
-                "fallback" if tag.len() >= 2 => {
-                    message.fallback_urls.push(tag[1].clone());
+                Some("fallback") => {
+                    if let Some(fallback_url) = tag_field(tag, 1) {
+                        message.fallback_urls.push(fallback_url.to_string());
+                    }
                 }
                 _ => {}
             }
@@ -551,12 +556,7 @@ impl DmRelayList {
             });
         }
 
-        let relays = event
-            .tags
-            .iter()
-            .filter(|t| t.len() >= 2 && t[0] == "relay")
-            .map(|t| t[1].clone())
-            .collect();
+        let relays = collect_tag_values(&event.tags, "relay");
 
         Ok(Self { relays })
     }

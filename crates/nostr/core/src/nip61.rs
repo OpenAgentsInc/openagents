@@ -6,6 +6,7 @@
 //! See: <https://github.com/nostr-protocol/nips/blob/master/61.md>
 
 use crate::Event;
+use crate::tag_parsing::{parse_tag_field, tag_field, tag_name};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -83,25 +84,30 @@ impl NutzapInfo {
         let mut pubkey = None;
 
         for tag in &event.tags {
-            if tag.is_empty() {
-                continue;
-            }
-
-            match tag[0].as_str() {
-                "relay" if tag.len() >= 2 => {
-                    relays.push(tag[1].clone());
+            match tag_name(tag) {
+                Some("relay") => {
+                    if let Some(relay) = tag_field(tag, 1) {
+                        relays.push(relay.to_string());
+                    }
                 }
-                "mint" if tag.len() >= 2 => {
-                    let url = tag[1].clone();
+                Some("mint") => {
+                    let Some(url) = tag_field(tag, 1) else {
+                        continue;
+                    };
                     let units = if tag.len() > 2 {
                         tag[2..].to_vec()
                     } else {
                         vec!["sat".to_string()]
                     };
-                    mints.push(MintInfo { url, units });
+                    mints.push(MintInfo {
+                        url: url.to_string(),
+                        units,
+                    });
                 }
-                "pubkey" if tag.len() >= 2 => {
-                    pubkey = Some(tag[1].clone());
+                Some("pubkey") => {
+                    if let Some(tag_pubkey) = tag_field(tag, 1) {
+                        pubkey = Some(tag_pubkey.to_string());
+                    }
                 }
                 _ => {}
             }
@@ -188,30 +194,37 @@ impl Nutzap {
         let mut nutzapped_kind = None;
 
         for tag in &event.tags {
-            if tag.is_empty() {
-                continue;
-            }
-
-            match tag[0].as_str() {
-                "proof" if tag.len() >= 2 => {
-                    let proof: NutzapProof = serde_json::from_str(&tag[1])
+            match tag_name(tag) {
+                Some("proof") => {
+                    let Some(proof_json) = tag_field(tag, 1) else {
+                        continue;
+                    };
+                    let proof: NutzapProof = serde_json::from_str(proof_json)
                         .map_err(|e| Nip61Error::InvalidProof(e.to_string()))?;
                     proofs.push(proof);
                 }
-                "u" if tag.len() >= 2 => {
-                    mint_url = Some(tag[1].clone());
+                Some("u") => {
+                    if let Some(url) = tag_field(tag, 1) {
+                        mint_url = Some(url.to_string());
+                    }
                 }
-                "unit" if tag.len() >= 2 => {
-                    unit = tag[1].clone();
+                Some("unit") => {
+                    if let Some(parsed_unit) = tag_field(tag, 1) {
+                        unit = parsed_unit.to_string();
+                    }
                 }
-                "p" if tag.len() >= 2 => {
-                    recipient_pubkey = Some(tag[1].clone());
+                Some("p") => {
+                    if let Some(pubkey) = tag_field(tag, 1) {
+                        recipient_pubkey = Some(pubkey.to_string());
+                    }
                 }
-                "e" if tag.len() >= 2 => {
-                    nutzapped_event = Some(tag[1].clone());
+                Some("e") => {
+                    if let Some(event_id) = tag_field(tag, 1) {
+                        nutzapped_event = Some(event_id.to_string());
+                    }
                 }
-                "k" if tag.len() >= 2 => {
-                    if let Ok(kind) = tag[1].parse::<u16>() {
+                Some("k") => {
+                    if let Some(kind) = parse_tag_field::<u16>(tag, 1) {
                         nutzapped_kind = Some(kind);
                     }
                 }
