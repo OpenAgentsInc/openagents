@@ -9,7 +9,10 @@ use winit::keyboard::{
     Key as WinitLogicalKey, KeyCode, ModifiersState, NamedKey as WinitNamedKey, PhysicalKey,
 };
 
-use crate::app_state::{ActivityEventDomain, ActivityEventRow, AlertDomain, App, ProviderMode};
+use crate::app_state::{
+    ActivityEventDomain, ActivityEventRow, AlertDomain, App, NetworkRequestSubmission,
+    ProviderMode,
+};
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
@@ -1596,13 +1599,15 @@ fn run_network_requests_action(
             match queue_result {
                 Ok(command_seq) => {
                     match state.network_requests.queue_request_submission(
-                        &request_type,
-                        &payload,
-                        skill_scope_id,
-                        credit_envelope_ref,
-                        budget_sats,
-                        timeout_seconds,
-                        command_seq,
+                        NetworkRequestSubmission {
+                            request_type,
+                            payload,
+                            skill_scope_id,
+                            credit_envelope_ref,
+                            budget_sats,
+                            timeout_seconds,
+                            authority_command_seq: command_seq,
+                        },
                     ) {
                         Ok(request_id) => {
                             state.provider_runtime.last_result = Some(format!(

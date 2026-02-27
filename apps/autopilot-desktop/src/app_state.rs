@@ -681,6 +681,17 @@ pub struct SubmittedNetworkRequest {
     pub authority_error_class: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestSubmission {
+    pub request_type: String,
+    pub payload: String,
+    pub skill_scope_id: Option<String>,
+    pub credit_envelope_ref: Option<String>,
+    pub budget_sats: u64,
+    pub timeout_seconds: u64,
+    pub authority_command_seq: u64,
+}
+
 pub struct NetworkRequestsState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -704,14 +715,18 @@ impl Default for NetworkRequestsState {
 impl NetworkRequestsState {
     pub fn queue_request_submission(
         &mut self,
-        request_type: &str,
-        payload: &str,
-        skill_scope_id: Option<String>,
-        credit_envelope_ref: Option<String>,
-        budget_sats: u64,
-        timeout_seconds: u64,
-        authority_command_seq: u64,
+        submission: NetworkRequestSubmission,
     ) -> Result<String, String> {
+        let NetworkRequestSubmission {
+            request_type,
+            payload,
+            skill_scope_id,
+            credit_envelope_ref,
+            budget_sats,
+            timeout_seconds,
+            authority_command_seq,
+        } = submission;
+
         let request_type = request_type.trim();
         if request_type.is_empty() {
             return Err(self.pane_set_error("Request type is required"));
@@ -2650,10 +2665,10 @@ mod tests {
         AutopilotMessageStatus, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
-        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState, SettingsState,
-        SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState, SyncHealthState,
-        SyncRecoveryPhase,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderRuntimeState,
+        RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SyncHealthState, SyncRecoveryPhase,
     };
 
     fn fixture_inbox_request(
@@ -3020,15 +3035,15 @@ mod tests {
     fn network_requests_submit_validates_and_records_stream_link() {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
-            .queue_request_submission(
-                "translate.text",
-                "{\"text\":\"hola\"}",
-                Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
-                Some("ac:39242:00000001".to_string()),
-                1200,
-                90,
-                44,
-            )
+            .queue_request_submission(NetworkRequestSubmission {
+                request_type: "translate.text".to_string(),
+                payload: "{\"text\":\"hola\"}".to_string(),
+                skill_scope_id: Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
+                credit_envelope_ref: Some("ac:39242:00000001".to_string()),
+                budget_sats: 1200,
+                timeout_seconds: 90,
+                authority_command_seq: 44,
+            })
             .expect("request should be accepted");
         let first = requests
             .submitted
