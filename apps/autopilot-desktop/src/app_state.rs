@@ -56,6 +56,13 @@ pub enum PaneKind {
     SparkWallet,
     SparkCreateInvoice,
     SparkPayInvoice,
+    AgentProfileState,
+    AgentScheduleTick,
+    TrajectoryAudit,
+    SkillRegistry,
+    SkillTrustRevocation,
+    CreditDesk,
+    CreditSettlementLedger,
 }
 
 #[derive(Clone, Copy)]
@@ -2181,6 +2188,202 @@ impl JobHistoryState {
     }
 }
 
+pub struct AgentProfileStatePaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub profile_name: String,
+    pub profile_about: String,
+    pub goals_summary: String,
+    pub profile_event_id: Option<String>,
+    pub state_event_id: Option<String>,
+    pub goals_event_id: Option<String>,
+}
+
+impl Default for AgentProfileStatePaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for SA profile/state snapshot".to_string()),
+            profile_name: "Autopilot".to_string(),
+            profile_about: "Desktop sovereign agent runtime".to_string(),
+            goals_summary: "Earn sats and complete queued jobs".to_string(),
+            profile_event_id: None,
+            state_event_id: None,
+            goals_event_id: None,
+        }
+    }
+}
+
+pub struct AgentScheduleTickPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub heartbeat_seconds: u64,
+    pub next_tick_reason: String,
+    pub last_tick_outcome: String,
+    pub schedule_event_id: Option<String>,
+    pub tick_request_event_id: Option<String>,
+    pub tick_result_event_id: Option<String>,
+}
+
+impl Default for AgentScheduleTickPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for SA schedule/tick snapshot".to_string()),
+            heartbeat_seconds: 30,
+            next_tick_reason: "manual.operator".to_string(),
+            last_tick_outcome: "n/a".to_string(),
+            schedule_event_id: None,
+            tick_request_event_id: None,
+            tick_result_event_id: None,
+        }
+    }
+}
+
+pub struct TrajectoryAuditPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub active_session_id: Option<String>,
+    pub verified_hash: Option<String>,
+    pub step_filter: String,
+}
+
+impl Default for TrajectoryAuditPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for trajectory session stream".to_string()),
+            active_session_id: None,
+            verified_hash: None,
+            step_filter: "all".to_string(),
+        }
+    }
+}
+
+pub struct SkillRegistryPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub search_query: String,
+    pub manifest_slug: String,
+    pub manifest_version: String,
+    pub manifest_a: Option<String>,
+    pub manifest_event_id: Option<String>,
+    pub version_event_id: Option<String>,
+    pub search_result_event_id: Option<String>,
+}
+
+impl Default for SkillRegistryPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for SKL registry snapshot".to_string()),
+            search_query: "summarize".to_string(),
+            manifest_slug: "summarize-text".to_string(),
+            manifest_version: "0.1.0".to_string(),
+            manifest_a: None,
+            manifest_event_id: None,
+            version_event_id: None,
+            search_result_event_id: None,
+        }
+    }
+}
+
+pub struct SkillTrustRevocationPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub trust_tier: String,
+    pub manifest_a: Option<String>,
+    pub attestation_count: u32,
+    pub kill_switch_active: bool,
+    pub revocation_event_id: Option<String>,
+}
+
+impl Default for SkillTrustRevocationPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for SKL trust gate snapshot".to_string()),
+            trust_tier: "unknown".to_string(),
+            manifest_a: None,
+            attestation_count: 0,
+            kill_switch_active: false,
+            revocation_event_id: None,
+        }
+    }
+}
+
+pub struct CreditDeskPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub scope: String,
+    pub requested_sats: u64,
+    pub offered_sats: u64,
+    pub envelope_cap_sats: u64,
+    pub spend_sats: u64,
+    pub spend_job_id: String,
+    pub intent_event_id: Option<String>,
+    pub offer_event_id: Option<String>,
+    pub envelope_event_id: Option<String>,
+    pub spend_event_id: Option<String>,
+}
+
+impl Default for CreditDeskPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for AC credit desk snapshot".to_string()),
+            scope: "skill:33400:npub1agent:summarize-text:0.1.0:constraints".to_string(),
+            requested_sats: 1500,
+            offered_sats: 1400,
+            envelope_cap_sats: 1200,
+            spend_sats: 600,
+            spend_job_id: "job-credit-001".to_string(),
+            intent_event_id: None,
+            offer_event_id: None,
+            envelope_event_id: None,
+            spend_event_id: None,
+        }
+    }
+}
+
+pub struct CreditSettlementLedgerPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub result_event_id: String,
+    pub payment_pointer: String,
+    pub default_reason: String,
+    pub settlement_event_id: Option<String>,
+    pub default_event_id: Option<String>,
+}
+
+impl Default for CreditSettlementLedgerPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for AC settlement ledger snapshot".to_string()),
+            result_event_id: "nip90:result:pending".to_string(),
+            payment_pointer: "pay:pending".to_string(),
+            default_reason: "settlement timeout".to_string(),
+            settlement_event_id: None,
+            default_event_id: None,
+        }
+    }
+}
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2496,6 +2699,13 @@ impl_pane_status_access!(
     JobInboxState,
     ActiveJobState,
     JobHistoryState,
+    AgentProfileStatePaneState,
+    AgentScheduleTickPaneState,
+    TrajectoryAuditPaneState,
+    SkillRegistryPaneState,
+    SkillTrustRevocationPaneState,
+    CreditDeskPaneState,
+    CreditSettlementLedgerPaneState,
 );
 
 pub struct RenderState {
@@ -2546,6 +2756,13 @@ pub struct RenderState {
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
+    pub agent_profile_state: AgentProfileStatePaneState,
+    pub agent_schedule_tick: AgentScheduleTickPaneState,
+    pub trajectory_audit: TrajectoryAuditPaneState,
+    pub skill_registry: SkillRegistryPaneState,
+    pub skill_trust_revocation: SkillTrustRevocationPaneState,
+    pub credit_desk: CreditDeskPaneState,
+    pub credit_settlement_ledger: CreditSettlementLedgerPaneState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,

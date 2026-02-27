@@ -1,11 +1,14 @@
 use crate::app_state::{
-    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AlertSeverity,
-    AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CreateInvoicePaneInputs, DesktopPane,
-    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
-    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
-    SettingsState, SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
+    ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
+    AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
+    AutopilotChatState, ChatPaneInputs, CreateInvoicePaneInputs, CreditDeskPaneState,
+    CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
+    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -28,7 +31,8 @@ use crate::pane_system::{
     starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
+    agent as agent_pane, chat as chat_pane, credit as credit_pane,
+    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
@@ -63,6 +67,13 @@ impl PaneRenderer {
         job_inbox: &JobInboxState,
         active_job: &ActiveJobState,
         job_history: &JobHistoryState,
+        agent_profile_state: &AgentProfileStatePaneState,
+        agent_schedule_tick: &AgentScheduleTickPaneState,
+        trajectory_audit: &TrajectoryAuditPaneState,
+        skill_registry: &SkillRegistryPaneState,
+        skill_trust_revocation: &SkillTrustRevocationPaneState,
+        credit_desk: &CreditDeskPaneState,
+        credit_settlement_ledger: &CreditSettlementLedgerPaneState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -171,6 +182,47 @@ impl PaneRenderer {
                 }
                 PaneKind::JobHistory => {
                     paint_job_history_pane(content_bounds, job_history, job_history_inputs, paint);
+                }
+                PaneKind::AgentProfileState => {
+                    agent_pane::paint_agent_profile_state_pane(
+                        content_bounds,
+                        agent_profile_state,
+                        paint,
+                    );
+                }
+                PaneKind::AgentScheduleTick => {
+                    agent_pane::paint_agent_schedule_tick_pane(
+                        content_bounds,
+                        agent_schedule_tick,
+                        paint,
+                    );
+                }
+                PaneKind::TrajectoryAudit => {
+                    agent_pane::paint_trajectory_audit_pane(
+                        content_bounds,
+                        trajectory_audit,
+                        paint,
+                    );
+                }
+                PaneKind::SkillRegistry => {
+                    skill_pane::paint_skill_registry_pane(content_bounds, skill_registry, paint);
+                }
+                PaneKind::SkillTrustRevocation => {
+                    skill_pane::paint_skill_trust_revocation_pane(
+                        content_bounds,
+                        skill_trust_revocation,
+                        paint,
+                    );
+                }
+                PaneKind::CreditDesk => {
+                    credit_pane::paint_credit_desk_pane(content_bounds, credit_desk, paint);
+                }
+                PaneKind::CreditSettlementLedger => {
+                    credit_pane::paint_credit_settlement_ledger_pane(
+                        content_bounds,
+                        credit_settlement_ledger,
+                        paint,
+                    );
                 }
                 PaneKind::NostrIdentity => {
                     paint_nostr_identity_pane(

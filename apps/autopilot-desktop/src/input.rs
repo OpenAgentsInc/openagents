@@ -1,4 +1,6 @@
 use nostr::regenerate_identity;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
@@ -14,15 +16,17 @@ use crate::hotbar::{
 };
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
-    ActiveJobPaneAction, ActivityFeedPaneAction, AlertsRecoveryPaneAction,
-    EarningsScoreboardPaneAction, JobInboxPaneAction, NetworkRequestsPaneAction, PaneController,
-    PaneHitAction, PaneInput, RelayConnectionsPaneAction, SettingsPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, dispatch_chat_input_event,
-    dispatch_create_invoice_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_indices_by_z_desc, pane_z_sort_invocation_count,
-    topmost_pane_hit_action_in_order,
+    ActiveJobPaneAction, ActivityFeedPaneAction, AgentProfileStatePaneAction,
+    AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CreditDeskPaneAction,
+    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobInboxPaneAction,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
+    SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction, dispatch_chat_input_event, dispatch_create_invoice_input_event,
+    dispatch_job_history_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::render::{logical_size, render_frame};
 use crate::runtime_lanes::{
@@ -444,6 +448,17 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::JobInbox(action) => run_job_inbox_action(state, action),
         PaneHitAction::ActiveJob(action) => run_active_job_action(state, action),
         PaneHitAction::JobHistory(action) => run_job_history_action(state, action),
+        PaneHitAction::AgentProfileState(action) => run_agent_profile_state_action(state, action),
+        PaneHitAction::AgentScheduleTick(action) => run_agent_schedule_tick_action(state, action),
+        PaneHitAction::TrajectoryAudit(action) => run_trajectory_audit_action(state, action),
+        PaneHitAction::SkillRegistry(action) => run_skill_registry_action(state, action),
+        PaneHitAction::SkillTrustRevocation(action) => {
+            run_skill_trust_revocation_action(state, action)
+        }
+        PaneHitAction::CreditDesk(action) => run_credit_desk_action(state, action),
+        PaneHitAction::CreditSettlementLedger(action) => {
+            run_credit_settlement_ledger_action(state, action)
+        }
         PaneHitAction::Spark(action) => run_spark_action(state, action),
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
@@ -893,6 +908,551 @@ fn run_job_history_action(
         crate::pane_system::JobHistoryPaneAction::NextPage => {
             state.job_history.next_page();
             refresh_earnings_scoreboard(state, now);
+            true
+        }
+    }
+}
+
+fn run_agent_profile_state_action(
+    state: &mut crate::app_state::RenderState,
+    action: AgentProfileStatePaneAction,
+) -> bool {
+    match action {
+        AgentProfileStatePaneAction::PublishProfile => {
+            match state.queue_sa_command(SaLifecycleCommand::PublishAgentProfile {
+                display_name: state.agent_profile_state.profile_name.clone(),
+                about: state.agent_profile_state.profile_about.clone(),
+                version: "mvp".to_string(),
+            }) {
+                Ok(command_seq) => {
+                    state.agent_profile_state.last_error = None;
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.agent_profile_state.last_action =
+                        Some(format!("Queued profile publish command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.agent_profile_state.last_error = Some(error);
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        AgentProfileStatePaneAction::PublishState => {
+            let encrypted_state_ref = format!(
+                "nip44:state:{}:{}",
+                state.agent_profile_state.profile_name.to_lowercase(),
+                state.agent_profile_state.profile_about.len()
+            );
+            match state.queue_sa_command(SaLifecycleCommand::PublishAgentState {
+                encrypted_state_ref,
+            }) {
+                Ok(command_seq) => {
+                    state.agent_profile_state.last_error = None;
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.agent_profile_state.last_action =
+                        Some(format!("Queued state publish command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.agent_profile_state.last_error = Some(error);
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        AgentProfileStatePaneAction::UpdateGoals => {
+            let encrypted_state_ref = format!(
+                "nip44:goals:{}",
+                state.agent_profile_state.goals_summary.len()
+            );
+            match state.queue_sa_command(SaLifecycleCommand::PublishAgentState {
+                encrypted_state_ref,
+            }) {
+                Ok(command_seq) => {
+                    state.agent_profile_state.last_error = None;
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.agent_profile_state.goals_event_id =
+                        Some(format!("sa:goals:pending:{command_seq}"));
+                    state.agent_profile_state.last_action =
+                        Some(format!("Queued goals update command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.agent_profile_state.last_error = Some(error);
+                    state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn run_agent_schedule_tick_action(
+    state: &mut crate::app_state::RenderState,
+    action: AgentScheduleTickPaneAction,
+) -> bool {
+    match action {
+        AgentScheduleTickPaneAction::ApplySchedule => {
+            match state.queue_sa_command(SaLifecycleCommand::ConfigureAgentSchedule {
+                heartbeat_seconds: state.agent_schedule_tick.heartbeat_seconds.max(1),
+            }) {
+                Ok(command_seq) => {
+                    state.agent_schedule_tick.last_error = None;
+                    state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.agent_schedule_tick.last_action =
+                        Some(format!("Queued schedule command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.agent_schedule_tick.last_error = Some(error);
+                    state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        AgentScheduleTickPaneAction::PublishManualTick => {
+            match state.queue_sa_command(SaLifecycleCommand::PublishTickRequest {
+                reason: state.agent_schedule_tick.next_tick_reason.clone(),
+            }) {
+                Ok(command_seq) => {
+                    state.agent_schedule_tick.last_error = None;
+                    state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.agent_schedule_tick.last_action =
+                        Some(format!("Queued manual tick request #{command_seq}"));
+                }
+                Err(error) => {
+                    state.agent_schedule_tick.last_error = Some(error);
+                    state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        AgentScheduleTickPaneAction::InspectLastResult => {
+            state.agent_schedule_tick.last_tick_outcome = state
+                .sa_lane
+                .last_result
+                .clone()
+                .unwrap_or_else(|| "No SA tick result yet".to_string());
+            state.agent_schedule_tick.last_error = None;
+            state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Ready;
+            state.agent_schedule_tick.last_action =
+                Some("Refreshed last tick outcome from SA lane".to_string());
+            true
+        }
+    }
+}
+
+fn run_trajectory_audit_action(
+    state: &mut crate::app_state::RenderState,
+    action: TrajectoryAuditPaneAction,
+) -> bool {
+    match action {
+        TrajectoryAuditPaneAction::OpenSession => {
+            let session = state
+                .sa_lane
+                .last_tick_request_event_id
+                .as_deref()
+                .map(|event| format!("traj:{event}"))
+                .unwrap_or_else(|| format!("traj:manual:{}", state.sa_lane.tick_count + 1));
+            state.trajectory_audit.active_session_id = Some(session.clone());
+            state.trajectory_audit.last_error = None;
+            state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Ready;
+            state.trajectory_audit.last_action =
+                Some(format!("Opened trajectory session {session}"));
+            true
+        }
+        TrajectoryAuditPaneAction::CycleStepFilter => {
+            state.trajectory_audit.step_filter =
+                next_trajectory_step_filter(&state.trajectory_audit.step_filter);
+            state.trajectory_audit.last_error = None;
+            state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Ready;
+            state.trajectory_audit.last_action = Some(format!(
+                "Set trajectory filter to {}",
+                state.trajectory_audit.step_filter
+            ));
+            true
+        }
+        TrajectoryAuditPaneAction::VerifyTrajectoryHash => {
+            let Some(session) = state.trajectory_audit.active_session_id.as_deref() else {
+                state.trajectory_audit.last_error =
+                    Some("Open a trajectory session before verification".to_string());
+                state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            state.trajectory_audit.verified_hash = Some(trajectory_verification_hash(
+                session,
+                state
+                    .sa_lane
+                    .last_tick_result_event_id
+                    .as_deref()
+                    .unwrap_or("none"),
+                state.sa_lane.tick_count,
+            ));
+            state.trajectory_audit.last_error = None;
+            state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Ready;
+            state.trajectory_audit.last_action =
+                Some("Verified trajectory hash from SA tick context".to_string());
+            true
+        }
+    }
+}
+
+fn run_skill_registry_action(
+    state: &mut crate::app_state::RenderState,
+    action: SkillRegistryPaneAction,
+) -> bool {
+    match action {
+        SkillRegistryPaneAction::DiscoverSkills => {
+            match state.queue_skl_command(SklDiscoveryTrustCommand::SubmitSkillSearch {
+                query: state.skill_registry.search_query.clone(),
+                limit: 8,
+            }) {
+                Ok(command_seq) => {
+                    state.skill_registry.last_error = None;
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.skill_registry.last_action =
+                        Some(format!("Queued skill discovery command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.skill_registry.last_error = Some(error);
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        SkillRegistryPaneAction::InspectManifest => {
+            match state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillManifest {
+                skill_slug: state.skill_registry.manifest_slug.clone(),
+                version: state.skill_registry.manifest_version.clone(),
+            }) {
+                Ok(command_seq) => {
+                    state.skill_registry.last_error = None;
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.skill_registry.last_action =
+                        Some(format!("Queued manifest inspect command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.skill_registry.last_error = Some(error);
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        SkillRegistryPaneAction::InstallSelectedSkill => {
+            match state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillVersionLog {
+                skill_slug: state.skill_registry.manifest_slug.clone(),
+                version: state.skill_registry.manifest_version.clone(),
+                summary: "installed from skill registry pane".to_string(),
+            }) {
+                Ok(command_seq) => {
+                    state.skill_registry.last_error = None;
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.skill_registry.manifest_a = Some(format!(
+                        "33400:npub1agent:{}:{}",
+                        state.skill_registry.manifest_slug, state.skill_registry.manifest_version
+                    ));
+                    state.skill_registry.last_action =
+                        Some(format!("Queued install command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.skill_registry.last_error = Some(error);
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn run_skill_trust_revocation_action(
+    state: &mut crate::app_state::RenderState,
+    action: SkillTrustRevocationPaneAction,
+) -> bool {
+    match action {
+        SkillTrustRevocationPaneAction::RefreshTrust => {
+            let query = state
+                .skill_trust_revocation
+                .manifest_a
+                .clone()
+                .unwrap_or_else(|| "skill:trust.refresh".to_string());
+            match state
+                .queue_skl_command(SklDiscoveryTrustCommand::SubmitSkillSearch { query, limit: 8 })
+            {
+                Ok(command_seq) => {
+                    state.skill_trust_revocation.last_error = None;
+                    state.skill_trust_revocation.load_state =
+                        crate::app_state::PaneLoadState::Ready;
+                    state.skill_trust_revocation.last_action =
+                        Some(format!("Queued trust refresh command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.skill_trust_revocation.last_error = Some(error);
+                    state.skill_trust_revocation.load_state =
+                        crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        SkillTrustRevocationPaneAction::InspectAttestations => {
+            let trust_count = match state.skl_lane.trust_tier {
+                crate::runtime_lanes::SkillTrustTier::Unknown => 0,
+                crate::runtime_lanes::SkillTrustTier::Provisional => 1,
+                crate::runtime_lanes::SkillTrustTier::Trusted => 3,
+                crate::runtime_lanes::SkillTrustTier::Revoked => 2,
+            };
+            state.skill_trust_revocation.attestation_count = trust_count;
+            state.skill_trust_revocation.last_error = None;
+            state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Ready;
+            state.skill_trust_revocation.last_action =
+                Some(format!("Loaded {trust_count} trust attestations"));
+            true
+        }
+        SkillTrustRevocationPaneAction::ToggleKillSwitch => {
+            state.skill_trust_revocation.kill_switch_active =
+                !state.skill_trust_revocation.kill_switch_active;
+            state.skill_trust_revocation.trust_tier =
+                if state.skill_trust_revocation.kill_switch_active {
+                    "revoked".to_string()
+                } else {
+                    "trusted".to_string()
+                };
+            state.skill_trust_revocation.last_error = None;
+            state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Ready;
+            state.skill_trust_revocation.last_action = Some(format!(
+                "Kill-switch {}",
+                if state.skill_trust_revocation.kill_switch_active {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            true
+        }
+        SkillTrustRevocationPaneAction::RevokeSkill => {
+            match state.queue_skl_command(SklDiscoveryTrustCommand::SubmitSkillSearch {
+                query: "skill:revocation".to_string(),
+                limit: 1,
+            }) {
+                Ok(command_seq) => {
+                    state.skill_trust_revocation.kill_switch_active = true;
+                    state.skill_trust_revocation.trust_tier = "revoked".to_string();
+                    state.skill_trust_revocation.revocation_event_id =
+                        Some(format!("skl:revocation:pending:{command_seq}"));
+                    state.skill_trust_revocation.last_error = None;
+                    state.skill_trust_revocation.load_state =
+                        crate::app_state::PaneLoadState::Ready;
+                    state.skill_trust_revocation.last_action =
+                        Some(format!("Queued skill revocation command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.skill_trust_revocation.last_error = Some(error);
+                    state.skill_trust_revocation.load_state =
+                        crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn run_credit_desk_action(
+    state: &mut crate::app_state::RenderState,
+    action: CreditDeskPaneAction,
+) -> bool {
+    match action {
+        CreditDeskPaneAction::PublishIntent => {
+            let scope = state.credit_desk.scope.trim().to_string();
+            let skill_scope_id = skill_scope_from_scope(&scope);
+            match state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+                scope,
+                request_type: "credit.intent".to_string(),
+                payload: "{\"source\":\"credit_desk\"}".to_string(),
+                skill_scope_id,
+                credit_envelope_ref: state.credit_desk.envelope_event_id.clone(),
+                requested_sats: state.credit_desk.requested_sats.max(1),
+                timeout_seconds: 60,
+            }) {
+                Ok(command_seq) => {
+                    state.credit_desk.last_error = None;
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.credit_desk.last_action =
+                        Some(format!("Queued credit intent command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_desk.last_error = Some(error);
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        CreditDeskPaneAction::PublishOffer => {
+            let Some(intent_event_id) = state
+                .credit_desk
+                .intent_event_id
+                .clone()
+                .or_else(|| state.ac_lane.intent_event_id.clone())
+            else {
+                state.credit_desk.last_error =
+                    Some("Publish intent before creating an offer".to_string());
+                state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            match state.queue_ac_command(AcCreditCommand::PublishCreditOffer {
+                intent_event_id,
+                offered_sats: state.credit_desk.offered_sats.max(1),
+            }) {
+                Ok(command_seq) => {
+                    state.credit_desk.last_error = None;
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.credit_desk.last_action =
+                        Some(format!("Queued credit offer command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_desk.last_error = Some(error);
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        CreditDeskPaneAction::PublishEnvelope => {
+            let Some(offer_event_id) = state
+                .credit_desk
+                .offer_event_id
+                .clone()
+                .or_else(|| state.ac_lane.offer_event_id.clone())
+            else {
+                state.credit_desk.last_error =
+                    Some("Publish offer before creating an envelope".to_string());
+                state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            match state.queue_ac_command(AcCreditCommand::PublishCreditEnvelope {
+                offer_event_id,
+                cap_sats: state.credit_desk.envelope_cap_sats.max(1),
+            }) {
+                Ok(command_seq) => {
+                    state.credit_desk.last_error = None;
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.credit_desk.last_action =
+                        Some(format!("Queued envelope command #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_desk.last_error = Some(error);
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        CreditDeskPaneAction::AuthorizeSpend => {
+            let Some(envelope_event_id) = state
+                .credit_desk
+                .envelope_event_id
+                .clone()
+                .or_else(|| state.ac_lane.envelope_event_id.clone())
+            else {
+                state.credit_desk.last_error =
+                    Some("Publish envelope before authorizing spend".to_string());
+                state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            match state.queue_ac_command(AcCreditCommand::PublishCreditSpendAuth {
+                envelope_event_id,
+                job_id: state.credit_desk.spend_job_id.clone(),
+                spend_sats: state.credit_desk.spend_sats.max(1),
+            }) {
+                Ok(command_seq) => {
+                    state.credit_desk.last_error = None;
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
+                    state.credit_desk.last_action =
+                        Some(format!("Queued spend authorization #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_desk.last_error = Some(error);
+                    state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn run_credit_settlement_ledger_action(
+    state: &mut crate::app_state::RenderState,
+    action: CreditSettlementLedgerPaneAction,
+) -> bool {
+    match action {
+        CreditSettlementLedgerPaneAction::VerifySettlement => {
+            let Some(envelope_event_id) = state
+                .credit_desk
+                .envelope_event_id
+                .clone()
+                .or_else(|| state.ac_lane.envelope_event_id.clone())
+            else {
+                state.credit_settlement_ledger.last_error =
+                    Some("No credit envelope available for settlement".to_string());
+                state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            match state.queue_ac_command(AcCreditCommand::PublishCreditSettlement {
+                envelope_event_id,
+                result_event_id: state.credit_settlement_ledger.result_event_id.clone(),
+                payment_pointer: state.credit_settlement_ledger.payment_pointer.clone(),
+            }) {
+                Ok(command_seq) => {
+                    state.credit_settlement_ledger.last_error = None;
+                    state.credit_settlement_ledger.load_state =
+                        crate::app_state::PaneLoadState::Ready;
+                    state.credit_settlement_ledger.last_action =
+                        Some(format!("Queued settlement verification #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_settlement_ledger.last_error = Some(error);
+                    state.credit_settlement_ledger.load_state =
+                        crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        CreditSettlementLedgerPaneAction::EmitDefaultNotice => {
+            let Some(envelope_event_id) = state
+                .credit_desk
+                .envelope_event_id
+                .clone()
+                .or_else(|| state.ac_lane.envelope_event_id.clone())
+            else {
+                state.credit_settlement_ledger.last_error =
+                    Some("No credit envelope available for default notice".to_string());
+                state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            };
+            match state.queue_ac_command(AcCreditCommand::PublishCreditDefault {
+                envelope_event_id,
+                reason: state.credit_settlement_ledger.default_reason.clone(),
+            }) {
+                Ok(command_seq) => {
+                    state.credit_settlement_ledger.last_error = None;
+                    state.credit_settlement_ledger.load_state =
+                        crate::app_state::PaneLoadState::Ready;
+                    state.credit_settlement_ledger.last_action =
+                        Some(format!("Queued default notice #{command_seq}"));
+                }
+                Err(error) => {
+                    state.credit_settlement_ledger.last_error = Some(error);
+                    state.credit_settlement_ledger.load_state =
+                        crate::app_state::PaneLoadState::Error;
+                }
+            }
+            true
+        }
+        CreditSettlementLedgerPaneAction::EmitReputationLabel => {
+            let label = if state.credit_settlement_ledger.settlement_event_id.is_some() {
+                "reputation:positive:settled"
+            } else if state.credit_settlement_ledger.default_event_id.is_some() {
+                "reputation:negative:default"
+            } else {
+                "reputation:neutral:pending"
+            };
+            state.credit_settlement_ledger.last_error = None;
+            state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Ready;
+            state.credit_settlement_ledger.last_action =
+                Some(format!("Emitted NIP-32 label {label}"));
             true
         }
     }
@@ -1578,7 +2138,7 @@ fn drain_runtime_lane_updates(state: &mut crate::app_state::RenderState) -> bool
         changed = true;
         match update {
             SklLaneUpdate::Snapshot(snapshot) => {
-                state.skl_lane = snapshot;
+                apply_skl_lane_snapshot(state, snapshot);
             }
             SklLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
@@ -1590,7 +2150,7 @@ fn drain_runtime_lane_updates(state: &mut crate::app_state::RenderState) -> bool
         changed = true;
         match update {
             AcLaneUpdate::Snapshot(snapshot) => {
-                state.ac_lane = snapshot;
+                apply_ac_lane_snapshot(state, snapshot);
             }
             AcLaneUpdate::CommandResponse(response) => {
                 apply_runtime_command_response(state, response);
@@ -1622,9 +2182,109 @@ fn apply_sa_lane_snapshot(
     state.provider_runtime.degraded_reason_code = snapshot.degraded_reason_code.clone();
     state.provider_runtime.last_error_detail = snapshot.last_error_detail.clone();
     state.sa_lane = snapshot;
+    sync_agent_pane_snapshots(state);
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_skl_lane_snapshot(
+    state: &mut crate::app_state::RenderState,
+    snapshot: crate::runtime_lanes::SklLaneSnapshot,
+) {
+    state.skl_lane = snapshot;
+    sync_skill_pane_snapshots(state);
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_ac_lane_snapshot(
+    state: &mut crate::app_state::RenderState,
+    snapshot: crate::runtime_lanes::AcLaneSnapshot,
+) {
+    state.ac_lane = snapshot;
+    sync_credit_pane_snapshots(state);
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn sync_agent_pane_snapshots(state: &mut crate::app_state::RenderState) {
+    state.agent_profile_state.profile_event_id = state.sa_lane.profile_event_id.clone();
+    state.agent_profile_state.state_event_id = state.sa_lane.state_event_id.clone();
+    state.agent_profile_state.goals_event_id = state.sa_lane.state_event_id.clone();
+    if state.agent_profile_state.profile_event_id.is_some()
+        || state.agent_profile_state.state_event_id.is_some()
+    {
+        state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+
+    state.agent_schedule_tick.heartbeat_seconds = state.sa_lane.heartbeat_seconds;
+    state.agent_schedule_tick.schedule_event_id = state.sa_lane.schedule_event_id.clone();
+    state.agent_schedule_tick.tick_request_event_id =
+        state.sa_lane.last_tick_request_event_id.clone();
+    state.agent_schedule_tick.tick_result_event_id =
+        state.sa_lane.last_tick_result_event_id.clone();
+    if let Some(outcome) = state.sa_lane.last_result.as_deref() {
+        state.agent_schedule_tick.last_tick_outcome = outcome.to_string();
+    }
+    if state.agent_schedule_tick.schedule_event_id.is_some() {
+        state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+
+    state.trajectory_audit.active_session_id = state
+        .sa_lane
+        .last_tick_request_event_id
+        .as_deref()
+        .map(|event| format!("traj:{event}"));
+    if state.trajectory_audit.active_session_id.is_some() {
+        state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+}
+
+fn sync_skill_pane_snapshots(state: &mut crate::app_state::RenderState) {
+    state.skill_registry.manifest_a = state.skl_lane.manifest_a.clone();
+    state.skill_registry.manifest_event_id = state.skl_lane.manifest_event_id.clone();
+    state.skill_registry.version_event_id = state.skl_lane.version_log_event_id.clone();
+    state.skill_registry.search_result_event_id = state.skl_lane.search_result_event_id.clone();
+    if state.skill_registry.manifest_event_id.is_some()
+        || state.skill_registry.search_result_event_id.is_some()
+    {
+        state.skill_registry.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+
+    state.skill_trust_revocation.trust_tier = state.skl_lane.trust_tier.label().to_string();
+    state.skill_trust_revocation.manifest_a = state.skl_lane.manifest_a.clone();
+    state.skill_trust_revocation.kill_switch_active = state.skl_lane.kill_switch_active;
+    state.skill_trust_revocation.revocation_event_id = state.skl_lane.revocation_event_id.clone();
+    state.skill_trust_revocation.attestation_count = match state.skl_lane.trust_tier {
+        crate::runtime_lanes::SkillTrustTier::Unknown => 0,
+        crate::runtime_lanes::SkillTrustTier::Provisional => 1,
+        crate::runtime_lanes::SkillTrustTier::Trusted => 3,
+        crate::runtime_lanes::SkillTrustTier::Revoked => 2,
+    };
+    if state.skill_trust_revocation.manifest_a.is_some() {
+        state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+}
+
+fn sync_credit_pane_snapshots(state: &mut crate::app_state::RenderState) {
+    state.credit_desk.intent_event_id = state.ac_lane.intent_event_id.clone();
+    state.credit_desk.offer_event_id = state.ac_lane.offer_event_id.clone();
+    state.credit_desk.envelope_event_id = state.ac_lane.envelope_event_id.clone();
+    state.credit_desk.spend_event_id = state.ac_lane.spend_auth_event_id.clone();
+    if state.credit_desk.intent_event_id.is_some() {
+        state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
+    }
+
+    state.credit_settlement_ledger.settlement_event_id = state.ac_lane.settlement_event_id.clone();
+    state.credit_settlement_ledger.default_event_id = state.ac_lane.default_event_id.clone();
+    if state.credit_settlement_ledger.settlement_event_id.is_some()
+        || state.credit_settlement_ledger.default_event_id.is_some()
+    {
+        state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Ready;
+    }
 }
 
 fn apply_runtime_command_response(
@@ -1648,6 +2308,16 @@ fn apply_runtime_command_response(
                     .as_ref()
                     .map(|error| error.message.clone())
                     .or_else(|| Some("SA lane command rejected".to_string()));
+                let error = response.error.as_ref().map_or_else(
+                    || "SA lane command rejected".to_string(),
+                    |err| err.message.clone(),
+                );
+                state.agent_profile_state.last_error = Some(error.clone());
+                state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Error;
+                state.agent_schedule_tick.last_error = Some(error.clone());
+                state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Error;
+                state.trajectory_audit.last_error = Some(error);
+                state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Error;
             }
         }
         RuntimeLane::SklDiscoveryTrust => {
@@ -1657,11 +2327,29 @@ fn apply_runtime_command_response(
                     .error
                     .as_ref()
                     .map(|error| format!("SKL {}: {}", error.class.label(), error.message));
+                let error = response.error.as_ref().map_or_else(
+                    || "SKL lane command rejected".to_string(),
+                    |err| err.message.clone(),
+                );
+                state.skill_registry.last_error = Some(error.clone());
+                state.skill_registry.load_state = crate::app_state::PaneLoadState::Error;
+                state.skill_trust_revocation.last_error = Some(error);
+                state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Error;
             }
         }
         RuntimeLane::AcCredit => {
             state.network_requests.apply_authority_response(&response);
             state.provider_runtime.last_result = Some(summary);
+            if response.status != RuntimeCommandStatus::Accepted {
+                let error = response.error.as_ref().map_or_else(
+                    || "AC lane command rejected".to_string(),
+                    |err| err.message.clone(),
+                );
+                state.credit_desk.last_error = Some(error.clone());
+                state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
+                state.credit_settlement_ledger.last_error = Some(error);
+                state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Error;
+            }
         }
     }
 
@@ -1961,6 +2649,38 @@ fn normalize_optional_text(raw: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn next_trajectory_step_filter(current: &str) -> String {
+    match current {
+        "all" => "tick".to_string(),
+        "tick" => "delivery".to_string(),
+        "delivery" => "settlement".to_string(),
+        _ => "all".to_string(),
+    }
+}
+
+fn trajectory_verification_hash(session_id: &str, tick_event: &str, tick_count: u64) -> String {
+    let mut hasher = DefaultHasher::new();
+    session_id.hash(&mut hasher);
+    tick_event.hash(&mut hasher);
+    tick_count.hash(&mut hasher);
+    format!("trajhash:{:016x}", hasher.finish())
+}
+
+fn skill_scope_from_scope(scope: &str) -> Option<String> {
+    let trimmed = scope.trim();
+    if !trimmed.starts_with("skill:") {
+        return None;
+    }
+    let scope_value = trimmed.trim_start_matches("skill:");
+    match scope_value.rsplit_once(':') {
+        Some((skill_scope_id, _constraints_hash)) if !skill_scope_id.trim().is_empty() => {
+            Some(skill_scope_id.to_string())
+        }
+        _ if !scope_value.is_empty() => Some(scope_value.to_string()),
+        _ => None,
     }
 }
 

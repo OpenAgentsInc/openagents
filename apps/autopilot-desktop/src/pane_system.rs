@@ -118,6 +118,57 @@ pub enum SettingsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentProfileStatePaneAction {
+    PublishProfile,
+    PublishState,
+    UpdateGoals,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentScheduleTickPaneAction {
+    ApplySchedule,
+    PublishManualTick,
+    InspectLastResult,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrajectoryAuditPaneAction {
+    OpenSession,
+    CycleStepFilter,
+    VerifyTrajectoryHash,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SkillRegistryPaneAction {
+    DiscoverSkills,
+    InspectManifest,
+    InstallSelectedSkill,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SkillTrustRevocationPaneAction {
+    RefreshTrust,
+    InspectAttestations,
+    ToggleKillSwitch,
+    RevokeSkill,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CreditDeskPaneAction {
+    PublishIntent,
+    PublishOffer,
+    PublishEnvelope,
+    AuthorizeSpend,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CreditSettlementLedgerPaneAction {
+    VerifySettlement,
+    EmitDefaultNotice,
+    EmitReputationLabel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -135,6 +186,13 @@ pub enum PaneHitAction {
     JobInbox(JobInboxPaneAction),
     ActiveJob(ActiveJobPaneAction),
     JobHistory(JobHistoryPaneAction),
+    AgentProfileState(AgentProfileStatePaneAction),
+    AgentScheduleTick(AgentScheduleTickPaneAction),
+    TrajectoryAudit(TrajectoryAuditPaneAction),
+    SkillRegistry(SkillRegistryPaneAction),
+    SkillTrustRevocation(SkillTrustRevocationPaneAction),
+    CreditDesk(CreditDeskPaneAction),
+    CreditSettlementLedger(CreditSettlementLedgerPaneAction),
     Spark(SparkPaneAction),
     SparkCreateInvoice(CreateInvoicePaneAction),
     SparkPayInvoice(PayInvoicePaneAction),
@@ -504,7 +562,14 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::AlertsRecovery
             | PaneKind::NostrIdentity
             | PaneKind::JobInbox
-            | PaneKind::ActiveJob => {}
+            | PaneKind::ActiveJob
+            | PaneKind::AgentProfileState
+            | PaneKind::AgentScheduleTick
+            | PaneKind::TrajectoryAudit
+            | PaneKind::SkillRegistry
+            | PaneKind::SkillTrustRevocation
+            | PaneKind::CreditDesk
+            | PaneKind::CreditSettlementLedger => {}
         }
 
         if pane_hit_action_for_pane(state, pane, point).is_some() {
@@ -982,6 +1047,229 @@ pub fn job_history_next_page_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn agent_profile_publish_profile_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn agent_profile_publish_state_button_bounds(content_bounds: Bounds) -> Bounds {
+    let publish = agent_profile_publish_profile_button_bounds(content_bounds);
+    Bounds::new(
+        publish.max_x() + JOB_INBOX_BUTTON_GAP,
+        publish.origin.y,
+        publish.size.width,
+        publish.size.height,
+    )
+}
+
+pub fn agent_profile_update_goals_button_bounds(content_bounds: Bounds) -> Bounds {
+    let state = agent_profile_publish_state_button_bounds(content_bounds);
+    Bounds::new(
+        state.max_x() + JOB_INBOX_BUTTON_GAP,
+        state.origin.y,
+        state.size.width,
+        state.size.height,
+    )
+}
+
+pub fn agent_schedule_apply_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.2).clamp(132.0, 210.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn agent_schedule_manual_tick_button_bounds(content_bounds: Bounds) -> Bounds {
+    let apply = agent_schedule_apply_button_bounds(content_bounds);
+    Bounds::new(
+        apply.max_x() + JOB_INBOX_BUTTON_GAP,
+        apply.origin.y,
+        apply.size.width,
+        apply.size.height,
+    )
+}
+
+pub fn agent_schedule_inspect_button_bounds(content_bounds: Bounds) -> Bounds {
+    let tick = agent_schedule_manual_tick_button_bounds(content_bounds);
+    Bounds::new(
+        tick.max_x() + JOB_INBOX_BUTTON_GAP,
+        tick.origin.y,
+        tick.size.width,
+        tick.size.height,
+    )
+}
+
+pub fn trajectory_open_session_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.24).clamp(146.0, 240.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn trajectory_filter_button_bounds(content_bounds: Bounds) -> Bounds {
+    let open = trajectory_open_session_button_bounds(content_bounds);
+    Bounds::new(
+        open.max_x() + JOB_INBOX_BUTTON_GAP,
+        open.origin.y,
+        open.size.width,
+        open.size.height,
+    )
+}
+
+pub fn trajectory_verify_button_bounds(content_bounds: Bounds) -> Bounds {
+    let filter = trajectory_filter_button_bounds(content_bounds);
+    Bounds::new(
+        filter.max_x() + JOB_INBOX_BUTTON_GAP,
+        filter.origin.y,
+        filter.size.width,
+        filter.size.height,
+    )
+}
+
+pub fn skill_registry_discover_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.22).clamp(140.0, 210.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn skill_registry_inspect_button_bounds(content_bounds: Bounds) -> Bounds {
+    let discover = skill_registry_discover_button_bounds(content_bounds);
+    Bounds::new(
+        discover.max_x() + JOB_INBOX_BUTTON_GAP,
+        discover.origin.y,
+        discover.size.width,
+        discover.size.height,
+    )
+}
+
+pub fn skill_registry_install_button_bounds(content_bounds: Bounds) -> Bounds {
+    let inspect = skill_registry_inspect_button_bounds(content_bounds);
+    Bounds::new(
+        inspect.max_x() + JOB_INBOX_BUTTON_GAP,
+        inspect.origin.y,
+        inspect.size.width,
+        inspect.size.height,
+    )
+}
+
+pub fn skill_trust_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.18).clamp(120.0, 180.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn skill_trust_attestations_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = skill_trust_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        refresh.size.width,
+        refresh.size.height,
+    )
+}
+
+pub fn skill_trust_kill_switch_button_bounds(content_bounds: Bounds) -> Bounds {
+    let attest = skill_trust_attestations_button_bounds(content_bounds);
+    Bounds::new(
+        attest.max_x() + JOB_INBOX_BUTTON_GAP,
+        attest.origin.y,
+        attest.size.width,
+        attest.size.height,
+    )
+}
+
+pub fn skill_trust_revoke_button_bounds(content_bounds: Bounds) -> Bounds {
+    let kill_switch = skill_trust_kill_switch_button_bounds(content_bounds);
+    Bounds::new(
+        kill_switch.max_x() + JOB_INBOX_BUTTON_GAP,
+        kill_switch.origin.y,
+        kill_switch.size.width,
+        kill_switch.size.height,
+    )
+}
+
+pub fn credit_desk_intent_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.18).clamp(120.0, 180.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn credit_desk_offer_button_bounds(content_bounds: Bounds) -> Bounds {
+    let intent = credit_desk_intent_button_bounds(content_bounds);
+    Bounds::new(
+        intent.max_x() + JOB_INBOX_BUTTON_GAP,
+        intent.origin.y,
+        intent.size.width,
+        intent.size.height,
+    )
+}
+
+pub fn credit_desk_envelope_button_bounds(content_bounds: Bounds) -> Bounds {
+    let offer = credit_desk_offer_button_bounds(content_bounds);
+    Bounds::new(
+        offer.max_x() + JOB_INBOX_BUTTON_GAP,
+        offer.origin.y,
+        offer.size.width,
+        offer.size.height,
+    )
+}
+
+pub fn credit_desk_spend_button_bounds(content_bounds: Bounds) -> Bounds {
+    let envelope = credit_desk_envelope_button_bounds(content_bounds);
+    Bounds::new(
+        envelope.max_x() + JOB_INBOX_BUTTON_GAP,
+        envelope.origin.y,
+        envelope.size.width,
+        envelope.size.height,
+    )
+}
+
+pub fn credit_settlement_verify_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.22).clamp(140.0, 220.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn credit_settlement_default_button_bounds(content_bounds: Bounds) -> Bounds {
+    let verify = credit_settlement_verify_button_bounds(content_bounds);
+    Bounds::new(
+        verify.max_x() + JOB_INBOX_BUTTON_GAP,
+        verify.origin.y,
+        verify.size.width,
+        verify.size.height,
+    )
+}
+
+pub fn credit_settlement_reputation_button_bounds(content_bounds: Bounds) -> Bounds {
+    let default_notice = credit_settlement_default_button_bounds(content_bounds);
+    Bounds::new(
+        default_notice.max_x() + JOB_INBOX_BUTTON_GAP,
+        default_notice.origin.y,
+        default_notice.size.width,
+        default_notice.size.height,
+    )
+}
+
 pub fn nostr_regenerate_button_bounds(content_bounds: Bounds) -> Bounds {
     let (regenerate_bounds, _, _) = nostr_button_bounds(content_bounds);
     regenerate_bounds
@@ -1256,6 +1544,142 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::AgentProfileState => {
+            if agent_profile_publish_profile_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::PublishProfile,
+                ));
+            }
+            if agent_profile_publish_state_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::PublishState,
+                ));
+            }
+            if agent_profile_update_goals_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentProfileState(
+                    AgentProfileStatePaneAction::UpdateGoals,
+                ));
+            }
+            None
+        }
+        PaneKind::AgentScheduleTick => {
+            if agent_schedule_apply_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentScheduleTick(
+                    AgentScheduleTickPaneAction::ApplySchedule,
+                ));
+            }
+            if agent_schedule_manual_tick_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentScheduleTick(
+                    AgentScheduleTickPaneAction::PublishManualTick,
+                ));
+            }
+            if agent_schedule_inspect_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AgentScheduleTick(
+                    AgentScheduleTickPaneAction::InspectLastResult,
+                ));
+            }
+            None
+        }
+        PaneKind::TrajectoryAudit => {
+            if trajectory_open_session_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::TrajectoryAudit(
+                    TrajectoryAuditPaneAction::OpenSession,
+                ));
+            }
+            if trajectory_filter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::TrajectoryAudit(
+                    TrajectoryAuditPaneAction::CycleStepFilter,
+                ));
+            }
+            if trajectory_verify_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::TrajectoryAudit(
+                    TrajectoryAuditPaneAction::VerifyTrajectoryHash,
+                ));
+            }
+            None
+        }
+        PaneKind::SkillRegistry => {
+            if skill_registry_discover_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillRegistry(
+                    SkillRegistryPaneAction::DiscoverSkills,
+                ));
+            }
+            if skill_registry_inspect_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillRegistry(
+                    SkillRegistryPaneAction::InspectManifest,
+                ));
+            }
+            if skill_registry_install_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillRegistry(
+                    SkillRegistryPaneAction::InstallSelectedSkill,
+                ));
+            }
+            None
+        }
+        PaneKind::SkillTrustRevocation => {
+            if skill_trust_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillTrustRevocation(
+                    SkillTrustRevocationPaneAction::RefreshTrust,
+                ));
+            }
+            if skill_trust_attestations_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillTrustRevocation(
+                    SkillTrustRevocationPaneAction::InspectAttestations,
+                ));
+            }
+            if skill_trust_kill_switch_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillTrustRevocation(
+                    SkillTrustRevocationPaneAction::ToggleKillSwitch,
+                ));
+            }
+            if skill_trust_revoke_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::SkillTrustRevocation(
+                    SkillTrustRevocationPaneAction::RevokeSkill,
+                ));
+            }
+            None
+        }
+        PaneKind::CreditDesk => {
+            if credit_desk_intent_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditDesk(
+                    CreditDeskPaneAction::PublishIntent,
+                ));
+            }
+            if credit_desk_offer_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditDesk(
+                    CreditDeskPaneAction::PublishOffer,
+                ));
+            }
+            if credit_desk_envelope_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditDesk(
+                    CreditDeskPaneAction::PublishEnvelope,
+                ));
+            }
+            if credit_desk_spend_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditDesk(
+                    CreditDeskPaneAction::AuthorizeSpend,
+                ));
+            }
+            None
+        }
+        PaneKind::CreditSettlementLedger => {
+            if credit_settlement_verify_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditSettlementLedger(
+                    CreditSettlementLedgerPaneAction::VerifySettlement,
+                ));
+            }
+            if credit_settlement_default_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditSettlementLedger(
+                    CreditSettlementLedgerPaneAction::EmitDefaultNotice,
+                ));
+            }
+            if credit_settlement_reputation_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CreditSettlementLedger(
+                    CreditSettlementLedgerPaneAction::EmitReputationLabel,
+                ));
+            }
+            None
+        }
         PaneKind::SparkWallet => {
             let layout = spark_pane::layout(content_bounds);
             spark_pane::hit_action(layout, point).map(PaneHitAction::Spark)
@@ -1503,25 +1927,37 @@ mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
         activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
-        activity_feed_row_bounds, alerts_recovery_ack_button_bounds,
+        activity_feed_row_bounds, agent_profile_publish_profile_button_bounds,
+        agent_profile_publish_state_button_bounds, agent_profile_update_goals_button_bounds,
+        agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
+        agent_schedule_manual_tick_button_bounds, alerts_recovery_ack_button_bounds,
         alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
         alerts_recovery_row_bounds, chat_composer_input_bounds, chat_send_button_bounds,
-        chat_thread_rail_bounds, chat_transcript_bounds, earnings_scoreboard_refresh_button_bounds,
-        go_online_toggle_button_bounds, job_history_next_page_button_bounds,
-        job_history_prev_page_button_bounds, job_history_search_input_bounds,
-        job_history_status_button_bounds, job_history_time_button_bounds,
-        job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
-        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
-        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
-        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
-        relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
-        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
-        settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
-        starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
+        chat_thread_rail_bounds, chat_transcript_bounds, credit_desk_envelope_button_bounds,
+        credit_desk_intent_button_bounds, credit_desk_offer_button_bounds,
+        credit_desk_spend_button_bounds, credit_settlement_default_button_bounds,
+        credit_settlement_reputation_button_bounds, credit_settlement_verify_button_bounds,
+        earnings_scoreboard_refresh_button_bounds, go_online_toggle_button_bounds,
+        job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
+        job_history_search_input_bounds, job_history_status_button_bounds,
+        job_history_time_button_bounds, job_inbox_accept_button_bounds,
+        job_inbox_reject_button_bounds, job_inbox_row_bounds, network_requests_budget_input_bounds,
+        network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
+        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
+        settings_provider_queue_input_bounds, settings_relay_input_bounds,
+        settings_reset_button_bounds, settings_save_button_bounds,
+        settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
+        skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
+        skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
+        skill_trust_refresh_button_bounds, skill_trust_revoke_button_bounds,
+        starter_jobs_complete_button_bounds, starter_jobs_row_bounds,
+        sync_health_rebootstrap_button_bounds, trajectory_filter_button_bounds,
+        trajectory_open_session_button_bounds, trajectory_verify_button_bounds,
     };
     use crate::pane_registry::pane_specs;
     use wgpui::Bounds;
@@ -1716,6 +2152,61 @@ mod tests {
         assert!(status.max_x() < time.min_x());
         assert!(prev.max_x() < next.min_x());
         assert!(prev.origin.y > search.origin.y);
+    }
+
+    #[test]
+    fn agent_profile_and_schedule_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 900.0, 440.0);
+        let profile = agent_profile_publish_profile_button_bounds(content);
+        let state = agent_profile_publish_state_button_bounds(content);
+        let goals = agent_profile_update_goals_button_bounds(content);
+        assert!(profile.max_x() < state.min_x());
+        assert!(state.max_x() < goals.min_x());
+
+        let apply = agent_schedule_apply_button_bounds(content);
+        let tick = agent_schedule_manual_tick_button_bounds(content);
+        let inspect = agent_schedule_inspect_button_bounds(content);
+        assert!(apply.max_x() < tick.min_x());
+        assert!(tick.max_x() < inspect.min_x());
+    }
+
+    #[test]
+    fn trajectory_skill_and_credit_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 960.0, 480.0);
+
+        let open = trajectory_open_session_button_bounds(content);
+        let filter = trajectory_filter_button_bounds(content);
+        let verify = trajectory_verify_button_bounds(content);
+        assert!(open.max_x() < filter.min_x());
+        assert!(filter.max_x() < verify.min_x());
+
+        let discover = skill_registry_discover_button_bounds(content);
+        let inspect = skill_registry_inspect_button_bounds(content);
+        let install = skill_registry_install_button_bounds(content);
+        assert!(discover.max_x() < inspect.min_x());
+        assert!(inspect.max_x() < install.min_x());
+
+        let refresh = skill_trust_refresh_button_bounds(content);
+        let attest = skill_trust_attestations_button_bounds(content);
+        let kill = skill_trust_kill_switch_button_bounds(content);
+        let revoke = skill_trust_revoke_button_bounds(content);
+        assert!(refresh.max_x() < attest.min_x());
+        assert!(attest.max_x() < kill.min_x());
+        assert!(kill.max_x() < revoke.min_x());
+
+        let intent = credit_desk_intent_button_bounds(content);
+        let offer = credit_desk_offer_button_bounds(content);
+        let envelope = credit_desk_envelope_button_bounds(content);
+        let spend = credit_desk_spend_button_bounds(content);
+        assert!(intent.max_x() < offer.min_x());
+        assert!(offer.max_x() < envelope.min_x());
+        assert!(envelope.max_x() < spend.min_x());
+
+        let settle = credit_settlement_verify_button_bounds(content);
+        let default_notice = credit_settlement_default_button_bounds(content);
+        let reputation = credit_settlement_reputation_button_bounds(content);
+        assert!(settle.max_x() < default_notice.min_x());
+        assert!(default_notice.max_x() < reputation.min_x());
     }
 
     #[test]

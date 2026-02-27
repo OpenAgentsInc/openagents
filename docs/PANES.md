@@ -63,6 +63,34 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
   - Includes status/time filters, job-id search, and pagination.
   - Row model includes `job_id`, `status`, `completed timestamp`, `result hash`, and `payment pointer`.
+- `Agent Profile and State`
+  - SA profile/state/goals pane for `39200`, `39201`, and `39203` event visibility.
+  - Actions: publish profile, publish encrypted state, update goals snapshot.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Agent Schedule and Tick`
+  - SA schedule/tick pane for `39202`, `39210`, and `39211` operational controls.
+  - Actions: apply heartbeat schedule, publish manual tick request, inspect latest tick result.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Trajectory Audit`
+  - SA trajectory pane for session/step verification and replay-safe audit visibility.
+  - Actions: open session context, cycle step filter, verify trajectory hash.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Agent Skill Registry`
+  - SKL discovery pane for manifest/version/search tracking (`33400`, `33401`, optional `6390`).
+  - Actions: discover skills, inspect manifest, install selected skill version.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Skill Trust and Revocation`
+  - SKL trust gate pane for trust-tier visibility, attestations, kill-switch, and revocation state.
+  - Actions: refresh trust, inspect attestations, toggle kill switch, revoke skill.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Credit Desk`
+  - AC lifecycle pane for intent/offer/envelope/spend controls (`39240` to `39243`).
+  - Actions: publish intent, publish offer, publish envelope, authorize spend.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
+- `Credit Settlement Ledger`
+  - AC settlement/default pane for payout verification and default handling (`39244`, `39245`).
+  - Actions: verify settlement, emit default notice, emit reputation label.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Nostr Keys (NIP-06)`
   - Shows identity path, `npub`, masked `nsec`, masked mnemonic, and key controls.
   - Secrets are masked by default, reveal is timed, and copy emits explicit custody warning copy.
@@ -117,6 +145,13 @@ Current pane badge mapping:
 - `Active Job`: `source: runtime`
 - `Job History`: `source: runtime`
 - `Nostr Keys (NIP-06)`: `source: local`
+- `Agent Profile and State`: `source: runtime`
+- `Agent Schedule and Tick`: `source: runtime`
+- `Trajectory Audit`: `source: runtime`
+- `Agent Skill Registry`: `source: runtime`
+- `Skill Trust and Revocation`: `source: runtime`
+- `Credit Desk`: `source: runtime`
+- `Credit Settlement Ledger`: `source: runtime`
 - `Spark Lightning Wallet`: `source: wallet`
 - `Create Lightning Invoice`: `source: wallet`
 - `Pay Lightning Invoice`: `source: wallet`
@@ -142,6 +177,13 @@ Current pane badge mapping:
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
+  - `Agent Profile and State` -> opens `Agent Profile and State`.
+  - `Agent Schedule and Tick` -> opens `Agent Schedule and Tick`.
+  - `Trajectory Audit` -> opens `Trajectory Audit`.
+  - `Agent Skill Registry` -> opens `Agent Skill Registry`.
+  - `Skill Trust and Revocation` -> opens `Skill Trust and Revocation`.
+  - `Credit Desk` -> opens `Credit Desk`.
+  - `Credit Settlement Ledger` -> opens `Credit Settlement Ledger`.
   - `Identity Keys` -> opens `Nostr Keys (NIP-06)`.
   - `Spark Wallet` -> opens `Spark Lightning Wallet`.
   - `Create Lightning Invoice` -> opens `Create Lightning Invoice`.
@@ -149,6 +191,6 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.

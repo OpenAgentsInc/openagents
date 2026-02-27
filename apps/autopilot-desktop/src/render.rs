@@ -161,6 +161,13 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
+            agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
+            agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
+            trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
+            skill_registry: crate::app_state::SkillRegistryPaneState::default(),
+            skill_trust_revocation: crate::app_state::SkillTrustRevocationPaneState::default(),
+            credit_desk: crate::app_state::CreditDeskPaneState::default(),
+            credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
             next_pane_id: 1,
             next_z_index: 1,
             pane_drag_mode: None,
@@ -273,6 +280,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
+            &state.agent_profile_state,
+            &state.agent_schedule_tick,
+            &state.trajectory_audit,
+            &state.skill_registry,
+            &state.skill_trust_revocation,
+            &state.credit_desk,
+            &state.credit_settlement_ledger,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -446,6 +460,31 @@ mod tests {
                 command.id == "pane.job_history" && command.label == "Job History"
             })
         );
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.agent_profile_state" && command.label == "Agent Profile and State"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.agent_schedule_tick" && command.label == "Agent Schedule and Tick"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.trajectory_audit" && command.label == "Trajectory Audit"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.skill_registry" && command.label == "Agent Skill Registry"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.skill_trust_revocation"
+                && command.label == "Skill Trust and Revocation"
+        }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.credit_desk" && command.label == "Credit Desk"
+            })
+        );
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.credit_settlement_ledger"
+                && command.label == "Credit Settlement Ledger"
+        }));
     }
 
     #[test]
