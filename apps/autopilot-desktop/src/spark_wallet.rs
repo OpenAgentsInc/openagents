@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use nostr::identity_mnemonic_path;
@@ -89,14 +89,9 @@ impl SparkWalletWorker {
 
     pub fn drain_updates(&mut self, target: &mut SparkPaneState) -> bool {
         let mut changed = false;
-        loop {
-            match self.result_rx.try_recv() {
-                Ok(next) => {
-                    *target = next;
-                    changed = true;
-                }
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
-            }
+        while let Ok(next) = self.result_rx.try_recv() {
+            *target = next;
+            changed = true;
         }
         changed
     }

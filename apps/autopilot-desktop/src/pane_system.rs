@@ -632,7 +632,7 @@ pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.min(220.0).max(160.0);
+    let width = content_bounds.size.width.clamp(160.0, 220.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
@@ -642,7 +642,7 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.min(220.0).max(160.0);
+    let width = content_bounds.size.width.clamp(160.0, 220.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
@@ -944,7 +944,7 @@ pub fn settings_reset_button_bounds(content_bounds: Bounds) -> Bounds {
 }
 
 pub fn job_inbox_accept_button_bounds(content_bounds: Bounds) -> Bounds {
-    let button_width = content_bounds.size.width.min(196.0).max(144.0);
+    let button_width = content_bounds.size.width.clamp(144.0, 196.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
@@ -979,7 +979,7 @@ pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
 }
 
 pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.min(196.0).max(144.0);
+    let width = content_bounds.size.width.clamp(144.0, 196.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,

@@ -33,7 +33,10 @@ pub(super) fn apply_command_response(
 ) {
     state.provider_runtime.last_result = Some(summary.to_string());
     state.provider_runtime.last_authoritative_status = Some(response.status.label().to_string());
-    state.provider_runtime.last_authoritative_event_id = response.event_id.clone();
+    state
+        .provider_runtime
+        .last_authoritative_event_id
+        .clone_from(&response.event_id);
     state.provider_runtime.last_authoritative_error_class = response
         .error
         .as_ref()

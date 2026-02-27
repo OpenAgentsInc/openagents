@@ -1,4 +1,4 @@
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use nostr::{
@@ -283,7 +283,7 @@ impl Default for SklLaneSnapshot {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct AcLaneSnapshot {
     pub credit_available: bool,
     pub available_credit_sats: u64,
@@ -294,22 +294,6 @@ pub struct AcLaneSnapshot {
     pub settlement_event_id: Option<String>,
     pub default_event_id: Option<String>,
     pub last_error: Option<String>,
-}
-
-impl Default for AcLaneSnapshot {
-    fn default() -> Self {
-        Self {
-            credit_available: false,
-            available_credit_sats: 0,
-            intent_event_id: None,
-            offer_event_id: None,
-            envelope_event_id: None,
-            spend_auth_event_id: None,
-            settlement_event_id: None,
-            default_event_id: None,
-            last_error: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -514,11 +498,8 @@ impl AcLaneWorker {
 
 fn drain_updates<T>(receiver: &Receiver<T>) -> Vec<T> {
     let mut updates = Vec::new();
-    loop {
-        match receiver.try_recv() {
-            Ok(update) => updates.push(update),
-            Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
-        }
+    while let Ok(update) = receiver.try_recv() {
+        updates.push(update);
     }
     updates
 }

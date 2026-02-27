@@ -1086,8 +1086,7 @@ fn paint_activity_feed_pane(
         return;
     }
 
-    for row_index in 0..visible_rows {
-        let row = visible[row_index];
+    for (row_index, row) in visible.iter().take(visible_rows).enumerate() {
         let row_bounds = activity_feed_row_bounds(content_bounds, row_index);
         let selected = activity_feed.selected_event_id.as_deref() == Some(row.event_id.as_str());
         paint_selectable_row_background(paint, row_bounds, selected);
@@ -1115,34 +1114,34 @@ fn paint_activity_feed_pane(
         ));
     }
 
-    if let Some(selected) = activity_feed.selected() {
-        if activity_feed.active_filter.matches(selected.domain) {
-            let details_top =
-                activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
-                    + 10.0;
-            let mut details_y = details_top;
-            details_y = paint_label_line(
-                paint,
-                content_bounds.origin.x + 12.0,
-                details_y,
-                "Event ID",
-                &selected.event_id,
-            );
-            details_y = paint_label_line(
-                paint,
-                content_bounds.origin.x + 12.0,
-                details_y,
-                "Source",
-                &selected.source_tag,
-            );
-            let _ = paint_multiline_phrase(
-                paint,
-                content_bounds.origin.x + 12.0,
-                details_y,
-                "Detail",
-                &selected.detail,
-            );
-        }
+    if let Some(selected) = activity_feed.selected()
+        && activity_feed.active_filter.matches(selected.domain)
+    {
+        let details_top =
+            activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
+                + 10.0;
+        let mut details_y = details_top;
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Event ID",
+            &selected.event_id,
+        );
+        details_y = paint_label_line(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Source",
+            &selected.source_tag,
+        );
+        let _ = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            details_y,
+            "Detail",
+            &selected.detail,
+        );
     }
 }
 

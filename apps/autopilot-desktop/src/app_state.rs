@@ -782,7 +782,7 @@ impl NetworkRequestsState {
         };
 
         request.authority_status = Some(response.status.label().to_string());
-        request.authority_event_id = response.event_id.clone();
+        request.authority_event_id.clone_from(&response.event_id);
         request.authority_error_class = response
             .error
             .as_ref()
