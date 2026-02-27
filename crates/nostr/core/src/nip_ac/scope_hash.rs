@@ -21,6 +21,18 @@ pub enum ScopeHashError {
 
     #[error("invalid constraints hash; expected 64 lowercase hex chars")]
     InvalidConstraintsHash,
+
+    #[error("missing constraints hash for skill scope")]
+    MissingConstraintsHash,
+
+    #[error("missing required SKL `a` tag for skill scope")]
+    MissingSkillAddressTag,
+
+    #[error("missing required pinned manifest `e` tag for skill scope")]
+    MissingManifestEventTag,
+
+    #[error("skill address mismatch: expected {expected}, got {actual}")]
+    SkillAddressMismatch { expected: String, actual: String },
 }
 
 /// Supported scope types.
@@ -121,6 +133,9 @@ impl ScopeReference {
 
         if self.scope_type == ScopeType::Skill {
             SkillScopeId::parse(&self.scope_id)?;
+            if self.constraints_hash.is_none() {
+                return Err(ScopeHashError::MissingConstraintsHash);
+            }
         }
 
         Ok(())
@@ -174,6 +189,38 @@ pub fn canonical_scope_hash(scope: &ScopeReference) -> Result<String, ScopeHashE
     let mut hasher = Sha256::new();
     hasher.update(canonical.as_bytes());
     Ok(hex::encode(hasher.finalize()))
+}
+
+/// Validate SKL linkage tags (`a` + pinned manifest `e`) for skill scopes.
+pub fn validate_skill_scope_links(
+    scope: &ScopeReference,
+    skill_address: Option<&str>,
+    manifest_event_id: Option<&str>,
+) -> Result<(), ScopeHashError> {
+    scope.validate()?;
+    if scope.scope_type != ScopeType::Skill {
+        return Ok(());
+    }
+
+    let skill_scope = SkillScopeId::parse(&scope.scope_id)?;
+    let expected_skill_address = format!(
+        "33400:{}:{}",
+        skill_scope.publisher_pubkey, skill_scope.d_tag
+    );
+    let provided_skill_address = skill_address.ok_or(ScopeHashError::MissingSkillAddressTag)?;
+    if provided_skill_address != expected_skill_address {
+        return Err(ScopeHashError::SkillAddressMismatch {
+            expected: expected_skill_address,
+            actual: provided_skill_address.to_string(),
+        });
+    }
+
+    let manifest_event_id = manifest_event_id.ok_or(ScopeHashError::MissingManifestEventTag)?;
+    if manifest_event_id.trim().is_empty() {
+        return Err(ScopeHashError::MissingManifestEventTag);
+    }
+
+    Ok(())
 }
 
 fn split_scope_value(
@@ -246,5 +293,20 @@ mod tests {
         let hash_a = canonical_scope_hash(&scope).unwrap();
         let hash_b = canonical_scope_hash(&scope).unwrap();
         assert_eq!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn test_skill_scope_links_validation() {
+        let scope =
+            ScopeReference::new(ScopeType::Skill, "33400:skillpub:research-assistant:1.4.2")
+                .with_constraints_hash(HASH);
+        assert!(
+            validate_skill_scope_links(
+                &scope,
+                Some("33400:skillpub:research-assistant"),
+                Some("manifest-event-id"),
+            )
+            .is_ok()
+        );
     }
 }

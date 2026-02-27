@@ -1,6 +1,6 @@
 //! Credit Envelope (`kind:39242`) and authority state machine.
 
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -117,6 +117,8 @@ pub struct CreditEnvelope {
     pub issuer_pubkey: String,
     pub lp_pubkey: Option<String>,
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub provider_pubkey: Option<String>,
     pub max_sats: u64,
     pub expiry: u64,
@@ -141,6 +143,8 @@ impl CreditEnvelope {
             issuer_pubkey: issuer_pubkey.into(),
             lp_pubkey: None,
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             provider_pubkey: None,
             max_sats,
             expiry,
@@ -157,6 +161,16 @@ impl CreditEnvelope {
 
     pub fn with_provider(mut self, provider_pubkey: impl Into<String>) -> Self {
         self.provider_pubkey = Some(provider_pubkey.into());
+        self
+    }
+
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
         self
     }
 
@@ -177,6 +191,11 @@ impl CreditEnvelope {
 
     pub fn validate(&self) -> Result<(), EnvelopeError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.envelope_id.trim().is_empty() {
             return Err(EnvelopeError::MissingRequiredTag("d"));
         }
@@ -229,6 +248,17 @@ impl CreditEnvelope {
         if let Some(provider_pubkey) = &self.provider_pubkey {
             tags.push(vec!["provider".to_string(), provider_pubkey.clone()]);
         }
+        if let Some(skill_address) = &self.skill_address {
+            tags.push(vec!["a".to_string(), skill_address.clone()]);
+        }
+        if let Some(manifest_event_id) = &self.manifest_event_id {
+            tags.push(vec![
+                "e".to_string(),
+                manifest_event_id.clone(),
+                String::new(),
+                "manifest".to_string(),
+            ]);
+        }
         if let Some(repayment) = &self.repayment {
             tags.push(repayment.to_tag());
         }
@@ -262,6 +292,16 @@ impl CreditEnvelope {
             .find(|tag| tag.first().map(String::as_str) == Some("scope"))
             .ok_or(EnvelopeError::MissingRequiredTag("scope"))?;
         let scope = ScopeReference::from_scope_tag(scope_tag)?;
+        let skill_address = find_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| {
+                tag.first().map(String::as_str) == Some("e")
+                    && (tag.get(3).map(String::as_str) == Some("manifest") || tag.len() == 2)
+            })
+            .and_then(|tag| tag.get(1))
+            .cloned();
         let max_sats = find_required_tag_value(&event.tags, "max")?
             .parse::<u64>()
             .map_err(|_| EnvelopeError::InvalidMaxSats)?;
@@ -279,6 +319,8 @@ impl CreditEnvelope {
             issuer_pubkey,
             lp_pubkey,
             scope,
+            skill_address,
+            manifest_event_id,
             provider_pubkey,
             max_sats,
             expiry,

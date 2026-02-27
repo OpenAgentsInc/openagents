@@ -1,7 +1,7 @@
 //! Credit Spend Authorization (`kind:39243`).
 
 use super::envelope::{CreditEnvelope, EnvelopeError};
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -75,6 +75,8 @@ pub struct CreditSpendAuthorization {
     pub issuer_pubkey: String,
     pub envelope_id: String,
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub max_sats: u64,
     pub expiry: u64,
     pub content: CreditSpendContent,
@@ -93,14 +95,31 @@ impl CreditSpendAuthorization {
             issuer_pubkey: issuer_pubkey.into(),
             envelope_id: envelope_id.into(),
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             max_sats,
             expiry,
             content,
         }
     }
 
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
+        self
+    }
+
     pub fn validate(&self) -> Result<(), SpendError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.issuer_pubkey.trim().is_empty() {
             return Err(SpendError::MissingRequiredTag("p"));
         }
@@ -141,13 +160,20 @@ impl CreditSpendAuthorization {
 
     pub fn to_tags(&self) -> Result<Vec<Vec<String>>, SpendError> {
         self.validate()?;
-        Ok(vec![
+        let mut tags = vec![
             vec!["p".to_string(), self.issuer_pubkey.clone()],
             vec!["credit".to_string(), self.envelope_id.clone()],
             self.scope.to_scope_tag()?,
             vec!["max".to_string(), self.max_sats.to_string()],
             vec!["exp".to_string(), self.expiry.to_string()],
-        ])
+        ];
+        if let Some(skill_address) = &self.skill_address {
+            tags.push(vec!["a".to_string(), skill_address.clone()]);
+        }
+        if let Some(manifest_event_id) = &self.manifest_event_id {
+            tags.push(vec!["e".to_string(), manifest_event_id.clone()]);
+        }
+        Ok(tags)
     }
 
     pub fn to_event_template(&self, created_at: u64) -> Result<EventTemplate, SpendError> {
@@ -178,6 +204,13 @@ impl CreditSpendAuthorization {
             .find(|tag| tag.first().map(String::as_str) == Some("scope"))
             .ok_or(SpendError::MissingRequiredTag("scope"))?;
         let scope = ScopeReference::from_scope_tag(scope_tag)?;
+        let skill_address = find_optional_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| tag.first().map(String::as_str) == Some("e"))
+            .and_then(|tag| tag.get(1))
+            .cloned();
         let max_sats = find_required_tag_value(&event.tags, "max")?
             .parse::<u64>()
             .map_err(|_| SpendError::InvalidMaxSats)?;
@@ -191,6 +224,8 @@ impl CreditSpendAuthorization {
             issuer_pubkey,
             envelope_id,
             scope,
+            skill_address,
+            manifest_event_id,
             max_sats,
             expiry,
             content,
@@ -204,11 +239,14 @@ fn find_required_tag_value(
     tags: &[Vec<String>],
     tag_name: &'static str,
 ) -> Result<String, SpendError> {
+    find_optional_tag_value(tags, tag_name).ok_or(SpendError::MissingRequiredTag(tag_name))
+}
+
+fn find_optional_tag_value(tags: &[Vec<String>], tag_name: &str) -> Option<String> {
     tags.iter()
         .find(|tag| tag.first().map(String::as_str) == Some(tag_name))
         .and_then(|tag| tag.get(1))
         .cloned()
-        .ok_or(SpendError::MissingRequiredTag(tag_name))
 }
 
 #[cfg(test)]

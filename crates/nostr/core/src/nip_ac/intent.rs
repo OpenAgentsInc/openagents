@@ -1,6 +1,6 @@
 //! Credit Intent (`kind:39240`).
 
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -69,6 +69,8 @@ impl CreditIntentContent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreditIntent {
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub max_sats: u64,
     pub expiry: u64,
     pub provider_pubkey: Option<String>,
@@ -84,11 +86,23 @@ impl CreditIntent {
     ) -> Self {
         Self {
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             max_sats,
             expiry,
             provider_pubkey: None,
             content,
         }
+    }
+
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
+        self
     }
 
     pub fn with_provider(mut self, provider_pubkey: impl Into<String>) -> Self {
@@ -98,6 +112,11 @@ impl CreditIntent {
 
     pub fn validate(&self) -> Result<(), IntentError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.max_sats == 0 {
             return Err(IntentError::InvalidMaxSats);
         }
@@ -116,6 +135,12 @@ impl CreditIntent {
         ];
         if let Some(provider_pubkey) = &self.provider_pubkey {
             tags.push(vec!["provider".to_string(), provider_pubkey.clone()]);
+        }
+        if let Some(skill_address) = &self.skill_address {
+            tags.push(vec!["a".to_string(), skill_address.clone()]);
+        }
+        if let Some(manifest_event_id) = &self.manifest_event_id {
+            tags.push(vec!["e".to_string(), manifest_event_id.clone()]);
         }
         Ok(tags)
     }
@@ -153,12 +178,21 @@ impl CreditIntent {
             .parse::<u64>()
             .map_err(|_| IntentError::InvalidExpiry)?;
         let provider_pubkey = find_tag_value(&event.tags, "provider");
+        let skill_address = find_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| tag.first().map(String::as_str) == Some("e"))
+            .and_then(|tag| tag.get(1))
+            .cloned();
 
         let content: CreditIntentContent = serde_json::from_str(&event.content)
             .map_err(|error| IntentError::Deserialization(error.to_string()))?;
 
         let intent = CreditIntent {
             scope,
+            skill_address,
+            manifest_event_id,
             max_sats,
             expiry,
             provider_pubkey,

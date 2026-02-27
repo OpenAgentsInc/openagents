@@ -1,6 +1,6 @@
 //! Credit Default Notice (`kind:39245`).
 
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -57,6 +57,8 @@ pub struct CreditDefaultNotice {
     pub envelope_id: String,
     pub agent_pubkey: String,
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub status: String,
     pub content: CreditDefaultContent,
 }
@@ -72,13 +74,30 @@ impl CreditDefaultNotice {
             envelope_id: envelope_id.into(),
             agent_pubkey: agent_pubkey.into(),
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             status: "defaulted".to_string(),
             content,
         }
     }
 
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
+        self
+    }
+
     pub fn validate(&self) -> Result<(), DefaultNoticeError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.envelope_id.trim().is_empty() {
             return Err(DefaultNoticeError::MissingRequiredTag("credit"));
         }
@@ -106,7 +125,18 @@ impl CreditDefaultNotice {
             vec!["p".to_string(), self.agent_pubkey.clone()],
             self.scope.to_scope_tag()?,
             vec!["status".to_string(), self.status.clone()],
-        ])
+            vec![
+                "a".to_string(),
+                self.skill_address.clone().unwrap_or_default(),
+            ],
+            vec![
+                "e".to_string(),
+                self.manifest_event_id.clone().unwrap_or_default(),
+            ],
+        ]
+        .into_iter()
+        .filter(|tag| !(tag[0] == "a" || tag[0] == "e") || !tag[1].is_empty())
+        .collect())
     }
 
     pub fn to_event_template(&self, created_at: u64) -> Result<EventTemplate, DefaultNoticeError> {
@@ -137,6 +167,13 @@ impl CreditDefaultNotice {
             .find(|tag| tag.first().map(String::as_str) == Some("scope"))
             .ok_or(DefaultNoticeError::MissingRequiredTag("scope"))?;
         let scope = ScopeReference::from_scope_tag(scope_tag)?;
+        let skill_address = find_optional_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| tag.first().map(String::as_str) == Some("e"))
+            .and_then(|tag| tag.get(1))
+            .cloned();
         let status = find_required_tag_value(&event.tags, "status")?;
         let content: CreditDefaultContent = serde_json::from_str(&event.content)
             .map_err(|error| DefaultNoticeError::Deserialization(error.to_string()))?;
@@ -145,6 +182,8 @@ impl CreditDefaultNotice {
             envelope_id,
             agent_pubkey,
             scope,
+            skill_address,
+            manifest_event_id,
             status,
             content,
         };
@@ -157,11 +196,14 @@ fn find_required_tag_value(
     tags: &[Vec<String>],
     tag_name: &'static str,
 ) -> Result<String, DefaultNoticeError> {
+    find_optional_tag_value(tags, tag_name).ok_or(DefaultNoticeError::MissingRequiredTag(tag_name))
+}
+
+fn find_optional_tag_value(tags: &[Vec<String>], tag_name: &str) -> Option<String> {
     tags.iter()
         .find(|tag| tag.first().map(String::as_str) == Some(tag_name))
         .and_then(|tag| tag.get(1))
         .cloned()
-        .ok_or(DefaultNoticeError::MissingRequiredTag(tag_name))
 }
 
 #[cfg(test)]

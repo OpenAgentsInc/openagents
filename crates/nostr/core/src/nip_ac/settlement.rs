@@ -1,7 +1,7 @@
 //! Credit Settlement Receipt (`kind:39244`).
 
 use super::envelope::RepaymentReference;
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -69,6 +69,8 @@ pub struct CreditSettlementReceipt {
     pub issuer_pubkey: String,
     pub provider_pubkey: Option<String>,
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub outcome_event_id: Option<String>,
     pub repayment: Option<RepaymentReference>,
     pub status: String,
@@ -89,11 +91,23 @@ impl CreditSettlementReceipt {
             issuer_pubkey: issuer_pubkey.into(),
             provider_pubkey: None,
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             outcome_event_id: None,
             repayment: None,
             status: "settled".to_string(),
             content,
         }
+    }
+
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
+        self
     }
 
     pub fn with_provider(mut self, provider_pubkey: impl Into<String>) -> Self {
@@ -113,6 +127,11 @@ impl CreditSettlementReceipt {
 
     pub fn validate(&self) -> Result<(), SettlementError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.envelope_id.trim().is_empty() {
             return Err(SettlementError::MissingRequiredTag("credit"));
         }
@@ -144,8 +163,24 @@ impl CreditSettlementReceipt {
         if let Some(provider_pubkey) = &self.provider_pubkey {
             tags.push(vec!["provider".to_string(), provider_pubkey.clone()]);
         }
+        if let Some(skill_address) = &self.skill_address {
+            tags.push(vec!["a".to_string(), skill_address.clone()]);
+        }
+        if let Some(manifest_event_id) = &self.manifest_event_id {
+            tags.push(vec![
+                "e".to_string(),
+                manifest_event_id.clone(),
+                String::new(),
+                "manifest".to_string(),
+            ]);
+        }
         if let Some(outcome_event_id) = &self.outcome_event_id {
-            tags.push(vec!["e".to_string(), outcome_event_id.clone()]);
+            tags.push(vec![
+                "e".to_string(),
+                outcome_event_id.clone(),
+                String::new(),
+                "outcome".to_string(),
+            ]);
         }
         if let Some(repayment) = &self.repayment {
             tags.push(repayment.to_tag());
@@ -185,10 +220,24 @@ impl CreditSettlementReceipt {
         let scope = ScopeReference::from_scope_tag(scope_tag)?;
         let status = find_required_tag_value(&event.tags, "status")?;
         let provider_pubkey = find_tag_value(&event.tags, "provider");
+        let skill_address = find_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| {
+                tag.first().map(String::as_str) == Some("e")
+                    && tag.get(3).map(String::as_str) == Some("manifest")
+            })
+            .and_then(|tag| tag.get(1))
+            .cloned();
         let outcome_event_id = event
             .tags
             .iter()
-            .find(|tag| tag.first().map(String::as_str) == Some("e"))
+            .find(|tag| {
+                tag.first().map(String::as_str) == Some("e")
+                    && (tag.get(3).map(String::as_str) == Some("outcome")
+                        || (manifest_event_id.is_none() && tag.len() == 2))
+            })
             .and_then(|tag| tag.get(1))
             .cloned();
         let repayment = parse_repay_tag(&event.tags);
@@ -201,6 +250,8 @@ impl CreditSettlementReceipt {
             issuer_pubkey,
             provider_pubkey,
             scope,
+            skill_address,
+            manifest_event_id,
             outcome_event_id,
             repayment,
             status,

@@ -1,6 +1,6 @@
 //! Credit Offer (`kind:39241`).
 
-use super::scope_hash::{ScopeHashError, ScopeReference};
+use super::scope_hash::{ScopeHashError, ScopeReference, validate_skill_scope_links};
 use crate::nip01::{Event, EventTemplate};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -94,6 +94,8 @@ pub enum OfferError {
 pub struct CreditOffer {
     pub agent_pubkey: String,
     pub scope: ScopeReference,
+    pub skill_address: Option<String>,
+    pub manifest_event_id: Option<String>,
     pub max_sats: u64,
     pub fee: String,
     pub expiry: u64,
@@ -116,6 +118,8 @@ impl CreditOffer {
         Self {
             agent_pubkey: agent_pubkey.into(),
             scope,
+            skill_address: None,
+            manifest_event_id: None,
             max_sats,
             fee: fee.into(),
             expiry,
@@ -136,8 +140,23 @@ impl CreditOffer {
         self
     }
 
+    pub fn with_skill_reference(
+        mut self,
+        skill_address: impl Into<String>,
+        manifest_event_id: impl Into<String>,
+    ) -> Self {
+        self.skill_address = Some(skill_address.into());
+        self.manifest_event_id = Some(manifest_event_id.into());
+        self
+    }
+
     pub fn validate(&self) -> Result<(), OfferError> {
         self.scope.validate()?;
+        validate_skill_scope_links(
+            &self.scope,
+            self.skill_address.as_deref(),
+            self.manifest_event_id.as_deref(),
+        )?;
         if self.max_sats == 0 {
             return Err(OfferError::InvalidMaxSats);
         }
@@ -169,6 +188,12 @@ impl CreditOffer {
         ];
         if let Some(lp_pubkey) = &self.lp_pubkey {
             tags.push(vec!["lp".to_string(), lp_pubkey.clone()]);
+        }
+        if let Some(skill_address) = &self.skill_address {
+            tags.push(vec!["a".to_string(), skill_address.clone()]);
+        }
+        if let Some(manifest_event_id) = &self.manifest_event_id {
+            tags.push(vec!["e".to_string(), manifest_event_id.clone()]);
         }
         Ok(tags)
     }
@@ -209,6 +234,13 @@ impl CreditOffer {
             .map_err(|_| OfferError::InvalidExpiry)?;
         let issuer_pubkey = find_required_tag_value(&event.tags, "issuer")?;
         let lp_pubkey = find_tag_value(&event.tags, "lp");
+        let skill_address = find_tag_value(&event.tags, "a");
+        let manifest_event_id = event
+            .tags
+            .iter()
+            .find(|tag| tag.first().map(String::as_str) == Some("e"))
+            .and_then(|tag| tag.get(1))
+            .cloned();
         let status = OfferStatus::parse(&find_required_tag_value(&event.tags, "status")?)?;
         let content: CreditOfferContent = serde_json::from_str(&event.content)
             .map_err(|error| OfferError::Deserialization(error.to_string()))?;
@@ -216,6 +248,8 @@ impl CreditOffer {
         let offer = CreditOffer {
             agent_pubkey,
             scope,
+            skill_address,
+            manifest_event_id,
             max_sats,
             fee,
             expiry,
