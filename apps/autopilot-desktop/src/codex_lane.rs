@@ -9,18 +9,22 @@ use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
     AppServerRequestId, AppsListParams, AskForApproval, CancelLoginAccountParams,
     ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse, ClientInfo,
-    CommandExecutionRequestApprovalParams, CommandExecutionRequestApprovalResponse,
-    ConfigBatchWriteParams, ConfigReadParams, ConfigValueWriteParams,
-    DynamicToolCallOutputContentItem, DynamicToolCallParams, DynamicToolCallResponse,
-    ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
-    FileChangeRequestApprovalParams, FileChangeRequestApprovalResponse, GetAccountParams,
+    CollaborationModeListParams, CommandExecParams, CommandExecutionRequestApprovalParams,
+    CommandExecutionRequestApprovalResponse, ConfigBatchWriteParams, ConfigReadParams,
+    ConfigValueWriteParams, DynamicToolCallOutputContentItem, DynamicToolCallParams,
+    DynamicToolCallResponse, ExperimentalFeatureListParams, ExternalAgentConfigDetectParams,
+    ExternalAgentConfigImportParams, FileChangeRequestApprovalParams,
+    FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
+    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
     InitializeCapabilities, InitializeParams, ListMcpServerStatusParams, LoginAccountParams,
-    McpServerOauthLoginParams, ModelListParams, SkillScope, SkillsConfigWriteParams,
-    SkillsListParams, SkillsListResponse, SkillsRemoteReadParams, SkillsRemoteWriteParams,
-    ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams, ThreadListParams,
-    ThreadLoadedListParams, ThreadReadParams, ThreadResumeParams, ThreadRollbackParams,
+    McpServerOauthLoginParams, ModelListParams, ReviewStartParams, SkillScope,
+    SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, SkillsRemoteReadParams,
+    SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams,
+    ThreadListParams, ThreadLoadedListParams, ThreadReadParams, ThreadRealtimeAppendTextParams,
+    ThreadRealtimeStartParams, ThreadRealtimeStopParams, ThreadResumeParams, ThreadRollbackParams,
     ThreadSetNameParams, ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
     ToolRequestUserInputParams, ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    WindowsSandboxSetupStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -134,6 +138,17 @@ pub enum CodexLaneCommandKind {
     McpServerOauthLogin,
     McpServerReload,
     AppsList,
+    ReviewStart,
+    CommandExec,
+    CollaborationModeList,
+    ExperimentalFeatureList,
+    ThreadRealtimeStart,
+    ThreadRealtimeAppendText,
+    ThreadRealtimeStop,
+    WindowsSandboxSetupStart,
+    FuzzyFileSearchSessionStart,
+    FuzzyFileSearchSessionUpdate,
+    FuzzyFileSearchSessionStop,
     SkillsRemoteList,
     SkillsRemoteExport,
     SkillsList,
@@ -180,6 +195,17 @@ impl CodexLaneCommandKind {
             Self::McpServerOauthLogin => "mcpServer/oauth/login",
             Self::McpServerReload => "config/mcpServer/reload",
             Self::AppsList => "app/list",
+            Self::ReviewStart => "review/start",
+            Self::CommandExec => "command/exec",
+            Self::CollaborationModeList => "collaborationMode/list",
+            Self::ExperimentalFeatureList => "experimentalFeature/list",
+            Self::ThreadRealtimeStart => "thread/realtime/start",
+            Self::ThreadRealtimeAppendText => "thread/realtime/appendText",
+            Self::ThreadRealtimeStop => "thread/realtime/stop",
+            Self::WindowsSandboxSetupStart => "windowsSandbox/setupStart",
+            Self::FuzzyFileSearchSessionStart => "fuzzyFileSearch/sessionStart",
+            Self::FuzzyFileSearchSessionUpdate => "fuzzyFileSearch/sessionUpdate",
+            Self::FuzzyFileSearchSessionStop => "fuzzyFileSearch/sessionStop",
             Self::SkillsRemoteList => "skills/remote/list",
             Self::SkillsRemoteExport => "skills/remote/export",
             Self::SkillsList => "skills/list",
@@ -266,6 +292,17 @@ pub enum CodexLaneCommand {
     McpServerOauthLogin(McpServerOauthLoginParams),
     McpServerReload,
     AppsList(AppsListParams),
+    ReviewStart(ReviewStartParams),
+    CommandExec(CommandExecParams),
+    CollaborationModeList(CollaborationModeListParams),
+    ExperimentalFeatureList(ExperimentalFeatureListParams),
+    ThreadRealtimeStart(ThreadRealtimeStartParams),
+    ThreadRealtimeAppendText(ThreadRealtimeAppendTextParams),
+    ThreadRealtimeStop(ThreadRealtimeStopParams),
+    WindowsSandboxSetupStart(WindowsSandboxSetupStartParams),
+    FuzzyFileSearchSessionStart(FuzzyFileSearchSessionStartParams),
+    FuzzyFileSearchSessionUpdate(FuzzyFileSearchSessionUpdateParams),
+    FuzzyFileSearchSessionStop(FuzzyFileSearchSessionStopParams),
     SkillsRemoteList(SkillsRemoteReadParams),
     SkillsRemoteExport(SkillsRemoteWriteParams),
     SkillsList(SkillsListParams),
@@ -320,6 +357,21 @@ impl CodexLaneCommand {
             Self::McpServerOauthLogin(_) => CodexLaneCommandKind::McpServerOauthLogin,
             Self::McpServerReload => CodexLaneCommandKind::McpServerReload,
             Self::AppsList(_) => CodexLaneCommandKind::AppsList,
+            Self::ReviewStart(_) => CodexLaneCommandKind::ReviewStart,
+            Self::CommandExec(_) => CodexLaneCommandKind::CommandExec,
+            Self::CollaborationModeList(_) => CodexLaneCommandKind::CollaborationModeList,
+            Self::ExperimentalFeatureList(_) => CodexLaneCommandKind::ExperimentalFeatureList,
+            Self::ThreadRealtimeStart(_) => CodexLaneCommandKind::ThreadRealtimeStart,
+            Self::ThreadRealtimeAppendText(_) => CodexLaneCommandKind::ThreadRealtimeAppendText,
+            Self::ThreadRealtimeStop(_) => CodexLaneCommandKind::ThreadRealtimeStop,
+            Self::WindowsSandboxSetupStart(_) => CodexLaneCommandKind::WindowsSandboxSetupStart,
+            Self::FuzzyFileSearchSessionStart(_) => {
+                CodexLaneCommandKind::FuzzyFileSearchSessionStart
+            }
+            Self::FuzzyFileSearchSessionUpdate(_) => {
+                CodexLaneCommandKind::FuzzyFileSearchSessionUpdate
+            }
+            Self::FuzzyFileSearchSessionStop(_) => CodexLaneCommandKind::FuzzyFileSearchSessionStop,
             Self::SkillsRemoteList(_) => CodexLaneCommandKind::SkillsRemoteList,
             Self::SkillsRemoteExport(_) => CodexLaneCommandKind::SkillsRemoteExport,
             Self::SkillsList(_) => CodexLaneCommandKind::SkillsList,
@@ -401,6 +453,61 @@ pub enum CodexLaneNotification {
         next_cursor: Option<String>,
     },
     AppsListUpdated,
+    ReviewStarted {
+        thread_id: String,
+        turn_id: String,
+        review_thread_id: String,
+    },
+    CommandExecCompleted {
+        exit_code: i32,
+        stdout: String,
+        stderr: String,
+    },
+    CollaborationModesLoaded {
+        modes_json: String,
+        count: usize,
+    },
+    ExperimentalFeaturesLoaded {
+        features_json: String,
+        count: usize,
+        next_cursor: Option<String>,
+    },
+    RealtimeStarted {
+        thread_id: String,
+        session_id: Option<String>,
+    },
+    RealtimeTextAppended {
+        thread_id: String,
+        text_len: usize,
+    },
+    RealtimeStopped {
+        thread_id: String,
+    },
+    RealtimeError {
+        thread_id: String,
+        message: String,
+    },
+    WindowsSandboxSetupStarted {
+        mode: String,
+        started: bool,
+    },
+    WindowsSandboxSetupCompleted {
+        mode: Option<String>,
+        success: Option<bool>,
+    },
+    FuzzySessionStarted {
+        session_id: String,
+    },
+    FuzzySessionUpdated {
+        session_id: String,
+        status: String,
+    },
+    FuzzySessionCompleted {
+        session_id: String,
+    },
+    FuzzySessionStopped {
+        session_id: String,
+    },
     SkillsRemoteListLoaded {
         entries: Vec<CodexRemoteSkillEntry>,
     },
@@ -1380,6 +1487,127 @@ impl CodexLaneState {
                     }),
                 })
             }
+            CodexLaneCommand::ReviewStart(params) => {
+                let thread_id = params.thread_id.clone();
+                let response = runtime.block_on(client.review_start(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ReviewStarted {
+                        thread_id,
+                        turn_id: response.turn.id,
+                        review_thread_id: response.review_thread_id,
+                    }),
+                })
+            }
+            CodexLaneCommand::CommandExec(params) => {
+                let response = runtime.block_on(client.command_exec(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::CommandExecCompleted {
+                        exit_code: response.exit_code,
+                        stdout: response.stdout,
+                        stderr: response.stderr,
+                    }),
+                })
+            }
+            CodexLaneCommand::CollaborationModeList(params) => {
+                let response = runtime.block_on(client.collaboration_mode_list(params))?;
+                let count = response.data.len();
+                let modes_json = serde_json::to_string_pretty(&response.data)
+                    .unwrap_or_else(|_| "[]".to_string());
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::CollaborationModesLoaded {
+                        modes_json,
+                        count,
+                    }),
+                })
+            }
+            CodexLaneCommand::ExperimentalFeatureList(params) => {
+                let response = runtime.block_on(client.experimental_feature_list(params))?;
+                let count = response.data.len();
+                let features_json = serde_json::to_string_pretty(&response.data)
+                    .unwrap_or_else(|_| "[]".to_string());
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::ExperimentalFeaturesLoaded {
+                        features_json,
+                        count,
+                        next_cursor: response.next_cursor,
+                    }),
+                })
+            }
+            CodexLaneCommand::ThreadRealtimeStart(params) => {
+                let thread_id = params.thread_id.clone();
+                let session_id = params.session_id.clone();
+                let _ = runtime.block_on(client.thread_realtime_start(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::RealtimeStarted {
+                        thread_id,
+                        session_id,
+                    }),
+                })
+            }
+            CodexLaneCommand::ThreadRealtimeAppendText(params) => {
+                let thread_id = params.thread_id.clone();
+                let text_len = params.text.chars().count();
+                let _ = runtime.block_on(client.thread_realtime_append_text(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::RealtimeTextAppended {
+                        thread_id,
+                        text_len,
+                    }),
+                })
+            }
+            CodexLaneCommand::ThreadRealtimeStop(params) => {
+                let thread_id = params.thread_id.clone();
+                let _ = runtime.block_on(client.thread_realtime_stop(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::RealtimeStopped { thread_id }),
+                })
+            }
+            CodexLaneCommand::WindowsSandboxSetupStart(params) => {
+                let mode = params.mode.clone();
+                let response = runtime.block_on(client.windows_sandbox_setup_start(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::WindowsSandboxSetupStarted {
+                        mode,
+                        started: response.started,
+                    }),
+                })
+            }
+            CodexLaneCommand::FuzzyFileSearchSessionStart(params) => {
+                let session_id = params.session_id.clone();
+                let _ = runtime.block_on(client.fuzzy_file_search_session_start(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::FuzzySessionStarted { session_id }),
+                })
+            }
+            CodexLaneCommand::FuzzyFileSearchSessionUpdate(params) => {
+                let session_id = params.session_id.clone();
+                let status = format!("query={}", params.query);
+                let _ = runtime.block_on(client.fuzzy_file_search_session_update(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::FuzzySessionUpdated {
+                        session_id,
+                        status,
+                    }),
+                })
+            }
+            CodexLaneCommand::FuzzyFileSearchSessionStop(params) => {
+                let session_id = params.session_id.clone();
+                let _ = runtime.block_on(client.fuzzy_file_search_session_stop(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::FuzzySessionStopped { session_id }),
+                })
+            }
             CodexLaneCommand::SkillsRemoteList(params) => {
                 let response = runtime.block_on(client.skills_remote_list(params))?;
                 let entries = response
@@ -1889,6 +2117,56 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             })
         }
         "app/list/updated" => Some(CodexLaneNotification::AppsListUpdated),
+        "fuzzyFileSearch/sessionUpdated" => {
+            let params = params?;
+            let session_id =
+                string_field(&params, "sessionId").unwrap_or_else(|| "unknown".to_string());
+            let status = string_field(&params, "status").unwrap_or_else(|| {
+                serde_json::to_string(&params).unwrap_or_else(|_| "updated".to_string())
+            });
+            Some(CodexLaneNotification::FuzzySessionUpdated { session_id, status })
+        }
+        "fuzzyFileSearch/sessionCompleted" => {
+            let params = params?;
+            let session_id =
+                string_field(&params, "sessionId").unwrap_or_else(|| "unknown".to_string());
+            Some(CodexLaneNotification::FuzzySessionCompleted { session_id })
+        }
+        "thread/realtime/started" => {
+            let params = params?;
+            Some(CodexLaneNotification::RealtimeStarted {
+                thread_id: string_field(&params, "threadId")?,
+                session_id: string_field(&params, "sessionId"),
+            })
+        }
+        "thread/realtime/closed" => {
+            let params = params?;
+            Some(CodexLaneNotification::RealtimeStopped {
+                thread_id: string_field(&params, "threadId")?,
+            })
+        }
+        "thread/realtime/error" => {
+            let params = params?;
+            let message = params
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| string_field(&params, "message"))
+                .unwrap_or_else(|| "thread realtime error".to_string());
+            Some(CodexLaneNotification::RealtimeError {
+                thread_id: string_field(&params, "threadId")
+                    .unwrap_or_else(|| "unknown-thread".to_string()),
+                message,
+            })
+        }
+        "windowsSandbox/setupCompleted" => {
+            let params = params?;
+            Some(CodexLaneNotification::WindowsSandboxSetupCompleted {
+                mode: string_field(&params, "mode"),
+                success: params.get("success").and_then(Value::as_bool),
+            })
+        }
         "turn/started" => {
             let params = params?;
             let thread_id = string_field(&params, "threadId")?;
@@ -2868,6 +3146,64 @@ mod tests {
         assert_eq!(
             app_list_updated,
             Some(CodexLaneNotification::AppsListUpdated)
+        );
+
+        let fuzzy_updated = normalize_notification(codex_client::AppServerNotification {
+            method: "fuzzyFileSearch/sessionUpdated".to_string(),
+            params: Some(json!({
+                "sessionId": "session-1",
+                "status": "indexing"
+            })),
+        });
+        assert_eq!(
+            fuzzy_updated,
+            Some(CodexLaneNotification::FuzzySessionUpdated {
+                session_id: "session-1".to_string(),
+                status: "indexing".to_string(),
+            })
+        );
+
+        let fuzzy_completed = normalize_notification(codex_client::AppServerNotification {
+            method: "fuzzyFileSearch/sessionCompleted".to_string(),
+            params: Some(json!({
+                "sessionId": "session-1"
+            })),
+        });
+        assert_eq!(
+            fuzzy_completed,
+            Some(CodexLaneNotification::FuzzySessionCompleted {
+                session_id: "session-1".to_string(),
+            })
+        );
+
+        let realtime_started = normalize_notification(codex_client::AppServerNotification {
+            method: "thread/realtime/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-rt",
+                "sessionId": "rt-session"
+            })),
+        });
+        assert_eq!(
+            realtime_started,
+            Some(CodexLaneNotification::RealtimeStarted {
+                thread_id: "thread-rt".to_string(),
+                session_id: Some("rt-session".to_string()),
+            })
+        );
+
+        let windows_setup = normalize_notification(codex_client::AppServerNotification {
+            method: "windowsSandbox/setupCompleted".to_string(),
+            params: Some(json!({
+                "mode": "enable",
+                "success": true
+            })),
+        });
+        assert_eq!(
+            windows_setup,
+            Some(CodexLaneNotification::WindowsSandboxSetupCompleted {
+                mode: Some("enable".to_string()),
+                success: Some(true),
+            })
         );
     }
 

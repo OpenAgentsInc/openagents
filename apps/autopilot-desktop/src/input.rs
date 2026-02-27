@@ -1,14 +1,19 @@
 use codex_client::{
     ApprovalDecision, AppsListParams, ChatgptAuthTokensRefreshResponse,
-    CommandExecutionRequestApprovalResponse, ConfigBatchWriteParams, ConfigEdit, ConfigReadParams,
-    ConfigValueWriteParams, DynamicToolCallOutputContentItem, DynamicToolCallResponse,
+    CollaborationModeListParams, CommandExecParams, CommandExecutionRequestApprovalResponse,
+    ConfigBatchWriteParams, ConfigEdit, ConfigReadParams, ConfigValueWriteParams,
+    DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExperimentalFeatureListParams,
     ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
-    FileChangeRequestApprovalResponse, GetAccountParams, HazelnutScope, ListMcpServerStatusParams,
-    LoginAccountParams, McpServerOauthLoginParams, MergeStrategy, ModelListParams, ProductSurface,
-    SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams,
-    ThreadForkParams, ThreadLoadedListParams, ThreadResumeParams, ThreadRollbackParams,
-    ThreadSetNameParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
-    ToolRequestUserInputAnswer, ToolRequestUserInputResponse, TurnStartParams, UserInput,
+    FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
+    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
+    HazelnutScope, ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams,
+    MergeStrategy, ModelListParams, ProductSurface, ReviewDelivery, ReviewStartParams,
+    ReviewTarget, SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams,
+    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,
+    ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
+    ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams,
+    ThreadUnsubscribeParams, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
+    TurnStartParams, UserInput, WindowsSandboxSetupStartParams,
 };
 use nostr::regenerate_identity;
 use std::collections::HashMap;
@@ -33,10 +38,10 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexMcpPaneAction,
-    CodexModelsPaneAction, CodexRemoteSkillsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexLabsPaneAction,
+    CodexMcpPaneAction, CodexModelsPaneAction, CodexRemoteSkillsPaneAction,
+    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
@@ -492,6 +497,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::CodexMcp(action) => run_codex_mcp_action(state, action),
         PaneHitAction::CodexApps(action) => run_codex_apps_action(state, action),
         PaneHitAction::CodexRemoteSkills(action) => run_codex_remote_skills_action(state, action),
+        PaneHitAction::CodexLabs(action) => run_codex_labs_action(state, action),
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
@@ -1657,6 +1663,223 @@ fn run_codex_remote_skills_action(
                 state.codex_remote_skills.last_error = None;
             }
             true
+        }
+    }
+}
+
+fn run_codex_labs_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexLabsPaneAction,
+) -> bool {
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let queue = |state: &mut crate::app_state::RenderState,
+                 action_label: &str,
+                 command: crate::codex_lane::CodexLaneCommand| {
+        state.codex_labs.load_state = crate::app_state::PaneLoadState::Loading;
+        state.codex_labs.last_error = None;
+        state.codex_labs.last_action = Some(action_label.to_string());
+        if let Err(error) = state.queue_codex_command(command) {
+            state.codex_labs.load_state = crate::app_state::PaneLoadState::Error;
+            state.codex_labs.last_error = Some(error);
+        }
+        true
+    };
+
+    match action {
+        CodexLabsPaneAction::ReviewInline | CodexLabsPaneAction::ReviewDetached => {
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before starting review".to_string());
+                return true;
+            };
+            let delivery = match action {
+                CodexLabsPaneAction::ReviewInline => ReviewDelivery::Inline,
+                CodexLabsPaneAction::ReviewDetached => ReviewDelivery::Detached,
+                _ => ReviewDelivery::Inline,
+            };
+            queue(
+                state,
+                &format!("Queued review/start ({:?})", delivery),
+                crate::codex_lane::CodexLaneCommand::ReviewStart(ReviewStartParams {
+                    thread_id,
+                    target: ReviewTarget::UncommittedChanges,
+                    delivery: Some(delivery),
+                }),
+            )
+        }
+        CodexLabsPaneAction::CommandExec => queue(
+            state,
+            "Queued command/exec",
+            crate::codex_lane::CodexLaneCommand::CommandExec(CommandExecParams {
+                command: vec!["pwd".to_string()],
+                timeout_ms: Some(5000),
+                cwd,
+                sandbox_policy: None,
+            }),
+        ),
+        CodexLabsPaneAction::CollaborationModes => queue(
+            state,
+            "Queued collaborationMode/list",
+            crate::codex_lane::CodexLaneCommand::CollaborationModeList(
+                CollaborationModeListParams::default(),
+            ),
+        ),
+        CodexLabsPaneAction::ExperimentalFeatures => queue(
+            state,
+            "Queued experimentalFeature/list",
+            crate::codex_lane::CodexLaneCommand::ExperimentalFeatureList(
+                ExperimentalFeatureListParams {
+                    cursor: None,
+                    limit: Some(100),
+                },
+            ),
+        ),
+        CodexLabsPaneAction::ToggleExperimental => {
+            state.codex_labs.experimental_enabled = !state.codex_labs.experimental_enabled;
+            state.codex_labs.last_error = None;
+            state.codex_labs.last_action = Some(format!(
+                "Experimental gating set to {}",
+                state.codex_labs.experimental_enabled
+            ));
+            true
+        }
+        CodexLabsPaneAction::RealtimeStart => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime start".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/start",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeStart(
+                    ThreadRealtimeStartParams {
+                        thread_id,
+                        prompt: "Start realtime session".to_string(),
+                        session_id: Some(format!("labs-{}", std::process::id())),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::RealtimeAppendText => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime append".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/appendText",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeAppendText(
+                    ThreadRealtimeAppendTextParams {
+                        thread_id,
+                        text: "ping from Codex Labs".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::RealtimeStop => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before realtime controls".to_string());
+                return true;
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                state.codex_labs.last_error =
+                    Some("Select an active thread before realtime stop".to_string());
+                return true;
+            };
+            queue(
+                state,
+                "Queued thread/realtime/stop",
+                crate::codex_lane::CodexLaneCommand::ThreadRealtimeStop(ThreadRealtimeStopParams {
+                    thread_id,
+                }),
+            )
+        }
+        CodexLabsPaneAction::WindowsSandboxSetup => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before sandbox setup".to_string());
+                return true;
+            }
+            if !cfg!(target_os = "windows") {
+                state.codex_labs.last_error =
+                    Some("windowsSandbox/setupStart is only available on Windows".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued windowsSandbox/setupStart",
+                crate::codex_lane::CodexLaneCommand::WindowsSandboxSetupStart(
+                    WindowsSandboxSetupStartParams {
+                        mode: "enable".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyStart => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            let roots = vec![cwd.unwrap_or_else(|| ".".to_string())];
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionStart",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionStart(
+                    FuzzyFileSearchSessionStartParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                        roots,
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyUpdate => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionUpdate",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionUpdate(
+                    FuzzyFileSearchSessionUpdateParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                        query: "codex integration".to_string(),
+                    },
+                ),
+            )
+        }
+        CodexLabsPaneAction::FuzzyStop => {
+            if !state.codex_labs.experimental_enabled {
+                state.codex_labs.last_error =
+                    Some("Enable experimental gating before fuzzy session controls".to_string());
+                return true;
+            }
+            queue(
+                state,
+                "Queued fuzzyFileSearch/sessionStop",
+                crate::codex_lane::CodexLaneCommand::FuzzyFileSearchSessionStop(
+                    FuzzyFileSearchSessionStopParams {
+                        session_id: state.codex_labs.fuzzy_session_id.clone(),
+                    },
+                ),
+            )
         }
     }
 }

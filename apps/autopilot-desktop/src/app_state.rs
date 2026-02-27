@@ -52,6 +52,7 @@ pub enum PaneKind {
     CodexMcp,
     CodexApps,
     CodexRemoteSkills,
+    CodexLabs,
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
@@ -2043,6 +2044,46 @@ impl Default for CodexRemoteSkillsPaneState {
     }
 }
 
+pub struct CodexLabsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub review_last_turn_id: Option<String>,
+    pub review_last_thread_id: Option<String>,
+    pub command_last_exit_code: Option<i32>,
+    pub command_last_stdout: String,
+    pub command_last_stderr: String,
+    pub collaboration_modes_json: String,
+    pub experimental_features_json: String,
+    pub experimental_enabled: bool,
+    pub realtime_started: bool,
+    pub fuzzy_session_id: String,
+    pub fuzzy_last_status: String,
+    pub windows_last_status: Option<String>,
+}
+
+impl Default for CodexLabsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Codex Labs ready".to_string()),
+            review_last_turn_id: None,
+            review_last_thread_id: None,
+            command_last_exit_code: None,
+            command_last_stdout: String::new(),
+            command_last_stderr: String::new(),
+            collaboration_modes_json: "[]".to_string(),
+            experimental_features_json: "[]".to_string(),
+            experimental_enabled: false,
+            realtime_started: false,
+            fuzzy_session_id: format!("labs-{}", std::process::id()),
+            fuzzy_last_status: "idle".to_string(),
+            windows_last_status: None,
+        }
+    }
+}
+
 pub struct AgentProfileStatePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -3077,6 +3118,7 @@ impl_pane_status_access!(
     CodexMcpPaneState,
     CodexAppsPaneState,
     CodexRemoteSkillsPaneState,
+    CodexLabsPaneState,
     RelayConnectionsState,
     SyncHealthState,
     NetworkRequestsState,
@@ -3133,6 +3175,7 @@ pub struct RenderState {
     pub codex_mcp: CodexMcpPaneState,
     pub codex_apps: CodexAppsPaneState,
     pub codex_remote_skills: CodexRemoteSkillsPaneState,
+    pub codex_labs: CodexLabsPaneState,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_worker: CodexLaneWorker,
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,

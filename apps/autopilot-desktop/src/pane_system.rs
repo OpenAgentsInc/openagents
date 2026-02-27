@@ -136,6 +136,23 @@ pub enum CodexRemoteSkillsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexLabsPaneAction {
+    ReviewInline,
+    ReviewDetached,
+    CommandExec,
+    CollaborationModes,
+    ExperimentalFeatures,
+    ToggleExperimental,
+    RealtimeStart,
+    RealtimeAppendText,
+    RealtimeStop,
+    WindowsSandboxSetup,
+    FuzzyStart,
+    FuzzyUpdate,
+    FuzzyStop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EarningsScoreboardPaneAction {
     Refresh,
 }
@@ -290,6 +307,7 @@ pub enum PaneHitAction {
     CodexMcp(CodexMcpPaneAction),
     CodexApps(CodexAppsPaneAction),
     CodexRemoteSkills(CodexRemoteSkillsPaneAction),
+    CodexLabs(CodexLabsPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
@@ -677,6 +695,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexMcp
             | PaneKind::CodexApps
             | PaneKind::CodexRemoteSkills
+            | PaneKind::CodexLabs
             | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
@@ -1072,6 +1091,62 @@ pub fn codex_remote_skills_row_bounds(content_bounds: Bounds, row_index: usize) 
 
 pub fn codex_remote_skills_visible_row_count(row_count: usize) -> usize {
     row_count.min(CODEX_REMOTE_SKILLS_MAX_ROWS)
+}
+
+fn codex_labs_button_bounds(content_bounds: Bounds, row: usize, col: usize) -> Bounds {
+    codex_action_button_bounds(content_bounds, row, col, 3)
+}
+
+pub fn codex_labs_review_inline_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 0)
+}
+
+pub fn codex_labs_review_detached_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 1)
+}
+
+pub fn codex_labs_command_exec_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 0, 2)
+}
+
+pub fn codex_labs_collaboration_modes_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 0)
+}
+
+pub fn codex_labs_experimental_features_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 1)
+}
+
+pub fn codex_labs_toggle_experimental_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 1, 2)
+}
+
+pub fn codex_labs_realtime_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 0)
+}
+
+pub fn codex_labs_realtime_append_text_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 1)
+}
+
+pub fn codex_labs_realtime_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 2, 2)
+}
+
+pub fn codex_labs_windows_sandbox_setup_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 0)
+}
+
+pub fn codex_labs_fuzzy_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 1)
+}
+
+pub fn codex_labs_fuzzy_update_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 3, 2)
+}
+
+pub fn codex_labs_fuzzy_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_labs_button_bounds(content_bounds, 4, 0)
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2057,6 +2132,60 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::CodexLabs => {
+            if codex_labs_review_inline_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::ReviewInline));
+            }
+            if codex_labs_review_detached_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ReviewDetached,
+                ));
+            }
+            if codex_labs_command_exec_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::CommandExec));
+            }
+            if codex_labs_collaboration_modes_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::CollaborationModes,
+                ));
+            }
+            if codex_labs_experimental_features_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ExperimentalFeatures,
+                ));
+            }
+            if codex_labs_toggle_experimental_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::ToggleExperimental,
+                ));
+            }
+            if codex_labs_realtime_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStart));
+            }
+            if codex_labs_realtime_append_text_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::RealtimeAppendText,
+                ));
+            }
+            if codex_labs_realtime_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::RealtimeStop));
+            }
+            if codex_labs_windows_sandbox_setup_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(
+                    CodexLabsPaneAction::WindowsSandboxSetup,
+                ));
+            }
+            if codex_labs_fuzzy_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStart));
+            }
+            if codex_labs_fuzzy_update_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyUpdate));
+            }
+            if codex_labs_fuzzy_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexLabs(CodexLabsPaneAction::FuzzyStop));
+            }
+            None
+        }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::EarningsScoreboard(
@@ -2683,7 +2812,10 @@ mod tests {
         codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
         codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
         codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-        codex_config_write_button_bounds, codex_mcp_login_button_bounds,
+        codex_config_write_button_bounds, codex_labs_collaboration_modes_button_bounds,
+        codex_labs_command_exec_button_bounds, codex_labs_experimental_features_button_bounds,
+        codex_labs_review_detached_button_bounds, codex_labs_review_inline_button_bounds,
+        codex_labs_toggle_experimental_button_bounds, codex_mcp_login_button_bounds,
         codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds,
         codex_models_refresh_button_bounds, codex_models_toggle_hidden_button_bounds,
         codex_remote_skills_export_button_bounds, codex_remote_skills_refresh_button_bounds,
@@ -2815,6 +2947,18 @@ mod tests {
         let remote_refresh = codex_remote_skills_refresh_button_bounds(content);
         let remote_export = codex_remote_skills_export_button_bounds(content);
         assert!(remote_refresh.max_x() < remote_export.min_x());
+
+        let review_inline = codex_labs_review_inline_button_bounds(content);
+        let review_detached = codex_labs_review_detached_button_bounds(content);
+        let command_exec = codex_labs_command_exec_button_bounds(content);
+        assert!(review_inline.max_x() < review_detached.min_x());
+        assert!(review_detached.max_x() < command_exec.min_x());
+
+        let collab = codex_labs_collaboration_modes_button_bounds(content);
+        let features = codex_labs_experimental_features_button_bounds(content);
+        let toggle = codex_labs_toggle_experimental_button_bounds(content);
+        assert!(collab.max_x() < features.min_x());
+        assert!(features.max_x() < toggle.min_x());
     }
 
     #[test]

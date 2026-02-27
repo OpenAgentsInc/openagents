@@ -169,6 +169,29 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .or_else(|| Some(format!("{} failed", response.command.label())));
             }
         }
+        CodexLaneCommandKind::ReviewStart
+        | CodexLaneCommandKind::CommandExec
+        | CodexLaneCommandKind::CollaborationModeList
+        | CodexLaneCommandKind::ExperimentalFeatureList
+        | CodexLaneCommandKind::ThreadRealtimeStart
+        | CodexLaneCommandKind::ThreadRealtimeAppendText
+        | CodexLaneCommandKind::ThreadRealtimeStop
+        | CodexLaneCommandKind::WindowsSandboxSetupStart
+        | CodexLaneCommandKind::FuzzyFileSearchSessionStart
+        | CodexLaneCommandKind::FuzzyFileSearchSessionUpdate
+        | CodexLaneCommandKind::FuzzyFileSearchSessionStop => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_labs.load_state = PaneLoadState::Ready;
+                state.codex_labs.last_error = None;
+                state.codex_labs.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.codex_labs.load_state = PaneLoadState::Error;
+                state.codex_labs.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
+            }
+        }
         _ => {}
     }
 
@@ -504,6 +527,146 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             state.codex_apps.last_action = Some("Received app/list/updated".to_string());
             state.codex_apps.last_error = None;
             queue_apps_list_refresh(state, true);
+        }
+        CodexLaneNotification::ReviewStarted {
+            thread_id,
+            turn_id,
+            review_thread_id,
+        } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.review_last_thread_id = Some(review_thread_id.clone());
+            state.codex_labs.review_last_turn_id = Some(turn_id.clone());
+            state.codex_labs.last_action = Some(format!(
+                "Review started for thread={} turn={} reviewThread={}",
+                thread_id, turn_id, review_thread_id
+            ));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::CommandExecCompleted {
+            exit_code,
+            stdout,
+            stderr,
+        } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.command_last_exit_code = Some(exit_code);
+            state.codex_labs.command_last_stdout = stdout;
+            state.codex_labs.command_last_stderr = stderr;
+            state.codex_labs.last_action =
+                Some(format!("command/exec completed (exit={exit_code})"));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::CollaborationModesLoaded { modes_json, count } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.collaboration_modes_json = modes_json;
+            state.codex_labs.last_action =
+                Some(format!("Loaded collaborationMode/list entries={count}"));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::ExperimentalFeaturesLoaded {
+            features_json,
+            count,
+            next_cursor,
+        } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.experimental_features_json = features_json;
+            state.codex_labs.last_action = Some(format!(
+                "Loaded experimentalFeature/list entries={} nextCursor={}",
+                count,
+                next_cursor.unwrap_or_else(|| "none".to_string())
+            ));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::RealtimeStarted {
+            thread_id,
+            session_id,
+        } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.realtime_started = true;
+            state.codex_labs.last_action = Some(format!(
+                "thread/realtime started thread={} session={}",
+                thread_id,
+                session_id.unwrap_or_else(|| "none".to_string())
+            ));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::RealtimeTextAppended {
+            thread_id,
+            text_len,
+        } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.last_action = Some(format!(
+                "thread/realtime appendText thread={} chars={}",
+                thread_id, text_len
+            ));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::RealtimeStopped { thread_id } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.realtime_started = false;
+            state.codex_labs.last_action =
+                Some(format!("thread/realtime stopped thread={thread_id}"));
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::RealtimeError { thread_id, message } => {
+            state.codex_labs.load_state = PaneLoadState::Error;
+            state.codex_labs.realtime_started = false;
+            state.codex_labs.last_action =
+                Some(format!("thread/realtime error thread={thread_id}"));
+            state.codex_labs.last_error = Some(message);
+        }
+        CodexLaneNotification::WindowsSandboxSetupStarted { mode, started } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.windows_last_status = Some(format!(
+                "windowsSandbox/setupStart mode={} started={}",
+                mode, started
+            ));
+            state.codex_labs.last_action = Some("windowsSandbox/setupStart completed".to_string());
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::WindowsSandboxSetupCompleted { mode, success } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.windows_last_status = Some(format!(
+                "windowsSandbox/setupCompleted mode={} success={}",
+                mode.unwrap_or_else(|| "unknown".to_string()),
+                success
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ));
+            state.codex_labs.last_action =
+                Some("Received windowsSandbox/setupCompleted".to_string());
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::FuzzySessionStarted { session_id } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.fuzzy_session_id = session_id;
+            state.codex_labs.fuzzy_last_status = "started".to_string();
+            state.codex_labs.last_action =
+                Some("fuzzyFileSearch/sessionStart completed".to_string());
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::FuzzySessionUpdated { session_id, status } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.fuzzy_session_id = session_id;
+            state.codex_labs.fuzzy_last_status = status;
+            state.codex_labs.last_action =
+                Some("fuzzyFileSearch/sessionUpdate received".to_string());
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::FuzzySessionCompleted { session_id } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.fuzzy_session_id = session_id;
+            state.codex_labs.fuzzy_last_status = "completed".to_string();
+            state.codex_labs.last_action =
+                Some("fuzzyFileSearch/sessionCompleted received".to_string());
+            state.codex_labs.last_error = None;
+        }
+        CodexLaneNotification::FuzzySessionStopped { session_id } => {
+            state.codex_labs.load_state = PaneLoadState::Ready;
+            state.codex_labs.fuzzy_session_id = session_id;
+            state.codex_labs.fuzzy_last_status = "stopped".to_string();
+            state.codex_labs.last_action =
+                Some("fuzzyFileSearch/sessionStop completed".to_string());
+            state.codex_labs.last_error = None;
         }
         CodexLaneNotification::SkillsRemoteListLoaded { entries } => {
             state.codex_remote_skills.load_state = PaneLoadState::Ready;

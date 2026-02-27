@@ -80,7 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 35] = [
+const PANE_SPECS: [PaneSpec; 36] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -197,6 +197,21 @@ const PANE_SPECS: [PaneSpec; 35] = [
             id: "pane.codex_remote_skills",
             label: "Codex Remote Skills",
             description: "Open remote skill discovery/export while keeping local skills primary",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodexLabs,
+        title: "Codex Labs",
+        default_width: 960.0,
+        default_height: 520.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.codex_labs",
+            label: "Codex Labs",
+            description: "Open review, utility exec, and gated experimental Codex controls",
             keybinding: None,
         }),
         hotbar: None,

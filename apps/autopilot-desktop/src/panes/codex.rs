@@ -1,8 +1,8 @@
 use wgpui::PaintContext;
 
 use crate::app_state::{
-    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexMcpPaneState,
-    CodexModelsPaneState, CodexRemoteSkillsPaneState,
+    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexLabsPaneState,
+    CodexMcpPaneState, CodexModelsPaneState, CodexRemoteSkillsPaneState,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
@@ -15,9 +15,15 @@ use crate::pane_system::{
     codex_apps_visible_row_count, codex_config_batch_write_button_bounds,
     codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
     codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-    codex_config_write_button_bounds, codex_mcp_login_button_bounds,
-    codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds, codex_mcp_row_bounds,
-    codex_mcp_visible_row_count, codex_models_refresh_button_bounds,
+    codex_config_write_button_bounds, codex_labs_collaboration_modes_button_bounds,
+    codex_labs_command_exec_button_bounds, codex_labs_experimental_features_button_bounds,
+    codex_labs_fuzzy_start_button_bounds, codex_labs_fuzzy_stop_button_bounds,
+    codex_labs_fuzzy_update_button_bounds, codex_labs_realtime_append_text_button_bounds,
+    codex_labs_realtime_start_button_bounds, codex_labs_realtime_stop_button_bounds,
+    codex_labs_review_detached_button_bounds, codex_labs_review_inline_button_bounds,
+    codex_labs_toggle_experimental_button_bounds, codex_labs_windows_sandbox_setup_button_bounds,
+    codex_mcp_login_button_bounds, codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds,
+    codex_mcp_row_bounds, codex_mcp_visible_row_count, codex_models_refresh_button_bounds,
     codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
     codex_remote_skills_refresh_button_bounds, codex_remote_skills_row_bounds,
     codex_remote_skills_visible_row_count,
@@ -489,4 +495,143 @@ pub fn paint_remote_skills_pane(
             wgpui::theme::text::MUTED,
         ));
     }
+}
+
+pub fn paint_labs_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &CodexLabsPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "codex", paint);
+
+    let review_inline = codex_labs_review_inline_button_bounds(content_bounds);
+    let review_detached = codex_labs_review_detached_button_bounds(content_bounds);
+    let command_exec = codex_labs_command_exec_button_bounds(content_bounds);
+    let collaboration_modes = codex_labs_collaboration_modes_button_bounds(content_bounds);
+    let experimental_features = codex_labs_experimental_features_button_bounds(content_bounds);
+    let toggle_experimental = codex_labs_toggle_experimental_button_bounds(content_bounds);
+    let realtime_start = codex_labs_realtime_start_button_bounds(content_bounds);
+    let realtime_append_text = codex_labs_realtime_append_text_button_bounds(content_bounds);
+    let realtime_stop = codex_labs_realtime_stop_button_bounds(content_bounds);
+    let windows_setup = codex_labs_windows_sandbox_setup_button_bounds(content_bounds);
+    let fuzzy_start = codex_labs_fuzzy_start_button_bounds(content_bounds);
+    let fuzzy_update = codex_labs_fuzzy_update_button_bounds(content_bounds);
+    let fuzzy_stop = codex_labs_fuzzy_stop_button_bounds(content_bounds);
+
+    paint_action_button(review_inline, "Review Inline", paint);
+    paint_action_button(review_detached, "Review Detached", paint);
+    paint_action_button(command_exec, "Command Exec", paint);
+    paint_action_button(collaboration_modes, "Collab Modes", paint);
+    paint_action_button(experimental_features, "Experimental List", paint);
+    paint_action_button(
+        toggle_experimental,
+        if pane_state.experimental_enabled {
+            "Experimental: ON"
+        } else {
+            "Experimental: OFF"
+        },
+        paint,
+    );
+    paint_action_button(realtime_start, "Realtime Start", paint);
+    paint_action_button(realtime_append_text, "Realtime Append", paint);
+    paint_action_button(realtime_stop, "Realtime Stop", paint);
+    paint_action_button(windows_setup, "Windows Sandbox Setup", paint);
+    paint_action_button(fuzzy_start, "Fuzzy Start", paint);
+    paint_action_button(fuzzy_update, "Fuzzy Update", paint);
+    paint_action_button(fuzzy_stop, "Fuzzy Stop", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        fuzzy_stop.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Review turn",
+        pane_state.review_last_turn_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Review thread",
+        pane_state.review_last_thread_id.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Command exit",
+        pane_state
+            .command_last_exit_code
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Command stdout",
+        &pane_state.command_last_stdout,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Command stderr",
+        &pane_state.command_last_stderr,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Collaboration modes",
+        &pane_state.collaboration_modes_json,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Experimental features",
+        &pane_state.experimental_features_json,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Realtime active",
+        if pane_state.realtime_started {
+            "true"
+        } else {
+            "false"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Fuzzy session id",
+        &pane_state.fuzzy_session_id,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Fuzzy status",
+        &pane_state.fuzzy_last_status,
+    );
+    let _ = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Windows setup",
+        pane_state.windows_last_status.as_deref().unwrap_or("n/a"),
+    );
 }

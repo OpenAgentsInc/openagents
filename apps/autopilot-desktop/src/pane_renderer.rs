@@ -2,8 +2,8 @@ use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
-    CodexAppsPaneState, CodexConfigPaneState, CodexMcpPaneState, CodexModelsPaneState,
-    CodexRemoteSkillsPaneState, CreateInvoicePaneInputs, CreditDeskPaneState,
+    CodexAppsPaneState, CodexConfigPaneState, CodexLabsPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CodexRemoteSkillsPaneState, CreateInvoicePaneInputs, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
@@ -61,6 +61,7 @@ impl PaneRenderer {
         codex_mcp: &CodexMcpPaneState,
         codex_apps: &CodexAppsPaneState,
         codex_remote_skills: &CodexRemoteSkillsPaneState,
+        codex_labs: &CodexLabsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
         ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
@@ -150,6 +151,9 @@ impl PaneRenderer {
                         codex_remote_skills,
                         paint,
                     );
+                }
+                PaneKind::CodexLabs => {
+                    codex_pane::paint_labs_pane(content_bounds, codex_labs, paint);
                 }
                 PaneKind::GoOnline => {
                     paint_go_online_pane(
