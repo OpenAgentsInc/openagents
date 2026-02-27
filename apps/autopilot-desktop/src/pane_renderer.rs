@@ -1,12 +1,11 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState, AlertSeverity,
-    AlertsRecoveryState, AutopilotChatState, ChatPaneInputs,
-    CreateInvoicePaneInputs, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
-    RelayConnectionsState, SettingsPaneInputs, SettingsState, SparkPaneInputs, StarterJobStatus,
-    StarterJobsState, SyncHealthState,
+    AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CreateInvoicePaneInputs, DesktopPane,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    ProviderRuntimeState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
+    SettingsState, SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -23,14 +22,14 @@ use crate::pane_system::{
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
     pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds, settings_wallet_default_input_bounds,
-    starter_jobs_complete_button_bounds, starter_jobs_row_bounds, starter_jobs_visible_row_count,
-    sync_health_rebootstrap_button_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds,
+    settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
+    starter_jobs_row_bounds, starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
-use crate::spark_wallet::SparkPaneState;
 use crate::panes::{
     chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
+use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
@@ -356,6 +355,36 @@ fn paint_provider_status_pane(
         "Last result",
         provider_runtime.last_result.as_deref().unwrap_or("none"),
     );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Authority status",
+        provider_runtime
+            .last_authoritative_status
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Authority event",
+        provider_runtime
+            .last_authoritative_event_id
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Authority error class",
+        provider_runtime
+            .last_authoritative_error_class
+            .as_deref()
+            .unwrap_or("n/a"),
+    );
 
     paint.scene.draw_text(paint.text.layout(
         "Dependencies",
@@ -509,7 +538,12 @@ fn paint_relay_connections_pane(
     relay_connections_inputs: &mut RelayConnectionsPaneInputs,
     paint: &mut PaintContext,
 ) {
-    relay_connections_pane::paint(content_bounds, relay_connections, relay_connections_inputs, paint);
+    relay_connections_pane::paint(
+        content_bounds,
+        relay_connections,
+        relay_connections_inputs,
+        paint,
+    );
 }
 
 fn paint_sync_health_pane(
@@ -753,13 +787,19 @@ fn paint_network_requests_pane(
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} budget:{} timeout:{}s stream:{} [{}]",
+            "{} {} budget:{} timeout:{}s stream:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
             request.budget_sats,
             request.timeout_seconds,
             request.response_stream_id,
-            request.status.label()
+            request.status.label(),
+            request.authority_status.as_deref().unwrap_or("pending"),
+            request.authority_event_id.as_deref().unwrap_or("event:n/a"),
+            request
+                .authority_error_class
+                .as_deref()
+                .unwrap_or("error:n/a")
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &summary,
@@ -1775,7 +1815,12 @@ fn paint_create_invoice_pane(
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
     paint: &mut PaintContext,
 ) {
-    wallet_pane::paint_create_invoice_pane(content_bounds, spark_wallet, create_invoice_inputs, paint);
+    wallet_pane::paint_create_invoice_pane(
+        content_bounds,
+        spark_wallet,
+        create_invoice_inputs,
+        paint,
+    );
 }
 
 #[cfg(test)]
@@ -1818,12 +1863,11 @@ pub(crate) fn paint_state_summary(
     };
 
     let mut line_y = y;
-    paint.scene.draw_text(paint.text.layout(
-        summary,
-        Point::new(x, line_y),
-        11.0,
-        state_color,
-    ));
+    paint.scene.draw_text(
+        paint
+            .text
+            .layout(summary, Point::new(x, line_y), 11.0, state_color),
+    );
     line_y += 16.0;
 
     if let Some(action) = last_action {

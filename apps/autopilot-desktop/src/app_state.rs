@@ -10,6 +10,10 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
 
+use crate::runtime_lanes::{
+    AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
+    SaLaneWorker, SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
+};
 use crate::spark_wallet::{SparkPaneState, SparkWalletWorker};
 
 pub const WINDOW_TITLE: &str = "Autopilot";
@@ -678,6 +682,10 @@ pub struct SubmittedNetworkRequest {
     pub timeout_seconds: u64,
     pub response_stream_id: String,
     pub status: NetworkRequestStatus,
+    pub authority_command_seq: u64,
+    pub authority_status: Option<String>,
+    pub authority_event_id: Option<String>,
+    pub authority_error_class: Option<String>,
 }
 
 pub struct NetworkRequestsState {
@@ -701,12 +709,13 @@ impl Default for NetworkRequestsState {
 }
 
 impl NetworkRequestsState {
-    pub fn submit_request(
+    pub fn queue_request_submission(
         &mut self,
         request_type: &str,
         payload: &str,
-        budget_sats: &str,
-        timeout_seconds: &str,
+        budget_sats: u64,
+        timeout_seconds: u64,
+        authority_command_seq: u64,
     ) -> Result<String, String> {
         let request_type = request_type.trim();
         if request_type.is_empty() {
@@ -718,18 +727,10 @@ impl NetworkRequestsState {
             return Err(self.pane_set_error("Request payload is required"));
         }
 
-        let budget_sats = budget_sats
-            .trim()
-            .parse::<u64>()
-            .map_err(|error| format!("Budget sats must be an integer: {error}"))?;
         if budget_sats == 0 {
             return Err(self.pane_set_error("Budget sats must be greater than 0"));
         }
 
-        let timeout_seconds = timeout_seconds
-            .trim()
-            .parse::<u64>()
-            .map_err(|error| format!("Timeout seconds must be an integer: {error}"))?;
         if timeout_seconds == 0 {
             return Err(self.pane_set_error("Timeout seconds must be greater than 0"));
         }
@@ -747,10 +748,73 @@ impl NetworkRequestsState {
                 timeout_seconds,
                 response_stream_id: stream_id,
                 status: NetworkRequestStatus::Submitted,
+                authority_command_seq,
+                authority_status: None,
+                authority_event_id: None,
+                authority_error_class: None,
             },
         );
-        self.pane_set_ready(format!("Submitted buyer request {request_id}"));
+        self.pane_set_ready(format!(
+            "Queued buyer request {request_id} -> cmd#{authority_command_seq}"
+        ));
         Ok(request_id)
+    }
+
+    pub fn apply_authority_response(&mut self, response: &RuntimeCommandResponse) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.authority_command_seq == response.command_seq)
+        else {
+            return;
+        };
+
+        request.authority_status = Some(response.status.label().to_string());
+        request.authority_event_id = response.event_id.clone();
+        request.authority_error_class = response
+            .error
+            .as_ref()
+            .map(|error| error.class.label().to_string());
+        request.status = match response.status {
+            crate::runtime_lanes::RuntimeCommandStatus::Accepted => NetworkRequestStatus::Streaming,
+            crate::runtime_lanes::RuntimeCommandStatus::Rejected => NetworkRequestStatus::Failed,
+            crate::runtime_lanes::RuntimeCommandStatus::Retryable => NetworkRequestStatus::Failed,
+        };
+
+        let message = if let Some(error) = response.error.as_ref() {
+            format!(
+                "Request {} {} ({})",
+                request.request_id,
+                response.status.label(),
+                error.class.label()
+            )
+        } else {
+            format!("Request {} {}", request.request_id, response.status.label())
+        };
+        if response.status == crate::runtime_lanes::RuntimeCommandStatus::Accepted {
+            self.pane_set_ready(message);
+        } else {
+            let _ = self.pane_set_error(message);
+        }
+    }
+
+    pub fn mark_authority_enqueue_failure(
+        &mut self,
+        authority_command_seq: u64,
+        error_class: &str,
+        message: &str,
+    ) {
+        if let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.authority_command_seq == authority_command_seq)
+        {
+            request.status = NetworkRequestStatus::Failed;
+            request.authority_status = Some("retryable".to_string());
+            request.authority_event_id = None;
+            request.authority_error_class = Some(error_class.to_string());
+        }
+        let _ = self.pane_set_error(message.to_string());
     }
 }
 
@@ -2135,6 +2199,9 @@ pub struct ProviderRuntimeState {
     pub last_result: Option<String>,
     pub degraded_reason_code: Option<String>,
     pub last_error_detail: Option<String>,
+    pub last_authoritative_status: Option<String>,
+    pub last_authoritative_event_id: Option<String>,
+    pub last_authoritative_error_class: Option<String>,
 }
 
 impl Default for ProviderRuntimeState {
@@ -2152,6 +2219,9 @@ impl Default for ProviderRuntimeState {
             last_result: None,
             degraded_reason_code: None,
             last_error_detail: None,
+            last_authoritative_status: None,
+            last_authoritative_event_id: None,
+            last_authoritative_error_class: None,
         }
     }
 }
@@ -2345,6 +2415,14 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub sa_lane: SaLaneSnapshot,
+    pub skl_lane: SklLaneSnapshot,
+    pub ac_lane: AcLaneSnapshot,
+    pub sa_lane_worker: SaLaneWorker,
+    pub skl_lane_worker: SklLaneWorker,
+    pub ac_lane_worker: AcLaneWorker,
+    pub runtime_command_responses: Vec<RuntimeCommandResponse>,
+    pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub earnings_scoreboard: EarningsScoreboardState,
     pub relay_connections: RelayConnectionsState,
@@ -2367,6 +2445,35 @@ pub struct RenderState {
 }
 
 impl RenderState {
+    fn allocate_runtime_command_seq(&mut self) -> u64 {
+        let seq = self.next_runtime_command_seq;
+        self.next_runtime_command_seq = self.next_runtime_command_seq.saturating_add(1);
+        seq
+    }
+
+    pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
+        let seq = self.allocate_runtime_command_seq();
+        self.sa_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn queue_skl_command(&mut self, command: SklDiscoveryTrustCommand) -> Result<u64, String> {
+        let seq = self.allocate_runtime_command_seq();
+        self.skl_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn queue_ac_command(&mut self, command: AcCreditCommand) -> Result<u64, String> {
+        let seq = self.allocate_runtime_command_seq();
+        self.ac_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn record_runtime_command_response(&mut self, response: RuntimeCommandResponse) {
+        self.runtime_command_responses.push(response);
+        if self.runtime_command_responses.len() > 128 {
+            let overflow = self.runtime_command_responses.len().saturating_sub(128);
+            self.runtime_command_responses.drain(0..overflow);
+        }
+    }
+
     pub fn provider_blockers(&self) -> Vec<ProviderBlocker> {
         let mut blockers = Vec::new();
         if self.nostr_identity.is_none() {
@@ -2743,7 +2850,7 @@ mod tests {
     fn network_requests_submit_validates_and_records_stream_link() {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
-            .submit_request("translate.text", "{\"text\":\"hola\"}", "1200", "90")
+            .queue_request_submission("translate.text", "{\"text\":\"hola\"}", 1200, 90, 44)
             .expect("request should be accepted");
         let first = requests
             .submitted
@@ -2752,6 +2859,7 @@ mod tests {
         assert_eq!(first.request_id, request_id);
         assert_eq!(first.response_stream_id, format!("stream:{request_id}"));
         assert_eq!(first.status, NetworkRequestStatus::Submitted);
+        assert_eq!(first.authority_command_seq, 44);
     }
 
     #[test]

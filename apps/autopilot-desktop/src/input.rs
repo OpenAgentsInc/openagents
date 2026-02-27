@@ -25,6 +25,11 @@ use crate::pane_system::{
     topmost_pane_hit_action_in_order,
 };
 use crate::render::{logical_size, render_frame};
+use crate::runtime_lanes::{
+    AcCreditCommand, AcLaneUpdate, RuntimeCommandErrorClass, RuntimeCommandResponse,
+    RuntimeCommandStatus, RuntimeLane, SaLaneUpdate, SaLifecycleCommand, SaRunnerMode,
+    SklLaneUpdate,
+};
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
 
@@ -36,14 +41,13 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     if drain_spark_worker_updates(state) {
         state.window.request_redraw();
     }
+    if drain_runtime_lane_updates(state) {
+        state.window.request_redraw();
+    }
     if state.nostr_secret_state.expire(std::time::Instant::now()) {
         state.window.request_redraw();
     }
     let now = std::time::Instant::now();
-    let blockers = state.provider_blockers();
-    if state.provider_runtime.tick(now, blockers.as_slice()) {
-        state.window.request_redraw();
-    }
     if state.autopilot_chat.tick(now) {
         state.window.request_redraw();
     }
@@ -400,13 +404,33 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         }
         PaneHitAction::ChatSend => run_chat_submit_action(state),
         PaneHitAction::GoOnlineToggle => {
-            if state.provider_runtime.mode == ProviderMode::Offline {
+            let wants_online = matches!(
+                state.provider_runtime.mode,
+                ProviderMode::Offline | ProviderMode::Degraded
+            );
+            if wants_online {
                 queue_spark_command(state, SparkWalletCommand::Refresh);
             }
-            let blockers = state.provider_blockers();
-            state
-                .provider_runtime
-                .toggle_online(std::time::Instant::now(), blockers.as_slice());
+            match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
+                online: wants_online,
+            }) {
+                Ok(command_seq) => {
+                    state.provider_runtime.last_result =
+                        Some(format!("Queued SetRunnerOnline command #{command_seq}"));
+                    state.provider_runtime.last_authoritative_status = Some("pending".to_string());
+                    state.provider_runtime.last_authoritative_event_id = None;
+                    state.provider_runtime.last_authoritative_error_class = None;
+                }
+                Err(error) => {
+                    state.provider_runtime.last_result = Some(error.clone());
+                    state.provider_runtime.last_error_detail = Some(error);
+                    state.provider_runtime.last_authoritative_status =
+                        Some(RuntimeCommandStatus::Retryable.label().to_string());
+                    state.provider_runtime.last_authoritative_event_id = None;
+                    state.provider_runtime.last_authoritative_error_class =
+                        Some(RuntimeCommandErrorClass::Transport.label().to_string());
+                }
+            }
             true
         }
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
@@ -914,23 +938,79 @@ fn run_network_requests_action(
 ) -> bool {
     match action {
         NetworkRequestsPaneAction::SubmitRequest => {
-            let request_id = state.network_requests.submit_request(
-                state.network_requests_inputs.request_type.get_value(),
-                state.network_requests_inputs.payload.get_value(),
+            let request_type = state
+                .network_requests_inputs
+                .request_type
+                .get_value()
+                .trim()
+                .to_string();
+            let payload = state
+                .network_requests_inputs
+                .payload
+                .get_value()
+                .trim()
+                .to_string();
+            let budget_sats = match parse_positive_amount_str(
                 state.network_requests_inputs.budget_sats.get_value(),
-                state.network_requests_inputs.timeout_seconds.get_value(),
-            );
-            match request_id {
-                Ok(request_id) => {
-                    state.provider_runtime.last_result =
-                        Some(format!("submitted network request {request_id}"));
-                    state.sync_health.last_applied_event_seq =
-                        state.sync_health.last_applied_event_seq.saturating_add(1);
-                    state.sync_health.cursor_last_advanced_seconds_ago = 0;
-                    refresh_sync_health(state);
-                }
+                "Budget sats",
+            ) {
+                Ok(value) => value,
                 Err(error) => {
                     state.network_requests.last_error = Some(error);
+                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
+                    return true;
+                }
+            };
+            let timeout_seconds = match parse_positive_amount_str(
+                state.network_requests_inputs.timeout_seconds.get_value(),
+                "Timeout seconds",
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    state.network_requests.last_error = Some(error);
+                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
+                    return true;
+                }
+            };
+
+            let scope = format!("network:{}:{}", request_type, budget_sats);
+            let queue_result = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+                scope,
+                request_type: request_type.clone(),
+                payload: payload.clone(),
+                requested_sats: budget_sats,
+                timeout_seconds,
+            });
+            match queue_result {
+                Ok(command_seq) => {
+                    match state.network_requests.queue_request_submission(
+                        &request_type,
+                        &payload,
+                        budget_sats,
+                        timeout_seconds,
+                        command_seq,
+                    ) {
+                        Ok(request_id) => {
+                            state.provider_runtime.last_result = Some(format!(
+                                "Queued network request {request_id} -> AC cmd#{command_seq}"
+                            ));
+                            state.sync_health.last_applied_event_seq =
+                                state.sync_health.last_applied_event_seq.saturating_add(1);
+                            state.sync_health.cursor_last_advanced_seconds_ago = 0;
+                            refresh_sync_health(state);
+                        }
+                        Err(error) => {
+                            state.network_requests.last_error = Some(error);
+                        }
+                    }
+                }
+                Err(error) => {
+                    state.network_requests.last_error = Some(error.clone());
+                    state.network_requests.mark_authority_enqueue_failure(
+                        state.next_runtime_command_seq.saturating_sub(1),
+                        RuntimeCommandErrorClass::Transport.label(),
+                        &error,
+                    );
                 }
             }
             true
@@ -1316,6 +1396,132 @@ fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
         &state.provider_runtime,
         &state.relay_connections,
     );
+}
+
+fn drain_runtime_lane_updates(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+
+    for update in state.sa_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            SaLaneUpdate::Snapshot(snapshot) => apply_sa_lane_snapshot(state, snapshot),
+            SaLaneUpdate::CommandResponse(response) => {
+                apply_runtime_command_response(state, response);
+            }
+        }
+    }
+
+    for update in state.skl_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            SklLaneUpdate::Snapshot(snapshot) => {
+                state.skl_lane = snapshot;
+            }
+            SklLaneUpdate::CommandResponse(response) => {
+                apply_runtime_command_response(state, response);
+            }
+        }
+    }
+
+    for update in state.ac_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            AcLaneUpdate::Snapshot(snapshot) => {
+                state.ac_lane = snapshot;
+            }
+            AcLaneUpdate::CommandResponse(response) => {
+                apply_runtime_command_response(state, response);
+            }
+        }
+    }
+
+    changed
+}
+
+fn apply_sa_lane_snapshot(
+    state: &mut crate::app_state::RenderState,
+    snapshot: crate::runtime_lanes::SaLaneSnapshot,
+) {
+    state.provider_runtime.mode = match snapshot.mode {
+        SaRunnerMode::Offline => ProviderMode::Offline,
+        SaRunnerMode::Connecting => ProviderMode::Connecting,
+        SaRunnerMode::Online => ProviderMode::Online,
+        SaRunnerMode::Degraded => ProviderMode::Degraded,
+    };
+    state.provider_runtime.mode_changed_at = snapshot.mode_changed_at;
+    state.provider_runtime.connecting_until = snapshot.connect_until;
+    state.provider_runtime.online_since = snapshot.online_since;
+    state.provider_runtime.last_heartbeat_at = snapshot.last_heartbeat_at;
+    state.provider_runtime.heartbeat_interval =
+        std::time::Duration::from_secs(snapshot.heartbeat_seconds.max(1));
+    state.provider_runtime.queue_depth = snapshot.queue_depth;
+    state.provider_runtime.last_result = snapshot.last_result.clone();
+    state.provider_runtime.degraded_reason_code = snapshot.degraded_reason_code.clone();
+    state.provider_runtime.last_error_detail = snapshot.last_error_detail.clone();
+    state.sa_lane = snapshot;
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_runtime_command_response(
+    state: &mut crate::app_state::RenderState,
+    response: RuntimeCommandResponse,
+) {
+    let summary = command_response_summary(&response);
+    match response.lane {
+        RuntimeLane::SaLifecycle => {
+            state.provider_runtime.last_result = Some(summary);
+            state.provider_runtime.last_authoritative_status =
+                Some(response.status.label().to_string());
+            state.provider_runtime.last_authoritative_event_id = response.event_id.clone();
+            state.provider_runtime.last_authoritative_error_class = response
+                .error
+                .as_ref()
+                .map(|error| error.class.label().to_string());
+            if response.status != RuntimeCommandStatus::Accepted {
+                state.provider_runtime.last_error_detail = response
+                    .error
+                    .as_ref()
+                    .map(|error| error.message.clone())
+                    .or_else(|| Some("SA lane command rejected".to_string()));
+            }
+        }
+        RuntimeLane::SklDiscoveryTrust => {
+            state.sync_health.last_action = Some(summary);
+            if response.status != RuntimeCommandStatus::Accepted {
+                state.sync_health.last_error = response
+                    .error
+                    .as_ref()
+                    .map(|error| format!("SKL {}: {}", error.class.label(), error.message));
+            }
+        }
+        RuntimeLane::AcCredit => {
+            state.network_requests.apply_authority_response(&response);
+            state.provider_runtime.last_result = Some(summary);
+        }
+    }
+
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    state.record_runtime_command_response(response);
+}
+
+fn command_response_summary(response: &RuntimeCommandResponse) -> String {
+    let mut parts = vec![format!(
+        "{} {} {}",
+        response.lane.label(),
+        response.command.label(),
+        response.status.label()
+    )];
+    if let Some(event_id) = response.event_id.as_deref() {
+        parts.push(format!("event:{event_id}"));
+    }
+    if let Some(error) = response.error.as_ref() {
+        parts.push(format!("{}:{}", error.class.label(), error.message));
+    }
+    parts.join(" | ")
 }
 
 fn run_spark_action(state: &mut crate::app_state::RenderState, action: SparkPaneAction) -> bool {

@@ -14,6 +14,10 @@ use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController};
+use crate::runtime_lanes::{
+    AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
+    SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
+};
 use crate::spark_wallet::SparkWalletCommand;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
@@ -95,6 +99,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
+        let sa_lane_worker = SaLaneWorker::spawn();
+        let skl_lane_worker = SklLaneWorker::spawn();
+        let ac_lane_worker = AcLaneWorker::spawn();
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
@@ -134,6 +141,14 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
+            sa_lane: SaLaneSnapshot::default(),
+            skl_lane: SklLaneSnapshot::default(),
+            ac_lane: AcLaneSnapshot::default(),
+            sa_lane_worker,
+            skl_lane_worker,
+            ac_lane_worker,
+            runtime_command_responses: Vec::new(),
+            next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             relay_connections: crate::app_state::RelayConnectionsState::default(),
@@ -155,9 +170,42 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        bootstrap_runtime_lanes(&mut state);
         open_startup_panes(&mut state);
         Ok(state)
     })
+}
+
+fn bootstrap_runtime_lanes(state: &mut RenderState) {
+    let _ = state.queue_sa_command(SaLifecycleCommand::PublishAgentProfile {
+        display_name: "Autopilot".to_string(),
+        about: "Desktop sovereign agent runtime".to_string(),
+        version: "mvp".to_string(),
+    });
+    let _ = state.queue_sa_command(SaLifecycleCommand::PublishAgentState {
+        encrypted_state_ref: "nip44:ciphertext:bootstrap".to_string(),
+    });
+    let _ = state.queue_sa_command(SaLifecycleCommand::ConfigureAgentSchedule {
+        heartbeat_seconds: 30,
+    });
+
+    let _ = state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillManifest {
+        skill_slug: "summarize-text".to_string(),
+        version: "0.1.0".to_string(),
+    });
+    let _ = state.queue_skl_command(SklDiscoveryTrustCommand::PublishSkillVersionLog {
+        skill_slug: "summarize-text".to_string(),
+        version: "0.1.0".to_string(),
+        summary: "bootstrap manifest".to_string(),
+    });
+
+    let _ = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
+        scope: "bootstrap:credit".to_string(),
+        request_type: "bootstrap.credit".to_string(),
+        payload: "{\"bootstrap\":true}".to_string(),
+        requested_sats: 1500,
+        timeout_seconds: 60,
+    });
 }
 
 fn open_startup_panes(state: &mut RenderState) {
