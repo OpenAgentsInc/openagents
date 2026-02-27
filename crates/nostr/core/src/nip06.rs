@@ -69,7 +69,10 @@ pub fn derive_skill_keypair(
     )
 }
 
-fn derive_keypair_with_segments(mnemonic: &str, tail_segments: Vec<(u32, bool)>) -> Result<Keypair> {
+fn derive_keypair_with_segments(
+    mnemonic: &str,
+    tail_segments: Vec<(u32, bool)>,
+) -> Result<Keypair> {
     let parsed_mnemonic = Mnemonic::parse(mnemonic.trim()).context("invalid mnemonic")?;
     let seed = parsed_mnemonic.to_seed("");
 

@@ -17,17 +17,16 @@ impl GpuImageQuad {
     /// Create a GPU image quad from bounds and optional tint.
     /// UV is full texture (0,0 to 1,1).
     pub fn new(position: [f32; 2], size: [f32; 2], tint: Option<Hsla>) -> Self {
-        let tint_color = tint
-            .map_or([1.0, 1.0, 1.0, 1.0], |color| {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    color.to_linear_rgba()
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    color.to_rgba()
-                }
-            }); // White = no tint
+        let tint_color = tint.map_or([1.0, 1.0, 1.0, 1.0], |color| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                color.to_linear_rgba()
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                color.to_rgba()
+            }
+        }); // White = no tint
 
         Self {
             position,
@@ -112,18 +111,16 @@ impl GpuQuad {
                 quad.bounds.size.width * scale_factor,
                 quad.bounds.size.height * scale_factor,
             ],
-            background: quad
-                .background
-                .map_or([0.0, 0.0, 0.0, 0.0], |color| {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        color.to_linear_rgba()
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        color.to_rgba()
-                    }
-                }),
+            background: quad.background.map_or([0.0, 0.0, 0.0, 0.0], |color| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    color.to_linear_rgba()
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    color.to_rgba()
+                }
+            }),
             border_color: {
                 #[cfg(not(target_arch = "wasm32"))]
                 {

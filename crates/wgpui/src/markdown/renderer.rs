@@ -327,51 +327,27 @@ impl MarkdownRenderer {
 
             MarkdownBlock::CodeBlock {
                 lines, language, ..
-            } => self.render_code_block(
-                lines,
-                language,
-                origin,
-                max_width,
-                surface,
-                code_blocks,
-            ),
+            } => self.render_code_block(lines, language, origin, max_width, surface, code_blocks),
 
-            MarkdownBlock::Blockquote(blocks) => self.render_blockquote(
-                blocks,
-                origin,
-                max_width,
-                surface,
-                code_blocks,
-            ),
+            MarkdownBlock::Blockquote(blocks) => {
+                self.render_blockquote(blocks, origin, max_width, surface, code_blocks)
+            }
 
-            MarkdownBlock::UnorderedList(items) => self.render_unordered_list(
-                items,
-                origin,
-                max_width,
-                surface,
-                code_blocks,
-            ),
+            MarkdownBlock::UnorderedList(items) => {
+                self.render_unordered_list(items, origin, max_width, surface, code_blocks)
+            }
 
-            MarkdownBlock::OrderedList { start, items } => self.render_ordered_list(
-                *start,
-                items,
-                origin,
-                max_width,
-                surface,
-                code_blocks,
-            ),
+            MarkdownBlock::OrderedList { start, items } => {
+                self.render_ordered_list(*start, items, origin, max_width, surface, code_blocks)
+            }
 
             MarkdownBlock::HorizontalRule => {
                 self.render_horizontal_rule(origin, max_width, surface.scene, surface.opacity)
             }
 
-            MarkdownBlock::Table { headers, rows } => self.render_table(
-                headers,
-                rows,
-                origin,
-                max_width,
-                surface,
-            ),
+            MarkdownBlock::Table { headers, rows } => {
+                self.render_table(headers, rows, origin, max_width, surface)
+            }
         }
     }
 

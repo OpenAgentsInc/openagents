@@ -22,8 +22,8 @@ use wgpui::testing::{
     ClickTarget, InputOverlay, RunnerState, StepResult, TestRunner, TestStep, test,
 };
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, Modifiers, MouseButton,
-    PaintContext, Point, Quad, Scene, Size, TextSystem, theme,
+    Bounds, Component, EventContext, EventResult, InputEvent, Modifiers, MouseButton, PaintContext,
+    Point, Quad, Scene, Size, TextSystem, theme,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;

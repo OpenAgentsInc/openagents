@@ -115,18 +115,18 @@ mod desktop {
             let scale = scale_x.min(scale_y);
 
             // Create pixmap for rendering
-            let mut pixmap =
-                if let Some(pixmap) = resvg::tiny_skia::Pixmap::new(physical_width, physical_height)
-                {
-                    pixmap
-                } else {
-                    log::error!(
-                        "Failed to create pixmap {}x{}",
-                        physical_width,
-                        physical_height
-                    );
-                    return None;
-                };
+            let mut pixmap = if let Some(pixmap) =
+                resvg::tiny_skia::Pixmap::new(physical_width, physical_height)
+            {
+                pixmap
+            } else {
+                log::error!(
+                    "Failed to create pixmap {}x{}",
+                    physical_width,
+                    physical_height
+                );
+                return None;
+            };
 
             // Render SVG to pixmap
             let transform = resvg::tiny_skia::Transform::from_scale(scale, scale);

@@ -10,8 +10,7 @@ use winit::keyboard::{
 };
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, NetworkRequestSubmission,
-    ProviderMode,
+    ActivityEventDomain, ActivityEventRow, AlertDomain, App, NetworkRequestSubmission, ProviderMode,
 };
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,

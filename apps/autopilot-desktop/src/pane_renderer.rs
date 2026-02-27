@@ -1118,8 +1118,7 @@ fn paint_activity_feed_pane(
         && activity_feed.active_filter.matches(selected.domain)
     {
         let details_top =
-            activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y()
-                + 10.0;
+            activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 10.0;
         let mut details_y = details_top;
         details_y = paint_label_line(
             paint,

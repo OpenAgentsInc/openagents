@@ -37,7 +37,9 @@ fn bench_text_ops(c: &mut Criterion) {
     group.sample_size(20);
     group.measurement_time(Duration::from_secs(2));
 
-    let paragraph = "Autopilot keeps local state deterministic while rendering dense markdown and UI overlays.".repeat(12);
+    let paragraph =
+        "Autopilot keeps local state deterministic while rendering dense markdown and UI overlays."
+            .repeat(12);
 
     group.bench_function("measure_styled_mono_1kb", |b| {
         let mut text = TextSystem::new(1.0);

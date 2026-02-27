@@ -177,8 +177,7 @@ impl WebPlatform {
     > {
         // Try WebGPU first (only on reliable platforms)
         if Self::is_webgpu_reliable() {
-            if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await
-            {
+            if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await {
                 web_sys::console::log_1(&"Using WebGPU backend".into());
                 return Ok((
                     result.0,

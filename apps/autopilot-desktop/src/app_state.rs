@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
-use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::TextInput;
+use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
@@ -2816,16 +2816,18 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         let now = std::time::Instant::now();
         chat.submit_prompt(now, "ping".to_string());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Queued));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Queued)
+        );
 
         assert!(chat.tick(now + std::time::Duration::from_millis(300)));
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Running));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Running)
+        );
 
         assert!(chat.tick(now + std::time::Duration::from_secs(2)));
         assert!(!chat.has_pending_messages());
@@ -2986,10 +2988,12 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(relays
-            .relays
-            .iter()
-            .all(|row| row.url != "wss://relay.new.example"));
+        assert!(
+            relays
+                .relays
+                .iter()
+                .all(|row| row.url != "wss://relay.new.example")
+        );
     }
 
     #[test]
@@ -3094,10 +3098,11 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(feed
-            .visible_rows()
-            .into_iter()
-            .all(|row| row.domain == ActivityEventDomain::Wallet));
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Wallet)
+        );
     }
 
     #[test]
@@ -3200,9 +3205,11 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(score
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("wallet backend unavailable")));
+        assert!(
+            score
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
     }
 }

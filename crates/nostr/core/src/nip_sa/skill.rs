@@ -281,8 +281,7 @@ impl SkillLicense {
             let expires_at = self.content.expires_at.unwrap_or_default();
             return Err(SkillError::LicenseExpired(format!(
                 "license for {} expired at {}",
-                self.content.skill_id,
-                expires_at
+                self.content.skill_id, expires_at
             )));
         }
         Ok(())

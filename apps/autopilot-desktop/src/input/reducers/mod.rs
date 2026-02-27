@@ -18,7 +18,9 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         changed = true;
         match update {
             SaLaneUpdate::Snapshot(snapshot) => sa::apply_lane_snapshot(state, *snapshot),
-            SaLaneUpdate::CommandResponse(response) => apply_runtime_command_response(state, response),
+            SaLaneUpdate::CommandResponse(response) => {
+                apply_runtime_command_response(state, response)
+            }
         }
     }
 

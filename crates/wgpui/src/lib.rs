@@ -59,7 +59,9 @@ pub mod tools;
 
 pub mod prelude {
     pub mod core {
-        pub use crate::animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
+        pub use crate::animation::{
+            Animation, AnimationController, AnimatorState, Easing, SpringAnimation,
+        };
         pub use crate::color::Hsla;
         pub use crate::components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
         pub use crate::components::{
@@ -75,8 +77,8 @@ pub mod prelude {
         pub use crate::scene::{Quad, Scene, SvgQuad};
         pub use crate::text::{FontStyle, TextSystem};
         pub use crate::text_system::{
-            Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper,
-            ShapedGlyph, ShapedRun, TruncateFrom,
+            Boundary, FontRun, LineFragment, LineLayout, LineLayoutCache, LineWrapper, ShapedGlyph,
+            ShapedRun, TruncateFrom,
         };
         pub use crate::theme;
     }
@@ -89,8 +91,8 @@ pub mod prelude {
     }
 }
 
-pub use animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
 pub use action::{Action, AnyAction};
+pub use animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
 pub use color::Hsla;
 pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
 pub use components::{
