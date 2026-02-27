@@ -1,0 +1,16 @@
+# Clippy per-file warning budgets for high-churn files.
+# Format:
+# path | budget:<non-negative integer> | owner:<lane> | added:<YYYY-MM-DD> | reason:<short description> | review_cadence:<...>
+# Alternate time-bound fields:
+# - expiry_issue:<#...>
+# - expires_on:<YYYY-MM-DD>
+#
+# Policy:
+# - Entries added on/after 2026-02-27 must include expiry_issue or expires_on.
+# - Budgets are exact; if current warnings drop below budget, lower the budget in the same PR.
+
+apps/autopilot-desktop/src/nip_sa_wallet_bridge.rs | budget:2 | owner:autopilot | added:2026-02-27 | reason: wallet bridge lane extraction pending | expiry_issue:#2397
+apps/autopilot-desktop/src/app_state.rs | budget:1 | owner:autopilot | added:2026-02-27 | reason: staged alert domain cleanup in progress | expiry_issue:#2397
+apps/autopilot-desktop/src/input/reducers/mod.rs | budget:1 | owner:autopilot | added:2026-02-27 | reason: reducer split leaves one transitional warning | expiry_issue:#2397
+crates/nostr/core/src/nip60.rs | budget:7 | owner:nostr | added:2026-02-27 | reason: staged nip60 lint debt burn-down | expiry_issue:#2397
+crates/nostr/core/src/nip34.rs | budget:2 | owner:nostr | added:2026-02-27 | reason: nip34 parser debt staged behind api cleanup | expiry_issue:#2397

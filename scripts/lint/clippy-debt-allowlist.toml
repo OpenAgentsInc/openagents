@@ -5,6 +5,7 @@
 # - expiry_issue:<#...>
 # - expires_on:<YYYY-MM-DD>
 # Keep this list auditable and temporary. Remove entries as files are cleaned.
+# Policy: entries added on/after 2026-02-27 must include expiry_issue or expires_on.
 
 apps/autopilot-desktop/src/spark_wallet.rs | owner:autopilot | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly
 crates/spark/src/wallet.rs | owner:wallet | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly

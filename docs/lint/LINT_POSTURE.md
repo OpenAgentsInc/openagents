@@ -23,6 +23,7 @@ Temporary exceptions are allowed only when all of the following are true:
 - Use `scripts/lint/touched-clippy-gate.sh` (clean-on-touch gate) for changed files.
 - Track pre-existing debt in `scripts/lint/clippy-debt-allowlist.toml`.
 - Validate allowlist structure with `scripts/lint/clippy-debt-allowlist-check.sh`.
+- Enforce high-churn warning ceilings with `scripts/lint/clippy-warning-budget-check.sh`.
 
 ## Allowlist Rules
 
@@ -36,9 +37,25 @@ Temporary exceptions are allowed only when all of the following are true:
     - `expiry_issue:<#...>` (for tracked removal), or
     - `expires_on:<YYYY-MM-DD>` (for hard expiry).
 - Entries that are not time-bounded are invalid and should fail lint posture checks.
+- Entries added on/after `2026-02-27` must include `expiry_issue` or `expires_on` (review cadence alone is no longer sufficient for new debt).
+
+## Warning Budgets
+
+- High-churn files are tracked in `scripts/lint/clippy-warning-budgets.toml`.
+- Budget entries must include:
+  - `path`
+  - `budget:<non-negative integer>`
+  - `owner:<lane>`
+  - `added:<YYYY-MM-DD>`
+  - `reason:<short reason>`
+  - time-bound metadata (same as allowlist policy)
+- Budgets are exact:
+  - If current warnings exceed a budget, the gate fails.
+  - If current warnings fall below a budget, the gate also fails until the budget is lowered in the same change.
 
 ## Workflow
 
 - If you touch a Rust file with existing warnings, either clean them up or add a debt entry that follows the allowlist rules.
 - If you add debt, include a clear owner and time-bound metadata so removal is auditable.
 - Keep debt entries temporary and delete them as soon as warnings are removed.
+- If a budgeted file warning count drops, lower the budget in `clippy-warning-budgets.toml` before merge.

@@ -39,6 +39,7 @@ fi
 cargo clippy --workspace --lib --bins --examples --message-format=json -- -W clippy::all >"$clippy_tmp"
 
 python3 - "$ROOT_DIR" "$changed_tmp" "$clippy_tmp" "$ALLOWLIST_FILE" <<'PY'
+import datetime as dt
 import json
 import pathlib
 import re
@@ -58,6 +59,8 @@ changed = {
 
 allowlisted = set()
 date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+issue_re = re.compile(r"^#\d+$")
+policy_cutover = dt.date(2026, 2, 27)
 required_fields = {"owner", "added", "reason"}
 timebound_fields = {"review_cadence", "expiry_issue", "expires_on"}
 for raw in allowlist_path.read_text().splitlines():
@@ -93,9 +96,55 @@ for raw in allowlist_path.read_text().splitlines():
             file=sys.stderr,
         )
         sys.exit(1)
+    try:
+        added_date = dt.date.fromisoformat(metadata["added"])
+    except ValueError:
+        print(
+            f"Invalid allowlist entry (added is not a valid date): {raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    expires_on_date = None
+    if "expires_on" in metadata:
+        if not date_re.match(metadata["expires_on"]):
+            print(
+                f"Invalid allowlist entry (expires_on must be YYYY-MM-DD): {raw}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        try:
+            expires_on_date = dt.date.fromisoformat(metadata["expires_on"])
+        except ValueError:
+            print(
+                f"Invalid allowlist entry (expires_on is not a valid date): {raw}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    if "expiry_issue" in metadata and not issue_re.match(metadata["expiry_issue"]):
+        print(
+            f"Invalid allowlist entry (expiry_issue must be issue-formatted '#123'): {raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if not any(key in metadata for key in timebound_fields):
         print(
             "Invalid allowlist entry (missing time-bound metadata: review_cadence, expiry_issue, or expires_on): "
+            f"{raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if added_date >= policy_cutover and not (
+        "expiry_issue" in metadata or "expires_on" in metadata
+    ):
+        print(
+            "Invalid allowlist entry (new entries must include expiry_issue or expires_on): "
+            f"{raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if expires_on_date and expires_on_date <= added_date:
+        print(
+            "Invalid allowlist entry (expires_on must be after added): "
             f"{raw}",
             file=sys.stderr,
         )

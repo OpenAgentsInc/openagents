@@ -24,6 +24,11 @@ if ! "$ROOT_DIR/scripts/lint/touched-clippy-gate.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/clippy-warning-budget-check.sh"; then
+    printf 'Clippy warning budget gate failed.\n' >&2
+    exit 1
+fi
+
 if [[ ! -f "$BASELINE_FILE" ]]; then
     printf 'Missing baseline file: %s\n' "$BASELINE_FILE" >&2
     printf 'Run scripts/lint/clippy-baseline.sh first.\n' >&2
