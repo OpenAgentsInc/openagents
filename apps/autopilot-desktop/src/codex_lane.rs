@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
@@ -6,9 +7,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AskForApproval, ClientInfo, SkillScope, SkillsConfigWriteParams, SkillsListParams,
-    SkillsListResponse, ThreadListParams, ThreadReadParams, ThreadResumeParams, ThreadStartParams,
-    TurnInterruptParams, TurnStartParams,
+    AskForApproval, ClientInfo, ModelListParams, SkillScope, SkillsConfigWriteParams,
+    SkillsListParams, SkillsListResponse, ThreadListParams, ThreadReadParams, ThreadResumeParams,
+    ThreadStartParams, TurnInterruptParams, TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -165,6 +166,10 @@ impl CodexLaneCommand {
 pub enum CodexLaneNotification {
     SkillsListLoaded {
         entries: Vec<CodexSkillListEntry>,
+    },
+    ModelsLoaded {
+        models: Vec<String>,
+        default_model: Option<String>,
     },
     ThreadListLoaded {
         thread_ids: Vec<String>,
@@ -433,6 +438,7 @@ impl CodexLaneState {
                             },
                         ));
                         self.set_ready(update_tx, "Codex lane ready");
+                        self.publish_models_from_server(runtime, update_tx);
                     }
                     Err(error) => {
                         self.set_error(
@@ -444,8 +450,29 @@ impl CodexLaneState {
                 }
             } else {
                 self.set_ready(update_tx, "Codex lane ready");
+                self.publish_models_from_server(runtime, update_tx);
             }
         }
+    }
+
+    fn publish_models_from_server(&self, runtime: &Runtime, update_tx: &Sender<CodexLaneUpdate>) {
+        let Some(client) = self.client.as_ref() else {
+            return;
+        };
+
+        let Ok((models, default_model)) = fetch_model_catalog(runtime, client) else {
+            return;
+        };
+        if models.is_empty() {
+            return;
+        }
+
+        let _ = update_tx.send(CodexLaneUpdate::Notification(
+            CodexLaneNotification::ModelsLoaded {
+                models,
+                default_model,
+            },
+        ));
     }
 
     fn handle_command(
@@ -821,6 +848,51 @@ fn summarize_skills_list_response(response: SkillsListResponse) -> Vec<CodexSkil
         .collect()
 }
 
+fn fetch_model_catalog(
+    runtime: &Runtime,
+    client: &AppServerClient,
+) -> Result<(Vec<String>, Option<String>)> {
+    let mut cursor = None;
+    let mut raw = Vec::<(String, bool)>::new();
+
+    loop {
+        let response = runtime.block_on(client.model_list(ModelListParams {
+            cursor: cursor.clone(),
+            limit: Some(100),
+        }))?;
+
+        for model in response.data {
+            let value = model.model.trim();
+            if value.is_empty() {
+                continue;
+            }
+            raw.push((value.to_string(), model.is_default));
+        }
+
+        match response.next_cursor {
+            Some(next) if !next.is_empty() => {
+                cursor = Some(next);
+            }
+            _ => break,
+        }
+    }
+
+    let mut seen = HashSet::new();
+    let mut models = Vec::new();
+    let mut default_model = None;
+    for (model, is_default) in raw {
+        if !seen.insert(model.clone()) {
+            continue;
+        }
+        if is_default && default_model.is_none() {
+            default_model = Some(model.clone());
+        }
+        models.push(model);
+    }
+
+    Ok((models, default_model))
+}
+
 fn skill_scope_label(scope: SkillScope) -> &'static str {
     match scope {
         SkillScope::User => "user",
@@ -929,6 +1001,8 @@ mod tests {
             AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
         drop(_entered);
 
+        let saw_model_list = Arc::new(AtomicBool::new(false));
+        let saw_model_list_clone = Arc::clone(&saw_model_list);
         let server = std::thread::spawn(move || {
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -971,6 +1045,26 @@ mod tests {
                                 "model": "gpt-5-codex"
                             }
                         }),
+                        "model/list" => {
+                            saw_model_list_clone.store(true, Ordering::SeqCst);
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {
+                                    "data": [
+                                        {
+                                            "id": "default",
+                                            "model": "o4-mini",
+                                            "displayName": "o4-mini",
+                                            "description": "o4-mini",
+                                            "supportedReasoningEfforts": [],
+                                            "defaultReasoningEffort": "medium",
+                                            "isDefault": true
+                                        }
+                                    ],
+                                    "nextCursor": null
+                                }
+                            })
+                        }
                         _ => json!({
                             "id": value["id"].clone(),
                             "result": {}
@@ -980,7 +1074,7 @@ mod tests {
                         let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
                         let _ = server_write.flush().await;
                     }
-                    if handled_requests >= 2 {
+                    if handled_requests >= 3 {
                         break;
                     }
                 }
@@ -993,15 +1087,37 @@ mod tests {
             Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
         );
 
-        let snapshot = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
-            snapshot.lifecycle == CodexLaneLifecycle::Ready
-        });
+        let mut saw_ready = false;
+        let mut active_thread_id = None;
+        let mut models_loaded = None;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() <= deadline && (!saw_ready || models_loaded.is_none()) {
+            for update in worker.drain_updates() {
+                match update {
+                    CodexLaneUpdate::Snapshot(snapshot) => {
+                        if snapshot.lifecycle == CodexLaneLifecycle::Ready {
+                            saw_ready = true;
+                            active_thread_id = snapshot.active_thread_id.clone();
+                        }
+                    }
+                    CodexLaneUpdate::Notification(CodexLaneNotification::ModelsLoaded {
+                        models,
+                        default_model,
+                    }) => {
+                        models_loaded = Some((models, default_model));
+                    }
+                    CodexLaneUpdate::Notification(_) | CodexLaneUpdate::CommandResponse(_) => {}
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
 
-        assert_eq!(snapshot.lifecycle, CodexLaneLifecycle::Ready);
-        assert_eq!(
-            snapshot.active_thread_id.as_deref(),
-            Some("thread-bootstrap")
-        );
+        assert!(saw_ready, "missing ready snapshot");
+        assert_eq!(active_thread_id.as_deref(), Some("thread-bootstrap"));
+        assert!(saw_model_list.load(Ordering::SeqCst));
+        let (models, default_model) = models_loaded.expect("expected models loaded notification");
+        assert_eq!(models, vec!["o4-mini".to_string()]);
+        assert_eq!(default_model.as_deref(), Some("o4-mini"));
 
         worker.shutdown();
         let _ = server.join();
@@ -1639,4 +1755,5 @@ mod tests {
             error: Some("missing command response".to_string()),
         })
     }
+
 }

@@ -823,7 +823,7 @@ fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, inde
 
     let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
         thread_id,
-        model: Some(state.autopilot_chat.current_model().to_string()),
+        model: None,
         model_provider: None,
         cwd: None,
         approval_policy: None,

@@ -48,7 +48,8 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         state.skill_registry.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsConfigWrite {
         state.skill_registry.last_error = None;
-        state.skill_registry.last_action = Some("skills/config/write applied; refreshing list".to_string());
+        state.skill_registry.last_action =
+            Some("skills/config/write applied; refreshing list".to_string());
         queue_skills_list_refresh(state);
     }
     state.sync_health.last_action = Some(format!(
@@ -66,8 +67,9 @@ fn queue_skills_list_refresh(state: &mut RenderState) {
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(error) => {
-            state.skill_registry.last_error =
-                Some(format!("Failed to refresh skills/list after config write: {error}"));
+            state.skill_registry.last_error = Some(format!(
+                "Failed to refresh skills/list after config write: {error}"
+            ));
             state.skill_registry.load_state = PaneLoadState::Error;
             return;
         }
@@ -99,6 +101,12 @@ fn queue_skills_list_refresh(state: &mut RenderState) {
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
     let stored = notification.clone();
     match notification {
+        CodexLaneNotification::ModelsLoaded {
+            models,
+            default_model,
+        } => {
+            state.autopilot_chat.set_models(models, default_model);
+        }
         CodexLaneNotification::SkillsListLoaded { entries } => {
             state.skill_registry.source = "codex".to_string();
             state.skill_registry.discovered_skills.clear();
@@ -109,26 +117,26 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state.skill_registry.repo_skills_root = Some(entry.cwd.clone());
                 }
                 for skill in entry.skills {
-                    state
-                        .skill_registry
-                        .discovered_skills
-                        .push(crate::app_state::SkillRegistryDiscoveredSkill {
+                    state.skill_registry.discovered_skills.push(
+                        crate::app_state::SkillRegistryDiscoveredSkill {
                             name: skill.name,
                             path: skill.path,
                             scope: skill.scope,
                             enabled: skill.enabled,
                             interface_display_name: skill.interface_display_name,
                             dependency_count: skill.dependency_count,
-                        });
+                        },
+                    );
                 }
                 state.skill_registry.discovery_errors.extend(entry.errors);
             }
 
-            state.skill_registry.selected_skill_index = if state.skill_registry.discovered_skills.is_empty() {
-                None
-            } else {
-                Some(0)
-            };
+            state.skill_registry.selected_skill_index =
+                if state.skill_registry.discovered_skills.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                };
             state.skill_registry.load_state = PaneLoadState::Ready;
             state.skill_registry.last_action = Some(format!(
                 "Loaded {} codex skills",
@@ -137,7 +145,8 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             if state.skill_registry.discovery_errors.is_empty() {
                 state.skill_registry.last_error = None;
             } else {
-                state.skill_registry.last_error = state.skill_registry.discovery_errors.first().cloned();
+                state.skill_registry.last_error =
+                    state.skill_registry.discovery_errors.first().cloned();
             }
         }
         CodexLaneNotification::ThreadListLoaded { thread_ids } => {

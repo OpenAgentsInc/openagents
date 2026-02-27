@@ -305,6 +305,34 @@ impl AutopilotChatState {
             .unwrap_or("gpt-5-codex")
     }
 
+    pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
+        if models.is_empty() {
+            return;
+        }
+
+        let previous_model = self.models.get(self.selected_model).cloned();
+        self.models = models;
+
+        if let Some(default_model) = default_model.as_ref()
+            && let Some(index) = self.models.iter().position(|model| model == default_model)
+        {
+            self.selected_model = index;
+            self.last_error = None;
+            return;
+        }
+
+        if let Some(previous_model) = previous_model.as_ref()
+            && let Some(index) = self.models.iter().position(|model| model == previous_model)
+        {
+            self.selected_model = index;
+            self.last_error = None;
+            return;
+        }
+
+        self.selected_model = 0;
+        self.last_error = None;
+    }
+
     pub fn cycle_model(&mut self) {
         if self.models.is_empty() {
             return;
