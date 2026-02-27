@@ -188,6 +188,18 @@ pub enum CodexLaneNotification {
         thread_id: String,
         turn_id: String,
     },
+    ItemStarted {
+        thread_id: String,
+        turn_id: String,
+        item_id: Option<String>,
+        item_type: Option<String>,
+    },
+    ItemCompleted {
+        thread_id: String,
+        turn_id: String,
+        item_id: Option<String>,
+        item_type: Option<String>,
+    },
     AgentMessageDelta {
         thread_id: String,
         turn_id: String,
@@ -197,6 +209,26 @@ pub enum CodexLaneNotification {
     TurnCompleted {
         thread_id: String,
         turn_id: String,
+        status: Option<String>,
+        error_message: Option<String>,
+    },
+    TurnDiffUpdated {
+        thread_id: String,
+        turn_id: String,
+        diff: String,
+    },
+    TurnPlanUpdated {
+        thread_id: String,
+        turn_id: String,
+        explanation: Option<String>,
+        plan: Vec<CodexTurnPlanStep>,
+    },
+    ThreadTokenUsageUpdated {
+        thread_id: String,
+        turn_id: String,
+        input_tokens: i64,
+        cached_input_tokens: i64,
+        output_tokens: i64,
     },
     TurnError {
         thread_id: String,
@@ -233,6 +265,12 @@ pub struct CodexThreadListEntry {
     pub thread_id: String,
     pub cwd: Option<String>,
     pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexTurnPlanStep {
+    pub step: String,
+    pub status: String,
 }
 
 #[derive(Clone, Debug)]
@@ -791,7 +829,25 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             let turn_id = turn_id_from_value(&params)?;
             Some(CodexLaneNotification::TurnStarted { thread_id, turn_id })
         }
-        "agent_message/delta" => {
+        "item/started" => {
+            let params = params?;
+            Some(CodexLaneNotification::ItemStarted {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                item_id: item_id_from_params(&params),
+                item_type: item_type_from_params(&params),
+            })
+        }
+        "item/completed" => {
+            let params = params?;
+            Some(CodexLaneNotification::ItemCompleted {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                item_id: item_id_from_params(&params),
+                item_type: item_type_from_params(&params),
+            })
+        }
+        "item/agentMessage/delta" | "agent_message/delta" => {
             let params = params?;
             Some(CodexLaneNotification::AgentMessageDelta {
                 thread_id: string_field(&params, "threadId")?,
@@ -805,9 +861,66 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
             let thread_id = string_field(&params, "threadId")?;
             let turn_id =
                 turn_id_from_value(&params).or_else(|| string_field(&params, "turnId"))?;
-            Some(CodexLaneNotification::TurnCompleted { thread_id, turn_id })
+            let status = params
+                .get("turn")
+                .and_then(|turn| turn.get("status"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| string_field(&params, "status"));
+            let error_message = params
+                .get("turn")
+                .and_then(|turn| turn.get("error"))
+                .and_then(|error| error.get("message"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    params
+                        .get("error")
+                        .and_then(|error| error.get("message"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+            Some(CodexLaneNotification::TurnCompleted {
+                thread_id,
+                turn_id,
+                status,
+                error_message,
+            })
         }
-        "turn/error" => {
+        "turn/diff/updated" => {
+            let params = params?;
+            Some(CodexLaneNotification::TurnDiffUpdated {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                diff: string_field(&params, "diff")?,
+            })
+        }
+        "turn/plan/updated" => {
+            let params = params?;
+            Some(CodexLaneNotification::TurnPlanUpdated {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                explanation: string_field(&params, "explanation"),
+                plan: turn_plan_from_params(&params),
+            })
+        }
+        "thread/tokenUsage/updated" => {
+            let params = params?;
+            let token_usage = params.get("tokenUsage")?;
+            let usage_scope = token_usage
+                .get("last")
+                .filter(|last| last.is_object())
+                .unwrap_or(token_usage);
+            Some(CodexLaneNotification::ThreadTokenUsageUpdated {
+                thread_id: string_field(&params, "threadId")?,
+                turn_id: string_field(&params, "turnId")?,
+                input_tokens: i64_field(usage_scope, "inputTokens").unwrap_or_default(),
+                cached_input_tokens: i64_field(usage_scope, "cachedInputTokens")
+                    .unwrap_or_default(),
+                output_tokens: i64_field(usage_scope, "outputTokens").unwrap_or_default(),
+            })
+        }
+        "turn/error" | "error" => {
             let params = params?;
             let message = params
                 .get("error")
@@ -845,8 +958,47 @@ fn turn_id_from_value(value: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+fn item_id_from_params(value: &Value) -> Option<String> {
+    value
+        .get("item")
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| string_field(value, "itemId"))
+}
+
+fn item_type_from_params(value: &Value) -> Option<String> {
+    value
+        .get("item")
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn turn_plan_from_params(value: &Value) -> Vec<CodexTurnPlanStep> {
+    value
+        .get("plan")
+        .and_then(Value::as_array)
+        .map(|steps| {
+            steps
+                .iter()
+                .filter_map(|step| {
+                    Some(CodexTurnPlanStep {
+                        step: step.get("step")?.as_str()?.to_string(),
+                        status: step.get("status")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn string_field(value: &Value, field: &str) -> Option<String> {
     value.get(field).and_then(Value::as_str).map(str::to_string)
+}
+
+fn i64_field(value: &Value, field: &str) -> Option<i64> {
+    value.get(field).and_then(Value::as_i64)
 }
 
 fn is_disconnect_error(error: &anyhow::Error) -> bool {
@@ -1353,7 +1505,7 @@ mod tests {
                             }),
                             json!({
                                 "jsonrpc": "2.0",
-                                "method": "agent_message/delta",
+                                "method": "item/agentMessage/delta",
                                 "params": {
                                     "threadId": "thread-bootstrap",
                                     "turnId": "turn-1",
@@ -1371,10 +1523,11 @@ mod tests {
                             }),
                             json!({
                                 "jsonrpc": "2.0",
-                                "method": "turn/error",
+                                "method": "error",
                                 "params": {
                                     "threadId": "thread-bootstrap",
                                     "turnId": "turn-1",
+                                    "willRetry": false,
                                     "error": {"message": "boom"}
                                 }
                             }),
@@ -1435,7 +1588,9 @@ mod tests {
                                 saw_delta = true;
                             }
                         }
-                        CodexLaneNotification::TurnCompleted { thread_id, turn_id } => {
+                        CodexLaneNotification::TurnCompleted {
+                            thread_id, turn_id, ..
+                        } => {
                             if thread_id == "thread-bootstrap" && turn_id == "turn-1" {
                                 saw_turn_completed = true;
                             }
@@ -1462,9 +1617,9 @@ mod tests {
 
         assert!(saw_ready, "missing ready snapshot");
         assert!(saw_turn_started, "missing turn/started notification");
-        assert!(saw_delta, "missing agent_message/delta notification");
+        assert!(saw_delta, "missing item/agentMessage/delta notification");
         assert!(saw_turn_completed, "missing turn/completed notification");
-        assert!(saw_turn_error, "missing turn/error notification");
+        assert!(saw_turn_error, "missing error notification");
 
         worker.shutdown();
         let _ = server.join();

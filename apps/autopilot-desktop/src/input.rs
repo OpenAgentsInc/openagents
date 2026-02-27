@@ -410,6 +410,7 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::ChatSend => run_chat_submit_action(state),
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
         PaneHitAction::GoOnlineToggle => {
             let wants_online = matches!(
@@ -825,6 +826,38 @@ fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) ->
 
 fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
     state.autopilot_chat.cycle_model();
+    true
+}
+
+fn run_chat_interrupt_turn_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        state.autopilot_chat.last_error = Some("No active thread to interrupt".to_string());
+        return true;
+    };
+    let Some(turn_id) = state.autopilot_chat.active_turn_id.clone() else {
+        state.autopilot_chat.last_error = Some("No active turn to interrupt".to_string());
+        return true;
+    };
+
+    let command =
+        crate::codex_lane::CodexLaneCommand::TurnInterrupt(codex_client::TurnInterruptParams {
+            thread_id,
+            turn_id: turn_id.clone(),
+        });
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("interrupt requested: {turn_id}"));
+            state
+                .autopilot_chat
+                .set_turn_status(Some("interruptRequested".to_string()));
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
     true
 }
 

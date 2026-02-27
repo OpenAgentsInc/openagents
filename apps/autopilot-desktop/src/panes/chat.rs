@@ -1,4 +1,4 @@
-use wgpui::{theme, Bounds, Component, InputEvent, PaintContext, Point, Quad};
+use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotMessageStatus, AutopilotRole, ChatPaneInputs, PaneKind,
@@ -6,9 +6,10 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{paint_action_button, split_text_for_display};
 use crate::pane_system::{
-    chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_refresh_threads_button_bounds,
-    chat_send_button_bounds, chat_thread_rail_bounds, chat_thread_row_bounds,
-    chat_transcript_bounds, chat_visible_thread_row_count, pane_content_bounds,
+    chat_composer_input_bounds, chat_cycle_model_button_bounds, chat_interrupt_button_bounds,
+    chat_refresh_threads_button_bounds, chat_send_button_bounds, chat_thread_rail_bounds,
+    chat_thread_row_bounds, chat_transcript_bounds, chat_visible_thread_row_count,
+    pane_content_bounds,
 };
 
 pub fn paint(
@@ -23,6 +24,7 @@ pub fn paint(
     let send_bounds = chat_send_button_bounds(content_bounds);
     let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
     let model_bounds = chat_cycle_model_button_bounds(content_bounds);
+    let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
 
     paint.scene.draw_quad(
         Quad::new(rail_bounds)
@@ -72,6 +74,7 @@ pub fn paint(
 
     paint_action_button(refresh_bounds, "Refresh", paint);
     paint_action_button(model_bounds, "Cycle Model", paint);
+    paint_action_button(interrupt_bounds, "Interrupt", paint);
 
     let visible_threads = chat_visible_thread_row_count(autopilot_chat.threads.len());
     for row_index in 0..visible_threads {
@@ -106,7 +109,69 @@ pub fn paint(
         ));
     }
 
-    let mut y = transcript_bounds.origin.y + 70.0;
+    let turn_status = autopilot_chat
+        .last_turn_status
+        .as_deref()
+        .unwrap_or("idle")
+        .to_string();
+    let token_summary = autopilot_chat
+        .token_usage
+        .as_ref()
+        .map(|usage| {
+            format!(
+                "tokens(in={}, cache={}, out={})",
+                usage.input_tokens, usage.cached_input_tokens, usage.output_tokens
+            )
+        })
+        .unwrap_or_else(|| "tokens(n/a)".to_string());
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("turn={} {}", turn_status, token_summary),
+        Point::new(
+            transcript_bounds.origin.x + 10.0,
+            transcript_bounds.origin.y + 56.0,
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let mut y = transcript_bounds.origin.y + 84.0;
+    if !autopilot_chat.turn_plan.is_empty() {
+        let plan_compact = autopilot_chat
+            .turn_plan
+            .iter()
+            .take(3)
+            .map(|step| format!("{}:{}", step.status, step.step))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("plan {}", plan_compact),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::accent::PRIMARY,
+        ));
+        y += 14.0;
+    }
+    if let Some(diff) = autopilot_chat.turn_diff.as_deref() {
+        let diff_preview = diff.lines().next().unwrap_or_default();
+        if !diff_preview.is_empty() {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("diff {}", diff_preview),
+                Point::new(transcript_bounds.origin.x + 10.0, y),
+                10.0,
+                theme::text::MUTED,
+            ));
+            y += 14.0;
+        }
+    }
+    for event in autopilot_chat.turn_timeline.iter().rev().take(2).rev() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("event {}", event),
+            Point::new(transcript_bounds.origin.x + 10.0, y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        y += 14.0;
+    }
     for message in autopilot_chat.messages.iter().rev().take(14).rev() {
         let status = match message.status {
             AutopilotMessageStatus::Queued => "queued",

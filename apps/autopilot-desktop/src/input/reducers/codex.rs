@@ -207,13 +207,96 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
         }
         CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
             state.autopilot_chat.ensure_thread(thread_id);
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("turn started: {turn_id}"));
             state.autopilot_chat.mark_turn_started(turn_id);
         }
-        CodexLaneNotification::AgentMessageDelta { delta, .. } => {
+        CodexLaneNotification::ItemStarted {
+            thread_id,
+            turn_id,
+            item_id,
+            item_type,
+        } => {
+            state.autopilot_chat.ensure_thread(thread_id);
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "item started: turn={turn_id} id={} type={}",
+                item_id.as_deref().unwrap_or("n/a"),
+                item_type.as_deref().unwrap_or("n/a")
+            ));
+        }
+        CodexLaneNotification::ItemCompleted {
+            thread_id,
+            turn_id,
+            item_id,
+            item_type,
+        } => {
+            state.autopilot_chat.ensure_thread(thread_id);
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "item completed: turn={turn_id} id={} type={}",
+                item_id.as_deref().unwrap_or("n/a"),
+                item_type.as_deref().unwrap_or("n/a")
+            ));
+        }
+        CodexLaneNotification::AgentMessageDelta { item_id, delta, .. } => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "agent delta: item={} chars={}",
+                item_id,
+                delta.chars().count()
+            ));
             state.autopilot_chat.append_turn_delta(&delta);
         }
-        CodexLaneNotification::TurnCompleted { .. } => {
-            state.autopilot_chat.mark_turn_completed();
+        CodexLaneNotification::TurnCompleted {
+            status,
+            error_message,
+            ..
+        } => {
+            state.autopilot_chat.set_turn_status(status.clone());
+            match status.as_deref() {
+                Some("failed") => {
+                    state.autopilot_chat.mark_turn_error(
+                        error_message.unwrap_or_else(|| "Turn failed".to_string()),
+                    );
+                }
+                Some("interrupted") => {
+                    state.autopilot_chat.mark_turn_completed();
+                    state
+                        .autopilot_chat
+                        .set_turn_status(Some("interrupted".to_string()));
+                    state
+                        .autopilot_chat
+                        .record_turn_timeline_event("turn interrupted");
+                }
+                _ => {
+                    state.autopilot_chat.mark_turn_completed();
+                }
+            }
+        }
+        CodexLaneNotification::TurnDiffUpdated { diff, .. } => {
+            state.autopilot_chat.set_turn_diff(Some(diff));
+        }
+        CodexLaneNotification::TurnPlanUpdated {
+            explanation, plan, ..
+        } => {
+            state.autopilot_chat.set_turn_plan(
+                explanation,
+                plan.into_iter()
+                    .map(|step| crate::app_state::AutopilotTurnPlanStep {
+                        step: step.step,
+                        status: step.status,
+                    })
+                    .collect(),
+            );
+        }
+        CodexLaneNotification::ThreadTokenUsageUpdated {
+            input_tokens,
+            cached_input_tokens,
+            output_tokens,
+            ..
+        } => {
+            state
+                .autopilot_chat
+                .set_token_usage(input_tokens, cached_input_tokens, output_tokens);
         }
         CodexLaneNotification::TurnError { message, .. } => {
             state.autopilot_chat.mark_turn_error(message);

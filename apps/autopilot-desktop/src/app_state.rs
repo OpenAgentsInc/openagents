@@ -256,6 +256,17 @@ pub struct AutopilotMessage {
     pub content: String,
 }
 
+pub struct AutopilotTokenUsage {
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+pub struct AutopilotTurnPlanStep {
+    pub step: String,
+    pub status: String,
+}
+
 #[derive(Clone)]
 pub struct AutopilotThreadMetadata {
     pub cwd: Option<String>,
@@ -287,6 +298,12 @@ pub struct AutopilotChatState {
     pub next_message_id: u64,
     pub active_turn_id: Option<String>,
     pub active_assistant_message_id: Option<u64>,
+    pub last_turn_status: Option<String>,
+    pub token_usage: Option<AutopilotTokenUsage>,
+    pub turn_plan_explanation: Option<String>,
+    pub turn_plan: Vec<AutopilotTurnPlanStep>,
+    pub turn_diff: Option<String>,
+    pub turn_timeline: Vec<String>,
     pub last_error: Option<String>,
 }
 
@@ -313,6 +330,12 @@ impl Default for AutopilotChatState {
             next_message_id: 2,
             active_turn_id: None,
             active_assistant_message_id: None,
+            last_turn_status: None,
+            token_usage: None,
+            turn_plan_explanation: None,
+            turn_plan: Vec::new(),
+            turn_diff: None,
+            turn_timeline: Vec::new(),
             last_error: None,
         }
     }
@@ -453,6 +476,7 @@ impl AutopilotChatState {
 
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id);
+        self.last_turn_status = Some("inProgress".to_string());
         if let Some(assistant_message_id) = self.active_assistant_message_id
             && let Some(message) = self
                 .messages
@@ -484,6 +508,7 @@ impl AutopilotChatState {
         {
             message.status = AutopilotMessageStatus::Done;
         }
+        self.last_turn_status = Some("completed".to_string());
         self.active_turn_id = None;
         self.active_assistant_message_id = None;
     }
@@ -501,6 +526,7 @@ impl AutopilotChatState {
                 message.content = error.clone();
             }
         }
+        self.last_turn_status = Some("failed".to_string());
         self.last_error = Some(error);
         self.active_turn_id = None;
         self.active_assistant_message_id = None;
@@ -518,8 +544,43 @@ impl AutopilotChatState {
             message.content = error.clone();
         }
         self.last_error = Some(error);
+        self.last_turn_status = Some("failed".to_string());
         self.active_turn_id = None;
         self.active_assistant_message_id = None;
+    }
+
+    pub fn set_turn_status(&mut self, status: Option<String>) {
+        self.last_turn_status = status;
+    }
+
+    pub fn set_token_usage(
+        &mut self,
+        input_tokens: i64,
+        cached_input_tokens: i64,
+        output_tokens: i64,
+    ) {
+        self.token_usage = Some(AutopilotTokenUsage {
+            input_tokens,
+            cached_input_tokens,
+            output_tokens,
+        });
+    }
+
+    pub fn set_turn_plan(&mut self, explanation: Option<String>, plan: Vec<AutopilotTurnPlanStep>) {
+        self.turn_plan_explanation = explanation;
+        self.turn_plan = plan;
+    }
+
+    pub fn set_turn_diff(&mut self, diff: Option<String>) {
+        self.turn_diff = diff;
+    }
+
+    pub fn record_turn_timeline_event(&mut self, event: impl Into<String>) {
+        self.turn_timeline.push(event.into());
+        if self.turn_timeline.len() > 64 {
+            let overflow = self.turn_timeline.len().saturating_sub(64);
+            self.turn_timeline.drain(0..overflow);
+        }
     }
 
     pub fn has_pending_messages(&self) -> bool {

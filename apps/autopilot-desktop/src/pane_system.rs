@@ -203,6 +203,7 @@ pub enum PaneHitAction {
     ChatSend,
     ChatRefreshThreads,
     ChatCycleModel,
+    ChatInterruptTurn,
     ChatSelectThread(usize),
     GoOnlineToggle,
     EarningsScoreboard(EarningsScoreboardPaneAction),
@@ -651,6 +652,16 @@ pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         transcript.origin.x + 10.0,
         transcript.origin.y + 28.0,
+        CHAT_HEADER_BUTTON_WIDTH,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
+    let cycle = chat_cycle_model_button_bounds(content_bounds);
+    Bounds::new(
+        cycle.max_x() + 8.0,
+        cycle.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
@@ -1239,7 +1250,9 @@ pub fn skill_registry_row_bounds(content_bounds: Bounds, index: usize) -> Bounds
     let discover = skill_registry_discover_button_bounds(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
-        discover.max_y() + CHAT_PAD + index as f32 * (SKILL_REGISTRY_ROW_HEIGHT + SKILL_REGISTRY_ROW_GAP),
+        discover.max_y()
+            + CHAT_PAD
+            + index as f32 * (SKILL_REGISTRY_ROW_HEIGHT + SKILL_REGISTRY_ROW_GAP),
         (content_bounds.size.width - CHAT_PAD * 2.0).max(180.0),
         SKILL_REGISTRY_ROW_HEIGHT,
     )
@@ -1499,6 +1512,9 @@ fn pane_hit_action_for_pane(
             }
             if chat_cycle_model_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatCycleModel);
+            }
+            if chat_interrupt_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ChatInterruptTurn);
             }
             let visible_threads = chat_visible_thread_row_count(state.autopilot_chat.threads.len());
             for row_index in 0..visible_threads {
