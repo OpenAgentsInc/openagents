@@ -1,7 +1,6 @@
 ---
 name: moneydevkit
-description: Integrate Lightning payment workflows using Money Dev Kit. Use when tasks involve setting up @moneydevkit/agent-wallet for autonomous agents, wiring @moneydevkit/nextjs or @moneydevkit/replit checkout flows, bootstrapping credentials via @moneydevkit/create, validating MDK environment variables, or applying hybrid architecture constraints (hosted API plus self-custodial node).
-compatibility: Requires bash, curl, Node.js 20+, and internet access to npm and Money Dev Kit services.
+description: Money Dev Kit workflows for Lightning checkout and agent wallets.
 metadata:
   oa:
     project: moneydevkit
@@ -14,6 +13,15 @@ metadata:
 ---
 
 # Money Dev Kit
+
+## Overview
+
+Integrate Lightning payment workflows using Money Dev Kit. Use this skill when tasks involve setting up `@moneydevkit/agent-wallet` for autonomous agents, wiring `@moneydevkit/nextjs` or `@moneydevkit/replit` checkout flows, bootstrapping credentials via `@moneydevkit/create`, validating MDK environment variables, or applying hybrid architecture constraints (hosted API plus self-custodial node).
+
+## Environment
+
+- Requires `bash`, `curl`, and Node.js 20+.
+- Requires internet access to npm and Money Dev Kit services.
 
 Use this skill for implementation tasks, not high-level Lightning theory.
 

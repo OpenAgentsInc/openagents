@@ -37,6 +37,12 @@ skills/
 
 `SKILL.md` frontmatter must stay compatible with Agent Skills protocol.
 
+Readability guidance:
+
+- Keep frontmatter values short for GitHub preview readability.
+- Use a concise one-line `description`.
+- Put detailed usage and environment requirements in the markdown body.
+
 Required top-level fields:
 
 - `name`
