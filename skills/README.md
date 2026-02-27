@@ -2,6 +2,28 @@
 
 This directory is the project-owned Agent Skills registry.
 
+## Why Skills Matter
+
+Skills are capability bundles that let agents execute repeatable, domain-specific work safely and consistently.
+
+In OpenAgents, skills are the practical bridge between:
+- user intent ("do this task"),
+- agent execution ("run this workflow"),
+- and shared trust ("this is the same skill identity/version everywhere").
+
+This aligns with the SKL protocol direction in [`crates/nostr/nips/SKL.md`](../crates/nostr/nips/SKL.md): stable skill identity, versioned manifests, and explicit capability declarations.
+
+## How This Registry Works
+
+- This `skills/` directory is the repo-authoritative local registry for skills used by OpenAgents.
+- Skills are authored as `SKILL.md` units with progressive disclosure (body + optional `references/`, `scripts/`, `assets/`).
+- Runtime surfaces discover skills from this registry and derive SKL-compatible metadata from frontmatter.
+- The registry is validated by `scripts/skills/validate_registry.sh` to keep shape and metadata consistent.
+
+## Access Model
+
+All Autopilot agents in this OpenAgents environment are expected to have access to the skills in this registry, so these skills function as shared capabilities rather than per-agent private prompts.
+
 ## Listing Policy
 
 - We generally welcome skills across domains.
