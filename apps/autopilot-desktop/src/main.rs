@@ -12,6 +12,7 @@ mod render;
 mod runtime_lanes;
 mod spark_pane;
 mod spark_wallet;
+mod state;
 
 use anyhow::{Context, Result};
 use app_state::App;

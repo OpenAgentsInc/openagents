@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
-use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
+use wgpui::components::TextInput;
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem};
 use winit::window::Window;
@@ -353,32 +353,7 @@ impl AutopilotChatState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderMode {
-    Offline,
-    Connecting,
-    Online,
-    Degraded,
-}
-
-impl ProviderMode {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Offline => "offline",
-            Self::Connecting => "connecting",
-            Self::Online => "online",
-            Self::Degraded => "degraded",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderBlocker {
-    IdentityMissing,
-    WalletError,
-    SkillTrustUnavailable,
-    CreditLaneUnavailable,
-}
+pub use crate::state::provider_runtime::{ProviderBlocker, ProviderMode, ProviderRuntimeState};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneLoadState {
@@ -2481,79 +2456,6 @@ impl EarningsScoreboardState {
     }
 }
 
-impl ProviderBlocker {
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::IdentityMissing => "IDENTITY_MISSING",
-            Self::WalletError => "WALLET_ERROR",
-            Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
-            Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
-        }
-    }
-
-    pub const fn detail(self) -> &'static str {
-        match self {
-            Self::IdentityMissing => "Nostr identity is not ready",
-            Self::WalletError => "Spark wallet reports an error",
-            Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
-            Self::CreditLaneUnavailable => "AC credit lane is not available",
-        }
-    }
-}
-
-pub struct ProviderRuntimeState {
-    pub mode: ProviderMode,
-    pub mode_changed_at: Instant,
-    pub connecting_until: Option<Instant>,
-    pub online_since: Option<Instant>,
-    pub last_heartbeat_at: Option<Instant>,
-    pub heartbeat_interval: Duration,
-    pub queue_depth: u32,
-    pub last_completed_job_at: Option<Instant>,
-    pub last_result: Option<String>,
-    pub degraded_reason_code: Option<String>,
-    pub last_error_detail: Option<String>,
-    pub last_authoritative_status: Option<String>,
-    pub last_authoritative_event_id: Option<String>,
-    pub last_authoritative_error_class: Option<String>,
-}
-
-impl Default for ProviderRuntimeState {
-    fn default() -> Self {
-        let now = Instant::now();
-        Self {
-            mode: ProviderMode::Offline,
-            mode_changed_at: now,
-            connecting_until: None,
-            online_since: None,
-            last_heartbeat_at: None,
-            heartbeat_interval: Duration::from_secs(1),
-            queue_depth: 0,
-            last_completed_job_at: None,
-            last_result: None,
-            degraded_reason_code: None,
-            last_error_detail: None,
-            last_authoritative_status: None,
-            last_authoritative_event_id: None,
-            last_authoritative_error_class: None,
-        }
-    }
-}
-
-impl ProviderRuntimeState {
-    pub fn uptime_seconds(&self, now: Instant) -> u64 {
-        self.online_since
-            .and_then(|started| now.checked_duration_since(started))
-            .map_or(0, |duration| duration.as_secs())
-    }
-
-    pub fn heartbeat_age_seconds(&self, now: Instant) -> Option<u64> {
-        self.last_heartbeat_at
-            .and_then(|last| now.checked_duration_since(last))
-            .map(|duration| duration.as_secs())
-    }
-}
-
 pub struct NostrSecretState {
     pub reveal_duration: Duration,
     pub revealed_until: Option<Instant>,
@@ -2749,9 +2651,9 @@ mod tests {
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
         NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
-        RelayConnectionRow, RelayConnectionStatus,
-        RelayConnectionsState, SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus,
-        StarterJobsState, SyncHealthState, SyncRecoveryPhase,
+        RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState, SettingsState,
+        SparkPaneState, StarterJobRow, StarterJobStatus, StarterJobsState, SyncHealthState,
+        SyncRecoveryPhase,
     };
 
     fn fixture_inbox_request(
@@ -2899,18 +2801,16 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         let now = std::time::Instant::now();
         chat.submit_prompt(now, "ping".to_string());
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Queued)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Queued));
 
         assert!(chat.tick(now + std::time::Duration::from_millis(300)));
-        assert!(
-            chat.messages
-                .iter()
-                .any(|message| message.status == AutopilotMessageStatus::Running)
-        );
+        assert!(chat
+            .messages
+            .iter()
+            .any(|message| message.status == AutopilotMessageStatus::Running));
 
         assert!(chat.tick(now + std::time::Duration::from_secs(2)));
         assert!(!chat.has_pending_messages());
@@ -3071,12 +2971,10 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(
-            relays
-                .relays
-                .iter()
-                .all(|row| row.url != "wss://relay.new.example")
-        );
+        assert!(relays
+            .relays
+            .iter()
+            .all(|row| row.url != "wss://relay.new.example"));
     }
 
     #[test]
@@ -3181,11 +3079,10 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(
-            feed.visible_rows()
-                .into_iter()
-                .all(|row| row.domain == ActivityEventDomain::Wallet)
-        );
+        assert!(feed
+            .visible_rows()
+            .into_iter()
+            .all(|row| row.domain == ActivityEventDomain::Wallet));
     }
 
     #[test]
@@ -3288,11 +3185,9 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(
-            score
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("wallet backend unavailable"))
-        );
+        assert!(score
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("wallet backend unavailable")));
     }
 }

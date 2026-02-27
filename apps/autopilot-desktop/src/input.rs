@@ -30,22 +30,23 @@ use crate::pane_system::{
 };
 use crate::render::{logical_size, render_frame};
 use crate::runtime_lanes::{
-    AcCreditCommand, AcLaneUpdate, RuntimeCommandErrorClass, RuntimeCommandResponse,
-    RuntimeCommandStatus, RuntimeLane, SaLaneUpdate, SaLifecycleCommand, SaRunnerMode,
-    SklDiscoveryTrustCommand, SklLaneUpdate,
+    AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
+    RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
+
+mod reducers;
 
 pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: WindowEvent) {
     let Some(state) = &mut app.state else {
         return;
     };
 
-    if drain_spark_worker_updates(state) {
+    if reducers::drain_spark_worker_updates(state) {
         state.window.request_redraw();
     }
-    if drain_runtime_lane_updates(state) {
+    if reducers::drain_runtime_lane_updates(state) {
         state.window.request_redraw();
     }
     if state.nostr_secret_state.expire(std::time::Instant::now()) {
@@ -2124,269 +2125,6 @@ fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
     );
 }
 
-fn drain_runtime_lane_updates(state: &mut crate::app_state::RenderState) -> bool {
-    let mut changed = false;
-
-    for update in state.sa_lane_worker.drain_updates() {
-        changed = true;
-        match update {
-            SaLaneUpdate::Snapshot(snapshot) => apply_sa_lane_snapshot(state, snapshot),
-            SaLaneUpdate::CommandResponse(response) => {
-                apply_runtime_command_response(state, response);
-            }
-        }
-    }
-
-    for update in state.skl_lane_worker.drain_updates() {
-        changed = true;
-        match update {
-            SklLaneUpdate::Snapshot(snapshot) => {
-                apply_skl_lane_snapshot(state, snapshot);
-            }
-            SklLaneUpdate::CommandResponse(response) => {
-                apply_runtime_command_response(state, response);
-            }
-        }
-    }
-
-    for update in state.ac_lane_worker.drain_updates() {
-        changed = true;
-        match update {
-            AcLaneUpdate::Snapshot(snapshot) => {
-                apply_ac_lane_snapshot(state, snapshot);
-            }
-            AcLaneUpdate::CommandResponse(response) => {
-                apply_runtime_command_response(state, response);
-            }
-        }
-    }
-
-    changed
-}
-
-fn apply_sa_lane_snapshot(
-    state: &mut crate::app_state::RenderState,
-    snapshot: crate::runtime_lanes::SaLaneSnapshot,
-) {
-    state.provider_runtime.mode = match snapshot.mode {
-        SaRunnerMode::Offline => ProviderMode::Offline,
-        SaRunnerMode::Connecting => ProviderMode::Connecting,
-        SaRunnerMode::Online => ProviderMode::Online,
-    };
-    state.provider_runtime.mode_changed_at = snapshot.mode_changed_at;
-    state.provider_runtime.connecting_until = snapshot.connect_until;
-    state.provider_runtime.online_since = snapshot.online_since;
-    state.provider_runtime.last_heartbeat_at = snapshot.last_heartbeat_at;
-    state.provider_runtime.heartbeat_interval =
-        std::time::Duration::from_secs(snapshot.heartbeat_seconds.max(1));
-    state.provider_runtime.queue_depth = snapshot.queue_depth;
-    state.provider_runtime.last_result = snapshot.last_result.clone();
-    state.provider_runtime.degraded_reason_code = snapshot.degraded_reason_code.clone();
-    state.provider_runtime.last_error_detail = snapshot.last_error_detail.clone();
-    state.sa_lane = snapshot;
-    sync_agent_pane_snapshots(state);
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
-}
-
-fn apply_skl_lane_snapshot(
-    state: &mut crate::app_state::RenderState,
-    snapshot: crate::runtime_lanes::SklLaneSnapshot,
-) {
-    state.skl_lane = snapshot;
-    sync_skill_pane_snapshots(state);
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
-}
-
-fn apply_ac_lane_snapshot(
-    state: &mut crate::app_state::RenderState,
-    snapshot: crate::runtime_lanes::AcLaneSnapshot,
-) {
-    state.ac_lane = snapshot;
-    sync_credit_pane_snapshots(state);
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
-}
-
-fn sync_agent_pane_snapshots(state: &mut crate::app_state::RenderState) {
-    state.agent_profile_state.profile_event_id = state.sa_lane.profile_event_id.clone();
-    state.agent_profile_state.state_event_id = state.sa_lane.state_event_id.clone();
-    state.agent_profile_state.goals_event_id = state.sa_lane.state_event_id.clone();
-    if state.agent_profile_state.profile_event_id.is_some()
-        || state.agent_profile_state.state_event_id.is_some()
-    {
-        state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-
-    state.agent_schedule_tick.heartbeat_seconds = state.sa_lane.heartbeat_seconds;
-    state.agent_schedule_tick.schedule_event_id = state.sa_lane.schedule_event_id.clone();
-    state.agent_schedule_tick.tick_request_event_id =
-        state.sa_lane.last_tick_request_event_id.clone();
-    state.agent_schedule_tick.tick_result_event_id =
-        state.sa_lane.last_tick_result_event_id.clone();
-    if let Some(outcome) = state.sa_lane.last_result.as_deref() {
-        state.agent_schedule_tick.last_tick_outcome = outcome.to_string();
-    }
-    if state.agent_schedule_tick.schedule_event_id.is_some() {
-        state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-
-    state.trajectory_audit.active_session_id = state
-        .sa_lane
-        .last_tick_request_event_id
-        .as_deref()
-        .map(|event| format!("traj:{event}"));
-    if state.trajectory_audit.active_session_id.is_some() {
-        state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-}
-
-fn sync_skill_pane_snapshots(state: &mut crate::app_state::RenderState) {
-    state.skill_registry.manifest_a = state.skl_lane.manifest_a.clone();
-    state.skill_registry.manifest_event_id = state.skl_lane.manifest_event_id.clone();
-    state.skill_registry.version_event_id = state.skl_lane.version_log_event_id.clone();
-    state.skill_registry.search_result_event_id = state.skl_lane.search_result_event_id.clone();
-    if state.skill_registry.manifest_event_id.is_some()
-        || state.skill_registry.search_result_event_id.is_some()
-    {
-        state.skill_registry.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-
-    state.skill_trust_revocation.trust_tier = state.skl_lane.trust_tier.label().to_string();
-    state.skill_trust_revocation.manifest_a = state.skl_lane.manifest_a.clone();
-    state.skill_trust_revocation.kill_switch_active = state.skl_lane.kill_switch_active;
-    state.skill_trust_revocation.revocation_event_id = state.skl_lane.revocation_event_id.clone();
-    state.skill_trust_revocation.attestation_count = match state.skl_lane.trust_tier {
-        crate::runtime_lanes::SkillTrustTier::Unknown => 0,
-        crate::runtime_lanes::SkillTrustTier::Provisional => 1,
-        crate::runtime_lanes::SkillTrustTier::Trusted => 3,
-    };
-    if state.skill_trust_revocation.manifest_a.is_some() {
-        state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-}
-
-fn sync_credit_pane_snapshots(state: &mut crate::app_state::RenderState) {
-    state.credit_desk.intent_event_id = state.ac_lane.intent_event_id.clone();
-    state.credit_desk.offer_event_id = state.ac_lane.offer_event_id.clone();
-    state.credit_desk.envelope_event_id = state.ac_lane.envelope_event_id.clone();
-    state.credit_desk.spend_event_id = state.ac_lane.spend_auth_event_id.clone();
-    if state.credit_desk.intent_event_id.is_some() {
-        state.credit_desk.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-
-    state.credit_settlement_ledger.settlement_event_id = state.ac_lane.settlement_event_id.clone();
-    state.credit_settlement_ledger.default_event_id = state.ac_lane.default_event_id.clone();
-    if state.credit_settlement_ledger.settlement_event_id.is_some()
-        || state.credit_settlement_ledger.default_event_id.is_some()
-    {
-        state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Ready;
-    }
-}
-
-fn apply_runtime_command_response(
-    state: &mut crate::app_state::RenderState,
-    response: RuntimeCommandResponse,
-) {
-    let summary = command_response_summary(&response);
-    match response.lane {
-        RuntimeLane::SaLifecycle => {
-            state.provider_runtime.last_result = Some(summary);
-            state.provider_runtime.last_authoritative_status =
-                Some(response.status.label().to_string());
-            state.provider_runtime.last_authoritative_event_id = response.event_id.clone();
-            state.provider_runtime.last_authoritative_error_class = response
-                .error
-                .as_ref()
-                .map(|error| error.class.label().to_string());
-            if response.status != RuntimeCommandStatus::Accepted {
-                state.provider_runtime.last_error_detail = response
-                    .error
-                    .as_ref()
-                    .map(|error| error.message.clone())
-                    .or_else(|| Some("SA lane command rejected".to_string()));
-                state.provider_runtime.mode = ProviderMode::Degraded;
-                state.provider_runtime.degraded_reason_code = response
-                    .error
-                    .as_ref()
-                    .map(|error| format!("SA_{}", error.class.label().to_ascii_uppercase()))
-                    .or_else(|| Some("SA_COMMAND_REJECTED".to_string()));
-                state.provider_runtime.mode_changed_at = std::time::Instant::now();
-                let error = response.error.as_ref().map_or_else(
-                    || "SA lane command rejected".to_string(),
-                    |err| err.message.clone(),
-                );
-                state.agent_profile_state.last_error = Some(error.clone());
-                state.agent_profile_state.load_state = crate::app_state::PaneLoadState::Error;
-                state.agent_schedule_tick.last_error = Some(error.clone());
-                state.agent_schedule_tick.load_state = crate::app_state::PaneLoadState::Error;
-                state.trajectory_audit.last_error = Some(error);
-                state.trajectory_audit.load_state = crate::app_state::PaneLoadState::Error;
-            }
-        }
-        RuntimeLane::SklDiscoveryTrust => {
-            state.sync_health.last_action = Some(summary);
-            if response.status != RuntimeCommandStatus::Accepted {
-                state.sync_health.last_error = response
-                    .error
-                    .as_ref()
-                    .map(|error| format!("SKL {}: {}", error.class.label(), error.message));
-                let error = response.error.as_ref().map_or_else(
-                    || "SKL lane command rejected".to_string(),
-                    |err| err.message.clone(),
-                );
-                state.skill_registry.last_error = Some(error.clone());
-                state.skill_registry.load_state = crate::app_state::PaneLoadState::Error;
-                state.skill_trust_revocation.last_error = Some(error);
-                state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Error;
-            }
-        }
-        RuntimeLane::AcCredit => {
-            state.network_requests.apply_authority_response(&response);
-            state.provider_runtime.last_result = Some(summary);
-            if response.status != RuntimeCommandStatus::Accepted {
-                let error = response.error.as_ref().map_or_else(
-                    || "AC lane command rejected".to_string(),
-                    |err| err.message.clone(),
-                );
-                state.credit_desk.last_error = Some(error.clone());
-                state.credit_desk.load_state = crate::app_state::PaneLoadState::Error;
-                state.credit_settlement_ledger.last_error = Some(error);
-                state.credit_settlement_ledger.load_state = crate::app_state::PaneLoadState::Error;
-            }
-        }
-    }
-
-    if response.status != RuntimeCommandStatus::Accepted {
-        upsert_runtime_incident_alert(state, &response);
-    }
-
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
-    state.record_runtime_command_response(response);
-}
-
-fn command_response_summary(response: &RuntimeCommandResponse) -> String {
-    let mut parts = vec![format!(
-        "{} {} {}",
-        response.lane.label(),
-        response.command.label(),
-        response.status.label()
-    )];
-    if let Some(event_id) = response.event_id.as_deref() {
-        parts.push(format!("event:{event_id}"));
-    }
-    if let Some(error) = response.error.as_ref() {
-        parts.push(format!("{}:{}", error.class.label(), error.message));
-    }
-    parts.join(" | ")
-}
-
 fn upsert_runtime_incident_alert(
     state: &mut crate::app_state::RenderState,
     response: &RuntimeCommandResponse,
@@ -2705,29 +2443,6 @@ fn queue_spark_command(state: &mut crate::app_state::RenderState, command: Spark
     if let Err(error) = state.spark_worker.enqueue(command) {
         state.spark_wallet.last_error = Some(error);
     }
-}
-
-fn drain_spark_worker_updates(state: &mut crate::app_state::RenderState) -> bool {
-    let previous_invoice = state.spark_wallet.last_invoice.clone();
-    if !state.spark_worker.drain_updates(&mut state.spark_wallet) {
-        return false;
-    }
-
-    if state.spark_wallet.last_invoice != previous_invoice
-        && state
-            .spark_wallet
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.starts_with("Created invoice"))
-        && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
-    {
-        let invoice = invoice.to_string();
-        state.spark_inputs.send_request.set_value(invoice.clone());
-        state.pay_invoice_inputs.payment_request.set_value(invoice);
-    }
-
-    refresh_earnings_scoreboard(state, std::time::Instant::now());
-    true
 }
 
 fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, String> {
