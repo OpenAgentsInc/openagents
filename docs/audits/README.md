@@ -29,4 +29,4 @@ Use `docs/audits/TEMPLATE.md` as the baseline structure.
 
 - Maintain at least one next-month audit issue in `OPEN` state at all times.
 - Suggested title format: `[cleanup][P3] Monthly architecture hygiene audit - YYYY-MM`.
-- Current scheduled issue: `#2389` (`[cleanup][P3] Monthly architecture hygiene audit - 2026-03`).
+- Current scheduled issue: `#2403` (`[cleanup][P3] Monthly architecture hygiene audit - 2026-04`).
