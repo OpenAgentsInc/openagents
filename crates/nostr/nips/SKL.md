@@ -1,12 +1,12 @@
 # NIP-SKL
 
-`draft` `optional`
-
 ## Agent Skill Registry
 
-## Abstract
+`draft` `optional`
 
 NIP-SKL defines the registry and trust substrate for agent skills on Nostr.
+
+## Abstract
 
 Core responsibilities are:
 
