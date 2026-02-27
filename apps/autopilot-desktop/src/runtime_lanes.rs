@@ -1,3 +1,4 @@
+use crate::skills_registry;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ const SKL_LANE_POLL: Duration = Duration::from_millis(120);
 const AC_LANE_POLL: Duration = Duration::from_millis(120);
 const SA_CONNECT_DELAY: Duration = Duration::from_millis(900);
 const SKL_TRUST_DELAY: Duration = Duration::from_millis(420);
+const SKL_LOCAL_PUBLISHER_PUBKEY: &str = "npub1agent";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeLane {
@@ -781,13 +783,45 @@ fn handle_skl_command(
                 );
             }
 
+            let created_at = 1_740_000_000 + envelope.command_seq;
+            let derived = match skills_registry::derive_local_skill_manifest(
+                skill_slug.trim(),
+                SKL_LOCAL_PUBLISHER_PUBKEY,
+                created_at,
+            ) {
+                Ok(derived) => derived,
+                Err(error) => {
+                    return RuntimeCommandResponse::rejected(
+                        envelope.command_seq,
+                        RuntimeLane::SklDiscoveryTrust,
+                        RuntimeCommandKind::PublishSkillManifest,
+                        RuntimeCommandErrorClass::Validation,
+                        error,
+                    );
+                }
+            };
+            if derived.derived.manifest.version != version.trim() {
+                return RuntimeCommandResponse::rejected(
+                    envelope.command_seq,
+                    RuntimeLane::SklDiscoveryTrust,
+                    RuntimeCommandKind::PublishSkillManifest,
+                    RuntimeCommandErrorClass::Validation,
+                    format!(
+                        "requested version {} does not match SKILL version {} for {}",
+                        version.trim(),
+                        derived.derived.manifest.version,
+                        derived.local_skill.slug()
+                    ),
+                );
+            }
+
             let event_id = next_event_id("skl", KIND_SKILL_MANIFEST, next_event_seq);
             snapshot.manifest_event_id = Some(event_id.clone());
             snapshot.manifest_a = Some(format!(
-                "{}:npub1agent:{}:{}",
+                "{}:{}:{}",
                 KIND_SKILL_MANIFEST,
-                skill_slug.trim(),
-                version.trim()
+                SKL_LOCAL_PUBLISHER_PUBKEY,
+                derived.derived.manifest.identifier
             ));
             snapshot.trust_tier = SkillTrustTier::Provisional;
             snapshot.last_error = None;
@@ -828,8 +862,48 @@ fn handle_skl_command(
                 );
             }
 
+            let created_at = 1_740_000_000 + envelope.command_seq;
+            let derived = match skills_registry::derive_local_skill_manifest(
+                skill_slug.trim(),
+                SKL_LOCAL_PUBLISHER_PUBKEY,
+                created_at,
+            ) {
+                Ok(derived) => derived,
+                Err(error) => {
+                    return RuntimeCommandResponse::rejected(
+                        envelope.command_seq,
+                        RuntimeLane::SklDiscoveryTrust,
+                        RuntimeCommandKind::PublishSkillVersionLog,
+                        RuntimeCommandErrorClass::Validation,
+                        error,
+                    );
+                }
+            };
+            if derived.derived.manifest.version != version.trim() {
+                return RuntimeCommandResponse::rejected(
+                    envelope.command_seq,
+                    RuntimeLane::SklDiscoveryTrust,
+                    RuntimeCommandKind::PublishSkillVersionLog,
+                    RuntimeCommandErrorClass::Validation,
+                    format!(
+                        "requested version {} does not match SKILL version {} for {}",
+                        version.trim(),
+                        derived.derived.manifest.version,
+                        derived.local_skill.slug()
+                    ),
+                );
+            }
+
             let event_id = next_event_id("skl", KIND_SKILL_VERSION_LOG, next_event_seq);
             snapshot.version_log_event_id = Some(event_id.clone());
+            if snapshot.manifest_a.is_none() {
+                snapshot.manifest_a = Some(format!(
+                    "{}:{}:{}",
+                    KIND_SKILL_MANIFEST,
+                    SKL_LOCAL_PUBLISHER_PUBKEY,
+                    derived.derived.manifest.identifier
+                ));
+            }
             snapshot.last_error = None;
             *snapshot_changed = true;
             RuntimeCommandResponse::accepted(
@@ -859,10 +933,36 @@ fn handle_skl_command(
                 );
             }
 
+            let local_skills = match skills_registry::discover_local_skills() {
+                Ok(skills) => skills,
+                Err(error) => {
+                    return RuntimeCommandResponse::rejected(
+                        envelope.command_seq,
+                        RuntimeLane::SklDiscoveryTrust,
+                        RuntimeCommandKind::SubmitSkillSearch,
+                        RuntimeCommandErrorClass::Validation,
+                        error,
+                    );
+                }
+            };
+            let normalized_query = query.trim().to_lowercase();
+            let match_count = local_skills
+                .iter()
+                .filter(|skill| {
+                    skill.slug().to_lowercase().contains(&normalized_query)
+                        || skill.name.to_lowercase().contains(&normalized_query)
+                })
+                .take(limit as usize)
+                .count();
+
             let request_event_id = next_event_id("skl", KIND_SKILL_SEARCH_REQUEST, next_event_seq);
             let result_event_id = next_event_id("skl", KIND_SKILL_SEARCH_RESULT, next_event_seq);
             snapshot.search_result_event_id = Some(result_event_id);
-            snapshot.last_error = None;
+            snapshot.last_error = if match_count == 0 {
+                Some(format!("no local skills matched query '{}'", query.trim()))
+            } else {
+                None
+            };
             *snapshot_changed = true;
             RuntimeCommandResponse::accepted(
                 envelope.command_seq,
@@ -1264,6 +1364,34 @@ mod tests {
         assert_eq!(
             response.error.as_ref().map(|error| error.class),
             Some(RuntimeCommandErrorClass::Dependency)
+        );
+        assert!(!snapshot_changed);
+    }
+
+    #[test]
+    fn skl_manifest_publish_rejects_unknown_local_skill() {
+        let mut snapshot = SklLaneSnapshot::default();
+        let mut next_event_seq = 1;
+        let mut provisional_since = None;
+        let mut snapshot_changed = false;
+        let response = handle_skl_command(
+            &mut snapshot,
+            &mut next_event_seq,
+            &mut provisional_since,
+            super::SequencedSklCommand {
+                command_seq: 21,
+                command: SklDiscoveryTrustCommand::PublishSkillManifest {
+                    skill_slug: "this-skill-should-not-exist-9f13d9d6".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+            },
+            &mut snapshot_changed,
+        );
+
+        assert_eq!(response.status, RuntimeCommandStatus::Rejected);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.class),
+            Some(RuntimeCommandErrorClass::Validation)
         );
         assert!(!snapshot_changed);
     }

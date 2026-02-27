@@ -10,6 +10,7 @@ mod pane_system;
 mod panes;
 mod render;
 mod runtime_lanes;
+mod skills_registry;
 mod spark_pane;
 mod spark_wallet;
 mod state;

@@ -115,10 +115,6 @@ pub(super) fn run_skill_registry_action(
                 Ok(command_seq) => {
                     state.skill_registry.last_error = None;
                     state.skill_registry.load_state = PaneLoadState::Ready;
-                    state.skill_registry.manifest_a = Some(format!(
-                        "33400:npub1agent:{}:{}",
-                        state.skill_registry.manifest_slug, state.skill_registry.manifest_version
-                    ));
                     state.skill_registry.last_action =
                         Some(format!("Queued install command #{command_seq}"));
                 }
