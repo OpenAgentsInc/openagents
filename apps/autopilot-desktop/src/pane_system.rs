@@ -10,12 +10,14 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     chat as chat_pane, relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
-use crate::render::logical_size;
+use crate::render::{logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds};
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
 pub const PANE_TITLE_HEIGHT: f32 = 28.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
+/// Default target width for the global sidebar when open.
+pub const SIDEBAR_DEFAULT_WIDTH: f32 = 300.0;
 const PANE_MARGIN: f32 = 18.0;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
@@ -255,13 +257,16 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     state.next_pane_id = state.next_pane_id.saturating_add(1);
 
     let logical = logical_size(&state.config, state.scale_factor);
+    let sidebar_width = if state.sidebar.is_open {
+        state.sidebar.width.min(logical.width.max(0.0))
+    } else {
+        0.0
+    };
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
-    let bounds = clamp_bounds_to_window(
-        Bounds::new(x, y, descriptor.width, descriptor.height),
-        logical,
-    );
+    let bounds =
+        clamp_bounds_to_window(Bounds::new(x, y, descriptor.width, descriptor.height), logical, sidebar_width);
 
     let title = pane_title(descriptor.kind, id);
     let pane = DesktopPane {
@@ -434,6 +439,11 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
     };
 
     let logical = logical_size(&state.config, state.scale_factor);
+    let sidebar_width = if state.sidebar.is_open {
+        state.sidebar.width.min(logical.width.max(0.0))
+    } else {
+        0.0
+    };
 
     match mode {
         PaneDragMode::Moving {
@@ -451,7 +461,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     start_bounds.size.width,
                     start_bounds.size.height,
                 );
-                pane.bounds = clamp_bounds_to_window(next, logical);
+                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width);
                 return true;
             }
         }
@@ -468,7 +478,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     start_mouse,
                     current_mouse,
                 );
-                pane.bounds = clamp_bounds_to_window(next, logical);
+                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width);
                 return true;
             }
         }
@@ -495,6 +505,20 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             PaneDragMode::Moving { .. } => CursorIcon::Move,
             PaneDragMode::Resizing { edge, .. } => cursor_icon_for_resize_edge(edge),
         };
+    }
+
+    let handle_bounds = sidebar_handle_bounds(state);
+    if handle_bounds.contains(point) {
+        return if state.sidebar.is_pressed && state.sidebar.is_dragging {
+            CursorIcon::Grabbing
+        } else {
+            CursorIcon::Grab
+        };
+    }
+
+    let go_online_bounds = sidebar_go_online_button_bounds(state);
+    if go_online_bounds.size.width > 0.0 && go_online_bounds.contains(point) {
+        return CursorIcon::Pointer;
     }
 
     if state.hotbar_bounds.contains(point) {
@@ -2026,20 +2050,37 @@ fn cursor_icon_for_resize_edge(edge: ResizeEdge) -> CursorIcon {
     }
 }
 
-fn clamp_bounds_to_window(bounds: Bounds, window_size: Size) -> Bounds {
-    let max_width = (window_size.width - PANE_MARGIN * 2.0).max(PANE_MIN_WIDTH);
+fn clamp_bounds_to_window(bounds: Bounds, window_size: Size, sidebar_width: f32) -> Bounds {
+    // Keep panes within the main canvas area and out from under the right sidebar.
+    let reserved_sidebar = sidebar_width.max(0.0);
+    let available_width = window_size.width - reserved_sidebar - PANE_MARGIN * 2.0;
+    let max_width = available_width.max(PANE_MIN_WIDTH);
     let width = bounds.size.width.clamp(PANE_MIN_WIDTH, max_width);
 
     let max_height = (window_size.height - PANE_MARGIN - PANE_BOTTOM_RESERVED).max(PANE_MIN_HEIGHT);
     let height = bounds.size.height.clamp(PANE_MIN_HEIGHT, max_height);
 
-    let max_x = (window_size.width - width - PANE_MARGIN).max(PANE_MARGIN);
+    let max_x = (window_size.width - reserved_sidebar - width - PANE_MARGIN).max(PANE_MARGIN);
     let max_y = (window_size.height - height - PANE_BOTTOM_RESERVED).max(PANE_MARGIN);
 
     let x = bounds.origin.x.clamp(PANE_MARGIN, max_x);
     let y = bounds.origin.y.clamp(PANE_MARGIN, max_y);
 
     Bounds::new(x, y, width, height)
+}
+
+/// Re-clamp all pane bounds to the current window and sidebar so panes never overlap the sidebar.
+/// Call this when the sidebar width or window size changes (e.g. during sidebar drag).
+pub fn clamp_all_panes_to_window(state: &mut RenderState) {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let sidebar_width = if state.sidebar.is_open {
+        state.sidebar.width.min(logical.width.max(0.0))
+    } else {
+        0.0
+    };
+    for pane in state.panes.iter_mut() {
+        pane.bounds = clamp_bounds_to_window(pane.bounds, logical, sidebar_width);
+    }
 }
 
 #[cfg(test)]

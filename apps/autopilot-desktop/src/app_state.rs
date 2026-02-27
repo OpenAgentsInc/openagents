@@ -277,6 +277,33 @@ impl Default for AutopilotChatState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct SidebarState {
+    pub width: f32,
+    pub is_open: bool,
+    pub is_pressed: bool,
+    pub is_dragging: bool,
+    pub drag_start_x: f32,
+    pub drag_start_width: f32,
+    pub settings_hover: bool,
+    pub settings_tooltip_t: f32,
+}
+
+impl Default for SidebarState {
+    fn default() -> Self {
+        Self {
+            width: 300.0,
+            is_open: true,
+            is_pressed: false,
+            is_dragging: false,
+            drag_start_x: 0.0,
+            drag_start_width: 300.0,
+            settings_hover: false,
+            settings_tooltip_t: 0.0,
+        }
+    }
+}
+
 impl AutopilotChatState {
     pub fn submit_prompt(&mut self, now: Instant, prompt: String) {
         self.last_error = None;
@@ -2421,6 +2448,7 @@ pub struct RenderState {
     pub agent_network_simulation: AgentNetworkSimulationPaneState,
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
+    pub sidebar: SidebarState,
     pub next_pane_id: u64,
     pub next_z_index: i32,
     pub pane_drag_mode: Option<PaneDragMode>,
