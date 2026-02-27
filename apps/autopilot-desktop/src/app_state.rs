@@ -2541,47 +2541,6 @@ impl Default for ProviderRuntimeState {
 }
 
 impl ProviderRuntimeState {
-    pub fn toggle_online(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
-        if self.mode == ProviderMode::Offline {
-            self.start_online(now, blockers);
-        } else {
-            self.go_offline(now);
-        }
-    }
-
-    pub fn tick(&mut self, now: Instant, blockers: &[ProviderBlocker]) -> bool {
-        let mut changed = false;
-
-        if self.mode == ProviderMode::Connecting
-            && self.connecting_until.is_some_and(|until| now >= until)
-        {
-            if blockers.is_empty() {
-                self.mode = ProviderMode::Online;
-                self.mode_changed_at = now;
-                self.connecting_until = None;
-                self.online_since = Some(now);
-                self.last_heartbeat_at = Some(now);
-                self.degraded_reason_code = None;
-                self.last_error_detail = None;
-            } else {
-                self.move_degraded(now, blockers);
-            }
-            changed = true;
-        }
-
-        if self.mode == ProviderMode::Online {
-            let should_heartbeat = self
-                .last_heartbeat_at
-                .is_none_or(|last| now.duration_since(last) >= self.heartbeat_interval);
-            if should_heartbeat {
-                self.last_heartbeat_at = Some(now);
-                changed = true;
-            }
-        }
-
-        changed
-    }
-
     pub fn uptime_seconds(&self, now: Instant) -> u64 {
         self.online_since
             .and_then(|started| now.checked_duration_since(started))
@@ -2592,45 +2551,6 @@ impl ProviderRuntimeState {
         self.last_heartbeat_at
             .and_then(|last| now.checked_duration_since(last))
             .map(|duration| duration.as_secs())
-    }
-
-    fn start_online(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
-        if blockers.is_empty() {
-            self.mode = ProviderMode::Connecting;
-            self.mode_changed_at = now;
-            self.connecting_until = Some(now + Duration::from_millis(900));
-            self.degraded_reason_code = None;
-            self.last_error_detail = None;
-        } else {
-            self.move_degraded(now, blockers);
-        }
-    }
-
-    fn go_offline(&mut self, now: Instant) {
-        self.mode = ProviderMode::Offline;
-        self.mode_changed_at = now;
-        self.connecting_until = None;
-        self.online_since = None;
-        self.last_heartbeat_at = None;
-        self.queue_depth = 0;
-        self.degraded_reason_code = None;
-        self.last_error_detail = None;
-    }
-
-    fn move_degraded(&mut self, now: Instant, blockers: &[ProviderBlocker]) {
-        self.mode = ProviderMode::Degraded;
-        self.mode_changed_at = now;
-        self.connecting_until = None;
-        self.online_since = None;
-        self.last_heartbeat_at = None;
-        self.degraded_reason_code = blockers.first().map(|blocker| blocker.code().to_string());
-        self.last_error_detail = Some(
-            blockers
-                .iter()
-                .map(|blocker| blocker.detail())
-                .collect::<Vec<_>>()
-                .join("; "),
-        );
     }
 }
 
@@ -2828,8 +2748,8 @@ mod tests {
         AutopilotMessageStatus, EarningsScoreboardState, JobHistoryState, JobHistoryStatus,
         JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
         JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkRequestStatus,
-        NetworkRequestsState, NostrSecretState, ProviderBlocker, ProviderMode,
-        ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow, RelayConnectionStatus,
+        NetworkRequestsState, NostrSecretState, ProviderRuntimeState, RecoveryAlertRow,
+        RelayConnectionRow, RelayConnectionStatus,
         RelayConnectionsState, SettingsState, SparkPaneState, StarterJobRow, StarterJobStatus,
         StarterJobsState, SyncHealthState, SyncRecoveryPhase,
     };
@@ -2972,32 +2892,6 @@ mod tests {
         let expired_at = now + std::time::Duration::from_secs(5);
         assert!(state.expire(expired_at));
         assert!(state.copy_notice.is_none());
-    }
-
-    #[test]
-    fn provider_state_connects_then_becomes_online() {
-        let mut provider = ProviderRuntimeState::default();
-        let now = std::time::Instant::now();
-        provider.toggle_online(now, &[]);
-        assert_eq!(provider.mode, ProviderMode::Connecting);
-
-        let advanced = now + std::time::Duration::from_secs(1);
-        assert!(provider.tick(advanced, &[]));
-        assert_eq!(provider.mode, ProviderMode::Online);
-        assert!(provider.online_since.is_some());
-        assert!(provider.last_heartbeat_at.is_some());
-    }
-
-    #[test]
-    fn provider_state_enters_degraded_when_blocked() {
-        let mut provider = ProviderRuntimeState::default();
-        let now = std::time::Instant::now();
-        provider.toggle_online(now, &[ProviderBlocker::IdentityMissing]);
-        assert_eq!(provider.mode, ProviderMode::Degraded);
-        assert_eq!(
-            provider.degraded_reason_code.as_deref(),
-            Some(ProviderBlocker::IdentityMissing.code())
-        );
     }
 
     #[test]

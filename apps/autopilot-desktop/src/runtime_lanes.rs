@@ -53,7 +53,6 @@ pub enum RuntimeCommandErrorClass {
     Validation,
     Dependency,
     Transport,
-    Internal,
 }
 
 impl RuntimeCommandErrorClass {
@@ -62,7 +61,6 @@ impl RuntimeCommandErrorClass {
             Self::Validation => "validation",
             Self::Dependency => "dependency",
             Self::Transport => "transport",
-            Self::Internal => "internal",
         }
     }
 }
@@ -80,7 +78,6 @@ pub enum RuntimeCommandKind {
     PublishAgentState,
     ConfigureAgentSchedule,
     PublishTickRequest,
-    PublishTickResult,
     PublishSkillManifest,
     PublishSkillVersionLog,
     SubmitSkillSearch,
@@ -100,7 +97,6 @@ impl RuntimeCommandKind {
             Self::PublishAgentState => "PublishAgentState",
             Self::ConfigureAgentSchedule => "ConfigureAgentSchedule",
             Self::PublishTickRequest => "PublishTickRequest",
-            Self::PublishTickResult => "PublishTickResult",
             Self::PublishSkillManifest => "PublishSkillManifest",
             Self::PublishSkillVersionLog => "PublishSkillVersionLog",
             Self::SubmitSkillSearch => "SubmitSkillSearch",
@@ -187,7 +183,6 @@ pub enum SaRunnerMode {
     Offline,
     Connecting,
     Online,
-    Degraded,
 }
 
 impl SaRunnerMode {
@@ -196,7 +191,6 @@ impl SaRunnerMode {
             Self::Offline => "offline",
             Self::Connecting => "connecting",
             Self::Online => "online",
-            Self::Degraded => "degraded",
         }
     }
 }
@@ -250,7 +244,6 @@ pub enum SkillTrustTier {
     Unknown,
     Provisional,
     Trusted,
-    Revoked,
 }
 
 impl SkillTrustTier {
@@ -259,7 +252,6 @@ impl SkillTrustTier {
             Self::Unknown => "unknown",
             Self::Provisional => "provisional",
             Self::Trusted => "trusted",
-            Self::Revoked => "revoked",
         }
     }
 }
@@ -338,10 +330,6 @@ pub enum SaLifecycleCommand {
     },
     PublishTickRequest {
         reason: String,
-    },
-    PublishTickResult {
-        tick_request_event_id: String,
-        outcome: String,
     },
 }
 
@@ -748,45 +736,6 @@ fn handle_sa_command(
                 envelope.command_seq,
                 RuntimeLane::SaLifecycle,
                 RuntimeCommandKind::PublishTickRequest,
-                event_id,
-            )
-        }
-        SaLifecycleCommand::PublishTickResult {
-            tick_request_event_id,
-            outcome,
-        } => {
-            if outcome.trim().is_empty() {
-                return RuntimeCommandResponse::rejected(
-                    envelope.command_seq,
-                    RuntimeLane::SaLifecycle,
-                    RuntimeCommandKind::PublishTickResult,
-                    RuntimeCommandErrorClass::Validation,
-                    "tick outcome cannot be empty",
-                );
-            }
-            if snapshot
-                .last_tick_request_event_id
-                .as_deref()
-                .is_none_or(|event_id| event_id != tick_request_event_id.trim())
-            {
-                return RuntimeCommandResponse::rejected(
-                    envelope.command_seq,
-                    RuntimeLane::SaLifecycle,
-                    RuntimeCommandKind::PublishTickResult,
-                    RuntimeCommandErrorClass::Validation,
-                    "tick_request_event_id does not match latest published tick request",
-                );
-            }
-
-            let event_id = next_event_id("sa", KIND_TICK_RESULT, next_event_seq);
-            snapshot.last_tick_result_event_id = Some(event_id.clone());
-            snapshot.queue_depth = snapshot.queue_depth.saturating_sub(1);
-            snapshot.last_result = Some(outcome.trim().to_string());
-            *snapshot_changed = true;
-            RuntimeCommandResponse::accepted(
-                envelope.command_seq,
-                RuntimeLane::SaLifecycle,
-                RuntimeCommandKind::PublishTickResult,
                 event_id,
             )
         }

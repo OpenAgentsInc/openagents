@@ -428,6 +428,10 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
                 Err(error) => {
                     state.provider_runtime.last_result = Some(error.clone());
                     state.provider_runtime.last_error_detail = Some(error);
+                    state.provider_runtime.mode = ProviderMode::Degraded;
+                    state.provider_runtime.degraded_reason_code =
+                        Some("SA_COMMAND_QUEUE_ERROR".to_string());
+                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
                     state.provider_runtime.last_authoritative_status =
                         Some(RuntimeCommandStatus::Retryable.label().to_string());
                     state.provider_runtime.last_authoritative_event_id = None;
@@ -1195,7 +1199,6 @@ fn run_skill_trust_revocation_action(
                 crate::runtime_lanes::SkillTrustTier::Unknown => 0,
                 crate::runtime_lanes::SkillTrustTier::Provisional => 1,
                 crate::runtime_lanes::SkillTrustTier::Trusted => 3,
-                crate::runtime_lanes::SkillTrustTier::Revoked => 2,
             };
             state.skill_trust_revocation.attestation_count = trust_count;
             state.skill_trust_revocation.last_error = None;
@@ -2169,7 +2172,6 @@ fn apply_sa_lane_snapshot(
         SaRunnerMode::Offline => ProviderMode::Offline,
         SaRunnerMode::Connecting => ProviderMode::Connecting,
         SaRunnerMode::Online => ProviderMode::Online,
-        SaRunnerMode::Degraded => ProviderMode::Degraded,
     };
     state.provider_runtime.mode_changed_at = snapshot.mode_changed_at;
     state.provider_runtime.connecting_until = snapshot.connect_until;
@@ -2262,7 +2264,6 @@ fn sync_skill_pane_snapshots(state: &mut crate::app_state::RenderState) {
         crate::runtime_lanes::SkillTrustTier::Unknown => 0,
         crate::runtime_lanes::SkillTrustTier::Provisional => 1,
         crate::runtime_lanes::SkillTrustTier::Trusted => 3,
-        crate::runtime_lanes::SkillTrustTier::Revoked => 2,
     };
     if state.skill_trust_revocation.manifest_a.is_some() {
         state.skill_trust_revocation.load_state = crate::app_state::PaneLoadState::Ready;
@@ -2308,6 +2309,13 @@ fn apply_runtime_command_response(
                     .as_ref()
                     .map(|error| error.message.clone())
                     .or_else(|| Some("SA lane command rejected".to_string()));
+                state.provider_runtime.mode = ProviderMode::Degraded;
+                state.provider_runtime.degraded_reason_code = response
+                    .error
+                    .as_ref()
+                    .map(|error| format!("SA_{}", error.class.label().to_ascii_uppercase()))
+                    .or_else(|| Some("SA_COMMAND_REJECTED".to_string()));
+                state.provider_runtime.mode_changed_at = std::time::Instant::now();
                 let error = response.error.as_ref().map_or_else(
                     || "SA lane command rejected".to_string(),
                     |err| err.message.clone(),
