@@ -41,6 +41,7 @@ cargo clippy --workspace --lib --bins --examples --message-format=json -- -W cli
 python3 - "$ROOT_DIR" "$changed_tmp" "$clippy_tmp" "$ALLOWLIST_FILE" <<'PY'
 import json
 import pathlib
+import re
 import sys
 from collections import defaultdict
 
@@ -56,13 +57,48 @@ changed = {
 }
 
 allowlisted = set()
+date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+required_fields = {"owner", "added", "reason"}
+timebound_fields = {"review_cadence", "expiry_issue", "expires_on"}
 for raw in allowlist_path.read_text().splitlines():
     line = raw.strip()
     if not line or line.startswith("#"):
         continue
     fields = [field.strip() for field in line.split("|")]
-    if len(fields) < 4:
-        print(f"Invalid allowlist entry (expected 4+ fields): {raw}", file=sys.stderr)
+    if len(fields) < 5:
+        print(f"Invalid allowlist entry (expected 5+ fields): {raw}", file=sys.stderr)
+        sys.exit(1)
+    metadata = {}
+    for field in fields[1:]:
+        if ":" not in field:
+            print(f"Invalid allowlist metadata field: {field}", file=sys.stderr)
+            sys.exit(1)
+        key, value = field.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            print(f"Invalid allowlist metadata field: {field}", file=sys.stderr)
+            sys.exit(1)
+        metadata[key] = value
+    missing = sorted(required_fields - metadata.keys())
+    if missing:
+        print(
+            f"Invalid allowlist entry (missing required metadata: {', '.join(missing)}): {raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not date_re.match(metadata["added"]):
+        print(
+            f"Invalid allowlist entry (added must be YYYY-MM-DD): {raw}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not any(key in metadata for key in timebound_fields):
+        print(
+            "Invalid allowlist entry (missing time-bound metadata: review_cadence, expiry_issue, or expires_on): "
+            f"{raw}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     allowlisted.add(fields[0])
 

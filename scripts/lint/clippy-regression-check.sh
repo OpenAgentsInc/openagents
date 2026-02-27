@@ -14,6 +14,11 @@ if ! "$ROOT_DIR/scripts/lint/workspace-dependency-drift-check.sh"; then
     exit 1
 fi
 
+if ! "$ROOT_DIR/scripts/lint/clippy-debt-allowlist-check.sh"; then
+    printf 'Clippy debt allowlist validation failed.\n' >&2
+    exit 1
+fi
+
 if ! "$ROOT_DIR/scripts/lint/touched-clippy-gate.sh"; then
     printf 'Touched-file clippy gate failed.\n' >&2
     exit 1
