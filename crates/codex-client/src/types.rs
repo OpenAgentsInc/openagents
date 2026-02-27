@@ -126,6 +126,8 @@ pub struct ThreadStartResponse {
 pub struct ThreadResumeParams {
     pub thread_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
@@ -196,6 +198,8 @@ pub struct ThreadListParams {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_providers: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,9 +211,15 @@ pub struct ThreadSummary {
     #[serde(default)]
     pub model_provider: String,
     #[serde(default)]
-    pub cwd: Option<String>,
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub path: Option<PathBuf>,
     #[serde(default)]
     pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

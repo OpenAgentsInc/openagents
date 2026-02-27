@@ -172,7 +172,7 @@ pub enum CodexLaneNotification {
         default_model: Option<String>,
     },
     ThreadListLoaded {
-        thread_ids: Vec<String>,
+        entries: Vec<CodexThreadListEntry>,
     },
     ThreadSelected {
         thread_id: String,
@@ -222,6 +222,13 @@ pub struct CodexSkillSummary {
     pub enabled: bool,
     pub interface_display_name: Option<String>,
     pub dependency_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexThreadListEntry {
+    pub thread_id: String,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -434,7 +441,11 @@ impl CodexLaneState {
                         ));
                         let _ = update_tx.send(CodexLaneUpdate::Notification(
                             CodexLaneNotification::ThreadListLoaded {
-                                thread_ids: vec![thread_id],
+                                entries: vec![CodexThreadListEntry {
+                                    thread_id,
+                                    cwd: config.cwd.as_ref().map(|value| value.display().to_string()),
+                                    path: None,
+                                }],
                             },
                         ));
                         self.set_ready(update_tx, "Codex lane ready");
@@ -570,10 +581,18 @@ impl CodexLaneState {
             }
             CodexLaneCommand::ThreadList(params) => {
                 let response = runtime.block_on(client.thread_list(params))?;
-                let thread_ids = response.data.into_iter().map(|thread| thread.id).collect();
+                let entries = response
+                    .data
+                    .into_iter()
+                    .map(|thread| CodexThreadListEntry {
+                        thread_id: thread.id,
+                        cwd: thread.cwd.map(|value| value.display().to_string()),
+                        path: thread.path.map(|value| value.display().to_string()),
+                    })
+                    .collect();
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: Some(CodexLaneNotification::ThreadListLoaded { thread_ids }),
+                    notification: Some(CodexLaneNotification::ThreadListLoaded { entries }),
                 })
             }
             CodexLaneCommand::TurnStart(params) => {

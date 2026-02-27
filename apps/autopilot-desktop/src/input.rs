@@ -802,7 +802,13 @@ fn assemble_chat_turn_input(
 }
 
 fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
-    let command = crate::codex_lane::CodexLaneCommand::ThreadList(ThreadListParams::default());
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|value| value.into_os_string().into_string().ok());
+    let command = crate::codex_lane::CodexLaneCommand::ThreadList(ThreadListParams {
+        cwd,
+        ..ThreadListParams::default()
+    });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);
     } else {
@@ -817,17 +823,23 @@ fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> boo
 }
 
 fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, index: usize) -> bool {
-    let Some(thread_id) = state.autopilot_chat.select_thread_by_index(index) else {
+    let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
 
+    eprintln!(
+        "codex thread/resume target id={} cwd={:?} path={:?}",
+        target.thread_id, target.cwd, target.path
+    );
+
     let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
-        thread_id,
+        thread_id: target.thread_id,
         model: None,
         model_provider: None,
-        cwd: None,
+        cwd: target.cwd,
         approval_policy: None,
         sandbox: None,
+        path: target.path.map(std::path::PathBuf::from),
     });
     if let Err(error) = state.queue_codex_command(command) {
         state.autopilot_chat.last_error = Some(error);

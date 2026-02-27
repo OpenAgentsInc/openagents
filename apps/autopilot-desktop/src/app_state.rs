@@ -256,12 +256,32 @@ pub struct AutopilotMessage {
     pub content: String,
 }
 
+#[derive(Clone)]
+pub struct AutopilotThreadMetadata {
+    pub cwd: Option<String>,
+    pub path: Option<String>,
+}
+
+pub struct AutopilotThreadResumeTarget {
+    pub thread_id: String,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AutopilotThreadListEntry {
+    pub thread_id: String,
+    pub cwd: Option<String>,
+    pub path: Option<String>,
+}
+
 pub struct AutopilotChatState {
     pub connection_status: String,
     pub models: Vec<String>,
     pub selected_model: usize,
     pub reasoning_effort: Option<String>,
     pub threads: Vec<String>,
+    pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub active_thread_id: Option<String>,
     pub messages: Vec<AutopilotMessage>,
     pub next_message_id: u64,
@@ -282,6 +302,7 @@ impl Default for AutopilotChatState {
             selected_model: 0,
             reasoning_effort: Some("medium".to_string()),
             threads: Vec::new(),
+            thread_metadata: std::collections::HashMap::new(),
             active_thread_id: None,
             messages: vec![AutopilotMessage {
                 id: 1,
@@ -345,8 +366,18 @@ impl AutopilotChatState {
         self.connection_status = status.into();
     }
 
-    pub fn set_threads(&mut self, threads: Vec<String>) {
-        self.threads = threads;
+    pub fn set_thread_entries(&mut self, entries: Vec<AutopilotThreadListEntry>) {
+        self.threads = entries.iter().map(|entry| entry.thread_id.clone()).collect();
+        self.thread_metadata.clear();
+        for entry in entries {
+            self.thread_metadata.insert(
+                entry.thread_id.clone(),
+                AutopilotThreadMetadata {
+                    cwd: entry.cwd,
+                    path: entry.path,
+                },
+            );
+        }
         if let Some(active_id) = self.active_thread_id.as_ref() {
             if !self.threads.iter().any(|thread_id| thread_id == active_id) {
                 self.active_thread_id = self.threads.first().cloned();
@@ -356,11 +387,16 @@ impl AutopilotChatState {
         }
     }
 
-    pub fn select_thread_by_index(&mut self, index: usize) -> Option<String> {
+    pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
         let thread_id = self.threads.get(index).cloned()?;
         self.active_thread_id = Some(thread_id.clone());
         self.last_error = None;
-        Some(thread_id)
+        let metadata = self.thread_metadata.get(&thread_id).cloned();
+        Some(AutopilotThreadResumeTarget {
+            thread_id,
+            cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
+            path: metadata.and_then(|value| value.path),
+        })
     }
 
     pub fn ensure_thread(&mut self, thread_id: String) {

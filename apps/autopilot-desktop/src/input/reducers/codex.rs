@@ -35,6 +35,16 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .clone()
                     .unwrap_or_else(|| "turn/start rejected".to_string()),
             );
+        } else if response.command == CodexLaneCommandKind::ThreadResume {
+            let message = response
+                .error
+                .clone()
+                .unwrap_or_else(|| "thread/resume rejected".to_string());
+            eprintln!(
+                "codex thread/resume rejected seq={} active_thread={:?} error={}",
+                response.command_seq, state.autopilot_chat.active_thread_id, message
+            );
+            state.autopilot_chat.last_error = Some(message);
         } else if response.command == CodexLaneCommandKind::SkillsList {
             state.skill_registry.load_state = PaneLoadState::Error;
             state.skill_registry.last_error = response
@@ -149,8 +159,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state.skill_registry.discovery_errors.first().cloned();
             }
         }
-        CodexLaneNotification::ThreadListLoaded { thread_ids } => {
-            state.autopilot_chat.set_threads(thread_ids);
+        CodexLaneNotification::ThreadListLoaded { entries } => {
+            eprintln!("codex thread/list loaded {} entries", entries.len());
+            state.autopilot_chat.set_thread_entries(
+                entries
+                    .into_iter()
+                    .map(|entry| crate::app_state::AutopilotThreadListEntry {
+                        thread_id: entry.thread_id,
+                        cwd: entry.cwd,
+                        path: entry.path,
+                    })
+                    .collect(),
+            );
         }
         CodexLaneNotification::ThreadSelected { thread_id }
         | CodexLaneNotification::ThreadStarted { thread_id } => {
