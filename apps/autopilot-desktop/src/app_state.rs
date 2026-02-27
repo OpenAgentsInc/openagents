@@ -49,6 +49,9 @@ pub enum PaneKind {
     CodexAccount,
     CodexModels,
     CodexConfig,
+    CodexMcp,
+    CodexApps,
+    CodexRemoteSkills,
     GoOnline,
     ProviderStatus,
     EarningsScoreboard,
@@ -1946,6 +1949,100 @@ impl Default for CodexConfigPaneState {
     }
 }
 
+pub struct CodexMcpServerEntryState {
+    pub name: String,
+    pub auth_status: String,
+    pub tool_count: usize,
+    pub resource_count: usize,
+    pub template_count: usize,
+}
+
+pub struct CodexMcpPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub servers: Vec<CodexMcpServerEntryState>,
+    pub selected_server_index: Option<usize>,
+    pub last_oauth_url: Option<String>,
+    pub last_oauth_result: Option<String>,
+    pub next_cursor: Option<String>,
+}
+
+impl Default for CodexMcpPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for mcpServerStatus/list".to_string()),
+            servers: Vec::new(),
+            selected_server_index: None,
+            last_oauth_url: None,
+            last_oauth_result: None,
+            next_cursor: None,
+        }
+    }
+}
+
+pub struct CodexAppEntryState {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_accessible: bool,
+    pub is_enabled: bool,
+}
+
+pub struct CodexAppsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub apps: Vec<CodexAppEntryState>,
+    pub selected_app_index: Option<usize>,
+    pub next_cursor: Option<String>,
+    pub update_count: u64,
+}
+
+impl Default for CodexAppsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for app/list".to_string()),
+            apps: Vec::new(),
+            selected_app_index: None,
+            next_cursor: None,
+            update_count: 0,
+        }
+    }
+}
+
+pub struct CodexRemoteSkillEntryState {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+pub struct CodexRemoteSkillsPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub skills: Vec<CodexRemoteSkillEntryState>,
+    pub selected_skill_index: Option<usize>,
+    pub last_exported_path: Option<String>,
+}
+
+impl Default for CodexRemoteSkillsPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for skills/remote/list".to_string()),
+            skills: Vec::new(),
+            selected_skill_index: None,
+            last_exported_path: None,
+        }
+    }
+}
+
 pub struct AgentProfileStatePaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2977,6 +3074,9 @@ impl_pane_status_access!(
     CodexAccountPaneState,
     CodexModelsPaneState,
     CodexConfigPaneState,
+    CodexMcpPaneState,
+    CodexAppsPaneState,
+    CodexRemoteSkillsPaneState,
     RelayConnectionsState,
     SyncHealthState,
     NetworkRequestsState,
@@ -3030,6 +3130,9 @@ pub struct RenderState {
     pub codex_account: CodexAccountPaneState,
     pub codex_models: CodexModelsPaneState,
     pub codex_config: CodexConfigPaneState,
+    pub codex_mcp: CodexMcpPaneState,
+    pub codex_apps: CodexAppsPaneState,
+    pub codex_remote_skills: CodexRemoteSkillsPaneState,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_worker: CodexLaneWorker,
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,

@@ -2,7 +2,8 @@ use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
     AlertSeverity, AlertsRecoveryState, AutopilotChatState, ChatPaneInputs, CodexAccountPaneState,
-    CodexConfigPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CreditDeskPaneState,
+    CodexAppsPaneState, CodexConfigPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CodexRemoteSkillsPaneState, CreateInvoicePaneInputs, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
@@ -57,6 +58,9 @@ impl PaneRenderer {
         codex_account: &CodexAccountPaneState,
         codex_models: &CodexModelsPaneState,
         codex_config: &CodexConfigPaneState,
+        codex_mcp: &CodexMcpPaneState,
+        codex_apps: &CodexAppsPaneState,
+        codex_remote_skills: &CodexRemoteSkillsPaneState,
         sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
         ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
@@ -133,6 +137,19 @@ impl PaneRenderer {
                 }
                 PaneKind::CodexConfig => {
                     codex_pane::paint_config_pane(content_bounds, codex_config, paint);
+                }
+                PaneKind::CodexMcp => {
+                    codex_pane::paint_mcp_pane(content_bounds, codex_mcp, paint);
+                }
+                PaneKind::CodexApps => {
+                    codex_pane::paint_apps_pane(content_bounds, codex_apps, paint);
+                }
+                PaneKind::CodexRemoteSkills => {
+                    codex_pane::paint_remote_skills_pane(
+                        content_bounds,
+                        codex_remote_skills,
+                        paint,
+                    );
                 }
                 PaneKind::GoOnline => {
                     paint_go_online_pane(

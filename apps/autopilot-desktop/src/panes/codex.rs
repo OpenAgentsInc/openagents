@@ -1,6 +1,9 @@
 use wgpui::PaintContext;
 
-use crate::app_state::{CodexAccountPaneState, CodexConfigPaneState, CodexModelsPaneState};
+use crate::app_state::{
+    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexMcpPaneState,
+    CodexModelsPaneState, CodexRemoteSkillsPaneState,
+};
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
     paint_state_summary,
@@ -8,11 +11,16 @@ use crate::pane_renderer::{
 use crate::pane_system::{
     codex_account_cancel_login_button_bounds, codex_account_login_button_bounds,
     codex_account_logout_button_bounds, codex_account_rate_limits_button_bounds,
-    codex_account_refresh_button_bounds, codex_config_batch_write_button_bounds,
+    codex_account_refresh_button_bounds, codex_apps_refresh_button_bounds, codex_apps_row_bounds,
+    codex_apps_visible_row_count, codex_config_batch_write_button_bounds,
     codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
     codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-    codex_config_write_button_bounds, codex_models_refresh_button_bounds,
-    codex_models_toggle_hidden_button_bounds,
+    codex_config_write_button_bounds, codex_mcp_login_button_bounds,
+    codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds, codex_mcp_row_bounds,
+    codex_mcp_visible_row_count, codex_models_refresh_button_bounds,
+    codex_models_toggle_hidden_button_bounds, codex_remote_skills_export_button_bounds,
+    codex_remote_skills_refresh_button_bounds, codex_remote_skills_row_bounds,
+    codex_remote_skills_visible_row_count,
 };
 
 pub fn paint_account_pane(
@@ -223,4 +231,262 @@ pub fn paint_config_pane(
         "Requirements",
         &pane_state.requirements_json,
     );
+}
+
+pub fn paint_mcp_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &CodexMcpPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "codex", paint);
+
+    let refresh = codex_mcp_refresh_button_bounds(content_bounds);
+    let login = codex_mcp_login_button_bounds(content_bounds);
+    let reload = codex_mcp_reload_button_bounds(content_bounds);
+    paint_action_button(refresh, "Refresh MCP", paint);
+    paint_action_button(login, "OAuth Selected", paint);
+    paint_action_button(reload, "Reload MCP Config", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        refresh.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Servers",
+        &pane_state.servers.len().to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Selected server",
+        pane_state
+            .selected_server_index
+            .and_then(|idx| pane_state.servers.get(idx))
+            .map(|entry| entry.name.as_str())
+            .unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OAuth URL",
+        pane_state.last_oauth_url.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "OAuth result",
+        pane_state.last_oauth_result.as_deref().unwrap_or("n/a"),
+    );
+
+    let visible_rows = codex_mcp_visible_row_count(pane_state.servers.len());
+    for row_index in 0..visible_rows {
+        let row = &pane_state.servers[row_index];
+        let row_bounds = codex_mcp_row_bounds(content_bounds, row_index);
+        let selected = pane_state.selected_server_index == Some(row_index);
+        paint.scene.draw_quad(
+            wgpui::Quad::new(row_bounds)
+                .with_background(if selected {
+                    wgpui::theme::bg::APP.with_alpha(0.88)
+                } else {
+                    wgpui::theme::bg::APP.with_alpha(0.72)
+                })
+                .with_border(wgpui::theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "{} auth={} tools={} resources={} templates={}",
+                row.name, row.auth_status, row.tool_count, row.resource_count, row.template_count
+            ),
+            wgpui::Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected {
+                wgpui::theme::text::PRIMARY
+            } else {
+                wgpui::theme::text::MUTED
+            },
+        ));
+    }
+
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No MCP servers returned yet.",
+            wgpui::Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            wgpui::theme::text::MUTED,
+        ));
+    }
+}
+
+pub fn paint_apps_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &CodexAppsPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "codex", paint);
+
+    let refresh = codex_apps_refresh_button_bounds(content_bounds);
+    paint_action_button(refresh, "Refresh Apps", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        refresh.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Apps",
+        &pane_state.apps.len().to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Updates seen",
+        &pane_state.update_count.to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Next cursor",
+        pane_state.next_cursor.as_deref().unwrap_or("n/a"),
+    );
+
+    let visible_rows = codex_apps_visible_row_count(pane_state.apps.len());
+    for row_index in 0..visible_rows {
+        let app = &pane_state.apps[row_index];
+        let row_bounds = codex_apps_row_bounds(content_bounds, row_index);
+        let selected = pane_state.selected_app_index == Some(row_index);
+        paint.scene.draw_quad(
+            wgpui::Quad::new(row_bounds)
+                .with_background(if selected {
+                    wgpui::theme::bg::APP.with_alpha(0.88)
+                } else {
+                    wgpui::theme::bg::APP.with_alpha(0.72)
+                })
+                .with_border(wgpui::theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let description = app.description.as_deref().unwrap_or("n/a");
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!(
+                "{} ({}) accessible={} enabled={} desc={}",
+                app.name, app.id, app.is_accessible, app.is_enabled, description
+            ),
+            wgpui::Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected {
+                wgpui::theme::text::PRIMARY
+            } else {
+                wgpui::theme::text::MUTED
+            },
+        ));
+    }
+
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No apps returned yet.",
+            wgpui::Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            wgpui::theme::text::MUTED,
+        ));
+    }
+}
+
+pub fn paint_remote_skills_pane(
+    content_bounds: wgpui::Bounds,
+    pane_state: &CodexRemoteSkillsPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "codex", paint);
+
+    let refresh = codex_remote_skills_refresh_button_bounds(content_bounds);
+    let export = codex_remote_skills_export_button_bounds(content_bounds);
+    paint_action_button(refresh, "Refresh Remote Skills", paint);
+    paint_action_button(export, "Export Selected Skill", paint);
+
+    let mut y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        refresh.max_y() + 12.0,
+        pane_state.load_state,
+        &format!("State: {}", pane_state.load_state.label()),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote skills",
+        &pane_state.skills.len().to_string(),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last exported path",
+        pane_state.last_exported_path.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Local repo skills",
+        "Primary skills registry remains `skills/` in this repo; exported remote skills are additive.",
+    );
+
+    let visible_rows = codex_remote_skills_visible_row_count(pane_state.skills.len());
+    for row_index in 0..visible_rows {
+        let skill = &pane_state.skills[row_index];
+        let row_bounds = codex_remote_skills_row_bounds(content_bounds, row_index);
+        let selected = pane_state.selected_skill_index == Some(row_index);
+        paint.scene.draw_quad(
+            wgpui::Quad::new(row_bounds)
+                .with_background(if selected {
+                    wgpui::theme::bg::APP.with_alpha(0.88)
+                } else {
+                    wgpui::theme::bg::APP.with_alpha(0.72)
+                })
+                .with_border(wgpui::theme::border::DEFAULT, 1.0)
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("{} ({}) {}", skill.name, skill.id, skill.description),
+            wgpui::Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+            10.0,
+            if selected {
+                wgpui::theme::text::PRIMARY
+            } else {
+                wgpui::theme::text::MUTED
+            },
+        ));
+    }
+
+    if visible_rows == 0 {
+        paint.scene.draw_text(paint.text.layout(
+            "No remote skills returned yet.",
+            wgpui::Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            wgpui::theme::text::MUTED,
+        ));
+    }
 }

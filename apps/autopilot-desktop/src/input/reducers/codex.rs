@@ -129,6 +129,46 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .or_else(|| Some(format!("{} failed", response.command.label())));
             }
         }
+        CodexLaneCommandKind::McpServerStatusList
+        | CodexLaneCommandKind::McpServerOauthLogin
+        | CodexLaneCommandKind::McpServerReload => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_mcp.load_state = PaneLoadState::Ready;
+                state.codex_mcp.last_error = None;
+                state.codex_mcp.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.codex_mcp.load_state = PaneLoadState::Error;
+                state.codex_mcp.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
+            }
+        }
+        CodexLaneCommandKind::AppsList => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_apps.load_state = PaneLoadState::Ready;
+                state.codex_apps.last_error = None;
+                state.codex_apps.last_action = Some("app/list accepted".to_string());
+            } else {
+                state.codex_apps.load_state = PaneLoadState::Error;
+                state.codex_apps.last_error = response_error
+                    .clone()
+                    .or_else(|| Some("app/list failed".to_string()));
+            }
+        }
+        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.codex_remote_skills.load_state = PaneLoadState::Ready;
+                state.codex_remote_skills.last_error = None;
+                state.codex_remote_skills.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.codex_remote_skills.load_state = PaneLoadState::Error;
+                state.codex_remote_skills.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
+            }
+        }
         _ => {}
     }
 
@@ -175,6 +215,32 @@ fn queue_skills_list_refresh(state: &mut RenderState) {
     if let Err(error) = state.queue_codex_command(CodexLaneCommand::SkillsList(params)) {
         state.skill_registry.last_error = Some(error);
         state.skill_registry.load_state = PaneLoadState::Error;
+    }
+}
+
+fn queue_mcp_status_refresh(state: &mut RenderState) {
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::McpServerStatusList(
+        codex_client::ListMcpServerStatusParams {
+            cursor: None,
+            limit: Some(100),
+        },
+    )) {
+        state.codex_mcp.last_error = Some(error);
+        state.codex_mcp.load_state = PaneLoadState::Error;
+    }
+}
+
+fn queue_apps_list_refresh(state: &mut RenderState, force_refetch: bool) {
+    if let Err(error) =
+        state.queue_codex_command(CodexLaneCommand::AppsList(codex_client::AppsListParams {
+            cursor: None,
+            limit: Some(100),
+            thread_id: state.autopilot_chat.active_thread_id.clone(),
+            force_refetch,
+        }))
+    {
+        state.codex_apps.last_error = Some(error);
+        state.codex_apps.load_state = PaneLoadState::Error;
     }
 }
 
@@ -332,6 +398,148 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             state.codex_config.last_action =
                 Some("External agent config import completed".to_string());
             state.codex_config.last_error = None;
+        }
+        CodexLaneNotification::McpServerStatusListLoaded {
+            entries,
+            next_cursor,
+        } => {
+            state.codex_mcp.load_state = PaneLoadState::Ready;
+            state.codex_mcp.servers = entries
+                .into_iter()
+                .map(|entry| crate::app_state::CodexMcpServerEntryState {
+                    name: entry.name,
+                    auth_status: entry.auth_status,
+                    tool_count: entry.tool_count,
+                    resource_count: entry.resource_count,
+                    template_count: entry.template_count,
+                })
+                .collect();
+            state.codex_mcp.next_cursor = next_cursor;
+            state.codex_mcp.selected_server_index = if state.codex_mcp.servers.is_empty() {
+                None
+            } else {
+                Some(
+                    state
+                        .codex_mcp
+                        .selected_server_index
+                        .unwrap_or(0)
+                        .min(state.codex_mcp.servers.len().saturating_sub(1)),
+                )
+            };
+            state.codex_mcp.last_action = Some(format!(
+                "Loaded MCP status for {} servers",
+                state.codex_mcp.servers.len()
+            ));
+            state.codex_mcp.last_error = None;
+        }
+        CodexLaneNotification::McpServerOauthLoginStarted {
+            server_name,
+            authorization_url,
+        } => {
+            state.codex_mcp.load_state = PaneLoadState::Ready;
+            state.codex_mcp.last_oauth_url = Some(authorization_url);
+            state.codex_mcp.last_oauth_result =
+                Some(format!("OAuth started for server {}", server_name));
+            state.codex_mcp.last_action = Some("MCP OAuth login started".to_string());
+            state.codex_mcp.last_error = None;
+        }
+        CodexLaneNotification::McpServerOauthLoginCompleted {
+            server_name,
+            success,
+            error,
+        } => {
+            state.codex_mcp.load_state = if success {
+                PaneLoadState::Ready
+            } else {
+                PaneLoadState::Error
+            };
+            state.codex_mcp.last_oauth_result = Some(if success {
+                format!("OAuth completed successfully for {}", server_name)
+            } else {
+                format!("OAuth failed for {}", server_name)
+            });
+            state.codex_mcp.last_action = Some("Received MCP OAuth completion".to_string());
+            state.codex_mcp.last_error = if success { None } else { error };
+            queue_mcp_status_refresh(state);
+        }
+        CodexLaneNotification::McpServerReloaded => {
+            state.codex_mcp.load_state = PaneLoadState::Ready;
+            state.codex_mcp.last_action = Some("Reloaded MCP config".to_string());
+            state.codex_mcp.last_error = None;
+            queue_mcp_status_refresh(state);
+        }
+        CodexLaneNotification::AppsListLoaded {
+            entries,
+            next_cursor,
+        } => {
+            state.codex_apps.load_state = PaneLoadState::Ready;
+            state.codex_apps.apps = entries
+                .into_iter()
+                .map(|entry| crate::app_state::CodexAppEntryState {
+                    id: entry.id,
+                    name: entry.name,
+                    description: entry.description,
+                    is_accessible: entry.is_accessible,
+                    is_enabled: entry.is_enabled,
+                })
+                .collect();
+            state.codex_apps.next_cursor = next_cursor;
+            state.codex_apps.selected_app_index = if state.codex_apps.apps.is_empty() {
+                None
+            } else {
+                Some(
+                    state
+                        .codex_apps
+                        .selected_app_index
+                        .unwrap_or(0)
+                        .min(state.codex_apps.apps.len().saturating_sub(1)),
+                )
+            };
+            state.codex_apps.last_action =
+                Some(format!("Loaded {} apps", state.codex_apps.apps.len()));
+            state.codex_apps.last_error = None;
+        }
+        CodexLaneNotification::AppsListUpdated => {
+            state.codex_apps.update_count = state.codex_apps.update_count.saturating_add(1);
+            state.codex_apps.last_action = Some("Received app/list/updated".to_string());
+            state.codex_apps.last_error = None;
+            queue_apps_list_refresh(state, true);
+        }
+        CodexLaneNotification::SkillsRemoteListLoaded { entries } => {
+            state.codex_remote_skills.load_state = PaneLoadState::Ready;
+            state.codex_remote_skills.skills = entries
+                .into_iter()
+                .map(|entry| crate::app_state::CodexRemoteSkillEntryState {
+                    id: entry.id,
+                    name: entry.name,
+                    description: entry.description,
+                })
+                .collect();
+            state.codex_remote_skills.selected_skill_index =
+                if state.codex_remote_skills.skills.is_empty() {
+                    None
+                } else {
+                    Some(
+                        state
+                            .codex_remote_skills
+                            .selected_skill_index
+                            .unwrap_or(0)
+                            .min(state.codex_remote_skills.skills.len().saturating_sub(1)),
+                    )
+                };
+            state.codex_remote_skills.last_action = Some(format!(
+                "Loaded {} remote skills",
+                state.codex_remote_skills.skills.len()
+            ));
+            state.codex_remote_skills.last_error = None;
+        }
+        CodexLaneNotification::SkillsRemoteExported { id, path } => {
+            state.codex_remote_skills.load_state = PaneLoadState::Ready;
+            state.codex_remote_skills.last_exported_path = Some(path.clone());
+            state.codex_remote_skills.last_action =
+                Some(format!("Exported remote skill {} to {}", id, path));
+            state.codex_remote_skills.last_error = None;
+            queue_skills_list_refresh(state);
         }
         CodexLaneNotification::SkillsListLoaded { entries } => {
             state.skill_registry.source = "codex".to_string();

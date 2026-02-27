@@ -37,6 +37,15 @@ const CHAT_MAX_THREAD_ROWS: usize = 10;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_GAP: f32 = 6.0;
 const SKILL_REGISTRY_MAX_ROWS: usize = 8;
+const CODEX_MCP_ROW_HEIGHT: f32 = 30.0;
+const CODEX_MCP_ROW_GAP: f32 = 6.0;
+const CODEX_MCP_MAX_ROWS: usize = 8;
+const CODEX_APPS_ROW_HEIGHT: f32 = 30.0;
+const CODEX_APPS_ROW_GAP: f32 = 6.0;
+const CODEX_APPS_MAX_ROWS: usize = 8;
+const CODEX_REMOTE_SKILLS_ROW_HEIGHT: f32 = 30.0;
+const CODEX_REMOTE_SKILLS_ROW_GAP: f32 = 6.0;
+const CODEX_REMOTE_SKILLS_MAX_ROWS: usize = 8;
 const JOB_INBOX_BUTTON_HEIGHT: f32 = 30.0;
 const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
@@ -103,6 +112,27 @@ pub enum CodexConfigPaneAction {
     BatchWriteSample,
     DetectExternal,
     ImportExternal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexMcpPaneAction {
+    Refresh,
+    LoginSelected,
+    Reload,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexAppsPaneAction {
+    Refresh,
+    SelectRow(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexRemoteSkillsPaneAction {
+    Refresh,
+    ExportSelected,
+    SelectRow(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -257,6 +287,9 @@ pub enum PaneHitAction {
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
     CodexConfig(CodexConfigPaneAction),
+    CodexMcp(CodexMcpPaneAction),
+    CodexApps(CodexAppsPaneAction),
+    CodexRemoteSkills(CodexRemoteSkillsPaneAction),
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
@@ -641,6 +674,9 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexAccount
             | PaneKind::CodexModels
             | PaneKind::CodexConfig
+            | PaneKind::CodexMcp
+            | PaneKind::CodexApps
+            | PaneKind::CodexRemoteSkills
             | PaneKind::GoOnline
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
@@ -967,6 +1003,75 @@ pub fn codex_config_detect_external_button_bounds(content_bounds: Bounds) -> Bou
 
 pub fn codex_config_import_external_button_bounds(content_bounds: Bounds) -> Bounds {
     codex_action_button_bounds(content_bounds, 1, 2, 3)
+}
+
+pub fn codex_mcp_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 3)
+}
+
+pub fn codex_mcp_login_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 3)
+}
+
+pub fn codex_mcp_reload_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 2, 3)
+}
+
+pub fn codex_mcp_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_MCP_MAX_ROWS.saturating_sub(1));
+    let top = codex_mcp_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_MCP_ROW_HEIGHT + CODEX_MCP_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_MCP_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_mcp_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_MCP_MAX_ROWS)
+}
+
+pub fn codex_apps_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_apps_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_APPS_MAX_ROWS.saturating_sub(1));
+    let top = codex_apps_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_APPS_ROW_HEIGHT + CODEX_APPS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_APPS_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_apps_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_APPS_MAX_ROWS)
+}
+
+pub fn codex_remote_skills_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 0, 2)
+}
+
+pub fn codex_remote_skills_export_button_bounds(content_bounds: Bounds) -> Bounds {
+    codex_action_button_bounds(content_bounds, 0, 1, 2)
+}
+
+pub fn codex_remote_skills_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(CODEX_REMOTE_SKILLS_MAX_ROWS.saturating_sub(1));
+    let top = codex_remote_skills_refresh_button_bounds(content_bounds).max_y() + 12.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top + safe_index as f32 * (CODEX_REMOTE_SKILLS_ROW_HEIGHT + CODEX_REMOTE_SKILLS_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        CODEX_REMOTE_SKILLS_ROW_HEIGHT,
+    )
+}
+
+pub fn codex_remote_skills_visible_row_count(row_count: usize) -> usize {
+    row_count.min(CODEX_REMOTE_SKILLS_MAX_ROWS)
 }
 
 pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1896,6 +2001,62 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::CodexMcp => {
+            if codex_mcp_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::Refresh));
+            }
+            if codex_mcp_login_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::LoginSelected));
+            }
+            if codex_mcp_reload_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::Reload));
+            }
+            let visible_rows = codex_mcp_visible_row_count(state.codex_mcp.servers.len());
+            for row_index in 0..visible_rows {
+                if codex_mcp_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexMcp(CodexMcpPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::CodexApps => {
+            if codex_apps_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexApps(CodexAppsPaneAction::Refresh));
+            }
+            let visible_rows = codex_apps_visible_row_count(state.codex_apps.apps.len());
+            for row_index in 0..visible_rows {
+                if codex_apps_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexApps(CodexAppsPaneAction::SelectRow(
+                        row_index,
+                    )));
+                }
+            }
+            None
+        }
+        PaneKind::CodexRemoteSkills => {
+            if codex_remote_skills_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexRemoteSkills(
+                    CodexRemoteSkillsPaneAction::Refresh,
+                ));
+            }
+            if codex_remote_skills_export_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodexRemoteSkills(
+                    CodexRemoteSkillsPaneAction::ExportSelected,
+                ));
+            }
+            let visible_rows =
+                codex_remote_skills_visible_row_count(state.codex_remote_skills.skills.len());
+            for row_index in 0..visible_rows {
+                if codex_remote_skills_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::CodexRemoteSkills(
+                        CodexRemoteSkillsPaneAction::SelectRow(row_index),
+                    ));
+                }
+            }
+            None
+        }
         PaneKind::EarningsScoreboard => {
             if earnings_scoreboard_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::EarningsScoreboard(
@@ -2519,10 +2680,13 @@ mod tests {
         chat_thread_rail_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
         codex_account_login_button_bounds, codex_account_logout_button_bounds,
         codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
-        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
-        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
-        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
+        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
+        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
+        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
+        codex_config_write_button_bounds, codex_mcp_login_button_bounds,
+        codex_mcp_refresh_button_bounds, codex_mcp_reload_button_bounds,
         codex_models_refresh_button_bounds, codex_models_toggle_hidden_button_bounds,
+        codex_remote_skills_export_button_bounds, codex_remote_skills_refresh_button_bounds,
         credit_desk_envelope_button_bounds, credit_desk_intent_button_bounds,
         credit_desk_offer_button_bounds, credit_desk_spend_button_bounds,
         credit_settlement_default_button_bounds, credit_settlement_reputation_button_bounds,
@@ -2638,6 +2802,19 @@ mod tests {
         assert!(config_read.max_y() < config_batch.min_y());
         assert!(config_batch.max_x() < config_detect.min_x());
         assert!(config_detect.max_x() < config_import.min_x());
+
+        let mcp_refresh = codex_mcp_refresh_button_bounds(content);
+        let mcp_login = codex_mcp_login_button_bounds(content);
+        let mcp_reload = codex_mcp_reload_button_bounds(content);
+        assert!(mcp_refresh.max_x() < mcp_login.min_x());
+        assert!(mcp_login.max_x() < mcp_reload.min_x());
+
+        let apps_refresh = codex_apps_refresh_button_bounds(content);
+        assert!(apps_refresh.size.width > 0.0);
+
+        let remote_refresh = codex_remote_skills_refresh_button_bounds(content);
+        let remote_export = codex_remote_skills_export_button_bounds(content);
+        assert!(remote_refresh.max_x() < remote_export.min_x());
     }
 
     #[test]

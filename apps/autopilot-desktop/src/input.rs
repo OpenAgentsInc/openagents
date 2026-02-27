@@ -1,11 +1,13 @@
 use codex_client::{
-    ApprovalDecision, ChatgptAuthTokensRefreshResponse, CommandExecutionRequestApprovalResponse,
-    ConfigBatchWriteParams, ConfigEdit, ConfigReadParams, ConfigValueWriteParams,
-    DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExternalAgentConfigDetectParams,
-    ExternalAgentConfigImportParams, FileChangeRequestApprovalResponse, GetAccountParams,
-    LoginAccountParams, MergeStrategy, ModelListParams, ThreadArchiveParams,
-    ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams, ThreadResumeParams,
-    ThreadRollbackParams, ThreadSetNameParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
+    ApprovalDecision, AppsListParams, ChatgptAuthTokensRefreshResponse,
+    CommandExecutionRequestApprovalResponse, ConfigBatchWriteParams, ConfigEdit, ConfigReadParams,
+    ConfigValueWriteParams, DynamicToolCallOutputContentItem, DynamicToolCallResponse,
+    ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
+    FileChangeRequestApprovalResponse, GetAccountParams, HazelnutScope, ListMcpServerStatusParams,
+    LoginAccountParams, McpServerOauthLoginParams, MergeStrategy, ModelListParams, ProductSurface,
+    SkillsRemoteReadParams, SkillsRemoteWriteParams, ThreadArchiveParams, ThreadCompactStartParams,
+    ThreadForkParams, ThreadLoadedListParams, ThreadResumeParams, ThreadRollbackParams,
+    ThreadSetNameParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
     ToolRequestUserInputAnswer, ToolRequestUserInputResponse, TurnStartParams, UserInput,
 };
 use nostr::regenerate_identity;
@@ -31,9 +33,10 @@ use crate::hotbar::{
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
-    CodexAccountPaneAction, CodexConfigPaneAction, CodexModelsPaneAction,
-    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexMcpPaneAction,
+    CodexModelsPaneAction, CodexRemoteSkillsPaneAction, EarningsScoreboardPaneAction,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
     StarterJobsPaneAction, SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction,
     dispatch_chat_input_event, dispatch_create_invoice_input_event,
     dispatch_job_history_input_event, dispatch_network_requests_input_event,
@@ -486,6 +489,9 @@ fn run_pane_hit_action(state: &mut crate::app_state::RenderState, action: PaneHi
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
         PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),
+        PaneHitAction::CodexMcp(action) => run_codex_mcp_action(state, action),
+        PaneHitAction::CodexApps(action) => run_codex_apps_action(state, action),
+        PaneHitAction::CodexRemoteSkills(action) => run_codex_remote_skills_action(state, action),
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
@@ -1485,6 +1491,170 @@ fn run_codex_config_action(
             ) {
                 state.codex_config.load_state = crate::app_state::PaneLoadState::Error;
                 state.codex_config.last_error = Some(error);
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_mcp_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexMcpPaneAction,
+) -> bool {
+    match action {
+        CodexMcpPaneAction::Refresh => {
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some("Queued mcpServerStatus/list".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerStatusList(
+                    ListMcpServerStatusParams {
+                        cursor: None,
+                        limit: Some(100),
+                    },
+                ))
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::LoginSelected => {
+            let selected_name = state
+                .codex_mcp
+                .selected_server_index
+                .and_then(|idx| state.codex_mcp.servers.get(idx))
+                .map(|entry| entry.name.clone());
+            let Some(name) = selected_name else {
+                state.codex_mcp.last_error =
+                    Some("Select an MCP server before starting OAuth login".to_string());
+                return true;
+            };
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some(format!("Queued mcpServer/oauth/login for {name}"));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerOauthLogin(
+                    McpServerOauthLoginParams {
+                        name,
+                        scopes: None,
+                        timeout_secs: Some(180),
+                    },
+                ))
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::Reload => {
+            state.codex_mcp.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_mcp.last_error = None;
+            state.codex_mcp.last_action = Some("Queued config/mcpServer/reload".to_string());
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::McpServerReload)
+            {
+                state.codex_mcp.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_mcp.last_error = Some(error);
+            }
+            true
+        }
+        CodexMcpPaneAction::SelectRow(index) => {
+            if index < state.codex_mcp.servers.len() {
+                state.codex_mcp.selected_server_index = Some(index);
+                state.codex_mcp.last_action = Some(format!("Selected MCP row {}", index + 1));
+                state.codex_mcp.last_error = None;
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_apps_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexAppsPaneAction,
+) -> bool {
+    match action {
+        CodexAppsPaneAction::Refresh => {
+            state.codex_apps.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_apps.last_error = None;
+            state.codex_apps.last_action = Some("Queued app/list".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::AppsList(AppsListParams {
+                    cursor: None,
+                    limit: Some(100),
+                    thread_id: state.autopilot_chat.active_thread_id.clone(),
+                    force_refetch: true,
+                }),
+            ) {
+                state.codex_apps.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_apps.last_error = Some(error);
+            }
+            true
+        }
+        CodexAppsPaneAction::SelectRow(index) => {
+            if index < state.codex_apps.apps.len() {
+                state.codex_apps.selected_app_index = Some(index);
+                state.codex_apps.last_action = Some(format!("Selected app row {}", index + 1));
+                state.codex_apps.last_error = None;
+            }
+            true
+        }
+    }
+}
+
+fn run_codex_remote_skills_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodexRemoteSkillsPaneAction,
+) -> bool {
+    match action {
+        CodexRemoteSkillsPaneAction::Refresh => {
+            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_remote_skills.last_error = None;
+            state.codex_remote_skills.last_action = Some("Queued skills/remote/list".to_string());
+            if let Err(error) = state.queue_codex_command(
+                crate::codex_lane::CodexLaneCommand::SkillsRemoteList(SkillsRemoteReadParams {
+                    hazelnut_scope: HazelnutScope::AllShared,
+                    product_surface: ProductSurface::Codex,
+                    enabled: true,
+                }),
+            ) {
+                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_remote_skills.last_error = Some(error);
+            }
+            true
+        }
+        CodexRemoteSkillsPaneAction::ExportSelected => {
+            let selected_id = state
+                .codex_remote_skills
+                .selected_skill_index
+                .and_then(|idx| state.codex_remote_skills.skills.get(idx))
+                .map(|entry| entry.id.clone());
+            let Some(hazelnut_id) = selected_id else {
+                state.codex_remote_skills.last_error =
+                    Some("Select a remote skill before export".to_string());
+                return true;
+            };
+            state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Loading;
+            state.codex_remote_skills.last_error = None;
+            state.codex_remote_skills.last_action =
+                Some(format!("Queued skills/remote/export for {}", hazelnut_id));
+            if let Err(error) =
+                state.queue_codex_command(crate::codex_lane::CodexLaneCommand::SkillsRemoteExport(
+                    SkillsRemoteWriteParams { hazelnut_id },
+                ))
+            {
+                state.codex_remote_skills.load_state = crate::app_state::PaneLoadState::Error;
+                state.codex_remote_skills.last_error = Some(error);
+            }
+            true
+        }
+        CodexRemoteSkillsPaneAction::SelectRow(index) => {
+            if index < state.codex_remote_skills.skills.len() {
+                state.codex_remote_skills.selected_skill_index = Some(index);
+                state.codex_remote_skills.last_action =
+                    Some(format!("Selected remote skill row {}", index + 1));
+                state.codex_remote_skills.last_error = None;
             }
             true
         }

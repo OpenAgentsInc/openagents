@@ -7,18 +7,20 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AppServerRequestId, AskForApproval, CancelLoginAccountParams, ChatgptAuthTokensRefreshParams,
-    ChatgptAuthTokensRefreshResponse, ClientInfo, CommandExecutionRequestApprovalParams,
-    CommandExecutionRequestApprovalResponse, ConfigBatchWriteParams, ConfigReadParams,
-    ConfigValueWriteParams, DynamicToolCallOutputContentItem, DynamicToolCallParams,
-    DynamicToolCallResponse, ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
+    AppServerRequestId, AppsListParams, AskForApproval, CancelLoginAccountParams,
+    ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse, ClientInfo,
+    CommandExecutionRequestApprovalParams, CommandExecutionRequestApprovalResponse,
+    ConfigBatchWriteParams, ConfigReadParams, ConfigValueWriteParams,
+    DynamicToolCallOutputContentItem, DynamicToolCallParams, DynamicToolCallResponse,
+    ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
     FileChangeRequestApprovalParams, FileChangeRequestApprovalResponse, GetAccountParams,
-    InitializeCapabilities, InitializeParams, LoginAccountParams, ModelListParams, SkillScope,
-    SkillsConfigWriteParams, SkillsListParams, SkillsListResponse, ThreadArchiveParams,
-    ThreadCompactStartParams, ThreadForkParams, ThreadListParams, ThreadLoadedListParams,
-    ThreadReadParams, ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams,
-    ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
-    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    InitializeCapabilities, InitializeParams, ListMcpServerStatusParams, LoginAccountParams,
+    McpServerOauthLoginParams, ModelListParams, SkillScope, SkillsConfigWriteParams,
+    SkillsListParams, SkillsListResponse, SkillsRemoteReadParams, SkillsRemoteWriteParams,
+    ThreadArchiveParams, ThreadCompactStartParams, ThreadForkParams, ThreadListParams,
+    ThreadLoadedListParams, ThreadReadParams, ThreadResumeParams, ThreadRollbackParams,
+    ThreadSetNameParams, ThreadStartParams, ThreadUnarchiveParams, ThreadUnsubscribeParams,
+    ToolRequestUserInputParams, ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -128,6 +130,12 @@ pub enum CodexLaneCommandKind {
     ConfigBatchWrite,
     ExternalAgentConfigDetect,
     ExternalAgentConfigImport,
+    McpServerStatusList,
+    McpServerOauthLogin,
+    McpServerReload,
+    AppsList,
+    SkillsRemoteList,
+    SkillsRemoteExport,
     SkillsList,
     SkillsConfigWrite,
 }
@@ -168,6 +176,12 @@ impl CodexLaneCommandKind {
             Self::ConfigBatchWrite => "config/batchWrite",
             Self::ExternalAgentConfigDetect => "externalAgentConfig/detect",
             Self::ExternalAgentConfigImport => "externalAgentConfig/import",
+            Self::McpServerStatusList => "mcpServerStatus/list",
+            Self::McpServerOauthLogin => "mcpServer/oauth/login",
+            Self::McpServerReload => "config/mcpServer/reload",
+            Self::AppsList => "app/list",
+            Self::SkillsRemoteList => "skills/remote/list",
+            Self::SkillsRemoteExport => "skills/remote/export",
             Self::SkillsList => "skills/list",
             Self::SkillsConfigWrite => "skills/config/write",
         }
@@ -248,6 +262,12 @@ pub enum CodexLaneCommand {
     ConfigBatchWrite(ConfigBatchWriteParams),
     ExternalAgentConfigDetect(ExternalAgentConfigDetectParams),
     ExternalAgentConfigImport(ExternalAgentConfigImportParams),
+    McpServerStatusList(ListMcpServerStatusParams),
+    McpServerOauthLogin(McpServerOauthLoginParams),
+    McpServerReload,
+    AppsList(AppsListParams),
+    SkillsRemoteList(SkillsRemoteReadParams),
+    SkillsRemoteExport(SkillsRemoteWriteParams),
     SkillsList(SkillsListParams),
     SkillsConfigWrite(SkillsConfigWriteParams),
 }
@@ -296,6 +316,12 @@ impl CodexLaneCommand {
             Self::ConfigBatchWrite(_) => CodexLaneCommandKind::ConfigBatchWrite,
             Self::ExternalAgentConfigDetect(_) => CodexLaneCommandKind::ExternalAgentConfigDetect,
             Self::ExternalAgentConfigImport(_) => CodexLaneCommandKind::ExternalAgentConfigImport,
+            Self::McpServerStatusList(_) => CodexLaneCommandKind::McpServerStatusList,
+            Self::McpServerOauthLogin(_) => CodexLaneCommandKind::McpServerOauthLogin,
+            Self::McpServerReload => CodexLaneCommandKind::McpServerReload,
+            Self::AppsList(_) => CodexLaneCommandKind::AppsList,
+            Self::SkillsRemoteList(_) => CodexLaneCommandKind::SkillsRemoteList,
+            Self::SkillsRemoteExport(_) => CodexLaneCommandKind::SkillsRemoteExport,
             Self::SkillsList(_) => CodexLaneCommandKind::SkillsList,
             Self::SkillsConfigWrite(_) => CodexLaneCommandKind::SkillsConfigWrite,
         }
@@ -356,6 +382,32 @@ pub enum CodexLaneNotification {
         count: usize,
     },
     ExternalAgentConfigImported,
+    McpServerStatusListLoaded {
+        entries: Vec<CodexMcpServerStatusEntry>,
+        next_cursor: Option<String>,
+    },
+    McpServerOauthLoginStarted {
+        server_name: String,
+        authorization_url: String,
+    },
+    McpServerOauthLoginCompleted {
+        server_name: String,
+        success: bool,
+        error: Option<String>,
+    },
+    McpServerReloaded,
+    AppsListLoaded {
+        entries: Vec<CodexAppEntry>,
+        next_cursor: Option<String>,
+    },
+    AppsListUpdated,
+    SkillsRemoteListLoaded {
+        entries: Vec<CodexRemoteSkillEntry>,
+    },
+    SkillsRemoteExported {
+        id: String,
+        path: String,
+    },
     ThreadListLoaded {
         entries: Vec<CodexThreadListEntry>,
     },
@@ -500,6 +552,31 @@ pub struct CodexModelCatalogEntry {
     pub is_default: bool,
     pub default_reasoning_effort: String,
     pub supported_reasoning_efforts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexMcpServerStatusEntry {
+    pub name: String,
+    pub auth_status: String,
+    pub tool_count: usize,
+    pub resource_count: usize,
+    pub template_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexAppEntry {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_accessible: bool,
+    pub is_enabled: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexRemoteSkillEntry {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1243,6 +1320,92 @@ impl CodexLaneState {
                     notification: Some(CodexLaneNotification::ExternalAgentConfigImported),
                 })
             }
+            CodexLaneCommand::McpServerStatusList(params) => {
+                let response = runtime.block_on(client.mcp_server_status_list(params))?;
+                let entries = response
+                    .data
+                    .into_iter()
+                    .map(|entry| CodexMcpServerStatusEntry {
+                        name: entry.name,
+                        auth_status: mcp_auth_status_label(entry.auth_status).to_string(),
+                        tool_count: entry.tools.len(),
+                        resource_count: entry.resources.len(),
+                        template_count: entry.resource_templates.len(),
+                    })
+                    .collect();
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::McpServerStatusListLoaded {
+                        entries,
+                        next_cursor: response.next_cursor,
+                    }),
+                })
+            }
+            CodexLaneCommand::McpServerOauthLogin(params) => {
+                let server_name = params.name.clone();
+                let response = runtime.block_on(client.mcp_server_oauth_login(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::McpServerOauthLoginStarted {
+                        server_name,
+                        authorization_url: response.authorization_url,
+                    }),
+                })
+            }
+            CodexLaneCommand::McpServerReload => {
+                let _ = runtime.block_on(client.mcp_server_reload())?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::McpServerReloaded),
+                })
+            }
+            CodexLaneCommand::AppsList(params) => {
+                let response = runtime.block_on(client.app_list(params))?;
+                let entries = response
+                    .data
+                    .into_iter()
+                    .map(|entry| CodexAppEntry {
+                        id: entry.id,
+                        name: entry.name,
+                        description: entry.description,
+                        is_accessible: entry.is_accessible,
+                        is_enabled: entry.is_enabled,
+                    })
+                    .collect();
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::AppsListLoaded {
+                        entries,
+                        next_cursor: response.next_cursor,
+                    }),
+                })
+            }
+            CodexLaneCommand::SkillsRemoteList(params) => {
+                let response = runtime.block_on(client.skills_remote_list(params))?;
+                let entries = response
+                    .data
+                    .into_iter()
+                    .map(|entry| CodexRemoteSkillEntry {
+                        id: entry.id,
+                        name: entry.name,
+                        description: entry.description,
+                    })
+                    .collect();
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::SkillsRemoteListLoaded { entries }),
+                })
+            }
+            CodexLaneCommand::SkillsRemoteExport(params) => {
+                let response = runtime.block_on(client.skills_remote_export(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: Some(CodexLaneNotification::SkillsRemoteExported {
+                        id: response.id,
+                        path: response.path.display().to_string(),
+                    }),
+                })
+            }
             CodexLaneCommand::SkillsList(params) => {
                 let response = runtime.block_on(client.skills_list(params))?;
                 let entries = summarize_skills_list_response(response);
@@ -1714,6 +1877,18 @@ fn normalize_notification(notification: AppServerNotification) -> Option<CodexLa
                 reason: string_field(&params, "reason").unwrap_or_else(|| "unknown".to_string()),
             })
         }
+        "mcpServer/oauthLogin/completed" => {
+            let params = params?;
+            Some(CodexLaneNotification::McpServerOauthLoginCompleted {
+                server_name: string_field(&params, "name").unwrap_or_else(|| "unknown".to_string()),
+                success: params
+                    .get("success")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                error: string_field(&params, "error"),
+            })
+        }
+        "app/list/updated" => Some(CodexLaneNotification::AppsListUpdated),
         "turn/started" => {
             let params = params?;
             let thread_id = string_field(&params, "threadId")?;
@@ -1923,6 +2098,15 @@ fn thread_status_label(status: &Value) -> Option<String> {
     }
 }
 
+fn mcp_auth_status_label(status: codex_client::McpAuthStatus) -> &'static str {
+    match status {
+        codex_client::McpAuthStatus::Unsupported => "unsupported",
+        codex_client::McpAuthStatus::NotLoggedIn => "not_logged_in",
+        codex_client::McpAuthStatus::BearerToken => "bearer_token",
+        codex_client::McpAuthStatus::OAuth => "oauth",
+    }
+}
+
 fn is_disconnect_error(error: &anyhow::Error) -> bool {
     let text = error.to_string().to_ascii_lowercase();
     text.contains("connection closed")
@@ -2105,8 +2289,8 @@ mod tests {
 
     use anyhow::Result;
     use codex_client::{
-        AppServerChannels, AppServerClient, SkillsListExtraRootsForCwd, SkillsListParams,
-        ThreadListParams,
+        AppServerChannels, AppServerClient, AppsListParams, SkillsListExtraRootsForCwd,
+        SkillsListParams, SkillsRemoteWriteParams, ThreadListParams,
     };
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -2659,6 +2843,184 @@ mod tests {
                 thread_name: Some("Renamed Thread".to_string()),
             })
         );
+
+        let oauth_completed = normalize_notification(codex_client::AppServerNotification {
+            method: "mcpServer/oauthLogin/completed".to_string(),
+            params: Some(json!({
+                "name": "github",
+                "success": true,
+                "error": null
+            })),
+        });
+        assert_eq!(
+            oauth_completed,
+            Some(CodexLaneNotification::McpServerOauthLoginCompleted {
+                server_name: "github".to_string(),
+                success: true,
+                error: None,
+            })
+        );
+
+        let app_list_updated = normalize_notification(codex_client::AppServerNotification {
+            method: "app/list/updated".to_string(),
+            params: None,
+        });
+        assert_eq!(
+            app_list_updated,
+            Some(CodexLaneNotification::AppsListUpdated)
+        );
+    }
+
+    #[test]
+    fn apps_and_remote_skill_export_emit_notifications() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let saw_app_list = Arc::new(AtomicBool::new(false));
+        let saw_export = Arc::new(AtomicBool::new(false));
+        let saw_app_list_clone = Arc::clone(&saw_app_list);
+        let saw_export_clone = Arc::clone(&saw_export);
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut handled_app = false;
+                let mut handled_export = false;
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "thread/start" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "thread": {"id": "thread-bootstrap"},
+                                "model": "gpt-5-codex"
+                            }
+                        }),
+                        "app/list" => {
+                            handled_app = true;
+                            saw_app_list_clone.store(true, Ordering::SeqCst);
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {
+                                    "data": [
+                                        {
+                                            "id": "github",
+                                            "name": "GitHub",
+                                            "description": "Code hosting",
+                                            "isAccessible": true,
+                                            "isEnabled": true
+                                        }
+                                    ],
+                                    "nextCursor": null
+                                }
+                            })
+                        }
+                        "skills/remote/export" => {
+                            handled_export = true;
+                            saw_export_clone.store(true, Ordering::SeqCst);
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {
+                                    "id": "skill-1",
+                                    "path": "/tmp/skill-1"
+                                }
+                            })
+                        }
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+                    if handled_app && handled_export {
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+
+        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+
+        let app_enqueue =
+            worker.enqueue(901, CodexLaneCommand::AppsList(AppsListParams::default()));
+        assert!(app_enqueue.is_ok(), "failed to enqueue app/list");
+        let app_response = wait_for_command_response(&mut worker, Duration::from_secs(2), |resp| {
+            resp.command_seq == 901
+        });
+
+        let export_enqueue = worker.enqueue(
+            902,
+            CodexLaneCommand::SkillsRemoteExport(SkillsRemoteWriteParams {
+                hazelnut_id: "skill-1".to_string(),
+            }),
+        );
+        assert!(
+            export_enqueue.is_ok(),
+            "failed to enqueue skills/remote/export"
+        );
+        let export_response =
+            wait_for_command_response(&mut worker, Duration::from_secs(2), |resp| {
+                resp.command_seq == 902
+            });
+        assert_eq!(app_response.command, CodexLaneCommandKind::AppsList);
+        assert_eq!(app_response.status, CodexLaneCommandStatus::Accepted);
+        assert_eq!(
+            export_response.command,
+            CodexLaneCommandKind::SkillsRemoteExport
+        );
+        assert_eq!(export_response.status, CodexLaneCommandStatus::Accepted);
+
+        assert!(saw_app_list.load(Ordering::SeqCst));
+        assert!(saw_export.load(Ordering::SeqCst));
+
+        worker.shutdown();
+        let _ = server.join();
     }
 
     #[test]
