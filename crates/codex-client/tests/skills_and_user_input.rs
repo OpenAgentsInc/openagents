@@ -113,6 +113,84 @@ fn skill_metadata_deserializes_enabled_interface_dependencies() -> anyhow::Resul
     Ok(())
 }
 
+#[test]
+fn skills_list_response_deserializes_errors_and_enabled_state() -> anyhow::Result<()> {
+    let response_json = json!({
+        "data": [
+            {
+                "cwd": "/repo",
+                "skills": [
+                    {
+                        "name": "mezo",
+                        "description": "Integrate with Mezo",
+                        "interface": {
+                            "displayName": "Mezo"
+                        },
+                        "dependencies": {
+                            "tools": [
+                                {
+                                    "type": "cmd",
+                                    "value": "cargo"
+                                }
+                            ]
+                        },
+                        "path": "/repo/skills/mezo/SKILL.md",
+                        "scope": "repo",
+                        "enabled": true
+                    },
+                    {
+                        "name": "moneydevkit",
+                        "description": "Integrate with MoneyDevKit",
+                        "path": "/repo/skills/moneydevkit/SKILL.md",
+                        "scope": "repo",
+                        "enabled": false
+                    }
+                ],
+                "errors": [
+                    {
+                        "path": "/repo/skills/bad",
+                        "message": "invalid SKILL.md"
+                    }
+                ]
+            }
+        ]
+    });
+
+    let response: codex_client::SkillsListResponse = serde_json::from_value(response_json)?;
+    assert_eq!(response.data.len(), 1);
+
+    let entry = &response.data[0];
+    assert_eq!(entry.cwd, PathBuf::from("/repo"));
+    assert_eq!(entry.skills.len(), 2);
+    assert_eq!(entry.errors.len(), 1);
+    assert_eq!(entry.errors[0].path, PathBuf::from("/repo/skills/bad"));
+    assert_eq!(entry.errors[0].message, "invalid SKILL.md");
+
+    let first = &entry.skills[0];
+    assert!(first.enabled);
+    assert_eq!(first.scope, SkillScope::Repo);
+    assert_eq!(
+        first
+            .interface
+            .as_ref()
+            .and_then(|interface| interface.display_name.as_deref()),
+        Some("Mezo")
+    );
+    assert_eq!(
+        first
+            .dependencies
+            .as_ref()
+            .map(|dependencies| dependencies.tools.len()),
+        Some(1)
+    );
+
+    let second = &entry.skills[1];
+    assert!(!second.enabled);
+    assert_eq!(second.scope, SkillScope::Repo);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn turn_start_request_includes_skill_input() -> anyhow::Result<()> {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);

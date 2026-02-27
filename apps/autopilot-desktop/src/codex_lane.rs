@@ -422,10 +422,11 @@ impl CodexLaneState {
                     Ok(response) => {
                         let thread_id = response.thread.id;
                         self.snapshot.active_thread_id = Some(thread_id.clone());
-                        let _ =
-                            update_tx.send(CodexLaneUpdate::Notification(
-                                CodexLaneNotification::ThreadSelected { thread_id: thread_id.clone() },
-                            ));
+                        let _ = update_tx.send(CodexLaneUpdate::Notification(
+                            CodexLaneNotification::ThreadSelected {
+                                thread_id: thread_id.clone(),
+                            },
+                        ));
                         let _ = update_tx.send(CodexLaneUpdate::Notification(
                             CodexLaneNotification::ThreadListLoaded {
                                 thread_ids: vec![thread_id],
@@ -490,10 +491,18 @@ impl CodexLaneState {
                     response.status = CodexLaneCommandStatus::Retryable;
                 } else if self.client.is_none() {
                     response.status = CodexLaneCommandStatus::Retryable;
-                    self.set_error(update_tx, format!("Codex lane unavailable: {message}"), false);
+                    self.set_error(
+                        update_tx,
+                        format!("Codex lane unavailable: {message}"),
+                        false,
+                    );
                 } else {
                     response.status = CodexLaneCommandStatus::Rejected;
-                    self.set_error(update_tx, format!("Codex lane command failed: {message}"), false);
+                    self.set_error(
+                        update_tx,
+                        format!("Codex lane command failed: {message}"),
+                        false,
+                    );
                 }
                 response.error = Some(message);
             }
@@ -824,16 +833,22 @@ fn skill_scope_label(scope: SkillScope) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandStatus, CodexLaneConfig,
-        CodexLaneLifecycle, CodexLaneRuntime, CodexLaneUpdate, CodexLaneWorker,
+        CodexLaneCommand, CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus,
+        CodexLaneConfig, CodexLaneLifecycle, CodexLaneNotification, CodexLaneRuntime,
+        CodexLaneUpdate, CodexLaneWorker,
     };
 
+    use std::fs;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, Instant};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use anyhow::Result;
-    use codex_client::{AppServerChannels, AppServerClient, ThreadListParams};
+    use codex_client::{
+        AppServerChannels, AppServerClient, SkillsListExtraRootsForCwd, SkillsListParams,
+        ThreadListParams,
+    };
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -898,6 +913,98 @@ mod tests {
         assert!(has_message);
 
         worker.shutdown();
+    }
+
+    #[test]
+    fn startup_bootstrap_transitions_to_ready_snapshot() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut handled_requests = 0usize;
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+                    handled_requests = handled_requests.saturating_add(1);
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "thread/start" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "thread": {"id": "thread-bootstrap"},
+                                "model": "gpt-5-codex"
+                            }
+                        }),
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+                    if handled_requests >= 2 {
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+
+        let snapshot = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+
+        assert_eq!(snapshot.lifecycle, CodexLaneLifecycle::Ready);
+        assert_eq!(
+            snapshot.active_thread_id.as_deref(),
+            Some("thread-bootstrap")
+        );
+
+        worker.shutdown();
+        let _ = server.join();
     }
 
     #[test]
@@ -982,10 +1089,8 @@ mod tests {
             snapshot.lifecycle == CodexLaneLifecycle::Ready
         });
 
-        let enqueue_result = worker.enqueue(
-            7,
-            CodexLaneCommand::ThreadList(ThreadListParams::default()),
-        );
+        let enqueue_result =
+            worker.enqueue(7, CodexLaneCommand::ThreadList(ThreadListParams::default()));
         assert!(enqueue_result.is_ok());
 
         let disconnected = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
@@ -1000,6 +1105,205 @@ mod tests {
             "expected disconnected/error lifecycle, got {:?}",
             disconnected.lifecycle
         );
+
+        worker.shutdown();
+        let _ = server.join();
+    }
+
+    #[test]
+    fn turn_lifecycle_notifications_are_forwarded() {
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut bootstrapped = false;
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "thread/start" => {
+                            bootstrapped = true;
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {
+                                    "thread": {"id": "thread-bootstrap"},
+                                    "model": "gpt-5-codex"
+                                }
+                            })
+                        }
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+
+                    if bootstrapped {
+                        let notifications = [
+                            json!({
+                                "jsonrpc": "2.0",
+                                "method": "turn/started",
+                                "params": {
+                                    "threadId": "thread-bootstrap",
+                                    "turn": {"id": "turn-1"}
+                                }
+                            }),
+                            json!({
+                                "jsonrpc": "2.0",
+                                "method": "agent_message/delta",
+                                "params": {
+                                    "threadId": "thread-bootstrap",
+                                    "turnId": "turn-1",
+                                    "itemId": "item-1",
+                                    "delta": "hello world"
+                                }
+                            }),
+                            json!({
+                                "jsonrpc": "2.0",
+                                "method": "turn/completed",
+                                "params": {
+                                    "threadId": "thread-bootstrap",
+                                    "turn": {"id": "turn-1"}
+                                }
+                            }),
+                            json!({
+                                "jsonrpc": "2.0",
+                                "method": "turn/error",
+                                "params": {
+                                    "threadId": "thread-bootstrap",
+                                    "turnId": "turn-1",
+                                    "error": {"message": "boom"}
+                                }
+                            }),
+                        ];
+                        for notification in notifications {
+                            if let Ok(line) = serde_json::to_string(&notification) {
+                                let _ =
+                                    server_write.write_all(format!("{line}\n").as_bytes()).await;
+                                let _ = server_write.flush().await;
+                            }
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+
+        let mut saw_ready = false;
+        let mut saw_turn_started = false;
+        let mut saw_delta = false;
+        let mut saw_turn_completed = false;
+        let mut saw_turn_error = false;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() <= deadline
+            && !(saw_ready && saw_turn_started && saw_delta && saw_turn_completed && saw_turn_error)
+        {
+            for update in worker.drain_updates() {
+                match update {
+                    CodexLaneUpdate::Snapshot(snapshot) => {
+                        if snapshot.lifecycle == CodexLaneLifecycle::Ready {
+                            saw_ready = true;
+                        }
+                    }
+                    CodexLaneUpdate::Notification(notification) => match notification {
+                        CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
+                            if thread_id == "thread-bootstrap" && turn_id == "turn-1" {
+                                saw_turn_started = true;
+                            }
+                        }
+                        CodexLaneNotification::AgentMessageDelta {
+                            thread_id,
+                            turn_id,
+                            item_id,
+                            delta,
+                        } => {
+                            if thread_id == "thread-bootstrap"
+                                && turn_id == "turn-1"
+                                && item_id == "item-1"
+                                && delta == "hello world"
+                            {
+                                saw_delta = true;
+                            }
+                        }
+                        CodexLaneNotification::TurnCompleted { thread_id, turn_id } => {
+                            if thread_id == "thread-bootstrap" && turn_id == "turn-1" {
+                                saw_turn_completed = true;
+                            }
+                        }
+                        CodexLaneNotification::TurnError {
+                            thread_id,
+                            turn_id,
+                            message,
+                        } => {
+                            if thread_id == "thread-bootstrap"
+                                && turn_id == "turn-1"
+                                && message == "boom"
+                            {
+                                saw_turn_error = true;
+                            }
+                        }
+                        _ => {}
+                    },
+                    CodexLaneUpdate::CommandResponse(_) => {}
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        assert!(saw_ready, "missing ready snapshot");
+        assert!(saw_turn_started, "missing turn/started notification");
+        assert!(saw_delta, "missing agent_message/delta notification");
+        assert!(saw_turn_completed, "missing turn/completed notification");
+        assert!(saw_turn_error, "missing turn/error notification");
 
         worker.shutdown();
         let _ = server.join();
@@ -1115,6 +1419,150 @@ mod tests {
         let _ = server.join();
     }
 
+    #[test]
+    fn command_routing_sends_skills_list_request_with_extra_roots() {
+        let fixture_root = unique_fixture_root("skills-list");
+        let fixture_skills_root = fixture_root.join("skills");
+        assert!(fs::create_dir_all(&fixture_skills_root).is_ok());
+
+        let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+        let runtime_guard = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| panic!("failed to build runtime"));
+        let _entered = runtime_guard.enter();
+        let (client, channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
+        drop(_entered);
+
+        let saw_skills_list = Arc::new(AtomicBool::new(false));
+        let saw_skills_list_clone = Arc::clone(&saw_skills_list);
+        let expected_cwd = fixture_root.display().to_string();
+        let expected_root = fixture_skills_root.display().to_string();
+        let server = std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            };
+            runtime.block_on(async move {
+                let mut reader = BufReader::new(server_read);
+                let mut request_line = String::new();
+                let mut done = false;
+                loop {
+                    request_line.clear();
+                    let bytes = reader.read_line(&mut request_line).await.unwrap_or(0);
+                    if bytes == 0 {
+                        break;
+                    }
+                    let value: Value = match serde_json::from_str(request_line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    if value.get("id").is_none() {
+                        continue;
+                    }
+
+                    let method = value
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let response = match method {
+                        "initialize" => json!({
+                            "id": value["id"].clone(),
+                            "result": {"userAgent": "test-agent"}
+                        }),
+                        "thread/start" => json!({
+                            "id": value["id"].clone(),
+                            "result": {
+                                "thread": {"id": "thread-bootstrap"},
+                                "model": "gpt-5-codex"
+                            }
+                        }),
+                        "skills/list" => {
+                            saw_skills_list_clone.store(true, Ordering::SeqCst);
+                            done = true;
+                            assert_eq!(
+                                value["params"],
+                                json!({
+                                    "cwds": [expected_cwd],
+                                    "forceReload": true,
+                                    "perCwdExtraUserRoots": [
+                                        {
+                                            "cwd": expected_cwd,
+                                            "extraUserRoots": [expected_root]
+                                        }
+                                    ]
+                                })
+                            );
+                            json!({
+                                "id": value["id"].clone(),
+                                "result": {
+                                    "data": [
+                                        {
+                                            "cwd": expected_cwd,
+                                            "skills": [],
+                                            "errors": []
+                                        }
+                                    ]
+                                }
+                            })
+                        }
+                        _ => json!({
+                            "id": value["id"].clone(),
+                            "result": {}
+                        }),
+                    };
+                    if let Ok(line) = serde_json::to_string(&response) {
+                        let _ = server_write.write_all(format!("{line}\n").as_bytes()).await;
+                        let _ = server_write.flush().await;
+                    }
+                    if done {
+                        break;
+                    }
+                }
+                drop(server_write);
+            });
+        });
+
+        let mut worker = CodexLaneWorker::spawn_with_runtime(
+            CodexLaneConfig::default(),
+            Box::new(SingleClientRuntime::new((client, channels), runtime_guard)),
+        );
+
+        let _ = wait_for_snapshot(&mut worker, Duration::from_secs(2), |snapshot| {
+            snapshot.lifecycle == CodexLaneLifecycle::Ready
+        });
+
+        let enqueue_result = worker.enqueue(
+            88,
+            CodexLaneCommand::SkillsList(SkillsListParams {
+                cwds: vec![fixture_root.clone()],
+                force_reload: true,
+                per_cwd_extra_user_roots: Some(vec![SkillsListExtraRootsForCwd {
+                    cwd: fixture_root.clone(),
+                    extra_user_roots: vec![fixture_skills_root.clone()],
+                }]),
+            }),
+        );
+        assert!(enqueue_result.is_ok());
+
+        let response = wait_for_command_response(&mut worker, Duration::from_secs(2), |response| {
+            response.command_seq == 88
+        });
+        assert_eq!(response.command, CodexLaneCommandKind::SkillsList);
+        assert_eq!(response.status, CodexLaneCommandStatus::Accepted);
+        assert!(saw_skills_list.load(Ordering::SeqCst));
+
+        worker.shutdown();
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&fixture_root);
+    }
+
     fn wait_for_snapshot<F>(
         worker: &mut CodexLaneWorker,
         timeout: Duration,
@@ -1146,11 +1594,21 @@ mod tests {
         matched.unwrap_or_default()
     }
 
+    fn unique_fixture_root(tag: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        std::env::temp_dir().join(format!(
+            "openagents-codex-lane-{tag}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
     fn wait_for_command_response<F>(
         worker: &mut CodexLaneWorker,
         timeout: Duration,
         predicate: F,
-    ) -> super::CodexLaneCommandResponse
+    ) -> CodexLaneCommandResponse
     where
         F: Fn(&super::CodexLaneCommandResponse) -> bool,
     {

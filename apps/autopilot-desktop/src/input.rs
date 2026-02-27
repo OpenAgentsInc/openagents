@@ -1,7 +1,7 @@
+use codex_client::{ThreadListParams, ThreadResumeParams, TurnStartParams, UserInput};
 use nostr::regenerate_identity;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use codex_client::{ThreadListParams, ThreadResumeParams, TurnStartParams, UserInput};
 use wgpui::clipboard::copy_to_clipboard;
 use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 use winit::event::{ElementState, WindowEvent};
@@ -749,22 +749,14 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.submit_prompt(prompt.clone());
 
-    let mut input = vec![UserInput::Text { text: prompt }];
-    if let Some(index) = state.skill_registry.selected_skill_index
-        && let Some(skill) = state.skill_registry.discovered_skills.get(index)
-    {
-        if skill.enabled {
-            let skill_path = std::path::PathBuf::from(skill.path.clone());
-            input.push(UserInput::Skill {
-                name: skill.name.clone(),
-                path: skill_path,
-            });
-        } else {
-            state.autopilot_chat.last_error = Some(format!(
-                "Selected skill '{}' is disabled; enable it first.",
-                skill.name
-            ));
-        }
+    let selected_skill = state
+        .skill_registry
+        .selected_skill_index
+        .and_then(|index| state.skill_registry.discovered_skills.get(index))
+        .map(|skill| (skill.name.as_str(), skill.path.as_str(), skill.enabled));
+    let (input, skill_error) = assemble_chat_turn_input(prompt, selected_skill);
+    if let Some(skill_error) = skill_error {
+        state.autopilot_chat.last_error = Some(skill_error);
     }
 
     let command = crate::codex_lane::CodexLaneCommand::TurnStart(TurnStartParams {
@@ -779,9 +771,34 @@ fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     });
 
     if let Err(error) = state.queue_codex_command(command) {
-        state.autopilot_chat.mark_pending_turn_dispatch_failed(error);
+        state
+            .autopilot_chat
+            .mark_pending_turn_dispatch_failed(error);
     }
     true
+}
+
+fn assemble_chat_turn_input(
+    prompt: String,
+    selected_skill: Option<(&str, &str, bool)>,
+) -> (Vec<UserInput>, Option<String>) {
+    let mut input = vec![UserInput::Text { text: prompt }];
+    let mut last_error = None;
+    if let Some((name, path, enabled)) = selected_skill {
+        if enabled {
+            input.push(UserInput::Skill {
+                name: name.to_string(),
+                path: std::path::PathBuf::from(path),
+            });
+        } else {
+            last_error = Some(format!(
+                "Selected skill '{}' is disabled; enable it first.",
+                name
+            ));
+        }
+    }
+
+    (input, last_error)
 }
 
 fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
@@ -799,10 +816,7 @@ fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> boo
     true
 }
 
-fn run_chat_select_thread_action(
-    state: &mut crate::app_state::RenderState,
-    index: usize,
-) -> bool {
+fn run_chat_select_thread_action(state: &mut crate::app_state::RenderState, index: usize) -> bool {
     let Some(thread_id) = state.autopilot_chat.select_thread_by_index(index) else {
         return false;
     };
@@ -2214,14 +2228,17 @@ fn dispatch_command_palette_actions(state: &mut crate::app_state::RenderState) -
 #[cfg(test)]
 mod tests {
     use super::{
-        build_create_invoice_command, build_pay_invoice_command, build_spark_command_for_action,
-        is_command_palette_shortcut, parse_positive_amount_str, validate_lightning_payment_request,
+        assemble_chat_turn_input, build_create_invoice_command, build_pay_invoice_command,
+        build_spark_command_for_action, is_command_palette_shortcut, parse_positive_amount_str,
+        validate_lightning_payment_request,
     };
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
     use crate::spark_wallet::SparkWalletCommand;
+    use codex_client::UserInput;
     use std::collections::BTreeSet;
+    use std::path::PathBuf;
     use wgpui::{Bounds, Modifiers, Point};
     use winit::keyboard::Key as WinitLogicalKey;
 
@@ -2383,6 +2400,44 @@ mod tests {
                 expiry_seconds: Some(900)
             } if description == "MVP invoice"
         ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_attaches_enabled_skill() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "build mezo integration".to_string(),
+            Some(("mezo", "/repo/skills/mezo/SKILL.md", true)),
+        );
+
+        assert!(last_error.is_none());
+        assert_eq!(input.len(), 2);
+        assert!(matches!(
+            &input[0],
+            UserInput::Text { text } if text == "build mezo integration"
+        ));
+        assert!(matches!(
+            &input[1],
+            UserInput::Skill { name, path }
+                if name == "mezo" && path == &PathBuf::from("/repo/skills/mezo/SKILL.md")
+        ));
+    }
+
+    #[test]
+    fn assemble_chat_turn_input_rejects_disabled_skill_attachment() {
+        let (input, last_error) = assemble_chat_turn_input(
+            "build mezo integration".to_string(),
+            Some(("mezo", "/repo/skills/mezo/SKILL.md", false)),
+        );
+
+        assert_eq!(input.len(), 1);
+        assert!(matches!(
+            &input[0],
+            UserInput::Text { text } if text == "build mezo integration"
+        ));
+        assert_eq!(
+            last_error.as_deref(),
+            Some("Selected skill 'mezo' is disabled; enable it first.")
+        );
     }
 
     #[test]
