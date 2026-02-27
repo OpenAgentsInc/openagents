@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::expect_used))]
 
 mod app_state;
+mod codex_lane;
 mod hotbar;
 mod input;
 mod nip_sa_wallet_bridge;

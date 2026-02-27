@@ -335,9 +335,11 @@ name = "autopilot-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "codex-client",
  "nostr 0.1.0",
  "openagents-spark",
  "pollster",
+ "serde_json",
  "tokio",
  "wgpu",
  "wgpui",

@@ -63,6 +63,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
     match event {
         WindowEvent::CloseRequested => {
             let _ = state.spark_worker.cancel_pending();
+            state.codex_lane_worker.shutdown();
             event_loop.exit();
         }
         WindowEvent::Resized(new_size) => {

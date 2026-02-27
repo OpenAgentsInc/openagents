@@ -16,8 +16,10 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+codex-client = { path = "../../crates/codex-client" }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
+serde_json = "1"
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }

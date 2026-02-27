@@ -16,7 +16,13 @@ use crate::runtime_lanes::{
     SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
     SklLaneWorker,
 };
-use crate::spark_wallet::{SparkPaneState, SparkWalletWorker};
+use crate::{
+    codex_lane::{
+        CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
+        CodexLaneWorker,
+    },
+    spark_wallet::{SparkPaneState, SparkWalletWorker},
+};
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -2391,6 +2397,11 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub codex_lane: CodexLaneSnapshot,
+    pub codex_lane_worker: CodexLaneWorker,
+    pub codex_command_responses: Vec<CodexLaneCommandResponse>,
+    pub codex_notifications: Vec<CodexLaneNotification>,
+    pub next_codex_command_seq: u64,
     pub sa_lane: SaLaneSnapshot,
     pub skl_lane: SklLaneSnapshot,
     pub ac_lane: AcLaneSnapshot,
@@ -2440,6 +2451,33 @@ impl RenderState {
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
         let seq = self.allocate_runtime_command_seq();
         self.sa_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    fn allocate_codex_command_seq(&mut self) -> u64 {
+        let seq = self.next_codex_command_seq;
+        self.next_codex_command_seq = self.next_codex_command_seq.saturating_add(1);
+        seq
+    }
+
+    pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
+        let seq = self.allocate_codex_command_seq();
+        self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn record_codex_command_response(&mut self, response: CodexLaneCommandResponse) {
+        self.codex_command_responses.push(response);
+        if self.codex_command_responses.len() > 128 {
+            let overflow = self.codex_command_responses.len().saturating_sub(128);
+            self.codex_command_responses.drain(0..overflow);
+        }
+    }
+
+    pub fn record_codex_notification(&mut self, notification: CodexLaneNotification) {
+        self.codex_notifications.push(notification);
+        if self.codex_notifications.len() > 256 {
+            let overflow = self.codex_notifications.len().saturating_sub(256);
+            self.codex_notifications.drain(0..overflow);
+        }
     }
 
     pub fn queue_skl_command(&mut self, command: SklDiscoveryTrustCommand) -> Result<u64, String> {
