@@ -1522,6 +1522,21 @@ pub struct SkillRegistryPaneState {
     pub manifest_event_id: Option<String>,
     pub version_event_id: Option<String>,
     pub search_result_event_id: Option<String>,
+    pub source: String,
+    pub repo_skills_root: Option<String>,
+    pub discovered_skills: Vec<SkillRegistryDiscoveredSkill>,
+    pub discovery_errors: Vec<String>,
+    pub selected_skill_index: Option<usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SkillRegistryDiscoveredSkill {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    pub enabled: bool,
+    pub interface_display_name: Option<String>,
+    pub dependency_count: usize,
 }
 
 impl Default for SkillRegistryPaneState {
@@ -1537,6 +1552,11 @@ impl Default for SkillRegistryPaneState {
             manifest_event_id: None,
             version_event_id: None,
             search_result_event_id: None,
+            source: "codex".to_string(),
+            repo_skills_root: None,
+            discovered_skills: Vec::new(),
+            discovery_errors: Vec::new(),
+            selected_skill_index: None,
         }
     }
 }

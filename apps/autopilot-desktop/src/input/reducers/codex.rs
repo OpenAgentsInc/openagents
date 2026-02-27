@@ -1,4 +1,4 @@
-use crate::app_state::RenderState;
+use crate::app_state::{PaneLoadState, RenderState};
 use crate::codex_lane::{
     CodexLaneCommandKind, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
     CodexLaneSnapshot,
@@ -33,9 +33,17 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .clone()
                     .unwrap_or_else(|| "turn/start rejected".to_string()),
             );
+        } else if response.command == CodexLaneCommandKind::SkillsList {
+            state.skill_registry.load_state = PaneLoadState::Error;
+            state.skill_registry.last_error = response
+                .error
+                .clone()
+                .or_else(|| Some("codex skills/list failed".to_string()));
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
         state.autopilot_chat.last_error = None;
+    } else if response.command == CodexLaneCommandKind::SkillsList {
+        state.skill_registry.last_error = None;
     }
     state.sync_health.last_action = Some(format!(
         "codex {} {}",
@@ -51,6 +59,47 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
     let stored = notification.clone();
     match notification {
+        CodexLaneNotification::SkillsListLoaded { entries } => {
+            state.skill_registry.source = "codex".to_string();
+            state.skill_registry.discovered_skills.clear();
+            state.skill_registry.discovery_errors.clear();
+
+            for entry in entries {
+                if state.skill_registry.repo_skills_root.is_none() {
+                    state.skill_registry.repo_skills_root = Some(entry.cwd.clone());
+                }
+                for skill in entry.skills {
+                    state
+                        .skill_registry
+                        .discovered_skills
+                        .push(crate::app_state::SkillRegistryDiscoveredSkill {
+                            name: skill.name,
+                            path: skill.path,
+                            scope: skill.scope,
+                            enabled: skill.enabled,
+                            interface_display_name: skill.interface_display_name,
+                            dependency_count: skill.dependency_count,
+                        });
+                }
+                state.skill_registry.discovery_errors.extend(entry.errors);
+            }
+
+            state.skill_registry.selected_skill_index = if state.skill_registry.discovered_skills.is_empty() {
+                None
+            } else {
+                Some(0)
+            };
+            state.skill_registry.load_state = PaneLoadState::Ready;
+            state.skill_registry.last_action = Some(format!(
+                "Loaded {} codex skills",
+                state.skill_registry.discovered_skills.len()
+            ));
+            if state.skill_registry.discovery_errors.is_empty() {
+                state.skill_registry.last_error = None;
+            } else {
+                state.skill_registry.last_error = state.skill_registry.discovery_errors.first().cloned();
+            }
+        }
         CodexLaneNotification::ThreadListLoaded { thread_ids } => {
             state.autopilot_chat.set_threads(thread_ids);
         }

@@ -6,8 +6,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use codex_client::{
     AppServerChannels, AppServerClient, AppServerConfig, AppServerNotification, AppServerRequest,
-    AskForApproval, ClientInfo, SkillsConfigWriteParams, SkillsListParams, ThreadListParams,
-    ThreadReadParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
+    AskForApproval, ClientInfo, SkillScope, SkillsConfigWriteParams, SkillsListParams,
+    SkillsListResponse, ThreadListParams, ThreadReadParams, ThreadResumeParams, ThreadStartParams,
+    TurnInterruptParams, TurnStartParams,
 };
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -162,6 +163,9 @@ impl CodexLaneCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodexLaneNotification {
+    SkillsListLoaded {
+        entries: Vec<CodexSkillListEntry>,
+    },
     ThreadListLoaded {
         thread_ids: Vec<String>,
     },
@@ -196,6 +200,23 @@ pub enum CodexLaneNotification {
     Raw {
         method: String,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexSkillListEntry {
+    pub cwd: String,
+    pub skills: Vec<CodexSkillSummary>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexSkillSummary {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    pub enabled: bool,
+    pub interface_display_name: Option<String>,
+    pub dependency_count: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -534,10 +555,11 @@ impl CodexLaneState {
                 })
             }
             CodexLaneCommand::SkillsList(params) => {
-                let _ = runtime.block_on(client.skills_list(params))?;
+                let response = runtime.block_on(client.skills_list(params))?;
+                let entries = summarize_skills_list_response(response);
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: None,
+                    notification: Some(CodexLaneNotification::SkillsListLoaded { entries }),
                 })
             }
             CodexLaneCommand::SkillsConfigWrite(params) => {
@@ -757,6 +779,46 @@ fn is_disconnect_error(error: &anyhow::Error) -> bool {
         || text.contains("app-server write failed")
         || text.contains("app-server request canceled")
         || text.contains("app-server connection closed")
+}
+
+fn summarize_skills_list_response(response: SkillsListResponse) -> Vec<CodexSkillListEntry> {
+    response
+        .data
+        .into_iter()
+        .map(|entry| CodexSkillListEntry {
+            cwd: entry.cwd.display().to_string(),
+            skills: entry
+                .skills
+                .into_iter()
+                .map(|skill| CodexSkillSummary {
+                    name: skill.name,
+                    path: skill.path.display().to_string(),
+                    scope: skill_scope_label(skill.scope).to_string(),
+                    enabled: skill.enabled,
+                    interface_display_name: skill
+                        .interface
+                        .and_then(|interface| interface.display_name),
+                    dependency_count: skill
+                        .dependencies
+                        .map_or(0, |dependencies| dependencies.tools.len()),
+                })
+                .collect(),
+            errors: entry
+                .errors
+                .into_iter()
+                .map(|error| format!("{}: {}", error.path.display(), error.message))
+                .collect(),
+        })
+        .collect()
+}
+
+fn skill_scope_label(scope: SkillScope) -> &'static str {
+    match scope {
+        SkillScope::User => "user",
+        SkillScope::Repo => "repo",
+        SkillScope::System => "system",
+        SkillScope::Admin => "admin",
+    }
 }
 
 #[cfg(test)]

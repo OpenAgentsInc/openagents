@@ -17,7 +17,7 @@ pub fn paint_skill_registry_pane(
     pane_state: &SkillRegistryPaneState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(content_bounds, &pane_state.source, paint);
 
     let discover = skill_registry_discover_button_bounds(content_bounds);
     let inspect = skill_registry_inspect_button_bounds(content_bounds);
@@ -79,7 +79,7 @@ pub fn paint_skill_registry_pane(
         "33401 version log",
         pane_state.version_event_id.as_deref().unwrap_or("n/a"),
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
@@ -89,6 +89,49 @@ pub fn paint_skill_registry_pane(
             .as_deref()
             .unwrap_or("n/a"),
     );
+
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Repo skills root",
+        pane_state.repo_skills_root.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Discovered skills",
+        &pane_state.discovered_skills.len().to_string(),
+    );
+
+    for skill in pane_state.discovered_skills.iter().take(6) {
+        let label = format!(
+            "{} [{}] {} ({}) deps:{}",
+            skill.name,
+            if skill.enabled { "enabled" } else { "disabled" },
+            skill.scope,
+            skill.path,
+            skill.dependency_count
+        );
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "codex skill",
+            &label,
+        );
+    }
+
+    for error in pane_state.discovery_errors.iter().take(4) {
+        y = paint_multiline_phrase(
+            paint,
+            content_bounds.origin.x + 12.0,
+            y,
+            "codex error",
+            error,
+        );
+    }
 }
 
 pub fn paint_skill_trust_revocation_pane(
